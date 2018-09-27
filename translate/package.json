@@ -1,0 +1,47 @@
+{
+  "name": "datocms-ui-extension-translate",
+  "version": "0.0.1",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "concurrently \"yarn serve\" \"yarn webpack:dev\"",
+    "serve": "serve -p 5000 dist",
+    "dist": "NODE_ENV=production webpack --progress",
+    "webpack:dev": "NODE_ENV=development webpack --progress --watch",
+    "test": "echo 1"
+  },
+  "keywords": [
+    "datocms",
+    "datocms-ui-extension"
+  ],
+  "author": "DatoCMS <support@datocms.com>",
+  "license": "ISC",
+  "devDependencies": {
+    "@babel/cli": "^7.0.0-beta.54",
+    "@babel/core": "^7.0.0-beta.54",
+    "@babel/preset-env": "^7.0.0-beta.54",
+    "@babel/register": "^7.0.0-beta.54",
+    "babel-eslint": "^8.2.6",
+    "babel-loader": "^8.0.0-beta",
+    "concurrently": "^4.0.1",
+    "css-loader": "^1.0.0",
+    "eslint": "^4.19.1",
+    "eslint-config-airbnb-base": "^13.0.0",
+    "eslint-loader": "^2.1.0",
+    "eslint-plugin-import": "^2.12.0",
+    "html-webpack-include-assets-plugin": "^1.0.5",
+    "html-webpack-inline-source-plugin": "^0.0.10",
+    "html-webpack-plugin": "^3.2.0",
+    "mini-css-extract-plugin": "^0.4.3",
+    "node-sass": "^4.9.3",
+    "np": "^3.0.4",
+    "sass-loader": "^7.1.0",
+    "serve": "^10.0.2",
+    "webpack": "^4.16.1",
+    "webpack-cli": "^3.1.0"
+  },
+  "dependencies": {
+    "debounce": "^1.2.0",
+    "to-querystring": "^1.0.4"
+  }
+}
