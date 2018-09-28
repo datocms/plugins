@@ -19,6 +19,11 @@
         "type": "integer",
         "required": true,
         "default": 5
+      },
+      {
+        "id": "color",
+        "label": "Star color",
+        "type": "color"
       }
     ]
   }
