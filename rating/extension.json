@@ -1,0 +1,25 @@
+{
+  "name": "Rating",
+  "extensionUrl": "https://unpkg.com/datocms-ui-extension-rating/dist/index.html",
+  "fieldTypes": ["string", "text"],
+  "sidebar": false,
+  "parameters": {
+    "global": [
+      {
+        "id": "developmentMode",
+        "label": "Development mode?",
+        "type": "boolean",
+        "hint": "Enable development logs on the console"
+      },
+      {
+        "id": "yandexApiKey",
+        "label": "Yandex API Key",
+        "type": "string",
+        "required": true,
+        "hint": "The Yandex API Key to use (see https://tech.yandex.com/rating/)",
+        "default": "trnsl.1.1.20151015T080754Z.fac48f0d13a96c3a.c0c58058288c42ba40de8aec2b36d9d86c3adb1d"
+      }
+    ],
+    "instance": []
+  }
+}

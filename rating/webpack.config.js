@@ -4,7 +4,7 @@ const HtmlWebpackIncludeAssetsPlugin = require('html-webpack-include-assets-plug
 const isProduction = process.env.NODE_ENV === 'production';
 
 module.exports = {
-  entry: __dirname + '/src/index.js',
+  entry: __dirname + '/src/index.jsx',
   mode: process.env.NODE_ENV,
   output: {
     path: __dirname + '/dist',
@@ -24,6 +24,14 @@ module.exports = {
         use: { loader: 'babel-loader' }
       }
     ],
+  },
+  resolve: {
+    alias: {
+      'react': 'preact-compat',
+      'react-dom': 'preact-compat',
+      'create-react-class': 'preact-compat/lib/create-react-class',
+      'react-dom-factories': 'preact-compat/lib/react-dom-factories'
+    }
   },
   plugins: [
     new HtmlWebpackPlugin({
