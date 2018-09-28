@@ -32,17 +32,15 @@ window.DatoCmsExtension.init().then((extension) => {
 
     render() {
       const { starCount, value, starColor } = this.state;
-      const {
-        red, green, blue, alpha,
-      } = starColor;
-
       return (
         <Rating
           name="star"
           onStarClick={newValue => extension.setFieldValue(extension.fieldPath, newValue)}
           value={value}
           starCount={starCount}
-          starColor={`#${rgbHex(red, green, blue, alpha / 255)}`}
+          starColor={starColor ? `#${rgbHex(
+            starColor.red, starColor.green, starColor.blue, starColor.alpha / 255,
+          )}` : '#ffb400'}
         />
       );
     }
