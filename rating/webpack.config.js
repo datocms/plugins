@@ -10,6 +10,7 @@ module.exports = {
     path: __dirname + '/dist',
     filename: 'bundle.js'
   },
+  devtool: 'source-map',
   module: {
     rules: [
       {
@@ -41,7 +42,7 @@ module.exports = {
     new HtmlWebpackIncludeAssetsPlugin({
       append: false,
       publicPath: '',
-      assets: true ?
+      assets: isProduction ?
         [
           'https://unpkg.com/datocms-ui-extensions-sdk/dist/sdk.js',
           'https://unpkg.com/datocms-ui-extensions-sdk/dist/sdk.css',
