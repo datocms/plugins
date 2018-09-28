@@ -10,6 +10,7 @@ module.exports = {
     path: __dirname + '/dist',
     filename: 'bundle.js'
   },
+  devtool: 'source-map',
   module: {
     rules: [
       {
@@ -22,7 +23,15 @@ module.exports = {
         test: /\.jsx?$/,
         exclude: /(node_modules|bower_components)/,
         use: { loader: 'babel-loader' }
-      }
+      },
+      {
+        test: /\.sass$/,
+        use: [
+          "style-loader",
+          "css-loader",
+          "sass-loader"
+        ]
+      },
     ],
   },
   plugins: [

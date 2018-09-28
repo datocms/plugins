@@ -11,6 +11,8 @@
   },
   settings: {
     "import/resolver": "webpack"
+  },
+  rules: {
+    "no-console": 0
   }
 }
-
