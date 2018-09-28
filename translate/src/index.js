@@ -3,7 +3,6 @@ import toQueryString from 'to-querystring';
 
 import './style.sass';
 
-
 window.DatoCmsExtension.init((ext) => {
   const label = 'Translate in other languages';
 

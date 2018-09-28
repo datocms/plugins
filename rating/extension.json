@@ -13,17 +13,24 @@
       }
     ],
     "instance": [
-    	{
-      	"id": "maxRating",
+      {
+        "id": "maxRating",
         "label": "Maximum rating",
         "type": "integer",
         "required": true,
         "default": 5
       },
       {
-        "id": "color",
-        "label": "Star color",
-        "type": "color"
+        "id": "starsColor",
+        "label": "Stars color",
+        "type": "color",
+        "required": true,
+        "default": {
+          "red": 255,
+          "green": 180,
+          "blue": 0,
+          "alpha": 255
+        }
       }
     ]
   }
