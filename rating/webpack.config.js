@@ -41,7 +41,7 @@ module.exports = {
     new HtmlWebpackIncludeAssetsPlugin({
       append: false,
       publicPath: '',
-      assets: isProduction ?
+      assets: true ?
         [
           'https://unpkg.com/datocms-ui-extensions-sdk/dist/sdk.js',
           'https://unpkg.com/datocms-ui-extensions-sdk/dist/sdk.css',
