@@ -1,0 +1,30 @@
+{
+  "name": "StringsList",
+  "extensionUrl": "https://unpkg.com/datocms-ui-extension-stringsList/dist/index.html",
+  "fieldTypes": ["integer"],
+  "sidebar": false,
+  "parameters": {
+    "global": [
+      {
+        "id": "developmentMode",
+        "label": "Development mode?",
+        "type": "boolean",
+        "hint": "Enable development logs on the console"
+      }
+    ],
+    "instance": [
+    	{
+      	"id": "maxStringsList",
+        "label": "Maximum stringsList",
+        "type": "integer",
+        "required": true,
+        "default": 5
+      },
+      {
+        "id": "color",
+        "label": "Star color",
+        "type": "color"
+      }
+    ]
+  }
+}
