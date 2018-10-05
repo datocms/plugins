@@ -1,6 +1,7 @@
 {
-  "name": "Rating",
-  "url": "https://unpkg.com/datocms-plugin-rating/dist/index.html",
+  "name": "Star rating editor",
+  "name": "A plugin that presents integer fields as star rating widgets",
+  "url": "https://unpkg.com/datocms-plugin-star-rating-editor/dist/index.html",
   "fieldTypes": ["integer"],
   "pluginType": "field_editor",
   "parameters": {

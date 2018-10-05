@@ -1,7 +1,8 @@
 {
-  "name": "StringsList",
-  "url": "https://unpkg.com/datocms-plugin-stringsList/dist/index.html",
-  "fieldTypes": ["integer"],
+  "name": "Tag editor",
+  "description": "A plugin that transforms any string and JSON field into a tag editor",
+  "url": "https://unpkg.com/datocms-plugin-tag-editor/dist/index.html",
+  "fieldTypes": ["string", "json"],
   "pluginType": "field_editor",
   "parameters": {
     "global": [

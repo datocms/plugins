@@ -23,20 +23,20 @@ module.exports = {
         test: /\.jsx?$/,
         exclude: /(node_modules|bower_components)/,
         use: { loader: 'babel-loader' }
-      },
-      {
-        test: /\.css$/,
-        use: [
-          "style-loader",
-          "css-loader",
-          "sass-loader"
-        ]
-      },
+      }
     ],
+  },
+  resolve: {
+    alias: {
+      'react': 'preact-compat',
+      'react-dom': 'preact-compat',
+      'create-react-class': 'preact-compat/lib/create-react-class',
+      'react-dom-factories': 'preact-compat/lib/react-dom-factories'
+    }
   },
   plugins: [
     new HtmlWebpackPlugin({
-      title: 'String-list plugin',
+      title: 'Star rating editor plugin',
       minify: isProduction,
     }),
     new HtmlWebpackIncludeAssetsPlugin({

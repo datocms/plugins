@@ -1,5 +1,5 @@
 {
-  "name": "datocms-plugin-stringsList",
+  "name": "datocms-plugin-star-rating-editor",
   "version": "0.0.1",
   "description": "",
   "main": "index.js",
@@ -9,8 +9,7 @@
     "dist": "NODE_ENV=production webpack --progress",
     "webpack:dev": "NODE_ENV=development webpack --progress --watch",
     "test": "echo 1"
-  },
-  "keywords": [
+  }, "keywords": [
     "datocms",
     "datocms-plugin"
   ],
@@ -45,11 +44,12 @@
     "webpack-cli": "^3.1.0"
   },
   "dependencies": {
+    "debounce": "^1.2.0",
     "eslint-import-resolver-webpack": "^0.10.1",
-    "react": "^16.5.2",
-    "react-dom": "^16.5.2",
-    "react-tag-input": "^5.2.3",
-    "style-loader": "^0.23.0",
+    "preact": "^8.3.1",
+    "preact-compat": "^3.18.4",
+    "react-star-rating-component": "^1.4.1",
+    "rgb-hex": "^2.1.0",
     "to-querystring": "^1.0.4"
   }
 }
