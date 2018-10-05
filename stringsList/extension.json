@@ -1,8 +1,8 @@
 {
   "name": "StringsList",
-  "extensionUrl": "https://unpkg.com/datocms-ui-extension-stringsList/dist/index.html",
+  "url": "https://unpkg.com/datocms-plugin-stringsList/dist/index.html",
   "fieldTypes": ["integer"],
-  "sidebar": false,
+  "pluginType": "field_editor",
   "parameters": {
     "global": [
       {

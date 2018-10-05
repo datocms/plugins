@@ -1,12 +1,10 @@
-import debounce from 'debounce';
 import toQueryString from 'to-querystring';
 
 import './style.sass';
 
-window.DatoCmsExtension.init((ext) => {
+window.DatoCmsPlugin.init((ext) => {
   const label = 'Translate in other languages';
 
-  const input = document.createElement('input');
   const link = document.createElement('a');
 
   const mainLocale = ext.site.attributes.locales[0];
@@ -18,23 +16,11 @@ window.DatoCmsExtension.init((ext) => {
   link.href = '#';
   link.classList.add('button');
 
-  input.type = 'text';
-  input.placeholder = ext.placeholder;
-  input.value = ext.getFieldValue(fieldPath);
-
   ext.startAutoResizer();
-
-  document.body.appendChild(input);
 
   if (currentLocale === mainLocale && isLocalized) {
     document.body.appendChild(link);
   }
-
-  ext.addFieldChangeListener(fieldPath, (newValue) => {
-    if (input.value !== newValue) {
-      input.value = newValue;
-    }
-  });
 
   const translate = text => (
     Promise.all(
@@ -72,17 +58,9 @@ window.DatoCmsExtension.init((ext) => {
     e.preventDefault();
     if (currentLocale === mainLocale && isLocalized) {
       link.textContent = 'Translating...';
-      translate(input.value).then(() => {
+      translate(ext.getFieldValue(fieldPath)).then(() => {
         link.textContent = label;
       });
     }
   });
-
-  const change = debounce((e) => {
-    const { value } = e.target;
-    ext.setFieldValue(fieldPath, value);
-  }, 500);
-
-  input.addEventListener('change', change);
-  input.addEventListener('keyup', change);
 });

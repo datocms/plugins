@@ -36,7 +36,7 @@ module.exports = {
   },
   plugins: [
     new HtmlWebpackPlugin({
-      title: 'DatoCMS UI Extension',
+      title: 'Translate plugin',
       minify: isProduction,
     }),
     new HtmlWebpackIncludeAssetsPlugin({
@@ -44,8 +44,8 @@ module.exports = {
       publicPath: '',
       assets: isProduction ?
         [
-          'https://unpkg.com/datocms-ui-extensions-sdk/dist/sdk.js',
-          'https://unpkg.com/datocms-ui-extensions-sdk/dist/sdk.css',
+          'https://unpkg.com/datocms-plugins-sdk/dist/sdk.js',
+          'https://unpkg.com/datocms-plugins-sdk/dist/sdk.css',
         ]
         :
         [

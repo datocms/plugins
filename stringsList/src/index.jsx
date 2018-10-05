@@ -3,38 +3,38 @@ import { render } from 'react-dom';
 import { WithContext as ReactTags } from 'react-tag-input';
 import './reactTags.css';
 
-function deserialize(extension) {
-  const fieldValue = extension.getFieldValue(extension.fieldPath);
+function deserialize(plugin) {
+  const fieldValue = plugin.getFieldValue(plugin.fieldPath);
 
   if (!fieldValue) {
     return [];
   }
 
-  if (extension.field.attributes.field_type === 'json') {
+  if (plugin.field.attributes.field_type === 'json') {
     return JSON.parse(fieldValue).map(key => ({ id: key, text: key }));
   }
   return fieldValue.split(',').map(key => ({ id: key, text: key }));
 }
 
-function serializeValue(inputValue, extension) {
-  if (extension.field.attributes.field_type === 'json') {
+function serializeValue(inputValue, plugin) {
+  if (plugin.field.attributes.field_type === 'json') {
     return JSON.stringify(inputValue.map(o => o.text));
   }
   return inputValue.map(o => o.text).join(', ');
 }
 
-window.DatoCmsExtension.init().then((extension) => {
-  extension.startAutoResizer();
+window.DatoCmsPlugin.init().then((plugin) => {
+  plugin.startAutoResizer();
 
   class App extends React.Component {
     constructor(props) {
       super(props);
-      this.state = { value: deserialize(extension) };
+      this.state = { value: deserialize(plugin) };
     }
 
     componentDidMount() {
-      this.unsubscribe = extension.addFieldChangeListener(extension.fieldPath, () => {
-        this.setState({ value: deserialize(extension) });
+      this.unsubscribe = plugin.addFieldChangeListener(plugin.fieldPath, () => {
+        this.setState({ value: deserialize(plugin) });
       });
     }
 
@@ -45,9 +45,9 @@ window.DatoCmsExtension.init().then((extension) => {
     handleAddition(inputValue) {
       const { value } = this.state;
 
-      extension.setFieldValue(
-        extension.fieldPath, (
-          serializeValue([...value, inputValue], extension)
+      plugin.setFieldValue(
+        plugin.fieldPath, (
+          serializeValue([...value, inputValue], plugin)
         ),
       );
     }
@@ -56,8 +56,8 @@ window.DatoCmsExtension.init().then((extension) => {
       const { value } = this.state;
       value.splice(inputValue, 1);
 
-      extension.setFieldValue(
-        extension.fieldPath, (serializeValue(value, extension)),
+      plugin.setFieldValue(
+        plugin.fieldPath, (serializeValue(value, plugin)),
       );
     }
 
@@ -68,8 +68,8 @@ window.DatoCmsExtension.init().then((extension) => {
       newValue.splice(currPos, 1);
       newValue.splice(newPos, 0, inputValue);
 
-      extension.setFieldValue(
-        extension.fieldPath, (serializeValue(newValue, extension)),
+      plugin.setFieldValue(
+        plugin.fieldPath, (serializeValue(newValue, plugin)),
       );
     }
 

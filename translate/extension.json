@@ -1,8 +1,9 @@
 {
   "name": "Translate with Yandex",
-  "extensionUrl": "https://unpkg.com/datocms-ui-extension-translate/dist/index.html",
+  "description": "Adds a link to translate the content of a field",
+  "url": "https://unpkg.com/datocms-plugin-translate/dist/index.html",
+  "pluginType": "field_addon",
   "fieldTypes": ["string", "text"],
-  "sidebar": false,
   "parameters": {
     "global": [
       {

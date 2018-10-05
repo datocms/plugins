@@ -2,26 +2,31 @@ import React, { Component, render } from 'preact-compat';
 import Rating from 'react-star-rating-component';
 import rgbHex from 'rgb-hex';
 
-const toHex = ({ red, green, blue, alpha }) => `#${rgbHex(red, green, blue, alpha / 255)}`;
+const toHex = ({
+  red,
+  green,
+  blue,
+  alpha,
+}) => `#${rgbHex(red, green, blue, alpha / 255)}`;
 
-const stateFromExtension = extension => ({
-  maxRating: extension.parameters.instance.maxRating,
-  starsColor: toHex(extension.parameters.instance.starsColor),
-  value: extension.getFieldValue(extension.fieldPath),
+const stateFromPlugin = plugin => ({
+  maxRating: plugin.parameters.instance.maxRating,
+  starsColor: toHex(plugin.parameters.instance.starsColor),
+  value: plugin.getFieldValue(plugin.fieldPath),
 });
 
-window.DatoCmsExtension.init().then((extension) => {
-  extension.startAutoResizer();
+window.DatoCmsPlugin.init().then((plugin) => {
+  plugin.startAutoResizer();
 
   class Input extends Component {
     constructor(props) {
       super(props);
-      this.state = stateFromExtension(extension);
+      this.state = stateFromPlugin(plugin);
     }
 
     componentDidMount() {
-      this.unsubscribe = extension.addFieldChangeListener(extension.fieldPath, () => {
-        this.setState(stateFromExtension(extension));
+      this.unsubscribe = plugin.addFieldChangeListener(plugin.fieldPath, () => {
+        this.setState(stateFromPlugin(plugin));
       });
     }
 
@@ -35,7 +40,7 @@ window.DatoCmsExtension.init().then((extension) => {
       return (
         <Rating
           name="star"
-          onStarClick={newValue => extension.setFieldValue(extension.fieldPath, newValue)}
+          onStarClick={newValue => plugin.setFieldValue(plugin.fieldPath, newValue)}
           value={value}
           starCount={maxRating}
           starColor={starsColor}

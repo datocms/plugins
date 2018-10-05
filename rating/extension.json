@@ -1,8 +1,8 @@
 {
   "name": "Rating",
-  "extensionUrl": "https://unpkg.com/datocms-ui-extension-rating/dist/index.html",
+  "url": "https://unpkg.com/datocms-plugin-rating/dist/index.html",
   "fieldTypes": ["integer"],
-  "sidebar": false,
+  "pluginType": "field_editor",
   "parameters": {
     "global": [
       {
