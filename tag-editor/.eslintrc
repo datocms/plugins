@@ -6,6 +6,9 @@
     mocha: true,
     browser: true
   },
+  rules: {
+    "react/jsx-no-bind": 0
+  },
   parserOptions: {
     sourceType: "module"
   },

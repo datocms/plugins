@@ -31,20 +31,7 @@
           "hint": "Enable development logs on the console"
         }
       ],
-      "instance": [
-        {
-          "id": "maxStringsList",
-          "label": "Maximum stringsList",
-          "type": "integer",
-          "required": true,
-          "default": 5
-        },
-        {
-          "id": "color",
-          "label": "Star color",
-          "type": "color"
-        }
-      ]
+      "instance": []
     }
   },
   "devDependencies": {

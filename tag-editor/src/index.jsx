@@ -81,9 +81,9 @@ window.DatoCmsPlugin.init().then((plugin) => {
           <ReactTags
             tags={value}
             placeholder="Add new string"
-            handleAddition={newValue => this.handleAddition(newValue)}
-            handleDrag={newValue => this.handleDrag(newValue)}
-            handleDelete={newValue => this.handleDelete(newValue)}
+            handleAddition={this.handleAddition.bind(this)}
+            handleDrag={this.handleDrag.bind(this)}
+            handleDelete={this.handleDelete.bind(this)}
           />
         </div>
       );
