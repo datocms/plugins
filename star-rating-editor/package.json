@@ -1,6 +1,7 @@
 {
   "name": "datocms-plugin-star-rating-editor",
-  "version": "0.0.3",
+  "homepage": "https://github.com/datocms/plugins/tree/master/star-rating-editor#readme",
+  "version": "0.0.4",
   "description": "",
   "main": "index.js",
   "scripts": {

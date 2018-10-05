@@ -1,6 +1,7 @@
 {
   "name": "datocms-plugin-tag-editor",
-  "version": "0.0.1",
+  "homepage": "https://github.com/datocms/plugins/tree/master/tag-editor#readme",
+  "version": "0.0.2",
   "description": "",
   "main": "index.js",
   "scripts": {
