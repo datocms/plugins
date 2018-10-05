@@ -15,6 +15,44 @@
   ],
   "author": "DatoCMS <support@datocms.com>",
   "license": "ISC",
+  "datoCmsPlugin": {
+    "title": "Star rating editor",
+    "description": "A plugin that presents integer fields as star rating widgets",
+    "url": "https://unpkg.com/datocms-plugin-star-rating-editor/dist/index.html",
+    "fieldTypes": ["integer"],
+    "pluginType": "field_editor",
+    "parameters": {
+      "global": [
+        {
+          "id": "developmentMode",
+          "label": "Development mode?",
+          "type": "boolean",
+          "hint": "Enable development logs on the console"
+        }
+      ],
+      "instance": [
+        {
+          "id": "maxRating",
+          "label": "Maximum rating",
+          "type": "integer",
+          "required": true,
+          "default": 5
+        },
+        {
+          "id": "starsColor",
+          "label": "Stars color",
+          "type": "color",
+          "required": true,
+          "default": {
+            "red": 255,
+            "green": 180,
+            "blue": 0,
+            "alpha": 255
+          }
+        }
+      ]
+    }
+  },
   "devDependencies": {
     "@babel/cli": "^7.0.0-beta.54",
     "@babel/core": "^7.0.0-beta.54",
