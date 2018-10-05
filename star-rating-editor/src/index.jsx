@@ -38,13 +38,16 @@ window.DatoCmsPlugin.init().then((plugin) => {
       const { maxRating, value, starsColor } = this.state;
 
       return (
-        <Rating
-          name="star"
-          onStarClick={newValue => plugin.setFieldValue(plugin.fieldPath, newValue)}
-          value={value}
-          starCount={maxRating}
-          starColor={starsColor}
-        />
+        <div style={{ fontSize: '20px', letterSpacing: '3px' }}>
+          <Rating
+            name="star"
+            onStarClick={newValue => plugin.setFieldValue(plugin.fieldPath, newValue)}
+            emptyStarColor="#848484"
+            value={value}
+            starCount={maxRating}
+            starColor={starsColor}
+          />
+        </div>
       );
     }
   }
