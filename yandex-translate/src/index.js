@@ -22,7 +22,7 @@ window.DatoCmsPlugin.init((ext) => {
     document.body.appendChild(link);
   }
 
-  const translate = text => (
+  const translate = (text, format) => (
     Promise.all(
       ext.site.attributes.locales.slice(1).map((locale) => {
         const path = fieldPath.replace(
@@ -38,6 +38,7 @@ window.DatoCmsPlugin.init((ext) => {
         const qs = toQueryString({
           key: ext.parameters.global.yandexApiKey,
           lang: locale.substring(0, 2),
+          format,
           text,
         });
 
@@ -58,7 +59,12 @@ window.DatoCmsPlugin.init((ext) => {
     e.preventDefault();
     if (currentLocale === mainLocale && isLocalized) {
       link.textContent = 'Translating...';
-      translate(ext.getFieldValue(fieldPath)).then(() => {
+
+      const { attributes: field } = ext.field;
+
+      const format = field.appeareance.editor === 'wysiwyg' ? 'html' : 'plain';
+
+      translate(ext.getFieldValue(fieldPath), format).then(() => {
         link.textContent = label;
       });
     }
