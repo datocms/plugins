@@ -64,7 +64,6 @@
   },
   "dependencies": {
     "intersperse": "^1.0.0",
-    "lorem-ipsum": "^1.0.6",
-    "to-querystring": "^1.0.4"
+    "lorem-ipsum": "^1.0.6"
   }
 }
