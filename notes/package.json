@@ -35,7 +35,14 @@
           "hint": "Enable development logs on the console"
         }
       ],
-      "instance": []
+      "instance": [
+        {
+          "id": "initialNote",
+          "label": "Initial note",
+          "type": "text",
+          "hint": "The first note that will be shown on new records"
+        }
+      ]
     }
   },
   "devDependencies": {
@@ -68,6 +75,7 @@
     "webpack-cli": "^3.1.0"
   },
   "dependencies": {
+    "classname": "^0.0.0",
     "date-fns": "^1.29.0",
     "moment": "^2.22.2",
     "prop-types": "^15.6.2",

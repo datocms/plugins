@@ -1,5 +1,20 @@
 $color: #fde464
 
+.notes__add
+  -webkit-appearance: none
+  -moz-appearance: none
+  appearance: none
+  border-width: 0
+  background-color: transparent
+  padding: 0
+  display: inline-block
+  font-size: inherit
+  color: inherit
+  cursor: pointer
+
+  &:hover
+    text-decoration: underline
+
 .notes__item__delete
    -webkit-appearance: none
    -moz-appearance: none
@@ -26,6 +41,9 @@ $color: #fde464
   margin-bottom: 25px
   background: $color
   position: relative
+
+  &.in-focus
+    box-shadow: 0 -3px 15px rgba(black, 0.1)
 
   textarea
     border: none

@@ -8,6 +8,15 @@ function deserialize(plugin) {
   const fieldValue = plugin.getFieldValue(plugin.fieldPath);
 
   if (!fieldValue) {
+    if (plugin.parameters.instance.initialNote) {
+      return [
+        {
+          comment: plugin.parameters.instance.initialNote,
+          timestamp: (new Date()).toISOString(),
+        },
+      ];
+    }
+
     return [];
   }
 
@@ -95,9 +104,10 @@ window.DatoCmsPlugin.init().then((plugin) => {
           {notes.map(this.renderNote.bind(this))}
           <button
             type="button"
+            className="notes__add"
             onClick={this.handleAddNote.bind(this)}
           >
-            Add note
+            Add a new note...
           </button>
         </div>
       );
