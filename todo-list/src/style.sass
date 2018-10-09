@@ -1,0 +1,128 @@
+$color: #fde464
+
+.todos
+  padding: 15px
+  padding-bottom: 0
+  margin-bottom: 25px
+  background: $color
+  position: relative
+
+  &:after
+    content: ""
+    position: absolute
+    bottom: -16px
+    left: 0
+    right: 15px
+    border-width: 8px
+    border-style: solid
+    border-color: $color
+
+  &:before
+    content: ""
+    position: absolute
+    bottom: -15px
+    right: 0
+    border-width: 15px 15px 0 0
+    border-style: solid
+    border-color: darken($color, 20%) transparent
+
+.todos__item
+  display: flex
+  align-items: top
+  border-top: 1px solid transparent
+  border-bottom: 1px solid transparent
+  padding: 2px 0
+  transition: border-color 0.2s ease-out
+
+  &.in-focus
+    border-top-color: rgba(black, 0.1)
+    border-bottom-color: rgba(black, 0.1)
+
+.todos__item__check
+  background: url(data:image/svg+xml;base64,PHN2ZyBpZD0iTGF5ZXJfMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB4bWw6c3BhY2U9InByZXNlcnZlIiB2ZXJzaW9uPSIxLjEiIHk9IjBweCIgeD0iMHB4IiB2aWV3Qm94PSIwIDAgMTggMTgiIGVuYWJsZS1iYWNrZ3JvdW5kPSJuZXcgMCAwIDE4IDE4Ij4KICA8cGF0aCBkPSJtMTQgM2MwLjYgMCAxIDAuNCAxIDF2MTBjMCAwLjYtMC40IDEtMSAxaC0xMGMtMC42IDAtMS0wLjQtMS0xdi0xMGMwLTAuNiAwLjQtMSAxLTFoMTBtMC0xaC0xMGMtMS4xIDAtMiAwLjktMiAydjEwYzAgMS4xIDAuOSAyIDIgMmgxMGMxLjEgMCAyLTAuOSAyLTJ2LTEwYzAtMS4xLTAuOS0yLTItMnoiLz4KPC9zdmc+Cg==) no-repeat center
+  background-size: 18px 18px
+  height: 18px
+  opacity: .54
+  outline: none
+  width: 18px
+  margin-right: 8px
+  -webkit-appearance: none
+  -moz-appearance: none
+  appearance: none
+  border-width: 0
+  background-color: transparent
+  padding: 0
+  display: inline-block
+  font-size: inherit
+  color: inherit
+  cursor: pointer
+  transition: opacity 0.2s ease-out
+  margin-top: 3px
+
+  &:hover
+    opacity: 1
+
+  .is-checked &
+    background-image: url(data:image/svg+xml;base64,PHN2ZyBpZD0iTGF5ZXJfMSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB4bWw6c3BhY2U9InByZXNlcnZlIiB2ZXJzaW9uPSIxLjEiIHk9IjBweCIgeD0iMHB4IiB2aWV3Qm94PSIwIDAgMTggMTgiIGVuYWJsZS1iYWNrZ3JvdW5kPSJuZXcgMCAwIDE4IDE4Ij4KICA8cGF0aCBkPSJtMTQgMmgtMTBjLTEuMSAwLTIgMC45LTIgMnYxMGMwIDEuMSAwLjkgMiAyIDJoMTBjMS4xIDAgMi0wLjkgMi0ydi0xMGMwLTEuMS0wLjktMi0yLTJ6bS02LjYgMTAuOWwtMy44LTMuOSAxLjEtMS4xIDIuOCAyLjggNS45LTUuOSAxLjEgMS4xLTcuMSA3eiIvPgo8L3N2Zz4K)
+
+.todos__item__plus
+  background: url(data:image/svg+xml;base64,PHN2ZyBoZWlnaHQ9IjE4cHgiIHdpZHRoPSIxOHB4IiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0OCA0OCIgZmlsbD0iIzAwMDAwMCI+CiA8cGF0aCBkPSJtMzggMjZoLTEydjEyaC00di0xMmgtMTJ2LTRoMTJ2LTEyaDR2MTJoMTJ2NHoiLz4KIDxwYXRoIGQ9Im0wIDBoNDh2NDhoLTQ4eiIgZmlsbD0ibm9uZSIvPgo8L3N2Zz4K) no-repeat center
+  background-size: 18px 18px
+  height: 18px
+  opacity: .54
+  width: 18px
+  margin-right: 8px
+  background-color: transparent
+  margin-top: 3px
+
+.todos__item__text
+  flex: 1
+
+  textarea
+    border: none
+    padding: 4px 0
+    background: transparent
+    width: 100%
+    resize: none
+
+    &:focus
+      box-shadow: none
+
+    .is-checked &
+      color: rgba(black, 0.6)
+      text-decoration: line-through
+
+.todos__item__delete
+  background-color: transparent
+  background-image: url(data:image/svg+xml;base64,PHN2ZyB2ZXJzaW9uPSIxLjEiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgd2lkdGg9IjUxMiIgaGVpZ2h0PSI1MTIiIHZpZXdCb3g9IjAgMCA1MTIgNTEyIj48dGl0bGU+Y2xvc2Utc29saWQ8L3RpdGxlPjxwYXRoIGQ9Ik03NS4wMDggNDM2Ljk5MmMtNDguMjE4LTQ2LjYxNy03OC4xNTQtMTExLjg4MS03OC4xNTQtMTg0LjEzOCAwLTE0MS4zODUgMTE0LjYxNS0yNTYgMjU2LTI1NiA3Mi4yNTcgMCAxMzcuNTIyIDI5LjkzNiAxODQuMDY5IDc4LjA4MmwwLjA2OSAwLjA3MmM0NC40NjIgNDUuOTg5IDcxLjg2MiAxMDguNzE4IDcxLjg2MiAxNzcuODQ2IDAgMTQxLjM4NS0xMTQuNjE1IDI1Ni0yNTYgMjU2LTY5LjEyOCAwLTEzMS44NTctMjcuMzk5LTE3Ny45MTgtNzEuOTMybDAuMDcyIDAuMDY5ek0yOTEuODQgMjU2bDcyLjQ0OC03Mi40NDgtMzYuMDk2LTM2LjA5Ni03Mi4xOTIgNzIuNDQ4LTcyLjQ0OC03Mi40NDgtMzYuMDk2IDM2LjA5NiA3Mi40NDggNzIuNDQ4LTcyLjQ0OCA3Mi40NDggMzYuMDk2IDM2LjA5NiA3Mi40NDgtNzIuNDQ4IDcyLjQ0OCA3Mi40NDggMzYuMDk2LTM2LjA5Ni03Mi40NDgtNzIuNDQ4eiI+PC9wYXRoPjwvc3ZnPg==)
+  background-position: center
+  background-repeat: no-repeat
+  -webkit-background-size: 18px 18px
+  background-size: 18px 18px
+  border: 0
+  height: 24px
+  cursor: pointer
+  opacity: 0
+  width: 24px
+
+  .in-focus &, .todos__item:hover &
+    opacity: .54
+
+  &:hover
+    opacity: 1 !important
+
+::-webkit-input-placeholder
+  color: rgba(#555, 0.6)
+
+.todos__item__timestamp
+  font-size: 12px
+  color: rgba(#555, 0.6)
+
+.todos__completed
+  border-top-color: rgba(black, 0.1)
+  margin-top: 10px
+
+.todos__completed__title
+  font-size: 13px
+  padding: 4px
+  margin-bottom: 5px
