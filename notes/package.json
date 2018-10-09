@@ -77,7 +77,6 @@
   "dependencies": {
     "classname": "^0.0.0",
     "date-fns": "^1.29.0",
-    "moment": "^2.22.2",
     "prop-types": "^15.6.2",
     "react": "^16.5.2",
     "react-autoupdate-time": "^1.0.5",
