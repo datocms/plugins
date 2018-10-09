@@ -2,7 +2,7 @@
   "name": "datocms-plugin-star-rating-editor",
   "homepage": "https://github.com/datocms/plugins/tree/master/star-rating-editor#readme",
   "version": "0.0.4",
-  "description": "",
+  "description": "A plugin that presents integer fields as star rating widgets",
   "main": "index.js",
   "scripts": {
     "start": "concurrently \"yarn serve\" \"yarn webpack:dev\"",

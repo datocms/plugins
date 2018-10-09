@@ -2,7 +2,7 @@
   "name": "datocms-plugin-lorem-ipsum",
   "homepage": "https://github.com/datocms/plugins/tree/master/lorem-ipsum#readme",
   "version": "0.0.1",
-  "description": "",
+  "description": "Makes it easier to automatically fill your textual fields with dummy content",
   "main": "index.js",
   "scripts": {
     "start": "concurrently \"yarn serve\" \"yarn webpack:dev\"",
