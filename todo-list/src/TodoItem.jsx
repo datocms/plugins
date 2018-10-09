@@ -5,7 +5,13 @@ import format from 'date-fns/format';
 import differenceInWeeks from 'date-fns/difference_in_weeks';
 import Textarea from 'react-textarea-autosize';
 import cn from 'classname';
+import { SortableHandle } from 'react-sortable-hoc';
+
 import AutoUpdateTime from './AutoUpdateTime.jsx';
+
+const Handle = SortableHandle(() => (
+  <div className="todos__item__handle" />
+));
 
 export default class TodoItem extends React.Component {
   constructor(props) {
@@ -27,8 +33,19 @@ export default class TodoItem extends React.Component {
   }
 
   handleEdit(e) {
-    const { onEdit } = this.props;
-    onEdit(e.target.value);
+    const { onEdit, todo } = this.props;
+    onEdit({ todo: e.target.value, completedAt: todo.completedAt });
+  }
+
+  handleKeyDown(e) {
+    const { onEnter } = this.props;
+
+    if (e.keyCode === 13) {
+      e.target.blur();
+      e.stopPropagation();
+      this.setState({ focus: false });
+      onEnter(e.target);
+    }
   }
 
   render() {
@@ -37,6 +54,7 @@ export default class TodoItem extends React.Component {
       todo,
       onDelete,
       onToggleComplete,
+      sortable,
     } = this.props;
 
     const { focus } = this.state;
@@ -56,6 +74,12 @@ export default class TodoItem extends React.Component {
           )
         }
       >
+        <div className="todos__item__handle-container">
+          {
+            sortable && !temp
+              && <Handle />
+          }
+        </div>
         {
           temp
             ? <div className="todos__item__plus" />
@@ -71,6 +95,8 @@ export default class TodoItem extends React.Component {
           <Textarea
             value={todo.todo}
             placeholder="Write something..."
+            disabled={!!todo.completedAt}
+            onKeyDown={this.handleKeyDown.bind(this)}
             onFocus={this.handleFocus.bind(this)}
             onChange={this.handleEdit.bind(this)}
             onBlur={this.handleBlur.bind(this)}
@@ -108,16 +134,21 @@ TodoItem.defaultProps = {
   onDelete: () => {},
   onToggleComplete: () => {},
   onBlur: () => {},
+  onEnter: () => {},
+  temp: false,
+  sortable: false,
 };
 
 TodoItem.propTypes = {
   todo: PropTypes.shape({
     todo: PropTypes.string.isRequired,
-    completedAt: PropTypes.string.isRequired,
+    completedAt: PropTypes.string,
   }).isRequired,
-  temp: PropTypes.bool.isRequired,
+  temp: PropTypes.bool,
+  sortable: PropTypes.bool,
   onEdit: PropTypes.func.isRequired,
   onDelete: PropTypes.func,
   onToggleComplete: PropTypes.func,
   onBlur: PropTypes.func,
+  onEnter: PropTypes.func,
 };
