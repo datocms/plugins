@@ -2,21 +2,21 @@ import toQueryString from 'to-querystring';
 
 import './style.sass';
 
-window.DatoCmsPlugin.init((ext) => {
+window.DatoCmsPlugin.init((plugin) => {
   const label = 'Translate in other languages';
 
   const link = document.createElement('a');
 
-  const mainLocale = ext.site.attributes.locales[0];
-  const currentLocale = ext.locale;
-  const isLocalized = ext.field.attributes.localized;
-  const { fieldPath } = ext;
+  const mainLocale = plugin.site.attributes.locales[0];
+  const currentLocale = plugin.locale;
+  const isLocalized = plugin.field.attributes.localized;
+  const { fieldPath } = plugin;
 
   link.textContent = label;
   link.href = '#';
   link.classList.add('button');
 
-  ext.startAutoResizer();
+  plugin.startAutoResizer();
 
   if (currentLocale === mainLocale && isLocalized) {
     document.body.appendChild(link);
@@ -24,32 +24,32 @@ window.DatoCmsPlugin.init((ext) => {
 
   const translate = (text, format) => (
     Promise.all(
-      ext.site.attributes.locales.slice(1).map((locale) => {
+      plugin.site.attributes.locales.slice(1).map((locale) => {
         const path = fieldPath.replace(
-          new RegExp(`\\.${ext.locale}$`),
+          new RegExp(`\\.${plugin.locale}$`),
           `.${locale}`,
         );
 
         if (!text) {
-          ext.setFieldValue(path, '');
+          plugin.setFieldValue(path, '');
           return Promise.resolve();
         }
 
         const qs = toQueryString({
-          key: ext.parameters.global.yandexApiKey,
+          key: plugin.parameters.global.yandexApiKey,
           lang: locale.substring(0, 2),
           format,
           text,
         });
 
-        if (ext.parameters.global.developmentMode) {
+        if (plugin.parameters.global.developmentMode) {
           console.log(`Fetching '${locale}' translation for '${text}'`);
         }
 
         return fetch(`https://translate.yandex.net/api/v1.5/tr.json/translate?${qs}`)
           .then(res => res.json())
           .then(response => (
-            ext.setFieldValue(path, response.text.join(' '))
+            plugin.setFieldValue(path, response.tplugin.join(' '))
           ));
       }),
     )
@@ -60,11 +60,11 @@ window.DatoCmsPlugin.init((ext) => {
     if (currentLocale === mainLocale && isLocalized) {
       link.textContent = 'Translating...';
 
-      const { attributes: field } = ext.field;
+      const { attributes: field } = plugin.field;
 
       const format = field.appeareance.editor === 'wysiwyg' ? 'html' : 'plain';
 
-      translate(ext.getFieldValue(fieldPath), format).then(() => {
+      translate(plugin.getFieldValue(fieldPath), format).then(() => {
         link.textContent = label;
       });
     }
