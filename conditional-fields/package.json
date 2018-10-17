@@ -1,8 +1,8 @@
 {
   "name": "datocms-plugin-conditional-fields",
   "homepage": "https://github.com/datocms/plugins/tree/master/conditional-fields#readme",
-  "version": "0.0.3",
-  "description": "Show/hide fields based on the value of others",
+  "version": "0.0.1",
+  "description": "Show/hide fields when you toggle a checkbox boolean field",
   "main": "index.js",
   "scripts": {
     "start": "concurrently \"yarn serve\" \"yarn webpack:dev\"",
@@ -20,7 +20,7 @@
   "license": "ISC",
   "datoCmsPlugin": {
     "title": "Conditional fields",
-    "description": "Show/hide fields based on the value of others",
+    "description": "Show/hide fields when you toggle a checkbox boolean field",
     "url": "https://unpkg.com/datocms-plugin-conditional-fields/dist/index.html",
     "pluginType": "field_addon",
     "fieldTypes": ["boolean"],
@@ -39,7 +39,7 @@
           "label": "Fields that will be toggled based upon this field's value",
           "type": "string",
           "required": true,
-          "hint": "Please insert fields API key separated by commas"
+          "hint": "Please insert the fields API key separated by commas"
         }
       ]
     }
