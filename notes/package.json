@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-notes",
   "homepage": "https://github.com/datocms/plugins/tree/master/notes#readme",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Add Post-it notes to your records sidebar",
   "main": "index.js",
   "scripts": {
@@ -14,14 +14,14 @@
   },
   "keywords": [
     "datocms",
-    "datocms-plugin"
+    "datocms-plugin",
+    "sidebar"
   ],
   "author": "DatoCMS <support@datocms.com>",
   "license": "ISC",
   "datoCmsPlugin": {
     "title": "Sidebar notes",
-    "description": "Add Post-it notes to your records sidebar",
-    "url": "https://unpkg.com/datocms-plugin-notes/dist/index.html",
+    "entryPoint": "dist/index.html",
     "fieldTypes": [
       "json"
     ],

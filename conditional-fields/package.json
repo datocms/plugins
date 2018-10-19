@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-conditional-fields",
   "homepage": "https://github.com/datocms/plugins/tree/master/conditional-fields#readme",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Show/hide fields when you toggle a checkbox boolean field",
   "main": "index.js",
   "scripts": {
@@ -14,16 +14,19 @@
   },
   "keywords": [
     "datocms",
-    "datocms-plugin"
+    "field-addon",
+    "datocms-plugin",
+    "boolean-field"
   ],
   "author": "DatoCMS <support@datocms.com>",
   "license": "ISC",
   "datoCmsPlugin": {
     "title": "Conditional fields",
-    "description": "Show/hide fields when you toggle a checkbox boolean field",
-    "url": "https://unpkg.com/datocms-plugin-conditional-fields/dist/index.html",
+    "entryPoint": "dist/index.html",
     "pluginType": "field_addon",
-    "fieldTypes": ["boolean"],
+    "fieldTypes": [
+      "boolean"
+    ],
     "parameters": {
       "global": [
         {
@@ -69,6 +72,5 @@
     "webpack-cli": "^3.1.0",
     "eslint-import-resolver-webpack": "^0.10.1"
   },
-  "dependencies": {
-  }
+  "dependencies": {}
 }
