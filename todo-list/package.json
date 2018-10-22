@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-todo-list",
   "homepage": "https://github.com/datocms/plugins/tree/master/todo-list#readme",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "description": "Add To-Do lists to your records sidebar",
   "main": "index.js",
   "scripts": {
