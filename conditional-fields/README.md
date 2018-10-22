@@ -14,6 +14,6 @@ For more detailed info, head over to the [DatoCMS documentation page](https://ww
 
 ## Configuration
 
-When [applying this plugin to a boolean field](https://www.datocms.com/docs/plugins/install/#assigning-an-plugin-to-a-field), please insert the API identifiers of the fields you want to toggle, comma separated:
+When [applying this plugin to a boolean field](https://www.datocms.com/docs/plugins/install/#assigning-a-plugin-to-a-field), please insert the API identifiers of the fields you want to toggle, comma separated:
 
 ![Demo](https://raw.githubusercontent.com/datocms/plugins/master/conditional-fields/docs/settings.png)
