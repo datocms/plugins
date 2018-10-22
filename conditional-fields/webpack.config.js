@@ -44,8 +44,8 @@ module.exports = {
       publicPath: '',
       assets: isProduction ?
         [
-          'https://unpkg.com/datocms-plugins-sdk@0.0.5/dist/sdk.js',
-          'https://unpkg.com/datocms-plugins-sdk@0.0.5/dist/sdk.css',
+          'https://unpkg.com/datocms-plugins-sdk@0.0.6/dist/sdk.js',
+          'https://unpkg.com/datocms-plugins-sdk@0.0.6/dist/sdk.css',
         ]
         :
         [
