@@ -20,7 +20,8 @@
   "author": "DatoCMS <support@datocms.com>",
   "license": "ISC",
   "datoCmsPlugin": {
-    "title": "Sidebar To-Do Lists",
+    "title": "Sidebar Todo lists",
+    "previewImage": "docs/demo.gif",
     "entryPoint": "dist/index.html",
     "fieldTypes": [
       "json"

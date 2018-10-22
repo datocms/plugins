@@ -22,6 +22,7 @@
   "license": "ISC",
   "datoCmsPlugin": {
     "title": "Lorem ipsum generator",
+    "previewImage": "docs/demo.gif",
     "entryPoint": "dist/index.html",
     "pluginType": "field_addon",
     "fieldTypes": [

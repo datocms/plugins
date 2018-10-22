@@ -22,6 +22,7 @@
   "license": "ISC",
   "datoCmsPlugin": {
     "title": "Conditional fields",
+    "previewImage": "docs/demo.gif",
     "entryPoint": "dist/index.html",
     "pluginType": "field_addon",
     "fieldTypes": [

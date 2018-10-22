@@ -21,6 +21,7 @@
   "license": "ISC",
   "datoCmsPlugin": {
     "title": "Sidebar notes",
+    "previewImage": "docs/demo.gif",
     "entryPoint": "dist/index.html",
     "fieldTypes": [
       "json"

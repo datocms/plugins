@@ -24,6 +24,7 @@
   "license": "ISC",
   "datoCmsPlugin": {
     "title": "Tag editor",
+    "previewImage": "docs/demo.gif",
     "entryPoint": "dist/index.html",
     "fieldTypes": [
       "string",

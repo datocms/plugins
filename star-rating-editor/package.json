@@ -23,6 +23,7 @@
   "license": "ISC",
   "datoCmsPlugin": {
     "title": "Star rating editor",
+    "previewImage": "docs/demo.gif",
     "entryPoint": "dist/index.html",
     "fieldTypes": [
       "integer"
