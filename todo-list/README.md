@@ -1,4 +1,4 @@
-# DatoCMS Notes plugin
+# DatoCMS Todo list plugin
 
 Add Post-it notes to your records sidebar.
 
