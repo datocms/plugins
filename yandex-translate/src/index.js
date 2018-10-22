@@ -49,7 +49,7 @@ window.DatoCmsPlugin.init((plugin) => {
         return fetch(`https://translate.yandex.net/api/v1.5/tr.json/translate?${qs}`)
           .then(res => res.json())
           .then(response => (
-            plugin.setFieldValue(path, response.tplugin.join(' '))
+            plugin.setFieldValue(path, response.text.join(' '))
           ));
       }),
     )
