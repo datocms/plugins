@@ -1,0 +1,54 @@
+$base-body-color: #34363a
+$light-body-color: #848484
+
+.products
+  display: flex
+  flex-wrap: wrap
+  align-items: stretch
+  margin-left: -10px
+
+.product
+  flex: 1
+  min-width: 106px
+  max-width: 150px
+  text-align: center
+  padding: 3px
+  padding-bottom: 0
+  border-radius: 3px
+  border: 1px solid #f0f0f0
+  margin-left: 10px
+  margin-bottom: 10px
+  overflow: hidden
+  cursor: pointer
+
+  &:hover
+    border-color: var(--accent-color)
+
+.product__image
+  display: block
+  padding-top: 100%
+  background-size: cover
+  border-radius: 3px 3px 0 0
+
+.product__title
+  line-height: 1.2
+  font-size: 13px
+  width: 100%
+  white-space: nowrap
+  overflow: hidden
+  text-overflow: ellipsis
+  margin: 7px 0
+
+.search
+  display: flex
+  align-items: stretch
+  margin-bottom: 20px
+
+.search__input
+  flex: 1
+  margin-right: 15px
+  position: relative
+
+  input[type="text"]
+    padding-left: 38px
+

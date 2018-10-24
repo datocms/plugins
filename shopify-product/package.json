@@ -1,0 +1,87 @@
+{
+  "name": "datocms-plugin-shopify-product",
+  "homepage": "https://github.com/datocms/plugins/tree/master/shopify-product#readme",
+  "version": "0.0.1",
+  "description": "A plugin that allows users to search and select Shopify products",
+  "main": "index.js",
+  "scripts": {
+    "start": "concurrently \"yarn serve\" \"yarn webpack:dev\"",
+    "serve": "serve -p 5000 dist",
+    "dist": "NODE_ENV=production webpack --progress",
+    "prepublish": "rimraf lib dist && mkdir dist && npm run dist",
+    "webpack:dev": "NODE_ENV=development webpack --progress --watch",
+    "test": "echo 1"
+  },
+  "keywords": [
+    "datocms",
+    "datocms-plugin",
+    "field-editor",
+    "string-field",
+    "shopify"
+  ],
+  "author": "DatoCMS <support@datocms.com>",
+  "license": "ISC",
+  "datoCmsPlugin": {
+    "title": "Shopify product",
+    "previewImage": "docs/demo.gif",
+    "entryPoint": "dist/index.html",
+    "fieldTypes": [
+      "integer"
+    ],
+    "pluginType": "field_editor",
+    "parameters": {
+      "global": [
+        {
+          "id": "shopifyDomain",
+          "label": "Shop ID",
+          "type": "string",
+          "required": true,
+          "default": "graphql",
+          "hint": "If your shop is at <code>https://foo-bar.myshopify.com/</code>, then insert <code>foo-bar</code>"
+        },
+        {
+          "id": "storefrontAccessToken",
+          "label": "Storefront access token",
+          "type": "string",
+          "required": true,
+          "default": "078bc5caa0ddebfa89cccb4a1baa1f5c",
+          "hint": "You can get a Storefront access token by creating a private app. Take a look at <a href=\"https://help.shopify.com/en/api/custom-storefronts/storefront-api/getting-started#authentication\">Shopify documentation</a> for more info"
+        }
+      ],
+      "instance": []
+    }
+  },
+  "devDependencies": {
+    "@babel/cli": "^7.0.0-beta.54",
+    "@babel/core": "^7.0.0-beta.54",
+    "@babel/preset-env": "^7.0.0-beta.54",
+    "@babel/preset-react": "^7.0.0",
+    "@babel/register": "^7.0.0-beta.54",
+    "babel-eslint": "^8.2.6",
+    "babel-loader": "^8.0.0-beta",
+    "concurrently": "^4.0.1",
+    "css-loader": "^1.0.0",
+    "eslint": "^5.3.0",
+    "eslint-config-airbnb": "17.1.0",
+    "eslint-config-airbnb-base": "^13.0.0",
+    "eslint-loader": "^2.1.0",
+    "eslint-plugin-import": "^2.14.0",
+    "eslint-plugin-jsx-a11y": "^6.1.1",
+    "eslint-plugin-react": "^7.11.0",
+    "html-webpack-include-assets-plugin": "^1.0.5",
+    "html-webpack-inline-source-plugin": "^0.0.10",
+    "html-webpack-plugin": "^3.2.0",
+    "mini-css-extract-plugin": "^0.4.3",
+    "node-sass": "^4.9.3",
+    "sass-loader": "^7.1.0",
+    "serve": "^10.0.2",
+    "webpack": "^4.16.1",
+    "webpack-cli": "^3.1.0"
+  },
+  "dependencies": {
+    "eslint-import-resolver-webpack": "^0.10.1",
+    "preact": "^8.3.1",
+    "preact-compat": "^3.18.4",
+    "style-loader": "^0.23.1"
+  }
+}
