@@ -11,3 +11,4 @@ This repository provides samples of DatoCMS plugins developed using the [Plugins
 * [Lorem ipsum generator](https://github.com/datocms/plugins/tree/master/lorem-ipsum/): Makes it easier to automatically fill your textual fields with dummy content
 * [Sidebar notes](https://github.com/datocms/plugins/tree/master/notes/): Add Post-it notes to your records sidebar
 * [Conditional fields](https://github.com/datocms/plugins/tree/master/conditional-fields/): Show/hide fields when you toggle a checkbox boolean field
+* [Shopify product](https://github.com/datocms/plugins/tree/master/shopify-product/): Allows users to search and select Shopify products
