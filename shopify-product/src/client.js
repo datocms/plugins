@@ -44,28 +44,10 @@ export default class ShopifyClient {
     this.storefrontAccessToken = storefrontAccessToken;
   }
 
-  fetchFirstProducts() {
+  productsMatching(query) {
     return this.fetch({
       query: `
-        {
-          shop {
-            products(first: 8) {
-              edges {
-                node {
-                  ${productFragment}
-                }
-              }
-            }
-          }
-        }
-      `,
-    }).then(result => normalizeProducts(result.shop.products));
-  }
-
-  fetchProductsMatching(query) {
-    return this.fetch({
-      query: `
-        query getProducts($query: String!) {
+        query getProducts($query: String) {
           shop {
             products(first: 8, query: $query) {
               edges {
@@ -77,11 +59,11 @@ export default class ShopifyClient {
           }
         }
       `,
-      variables: { query },
+      variables: { query: query || null },
     }).then(result => normalizeProducts(result.shop.products));
   }
 
-  fetchProductByHandle(handle) {
+  productByHandle(handle) {
     return this.fetch({
       query: `
         query getProduct($handle: String!) {
@@ -95,7 +77,6 @@ export default class ShopifyClient {
       variables: { handle },
     }).then(result => normalizeProduct(result.shop.product));
   }
-
 
   fetch(body) {
     return fetch(

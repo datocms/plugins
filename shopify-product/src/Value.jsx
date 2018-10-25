@@ -1,44 +1,39 @@
 import React, { Component } from 'preact-compat';
 import PropTypes from 'prop-types';
 import cn from 'classname';
+import { connect } from 'react-redux';
+
 import Client from './client';
 import Price from './Price.jsx';
+import { fetchProductByHandle } from './store';
+
+@connect((state, props) => ({
+  status: state.products[props.value].status || 'loading',
+  product: state.products[props.value].result,
+}))
 
 export default class Value extends Component {
   propTypes = {
     value: PropTypes.string.isRequired,
+    status: PropTypes.string.isRequired,
+    product: PropTypes.object,
     client: PropTypes.instanceOf(Client).isRequired,
     onReset: PropTypes.func.isRequired,
-  }
-
-  constructor(props) {
-    super(props);
-
-    this.state = {
-      product: null,
-      status: null,
-    };
+    dispatch: PropTypes.func.isRequired,
   }
 
   componentDidMount() {
     const { value } = this.props;
-
     this.findProduct(value);
   }
 
   findProduct(handle) {
-    const { client } = this.props;
-
-    this.setState({ status: 'loading' });
-
-    client.fetchProductByHandle(handle).then((product) => {
-      this.setState({ product, status: 'success' });
-    });
+    const { client, dispatch } = this.props;
+    dispatch(fetchProductByHandle(handle, client));
   }
 
   render() {
-    const { onReset } = this.props;
-    const { product, status } = this.state;
+    const { onReset, product, status } = this.props;
 
     return (
       <div className={cn('value', { loading: status === 'loading' })}>

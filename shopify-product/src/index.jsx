@@ -1,8 +1,10 @@
 import React, { Component, render } from 'preact-compat';
+import { Provider } from 'react-redux';
 
-import Client from './client';
 import Empty from './Empty.jsx';
 import Value from './Value.jsx';
+import store from './store';
+import Client from './client';
 
 import './style/index.sass';
 
@@ -64,5 +66,10 @@ window.DatoCmsPlugin.init().then((plugin) => {
     }
   }
 
-  render(<Input />, document.body);
+  render(
+    <Provider store={store}>
+      <Input />
+    </Provider>,
+    document.body,
+  );
 });

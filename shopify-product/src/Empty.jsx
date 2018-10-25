@@ -1,21 +1,28 @@
 import React, { Component } from 'preact-compat';
 import PropTypes from 'prop-types';
+import { connect } from 'react-redux';
 import cn from 'classname';
+
 import Client from './client';
+import { fetchProductsMatching } from './store';
+
+@connect((state) => {
+  const search = state.searches[state.query] || { status: 'loading', result: [] };
+
+  return {
+    query: state.query,
+    status: search.status,
+    products: search.result.map(handle => state.products[handle].result),
+  };
+})
 
 export default class Empty extends Component {
   propTypes = {
     client: PropTypes.instanceOf(Client).isRequired,
     onSelect: PropTypes.func.isRequired,
-  }
-
-  constructor(props) {
-    super(props);
-
-    this.state = {
-      status: null,
-      products: null,
-    };
+    dispatch: PropTypes.func.isRequired,
+    status: PropTypes.string.isRequired,
+    products: PropTypes.array,
   }
 
   componentDidMount() {
@@ -23,17 +30,8 @@ export default class Empty extends Component {
   }
 
   performSearch(query) {
-    const { client } = this.props;
-
-    this.setState({ status: 'loading' });
-
-    (
-      query
-        ? client.fetchProductsMatching(query)
-        : client.fetchFirstProducts()
-    ).then((products) => {
-      this.setState({ products, status: 'success' });
-    });
+    const { client, dispatch } = this.props;
+    dispatch(fetchProductsMatching(query, client));
   }
 
   handleSubmit(e) {
@@ -68,7 +66,7 @@ export default class Empty extends Component {
   }
 
   render() {
-    const { products, status } = this.state;
+    const { products, status } = this.props;
 
     return (
       <div className="empty">

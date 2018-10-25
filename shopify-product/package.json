@@ -25,9 +25,7 @@
     "title": "Shopify product",
     "previewImage": "docs/demo.gif",
     "entryPoint": "dist/index.html",
-    "fieldTypes": [
-      "integer"
-    ],
+    "fieldTypes": ["string"],
     "pluginType": "field_editor",
     "parameters": {
       "global": [
@@ -54,6 +52,7 @@
   "devDependencies": {
     "@babel/cli": "^7.0.0-beta.54",
     "@babel/core": "^7.0.0-beta.54",
+    "@babel/plugin-proposal-decorators": "^7.1.2",
     "@babel/preset-env": "^7.0.0-beta.54",
     "@babel/preset-react": "^7.0.0",
     "@babel/register": "^7.0.0-beta.54",
@@ -83,9 +82,13 @@
     "@babel/plugin-proposal-class-properties": "^7.1.0",
     "classname": "^0.0.0",
     "eslint-import-resolver-webpack": "^0.10.1",
+    "immer": "^1.7.3",
     "preact": "^8.3.1",
     "preact-compat": "^3.18.4",
     "prop-types": "^15.6.2",
+    "react-redux": "^5.0.7",
+    "redux": "^4.0.1",
+    "repatch": "^1.3.12",
     "style-loader": "^0.23.1"
   }
 }
