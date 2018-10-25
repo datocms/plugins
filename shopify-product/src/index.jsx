@@ -1,5 +1,8 @@
 import React, { Component, render } from 'preact-compat';
+
 import Client from './client';
+import Empty from './Empty.jsx';
+import Value from './Value.jsx';
 
 import './style/index.sass';
 
@@ -16,13 +19,7 @@ window.DatoCmsPlugin.init().then((plugin) => {
     constructor(props) {
       super(props);
 
-      this.state = Object.assign(
-        {
-          searchResults: [],
-        },
-        stateFromPlugin(plugin),
-      );
-
+      this.state = stateFromPlugin(plugin);
       this.client = new Client(this.state);
     }
 
@@ -31,69 +28,39 @@ window.DatoCmsPlugin.init().then((plugin) => {
         const newState = stateFromPlugin(plugin);
         this.setState(newState);
         this.client = new Client(newState);
+
+        const { value } = this.state;
+
+        if (newState.value !== value && newState.value) {
+          this.findProduct(newState.value);
+        }
       });
 
-      this.performSearch();
+      const { value } = this.state;
+
+      if (value) {
+        this.findProduct(value);
+      }
     }
 
     componentWillUnmount() {
       this.unsubscribe();
     }
 
-    performSearch(query) {
-      (
-        query
-          ? this.client.fetchProductsMatching(query)
-          : this.client.fetchFirstProducts()
-      ).then((products) => {
-        this.setState({ searchResults: products });
-      });
+    handleSelect = (product) => {
+      plugin.setFieldValue(plugin.fieldPath, product.handle);
     }
 
-    handleSubmit(e) {
-      e.preventDefault();
-      this.performSearch(this.el.value);
-    }
-
-    renderProduct(product) {
-      return (
-        <div className="product" key={product.handle}>
-          <div
-            className="product__image"
-            style={{ backgroundImage: `url(${product.imageUrl})` }}
-          />
-          <div className="product__title">
-            {product.title}
-          </div>
-        </div>
-      );
+    handleReset = () => {
+      plugin.setFieldValue(plugin.fieldPath, null);
     }
 
     render() {
-      const { searchResults } = this.state;
+      const { value } = this.state;
 
-      return (
-        <div>
-          <form className="search" onSubmit={this.handleSubmit.bind(this)}>
-            <div className="search__input">
-              <input
-                placeholder="Search products..."
-                type="text"
-                ref={(el) => { this.el = el; }}
-              />
-            </div>
-            <button
-              className="DatoCMS-button--primary"
-              type="submit"
-            >
-              Search
-            </button>
-          </form>
-          <div className="products">
-            {searchResults.map(this.renderProduct, this)}
-          </div>
-        </div>
-      );
+      return value
+        ? <Value client={this.client} value={value} onReset={this.handleReset} />
+        : <Empty client={this.client} onSelect={this.handleSelect} />;
     }
   }
 

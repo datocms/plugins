@@ -2,6 +2,20 @@ const productFragment = `
   id
   title
   handle
+  description
+  onlineStoreUrl
+  availableForSale
+  productType
+  priceRange {
+    maxVariantPrice {
+      amount
+      currencyCode
+    }
+    minVariantPrice {
+      amount
+      currencyCode
+    }
+  }
   images(first: 1) {
     edges {
       node {
@@ -35,7 +49,7 @@ export default class ShopifyClient {
       query: `
         {
           shop {
-            products(first: 20) {
+            products(first: 8) {
               edges {
                 node {
                   ${productFragment}
@@ -53,7 +67,7 @@ export default class ShopifyClient {
       query: `
         query getProducts($query: String!) {
           shop {
-            products(first: 20, query: $query) {
+            products(first: 8, query: $query) {
               edges {
                 node {
                   ${productFragment}
@@ -72,7 +86,7 @@ export default class ShopifyClient {
       query: `
         query getProduct($handle: String!) {
           shop {
-            product: productByHandle(handle: handle) {
+            product: productByHandle(handle: $handle) {
               ${productFragment}
             }
           }
