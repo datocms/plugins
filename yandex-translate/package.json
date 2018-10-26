@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-yandex-translate",
   "homepage": "https://github.com/datocms/plugins/tree/master/yandex-translate#readme",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "description": "Makes it easier to automatically translate your content into secondary languages",
   "main": "index.js",
   "scripts": {
@@ -23,6 +23,7 @@
   "datoCmsPlugin": {
     "title": "Yandex Translate",
     "previewImage": "docs/demo.gif",
+    "coverImage": "docs/cover.jpg",
     "entryPoint": "dist/index.html",
     "pluginType": "field_addon",
     "fieldTypes": [

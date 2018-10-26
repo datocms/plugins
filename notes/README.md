@@ -2,8 +2,6 @@
 
 Add Post-it notes to your records sidebar.
 
-![Demo](https://raw.githubusercontent.com/datocms/plugins/master/notes/docs/demo.gif)
-
 ## Installation
 
 1. Head over the *Settings > Plugins* section of your DatoCMS project

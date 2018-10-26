@@ -2,8 +2,6 @@
 
 A plugin that presents integer fields as star rating widgets.
 
-![Demo](https://raw.githubusercontent.com/datocms/plugins/master/star-rating-editor/docs/demo.gif)
-
 ## Installation
 
 1. Head over the *Settings > Plugins* section of your DatoCMS project

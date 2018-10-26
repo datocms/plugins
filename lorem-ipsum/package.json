@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-lorem-ipsum",
   "homepage": "https://github.com/datocms/plugins/tree/master/lorem-ipsum#readme",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "Makes it easier to automatically fill your textual fields with dummy content",
   "main": "index.js",
   "scripts": {
@@ -23,6 +23,7 @@
   "datoCmsPlugin": {
     "title": "Lorem ipsum generator",
     "previewImage": "docs/demo.gif",
+    "coverImage": "docs/cover.jpg",
     "entryPoint": "dist/index.html",
     "pluginType": "field_addon",
     "fieldTypes": [

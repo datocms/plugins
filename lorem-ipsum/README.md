@@ -2,8 +2,6 @@
 
 Makes it easier to automatically fill your textual fields with dummy content.
 
-![Demo](https://raw.githubusercontent.com/datocms/plugins/master/lorem-ipsum/docs/demo.gif)
-
 ## Installation
 
 1. Head over the *Settings > Plugins* section of your DatoCMS project

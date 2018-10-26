@@ -2,8 +2,6 @@
 
 Makes it easier to automatically translate your content into secondary languages.
 
-![Demo](https://raw.githubusercontent.com/datocms/plugins/master/yandex-translate/docs/demo.gif)
-
 ## Installation
 
 1. Head over the *Settings > Plugins* section of your DatoCMS project

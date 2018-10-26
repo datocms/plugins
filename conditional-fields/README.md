@@ -2,8 +2,6 @@
 
 A really simple plugin that show/hides fields when you toggle a checkbox boolean field.
 
-![Demo](https://raw.githubusercontent.com/datocms/plugins/master/conditional-fields/docs/demo.gif)
-
 ## Installation
 
 1. Head over the *Settings > Plugins* section of your DatoCMS project

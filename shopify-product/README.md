@@ -2,8 +2,6 @@
 
 A plugin that allows users to search and select Shopify products.
 
-![Demo](https://raw.githubusercontent.com/datocms/plugins/master/shopify-product/docs/demo.gif)
-
 ## Installation
 
 1. Head over the *Settings > Plugins* section of your DatoCMS project
