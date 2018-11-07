@@ -14,4 +14,4 @@ For more detailed info, head over to the [DatoCMS documentation page](https://ww
 
 You need to insert your [Typeform personal access](https://developer.typeform.com/get-started/personal-access-token/) token in the plugin global settings:
 
-![Demo](https://raw.githubusercontent.com/datocms/plugins/master/shopify-product/docs/settings.png)
+![Demo](https://raw.githubusercontent.com/datocms/plugins/master/typeform/docs/settings.png)
