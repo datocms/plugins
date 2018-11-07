@@ -27,6 +27,14 @@ export default class Value extends Component {
     this.findProduct(value);
   }
 
+  componentWillReceiveProps(nextProps) {
+    const { value } = this.props;
+
+    if (nextProps.value !== value && nextProps.value) {
+      this.findProduct(nextProps.value);
+    }
+  }
+
   findProduct(handle) {
     const { client, dispatch } = this.props;
     dispatch(fetchProductByHandle(handle, client));

@@ -30,19 +30,7 @@ window.DatoCmsPlugin.init().then((plugin) => {
         const newState = stateFromPlugin(plugin);
         this.setState(newState);
         this.client = new Client(newState);
-
-        const { value } = this.state;
-
-        if (newState.value !== value && newState.value) {
-          this.findProduct(newState.value);
-        }
       });
-
-      const { value } = this.state;
-
-      if (value) {
-        this.findProduct(value);
-      }
     }
 
     componentWillUnmount() {
