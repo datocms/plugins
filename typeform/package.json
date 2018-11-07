@@ -8,7 +8,7 @@
     "start": "concurrently \"yarn serve\" \"yarn webpack:dev\"",
     "serve": "serve -p 5000 dist",
     "dist": "NODE_ENV=production webpack --progress",
-    "prepublish": "rimraf lib dist && mkdir dist && npm run dist",
+    "prepublishOnly": "rimraf lib dist && mkdir dist && npm run dist",
     "webpack:dev": "NODE_ENV=development webpack --progress --watch",
     "test": "echo 1"
   },
