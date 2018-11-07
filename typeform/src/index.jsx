@@ -8,9 +8,11 @@ import Client from './client';
 
 import './style/index.sass';
 
+const hrefToId = href => href && href.match(/[^/]+$/)[0];
+
 const stateFromPlugin = plugin => ({
   apiToken: plugin.parameters.global.apiToken,
-  value: plugin.getFieldValue(plugin.fieldPath),
+  value: hrefToId(plugin.getFieldValue(plugin.fieldPath)),
 });
 
 window.DatoCmsPlugin.init().then((plugin) => {
@@ -37,7 +39,7 @@ window.DatoCmsPlugin.init().then((plugin) => {
     }
 
     handleSelect = (form) => {
-      plugin.setFieldValue(plugin.fieldPath, form.id);
+      plugin.setFieldValue(plugin.fieldPath, form._links.display);
     }
 
     handleReset = () => {

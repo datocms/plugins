@@ -63,8 +63,6 @@ export default class Value extends Component {
       backgroundImage = form.welcome_screens[0].attachment.href;
     }
 
-    /* eslint-disable no-underscore-dangle */
-
     return (
       <div className="value__form">
         <div
