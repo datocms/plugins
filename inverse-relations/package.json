@@ -1,0 +1,90 @@
+{
+  "name": "datocms-plugin-inverse-relations",
+  "homepage": "https://github.com/datocms/plugins/tree/master/inverse-relations#readme",
+  "version": "0.0.8",
+  "description": "Shows inverse relations",
+  "main": "index.js",
+  "scripts": {
+    "start": "concurrently \"yarn serve\" \"yarn webpack:dev\"",
+    "serve": "serve -p 5000 dist",
+    "dist": "NODE_ENV=production webpack --progress",
+    "prepublishOnly": "rimraf lib dist && mkdir dist && npm run dist",
+    "webpack:dev": "NODE_ENV=development webpack --progress --watch",
+    "test": "echo 1"
+  },
+  "keywords": [
+    "datocms",
+    "datocms-plugin",
+    "field-addon",
+    "translate"
+  ],
+  "author": "DatoCMS <support@datocms.com>",
+  "license": "ISC",
+  "datoCmsPlugin": {
+    "title": "Inverse Relations",
+    "previewImage": "docs/demo.gif",
+    "coverImage": "docs/cover.jpg",
+    "entryPoint": "dist/index.html",
+    "pluginType": "field_addon",
+    "fieldTypes": [
+      "string",
+      "text"
+    ],
+    "parameters": {
+      "global": [
+        {
+          "id": "datoCmsApiKey",
+          "label": "DatoCMS API Key",
+          "type": "string",
+          "required": true,
+          "hint": "The DatoCMS API Key to use"
+        }
+      ],
+      "instance": [
+        {
+          "id": "itemTypeApiKey",
+          "label": "Model ID",
+          "type": "string",
+          "required": true,
+          "hint": ""
+        },
+        {
+          "id": "fieldApiKey",
+          "label": "Field ID",
+          "type": "string",
+          "required": true,
+          "hint": ""
+        }
+      ]
+    }
+  },
+  "devDependencies": {
+    "@babel/cli": "^7.0.0-beta.54",
+    "@babel/core": "^7.0.0-beta.54",
+    "@babel/preset-env": "^7.0.0-beta.54",
+    "@babel/register": "^7.0.0-beta.54",
+    "babel-eslint": "^8.2.6",
+    "babel-loader": "^8.0.0-beta",
+    "concurrently": "^4.0.1",
+    "css-loader": "^1.0.0",
+    "eslint": "^5.3.0",
+    "eslint-config-airbnb-base": "13.1.0",
+    "eslint-import-resolver-webpack": "^0.10.1",
+    "eslint-loader": "^2.1.0",
+    "eslint-plugin-import": "^2.14.0",
+    "html-webpack-include-assets-plugin": "^1.0.5",
+    "html-webpack-inline-source-plugin": "^0.0.10",
+    "html-webpack-plugin": "^3.2.0",
+    "mini-css-extract-plugin": "^0.4.3",
+    "node-sass": "^4.9.3",
+    "sass-loader": "^7.1.0",
+    "serve": "^10.0.2",
+    "style-loader": "^0.23.0",
+    "webpack": "^4.16.1",
+    "webpack-cli": "^3.1.0"
+  },
+  "dependencies": {
+    "datocms-client": "^0.7.5",
+    "to-querystring": "^1.0.4"
+  }
+}
