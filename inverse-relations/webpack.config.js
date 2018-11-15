@@ -42,7 +42,7 @@ module.exports = {
     new HtmlWebpackIncludeAssetsPlugin({
       append: false,
       publicPath: '',
-      assets: isProduction ?
+      assets: true ?
         [
           'https://unpkg.com/datocms-plugins-sdk@0.0.5/dist/sdk.js',
           'https://unpkg.com/datocms-plugins-sdk@0.0.5/dist/sdk.css',
