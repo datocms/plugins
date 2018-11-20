@@ -7,14 +7,14 @@ import Client from './client';
 import Price from './Price.jsx';
 import { fetchProductByHandle } from './store';
 
-@connect((state, props) => ({
-  status: (
-    state.products[props.value]
-      ? state.products[props.value].status
-      : 'loading'
-  ),
-  product: state.products[props.value].result,
-}))
+@connect((state, props) => {
+  const product = state.products[props.value];
+
+  return {
+    status: product ? product.status : 'loading',
+    product: product && product.result,
+  };
+})
 
 export default class Value extends Component {
   propTypes = {
