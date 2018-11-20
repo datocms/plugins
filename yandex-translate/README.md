@@ -2,14 +2,6 @@
 
 Makes it easier to automatically translate your content into secondary languages.
 
-## Installation
-
-1. Head over the *Settings > Plugins* section of your DatoCMS project
-2. Search for the "datocms-plugin-yandex-translate" plugin
-3. Click install
-
-For more detailed info, head over to the [DatoCMS documentation page](https://www.datocms.com/docs/plugins/install/).
-
 ## Configuration
 
 Please specify your Yandex Translate API key on the plugin global settings:
