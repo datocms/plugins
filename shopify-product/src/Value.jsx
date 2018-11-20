@@ -8,7 +8,11 @@ import Price from './Price.jsx';
 import { fetchProductByHandle } from './store';
 
 @connect((state, props) => ({
-  status: state.products[props.value].status || 'loading',
+  status: (
+    state.products[props.value]
+      ? state.products[props.value].status
+      : 'loading'
+  ),
   product: state.products[props.value].result,
 }))
 
