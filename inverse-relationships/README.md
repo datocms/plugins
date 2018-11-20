@@ -1,6 +1,6 @@
-# DatoCMS Inverse Relations
+# DatoCMS Inverse Relationships
 
-Shows linked fields inverse relations.
+Shows linked fields inverse relationships.
 
 ## Configuration
 

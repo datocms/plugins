@@ -1,8 +1,8 @@
 {
-  "name": "datocms-plugin-inverse-relations",
-  "homepage": "https://github.com/datocms/plugins/tree/master/inverse-relations#readme",
+  "name": "datocms-plugin-inverse-relationships",
+  "homepage": "https://github.com/datocms/plugins/tree/master/inverse-relationships#readme",
   "version": "0.0.8",
-  "description": "Shows inverse relations",
+  "description": "A simple plugin that displays inverse relationships on a record's page",
   "main": "index.js",
   "scripts": {
     "start": "concurrently \"yarn serve\" \"yarn webpack:dev\"",
@@ -15,29 +15,25 @@
   "keywords": [
     "datocms",
     "datocms-plugin",
-    "field-addon",
-    "translate"
+    "sidebar-widget",
   ],
   "author": "DatoCMS <support@datocms.com>",
   "license": "ISC",
   "datoCmsPlugin": {
-    "title": "Inverse Relations",
+    "title": "Inverse relationships",
     "previewImage": "docs/demo.gif",
     "coverImage": "docs/cover.jpg",
     "entryPoint": "dist/index.html",
-    "pluginType": "field_addon",
-    "fieldTypes": [
-      "string",
-      "text"
-    ],
+    "pluginType": "sidebar",
+    "fieldTypes": ["json"],
     "parameters": {
       "global": [
         {
-          "id": "datoCmsApiKey",
-          "label": "DatoCMS API Key",
+          "id": "datoCmsApiToken",
+          "label": "DatoCMS API Token",
           "type": "string",
           "required": true,
-          "hint": "The DatoCMS API Key to use"
+          "hint": "The DatoCMS API read-only token to use to query inverse relationships"
         }
       ],
       "instance": [
@@ -46,14 +42,14 @@
           "label": "Model ID",
           "type": "string",
           "required": true,
-          "hint": ""
+          "hint": "The model you want linked records to show up (ie. <code>post</code>)"
         },
         {
           "id": "fieldApiKey",
           "label": "Field ID",
           "type": "string",
           "required": true,
-          "hint": ""
+          "hint": "The single-link field to use as foreign key (ie. <code>author</code>)"
         }
       ]
     }
@@ -84,7 +80,6 @@
     "webpack-cli": "^3.1.0"
   },
   "dependencies": {
-    "datocms-client": "^0.7.5",
-    "to-querystring": "^1.0.4"
+    "datocms-client": "^0.7.5"
   }
 }
