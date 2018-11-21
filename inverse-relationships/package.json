@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-inverse-relationships",
   "homepage": "https://github.com/datocms/plugins/tree/master/inverse-relationships#readme",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "A simple plugin that displays inverse relationships on a record's page",
   "main": "index.js",
   "scripts": {
