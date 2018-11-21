@@ -31,7 +31,7 @@ window.DatoCmsPlugin.init((plugin) => {
   const query = {
     'filter[type]': postItemType.id,
     [filter]: plugin.itemId,
-    order_by: 'updated_at_DESC',
+    order_by: plugin.parameters.instance.orderBy,
     'page[limit]': plugin.parameters.instance.limit,
     version: 'current',
   };
