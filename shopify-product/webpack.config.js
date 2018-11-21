@@ -11,6 +11,10 @@ module.exports = {
     filename: 'bundle.js'
   },
   devtool: 'source-map',
+  devServer: {
+    contentBase: './',
+    disableHostCheck: true,
+  },
   module: {
     rules: [
       {
@@ -57,16 +61,10 @@ module.exports = {
     new HtmlWebpackIncludeAssetsPlugin({
       append: false,
       publicPath: '',
-      assets: isProduction ?
-        [
-          'https://unpkg.com/datocms-plugins-sdk@0.0.6/dist/sdk.js',
-          'https://unpkg.com/datocms-plugins-sdk@0.0.6/dist/sdk.css',
-        ]
-        :
-        [
-          'http://localhost:5001/sdk.js',
-          'http://localhost:5001/sdk.css',
-        ]
+      assets: [
+        'https://unpkg.com/datocms-plugins-sdk@0.0.6/dist/sdk.js',
+        'https://unpkg.com/datocms-plugins-sdk@0.0.6/dist/sdk.css',
+      ]
     }),
   ].filter(Boolean),
 }

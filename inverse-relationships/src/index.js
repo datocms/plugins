@@ -9,21 +9,29 @@ window.DatoCmsPlugin.init((plugin) => {
   container.classList.add('container');
   document.body.appendChild(container);
   const title = document.createElement('h4');
-  title.textContent = 'Linked content';
+  title.classList.add('title');
+  title.textContent = plugin.parameters.instance.title;
   container.appendChild(title);
 
   const postItemType = Object.values(plugin.itemTypes).find(
     itemType => itemType.attributes.api_key === plugin.parameters.instance.itemTypeApiKey,
   );
 
-  const linkFieldApiKey = plugin.parameters.instance.fieldApiKey;
+  const linkField = Object.values(plugin.fields).find(field => (
+    field.relationships.item_type.data.id === postItemType.id
+      && field.attributes.api_key === plugin.parameters.instance.fieldApiKey
+  ));
 
-  const titleFieldId = postItemType.relationshipships.title_field.data.id;
+  const titleFieldId = postItemType.relationships.title_field.data.id;
   const titleField = plugin.fields[titleFieldId];
+  const filter = linkField.attributes.field_type === 'link'
+    ? `filter[fields][${linkField.attributes.api_key}][eq]`
+    : `filter[fields][${linkField.attributes.api_key}][any_in][]`;
 
   const query = {
     'filter[type]': postItemType.id,
-    [`filter[fields][${linkFieldApiKey}][any_in][]`]: plugin.itemId,
+    [filter]: plugin.itemId,
+    order_by: 'updated_at_DESC',
     'page[limit]': 10,
     version: 'current',
   };
@@ -34,14 +42,14 @@ window.DatoCmsPlugin.init((plugin) => {
         const link = document.createElement('a');
         if (titleField.attributes.localized) {
           const firstLocaleWithContent = plugin.site.attributes.locales.find(locale => (
-            item[titleFieldApiKey][locale]
+            item[titleField.attributes.api_key][locale]
           ));
           link.textContent = item[titleField.attributes.api_key][firstLocaleWithContent];
         } else {
           link.textContent = item[titleField.attributes.api_key];
         }
 
-        const url = `/editor/item_types/${postItemTypeId}/items/${item.id}/edit`;
+        const url = `/editor/item_types/${postItemType.id}/items/${item.id}/edit`;
 
         link.href = url;
         link.target = '_top';

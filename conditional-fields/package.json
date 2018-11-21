@@ -5,11 +5,11 @@
   "description": "Show/hide fields when you toggle a checkbox boolean field",
   "main": "index.js",
   "scripts": {
-    "start": "concurrently \"yarn serve\" \"yarn webpack:dev\"",
-    "serve": "serve -p 5000 dist",
+    "start": "concurrently \"yarn dev\" \"yarn localtunnel\"",
+    "localtunnel": "lt -s datocms-plugin-conditional-fields --port 5000",
+    "dev": "NODE_ENV=development webpack-dev-server --port 5000",
     "dist": "NODE_ENV=production webpack --progress",
     "prepublishOnly": "rimraf lib dist && mkdir dist && npm run dist",
-    "webpack:dev": "NODE_ENV=development webpack --progress --watch",
     "test": "echo 1"
   },
   "keywords": [
@@ -63,16 +63,19 @@
     "eslint-import-resolver-webpack": "^0.10.1",
     "eslint-loader": "^2.1.0",
     "eslint-plugin-import": "^2.14.0",
+    "generator-datocms-plugin": "^1.0.3",
     "html-webpack-include-assets-plugin": "^1.0.5",
     "html-webpack-inline-source-plugin": "^0.0.10",
     "html-webpack-plugin": "^3.2.0",
+    "localtunnel": "^1.9.1",
     "mini-css-extract-plugin": "^0.4.3",
     "node-sass": "^4.9.3",
     "sass-loader": "^7.1.0",
-    "serve": "^10.0.2",
     "style-loader": "^0.23.0",
     "webpack": "^4.16.1",
-    "webpack-cli": "^3.1.0"
+    "webpack-cli": "^3.1.0",
+    "webpack-dev-server": "^3.1.10",
+    "yo": "^2.0.5"
   },
   "dependencies": {
     "object.values": "^1.0.4"

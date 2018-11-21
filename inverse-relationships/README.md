@@ -1,6 +1,6 @@
 # DatoCMS Inverse Relationships
 
-Shows linked fields inverse relationships.
+A simple plugin that displays inverse relationships on a record's page (ie. blog posts by a specific author).
 
 ## Configuration
 
