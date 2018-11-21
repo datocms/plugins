@@ -32,7 +32,7 @@ window.DatoCmsPlugin.init((plugin) => {
     'filter[type]': postItemType.id,
     [filter]: plugin.itemId,
     order_by: 'updated_at_DESC',
-    'page[limit]': 10,
+    'page[limit]': plugin.parameters.instance.limit,
     version: 'current',
   };
 
