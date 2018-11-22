@@ -40,6 +40,7 @@ window.DatoCmsPlugin.init((plugin) => {
     .then((items) => {
       items.forEach((item) => {
         const link = document.createElement('a');
+
         if (titleField.attributes.localized) {
           const firstLocaleWithContent = plugin.site.attributes.locales.find(locale => (
             item[titleField.attributes.api_key][locale]
@@ -49,11 +50,14 @@ window.DatoCmsPlugin.init((plugin) => {
           link.textContent = item[titleField.attributes.api_key];
         }
 
-        const url = `/editor/item_types/${postItemType.id}/items/${item.id}/edit`;
+        const path = `/editor/item_types/${postItemType.id}/items/${item.id}/edit`;
 
-        link.href = url;
-        link.target = '_top';
+        link.href = '#';
         link.classList.add('link');
+        link.addEventListener('click', (e) => {
+          e.preventDefault();
+          plugin.navigateTo(path);
+        });
 
         container.appendChild(link);
       });
