@@ -1,0 +1,32 @@
+.DatoCMS-button--primary
+  position: relative
+
+  &.loading
+    padding-right: 33px
+
+    .spinner
+      opacity: 1
+
+  .spinner
+    border: 3px solid #FFF
+    border-top-color: rgba(black, 0%)
+    border-left-color: rgba(black, 0%)
+    width: 8px
+    height: 8px
+    opacity: 0.8
+    border-radius: 50%
+    animation: loadingSpinner 0.7s infinite linear
+    margin-left: 15px
+    vertical-align: middle
+    position: absolute
+    right: 10px
+    top: 50%
+    margin-top: -7px
+    opacity: 0
+    transition: opacity 0.2s ease-in-out
+
+@keyframes loadingSpinner
+  from
+    transform: rotate(0deg)
+  to
+    transform: rotate(360deg)
