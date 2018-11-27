@@ -1,0 +1,27 @@
+<div class="info">
+  <div class="info__avatar">
+    <div class="avatar" style="background-color: <%= color %>">
+      <%= initial %>
+    </div>
+  </div>
+  <div class="info__details">
+    <% if (fullName) { %>
+      <div class="info__name">
+        <%= fullName %>
+      </div>
+    <% } else { %>
+      <div class="info__no-name">
+        No name provided
+      </div>
+    <% } %>
+    <div class="info__email"><%= email %></div>
+    <table>
+      <% metadata.forEach(function (info) { %>
+        <tr>
+          <th><%= info.key %></th>
+          <td><%= info.value %></td>
+        </tr>
+      <% }) %>
+    </table>
+  </div>
+</div>
