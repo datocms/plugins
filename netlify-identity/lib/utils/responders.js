@@ -21,7 +21,7 @@ const responders = {
       body: JSON.stringify(response),
     };
 
-    return httpResponse;
+    return Promise.resolve(httpResponse);
   },
   fail(code, message, status = 422, options = {}) {
     return responders.succeed({ code, message }, status, options);
