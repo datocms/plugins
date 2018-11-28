@@ -1,5 +1,5 @@
-import fetch from './utils/fetchJson';
-import responders from './utils/responders';
+const fetch = require('./utils/fetchJson');
+const responders = require('./utils/responders');
 
 function generateHandler(accessToken) {
   return function handler(event, context) {
