@@ -1,6 +1,6 @@
 # Netlify Identity DatoCMS plugin
 
-A plugin that nicely displays Netlify identity user info instead of the raw ID. Still work in progress!
+A plugin that nicely displays Netlify identity user info instead of the raw ID
 
 ## Configuration
 

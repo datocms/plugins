@@ -55,7 +55,7 @@ module.exports = {
   },
   plugins: [
     new HtmlWebpackPlugin({
-      title: 'Star rating editor plugin',
+      title: 'Commerce Layer plugin',
       minify: isProduction,
     }),
     new HtmlWebpackIncludeAssetsPlugin({
