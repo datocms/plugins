@@ -4,7 +4,7 @@ const HtmlWebpackIncludeAssetsPlugin = require('html-webpack-include-assets-plug
 const isProduction = process.env.NODE_ENV === 'production';
 
 module.exports = {
-  entry: __dirname + '/src/index.jsx',
+  entry: __dirname + '/plugin/index.jsx',
   mode: process.env.NODE_ENV,
   output: {
     path: __dirname + '/dist',
@@ -38,7 +38,7 @@ module.exports = {
       {
         test: /\.svg/,
         use: {
-          loader: 'svg-url-loader',
+          loader: 'url-loader',
           options: {}
         }
       },
