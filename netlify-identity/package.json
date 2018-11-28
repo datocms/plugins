@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-netlify-identity",
   "homepage": "https://github.com/datocms/plugins/tree/master/netlify-identity",
-  "version": "0.0.6",
+  "version": "0.0.7",
   "description": "A plugin that nicely displays Netlify identity user info instead of the raw ID",
   "main": "lib/index.js",
   "scripts": {
@@ -9,7 +9,7 @@
     "localtunnel": "lt -s datocms-plugin-netlify-identity --port 5000",
     "dev": "NODE_ENV=development webpack-dev-server --port 5000",
     "dist": "NODE_ENV=production webpack --progress",
-    "prepublishOnly": "rimraf lib dist && mkdir dist && npm run dist",
+    "prepublishOnly": "rimraf dist && mkdir dist && npm run dist",
     "addToProject": "yo datocms-plugin:add-to-project",
     "test": "echo 1"
   },
@@ -93,15 +93,15 @@
     "webpack": "^4.16.1",
     "webpack-cli": "^3.1.0",
     "webpack-dev-server": "^3.1.10",
-    "yo": "^2.0.5"
-  },
-  "dependencies": {
+    "yo": "^2.0.5",
     "classname": "^0.0.0",
     "date-fns": "^1.29.0",
-    "node-fetch": "^2.3.0",
     "prop-types": "^15.6.2",
     "react": "^16.5.2",
     "react-dom": "^16.5.2",
     "superagent": "^4.0.0"
+  },
+  "dependencies": {
+    "node-fetch": "^2.3.0"
   }
 }
