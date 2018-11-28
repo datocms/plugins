@@ -41,6 +41,8 @@ function generateHandler(accessToken) {
         });
 
     } catch(e) {
+      console.log(e);
+      console.log(e.stack);
       return responders.fail('EXCEPTION', e.message, 500)
     }
   }

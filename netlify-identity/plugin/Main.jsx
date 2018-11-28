@@ -93,7 +93,7 @@ export default class Main extends Component {
   }
 
   renderError() {
-    const { error } = this.state;
+    const { error, details } = this.state;
 
     return (
       <div className="container">
@@ -105,6 +105,14 @@ export default class Main extends Component {
             <div className="info__no-name">
               {error}
             </div>
+            {
+              details
+                && (
+                  <div className="info__submessage">
+                    {details}
+                  </div>
+                )
+            }
           </div>
         </div>
       </div>

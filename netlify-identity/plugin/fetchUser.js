@@ -11,6 +11,11 @@ export default (userId, config) => (
         return { user: null, status: 'notFound' };
       }
 
-      return { user: null, status: 'error', error: e.message };
+      return {
+        user: null,
+        status: 'error',
+        error: e.message,
+        details: (e.response && e.response.body && e.response.body.message),
+      };
     })
 );
