@@ -1,9 +1,9 @@
 {
   "name": "datocms-plugin-netlify-identity",
   "homepage": "https://github.com/datocms/plugins/tree/master/netlify-identity",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "description": "A plugin that nicely displays Netlify identity user info instead of the raw ID",
-  "main": "lib/index.js",
+  "main": "lib/generateHandler.js",
   "scripts": {
     "start": "concurrently \"yarn dev\" \"yarn localtunnel\"",
     "localtunnel": "lt -s datocms-plugin-netlify-identity --port 5000",
