@@ -1,7 +1,7 @@
-import React from 'react';
-import { render } from 'react-dom';
-import { WithContext as ReactTags } from 'react-tag-input';
-import './reactTags.css';
+import React from "react";
+import { render } from "react-dom";
+import { WithContext as ReactTags } from "react-tag-input";
+import "./reactTags.css";
 
 function deserialize(plugin) {
   const fieldValue = plugin.getFieldValue(plugin.fieldPath);
@@ -10,20 +10,20 @@ function deserialize(plugin) {
     return [];
   }
 
-  if (plugin.field.attributes.field_type === 'json') {
+  if (plugin.field.attributes.field_type === "json") {
     return JSON.parse(fieldValue).map(key => ({ id: key, text: key }));
   }
-  return fieldValue.split(',').map(key => ({ id: key, text: key }));
+  return fieldValue.split(",").map(key => ({ id: key, text: key }));
 }
 
 function serializeValue(inputValue, plugin) {
-  if (plugin.field.attributes.field_type === 'json') {
+  if (plugin.field.attributes.field_type === "json") {
     return JSON.stringify(inputValue.map(o => o.text));
   }
-  return inputValue.map(o => o.text).join(', ');
+  return inputValue.map(o => o.text).join(", ");
 }
 
-window.DatoCmsPlugin.init().then((plugin) => {
+window.DatoCmsPlugin.init().then(plugin => {
   plugin.startAutoResizer();
 
   class App extends React.Component {
@@ -46,9 +46,8 @@ window.DatoCmsPlugin.init().then((plugin) => {
       const { value } = this.state;
 
       plugin.setFieldValue(
-        plugin.fieldPath, (
-          serializeValue([...value, inputValue], plugin)
-        ),
+        plugin.fieldPath,
+        serializeValue([...value, inputValue], plugin)
       );
     }
 
@@ -56,9 +55,7 @@ window.DatoCmsPlugin.init().then((plugin) => {
       const { value } = this.state;
       value.splice(inputValue, 1);
 
-      plugin.setFieldValue(
-        plugin.fieldPath, (serializeValue(value, plugin)),
-      );
+      plugin.setFieldValue(plugin.fieldPath, serializeValue(value, plugin));
     }
 
     handleDrag(inputValue, currPos, newPos) {
@@ -68,9 +65,7 @@ window.DatoCmsPlugin.init().then((plugin) => {
       newValue.splice(currPos, 1);
       newValue.splice(newPos, 0, inputValue);
 
-      plugin.setFieldValue(
-        plugin.fieldPath, (serializeValue(newValue, plugin)),
-      );
+      plugin.setFieldValue(plugin.fieldPath, serializeValue(newValue, plugin));
     }
 
     render() {
@@ -80,6 +75,7 @@ window.DatoCmsPlugin.init().then((plugin) => {
         <div>
           <ReactTags
             tags={value}
+            autofocus={false}
             placeholder="Add new string"
             handleAddition={this.handleAddition.bind(this)}
             handleDrag={this.handleDrag.bind(this)}
