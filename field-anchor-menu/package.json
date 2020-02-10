@@ -1,0 +1,69 @@
+{
+  "name": "datocms-plugin-field-anchor-menu",
+  "homepage": "https://github.com/datocms/plugins/tree/master/field-anchor-menu#readme",
+  "description": "A simple plugin that displays an anchor links menu on the sidebar",
+  "main": "index.js",
+  "scripts": {
+    "start": "concurrently \"yarn dev\" \"yarn tunnel\"",
+    "tunnel": "ngrok http 5000",
+    "dev": "NODE_ENV=development webpack-dev-server --port 5000",
+    "dist": "NODE_ENV=production webpack --progress",
+    "prepublishOnly": "rimraf lib dist && mkdir dist && npm run dist",
+    "test": "echo 1"
+  },
+  "files": [
+    "dist"
+  ],
+  "keywords": [
+    "datocms",
+    "datocms-plugin",
+    "sidebar-widget"
+  ],
+  "author": "DatoCMS <support@datocms.com>",
+  "license": "ISC",
+  "datoCmsPlugin": {
+    "title": "Field anchor menu",
+    "previewImage": "docs/demo.gif",
+    "coverImage": "docs/cover.png",
+    "entryPoint": "dist/index.html",
+    "pluginType": "sidebar",
+    "fieldTypes": [
+      "json"
+    ],
+    "parameters": {
+      "global": [],
+      "instance": []
+    }
+  },
+  "devDependencies": {
+    "@babel/cli": "^7.0.0-beta.54",
+    "@babel/core": "^7.0.0-beta.54",
+    "@babel/preset-env": "^7.0.0-beta.54",
+    "@babel/register": "^7.0.0-beta.54",
+    "babel-eslint": "^8.2.6",
+    "babel-loader": "^8.0.0-beta",
+    "concurrently": "^4.0.1",
+    "css-loader": "^1.0.0",
+    "eslint": "^5.3.0",
+    "eslint-config-airbnb-base": "13.1.0",
+    "eslint-import-resolver-webpack": "^0.10.1",
+    "eslint-loader": "^2.1.0",
+    "eslint-plugin-import": "^2.14.0",
+    "generator-datocms-plugin": "^1.0.3",
+    "html-webpack-include-assets-plugin": "^1.0.5",
+    "html-webpack-inline-source-plugin": "^0.0.10",
+    "html-webpack-plugin": "^3.2.0",
+    "localtunnel": "^1.9.1",
+    "mini-css-extract-plugin": "^0.4.3",
+    "node-sass": "^4.9.3",
+    "sass-loader": "^7.1.0",
+    "style-loader": "^0.23.0",
+    "webpack": "^4.16.1",
+    "webpack-cli": "^3.1.0",
+    "webpack-dev-server": "^3.1.10",
+    "yo": "^2.0.5"
+  },
+  "dependencies": {
+    "datocms-client": "^0.7.5"
+  }
+}
