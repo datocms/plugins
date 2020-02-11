@@ -12,7 +12,9 @@
     "prepublishOnly": "rimraf lib dist && mkdir dist && npm run dist",
     "test": "echo 1"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "keywords": [
     "datocms",
     "field-addon",
