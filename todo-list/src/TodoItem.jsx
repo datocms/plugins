@@ -143,6 +143,7 @@ TodoItem.propTypes = {
   todo: PropTypes.shape({
     todo: PropTypes.string.isRequired,
     completedAt: PropTypes.string,
+    timestamp: PropTypes.string,
   }).isRequired,
   temp: PropTypes.bool,
   sortable: PropTypes.bool,
