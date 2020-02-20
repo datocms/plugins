@@ -13,3 +13,4 @@ This repository provides samples of DatoCMS plugins developed using the [Plugins
 * [Conditional fields](https://github.com/datocms/plugins/tree/master/conditional-fields/): Show/hide fields when you toggle a checkbox boolean field
 * [Shopify product](https://github.com/datocms/plugins/tree/master/shopify-product/): Allows users to search and select Shopify products
 * [Commerce Layer](https://github.com/datocms/plugins/tree/master/commercelayer/): Allows users to search and select Commerce Layer SKUs
+
