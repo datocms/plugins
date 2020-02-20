@@ -9,7 +9,8 @@
     "localtunnel": "lt -s datocms-plugin-shopify-product --port 5000",
     "dev": "NODE_ENV=development webpack-dev-server --port 5000",
     "dist": "NODE_ENV=production webpack --progress",
-    "prepublishOnly": "rimraf lib dist && mkdir dist && npm run dist",
+    "prepublishOnly": "rimraf lib dist && mkdir dist && yarn dist",
+    "lint": "eslint \"./src/*.{js,jsx}\"",
     "test": "echo 1"
   },
   "files": [

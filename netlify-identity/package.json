@@ -9,8 +9,9 @@
     "localtunnel": "lt -s datocms-plugin-netlify-identity --port 5000",
     "dev": "NODE_ENV=development webpack-dev-server --port 5000",
     "dist": "NODE_ENV=production webpack --progress",
-    "prepublishOnly": "rimraf dist && mkdir dist && npm run dist",
+    "prepublishOnly": "rimraf dist && mkdir dist && yarn dist",
     "addToProject": "yo datocms-plugin:add-to-project",
+    "lint": "eslint \"./src/*.{js,jsx}\"",
     "test": "echo 1"
   },
   "keywords": [
