@@ -25,6 +25,8 @@ window.DatoCmsPlugin.init((plugin) => {
   const translate = (text, format) => (
     Promise.all(
       plugin.site.attributes.locales.slice(1).map((locale) => {
+        const { attributes: itemType } = plugin.itemType;
+
         const path = fieldPath.replace(
           new RegExp(`\\.${plugin.locale}$`),
           `.${locale}`,
@@ -48,9 +50,12 @@ window.DatoCmsPlugin.init((plugin) => {
 
         return fetch(`https://translate.yandex.net/api/v1.5/tr.json/translate?${qs}`)
           .then(res => res.json())
-          .then(response => (
-            plugin.setFieldValue(path, response.text.join(' '))
-          ));
+          .then((response) => {
+            if (!itemType.all_locales_required) {
+              plugin.setFieldValue('internalLocales', plugin.site.attributes.locales);
+            }
+            plugin.setFieldValue(path, response.text.join(' '));
+          });
       }),
     )
   );
