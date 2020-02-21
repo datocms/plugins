@@ -2,12 +2,14 @@ import values from 'object.values';
 
 window.DatoCmsPlugin.init((plugin) => {
   const slaveFields = plugin.parameters.instance.slaveFields.split(/\s*,\s*/);
+  const { invert } = plugin.parameters.instance;
   const masterField = plugin.field;
 
   function toggleFields(value) {
     slaveFields.forEach((slaveFieldApiKey) => {
-      const slaveField = values(plugin.fields)
-        .find(field => field.attributes.api_key === slaveFieldApiKey);
+      const slaveField = values(plugin.fields).find(
+        field => field.attributes.api_key === slaveFieldApiKey,
+      );
 
       const slavePath = plugin.parentFieldId
         ? `${plugin.fieldPath.replace(/.[^.]*$/, '')}.${slaveFieldApiKey}`
@@ -30,6 +32,7 @@ window.DatoCmsPlugin.init((plugin) => {
   toggleFields(!!plugin.getFieldValue(plugin.fieldPath));
 
   plugin.addFieldChangeListener(plugin.fieldPath, (value) => {
-    toggleFields(!!value);
+    const show = invert ? !value : !!value;
+    toggleFields(show);
   });
 });

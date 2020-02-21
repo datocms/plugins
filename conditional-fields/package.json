@@ -50,6 +50,12 @@
           "type": "string",
           "required": true,
           "hint": "Please insert the fields API key separated by commas"
+        },
+        {
+          "id": "invert",
+          "label": "Show slave fields when this field is false",
+          "type": "boolean",
+          "required": false
         }
       ]
     }
