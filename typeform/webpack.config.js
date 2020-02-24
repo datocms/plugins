@@ -4,11 +4,11 @@ const HtmlWebpackIncludeAssetsPlugin = require('html-webpack-include-assets-plug
 const isProduction = process.env.NODE_ENV === 'production';
 
 module.exports = {
-  entry: __dirname + '/src/index.jsx',
+  entry: `${__dirname}/src/index.jsx`,
   mode: process.env.NODE_ENV,
   output: {
-    path: __dirname + '/dist',
-    filename: 'bundle.js'
+    path: `${__dirname}/dist`,
+    filename: 'bundle.js',
   },
   devtool: 'source-map',
   devServer: {
@@ -19,39 +19,35 @@ module.exports = {
     rules: [
       {
         test: /\.jsx?$/,
-        include: __dirname + '/src',
+        include: `${__dirname}/src`,
         loader: 'eslint-loader',
         enforce: 'pre',
       },
       {
         test: /\.jsx?$/,
         exclude: /(node_modules|bower_components)/,
-        use: { loader: 'babel-loader' }
+        use: { loader: 'babel-loader' },
       },
       {
         test: /\.sass$/,
-        use: [
-          "style-loader",
-          "css-loader",
-          "sass-loader"
-        ]
+        use: ['style-loader', 'css-loader', 'sass-loader'],
       },
       {
         test: /\.svg/,
         use: {
           loader: 'svg-url-loader',
-          options: {}
-        }
+          options: {},
+        },
       },
     ],
   },
   resolve: {
     alias: {
-      'react': 'preact-compat',
+      react: 'preact-compat',
       'react-dom': 'preact-compat',
       'create-react-class': 'preact-compat/lib/create-react-class',
-      'react-dom-factories': 'preact-compat/lib/react-dom-factories'
-    }
+      'react-dom-factories': 'preact-compat/lib/react-dom-factories',
+    },
   },
   plugins: [
     new HtmlWebpackPlugin({
@@ -64,7 +60,7 @@ module.exports = {
       assets: [
         'https://unpkg.com/datocms-plugins-sdk@0.0.8/dist/sdk.js',
         'https://unpkg.com/datocms-plugins-sdk@0.0.8/dist/sdk.css',
-      ]
+      ],
     }),
   ].filter(Boolean),
-}
+};

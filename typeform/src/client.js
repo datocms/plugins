@@ -10,8 +10,7 @@ export default class TypeformClient {
   }
 
   formsMatching(query) {
-    return this.fetch('/forms', { search: query, page_size: 20 })
-      .then(response => response.items);
+    return this.fetch('/forms', { search: query, page_size: 20 }).then(response => response.items);
   }
 
   formById(id) {
@@ -23,8 +22,10 @@ export default class TypeformClient {
   }
 
   fetch(path, params = null) {
+    const proxyurl = 'https://proxy.datocms.workers.dev/?';
+
     return fetch(
-      `https://api.typeform.com${path}${qs.stringify(params, { addQueryPrefix: true })}`,
+      `${proxyurl}https://api.typeform.com${path}${qs.stringify(params, { addQueryPrefix: true })}`,
       {
         method: 'GET',
         headers: {
