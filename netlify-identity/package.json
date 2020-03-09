@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-netlify-identity",
   "homepage": "https://github.com/datocms/plugins/tree/master/netlify-identity",
-  "version": "0.0.18",
+  "version": "0.0.19",
   "description": "A plugin that nicely displays Netlify identity user info instead of the raw ID",
   "main": "lib/generateHandler.js",
   "scripts": {

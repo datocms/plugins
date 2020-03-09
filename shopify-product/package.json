@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-shopify-product",
   "homepage": "https://github.com/datocms/plugins/tree/master/shopify-product#readme",
-  "version": "0.0.7",
+  "version": "0.0.8",
   "description": "A plugin that allows users to search and select Shopify products",
   "main": "index.js",
   "scripts": {
