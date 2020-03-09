@@ -23,6 +23,7 @@
     "netlify-identity"
   ],
   "files": [
+    "docs",
     "plugin",
     "dist",
     "lib",
