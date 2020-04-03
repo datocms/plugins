@@ -78,11 +78,12 @@
     "webpack": "^4.16.1",
     "webpack-cli": "^3.1.0",
     "webpack-dev-server": "^3.1.10",
-    "yo": "^2.0.5"
+    "yo": "^3.1.1"
   },
   "dependencies": {
     "classname": "^0.0.0",
     "date-fns": "^1.29.0",
+    "generator-datocms-plugin": "^1.0.22",
     "prop-types": "^15.6.2",
     "react": "^16.5.2",
     "react-dom": "^16.5.2",

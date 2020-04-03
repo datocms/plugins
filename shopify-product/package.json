@@ -83,12 +83,13 @@
     "webpack": "^4.16.1",
     "webpack-cli": "^3.1.0",
     "webpack-dev-server": "^3.1.10",
-    "yo": "^2.0.5"
+    "yo": "^3.1.1"
   },
   "dependencies": {
     "@babel/plugin-proposal-class-properties": "^7.1.0",
     "classname": "^0.0.0",
     "eslint-import-resolver-webpack": "^0.10.1",
+    "generator-datocms-plugin": "^1.0.22",
     "immer": "^1.7.3",
     "preact": "^8.3.1",
     "preact-compat": "^3.18.4",

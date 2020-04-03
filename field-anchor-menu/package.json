@@ -49,7 +49,7 @@
     "eslint-import-resolver-webpack": "^0.10.1",
     "eslint-loader": "^2.1.0",
     "eslint-plugin-import": "^2.14.0",
-    "generator-datocms-plugin": "^1.0.3",
+    "generator-datocms-plugin": "^1.0.22",
     "html-webpack-inline-source-plugin": "^0.0.10",
     "html-webpack-plugin": "^3.2.0",
     "localtunnel": "^1.9.1",
@@ -60,7 +60,7 @@
     "webpack": "^4.16.1",
     "webpack-cli": "^3.1.0",
     "webpack-dev-server": "^3.1.10",
-    "yo": "^2.0.5"
+    "yo": "^3.1.1"
   },
   "dependencies": {
     "datocms-client": "^0.7.5",
