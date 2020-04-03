@@ -11,20 +11,24 @@ window.DatoCmsPlugin.init((plugin) => {
         field => field.attributes.api_key === slaveFieldApiKey,
       );
 
-      const slavePath = plugin.parentFieldId
-        ? `${plugin.fieldPath.replace(/.[^.]*$/, '')}.${slaveFieldApiKey}`
-        : slaveFieldApiKey;
+      if (slaveField) {
+        const slavePath = plugin.parentFieldId
+          ? `${plugin.fieldPath.replace(/.[^.]*$/, '')}.${slaveFieldApiKey}`
+          : slaveFieldApiKey;
 
-      if (masterField.attributes.localized) {
-        if (slaveField.attributes.localized) {
-          plugin.toggleField(`${slavePath}.${plugin.locale}`, value);
+        if (masterField.attributes.localized) {
+          if (slaveField.attributes.localized) {
+            plugin.toggleField(`${slavePath}.${plugin.locale}`, value);
+          }
+        } else if (slaveField.attributes.localized) {
+          plugin.site.attributes.locales.forEach((locale) => {
+            plugin.toggleField(`${slavePath}.${locale}`, value);
+          });
+        } else {
+          plugin.toggleField(slavePath, value);
         }
-      } else if (slaveField.attributes.localized) {
-        plugin.site.attributes.locales.forEach((locale) => {
-          plugin.toggleField(`${slavePath}.${locale}`, value);
-        });
       } else {
-        plugin.toggleField(slavePath, value);
+        console.error(`Plugin error: The field "${slaveFieldApiKey}" does not exist`);
       }
     });
   }
