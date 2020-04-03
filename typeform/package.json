@@ -5,11 +5,10 @@
   "description": "A plugin that allows users to select Typeform forms and see responses directly within DatoCMS",
   "main": "index.js",
   "scripts": {
-    "start": "concurrently \"yarn dev\" \"yarn localtunnel\"",
-    "localtunnel": "lt -s datocms-plugin-typeform --port 5000",
-    "dev": "NODE_ENV=development webpack-dev-server --port 5000",
+    "start": "NODE_ENV=development webpack-dev-server --port 5000",
     "dist": "NODE_ENV=production webpack --progress",
-    "prepublishOnly": "rimraf lib dist && mkdir dist && yarn dist",
+    "addToProject": "yo datocms-plugin:add-to-project",
+    "prepublishOnly": "rimraf dist && mkdir dist && yarn dist",
     "lint": "eslint \"./src/*.{js,jsx}\"",
     "test": "echo 1"
   },
