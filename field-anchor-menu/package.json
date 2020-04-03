@@ -4,11 +4,11 @@
   "description": "A simple plugin that displays an anchor links menu on the sidebar",
   "main": "index.js",
   "scripts": {
-    "start": "concurrently \"yarn dev\" \"yarn tunnel\"",
-    "tunnel": "ngrok http 5000",
-    "dev": "NODE_ENV=development webpack-dev-server --port 5000",
+    "start": "NODE_ENV=development webpack-dev-server --port 5000",
     "dist": "NODE_ENV=production webpack --progress",
-    "prepublishOnly": "rimraf lib dist && mkdir dist && npm run dist",
+    "addToProject": "yo datocms-plugin:add-to-project",
+    "lint": "eslint \"./src/*.{js,jsx}\"",
+    "prepublishOnly": "rimraf dist && mkdir dist && yarn dist",
     "test": "echo 1"
   },
   "files": [
