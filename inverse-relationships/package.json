@@ -105,9 +105,10 @@
     "webpack": "^4.16.1",
     "webpack-cli": "^3.1.0",
     "webpack-dev-server": "^3.1.10",
-    "yo": "^2.0.5"
+    "yo": "^3.1.1"
   },
   "dependencies": {
-    "datocms-client": "^0.7.5"
+    "datocms-client": "^0.7.5",
+    "generator-datocms-plugin": "^1.0.22"
   }
 }

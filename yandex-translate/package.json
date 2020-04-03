@@ -67,7 +67,7 @@
     "eslint-config-airbnb-base": "13.1.0",
     "eslint-loader": "^2.1.0",
     "eslint-plugin-import": "^2.14.0",
-    "generator-datocms-plugin": "^1.0.3",
+    "generator-datocms-plugin": "^1.0.22",
     "html-webpack-inline-source-plugin": "^0.0.10",
     "html-webpack-plugin": "^3.2.0",
     "html-webpack-tags-plugin": "^2.0.17",
