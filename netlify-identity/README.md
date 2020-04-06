@@ -9,10 +9,11 @@ To fetch user info for your Netlify Identity instance, you need to publish a spe
 Install the `datocms-plugin-netlify-identity` package in your project, then add a file called `user-info.js` in your [functions folder](https://www.netlify.com/docs/functions/#configuring-the-functions-folder) with the following content:
 
 ```
-import generateHandler from 'datocms-plugin-netlify-identity';
+const generateHandler = require('datocms-plugin-netlify-identity');
 
 const accessToken = 'CHANGEME';
-export const handler = generateHandler(accessToken);
+
+exports.handler = generateHandler(accessToken);
 ```
 
 Once deployed, you can configure the plugin setting inserting both the URL of the Netlify function, and the access token you chose:
