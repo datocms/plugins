@@ -3,6 +3,7 @@
   "homepage": "https://github.com/datocms/plugins/tree/master/field-anchor-menu#readme",
   "description": "A simple plugin that displays an anchor links menu on the sidebar",
   "main": "index.js",
+  "version": "0.0.1",
   "scripts": {
     "start": "NODE_ENV=development webpack-dev-server --port 5000",
     "dist": "NODE_ENV=production webpack --progress",
