@@ -4,11 +4,11 @@
   "description": "A simple plugin that displays an anchor links menu on the sidebar",
   "main": "index.js",
   "scripts": {
-    "start": "concurrently \"yarn dev\" \"yarn tunnel\"",
-    "tunnel": "ngrok http 5000",
-    "dev": "NODE_ENV=development webpack-dev-server --port 5000",
+    "start": "NODE_ENV=development webpack-dev-server --port 5000",
     "dist": "NODE_ENV=production webpack --progress",
-    "prepublishOnly": "rimraf lib dist && mkdir dist && npm run dist",
+    "addToProject": "yo datocms-plugin:add-to-project",
+    "lint": "eslint \"./src/*.{js,jsx}\"",
+    "prepublishOnly": "rimraf dist && mkdir dist && yarn dist",
     "test": "echo 1"
   },
   "files": [
@@ -49,7 +49,7 @@
     "eslint-import-resolver-webpack": "^0.10.1",
     "eslint-loader": "^2.1.0",
     "eslint-plugin-import": "^2.14.0",
-    "generator-datocms-plugin": "^1.0.3",
+    "generator-datocms-plugin": "^1.0.22",
     "html-webpack-inline-source-plugin": "^0.0.10",
     "html-webpack-plugin": "^3.2.0",
     "localtunnel": "^1.9.1",
@@ -60,7 +60,7 @@
     "webpack": "^4.16.1",
     "webpack-cli": "^3.1.0",
     "webpack-dev-server": "^3.1.10",
-    "yo": "^2.0.5"
+    "yo": "^3.1.1"
   },
   "dependencies": {
     "datocms-client": "^0.7.5",

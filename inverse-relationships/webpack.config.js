@@ -1,14 +1,14 @@
 const HtmlWebpackPlugin = require('html-webpack-plugin');
-const HtmlWebpackIncludeAssetsPlugin = require('html-webpack-include-assets-plugin');
+const HtmlWebpackTagsPlugin = require('html-webpack-tags-plugin');
 
 const isProduction = process.env.NODE_ENV === 'production';
 
 module.exports = {
-  entry: __dirname + '/src/index.js',
+  entry: `${__dirname}/src/index.js`,
   mode: process.env.NODE_ENV,
   output: {
-    path: __dirname + '/dist',
-    filename: 'bundle.js'
+    path: `${__dirname}/dist`,
+    filename: 'bundle.js',
   },
   devtool: 'source-map',
   devServer: {
@@ -19,22 +19,18 @@ module.exports = {
     rules: [
       {
         test: /\.jsx?$/,
-        include: __dirname + '/src',
+        include: `${__dirname}/src`,
         loader: 'eslint-loader',
         enforce: 'pre',
       },
       {
         test: /\.jsx?$/,
         exclude: /(node_modules|bower_components)/,
-        use: { loader: 'babel-loader' }
+        use: { loader: 'babel-loader' },
       },
       {
         test: /\.sass$/,
-        use: [
-          "style-loader",
-          "css-loader",
-          "sass-loader"
-        ]
+        use: ['style-loader', 'css-loader', 'sass-loader'],
       },
     ],
   },
@@ -43,13 +39,13 @@ module.exports = {
       title: 'Translate plugin',
       minify: isProduction,
     }),
-    new HtmlWebpackIncludeAssetsPlugin({
+    new HtmlWebpackTagsPlugin({
       append: false,
       publicPath: '',
-      assets: [
-        'https://unpkg.com/datocms-plugins-sdk@0.0.8/dist/sdk.js',
-        'https://unpkg.com/datocms-plugins-sdk@0.0.8/dist/sdk.css',
-      ]
+      tags: [
+        'https://unpkg.com/datocms-plugins-sdk@0.0.9/dist/sdk.js',
+        'https://unpkg.com/datocms-plugins-sdk@0.0.9/dist/sdk.css',
+      ],
     }),
   ].filter(Boolean),
-}
+};

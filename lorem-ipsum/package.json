@@ -5,11 +5,10 @@
   "description": "Makes it easier to automatically fill your textual fields with dummy content",
   "main": "index.js",
   "scripts": {
-    "start": "concurrently \"yarn dev\" \"yarn localtunnel\"",
-    "localtunnel": "lt -s datocms-plugin-lorem-ipsum --port 5000",
-    "dev": "NODE_ENV=development webpack-dev-server --port 5000",
+    "start": "NODE_ENV=development webpack-dev-server --port 5000",
     "dist": "NODE_ENV=production webpack --progress",
-    "prepublishOnly": "rimraf lib dist && mkdir dist && yarn dist",
+    "addToProject": "yo datocms-plugin:add-to-project",
+    "prepublishOnly": "rimraf dist && mkdir dist && yarn dist",
     "lint": "eslint \"./src/*.{js,jsx}\"",
     "test": "echo 1"
   },
@@ -61,9 +60,9 @@
     "eslint-import-resolver-webpack": "^0.10.1",
     "eslint-loader": "^2.1.0",
     "eslint-plugin-import": "^2.14.0",
-    "html-webpack-include-assets-plugin": "^1.0.5",
     "html-webpack-inline-source-plugin": "^0.0.10",
     "html-webpack-plugin": "^3.2.0",
+    "html-webpack-tags-plugin": "^2.0.17",
     "json-loader": "^0.5.7",
     "mini-css-extract-plugin": "^0.4.3",
     "node-sass": "^4.9.3",
@@ -74,6 +73,7 @@
     "webpack-dev-server": "^3.1.10"
   },
   "dependencies": {
+    "generator-datocms-plugin": "^1.0.22",
     "intersperse": "^1.0.0",
     "lorem-ipsum": "^1.0.6"
   }
