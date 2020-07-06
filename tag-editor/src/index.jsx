@@ -13,7 +13,7 @@ function deserialize(plugin) {
   if (plugin.field.attributes.field_type === 'json') {
     return JSON.parse(fieldValue).map(key => ({ id: key, text: key }));
   }
-  return fieldValue.split(',').map(key => ({ id: key, text: key }));
+  return fieldValue.split(', ').map(key => ({ id: key, text: key }));
 }
 
 function serializeValue(inputValue, plugin) {
