@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-disabled-field",
   "homepage": "https://github.com/datocms/plugins/tree/master/hidden-field#readme",
-  "description": "A simple, no configuration plugin that allows you to disable a field that you don't want anyone to edit. You can apply this plugin to every type of field.",
+  "description": "A simple, no-configuration plugin that allows you to disable a field that you don't want anyone to edit. You can apply this plugin to every type of field.",
   "main": "index.js",
   "scripts": {
     "start": "concurrently \"yarn dev\" \"yarn ngrok\"",
