@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Field anchor menu - A plugin that creates a sidebar menu that link to the fields in your record.
-- Conditional fields - added a new option, `invert`, that inverts the logic of conditional fields - ie. show slave fields if master boolean is false.
+- Conditional fields - added a new option, `invert`, that inverts the logic of conditional fields - ie. show target fields if master boolean is false.
 
 ### Fix
 

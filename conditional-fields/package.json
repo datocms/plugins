@@ -44,7 +44,7 @@
       ],
       "instance": [
         {
-          "id": "slaveFields",
+          "id": "targetFields",
           "label": "Fields that will be toggled based upon this field's value",
           "type": "string",
           "required": true,
@@ -52,7 +52,7 @@
         },
         {
           "id": "invert",
-          "label": "Show slave fields when this field is false",
+          "label": "Show target fields when this field is false",
           "type": "boolean",
           "required": false
         }
