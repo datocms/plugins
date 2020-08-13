@@ -1,6 +1,6 @@
 # DatoCMS plugins repository
 
-This repository provides samples of DatoCMS plugins developed using the [Plugins SDK](http://www.datocms.com/docs/plugins/sdk-reference/).
+This repository provides samples of DatoCMS plugins developed using the [Plugins SDK](https://www.datocms.com/docs/building-plugins/sdk-reference).
 
 ### List of examples
 
