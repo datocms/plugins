@@ -51,14 +51,6 @@
           "required": true,
           "default": "46add017fee4f313c7fb9e36a1101ecc23626e0c29d2407b576d0923300082ec",
           "hint": "Go to https://<code>&lt;your-instance&gt;</code>.commercelayer.io/admin/settings/applications to find your OAuth applications"
-        },
-        {
-          "id": "clientSecret",
-          "label": "OAuth Application Client Secret",
-          "type": "string",
-          "required": true,
-          "default": "4abebdbb4dbc703560176dfefbe6656bd60323ba5799e0ef92f11eac73d4eedd",
-          "hint": "Go to https://&lt;your-instance&gt;.commercelayer.io/admin/settings/applications to find your OAuth applications"
         }
       ],
       "instance": []
