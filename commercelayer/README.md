@@ -6,14 +6,14 @@ A plugin that allows users to search and select Commerce Layer SKUs.
 
 Create a new `datocms` application on Commerce Layer:
 
-![Application](https://raw.githubusercontent.com/datocms/plugins/master/commercelayer/docs/application.png)
+![Application](docs/application.jpg)
 
 Get the application's Base endpoint, Client ID, and client Secret:
 
-![Credentials](https://raw.githubusercontent.com/datocms/plugins/master/commercelayer/docs/credentials.png)
+![Credentials](docs/credentials.jpg)
 
 ## Configuration (DatoCMS)
 
 Please specify your Commerce Layer parameters on the plugin global settings:
 
-![Demo](https://raw.githubusercontent.com/datocms/plugins/master/commercelayer/docs/settings.png)
+![Demo](docs/settings.png)
