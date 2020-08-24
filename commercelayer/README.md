@@ -8,7 +8,7 @@ Create a new `datocms` application on Commerce Layer:
 
 ![Application](docs/application.jpg)
 
-Get the application's Base endpoint, Client ID, and client Secret:
+Get the application's Base endpoint and Client ID:
 
 ![Credentials](docs/credentials.jpg)
 
