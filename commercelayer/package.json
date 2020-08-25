@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-commercelayer",
   "homepage": "https://github.com/datocms/plugins/tree/master/commercelayer#readme",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "description": "A plugin that allows users to search and select Commerce Layer SKUs",
   "main": "index.js",
   "scripts": {
