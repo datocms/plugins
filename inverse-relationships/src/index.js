@@ -8,10 +8,6 @@ window.DatoCmsPlugin.init((plugin) => {
   const container = document.createElement('div');
   container.classList.add('container');
   document.body.appendChild(container);
-  const title = document.createElement('h4');
-  title.classList.add('title');
-  title.textContent = plugin.parameters.instance.title;
-  container.appendChild(title);
 
   const postItemType = Object.values(plugin.itemTypes).find(
     itemType => itemType.attributes.api_key === plugin.parameters.instance.itemTypeApiKey,
