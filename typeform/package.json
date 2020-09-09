@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-typeform",
   "homepage": "https://github.com/datocms/plugins/tree/master/typeform#readme",
-  "version": "0.0.9",
+  "version": "0.1.0",
   "description": "A plugin that allows users to select Typeform forms and see responses directly within DatoCMS",
   "main": "index.js",
   "scripts": {
