@@ -22,7 +22,7 @@ export default class TypeformClient {
   }
 
   fetch(path, params = null) {
-    const proxyurl = 'https://proxy.datocms.workers.dev/?';
+    const proxyurl = 'https://cors-anywhere.herokuapp.com/?';
 
     return fetch(
       `${proxyurl}https://api.typeform.com${path}${qs.stringify(params, { addQueryPrefix: true })}`,
