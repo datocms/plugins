@@ -8,7 +8,7 @@
     "start": "NODE_ENV=development webpack-dev-server --port 5000",
     "dist": "NODE_ENV=production webpack --progress",
     "addToProject": "yo datocms-plugin:add-to-project",
-    "prepublishOnly": "rimraf dist && mkdir dist && yarn dist",
+    "prepublishOnly": "rimraf dist && mkdir dist && npm run dist",
     "lint": "eslint \"./src/*.{js,jsx}\"",
     "test": "echo 1"
   },
@@ -90,7 +90,7 @@
     "react": "^16.5.2",
     "react-dom": "^16.5.2",
     "sass-loader": "^7.1.0",
-    "serve": "^10.0.2",
+    "serve": "^11.3.2",
     "style-loader": "^0.23.0",
     "superagent": "^4.0.0",
     "url-loader": "^1.1.2",

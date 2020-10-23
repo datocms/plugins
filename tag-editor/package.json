@@ -8,7 +8,7 @@
     "start": "NODE_ENV=development webpack-dev-server --port 5000",
     "dist": "NODE_ENV=production webpack --progress",
     "addToProject": "yo datocms-plugin:add-to-project",
-    "prepublishOnly": "rimraf dist && mkdir dist && yarn dist",
+    "prepublishOnly": "rimraf dist && mkdir dist && npm run dist",
     "lint": "eslint \"./src/*.{js,jsx}\"",
     "test": "echo 1"
   },
@@ -78,9 +78,11 @@
   "dependencies": {
     "eslint-import-resolver-webpack": "^0.10.1",
     "generator-datocms-plugin": "^1.0.22",
-    "react": "^16.5.2",
+    "react": "^16.3.1",
+    "react-dnd": "^7.0.0",
+    "react-dnd-html5-backend": "^3.0.2",
     "react-dom": "^16.5.2",
-    "react-tag-input": "^5.2.3",
+    "react-tag-input": "^6.4.3",
     "style-loader": "^0.23.0",
     "to-querystring": "^1.0.4"
   }

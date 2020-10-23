@@ -4,7 +4,7 @@
   "description": "A simple, no-configuration plugin that allows you to disable a field that you don't want anyone to edit. You can apply this plugin to every type of field.",
   "main": "index.js",
   "scripts": {
-    "start": "concurrently \"yarn dev\" \"yarn ngrok\"",
+    "start": "concurrently \"npm run dev\" \"npm run ngrok\"",
     "ngrok": "ngrok http 5000 -subdomain=datocms-disabled-field --region=eu",
     "dev": "NODE_ENV=development webpack-dev-server --port 5000",
     "dist": "NODE_ENV=production webpack --progress",
