@@ -33,10 +33,14 @@ window.DatoCmsPlugin.init((plugin) => {
     });
   }
 
-  toggleFields(!!plugin.getFieldValue(plugin.fieldPath));
+  function normaliseValue(value) {
+    return invert ? !value : !!value;
+  }
+
+  const initialValue = normaliseValue(plugin.getFieldValue(plugin.fieldPath));
+  toggleFields(initialValue);
 
   plugin.addFieldChangeListener(plugin.fieldPath, (value) => {
-    const show = invert ? !value : !!value;
-    toggleFields(show);
+    toggleFields(normaliseValue(value));
   });
 });
