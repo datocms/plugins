@@ -1,8 +1,9 @@
 import qs from 'qs';
 
 export default class TypeformClient {
-  constructor({ apiToken }) {
+  constructor({ apiToken, corsUrlPrefix }) {
     this.apiToken = apiToken;
+    this.corsUrlPrefix = corsUrlPrefix;
   }
 
   themeById(id) {
@@ -22,10 +23,8 @@ export default class TypeformClient {
   }
 
   fetch(path, params = null) {
-    const proxyurl = 'https://cors-anywhere.herokuapp.com/';
-
     return fetch(
-      `${proxyurl}https://api.typeform.com${path}${qs.stringify(params, { addQueryPrefix: true })}`,
+      `${this.corsUrlPrefix}https://api.typeform.com${path}${qs.stringify(params, { addQueryPrefix: true })}`,
       {
         method: 'GET',
         headers: {

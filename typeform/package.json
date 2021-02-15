@@ -42,6 +42,14 @@
           "type": "string",
           "required": true,
           "hint": "Please insert your Typeform personal access token. Take a look at <a href=\"https://developer.typeform.com/get-started/personal-access-token/\">Typeform documentation</a> for more info"
+        },
+        {
+          "id": "corsUrlPrefix",
+          "label": "CORS proxy service",
+          "type": "string",
+          "required": true,
+          "default": "https://typeform-proxy.datocms.com/",
+          "hint": "Since Typeform API does not support CORS, a CORS proxy is required. For a list of such services, take a look at <a href=\"https://nordicapis.com/10-free-to-use-cors-proxies/\">this resource</a>. When in doubt, leave as it is."
         }
       ],
       "instance": []

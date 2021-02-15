@@ -12,6 +12,7 @@ const hrefToId = href => href && href.match(/[^/]+$/)[0];
 
 const stateFromPlugin = plugin => ({
   apiToken: plugin.parameters.global.apiToken,
+  corsUrlPrefix: plugin.parameters.global.corsUrlPrefix,
   value: hrefToId(plugin.getFieldValue(plugin.fieldPath)),
 });
 
