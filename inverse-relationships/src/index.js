@@ -1,9 +1,12 @@
 import { SiteClient } from 'datocms-client';
 import './style.sass';
 
-window.DatoCmsPlugin.init((plugin) => {
+window.DatoCmsPlugin.init(async (plugin) => {
   plugin.startAutoResizer();
-  const dato = new SiteClient(plugin.parameters.global.datoCmsApiToken);
+
+  const dato = new SiteClient(plugin.parameters.global.datoCmsApiToken, {
+    environment: plugin.environment,
+  });
 
   const container = document.createElement('div');
   container.classList.add('container');
@@ -13,10 +16,16 @@ window.DatoCmsPlugin.init((plugin) => {
     itemType => itemType.attributes.api_key === plugin.parameters.instance.itemTypeApiKey,
   );
 
-  const linkField = Object.values(plugin.fields).find(field => (
-    field.relationships.item_type.data.id === postItemType.id
-      && field.attributes.api_key === plugin.parameters.instance.fieldApiKey
-  ));
+  const findLinkingFields = fields => fields.find(
+    field => field.relationships.item_type.data.id === postItemType.id
+        && field.attributes.api_key === plugin.parameters.instance.fieldApiKey,
+  );
+  let linkField = findLinkingFields(Object.values(plugin.fields));
+
+  if (!linkField) {
+    const loadedFields = await plugin.loadItemTypeFields(postItemType.id);
+    linkField = findLinkingFields(loadedFields);
+  }
 
   const titleFieldId = postItemType.relationships.title_field.data.id;
   const titleField = plugin.fields[titleFieldId];
@@ -32,15 +41,16 @@ window.DatoCmsPlugin.init((plugin) => {
     version: 'current',
   };
 
-  dato.items.all(query)
+  dato.items
+    .all(query)
     .then((items) => {
       items.forEach((item) => {
         const link = document.createElement('a');
 
         if (titleField.attributes.localized) {
-          const firstLocaleWithContent = plugin.site.attributes.locales.find(locale => (
-            item[titleField.attributes.api_key][locale]
-          ));
+          const firstLocaleWithContent = plugin.site.attributes.locales.find(
+            locale => item[titleField.attributes.api_key][locale],
+          );
           link.textContent = item[titleField.attributes.api_key][firstLocaleWithContent];
         } else {
           link.textContent = item[titleField.attributes.api_key];
