@@ -43,8 +43,8 @@ module.exports = {
       append: false,
       publicPath: '',
       tags: [
-        'https://unpkg.com/datocms-plugins-sdk@0.0.9/dist/sdk.js',
-        'https://unpkg.com/datocms-plugins-sdk@0.0.9/dist/sdk.css',
+        'https://unpkg.com/datocms-plugins-sdk@0.1.1/dist/sdk.js',
+        'https://unpkg.com/datocms-plugins-sdk@0.1.1/dist/sdk.css',
       ],
     }),
   ].filter(Boolean),
