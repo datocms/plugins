@@ -12,29 +12,44 @@ window.DatoCmsPlugin.init(async (plugin) => {
   container.classList.add('container');
   document.body.appendChild(container);
 
-  const postItemType = Object.values(plugin.itemTypes).find(
+  const linkItemType = Object.values(plugin.itemTypes).find(
     itemType => itemType.attributes.api_key === plugin.parameters.instance.itemTypeApiKey,
   );
 
+  if (!linkItemType) {
+    const error = document.createElement('p');
+    error.textContent = 'Please insert a valid Model ID in your field settings';
+    error.classList.add('error');
+    container.appendChild(error);
+  }
+
   const findLinkingFields = fields => fields.find(
-    field => field.relationships.item_type.data.id === postItemType.id
+    field => field.relationships.item_type.data.id === linkItemType.id
         && field.attributes.api_key === plugin.parameters.instance.fieldApiKey,
   );
+
   let linkField = findLinkingFields(Object.values(plugin.fields));
 
   if (!linkField) {
-    const loadedFields = await plugin.loadItemTypeFields(postItemType.id);
+    const loadedFields = await plugin.loadItemTypeFields(linkItemType.id);
     linkField = findLinkingFields(loadedFields);
+    if (!linkField) {
+      const error = document.createElement('p');
+      error.textContent = 'Please insert a valid field ID in your field settings';
+      error.classList.add('error');
+      container.appendChild(error);
+    }
   }
 
-  const titleFieldId = postItemType.relationships.title_field.data.id;
-  const titleField = plugin.fields[titleFieldId];
+  const titleFieldId = linkItemType.relationships.title_field.data
+    && linkItemType.relationships.title_field.data.id;
+
   const filter = linkField.attributes.field_type === 'link'
     ? `filter[fields][${linkField.attributes.api_key}][eq]`
     : `filter[fields][${linkField.attributes.api_key}][any_in][]`;
 
   const query = {
-    'filter[type]': postItemType.id,
+    'filter[type]': linkItemType.id,
     [filter]: plugin.itemId,
     order_by: plugin.parameters.instance.orderBy,
     'page[limit]': plugin.parameters.instance.limit,
@@ -46,20 +61,28 @@ window.DatoCmsPlugin.init(async (plugin) => {
     .then((items) => {
       items.forEach((item) => {
         const link = document.createElement('a');
+        const path = `/editor/item_types/${linkItemType.id}/items/${item.id}/edit`;
 
-        if (titleField.attributes.localized) {
-          const firstLocaleWithContent = plugin.site.attributes.locales.find(
-            locale => item[titleField.attributes.api_key][locale],
-          );
-          link.textContent = item[titleField.attributes.api_key][firstLocaleWithContent];
+        let linkLabel;
+
+        if (titleFieldId) {
+          const titleField = plugin.fields[titleFieldId];
+          if (titleField.attributes.localized) {
+            const firstLocaleWithContent = plugin.site.attributes.locales.find(
+              locale => item[titleField.attributes.api_key][locale],
+            );
+            linkLabel = item[titleField.attributes.api_key][firstLocaleWithContent];
+          } else {
+            linkLabel = item[titleField.attributes.api_key];
+          }
         } else {
-          link.textContent = item[titleField.attributes.api_key];
+          linkLabel = `Record#${item.id}`;
         }
 
-        const path = `/editor/item_types/${postItemType.id}/items/${item.id}/edit`;
-
+        link.textContent = linkLabel;
         link.href = '#';
         link.classList.add('link');
+
         link.addEventListener('click', (e) => {
           e.preventDefault();
           plugin.navigateTo(path);
