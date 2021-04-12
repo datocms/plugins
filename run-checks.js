@@ -15,7 +15,7 @@ const TESTABLE_PLUGINS = [
 const runTests = (path) => {
   const root = process.cwd();
   process.chdir(path);
-  execSync("npm run", { stdio: [0, 1, 2] });
+  execSync("npm i", { stdio: [0, 1, 2] });
   let testExitCode = 0;
   try {
     execSync("npm run lint && npm run dist", { stdio: [0, 1, 2] });
