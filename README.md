@@ -2,6 +2,13 @@
 
 This repository provides samples of DatoCMS plugins developed using the [Plugins SDK](https://www.datocms.com/docs/building-plugins/sdk-reference).
 
+<br /><br />
+<a href="https://www.datocms.com/">
+  <img src="https://www.datocms.com/images/full_logo.svg" height="60">
+</a>
+<br /><br />
+
+
 ### List of examples
 
 - [Star rating editor](https://github.com/datocms/plugins/tree/master/star-rating-editor/): A plugin that presents integer fields as star rating widgets
