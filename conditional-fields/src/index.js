@@ -1,34 +1,34 @@
 import values from 'object.values';
 
 window.DatoCmsPlugin.init((plugin) => {
-  const slaveFields = plugin.parameters.instance.slaveFields.split(/\s*,\s*/);
+  const targetFields = plugin.parameters.instance.targetFields.split(/\s*,\s*/);
   const { invert } = plugin.parameters.instance;
-  const masterField = plugin.field;
+  const sourceField = plugin.field;
 
   function toggleFields(value) {
-    slaveFields.forEach((slaveFieldApiKey) => {
-      const slaveField = values(plugin.fields).find(
-        field => field.attributes.api_key === slaveFieldApiKey,
+    targetFields.forEach((targetFieldApiKey) => {
+      const targetField = values(plugin.fields).find(
+        field => field.attributes.api_key === targetFieldApiKey,
       );
 
-      if (slaveField) {
-        const slavePath = plugin.parentFieldId
-          ? `${plugin.fieldPath.replace(/.[^.]*$/, '')}.${slaveFieldApiKey}`
-          : slaveFieldApiKey;
+      if (targetField) {
+        const targetPath = plugin.parentFieldId
+          ? `${plugin.fieldPath.replace(/.[^.]*$/, '')}.${targetFieldApiKey}`
+          : targetFieldApiKey;
 
-        if (masterField.attributes.localized) {
-          if (slaveField.attributes.localized) {
-            plugin.toggleField(`${slavePath}.${plugin.locale}`, value);
+        if (sourceField.attributes.localized) {
+          if (targetField.attributes.localized) {
+            plugin.toggleField(`${targetPath}.${plugin.locale}`, value);
           }
-        } else if (slaveField.attributes.localized) {
+        } else if (targetField.attributes.localized) {
           plugin.site.attributes.locales.forEach((locale) => {
-            plugin.toggleField(`${slavePath}.${locale}`, value);
+            plugin.toggleField(`${targetPath}.${locale}`, value);
           });
         } else {
-          plugin.toggleField(slavePath, value);
+          plugin.toggleField(targetPath, value);
         }
       } else {
-        console.error(`Plugin error: The field "${slaveFieldApiKey}" does not exist`);
+        console.error(`Plugin error: The field "${targetFieldApiKey}" does not exist`);
       }
     });
   }

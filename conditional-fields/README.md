@@ -2,7 +2,7 @@
 
 A really simple plugin that show/hides fields when you toggle a checkbox boolean field.
 Check the `invert` option if you want the plugin to act in the opposite way,
-ie. show slave fields when master boolean is false
+ie. show target fields when this boolean field is false.
 
 ## Configuration
 
