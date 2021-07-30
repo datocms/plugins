@@ -45,14 +45,16 @@ export default function Results({ assessment }) {
   const groupedResults = groupResults(assessment.results);
 
   return (
-    <ul className="yoast-seo__results">
-      {Object.keys(groupedResults).map((key) => (
-        <ResultGroup key={key} result={groupedResults[key]} />
-      ))}
-    </ul>
+    <div className="Plugin__results">
+      {['bad', 'ok', 'good', 'feedback']
+        .filter((key) => groupedResults[key])
+        .map((key) => (
+          <ResultGroup key={key} result={groupedResults[key]} startOpen={key !== 'good'}/>
+        ))}
+    </div>
   );
 }
 
 Results.propTypes = {
-  assessment: PropTypes.arrayOf(PropTypes.object),
+  assessment: PropTypes.object,
 };

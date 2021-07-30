@@ -77,6 +77,7 @@
     "react": "^17.0.2",
     "react-dom": "^17.0.2",
     "regenerator-runtime": "^0.13.9",
+    "use-debounced-effect-hook": "^1.1.62",
     "yoastseo": "^1.91.0"
   }
 }

@@ -9,25 +9,26 @@ const scoreRatingColorMapping = {
   ok: '#ee7c1b',
   good: '#7ad03a',
 };
-
 export default function ScoreIcon({ score }) {
   const scoreRating = interpreters.scoreToRating(score);
   const scoreColor =
     scoreRatingColorMapping[scoreRating] || scoreRatingColorMapping.feedback;
 
   return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 512 512"
-      fill={scoreColor}
-      width="12"
-      height="12"
-    >
-      <path d="M256 0C115.39 0 0 115.39 0 256s115.39 256 256 256 256-115.39 256-256S396.61 0 256 0z" />
-    </svg>
+    <>
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 512 512"
+        fill={scoreColor}
+        width="10"
+        height="10"
+      >
+        <path d="M256 0C115.39 0 0 115.39 0 256s115.39 256 256 256 256-115.39 256-256S396.61 0 256 0z" />
+      </svg>{' '}
+    </>
   );
 }
 
 ScoreIcon.propTypes = {
-  score: PropTypes.string.isRequired,
+  score: PropTypes.number.isRequired,
 };
