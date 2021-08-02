@@ -9,8 +9,8 @@ const scoreRatingColorMapping = {
   ok: '#ee7c1b',
   good: '#7ad03a',
 };
-export default function ScoreIcon({ score }) {
-  const scoreRating = interpreters.scoreToRating(score);
+export default function ScoreIcon({ rating, score }) {
+  const scoreRating = rating || interpreters.scoreToRating(score);
   const scoreColor =
     scoreRatingColorMapping[scoreRating] || scoreRatingColorMapping.feedback;
 
@@ -30,5 +30,6 @@ export default function ScoreIcon({ score }) {
 }
 
 ScoreIcon.propTypes = {
-  score: PropTypes.number.isRequired,
+  score: PropTypes.number,
+  rating: PropTypes.string,
 };

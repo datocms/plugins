@@ -54,7 +54,7 @@ const ResultItem = ({ item }) => {
   );
 };
 ScoreIcon;
-export default function ResultGroup({ result, startOpen }) {
+export default function ResultGroup({ rating, result, startOpen }) {
   const [isOpen, setIsOpen] = useState(startOpen);
 
   function togglePanel() {
@@ -81,7 +81,8 @@ export default function ResultGroup({ result, startOpen }) {
             </svg>
           </div>
           <div>
-            {result.title} ({result.items.length})
+            {!isOpen && <ScoreIcon rating={rating} />} {result.title} (
+            {result.items.length})
           </div>
         </div>
       </button>
@@ -100,5 +101,6 @@ ResultGroup.propTypes = {
   result: PropTypes.shape({
     title: PropTypes.string.isRequired,
     items: PropTypes.arrayOf(PropTypes.object),
+    rating: PropTypes.string.isRequired,
   }),
 };

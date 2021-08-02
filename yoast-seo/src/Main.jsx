@@ -37,6 +37,7 @@ const Main = ({
 }) => {
   const [isWorkerReady, setIsWorkerReady] = useState(false);
   const [page, setPage] = useState(null);
+  const [pageError, setPageError] = useState(null);
 
   const [pageFetchingInProgress, setPageFetchingInProgress] = useState(false);
   const [analysisInProgress, setAnalysisInProgress] = useState(false);
@@ -63,6 +64,7 @@ const Main = ({
 
   const refetchPage = useCallback(async () => {
     try {
+      setPageError(null);
       setPageFetchingInProgress(true);
 
       const url = new URL(htmlGeneratorUrl);
@@ -73,9 +75,35 @@ const Main = ({
       url.searchParams.set('locale', locale);
 
       const request = await fetch(url.toString());
-      const response = await request.json();
+
+      if (request.status !== 200) {
+        throw new Error(`Endpoint returned status ${request.status}`);
+      }
+
+      let response;
+
+      try {
+        response = await request.json();
+      } catch (e) {
+        throw new Error(`Endpoint response is not JSON!`);
+      }
+
+      const missingKeys = [
+        'content',
+        'locale',
+        'title',
+        'slug',
+        'description',
+      ].filter((key) => !response[key]);
+
+      if (missingKeys.length > 0) {
+        throw new Error(`Missing keys in response: ${missingKeys.join(', ')}`);
+      }
 
       setPage(response);
+    } catch (e) {
+      setPageError(e);
+      console.error(`Yoast SEO plugin error!`, e);
     } finally {
       setPageFetchingInProgress(false);
     }
@@ -88,6 +116,7 @@ const Main = ({
     locale,
     setPage,
     setPageFetchingInProgress,
+    setPageError,
   ]);
 
   useEffect(() => {
@@ -143,8 +172,6 @@ const Main = ({
             ).result
           : null;
 
-      console.log(relatedResults);
-
       const deserializedResult = {
         readability: removeResultsWithNoText(analyzeResult.readability),
         seo: removeResultsWithNoText(analyzeResult.seo['']),
@@ -153,11 +180,9 @@ const Main = ({
         ),
       };
 
-      console.log(deserializedResult);
-
       setAnalysis(deserializedResult);
     } catch (e) {
-      console.log(e);
+      console.error(`Yoast SEO plugin error!`, e);
       throw e;
     } finally {
       setAnalysisInProgress(false);
@@ -184,6 +209,26 @@ const Main = ({
     200,
   );
 
+  const validRelatedIndices = relatedKeywords
+    .map((related, i) => ({ related, i }))
+    .filter(
+      ({ related, i }) =>
+        related.keyword &&
+        analysis &&
+        analysis.relatedKeywordsSeo &&
+        i in analysis.relatedKeywordsSeo,
+    )
+    .map(({ i }) => i);
+
+  const overallSeoScore =
+    analysis && keyword
+      ? validRelatedIndices.reduce(
+          (acc, i) => acc + analysis.relatedKeywordsSeo[i].score / 10,
+          analysis.seo.score / 10,
+        ) /
+        (1.0 + validRelatedIndices.length)
+      : 0;
+
   return (
     <div className="Plugin">
       <div className="Plugin__bar">
@@ -198,21 +243,13 @@ const Main = ({
               }`}
             >
               {tab.title}{' '}
-              <ScoreIcon score={analysis ? analysis[tab.key].score / 10 : 0} />
-              {tab.key === 'seo' &&
-                relatedKeywords
-                  .filter((related) => related.keyword)
-                  .map((relatedKeyword, i) => (
-                    <ScoreIcon
-                      score={
-                        analysis &&
-                        analysis.relatedKeywordsSeo &&
-                        analysis.relatedKeywordsSeo[i]
-                          ? analysis.relatedKeywordsSeo[i].score / 10
-                          : 0
-                      }
-                    />
-                  ))}
+              <ScoreIcon
+                score={
+                  tab.key === 'seo'
+                    ? overallSeoScore
+                    : analysis?.readability.score / 10
+                }
+              />
             </button>
           ))}
         </div>
@@ -221,8 +258,14 @@ const Main = ({
             <p>Loading Yoast...</p>
           ) : pageFetchingInProgress ? (
             <p>Extracting content...</p>
+          ) : analysisInProgress ? (
+            <p>Analyzing content...</p>
           ) : (
-            analysisInProgress && <p>Analyzing content...</p>
+            pageError && (
+              <p className="Plugin__bar__status-error">
+                Error fetching data! More info on console
+              </p>
+            )
           )}
         </div>
         <div className="Plugin__bar__actions">
@@ -250,7 +293,6 @@ const Main = ({
         {activeTab === 'seo' ? (
           <>
             <Seo
-              key={keyword}
               keyword={keyword}
               synonyms={synonyms}
               setKeyword={setKeyword}
@@ -286,17 +328,19 @@ const Main = ({
               />
             ))}
 
-            <button
-              className="DatoCMS-button DatoCMS-button--expand"
-              onClick={() => {
-                setRelatedKeywords((old) => [
-                  ...old,
-                  { keyword: '', synonyms: '' },
-                ]);
-              }}
-            >
-              Add related keyphrase
-            </button>
+            {keyword && (
+              <button
+                className="DatoCMS-button DatoCMS-button--expand"
+                onClick={() => {
+                  setRelatedKeywords((old) => [
+                    ...old,
+                    { keyword: '', synonyms: '' },
+                  ]);
+                }}
+              >
+                Add related keyphrase
+              </button>
+            )}
           </>
         ) : (
           <div className="Plugin__readability">

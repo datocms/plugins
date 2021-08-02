@@ -52,9 +52,11 @@ const Root = ({ plugin }) => {
       environmentId={environmentId}
       isSubmitting={isSubmitting}
       fieldValue={fieldValue}
-      setFieldValue={(value) =>
-        plugin.setFieldValue(plugin.fieldPath, JSON.stringify(value))
-      }
+      setFieldValue={(value) => {
+        if (JSON.stringify(fieldValue) !== JSON.stringify(value)) {
+          plugin.setFieldValue(plugin.fieldPath, JSON.stringify(value))
+        }
+      }}
       htmlGeneratorUrl={htmlGeneratorUrl}
     />
   );

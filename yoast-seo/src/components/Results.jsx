@@ -49,7 +49,7 @@ export default function Results({ assessment }) {
       {['bad', 'ok', 'good', 'feedback']
         .filter((key) => groupedResults[key])
         .map((key) => (
-          <ResultGroup key={key} result={groupedResults[key]} startOpen={key !== 'good'}/>
+          <ResultGroup key={key} rating={key} result={groupedResults[key]} startOpen={key !== 'good'}/>
         ))}
     </div>
   );

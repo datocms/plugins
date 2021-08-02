@@ -33,10 +33,13 @@ export default function Seo({
           />
         </div>
       </div>
-      {analysis && keyword && <Results assessment={analysis} />}
+      {analysis && keyword && <Results assessment={analysis} key={keyword} />}
       {onRemove && (
-        <button className="DatoCMS-button DatoCMS-button--alert" expandonClick={onRemove}>
-          Remove this related keyphrase
+        <button
+          className="DatoCMS-button DatoCMS-button--alert"
+          onClick={onRemove}
+        >
+          Remove related keyphrase
         </button>
       )}
     </div>
