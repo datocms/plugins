@@ -1,13 +1,3 @@
-$base-body-color: #34363a
-$light-body-color: #848484
-$placeholder-body-color: #c6c6c6
-
-$light-bg-color: #f5f5f5
-$disabled-color: #ededed
-
-$border-color: #f0f0f0
-$alert-color: #ff5e49
-
 =reset-button
   background: none
   color: inherit
@@ -22,14 +12,14 @@ $alert-color: #ff5e49
   text-decoration: none
 
 .Plugin
-  border: 1px solid $border-color
+  border: 1px solid var(--border-color)
   overflow: hidden
   border-radius: 4px
-  background-color: $light-bg-color
+  background-color: var(--light-bg-color)
 
 .Plugin__bar
   display: flex
-  color: $light-body-color
+  color: var(--light-body-color)
   line-height: 1
   align-items: flex-end
   flex-wrap: wrap
@@ -71,7 +61,7 @@ $alert-color: #ff5e49
   box-shadow: 0 -1px 2px rgba(black, 0.1) inset
   display: block
   text-decoration: none
-  color: $light-body-color
+  color: var(--light-body-color)
   white-space: nowrap
   flex: 1
 
@@ -88,7 +78,7 @@ $alert-color: #ff5e49
 
 .Plugin__bar__option.is-active
   box-shadow: none
-  color: $base-body-color
+  color: var(--base-body-color)
   background-color: white
 
 .Plugin__content
@@ -97,24 +87,10 @@ $alert-color: #ff5e49
 
 .Plugin__seo, .Plugin__readability
   padding: 15px
-  border-bottom: 1px solid $border-color
+  border-bottom: 1px solid var(--border-color)
 
   &:last-child
     border-bottom-width: 0
-
-.DatoCMS-button svg
-  width: 1em
-  height: 1em
-
-  &:first-child
-    margin-right: 0.5em
-
-  &:last-child
-    margin-left: 0.5em
-
-  &:first-child:last-child
-    margin-left: 0
-    margin-right: 0
 
 .Plugin__form
   display: grid
@@ -126,7 +102,7 @@ $alert-color: #ff5e49
     margin-bottom: 0
 
   label
-    color: $light-body-color
+    color: var(--light-body-color)
     margin-bottom: 4px
 
 .Plugin__line-with-decoration
@@ -145,11 +121,11 @@ $alert-color: #ff5e49
 
 .Plugin__result-group-title
   all: unset
-  color: $light-body-color
+  color: var(--light-body-color)
   cursor: pointer
 
   svg
-    stroke: $light-body-color
+    stroke: var(--light-body-color)
 
 .Plugin__result-item
   display: flex
@@ -175,14 +151,14 @@ $alert-color: #ff5e49
   position: relative
 
 .Plugin__marks
-  border: 1px solid $border-color
+  border: 1px solid var(--border-color)
   border-radius: 4px
   margin-top: 15px
   margin-bottom: 25px
 
 .Plugin__mark
   padding: 15px
-  border-bottom: 1px solid $border-color
+  border-bottom: 1px solid var(--border-color)
 
   &:last-child
     border-bottom-width: 0
@@ -201,4 +177,4 @@ $alert-color: #ff5e49
   all: unset
 
 .Plugin__bar__status-error
-  color: $alert-color
+  color: var(--alert-color)

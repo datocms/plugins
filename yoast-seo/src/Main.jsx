@@ -136,64 +136,68 @@ const Main = ({
     setPage,
   ]);
 
-  useEffect(async () => {
-    if (!isWorkerReady || !page) {
-      return;
-    }
+  useDebouncedEffect(
+    async () => {
+      if (!isWorkerReady || !page) {
+        return;
+      }
 
-    setAnalysisInProgress(true);
+      setAnalysisInProgress(true);
 
-    try {
-      const paper = new Paper(page.content, {
-        locale: page.locale,
-        keyword,
-        synonyms,
-        title: page.title,
-        titleWidth: helpers.measureTextWidth(page.title),
-        url: page.slug,
-        description: page.description,
-      });
+      try {
+        const paper = new Paper(page.content, {
+          locale: page.locale,
+          keyword,
+          synonyms,
+          title: page.title,
+          titleWidth: helpers.measureTextWidth(page.title),
+          url: page.slug,
+          description: page.description,
+        });
 
-      const { result: analyzeResult } = await worker.analyze(paper);
+        const { result: analyzeResult } = await worker.analyze(paper);
 
-      const relatedResults =
-        relatedKeywords.length > 0
-          ? (
-              await worker.analyzeRelatedKeywords(
-                paper,
-                relatedKeywords.reduce(
-                  (acc, related, i) => ({
-                    ...acc,
-                    [i]: related,
-                  }),
-                  {},
-                ),
-              )
-            ).result
-          : null;
+        const relatedResults =
+          relatedKeywords.length > 0
+            ? (
+                await worker.analyzeRelatedKeywords(
+                  paper,
+                  relatedKeywords.reduce(
+                    (acc, related, i) => ({
+                      ...acc,
+                      [i]: related,
+                    }),
+                    {},
+                  ),
+                )
+              ).result
+            : null;
 
-      const deserializedResult = {
-        readability: removeResultsWithNoText(analyzeResult.readability),
-        seo: removeResultsWithNoText(analyzeResult.seo['']),
-        relatedKeywordsSeo: relatedKeywords.map((related, i) =>
-          removeResultsWithNoText(relatedResults.seo[i]),
-        ),
-      };
+        const deserializedResult = {
+          readability: removeResultsWithNoText(analyzeResult.readability),
+          seo: removeResultsWithNoText(analyzeResult.seo['']),
+          relatedKeywordsSeo: relatedKeywords.map((related, i) =>
+            removeResultsWithNoText(relatedResults.seo[i]),
+          ),
+        };
 
-      setAnalysis(deserializedResult);
-    } catch (e) {
-      console.error(`Yoast SEO plugin error!`, e);
-      throw e;
-    } finally {
-      setAnalysisInProgress(false);
-    }
-  }, [
-    isWorkerReady,
-    JSON.stringify(page),
-    keyword,
-    synonyms,
-    JSON.stringify(relatedKeywords),
-  ]);
+        setAnalysis(deserializedResult);
+      } catch (e) {
+        console.error(`Yoast SEO plugin error!`, e);
+        throw e;
+      } finally {
+        setAnalysisInProgress(false);
+      }
+    },
+    [
+      isWorkerReady,
+      JSON.stringify(page),
+      keyword,
+      synonyms,
+      JSON.stringify(relatedKeywords),
+    ],
+    500,
+  );
 
   const [activeTab, setActiveTab] = useState(tabs[0].key);
 
@@ -276,16 +280,19 @@ const Main = ({
             disabled={pageFetchingInProgress}
           >
             <svg
+              aria-hidden="true"
+              focusable="false"
+              role="img"
               xmlns="http://www.w3.org/2000/svg"
-              viewBox="0 0 64 64"
-              strokeWidth="6"
-              stroke="currentColor"
-              fill="none"
+              viewBox="0 0 512 512"
+              style={{ width: '1em', height: '1em' }}
             >
-              <path d="M53.72 36.61a21.91 21.91 0 11-3.35-16.51M51.72 7.85l-.87 12.93-12.93-.88M53.72 36.61a21.91 21.91 0 11-3.35-16.51" />
-              <path d="M51.72 7.85l-.87 12.93-12.93-.88" />
+              <path
+                fill="currentColor"
+                d="M440.65 12.57l4 82.77A247.16 247.16 0 0 0 255.83 8C134.73 8 33.91 94.92 12.29 209.82A12 12 0 0 0 24.09 224h49.05a12 12 0 0 0 11.67-9.26 175.91 175.91 0 0 1 317-56.94l-101.46-4.86a12 12 0 0 0-12.57 12v47.41a12 12 0 0 0 12 12H500a12 12 0 0 0 12-12V12a12 12 0 0 0-12-12h-47.37a12 12 0 0 0-11.98 12.57zM255.83 432a175.61 175.61 0 0 1-146-77.8l101.8 4.87a12 12 0 0 0 12.57-12v-47.4a12 12 0 0 0-12-12H12a12 12 0 0 0-12 12V500a12 12 0 0 0 12 12h47.35a12 12 0 0 0 12-12.6l-4.15-82.57A247.17 247.17 0 0 0 255.83 504c121.11 0 221.93-86.92 243.55-201.82a12 12 0 0 0-11.8-14.18h-49.05a12 12 0 0 0-11.67 9.26A175.86 175.86 0 0 1 255.83 432z"
+              ></path>
             </svg>
-            Reload content
+            <span>Reload content</span>
           </button>
         </div>
       </div>

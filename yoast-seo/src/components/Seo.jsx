@@ -36,7 +36,7 @@ export default function Seo({
       {analysis && keyword && <Results assessment={analysis} key={keyword} />}
       {onRemove && (
         <button
-          className="DatoCMS-button DatoCMS-button--alert"
+          className="DatoCMS-button DatoCMS-button--alert DatoCMS-button--tiny"
           onClick={onRemove}
         >
           Remove related keyphrase
