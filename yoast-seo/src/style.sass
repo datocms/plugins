@@ -1,83 +1,180 @@
-.container
-  background-color: white
-  padding: 24px
+=reset-button
+  background: none
+  color: inherit
+  border: none
+  padding: 0
+  font: inherit
+  cursor: pointer
+  outline: inherit
+  width: 100%
+  box-sizing: border-box
+  text-align: inherit
+  text-decoration: none
 
-.container
-  background-color: white
-  padding: 24px
-.yoast-seo__root
-  border-bottom: 1px solid #f0f0f0
-  padding-bottom: 20px
-.yoast-seo__tabs-header
+.Plugin
+  border: 1px solid var(--border-color)
+  overflow: hidden
+  border-radius: 4px
+  background-color: var(--light-bg-color)
+
+.Plugin__bar
   display: flex
-  padding-bottom: 2px
-  border-top: 1px solid #f0f0f0
-  border-bottom: 1px solid #f0f0f0
-  button
-    border-bottom-left-radius: 0
-    border-bottom-right-radius: 0
-    color: #5b5b5b
-    &.active
-      box-shadow: 0 3px 0
-      color: var(--primary-color)
-    & > svg
-      position: relative
-      top: 2px
-      width: 8px
-      height: 8px
-      margin-right: 4px
-.yoast-seo__tabs-panel
-  margin-top: 16px
-.yoast-seo__form-inline
-  display: flex
+  color: var(--light-body-color)
+  line-height: 1
   align-items: flex-end
-  max-width: 65%
-  .yoast-seo__form-button
-    margin-left: 8px
-  .yoast-seo__form-field
-    flex: 1
-    margin-bottom: 0
-.yoast-seo__form-field
+  flex-wrap: wrap
+  padding-right: 5px
+
+  @media (min-width: 700px)
+    flex-wrap: nowrap
+
+.Plugin__bar__options
   display: flex
-  flex-direction: column
-  margin-bottom: 8px
-  & > input
-    margin-top: 8px
-.yoast-seo__result-item
+  justify-content: center
+  align-items: flex-end
+  flex-wrap: nowrap
+  overflow-x: auto
+  -ms-overflow-style: none
+  scrollbar-width: none
+  width: 100%
+
+  &::-webkit-scrollbar
+    display: none
+
+  @media (min-width: 700px)
+    width: auto
+
+.Plugin__bar__status
+  align-self: center
+  margin-left: 20px
+  margin-top: 5px
+
+.Plugin__bar__option
+  +reset-button
+  margin-top: 5px
+  background-color: white
+  padding: 15px 15px 10px
+  background-color: rgba(white, 0.8)
+  border-radius: 4px 4px 0 0
+  border: 0
+  margin-left: 5px
+  box-shadow: 0 -1px 2px rgba(black, 0.1) inset
+  display: block
+  text-decoration: none
+  color: var(--light-body-color)
+  white-space: nowrap
+  flex: 1
+
+.Plugin__bar__actions
+  text-align: center
+  align-self: center
+  order: -1
+  flex-basis: 100%
+  margin: 5px auto 0
+  @media (min-width: 700px)
+    order: initial
+    flex: 1
+    text-align: right
+
+.Plugin__bar__option.is-active
+  box-shadow: none
+  color: var(--base-body-color)
+  background-color: white
+
+.Plugin__content
+  background-color: white
+  border-radius: 4px
+
+.Plugin__seo, .Plugin__readability
+  padding: 15px
+  border-bottom: 1px solid var(--border-color)
+
+  &:last-child
+    border-bottom-width: 0
+
+.Plugin__form
+  display: grid
+  grid-template-columns: 1fr 1fr
+  grid-gap: 20px
+  margin-bottom: 20px
+
+  &:last-child
+    margin-bottom: 0
+
+  label
+    color: var(--light-body-color)
+    margin-bottom: 4px
+
+.Plugin__line-with-decoration
+  display: flex
+  align-items: flex-start
+
+  & > div:first-child
+    width: 20px
+    flex-shrink: 0
+
+.Plugin__results
+  margin-bottom: 20px
+
+.Plugin__result-group
+  margin-top: 20px
+
+.Plugin__result-group-title
+  all: unset
+  color: var(--light-body-color)
+  cursor: pointer
+
+  svg
+    stroke: var(--light-body-color)
+
+.Plugin__result-item
   display: flex
   margin-top: 8px
-  & > p
-    margin-left: 8px
-.yoast-seo__result-group
-  margin-top: 16px
-  & > .yoast-seo__result-group-title
-    all: unset
-    color: #000000
-    text-decoration: underline
-    cursor: pointer
-.yoast-seo__arrow
+  font-size: 0.95em
+
+.Plugin__arrow
   margin-right: 4px
   width: 12px
   height: 12px
   stroke: #333333
   stroke-width: 6px
   fill: none
-.yoast-seo__arrow-up
+
+.Plugin__arrow-up
   transform: rotate(180deg)
-.yoast-seo__results
-  margin-top: 12px
-.yoast-seo__button-wrapper
+
+.Plugin__button-wrapper
   border-top: 1px solid #f0f0f0
   padding-top: 12px
   margin-top: 12px
-.yoast-seo__readability-tab
+.Plugin__readability-tab
   position: relative
-.yoast-seo__readability-refresh-btn
-  position: absolute
-  top: -4px
-  right: 0
-  & > svg
-    width: 14px
-    height: 14px
-    margin-right: 4px
-    vertical-align: middle
+
+.Plugin__marks
+  border: 1px solid var(--border-color)
+  border-radius: 4px
+  margin-top: 15px
+  margin-bottom: 25px
+
+.Plugin__mark
+  padding: 15px
+  border-bottom: 1px solid var(--border-color)
+
+  &:last-child
+    border-bottom-width: 0
+
+  *
+    font-weight: normal
+    font-style: normal
+
+  &.with-highlights
+    .yoast-text-mark
+      background: #fff9b7
+      padding: 0.1em 0.2em
+      border-radius: 3px
+
+.Plugin__result-item__details
+  all: unset
+
+.Plugin__bar__status-error
+  color: var(--alert-color)

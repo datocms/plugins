@@ -2,7 +2,7 @@
   "name": "datocms-plugin-yoast-seo",
   "homepage": "https://github.com/datocms/plugins/tree/master/yoast-seo#readme",
   "version": "0.0.1",
-  "description": "Run yoast.js analysis on your frontend everytime you make a change to the content of a record",
+  "description": "Run Yoast SEO analysis on your frontend everytime you make a change to the content of a record",
   "main": "index.js",
   "scripts": {
     "start": "NODE_ENV=development webpack-dev-server --port 5000",
@@ -17,18 +17,20 @@
     "field-editor",
     "json-field",
     "seo",
+    "analysis",
+    "keywords",
     "yoast"
   ],
   "files": [
     "dist",
     "docs"
   ],
-  "author": "Stefano Verna <s.verna@datocms.com>",
+  "author": "DatoCMS <support@datocms.com>",
   "license": "ISC",
   "datoCmsPlugin": {
-    "title": "Yoast SEO",
+    "title": "Yoast SEO Analysis",
     "previewImage": "docs/preview.gif",
-    "coverImage": "docs/cover.png",
+    "coverImage": "docs/yoast-seo.mp4",
     "entryPoint": "dist/index.html",
     "pluginType": "field_editor",
     "fieldTypes": [
@@ -38,10 +40,10 @@
       "global": [
         {
           "id": "htmlGeneratorUrl",
-          "label": "HTML Generator Endpoint",
+          "label": "Frontend metadata endpoint URL",
           "type": "string",
           "required": true,
-          "hint": "The URL to call to get the frontend HTML given a record's ID. It can include a query string. The itemId parameter will be added dynamically"
+          "hint": "The CORS-enabled endpoint that returns the required frontend metadata. It can include a query string. The itemId, itemTypeId, itemTypeApiKey, environmentId and locale parameters will be added dynamically."
         }
       ],
       "instance": []
@@ -71,12 +73,12 @@
     "yo": "^3.1.1"
   },
   "dependencies": {
-    "classname": "^0.0.0",
     "html-webpack-tags-plugin": "^2.0.17",
     "prop-types": "^15.7.2",
     "react": "^17.0.2",
     "react-dom": "^17.0.2",
     "regenerator-runtime": "^0.13.9",
+    "use-debounced-effect-hook": "^1.1.62",
     "yoastseo": "^1.91.0"
   }
 }
