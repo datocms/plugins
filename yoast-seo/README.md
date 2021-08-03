@@ -12,7 +12,9 @@ Once the plugin is installed, please configure your Frontend metadata endpoint U
 
 ![Demo](https://raw.githubusercontent.com/datocms/plugins/master/yoast-seo/docs/settings.png)
 
-This plugin is meant to be used on JSON fields, and will store the following information:
+This plugin is meant to be used on JSON fields, so please [assign it to some JSON fields](https://www.datocms.com/docs/building-plugins/install#assigning-a-plugin-to-a-field) in in your project.
+
+The plugin will store information inside the JSON field using this structure:
 
 ```json
 {
@@ -26,8 +28,6 @@ This plugin is meant to be used on JSON fields, and will store the following inf
   ]
 }
 ```
-
-So the next step is to [assign this plugin](https://www.datocms.com/docs/plugins/install/#assigning-a-plugin-to-a-field) to a JSON field in one of your models.
 
 ## The Frontend metadata endpoint
 
