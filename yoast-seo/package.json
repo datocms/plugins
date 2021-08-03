@@ -29,8 +29,8 @@
   "license": "ISC",
   "datoCmsPlugin": {
     "title": "Yoast SEO Analysis",
-    "previewImage": "docs/preview.gif",
-    "coverImage": "docs/yoast-seo.mp4",
+    "previewImage": "docs/yoast-seo.mp4",
+    "coverImage": "docs/cover.png",
     "entryPoint": "dist/index.html",
     "pluginType": "field_editor",
     "fieldTypes": [
