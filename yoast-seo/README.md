@@ -62,11 +62,11 @@ To better serve the content writer, the information returned should be related t
 
 ### An example implementation for Next.js apps
 
-This is a complete implementation of such endpoint for Next.js websites that are already configured to fetch draft content from DatoCMS when [Preview Mode](https://nextjs.org/docs/advanced-features/preview-mode) is activated.
+Writing a Frontend Metadata endpoint on a Next.js website is extremely simple, if the website is already configured to fetch draft content from DatoCMS when [Preview Mode](https://nextjs.org/docs/advanced-features/preview-mode) is activated. To learn how to accomplish that, please read [the DatoCMS documentation](https://www.datocms.com/docs/next-js/setting-up-next-js-preview-mode), or take a look at this [example website](https://github.com/datocms/nextjs-demo/tree/master).
 
-To learn how to setup Preview Mode, please read [the documentation](https://www.datocms.com/docs/next-js/setting-up-next-js-preview-mode), or take a look at this [example website](https://github.com/datocms/nextjs-demo/tree/master).
+In Next.js such endpoint must be implemented as an [API Route](https://nextjs.org/docs/api-routes/introduction).
 
-The endpoint is implemented as a Next.js [API Route](https://nextjs.org/docs/api-routes/introduction). It uses the `res.setPreviewData` method to obtain the proper cookies for Preview Mode, which are immediately used to fetch the webpage related to the DatoCMS record. Once the complete HTML of the page is fetched, it uses the `jsdom` package to pick the interesting parts of the page and build the response for the plugin:
+The following API Route uses the `res.setPreviewData` method to obtain the proper cookies for Preview Mode, which are immediately used to fetch the webpage related to the DatoCMS record. Once the complete HTML of the page is "scraped", it uses the `jsdom` package to pick the interesting parts of the page and build the proper response for the plugin:
 
 ```js
 // Put this code in the following path of your Next.js website:
