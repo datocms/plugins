@@ -345,7 +345,7 @@ const Main = ({
                   ]);
                 }}
               >
-                Add related keyphrase
+                Add related keyword
               </button>
             )}
           </>

@@ -1,43 +1,183 @@
 # Yoast SEO DatoCMS plugin
 
-Run yoast.js analysis on your frontend everytime you make a change to the content of a record
+This plugin uses [Yoast](https://github.com/Yoast/javascript/tree/master/packages/yoastseo) to generate in real-time interesting SEO and readability metrics about a specific record you're editing in DatoCMS.
 
-## Configuration
+It shows potential SEO problems, improvements, considerations, and content that is already optimized or "Good".
 
-[Describe/screenshot any global/instance parameters this plugin requires]
+🚨 **Important:** This is not a drag & drop plugin! It requires some work on your frontend website in order to function. Read more in the following sections!
+## Installation and configuration
 
-## Development
+Once the plugin is installed, please configure your Frontend metadata endpoint URL in the plugin settings:
 
-Install all the project dependencies with:
+![Demo](https://raw.githubusercontent.com/datocms/plugins/master/yoast-seo/docs/settings.png)
+
+This plugin is meant to be used on JSON fields, and will store the following information:
+
+```json
+{
+  "keyword": "food shows",
+  "synonyms": "cooking shows, culinary demonstrations",
+  "relatedKeywords": [
+    {
+      "keyword": "food",
+      "keyword": ""
+    }
+  ]
+}
+```
+
+So the next step is to [assign this plugin](https://www.datocms.com/docs/plugins/install/#assigning-a-plugin-to-a-field) to a JSON field in one of your models.
+
+## The Frontend metadata endpoint
+
+In order to work, this plugin needs a CORS-ready endpoint API that is able to return, given the ID of a DatoCMS record, a number of information related to its canonical page (that is, the page on the frontend that presents the content stored inside the record).
+
+The plugin performs a GET request to the URL specified in the settings, passing down the following query string parameters:
 
 ```
-yarn install
+<ENDPOINT_URL>?itemId=89274&itemTypeId=544589&itemTypeApiKey=blog_post&environmentId=main&locale=en
 ```
 
-Add this plugin in development mode to one of your DatoCMS project with:
+* `itemId` the ID of the DatoCMS record
+* `itemTypeId` the ID of the record's model
+* `itemTypeApiKey` the API key of the record's model
+* `environmentId` the environment ID of the record
+* `locale` the preferred locale
 
+The endpoint is expected to return a 200 response, with the following JSON structure:
+
+```json
+{
+  "locale": "en",
+  "slug": "hello-world",
+  "permalink": "https://www.yourwebsite.com/blog/hello-world",
+  "title": "This is the SEO title of the page",
+  "description": "This is the SEO description of the page",
+  "content": "<p>This is the main content of the page/article</p>...",
+}
 ```
-yarn addToProject
-```
 
-Start the local development server with:
+To better serve the content writer, the information returned should be related to the latest version of the record's content — which could be unpublished.
 
-```
-yarn start
-```
+### An example implementation for Next.js apps
 
-The plugin will be served from [http://localhost:5000/](http://localhost:5000/). Insert this URL as the plugin [Entry point URL](https://www.datocms.com/docs/plugins/creating-a-new-plugin/).
+This is a complete implementation that works on Next.js websites that are already configured to fetch draft content from DatoCMS when [Preview Mode](https://nextjs.org/docs/advanced-features/preview-mode) is activated.
 
-## Publishing
+To learn how to setup Preview Mode, please read [the documentation](https://www.datocms.com/docs/next-js/setting-up-next-js-preview-mode), or take a look at this [example website](https://github.com/datocms/nextjs-demo/tree/master).
 
-Before publishing this plugin, make sure:
+```js
+// Put this code in the following path of your Next.js website:
+// /pages/api/get-frontend-metadata.js
 
-* you've properly described any configuration parameters in this README file;
-* you've properly compiled this project's `package.json` following the [official rules](https://www.datocms.com/docs/plugins/publishing/);
-* you've added a cover image (`cover.png`) and a preview GIF (`preview.gif`) into the `docs` folder.
+import { SiteClient } from 'datocms-client';
+import got from 'got';
+import { JSDOM } from 'jsdom';
 
-When everything's ready, just run:
+const client = new SiteClient(process.env.DATOCMS_READONLY_TOKEN);
 
-```
-yarn publish
+// this "routing" function knows how to convert a DatoCMS record
+// into its slug and canonical URL within the website
+const findSlugAndPermalink = async ({ item, itemTypeApiKey }) => {
+  switch (itemTypeApiKey) {
+    case 'blog_post':
+      return [item.slug, `/blog/${item.slug}`];
+    case 'landing_page':
+      return [item.slug, `/cms/${item.slug}`];
+    case 'changelog_entry':
+      return [item.slug, `/product-updates/${item.slug}`];
+    default:
+      return null;
+  }
+};
+
+const handler = async (req, res) => {
+  // setup relaxed CORS permissions
+  res.setHeader('Content-Type', 'text/html');
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET');
+
+  // the following parameters are required and represent the
+  // the record we want to get the preview for
+  const missingParams = [
+    'itemId',
+    'itemTypeId',
+    'itemTypeApiKey',
+    'locale',
+    'environmentId',
+  ].filter((paramName) => !req.query[paramName]);
+
+  if (missingParams.length > 0) {
+    res.status(422).json({
+      message: `Missing required parameters! ${missingParams.join(', ')}`,
+    });
+    return;
+  }
+
+  const { itemId, itemTypeId, itemTypeApiKey } = req.query;
+
+  // retrieve the complete record from the DatoCMS API
+  const item = await client.items.find(itemId);
+
+  // this "routing" function knows which record is linked to which URL
+  // in the website
+  const [slug, permalink] = await findSlugAndPermalink({
+    item,
+    itemTypeId,
+    itemTypeApiKey,
+  });
+
+  if (!permalink) {
+    res.status(422).json({
+      message: `Don\'t know which route corresponds to record #${itemId}!`,
+    });
+    return;
+  }
+
+  // let's start a Next.js Preview Mode, and get the authentication cookies
+  // (fill in the preview data object with whatever you need)
+  res.setPreviewData({});
+
+  const cookie = res
+    .getHeader('Set-Cookie')
+    .map((cookie) => cookie.split(';')[0])
+    .join(';');
+
+  res.clearPreviewData();
+
+  // get the HTML of the page associated with the record (in Preview Mode)
+  const { body } = await got(
+    new URL(permalink, process.env.BASE_URL).toString(),
+    {
+      headers: { cookie },
+    },
+  );
+
+  const { document } = new JSDOM(body).window;
+
+  // here we're taking the content of the div with id="main-content"
+  // as the page main-content, but this heavily depends on your layout!
+  const content = document.getElementById('main-content').innerHTML;
+
+  // get the page locale by looking at the "lang" attribute on the <html> tag
+  const locale = document.querySelector('html').getAttribute('lang') || 'en';
+
+  // get the <title> of the page
+  const title = document.querySelector('title').textContent;
+
+  // get the description meta of the page
+  const description = document
+    .querySelector('meta[name="description"]')
+    .getAttribute('content');
+
+  res.status(200).json({
+    locale,
+    slug,
+    permalink,
+    title,
+    description,
+    content,
+  });
+};
+
+export default handler;
 ```

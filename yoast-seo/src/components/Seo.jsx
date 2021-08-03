@@ -13,9 +13,9 @@ export default function Seo({
     <div className="Plugin__seo">
       <div className="Plugin__form">
         <div className="Plugin__form__field">
-          <label htmlFor="keyphrase">Focus keyphrase</label>
+          <label htmlFor="keyword">Focus keyword</label>
           <input
-            name="keyphrase"
+            name="keyword"
             placeholder="Enter focus keyword"
             type="text"
             value={keyword}
@@ -39,7 +39,7 @@ export default function Seo({
           className="DatoCMS-button DatoCMS-button--alert DatoCMS-button--tiny"
           onClick={onRemove}
         >
-          Remove related keyphrase
+          Remove this keyword
         </button>
       )}
     </div>
