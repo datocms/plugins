@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-yoast-seo",
   "homepage": "https://github.com/datocms/plugins/tree/master/yoast-seo#readme",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Run Yoast SEO analysis on your frontend everytime you make a change to the content of a record",
   "main": "index.js",
   "scripts": {
