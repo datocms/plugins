@@ -9,7 +9,7 @@ import './style.sass';
 
 const worker = new AnalysisWorkerWrapper(
   createWorker(
-    process.env.NODE_ENV === 'production' ? './dist/worker.js' : '/worker.js',
+    process.env.NODE_ENV === 'production' ? './worker.js' : '/worker.js',
   ),
 );
 
