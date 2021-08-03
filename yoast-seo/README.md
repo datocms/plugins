@@ -5,6 +5,7 @@ This plugin uses [Yoast](https://github.com/Yoast/javascript/tree/master/package
 It shows potential SEO problems, improvements, considerations, and content that is already optimized or "Good".
 
 🚨 **Important:** This is not a drag & drop plugin! It requires some work on your frontend website in order to function. Read more in the following sections!
+
 ## Installation and configuration
 
 Once the plugin is installed, please configure your Frontend metadata endpoint URL in the plugin settings:
@@ -38,11 +39,11 @@ The plugin performs a GET request to the URL specified in the settings, passing 
 <ENDPOINT_URL>?itemId=89274&itemTypeId=544589&itemTypeApiKey=blog_post&environmentId=main&locale=en
 ```
 
-* `itemId` the ID of the DatoCMS record
-* `itemTypeId` the ID of the record's model
-* `itemTypeApiKey` the API key of the record's model
-* `environmentId` the environment ID of the record
-* `locale` the preferred locale
+- `itemId` the ID of the DatoCMS record
+- `itemTypeId` the ID of the record's model
+- `itemTypeApiKey` the API key of the record's model
+- `environmentId` the environment ID of the record
+- `locale` the preferred locale
 
 The endpoint is expected to return a 200 response, with the following JSON structure:
 
@@ -53,7 +54,7 @@ The endpoint is expected to return a 200 response, with the following JSON struc
   "permalink": "https://www.yourwebsite.com/blog/hello-world",
   "title": "This is the SEO title of the page",
   "description": "This is the SEO description of the page",
-  "content": "<p>This is the main content of the page/article</p>...",
+  "content": "<p>This is the main content of the page/article</p>..."
 }
 ```
 
@@ -61,9 +62,11 @@ To better serve the content writer, the information returned should be related t
 
 ### An example implementation for Next.js apps
 
-This is a complete implementation that works on Next.js websites that are already configured to fetch draft content from DatoCMS when [Preview Mode](https://nextjs.org/docs/advanced-features/preview-mode) is activated.
+This is a complete implementation of such endpoint for Next.js websites that are already configured to fetch draft content from DatoCMS when [Preview Mode](https://nextjs.org/docs/advanced-features/preview-mode) is activated.
 
 To learn how to setup Preview Mode, please read [the documentation](https://www.datocms.com/docs/next-js/setting-up-next-js-preview-mode), or take a look at this [example website](https://github.com/datocms/nextjs-demo/tree/master).
+
+The endpoint is implemented as a Next.js [API Route](https://nextjs.org/docs/api-routes/introduction). It uses the `res.setPreviewData` method to obtain the proper cookies for Preview Mode, which are immediately used to fetch the webpage related to the DatoCMS record. Once the complete HTML of the page is fetched, it uses the `jsdom` package to pick the interesting parts of the page and build the response for the plugin:
 
 ```js
 // Put this code in the following path of your Next.js website:
@@ -181,3 +184,5 @@ const handler = async (req, res) => {
 
 export default handler;
 ```
+
+If you have built alternative endpoint implementations for other frameworks/SSGs, please open up a PR to this plugin and share it with the community!
