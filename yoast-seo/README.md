@@ -42,7 +42,7 @@ The plugin performs a GET request to the URL specified in the settings, passing 
 - `itemId` the ID of the DatoCMS record
 - `itemTypeId` the ID of the record's model
 - `itemTypeApiKey` the API key of the record's model
-- `environmentId` the environment ID of the record
+- `sandboxEnvironmentId` the environment ID (only passed if the record belongs to a sandbox environment)
 - `locale` the preferred locale
 
 The endpoint is expected to return a 200 response, with the following JSON structure:
@@ -76,8 +76,6 @@ import { SiteClient } from 'datocms-client';
 import got from 'got';
 import { JSDOM } from 'jsdom';
 
-const client = new SiteClient(process.env.DATOCMS_READONLY_TOKEN);
-
 // this "routing" function knows how to convert a DatoCMS record
 // into its slug and canonical URL within the website
 const findSlugAndPermalink = async ({ item, itemTypeApiKey }) => {
@@ -106,7 +104,6 @@ const handler = async (req, res) => {
     'itemTypeId',
     'itemTypeApiKey',
     'locale',
-    'environmentId',
   ].filter((paramName) => !req.query[paramName]);
 
   if (missingParams.length > 0) {
@@ -116,9 +113,10 @@ const handler = async (req, res) => {
     return;
   }
 
-  const { itemId, itemTypeId, itemTypeApiKey } = req.query;
+  const { itemId, itemTypeId, itemTypeApiKey, sandboxEnvironmentId, locale } = req.query;
 
   // retrieve the complete record from the DatoCMS API
+  const client = new SiteClient(process.env.DATOCMS_READONLY_TOKEN, { environment: sandboxEnvironmentId });
   const item = await client.items.find(itemId);
 
   // this "routing" function knows which record is linked to which URL
@@ -127,6 +125,7 @@ const handler = async (req, res) => {
     item,
     itemTypeId,
     itemTypeApiKey,
+    locale,
   });
 
   if (!permalink) {

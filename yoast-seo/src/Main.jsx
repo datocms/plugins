@@ -67,11 +67,19 @@ const Main = ({
       setPageError(null);
       setPageFetchingInProgress(true);
 
+      if (!htmlGeneratorUrl) {
+        throw new Error(`Missing "Frontend metadata endpoint URL" option!`);
+      }
+
       const url = new URL(htmlGeneratorUrl);
       url.searchParams.set('itemId', itemId);
       url.searchParams.set('itemTypeId', itemType.id);
       url.searchParams.set('itemTypeApiKey', itemType.attributes.api_key);
-      url.searchParams.set('environmentId', environmentId);
+
+      if (environmentId) {
+        url.searchParams.set('sandboxEnvironmentId', environmentId);
+      }
+
       url.searchParams.set('locale', locale);
 
       const request = await fetch(url.toString());

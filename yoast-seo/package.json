@@ -43,7 +43,7 @@
           "label": "Frontend metadata endpoint URL",
           "type": "string",
           "required": true,
-          "hint": "A CORS-enabled endpoint that returns the required frontend metadata. It can include a query string. The itemId, itemTypeId, itemTypeApiKey, environmentId and locale parameters will be added dynamically."
+          "hint": "A CORS-enabled endpoint that returns the required frontend metadata. It can include a query string. The itemId, itemTypeId, itemTypeApiKey, sandboxEnvironmentId and locale parameters will be added dynamically."
         }
       ],
       "instance": []
