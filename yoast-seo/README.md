@@ -23,7 +23,7 @@ The plugin will store information inside the JSON field using this structure:
   "relatedKeywords": [
     {
       "keyword": "food",
-      "keyword": ""
+      "synonyms": ""
     }
   ]
 }
