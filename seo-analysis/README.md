@@ -87,7 +87,7 @@ const findSlugAndPermalink = async ({ item, itemTypeApiKey }) => {
     case 'changelog_entry':
       return [item.slug, `/product-updates/${item.slug}`];
     default:
-      return null;
+      return [null, null];
   }
 };
 
@@ -130,7 +130,7 @@ const handler = async (req, res) => {
 
   if (!permalink) {
     res.status(422).json({
-      message: `Don\'t know which route corresponds to record #${itemId}!`,
+      message: `Don\'t know which route corresponds to record #${itemId} (model: ${itemTypeApiKey})!`,
     });
     return;
   }
@@ -158,7 +158,16 @@ const handler = async (req, res) => {
 
   // here we're taking the content of the div with id="main-content"
   // as the page main-content, but this heavily depends on your layout!
-  const content = document.getElementById('main-content').innerHTML;
+  const contentEl = document.getElementById('main-content');
+
+  if (!permalink) {
+    res.status(422).json({
+      message: `Cannot find div with ID=main-content in page #${permalink}!`,
+    });
+    return;
+  }
+
+  const content = contentEl.innerHTML;
 
   // get the page locale by looking at the "lang" attribute on the <html> tag
   const locale = document.querySelector('html').getAttribute('lang') || 'en';
