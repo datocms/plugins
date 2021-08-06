@@ -10,7 +10,7 @@ It shows potential SEO problems, improvements, considerations, and content that 
 
 Once the plugin is installed, please configure your Frontend metadata endpoint URL in the plugin settings:
 
-![Demo](https://raw.githubusercontent.com/datocms/plugins/master/seo-analysis/docs/settings.png)
+![Demo](https://raw.githubusercontent.com/datocms/plugins/master/seo-readability-analysis/docs/settings.png)
 
 This plugin is meant to be used on JSON fields, so please [assign it to some JSON fields](https://www.datocms.com/docs/building-plugins/install#assigning-a-plugin-to-a-field) in in your project.
 
