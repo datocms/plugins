@@ -58,7 +58,7 @@ const Main = ({
       });
       setIsWorkerReady(true);
     } catch (e) {
-      console.log(`[Yoast Plugin Error]: ${e}`);
+      console.log(`[SEO/Readability Analysis Plugin Error]: ${e}`);
     }
   }, []);
 
@@ -111,7 +111,7 @@ const Main = ({
       setPage(response);
     } catch (e) {
       setPageError(e);
-      console.error(`Yoast SEO plugin error!`, e);
+      console.error(`SEO/Readability Analysis plugin error!`, e);
     } finally {
       setPageFetchingInProgress(false);
     }
@@ -191,7 +191,7 @@ const Main = ({
 
         setAnalysis(deserializedResult);
       } catch (e) {
-        console.error(`Yoast SEO plugin error!`, e);
+        console.error(`SEO/Readability Analysis plugin error!`, e);
         throw e;
       } finally {
         setAnalysisInProgress(false);
@@ -267,7 +267,7 @@ const Main = ({
         </div>
         <div className="Plugin__bar__status">
           {!isWorkerReady ? (
-            <p>Loading Yoast...</p>
+            <p>Loading web worker...</p>
           ) : pageFetchingInProgress ? (
             <p>Extracting content...</p>
           ) : analysisInProgress ? (
