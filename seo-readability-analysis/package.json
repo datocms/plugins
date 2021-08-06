@@ -26,7 +26,7 @@
     "docs"
   ],
   "author": "DatoCMS <support@datocms.com>",
-  "license": "ISC",
+  "license": "GPLv3",
   "datoCmsPlugin": {
     "title": "SEO/Readability Analysis",
     "previewImage": "docs/video.mp4",
