@@ -29,7 +29,7 @@
   "license": "ISC",
   "datoCmsPlugin": {
     "title": "SEO/Readability Analysis",
-    "previewImage": "docs/seo-readability-analysis.mp4",
+    "previewImage": "docs/video.mp4",
     "coverImage": "docs/cover.png",
     "entryPoint": "dist/index.html",
     "pluginType": "field_editor",
