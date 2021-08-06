@@ -1,6 +1,6 @@
-# Yoast SEO DatoCMS plugin
+# SEO/Readability Analysis DatoCMS plugin
 
-This plugin uses [Yoast](https://github.com/Yoast/javascript/tree/master/packages/yoastseo) to generate in real-time interesting SEO and readability metrics about a specific record you're editing in DatoCMS.
+This plugin uses the [YoastSEO.js](https://github.com/Yoast/javascript/tree/master/packages/yoastseo) package to generate in real-time interesting SEO and readability metrics about a specific record you're editing in DatoCMS.
 
 It shows potential SEO problems, improvements, considerations, and content that is already optimized or "Good".
 
