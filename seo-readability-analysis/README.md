@@ -160,7 +160,7 @@ const handler = async (req, res) => {
   // as the page main-content, but this heavily depends on your layout!
   const contentEl = document.getElementById('main-content');
 
-  if (!permalink) {
+  if (!contentEl) {
     res.status(422).json({
       message: `Cannot find div with ID=main-content in page #${permalink}!`,
     });
