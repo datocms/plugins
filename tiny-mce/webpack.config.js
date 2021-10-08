@@ -2,19 +2,22 @@ const HtmlWebpackPlugin = require("html-webpack-plugin");
 const HtmlWebpackTagsPlugin = require("html-webpack-tags-plugin");
 
 const isProduction = process.env.NODE_ENV === "production";
+const path = __dirname + "/dist";
 
 module.exports = {
   entry: __dirname + "/src/index.js",
   mode: process.env.NODE_ENV,
   output: {
-    path: __dirname + "/dist",
+    path,
     filename: "bundle.js",
   },
   devtool: "source-map",
   devServer: {
-    contentBase: "./",
-    disableHostCheck: true,
-    public: "http://localhost:5000",
+    static: {
+      directory: path,
+    },
+    compress: true,
+    port: 5000,
   },
   module: {
     rules: [
