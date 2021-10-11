@@ -23,6 +23,7 @@ import 'tinymce/plugins/link';
 import 'tinymce/plugins/lists';
 import 'tinymce/plugins/paste';
 import 'tinymce/plugins/table';
+import 'tinymce/plugins/autoresize';
 
 import './style.css';
 import imgixThumbUrl from './imgixThumbUrl';
@@ -34,8 +35,9 @@ window.DatoCmsPlugin.init((plugin) => {
   container.classList.add('tiny-mce-container');
   document.body.appendChild(container);
 
-  const listeners = (editor) => {
+  const initialize = (editor) => {
     const handleDatoImages = () => {
+      // Handles inserting Dato image in the HTML editor
       plugin.selectUpload({ multiple: true }).then((files) => {
         files.forEach((file) => {
           const metadata = file.attributes.default_field_metadata[plugin.locale];
@@ -63,7 +65,7 @@ window.DatoCmsPlugin.init((plugin) => {
     });
 
     editor.on('change', () => {
-      // Will set the plugin value on blur
+      // Sets the plugin value on blur
       plugin.setFieldValue(plugin.fieldPath, editor.getContent());
     });
 
@@ -80,6 +82,7 @@ window.DatoCmsPlugin.init((plugin) => {
     });
 
     editor.ui.registry.addContextToolbar('imagealignment', {
+      // Shows image replacement options when selecting image
       predicate: (node) => {
         if (node.nodeName.toLowerCase() === 'img') {
           return true;
@@ -95,7 +98,7 @@ window.DatoCmsPlugin.init((plugin) => {
 
   tinymce.init({
     selector: '.tiny-mce-container',
-    plugins: 'image advlist code emoticons link lists table',
+    plugins: 'image advlist code emoticons link lists table autoresize',
     toolbar:
       'undo redo | formatselect | '
       + 'bold italic backcolor | link customimage |'
@@ -103,6 +106,7 @@ window.DatoCmsPlugin.init((plugin) => {
       + 'alignright alignjustify | bullist numlist outdent indent | '
       + 'removeformat | emoticons',
     content_style: 'body { font-family:Helvetica,Arial,sans-serif; font-size:16px }',
-    setup: listeners,
+    setup: initialize,
+    autoresize_bottom_margin: 10,
   });
 });
