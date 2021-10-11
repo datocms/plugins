@@ -14,6 +14,7 @@ import 'tinymce/themes/silver';
 import 'tinymce/skins/ui/oxide/skin.css';
 
 /* Import plugins */
+import 'tinymce/plugins/image';
 import 'tinymce/plugins/advlist';
 import 'tinymce/plugins/code';
 import 'tinymce/plugins/emoticons';
@@ -24,22 +25,65 @@ import 'tinymce/plugins/paste';
 import 'tinymce/plugins/table';
 
 import './style.css';
+import imgixThumbUrl from './imgixThumbUrl';
 
 window.DatoCmsPlugin.init((plugin) => {
   plugin.startAutoResizer();
+
+  console.log(plugin.site.attributes);
 
   const container = document.createElement('div');
   container.classList.add('tiny-mce-container');
   document.body.appendChild(container);
 
+  const listeners = (editor) => {
+    editor.on('init', () => {
+      const initialValue = plugin.getFieldValue(plugin.fieldPath);
+      editor.setContent(initialValue);
+    });
+
+    editor.on('change', () => {
+      // Will set the plugin value on blur
+      plugin.setFieldValue(plugin.fieldPath, editor.getContent());
+    });
+
+    editor.ui.registry.addButton('customimage', {
+      icon: 'image',
+      tooltip: 'Insert image...',
+      onAction: () => {
+        plugin.selectUpload({ multiple: true }).then((files) => {
+          files.forEach((file) => {
+            const metadata = file.attributes.default_field_metadata[plugin.locale];
+
+            let text = '<img ';
+
+            if (metadata.alt) {
+              text += `alt="${metadata.alt || ''}" `;
+            }
+
+            if (metadata.title) {
+              text += `title="${metadata.title || ''}" `;
+            }
+
+            text += `src="${imgixThumbUrl({ imageishThing: file, plugin })}" />`;
+
+            editor.insertContent(text);
+          });
+        });
+      },
+    });
+  };
+
   tinymce.init({
     selector: '.tiny-mce-container',
-    plugins: 'advlist code emoticons link lists table',
+    plugins: 'image advlist code emoticons link lists table',
     toolbar:
       'undo redo | formatselect | '
-      + 'bold italic backcolor | alignleft aligncenter '
+      + 'bold italic backcolor | link customimage |'
+      + 'alignleft aligncenter '
       + 'alignright alignjustify | bullist numlist outdent indent | '
-      + 'link removeformat | emoticons',
+      + 'removeformat | emoticons',
     content_style: 'body { font-family:Helvetica,Arial,sans-serif; font-size:16px }',
+    setup: listeners,
   });
 });
