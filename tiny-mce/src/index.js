@@ -30,13 +30,33 @@ import imgixThumbUrl from './imgixThumbUrl';
 window.DatoCmsPlugin.init((plugin) => {
   plugin.startAutoResizer();
 
-  console.log(plugin.site.attributes);
-
   const container = document.createElement('div');
   container.classList.add('tiny-mce-container');
   document.body.appendChild(container);
 
   const listeners = (editor) => {
+    const handleDatoImages = () => {
+      plugin.selectUpload({ multiple: true }).then((files) => {
+        files.forEach((file) => {
+          const metadata = file.attributes.default_field_metadata[plugin.locale];
+
+          let text = '<img ';
+
+          if (metadata.alt) {
+            text += `alt="${metadata.alt || ''}" `;
+          }
+
+          if (metadata.title) {
+            text += `title="${metadata.title || ''}" `;
+          }
+
+          text += `src="${imgixThumbUrl({ imageishThing: file, plugin })}" />`;
+
+          editor.insertContent(text);
+        });
+      });
+    };
+
     editor.on('init', () => {
       const initialValue = plugin.getFieldValue(plugin.fieldPath);
       editor.setContent(initialValue);
@@ -50,27 +70,26 @@ window.DatoCmsPlugin.init((plugin) => {
     editor.ui.registry.addButton('customimage', {
       icon: 'image',
       tooltip: 'Insert image...',
-      onAction: () => {
-        plugin.selectUpload({ multiple: true }).then((files) => {
-          files.forEach((file) => {
-            const metadata = file.attributes.default_field_metadata[plugin.locale];
+      onAction: handleDatoImages,
+    });
 
-            let text = '<img ';
+    editor.ui.registry.addButton('replaceimage', {
+      icon: 'browse',
+      tooltip: 'Replace image',
+      onAction: handleDatoImages,
+    });
 
-            if (metadata.alt) {
-              text += `alt="${metadata.alt || ''}" `;
-            }
-
-            if (metadata.title) {
-              text += `title="${metadata.title || ''}" `;
-            }
-
-            text += `src="${imgixThumbUrl({ imageishThing: file, plugin })}" />`;
-
-            editor.insertContent(text);
-          });
-        });
+    editor.ui.registry.addContextToolbar('imagealignment', {
+      predicate: (node) => {
+        if (node.nodeName.toLowerCase() === 'img') {
+          return true;
+        }
+        return false;
       },
+
+      items: 'replaceimage image',
+      position: 'node',
+      scope: 'node',
     });
   };
 
