@@ -1,17 +1,24 @@
-import React, { useState } from 'react';
-import PropTypes from 'prop-types';
+import { useState } from 'react';
 import ScoreIcon from './ScoreIcon';
+import { AnalysisResult } from '../types';
+import { Button } from 'datocms-react-ui';
 
-const ResultItem = ({ item }) => {
+export type Group = {
+  scoreKey: string;
+  title: string;
+  items: AnalysisResult[];
+};
+
+const ResultItem = ({ item }: { item: AnalysisResult }) => {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
     <li className="Plugin__result-item">
       <div className="Plugin__line-with-decoration">
-        <div>
+        <div className="Plugin__line-with-decoration__decoration">
           <ScoreIcon score={item.score} />
         </div>
-        <div>
+        <div className="Plugin__line-with-decoration__body">
           <p dangerouslySetInnerHTML={{ __html: item.text }} />
           {isOpen && (
             <div className="Plugin__marks">
@@ -36,25 +43,37 @@ const ResultItem = ({ item }) => {
             </div>
           )}
         </div>
-        {item.marks?.length > 0 && (
-          <button
-            className="DatoCMS-button"
+        {item.marks && item.marks.length > 0 && (
+          <Button
+            type="button"
+            buttonSize="xxs"
             onClick={() => setIsOpen((open) => !open)}
-          >
-            <svg viewBox="0 0 576 512" style={{ width: '1em', height: '1em' }}>
-              <path
-                fill="currentColor"
-                d="M572.52 241.4C518.29 135.59 410.93 64 288 64S57.68 135.64 3.48 241.41a32.35 32.35 0 0 0 0 29.19C57.71 376.41 165.07 448 288 448s230.32-71.64 284.52-177.41a32.35 32.35 0 0 0 0-29.19zM288 400a144 144 0 1 1 144-144 143.93 143.93 0 0 1-144 144zm0-240a95.31 95.31 0 0 0-25.31 3.79 47.85 47.85 0 0 1-66.9 66.9A95.78 95.78 0 1 0 288 160z"
-              />
-            </svg>
-          </button>
+            className="Plugin__line-with-decoration__action"
+            leftIcon={
+              <svg
+                viewBox="0 0 576 512"
+                style={{ width: '1em', height: '1em' }}
+              >
+                <path
+                  fill="currentColor"
+                  d="M572.52 241.4C518.29 135.59 410.93 64 288 64S57.68 135.64 3.48 241.41a32.35 32.35 0 0 0 0 29.19C57.71 376.41 165.07 448 288 448s230.32-71.64 284.52-177.41a32.35 32.35 0 0 0 0-29.19zM288 400a144 144 0 1 1 144-144 143.93 143.93 0 0 1-144 144zm0-240a95.31 95.31 0 0 0-25.31 3.79 47.85 47.85 0 0 1-66.9 66.9A95.78 95.78 0 1 0 288 160z"
+                />
+              </svg>
+            }
+          />
         )}
       </div>
     </li>
   );
 };
-ScoreIcon;
-export default function ResultGroup({ rating, result, startOpen }) {
+
+type PropTypes = {
+  rating: string;
+  result: Group;
+  startOpen: boolean;
+};
+
+export default function ResultGroup({ rating, result, startOpen }: PropTypes) {
   const [isOpen, setIsOpen] = useState(startOpen);
 
   function togglePanel() {
@@ -63,7 +82,7 @@ export default function ResultGroup({ rating, result, startOpen }) {
 
   return (
     <div className="Plugin__result-group">
-      <button
+      <Button
         type="button"
         className="Plugin__result-group-title"
         onClick={togglePanel}
@@ -86,7 +105,7 @@ export default function ResultGroup({ rating, result, startOpen }) {
             {result.items.length})
           </div>
         </div>
-      </button>
+      </Button>
       {isOpen ? (
         <ul>
           {result.items.map((item) => (
@@ -97,11 +116,3 @@ export default function ResultGroup({ rating, result, startOpen }) {
     </div>
   );
 }
-
-ResultGroup.propTypes = {
-  result: PropTypes.shape({
-    title: PropTypes.string.isRequired,
-    items: PropTypes.arrayOf(PropTypes.object),
-    rating: PropTypes.string.isRequired,
-  }),
-};

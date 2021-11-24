@@ -1,21 +1,19 @@
-import React from 'react';
-import PropTypes from 'prop-types';
-import { interpreters } from 'yoastseo';
+import { AnalysisAssessment, AnalysisResult } from '../types';
+import * as interpreters from "yoastseo/src/interpreters";
+import ResultGroup, { Group } from './ResultGroup';
 
-import ResultGroup from './ResultGroup';
-
-const scoreKeyToTitle = {
+const scoreKeyToTitle: Partial<Record<string, string>> = {
   feedback: 'Feedback',
   bad: 'Problems',
   ok: 'Improvements',
   good: 'Good results',
 };
 
-function groupResults(results) {
-  let groupedResults = {};
+function groupResults(results: AnalysisResult[]) {
+  let groupedResults: Record<string, Group> = {};
 
   results.forEach((result) => {
-    const scoreKey = interpreters.scoreToRating(result.score);
+    const scoreKey: string = interpreters.scoreToRating(result.score);
 
     if (groupedResults[scoreKey]) {
       groupedResults[scoreKey].items = [
@@ -37,7 +35,7 @@ function groupResults(results) {
   return groupedResults;
 }
 
-export default function Results({ assessment }) {
+export default function Results({ assessment }: { assessment: AnalysisAssessment | undefined }) {
   if (!assessment) {
     return null;
   }
@@ -49,12 +47,13 @@ export default function Results({ assessment }) {
       {['bad', 'ok', 'good', 'feedback']
         .filter((key) => groupedResults[key])
         .map((key) => (
-          <ResultGroup key={key} rating={key} result={groupedResults[key]} startOpen={key !== 'good'}/>
+          <ResultGroup
+            key={key}
+            rating={key}
+            result={groupedResults[key]}
+            startOpen={key !== 'good'}
+          />
         ))}
     </div>
   );
 }
-
-Results.propTypes = {
-  assessment: PropTypes.object,
-};

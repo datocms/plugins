@@ -1,15 +1,18 @@
-import React from 'react';
-import PropTypes from 'prop-types';
-import { interpreters } from 'yoastseo';
+import * as interpreters from "yoastseo/src/interpreters";
 
 // https://github.com/Yoast/javascript/blob/develop/packages/style-guide/src/colors.json
-const scoreRatingColorMapping = {
+const scoreRatingColorMapping: Partial<Record<string, string>> = {
   feedback: '#888',
   bad: '#dc3232',
   ok: '#ee7c1b',
   good: '#7ad03a',
 };
-export default function ScoreIcon({ rating, score }) {
+
+type PropTypes = {
+  score?: number | null;
+  rating?: string | null;
+}
+export default function ScoreIcon({ rating, score }: PropTypes) {
   const scoreRating = rating || interpreters.scoreToRating(score);
   const scoreColor =
     scoreRatingColorMapping[scoreRating] || scoreRatingColorMapping.feedback;
@@ -28,8 +31,3 @@ export default function ScoreIcon({ rating, score }) {
     </>
   );
 }
-
-ScoreIcon.propTypes = {
-  score: PropTypes.number,
-  rating: PropTypes.string,
-};

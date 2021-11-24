@@ -1,47 +1,61 @@
-import React from 'react';
+import { AnalysisAssessment } from '../types';
 import Results from './Results';
+import { TextField, Button } from 'datocms-react-ui';
 
-export default function Seo({
+type PropTypes = {
+  analysis?: AnalysisAssessment;
+  keyword: string;
+  synonyms: string;
+  setKeyword: (val: string) => void;
+  setSynonyms: (val: string) => void;
+  onRemove?: () => void;
+};
+
+function Seo({
   analysis,
   keyword,
   synonyms,
   setKeyword,
   setSynonyms,
   onRemove,
-}) {
+}: PropTypes) {
   return (
     <div className="Plugin__seo">
       <div className="Plugin__form">
         <div className="Plugin__form__field">
-          <label htmlFor="keyword">Focus keyword</label>
-          <input
+          <TextField
+            id="keyword"
             name="keyword"
+            label="Focus keyword"
             placeholder="Enter focus keyword"
-            type="text"
             value={keyword}
-            onChange={(e) => setKeyword(e.target.value)}
+            onChange={setKeyword}
           />
         </div>
         <div className="Plugin__form__field">
-          <label htmlFor="synonyms">Synonyms (separate with commas)</label>
-          <input
+          <TextField
+            id="synonyms"
             name="synonyms"
+            label="Synonyms (separate with commas)"
             placeholder="Enter keyword synonyms"
-            type="text"
             value={synonyms}
-            onChange={(e) => setSynonyms(e.target.value)}
+            onChange={setSynonyms}
           />
         </div>
       </div>
       {analysis && keyword && <Results assessment={analysis} key={keyword} />}
       {onRemove && (
-        <button
-          className="DatoCMS-button DatoCMS-button--alert DatoCMS-button--tiny"
+        <Button
+          type="button"
+          buttonType="negative"
+          buttonSize="xs"
           onClick={onRemove}
         >
           Remove this keyword
-        </button>
+        </Button>
       )}
     </div>
   );
 }
+
+export default Seo;
