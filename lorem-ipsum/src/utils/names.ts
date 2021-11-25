@@ -1,4 +1,4 @@
-export default [
+const names = [
   'Aaliyah',
   'Abigail',
   'Adalyn',
@@ -100,3 +100,5 @@ export default [
   'Wyatt',
   'Zoe',
 ];
+
+export default names;
