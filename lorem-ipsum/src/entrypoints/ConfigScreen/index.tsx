@@ -7,6 +7,7 @@ import {
   Form,
   FieldGroup,
   Section,
+  ContextInspector,
 } from 'datocms-react-ui';
 import { Form as FormHandler, Field } from 'react-final-form';
 import arrayMutators from 'final-form-arrays';
@@ -163,6 +164,7 @@ export default function ConfigScreen({ ctx }: Props) {
           </Form>
         )}
       </FormHandler>
+      <ContextInspector ctx={ctx} />
     </Canvas>
   );
 }
