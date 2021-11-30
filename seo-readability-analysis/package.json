@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-seo-readability-analysis",
   "homepage": "https://github.com/datocms/plugins/tree/master/seo-readability-analysis#readme",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Run SEO/Readability analysis using YoastSEO.js on your frontend everytime you make a change to the content of a record",
   "author": "DatoCMS <support@datocms.com>",
   "license": "GPLv3",
