@@ -5,8 +5,8 @@
   "keywords": ["datocms-plugin"],
   "datoCmsPlugin": {
     "title": "Lorem ipsum generator",
-    "previewImage": "docs/demo.gif",
-    "coverImage": "docs/cover.jpg",
+    "previewImage": "docs/demo.mp4",
+    "coverImage": "docs/cover.png",
     "entryPoint": "build/index.html"
   },
   "private": false,
