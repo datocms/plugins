@@ -1,10 +1,24 @@
-import { connect } from 'datocms-plugin-sdk';
-import { render } from './utils/render';
-import ConfigScreen from './entrypoints/ConfigScreen';
-import 'datocms-react-ui/styles.css';
+import { connect } from "datocms-plugin-sdk";
+import { render } from "./utils/render";
+import ConfigScreen from "./entrypoints/ConfigScreen";
+import { PluginAttributes } from "datocms-plugin-sdk/dist/types/SiteApiSchema";
+import "datocms-react-ui/styles.css";
 
 connect({
   renderConfigScreen(ctx) {
     return render(<ConfigScreen ctx={ctx} />);
+  },
+  manualFieldExtensions() {
+    return [
+      {
+        id: "yandexTranslate",
+        name: "Yandex Translate",
+        type: "addon",
+        fieldTypes: ["text", "string"] as NonNullable<
+          PluginAttributes["field_types"]
+        >,
+        configurable: true,
+      },
+    ];
   },
 });

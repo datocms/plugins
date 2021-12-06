@@ -12,14 +12,14 @@
     "eject": "react-scripts eject",
     "prepublishOnly": "npm run build"
   },
-    "datoCmsPlugin": {
+  "datoCmsPlugin": {
     "title": "Yandex Translate",
     "previewImage": "docs/demo.gif",
     "coverImage": "docs/cover.jpg",
     "entryPoint": "dist/index.html"
   },
   "private": true,
-    "keywords": [
+  "keywords": [
     "datocms",
     "datocms-plugin",
     "field-addon",
@@ -31,8 +31,10 @@
     "@types/react-dom": "^17.0.11",
     "datocms-plugin-sdk": "^0.3.10",
     "datocms-react-ui": "^0.3.17",
+    "final-form": "^4.20.4",
     "react": "^17.0.2",
     "react-dom": "^17.0.2",
+    "react-final-form": "^6.5.7",
     "react-scripts": "4.0.3",
     "typescript": "^4.5.2"
   },
