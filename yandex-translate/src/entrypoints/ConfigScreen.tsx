@@ -14,19 +14,11 @@ type Props = {
   ctx: RenderConfigScreenCtx;
 };
 
-function normalizeParameters(params: ConfigParameters) {
-  return {
-    yandexApiKey:
-      "trnsl.1.1.20181022T142246Z.8d9b2c12de17725e.d2d85afd4157926134bfca612318925e84418efc",
-    ...params,
-  };
-}
-
 export default function ConfigScreen({ ctx }: Props) {
   return (
     <Canvas ctx={ctx}>
       <FormHandler<ConfigParameters>
-        initialValues={normalizeParameters(ctx.plugin.attributes.parameters)}
+        initialValues={ctx.plugin.attributes.parameters}
         validate={(values: ConfigParameters) => {
           const errors: Record<string, string> = {};
 
