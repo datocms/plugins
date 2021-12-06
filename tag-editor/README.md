@@ -1,3 +1,3 @@
-# DatoCMS Tag editor plugin
+# [Your plugin name]
 
-A plugin that transforms single-line and JSON fields into tag editors.
+[Describe what your plugin does, and how users you can configure it! Screenshots are always welcome!]
