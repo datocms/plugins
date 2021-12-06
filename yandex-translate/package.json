@@ -18,7 +18,6 @@
     "coverImage": "docs/cover.jpg",
     "entryPoint": "dist/index.html"
   },
-  "private": true,
   "keywords": [
     "datocms",
     "datocms-plugin",

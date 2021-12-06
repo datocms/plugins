@@ -1,3 +1,9 @@
-# [Your plugin name]
+# DatoCMS Yandex Translate plugin
 
-[Describe what your plugin does, and how users you can configure it! Screenshots are always welcome!]
+Makes it easier to automatically translate your content into secondary languages.
+
+## Configuration
+
+Please specify your Yandex Translate API key on the plugin global settings:
+
+![Demo](https://raw.githubusercontent.com/datocms/plugins/master/yandex-translate/docs/settings.png)
