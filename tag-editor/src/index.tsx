@@ -18,10 +18,7 @@ connect({
 
     await Promise.all(
       fields.map(async (field) => {
-        if (
-          field.attributes.appearance.editor === ctx.plugin.id &&
-          field.attributes.appearance.field_extension === "tagEditor"
-        ) {
+        if (field.attributes.appearance.editor === ctx.plugin.id) {
           await ctx.updateFieldAppearance(field.id, [
             {
               operation: "updateEditor",
