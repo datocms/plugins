@@ -1,0 +1,39 @@
+.item {
+  all: inherit;
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--accent-color);
+  color: white;
+  display: flex;
+  font-size: var(--font-size-s);
+  padding: var(--spacing-m);
+  line-height: 1;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.item:hover {
+  background: rgba(var(--accent-color-rgb-components), 0.8);
+}
+
+.left {
+  flex: 1;
+}
+
+.date {
+  text-align: center;
+  margin-left: 10px;
+  flex-shrink: 0;
+}
+
+.title {
+  font-weight: 500;
+}
+
+.type {
+  color: white;
+  font-size: var(--font-size-xxs);
+  margin-bottom: 5px;
+  text-transform: uppercase;
+}

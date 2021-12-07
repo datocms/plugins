@@ -1,0 +1,55 @@
+{
+  "name": "my-first-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "dependencies": {
+    "@fortawesome/fontawesome-svg-core": "^1.2.36",
+    "@fortawesome/free-solid-svg-icons": "^5.15.4",
+    "@fortawesome/react-fontawesome": "^0.1.16",
+    "@types/node": "^16.11.11",
+    "@types/react": "^17.0.37",
+    "@types/react-dom": "^17.0.11",
+    "classnames": "^2.3.1",
+    "date-fns": "^2.27.0",
+    "datocms-client": "^3.5.9",
+    "datocms-plugin-sdk": "^0.3.10",
+    "datocms-react-ui": "^0.3.18",
+    "react": "^17.0.2",
+    "react-dom": "^17.0.2",
+    "react-scripts": "4.0.3",
+    "typescript": "^4.5.2"
+  },
+  "scripts": {
+    "start": "cross-env BROWSER='none' PUBLIC_URL='/' react-scripts start",
+    "build": "cross-env PUBLIC_URL='.' react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject",
+    "prepublishOnly": "npm run build"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3"
+  },
+  "datoCmsPlugin": {
+    "title": "",
+    "previewImage": "",
+    "coverImage": "",
+    "entryPoint": "build/index.html"
+  }
+}
