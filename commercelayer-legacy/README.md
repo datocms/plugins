@@ -14,6 +14,6 @@ Get the application's Base endpoint and Client ID:
 
 ## Configuration (DatoCMS)
 
-Please specify your Commerce Layer parameters in the plugin settings:
+Please specify your Commerce Layer parameters on the plugin global settings:
 
 ![Demo](docs/settings.png)
