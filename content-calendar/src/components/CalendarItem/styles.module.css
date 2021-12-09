@@ -3,37 +3,36 @@
   display: block;
   width: 100%;
   box-sizing: border-box;
-  background: var(--accent-color);
-  color: white;
-  display: flex;
+  background: rgba(var(--color-rgb-components), 0.1);
   font-size: var(--font-size-s);
-  padding: var(--spacing-m);
+  padding: var(--spacing-s);
   line-height: 1;
   border-radius: 4px;
   cursor: pointer;
+  position: relative;
+  margin-bottom: 1px;
 }
 
 .item:hover {
-  background: rgba(var(--accent-color-rgb-components), 0.8);
+  background: rgba(var(--color-rgb-components), 0.2);
 }
 
-.left {
-  flex: 1;
-}
-
-.date {
-  text-align: center;
-  margin-left: 10px;
-  flex-shrink: 0;
+.hour {
+  position: absolute;
+  top: var(--spacing-s);
+  right: var(--spacing-s);
+  width: 40px;
+  text-align: right;
 }
 
 .title {
-  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-right: 50px;
 }
 
 .type {
-  color: white;
-  font-size: var(--font-size-xxs);
-  margin-bottom: 5px;
-  text-transform: uppercase;
+  color: var(--light-body-color);
+  padding-left: 0.3em;
 }

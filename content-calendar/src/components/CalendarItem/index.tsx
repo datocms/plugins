@@ -1,19 +1,26 @@
 import { format } from 'date-fns';
 import { Item, ModelBlock } from 'datocms-plugin-sdk';
-import { useEffect } from 'react';
-import { useDatoContext } from '../../utils/useDatoContext';
+import { useCtx } from 'datocms-react-ui';
+import { CSSProperties, useContext, useEffect, useMemo } from 'react';
+import { HoverItemContext } from '../../context/HoverItemContext';
+import { Criteria } from '../../types';
+import { colorForModel } from '../../utils/colorForModel';
 import s from './styles.module.css';
 
 type PropTypes = {
   item: Item;
+  criteria: Criteria;
 };
 
-export default function CalendarItem({ item }: PropTypes) {
-  const ctx = useDatoContext();
+export default function CalendarItem({ item, criteria }: PropTypes) {
+  const ctx = useCtx();
+  const { setModelId } = useContext(HoverItemContext);
   const itemType = ctx.itemTypes[
     item.relationships.item_type.data.id
   ] as ModelBlock;
   const titleFieldId = itemType.relationships.title_field.data?.id;
+
+  const color = useMemo(() => colorForModel(itemType.id), [itemType.id]);
 
   useEffect(() => {
     if (!titleFieldId) {
@@ -46,17 +53,20 @@ export default function CalendarItem({ item }: PropTypes) {
           `/editor/item_types/${itemType.id}/items/${item.id}/edit`,
         )
       }
+      style={{ '--color-rgb-components': color.join(', ') } as CSSProperties}
+      onMouseOver={() => {
+        setModelId(itemType.id);
+      }}
+      onMouseOut={() => {
+        setModelId(null);
+      }}
     >
-      <div className={s['left']}>
-        <div className={s['type']}>{itemType.attributes.name}</div>
-        <div className={s['title']}>{title}</div>
+      <div className={s['title']}>
+        {title}
+        <span className={s['type']}>{itemType.attributes.name}</span>
       </div>
-
       <div className={s['hour']}>
-        {format(
-          new Date(item.meta.publication_scheduled_at as string),
-          'HH:mm',
-        )}
+        {format(new Date(item.meta[criteria] as string), 'HH:mm')}
       </div>
     </button>
   );

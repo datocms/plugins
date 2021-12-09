@@ -1,68 +1,27 @@
 import { Item } from 'datocms-plugin-sdk';
-import React, { useEffect, useMemo, useState } from 'react';
-import { generateMatrix } from '../../utils/calendar';
-import { addMonths, format, isSameDay, isSameMonth, isToday } from 'date-fns';
+import React from 'react';
+import { format, isSameDay, isSameMonth, isToday } from 'date-fns';
 import classNames from 'classnames';
-import { SiteClient } from 'datocms-client';
 import s from './styles.module.css';
-import { useDatoContext } from '../../utils/useDatoContext';
 import CalendarItem from '../../components/CalendarItem';
 import { Spinner } from 'datocms-react-ui';
+import { Criteria } from '../../types';
 
 type CalendarGridProps = {
   month: Date;
+  criteria: Criteria;
+  items: Item[];
+  matrix: Date[][];
+  isLoading: boolean;
 };
 
-export default function CalendarGrid({ month }: CalendarGridProps) {
-  const ctx = useDatoContext();
-  const [items, setItems] = useState<Item[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const weekStartsOn = 1;
-
-  const client = useMemo(
-    () =>
-      new SiteClient(ctx.currentUserAccessToken, {
-        environment: ctx.environment,
-      }),
-    [ctx.currentUserAccessToken, ctx.environment],
-  );
-
-  useEffect(() => {
-    async function run() {
-      setIsLoading(true);
-      setItems([]);
-
-      const { data: items } = await client.items.all(
-        {
-          version: 'current',
-          filter: {
-            fields: {
-              _publication_scheduled_at: {
-                gt: month.toISOString(),
-                lt: addMonths(month, 1).toISOString(),
-              },
-            },
-          },
-        },
-        { deserializeResponse: false },
-      );
-
-      setItems(items);
-      setIsLoading(false);
-    }
-    run();
-  }, [month, setIsLoading, setItems, client]);
-
-  const matrix = useMemo(
-    () =>
-      generateMatrix({
-        year: month.getFullYear(),
-        month: month.getMonth(),
-        weekStartsOn,
-      }),
-    [month, weekStartsOn],
-  );
-
+export default function CalendarGrid({
+  month,
+  criteria,
+  items,
+  matrix,
+  isLoading,
+}: CalendarGridProps) {
   return (
     <>
       <div
@@ -94,14 +53,16 @@ export default function CalendarGrid({ month }: CalendarGridProps) {
                 </div>
                 {items
                   .filter((item) =>
-                    isSameDay(
-                      new Date(item.meta.publication_scheduled_at as string),
-                      day,
+                    isSameDay(new Date(item.meta[criteria] as string), day),
+                  )
+                  .sort((a, b) =>
+                    (a.meta[criteria] as string).localeCompare(
+                      b.meta[criteria] as string,
                     ),
                   )
                   .map((item) => (
                     <div key={item.id}>
-                      <CalendarItem item={item} />
+                      <CalendarItem item={item} criteria={criteria} />
                     </div>
                   ))}
               </div>

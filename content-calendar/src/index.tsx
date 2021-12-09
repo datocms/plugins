@@ -9,11 +9,10 @@ connect({
       {
         label: 'Calendar',
         icon: 'calendar',
-        placement: ['after', 'content'],
         pointsTo: {
           pageId: 'calendar',
-        }
-      }
+        },
+      },
     ];
   },
   renderPage(pageId, ctx) {

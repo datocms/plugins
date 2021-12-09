@@ -19,3 +19,15 @@
   flex: 1;
   position: relative;
 }
+
+.filter {
+  all: inherit;
+  margin-right: var(--spacing-l);
+  cursor: pointer;
+}
+
+.filter svg {
+  display: inline-block;
+  vertical-align: middle;
+  fill: var(--light-body-color);
+}
