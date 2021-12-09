@@ -1,3 +1,3 @@
-# [Your plugin name]
+# Content Calendar
 
-[Describe what your plugin does, and how users you can configure it! Screenshots are always welcome!]
+Adds a tab to your DatoCMS project to explore your records inside a calendar.
