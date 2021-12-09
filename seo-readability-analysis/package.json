@@ -1,16 +1,14 @@
 {
   "name": "datocms-plugin-seo-readability-analysis",
   "homepage": "https://github.com/datocms/plugins/tree/master/seo-readability-analysis#readme",
-  "version": "0.1.5",
+  "version": "0.1.9",
   "description": "Run SEO/Readability analysis using YoastSEO.js on your frontend everytime you make a change to the content of a record",
-  "main": "index.js",
-  "scripts": {
-    "start": "NODE_ENV=development webpack-dev-server --port 5000",
-    "dist": "NODE_ENV=production webpack --progress",
-    "addToProject": "yo datocms-plugin:add-to-project",
-    "prepublishOnly": "rimraf lib dist && mkdir dist && npm run dist",
-    "test": "echo 1"
-  },
+  "author": "DatoCMS <support@datocms.com>",
+  "license": "GPLv3",
+  "files": [
+    "docs",
+    "build"
+  ],
   "keywords": [
     "datocms",
     "datocms-plugin",
@@ -21,64 +19,57 @@
     "keywords",
     "readability"
   ],
-  "files": [
-    "dist",
-    "docs"
-  ],
-  "author": "DatoCMS <support@datocms.com>",
-  "license": "GPLv3",
+  "private": false,
   "datoCmsPlugin": {
     "title": "SEO/Readability Analysis",
     "previewImage": "docs/video.mp4",
     "coverImage": "docs/cover.png",
-    "entryPoint": "dist/index.html",
-    "pluginType": "field_editor",
-    "fieldTypes": [
-      "json"
-    ],
-    "parameters": {
-      "global": [
-        {
-          "id": "htmlGeneratorUrl",
-          "label": "Frontend metadata endpoint URL",
-          "type": "string",
-          "required": true,
-          "hint": "A CORS-enabled endpoint that returns the required frontend metadata. It can include a query string. The itemId, itemTypeId, itemTypeApiKey, sandboxEnvironmentId and locale parameters will be added dynamically."
-        }
-      ],
-      "instance": []
-    }
-  },
-  "devDependencies": {
-    "@babel/cli": "^7.0.0-beta.54",
-    "@babel/core": "^7.0.0-beta.54",
-    "@babel/plugin-proposal-class-properties": "^7.1.0",
-    "@babel/plugin-proposal-decorators": "^7.1.2",
-    "@babel/preset-env": "^7.0.0-beta.54",
-    "@babel/preset-react": "^7.0.0",
-    "@babel/register": "^7.0.0-beta.54",
-    "babel-loader": "^8.0.0-beta",
-    "css-loader": "^1.0.0",
-    "generator-datocms-plugin": "^1.0.24",
-    "html-webpack-inline-source-plugin": "^0.0.10",
-    "html-webpack-plugin": "^3.2.0",
-    "mini-css-extract-plugin": "^0.4.3",
-    "node-sass": "^4.9.3",
-    "sass-loader": "^7.1.0",
-    "serve": "^10.0.2",
-    "style-loader": "^0.23.0",
-    "webpack": "^4.16.1",
-    "webpack-cli": "^3.1.0",
-    "webpack-dev-server": "^3.1.10",
-    "yo": "^4.3.0"
+    "entryPoint": "build/index.html"
   },
   "dependencies": {
-    "html-webpack-tags-plugin": "^2.0.17",
-    "prop-types": "^15.7.2",
+    "@types/lodash-es": "^4.17.5",
+    "@types/node": "^16.11.10",
+    "@types/react": "^17.0.36",
+    "@types/react-dom": "^17.0.11",
+    "datocms-plugin-sdk": "^0.3.10",
+    "datocms-react-ui": "^0.3.11",
+    "lodash-es": "^4.17.21",
     "react": "^17.0.2",
     "react-dom": "^17.0.2",
-    "regenerator-runtime": "^0.13.9",
-    "use-debounced-effect-hook": "^1.1.62",
+    "react-final-form": "^6.5.7",
+    "react-scripts": "4.0.3",
+    "typescript": "^4.5.2",
+    "use-debouncy": "^4.2.1",
     "yoastseo": "^1.91.0"
+  },
+  "scripts": {
+    "start": "npm run build-worker && BROWSER='none' PUBLIC_URL='/' react-scripts start",
+    "build-worker": "webpack bundle ./workerSrc/index.js --mode production --target web -o public",
+    "build": "npm run build-worker && PUBLIC_URL='.' react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject",
+    "prepublishOnly": "npm run build"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "devDependencies": {
+    "node-sass": "^4.14.1",
+    "webpack": "^4.44.2",
+    "webpack-cli": "^4.9.1"
   }
 }

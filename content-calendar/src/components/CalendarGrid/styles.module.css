@@ -1,0 +1,55 @@
+.calendarGrid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+}
+
+.calendarWeekDay {
+  padding: var(--spacing-m);
+  border-bottom: 1px solid var(--border-color);
+  border-right: 1px solid var(--border-color);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+}
+
+.calendarDayCell {
+  padding: var(--spacing-s);
+  border-bottom: 1px solid var(--border-color);
+  border-right: 1px solid var(--border-color);
+  position: relative;
+  overflow: auto;
+}
+
+.calendarDayCell--inAdjacentMonth {
+  background: var(--lighter-bg-color);
+}
+
+.calendarDayCellHeader {
+  font-size: var(--font-size-s);
+  color: var(--light-body-color);
+  text-align: right;
+  margin-bottom: 5px;
+}
+
+.calendarDayCellHeaderDay {
+  height: 30px;
+  width: 30px;
+  border-radius: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.calendarDayCellHeaderDay span {
+  position: relative;
+  top: 1px;
+}
+
+.calendarDayCell--isToday .calendarDayCellHeaderDay {
+  background: var(--primary-color);
+  color: white;
+}
+

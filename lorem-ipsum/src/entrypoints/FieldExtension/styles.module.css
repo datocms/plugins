@@ -1,0 +1,11 @@
+.link {
+  all: inherit;
+  color: var(--accent-color);
+  text-decoration: underline;
+  padding: 0;
+  cursor: pointer;
+}
+
+.link:hover {
+  text-decoration: none;
+}

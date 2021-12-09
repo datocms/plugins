@@ -1,4 +1,4 @@
-# SEO/Readability Analysis DatoCMS plugin
+# SEO/readability Analysis DatoCMS plugin
 
 This plugin uses the [YoastSEO.js](https://github.com/Yoast/javascript/tree/master/packages/yoastseo) package to generate in real-time interesting SEO and readability metrics about a specific record you're editing in DatoCMS.
 
@@ -10,9 +10,9 @@ It shows potential SEO problems, improvements, considerations, and content that 
 
 Once the plugin is installed, please configure your Frontend metadata endpoint URL in the plugin settings:
 
-![Demo](https://raw.githubusercontent.com/datocms/plugins/master/seo-readability-analysis/docs/settings.png)
+![Demo](https://raw.githubusercontent.com/datocms/plugins/master/datocms-plugin-seo-readability-analysis/docs/settings.png)
 
-This plugin is meant to be used on JSON fields, so please [assign it to some JSON fields](https://www.datocms.com/docs/building-plugins/install#assigning-a-plugin-to-a-field) in in your project.
+This plugin is meant to be used on JSON fields, so please assign it to some JSON fields in in your project.
 
 The plugin will store information inside the JSON field using this structure:
 
