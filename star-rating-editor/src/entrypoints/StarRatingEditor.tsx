@@ -1,7 +1,7 @@
 import { RenderFieldExtensionCtx } from "datocms-plugin-sdk";
 import { Canvas } from "datocms-react-ui";
 import ReactStars from "react-rating-stars-component";
-import get from "lodash/get";
+import get from "lodash-es/get";
 
 type PropTypes = {
   ctx: RenderFieldExtensionCtx;

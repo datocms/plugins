@@ -3,11 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
+    "@types/lodash-es": "^4.17.5",
     "@types/node": "^16.11.12",
     "@types/react": "^17.0.37",
     "@types/react-dom": "^17.0.11",
     "datocms-plugin-sdk": "^0.3.20",
     "datocms-react-ui": "^0.3.21",
+    "lodash-es": "^4.17.21",
     "react": "^17.0.2",
     "react-dom": "^17.0.2",
     "react-rating-stars-component": "^2.2.0",
