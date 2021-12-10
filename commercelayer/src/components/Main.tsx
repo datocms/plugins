@@ -5,7 +5,7 @@ import store from "./store";
 import Value from "./Value";
 import Empty from "./Empty";
 import Client from "./client";
-import { MainStateTypes } from "../types";
+import { MainStateTypes, onSelectParameters } from "../types";
 import { Provider } from "react-redux";
 
 type PropTypes = {
@@ -13,8 +13,8 @@ type PropTypes = {
 };
 
 const stateFromPlugin = ({ ctx }: PropTypes): MainStateTypes => ({
-  clientId: ctx.parameters.clientId as string,
-  baseEndpoint: ctx.parameters.baseEndpoint as string,
+  clientId: ctx.plugin.attributes.parameters.clientId as string,
+  baseEndpoint: ctx.plugin.attributes.parameters.baseEndpoint as string,
   value: get(ctx.formValues, ctx.fieldPath) as string | null,
 });
 
@@ -35,7 +35,7 @@ export default function Main({ ctx }: PropTypes) {
     setClient(newClient);
   }, [ctx]);
 
-  const handleSelect = (product: any) => {
+  const handleSelect = ({ product }: onSelectParameters) => {
     ctx.setFieldValue(ctx.fieldPath, product.attributes.code);
   };
 

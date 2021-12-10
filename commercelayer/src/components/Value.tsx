@@ -1,21 +1,13 @@
-import { RenderFieldExtensionCtx } from "datocms-plugin-sdk";
 // @ts-ignore
 import cn from "classname";
 import { useCallback, useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { State } from "../types";
-
-import Client from "./client";
+import { Button } from "datocms-react-ui";
 import { fetchProductByCode } from "./store";
+import { ValueProps } from "../types";
 
-type Props = {
-  value: string;
-  client: Client | null;
-  onReset: () => void;
-  ctx: RenderFieldExtensionCtx;
-};
-
-export default function Value({ value, client, onReset, ctx }: Props) {
+export default function Value({ value, client, onReset, ctx }: ValueProps) {
   const dispatch = useDispatch();
 
   const { product, status } = useSelector((state: State) => {
@@ -71,7 +63,12 @@ export default function Value({ value, client, onReset, ctx }: Props) {
           </div>
         </div>
       )}
-      <button type="button" className="value__reset" onClick={onReset} />
+      <Button
+        type="button"
+        buttonType="negative"
+        buttonSize="xs"
+        onClick={onReset}
+      />
     </div>
   );
 }

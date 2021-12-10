@@ -1,5 +1,6 @@
 import Client from "./components/client";
 export type FirstInstallationParameters = {};
+import { RenderFieldExtensionCtx } from "datocms-plugin-sdk";
 
 export type ValidParameters = {
   baseEndpoint: string;
@@ -8,9 +9,16 @@ export type ValidParameters = {
 
 export type ConfigParameters = FirstInstallationParameters | ValidParameters;
 
-export type EmptyTypes = {
+export type EmptyProps = {
   client: Client | null;
   onSelect: ({ product }: onSelectParameters) => void;
+};
+
+export type ValueProps = {
+  value: string;
+  client: Client | null;
+  onReset: () => void;
+  ctx: RenderFieldExtensionCtx;
 };
 
 export type onSelectParameters = {
