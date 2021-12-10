@@ -6,7 +6,12 @@
   transition: opacity 0.2s ease-in-out;
   position: relative;
 }
+
 .value__loading {
+  border: 1px solid var(--border-color);
+  text-align: center;
+  padding: 20px;
+  transition: opacity 0.2s ease-in-out;
   opacity: 0.6;
 }
 

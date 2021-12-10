@@ -2,12 +2,12 @@ import { useDispatch, useSelector } from "react-redux";
 import { EmptyProps, State, onSelectParameters, Product } from "../../types";
 import { fetchProductsMatching } from "../store";
 import { useCallback, useEffect, useState } from "react";
-import { Button, TextField } from "datocms-react-ui";
+import { Button, TextInput } from "datocms-react-ui";
 import style from "./styles.module.css";
 
 export default function Empty({ client, onSelect }: EmptyProps) {
   const dispatch = useDispatch();
-  const [sku, setSku] = useState<string | undefined>(undefined);
+  const [sku, setSku] = useState<string>("");
 
   const performSearch = useCallback(
     (query: string) => {
@@ -71,19 +71,21 @@ export default function Empty({ client, onSelect }: EmptyProps) {
       <div className={style.empty__label}>No SKU selected</div>
       <form className={style.empty__search} onSubmit={handleSubmit}>
         <div className={style.empty__search__input}>
-          <TextField
+          <TextInput
             placeholder="Search for SKU or titles... (ie. baseball cap)"
             id="sku"
             name="sku"
-            label=""
             value={sku}
             onChange={setSku}
           />
         </div>
         <Button
-          disabled={status === "loading"}
+          type="submit"
           buttonType="negative"
           buttonSize="s"
+          className={
+            status === "loading" ? style.button__loading : style.button
+          }
         >
           Search
           <span className={style.spinner} />

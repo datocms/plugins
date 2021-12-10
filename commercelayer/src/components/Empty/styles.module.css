@@ -11,7 +11,11 @@
 
 .empty__search {
   display: flex;
-  align-items: stretch;
+  align-items: center;
+}
+
+.empty__search > div {
+  flex: 1;
 }
 
 .empty__search__input {
@@ -43,6 +47,8 @@
 }
 
 .empty__products__loading {
+  margin-top: 20px;
+  transition: opacity 0.2s ease-in-out;
   opacity: 0.6;
 }
 
@@ -87,4 +93,43 @@
   font-size: 13px;
   margin-top: 2px;
   color: #999;
+}
+
+.button {
+  position: relative;
+}
+
+.button__loading {
+  padding-right: 33px;
+}
+
+.button__loading .spinner {
+  opacity: 1;
+}
+.button .spinner {
+  border: 3px solid #fff;
+  border-top-color: transparent;
+  border-left-color: transparent;
+  width: 8px;
+  height: 8px;
+  opacity: 0.8;
+  border-radius: 50%;
+  animation: loadingSpinner 0.7s infinite linear;
+  margin-left: 15px;
+  vertical-align: middle;
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  margin-top: -7px;
+  opacity: 0;
+  transition: opacity 0.2s ease-in-out;
+}
+
+@keyframes loadingSpinner {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
