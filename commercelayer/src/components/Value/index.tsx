@@ -1,11 +1,9 @@
-// @ts-ignore
-import cn from "classname";
 import { useCallback, useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import { State } from "../types";
-import { Button } from "datocms-react-ui";
-import { fetchProductByCode } from "./store";
-import { ValueProps } from "../types";
+import { State } from "../../types";
+import { fetchProductByCode } from "../store";
+import { ValueProps } from "../../types";
+import style from "./styles.module.css";
 
 export default function Value({ value, client, onReset, ctx }: ValueProps) {
   const dispatch = useDispatch();
@@ -34,17 +32,17 @@ export default function Value({ value, client, onReset, ctx }: ValueProps) {
   }, [value, findProduct]);
 
   return (
-    <div className={cn("value", { loading: status === "loading" })}>
+    <div className={status === "loading" ? style.value__loading : style.value}>
       {product && (
-        <div className="value__product">
+        <div className={style.value__product}>
           <div
-            className="value__product__image"
+            className={style.value__product__image}
             style={{
               backgroundImage: `url(${product.attributes.image_url})`,
             }}
           />
-          <div className="value__product__info">
-            <div className="value__product__title">
+          <div className={style.value__product__info}>
+            <div className={style.value__product__title}>
               <a
                 href={`${ctx.parameters.baseEndpoint}/admin/skus/${product.id}`}
                 target="_blank"
@@ -53,22 +51,17 @@ export default function Value({ value, client, onReset, ctx }: ValueProps) {
                 {product.attributes.name}
               </a>
             </div>
-            <div className="value__product__code">
+            <div className={style.value__product__code}>
               SKU &nbsp;
               {product.attributes.code}
             </div>
-            <div className="value__product__description">
+            <div className={style.value__product__description}>
               {product.attributes.description}
             </div>
           </div>
         </div>
       )}
-      <Button
-        type="button"
-        buttonType="negative"
-        buttonSize="xs"
-        onClick={onReset}
-      />
+      <button type="button" onClick={onReset} className={style.value__reset} />
     </div>
   );
 }

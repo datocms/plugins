@@ -1,5 +1,4 @@
 import { useDispatch, useSelector } from "react-redux";
-// @ts-ignore
 import { EmptyProps, State, onSelectParameters, Product } from "../../types";
 import { fetchProductsMatching } from "../store";
 import { useCallback, useEffect, useState } from "react";

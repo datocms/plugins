@@ -29,7 +29,6 @@
   top: 50%;
   left: 12px;
   transform: translateY(-50%);
-  /* background: url("./search.svg") center center; */
   background-size: contain;
 }
 
