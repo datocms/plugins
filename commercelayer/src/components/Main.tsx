@@ -1,12 +1,10 @@
 import { RenderFieldExtensionCtx } from "datocms-plugin-sdk";
 import { useEffect, useState } from "react";
 import get from "lodash-es/get";
-import store from "./store";
 import Value from "./Value";
 import Empty from "./Empty";
 import Client from "./client";
-import { MainStateTypes, onSelectParameters } from "../types";
-import { Provider } from "react-redux";
+import { MainStateTypes, onSelectType } from "../types";
 
 type PropTypes = {
   ctx: RenderFieldExtensionCtx;
@@ -35,21 +33,17 @@ export default function Main({ ctx }: PropTypes) {
     setClient(newClient);
   }, [ctx]);
 
-  const handleSelect = ({ product }: onSelectParameters) => {
-    ctx.setFieldValue(ctx.fieldPath, product.attributes.code);
+  const handleSelect: onSelectType = ({ product }) => {
+    ctx.setFieldValue(ctx.fieldPath, product && product.attributes.code);
   };
 
   const handleReset = () => {
     ctx.setFieldValue(ctx.fieldPath, null);
   };
 
-  return (
-    <Provider store={store as any}>
-      {value ? (
-        <Value client={client} value={value} onReset={handleReset} ctx={ctx} />
-      ) : (
-        <Empty client={client} onSelect={handleSelect} />
-      )}
-    </Provider>
+  return value ? (
+    <Value client={client} value={value} onReset={handleReset} ctx={ctx} />
+  ) : (
+    <Empty ctx={ctx} onSelect={handleSelect} />
   );
 }

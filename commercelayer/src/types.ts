@@ -10,8 +10,8 @@ export type ValidParameters = {
 export type ConfigParameters = FirstInstallationParameters | ValidParameters;
 
 export type EmptyProps = {
-  client: Client | null;
-  onSelect: ({ product }: onSelectParameters) => void;
+  ctx: RenderFieldExtensionCtx;
+  onSelect: onSelectType;
 };
 
 export type ValueProps = {
@@ -21,9 +21,7 @@ export type ValueProps = {
   ctx: RenderFieldExtensionCtx;
 };
 
-export type onSelectParameters = {
-  product: Product;
-};
+export type onSelectType = ({ product }: { product: Product | null }) => void;
 
 export type State = {
   searches: Record<string, any>;
