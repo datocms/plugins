@@ -5,13 +5,13 @@ import style from "./styles.module.css";
 
 export default function Empty({ ctx, onSelect }: EmptyProps) {
   const handleOpenModal = async () => {
-    const { product } = (await ctx.openModal({
+    const result = (await ctx.openModal({
       id: "browseProducts",
       title: "Browse products",
       width: "l",
     })) as { product: Product | null };
 
-    onSelect({ product });
+    onSelect({ product: result && result.product });
   };
 
   return (

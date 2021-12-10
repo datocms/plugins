@@ -3,24 +3,20 @@ import { State, onSelectType, Product } from "../../types";
 import Client from "../client";
 import { RenderModalCtx } from "datocms-plugin-sdk";
 import { fetchProductsMatching } from "../store";
-import { useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Button, TextInput, Canvas } from "datocms-react-ui";
 import style from "./styles.module.css";
 
 export default function BrowseProductsModal({ ctx }: { ctx: RenderModalCtx }) {
   const dispatch = useDispatch();
   const [sku, setSku] = useState<string>("");
-  const [client, setClient] = useState<Client | null>(null);
 
-  useEffect(() => {
-    const baseEndpoint = ctx.plugin.attributes.parameters
-      .baseEndpoint as string;
-    const clientId = ctx.plugin.attributes.parameters.clientId as string;
+  const baseEndpoint = ctx.plugin.attributes.parameters.baseEndpoint as string;
+  const clientId = ctx.plugin.attributes.parameters.clientId as string;
 
-    const newClient = new Client({ clientId, baseEndpoint });
-
-    setClient(newClient);
-  }, [ctx]);
+  const client = useMemo(() => {
+    return new Client({ clientId, baseEndpoint });
+  }, [baseEndpoint, clientId]);
 
   const performSearch = useCallback(
     (query: string) => {
@@ -46,7 +42,9 @@ export default function BrowseProductsModal({ ctx }: { ctx: RenderModalCtx }) {
     performSearch(query);
   }, [performSearch, query]);
 
-  const handleSubmit = () => {
+  const handleSubmit = (e: FormEvent) => {
+    e.preventDefault();
+
     if (sku) {
       performSearch(sku);
     }

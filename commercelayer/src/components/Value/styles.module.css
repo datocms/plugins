@@ -8,6 +8,7 @@
 }
 
 .value__loading {
+  position: relative;
   border: 1px solid var(--border-color);
   text-align: center;
   padding: 20px;

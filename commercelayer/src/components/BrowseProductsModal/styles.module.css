@@ -89,13 +89,11 @@
 }
 
 .button__loading {
+  position: relative;
   padding-right: 33px;
 }
 
 .button__loading .spinner {
-  opacity: 1;
-}
-.button .spinner {
   border: 3px solid #fff;
   border-top-color: transparent;
   border-left-color: transparent;
@@ -112,6 +110,10 @@
   margin-top: -7px;
   opacity: 0;
   transition: opacity 0.2s ease-in-out;
+  opacity: 1;
+}
+.button .spinner {
+  opacity: 0;
 }
 
 @keyframes loadingSpinner {

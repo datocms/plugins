@@ -34,11 +34,11 @@ export default function Main({ ctx }: PropTypes) {
   }, [ctx]);
 
   const handleSelect: onSelectType = ({ product }) => {
-    ctx.setFieldValue(ctx.fieldPath, product && product.attributes.code);
+    ctx.setFieldValue(ctx.fieldPath, product ? product.attributes.code : "");
   };
 
   const handleReset = () => {
-    ctx.setFieldValue(ctx.fieldPath, null);
+    ctx.setFieldValue(ctx.fieldPath, "");
   };
 
   return value ? (
