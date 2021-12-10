@@ -2,7 +2,7 @@
   "name": "datocms-plugin-content-calendar",
   "description": "Explore your editorial calendar, right inside DatoCMS",
   "homepage": "https://github.com/datocms/plugins/tree/master/content-calendar#readme",
-  "version": "0.1.0",
+  "version": "0.1.1-next",
   "keywords": [
     "datocms",
     "datocms-plugin"
