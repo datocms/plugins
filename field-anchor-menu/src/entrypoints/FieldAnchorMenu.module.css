@@ -1,0 +1,15 @@
+.link {
+  font-size: 14px;
+  margin-bottom: 12px;
+  line-height: 1.2;
+  display: block;
+  text-decoration: none;
+  cursor: pointer;
+}
+.link:hover {
+  text-decoration: underline;
+}
+
+.link:last-child {
+  margin-bottom: 0;
+}
