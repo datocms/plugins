@@ -1,106 +1,52 @@
 {
-  "name": "datocms-plugin-star-rating-editor",
-  "homepage": "https://github.com/datocms/plugins/tree/master/star-rating-editor#readme",
-  "version": "0.0.12",
-  "description": "A plugin that presents integer fields as star rating widgets",
-  "main": "index.js",
-  "scripts": {
-    "start": "NODE_ENV=development webpack-dev-server --port 5000",
-    "dist": "NODE_ENV=production webpack --progress",
-    "addToProject": "yo datocms-plugin:add-to-project",
-    "prepublishOnly": "rimraf dist && mkdir dist && npm run dist",
-    "lint": "eslint \"./src/*.{js,jsx}\"",
-    "test": "echo 1"
+  "name": "star-rating-editor",
+  "version": "0.1.0",
+  "private": false,
+  "dependencies": {
+    "@types/lodash-es": "^4.17.5",
+    "@types/node": "^16.11.12",
+    "@types/react": "^17.0.37",
+    "@types/react-dom": "^17.0.11",
+    "datocms-plugin-sdk": "^0.3.20",
+    "datocms-react-ui": "^0.3.21",
+    "lodash-es": "^4.17.21",
+    "react": "^17.0.2",
+    "react-dom": "^17.0.2",
+    "react-rating-stars-component": "^2.2.0",
+    "react-scripts": "4.0.3",
+    "typescript": "^4.5.2"
   },
-  "files": [
-    "docs",
-    "dist"
-  ],
-  "keywords": [
-    "datocms",
-    "datocms-plugin",
-    "field-editor",
-    "integer-field",
-    "rating"
-  ],
-  "author": "DatoCMS <support@datocms.com>",
-  "license": "ISC",
-  "datoCmsPlugin": {
-    "title": "Star rating editor",
-    "previewImage": "docs/demo.gif",
-    "coverImage": "docs/cover.jpg",
-    "entryPoint": "dist/index.html",
-    "fieldTypes": [
-      "integer"
+  "scripts": {
+    "start": "cross-env BROWSER='none' PUBLIC_URL='/' react-scripts start",
+    "build": "cross-env PUBLIC_URL='.' react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject",
+    "prepublishOnly": "npm run build"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
     ],
-    "pluginType": "field_editor",
-    "parameters": {
-      "global": [
-        {
-          "id": "developmentMode",
-          "label": "Development mode?",
-          "type": "boolean",
-          "hint": "Enable development logs on the console"
-        }
-      ],
-      "instance": [
-        {
-          "id": "maxRating",
-          "label": "Maximum rating",
-          "type": "integer",
-          "required": true,
-          "default": 5
-        },
-        {
-          "id": "starsColor",
-          "label": "Stars color",
-          "type": "color",
-          "required": true,
-          "default": {
-            "red": 255,
-            "green": 180,
-            "blue": 0,
-            "alpha": 255
-          }
-        }
-      ]
-    }
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
   },
   "devDependencies": {
-    "@babel/cli": "^7.0.0-beta.54",
-    "@babel/core": "^7.0.0-beta.54",
-    "@babel/preset-env": "^7.0.0-beta.54",
-    "@babel/preset-react": "^7.0.0",
-    "@babel/register": "^7.0.0-beta.54",
-    "babel-eslint": "^8.2.6",
-    "babel-loader": "^8.0.0-beta",
-    "css-loader": "^1.0.0",
-    "eslint": "^5.3.0",
-    "eslint-config-airbnb": "17.1.0",
-    "eslint-config-airbnb-base": "^13.0.0",
-    "eslint-loader": "^2.1.0",
-    "eslint-plugin-import": "^2.14.0",
-    "eslint-plugin-jsx-a11y": "^6.1.1",
-    "eslint-plugin-react": "^7.11.0",
-    "html-webpack-inline-source-plugin": "^0.0.10",
-    "html-webpack-plugin": "^3.2.0",
-    "html-webpack-tags-plugin": "^2.0.17",
-    "mini-css-extract-plugin": "^0.4.3",
-    "node-sass": "^4.9.3",
-    "sass-loader": "^7.1.0",
-    "webpack": "^4.16.1",
-    "webpack-cli": "^3.1.0",
-    "webpack-dev-server": "^3.1.10",
-    "yo": "^3.1.1"
+    "cross-env": "^7.0.3"
   },
-  "dependencies": {
-    "debounce": "^1.2.0",
-    "eslint-import-resolver-webpack": "^0.10.1",
-    "generator-datocms-plugin": "^1.0.22",
-    "preact": "^8.3.1",
-    "preact-compat": "^3.18.4",
-    "react-star-rating-component": "^1.4.1",
-    "rgb-hex": "^2.1.0",
-    "to-querystring": "^1.0.4"
+  "datoCmsPlugin": {
+    "title": "",
+    "previewImage": "",
+    "coverImage": "",
+    "entryPoint": "build/index.html"
   }
 }
