@@ -1,0 +1,102 @@
+{
+  "name": "datocms-plugin-typeform",
+  "homepage": "https://github.com/datocms/plugins/tree/master/typeform#readme",
+  "version": "0.1.2",
+  "description": "A plugin that allows users to select Typeform forms and see responses directly within DatoCMS",
+  "main": "index.js",
+  "scripts": {
+    "start": "NODE_ENV=development webpack-dev-server --port 5000",
+    "dist": "NODE_ENV=production webpack --progress",
+    "addToProject": "yo datocms-plugin:add-to-project",
+    "prepublishOnly": "rimraf dist && mkdir dist && npm run dist",
+    "lint": "eslint \"./src/*.{js,jsx}\"",
+    "test": "echo 1"
+  },
+  "files": [
+    "docs",
+    "dist"
+  ],
+  "keywords": [
+    "datocms",
+    "datocms-plugin",
+    "field-editor",
+    "string-field",
+    "typeform"
+  ],
+  "author": "DatoCMS <support@datocms.com>",
+  "license": "ISC",
+  "datoCmsPlugin": {
+    "title": "Typeform",
+    "previewImage": "docs/demo.gif",
+    "coverImage": "docs/cover.png",
+    "entryPoint": "dist/index.html",
+    "fieldTypes": [
+      "string"
+    ],
+    "pluginType": "field_editor",
+    "parameters": {
+      "global": [
+        {
+          "id": "apiToken",
+          "label": "Typeform personal token",
+          "type": "string",
+          "required": true,
+          "hint": "Please insert your Typeform personal access token. Take a look at <a href=\"https://developer.typeform.com/get-started/personal-access-token/\">Typeform documentation</a> for more info"
+        },
+        {
+          "id": "corsUrlPrefix",
+          "label": "CORS proxy service",
+          "type": "string",
+          "required": true,
+          "default": "https://typeform-proxy.datocms.com/",
+          "hint": "Since Typeform API does not support CORS, a CORS proxy is required. For a list of such services, take a look at <a href=\"https://nordicapis.com/10-free-to-use-cors-proxies/\">this resource</a>. When in doubt, leave as it is."
+        }
+      ],
+      "instance": []
+    }
+  },
+  "devDependencies": {
+    "@babel/cli": "^7.0.0-beta.54",
+    "@babel/core": "^7.0.0-beta.54",
+    "@babel/plugin-proposal-decorators": "^7.1.2",
+    "@babel/preset-env": "^7.0.0-beta.54",
+    "@babel/preset-react": "^7.0.0",
+    "@babel/register": "^7.0.0-beta.54",
+    "babel-eslint": "^8.2.6",
+    "babel-loader": "^8.0.0-beta",
+    "css-loader": "^1.0.0",
+    "eslint": "^5.3.0",
+    "eslint-config-airbnb": "17.1.0",
+    "eslint-config-airbnb-base": "^13.0.0",
+    "eslint-loader": "^2.1.0",
+    "eslint-plugin-import": "^2.14.0",
+    "eslint-plugin-jsx-a11y": "^6.1.1",
+    "eslint-plugin-react": "^7.11.0",
+    "html-webpack-inline-source-plugin": "^0.0.10",
+    "html-webpack-plugin": "^3.2.0",
+    "html-webpack-tags-plugin": "^2.0.17",
+    "mini-css-extract-plugin": "^0.4.3",
+    "node-sass": "^4.9.3",
+    "sass-loader": "^7.1.0",
+    "svg-url-loader": "^2.3.2",
+    "webpack": "^4.16.1",
+    "webpack-cli": "^3.1.0",
+    "webpack-dev-server": "^3.1.10",
+    "yo": "^3.1.1"
+  },
+  "dependencies": {
+    "@babel/plugin-proposal-class-properties": "^7.1.0",
+    "classname": "^0.0.0",
+    "eslint-import-resolver-webpack": "^0.10.1",
+    "generator-datocms-plugin": "^1.0.22",
+    "immer": "^1.7.3",
+    "preact": "^8.3.1",
+    "preact-compat": "^3.18.4",
+    "prop-types": "^15.6.2",
+    "qs": "^6.5.2",
+    "react-redux": "^5.0.7",
+    "redux": "^4.0.1",
+    "repatch": "^1.3.12",
+    "style-loader": "^0.23.1"
+  }
+}
