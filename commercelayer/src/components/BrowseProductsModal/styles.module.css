@@ -13,18 +13,6 @@
   position: relative;
 }
 
-.empty__search__input:before {
-  content: "";
-  width: 20px;
-  height: 20px;
-  font-size: 20px;
-  position: absolute;
-  top: 50%;
-  left: 12px;
-  transform: translateY(-50%);
-  background-size: contain;
-}
-
 .empty__search__input input[type="text"] {
   padding-left: 38px;
 }
