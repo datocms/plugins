@@ -1,3 +1,3 @@
-# [Your plugin name]
+# Unsplash asset source
 
-[Describe what your plugin does, and how users you can configure it! Screenshots are always welcome!]
+Search free high-resolution photos on Unsplash, and insert them directly inside of your DatoCMS project.
