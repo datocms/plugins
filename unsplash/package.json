@@ -3,6 +3,14 @@
   "description": "Search free high-resolution photos on Unsplash, and insert them directly inside of your DatoCMS project",
   "version": "0.1.0",
   "private": false,
+  "keywords": [
+    "datocms",
+    "datocms-plugin"
+  ],
+  "files": [
+    "build",
+    "docs"
+  ],
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^1.2.36",
     "@fortawesome/free-solid-svg-icons": "^5.15.4",
@@ -49,7 +57,7 @@
   },
   "datoCmsPlugin": {
     "title": "Asset source for Unsplash",
-    "previewImage": "",
+    "previewImage": "docs/demo.mp4",
     "coverImage": "docs/cover.png",
     "entryPoint": "build/index.html"
   }
