@@ -5,7 +5,8 @@
   "private": false,
   "keywords": [
     "datocms",
-    "datocms-plugin"
+    "datocms-plugin",
+    "unsplash"
   ],
   "files": [
     "build",
