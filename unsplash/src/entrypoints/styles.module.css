@@ -1,0 +1,126 @@
+.search {
+  margin-bottom: var(--spacing-l);
+}
+
+.searchFirstRow {
+  display: flex;
+  align-items: stretch;
+  margin-bottom: var(--spacing-m);
+}
+
+.searchSecondRow {
+  display: flex;
+}
+
+.searchFilter {
+  display: flex;
+  margin-right: 30px;
+  align-items: center;
+}
+
+.searchFilterLabel {
+  margin-right: 10px;
+  color: var(--light-body-color);
+}
+
+.search__input {
+  margin-right: 10px;
+  flex: 1;
+}
+
+.container {
+  position: relative;
+  min-height: 150px;
+}
+
+.masonry {
+  grid-column-gap: var(--spacing-m);
+  align-items: start;
+  display: grid;
+  grid-template-columns: repeat(var(--columns), minmax(0, 1fr));
+  transition: opacity 0.3s var(--material-ease);
+}
+
+.masonryLoading {
+  opacity: 0.7;
+}
+
+.masonryCol {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: var(--spacing-m);
+}
+
+.footer {
+  margin-top: var(--spacing-l);
+}
+
+.colorSample {
+  width: 15px;
+  height: 15px;
+  border-radius: 100%;
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 10px;
+  border: 1px solid white;
+  outline: 1px solid var(--border-color);
+  overflow: hidden;
+  position: relative;
+}
+
+.colorSample.all {
+  background-color:
+}
+
+.colorSample.white {
+  background-color: white;
+
+}
+
+.colorSample.black {
+  background-color: #111111;
+
+}
+
+.colorSample.yellow {
+  background-color: #FFDC00;
+
+}
+
+.colorSample.orange {
+  background-color: #FF851B;
+
+}
+
+.colorSample.red {
+  background-color: #FF4136;
+}
+
+.colorSample.purple {
+  background-color: #B10DC9;
+
+}
+
+.colorSample.magenta {
+  background-color: magenta;
+
+}
+
+.colorSample.green {
+  background-color: #2ECC40;
+
+}
+
+.colorSample.teal {
+  background-color: #39CCCC;
+
+}
+
+.colorSample.blue {
+  background-color: #0074D9;
+
+}
+
+.colorSample.black_and_white {
+  background: linear-gradient(to left, #eee 0%, #111 100%);
+}
