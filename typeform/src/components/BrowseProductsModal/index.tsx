@@ -1,8 +1,8 @@
 import { useDispatch, useSelector } from "react-redux";
-import { State, onSelectType, Product } from "../../types";
+import { State, onSelectType, Form } from "../../types";
 import Client from "../client";
 import { RenderModalCtx } from "datocms-plugin-sdk";
-import { fetchProductsMatching } from "../store";
+import { fetchFormsMatching } from "../store";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Button, TextInput, Canvas } from "datocms-react-ui";
 import style from "./styles.module.css";
@@ -21,12 +21,12 @@ export default function BrowseProductsModal({ ctx }: { ctx: RenderModalCtx }) {
 
   const performSearch = useCallback(
     (query: string) => {
-      dispatch(fetchProductsMatching({ query, client }));
+      dispatch(fetchFormsMatching({ query, client }));
     },
     [client, dispatch]
   );
 
-  const { query, status, products } = useSelector((state: State) => {
+  const { query, status, forms } = useSelector((state: State) => {
     const search = state.searches[state.query] || {
       status: "loading",
       result: [],
@@ -35,7 +35,13 @@ export default function BrowseProductsModal({ ctx }: { ctx: RenderModalCtx }) {
     return {
       query: state.query,
       status: search.status,
-      products: search.result.map((id: string) => state.products[id].result),
+      forms: search.result.map((id: string) => {
+        const form = state.forms[id].result;
+
+        return form && form.theme
+          ? Object.assign({}, form, { theme: state.themes[form.theme.href] })
+          : form;
+      }),
     };
   });
 
@@ -51,27 +57,32 @@ export default function BrowseProductsModal({ ctx }: { ctx: RenderModalCtx }) {
     }
   };
 
-  const handleSelect: onSelectType = ({ product }) => {
-    ctx.resolve({ product });
+  const handleSelect: onSelectType = ({ form }) => {
+    ctx.resolve({ form });
   };
 
-  const renderResult = ({ product }: { product: Product }) => {
+  const renderResult = ({ form }: { form: Form }) => {
     return (
       <div
-        key={product.id}
-        onClick={() => handleSelect({ product })}
+        key={form.handle}
+        onClick={() => handleSelect({ form })}
         className={style.empty__product}
       >
         <div
-          className={style.empty__product__image}
-          style={{ backgroundImage: `url(${product.attributes.image_url})` }}
-        />
-        <div className={style.empty__product__content}>
-          <div className={style.empty__product__title}>
-            {product.attributes.name}
-          </div>
-          <div className={style.empty__product__code}>
-            {product.attributes.code}
+          className={style.empty__form__bg}
+          style={{
+            backgroundImage:
+              form.theme &&
+              form.theme.background &&
+              `url(${form.theme.background.href})`,
+            backgroundColor: form.theme && form.theme.colors.background,
+          }}
+        >
+          <div
+            className={style.empty__form__title}
+            style={{ color: form.theme && form.theme.colors.question }}
+          >
+            {form.title}
           </div>
         </div>
       </div>
@@ -103,7 +114,7 @@ export default function BrowseProductsModal({ ctx }: { ctx: RenderModalCtx }) {
             <span className={style.spinner} />
           </Button>
         </form>
-        {products.filter((x: any) => !!x) && (
+        {forms.filter((x: any) => !!x) && (
           <div
             className={
               status === "loading"
@@ -111,7 +122,7 @@ export default function BrowseProductsModal({ ctx }: { ctx: RenderModalCtx }) {
                 : style.empty__products
             }
           >
-            {products.map((product: Product) => renderResult({ product }))}
+            {forms.map((form: Form) => renderResult({ form }))}
           </div>
         )}
       </div>

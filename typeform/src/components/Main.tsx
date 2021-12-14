@@ -33,8 +33,8 @@ export default function Main({ ctx }: PropTypes) {
     setClient(newClient);
   }, [ctx]);
 
-  const handleSelect: onSelectType = ({ product }) => {
-    ctx.setFieldValue(ctx.fieldPath, product ? product.attributes.code : "");
+  const handleSelect: onSelectType = ({ form }) => {
+    ctx.setFieldValue(ctx.fieldPath, form ? form.handle : "");
   };
 
   const handleReset = () => {

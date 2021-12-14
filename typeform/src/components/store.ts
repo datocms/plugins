@@ -74,10 +74,20 @@ export const fetchFormById =
       })
     );
 
-    dispatch(fetchResultsById(hrefToId(id), client));
+    const formId = hrefToId(id);
+
+    if (formId) {
+      dispatch(fetchResultsById({ id: formId, client }));
+    }
 
     return client.formById(id).then((form) => {
-      dispatch(fetchThemeById(hrefToId(form.theme.href), client));
+      if (form.theme) {
+        const themeId = hrefToId(form.theme.href);
+        if (themeId) {
+          dispatch(fetchThemeById({ id: themeId, client }));
+        }
+      }
+
       dispatch(
         act((state: State) => {
           state.forms[id].result = form;
@@ -106,11 +116,17 @@ export const fetchFormsMatching =
       dispatch(
         act((state: State) => {
           state.searches[query].status = "success";
-          state.searches[query].result = forms.map((f) => f.id);
+          state.searches[query].result = forms.map((f: Form) => f.id);
           forms.forEach((form: Form) => {
             state.forms[form.id] = state.forms[form.id] || {};
             state.forms[form.id].result = form;
-            dispatch(fetchThemeById(hrefToId(form.theme.href), client));
+            if (form.theme) {
+              const themeId = hrefToId(form.theme.href);
+
+              if (themeId) {
+                dispatch(fetchThemeById({ id: themeId, client }));
+              }
+            }
           });
         })
       );
@@ -118,67 +134,3 @@ export const fetchFormsMatching =
   };
 
 export default store;
-
-/* eslint-disable no-param-reassign */
-
-// export const fetchProductByCode =
-//   ({ code, client }: StoreTypes) =>
-//   () =>
-//   async (dispatch: Dispatch<any>) =>
-//     if (!client) {
-//       return;
-//     }
-
-//     dispatch(
-//       act((state: State) => {
-//         state.products[code] = state.products[code] || { result: null };
-//         state.products[code].status = "loading";
-//       })
-//     );
-
-//     const product = await client.productByCode(code);
-
-//     return dispatch(
-//       act((state: State) => {
-//         state.products[code].result = product;
-//         state.products[code].status = "success";
-//       })
-//     );
-//   };
-
-// export const fetchProductsMatching =
-//   ({ query, client }: FetchProductsTypes) =>
-//   () =>
-//   async (dispatch: Dispatch<any>) =>
-
-//     if (!client) {
-//       return;
-//     }
-
-//     dispatch(
-//       act((state: State) => {
-//         state.searches[query] = state.searches[query] || { result: [] };
-//         state.searches[query].status = "loading";
-//         state.query = query;
-//       })
-//     );
-
-//     const products: Product[] = await client.productsMatching(query);
-
-//     return dispatch(
-//       act((state: State) => {
-//         state.searches[query].status = "success";
-//         state.searches[query].result = products.map(
-//           (p: Product) => p.attributes.code
-//         );
-
-//         products.forEach((product) => {
-//           state.products[product.attributes.code] =
-//             state.products[product.attributes.code] || {};
-//           state.products[product.attributes.code].result = product;
-//         });
-//       })
-//     );
-//   };
-
-// export default store;

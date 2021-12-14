@@ -1,4 +1,4 @@
-import qs from 'qs';
+import qs from "qs";
 
 export default class TypeformClient {
   constructor({ apiToken, corsUrlPrefix }) {
@@ -11,7 +11,9 @@ export default class TypeformClient {
   }
 
   formsMatching(query) {
-    return this.fetch('/forms', { search: query, page_size: 20 }).then(response => response.items);
+    return this.fetch("/forms", { search: query, page_size: 20 }).then(
+      (response) => response.items
+    );
   }
 
   formById(id) {
@@ -19,18 +21,27 @@ export default class TypeformClient {
   }
 
   formResultsById(id) {
-    return this.fetch(`/forms/${id}/responses`, { completed: 'true' });
+    return this.fetch(`/forms/${id}/responses`, { completed: "true" });
   }
 
   fetch(path, params = null) {
     return fetch(
-      `${this.corsUrlPrefix}https://api.typeform.com${path}${qs.stringify(params, { addQueryPrefix: true })}`,
+      `${this.corsUrlPrefix}https://api.typeform.com${path}${qs.stringify(
+        params,
+        { addQueryPrefix: true }
+      )}`,
       {
-        method: 'GET',
+        method: "GET",
         headers: {
           Authorization: `Bearer ${this.apiToken}`,
         },
-      },
-    ).then(res => res.json());
+      }
+    ).then((res) => {
+      if (res.ok) {
+        return res.json();
+      } else {
+        throw new Error("Something went wrong");
+      }
+    });
   }
 }

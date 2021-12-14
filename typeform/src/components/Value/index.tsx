@@ -1,28 +1,16 @@
 import { useCallback, useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { State } from "../../types";
-import { fetchProductByCode } from "../store";
+import { fetchFormById } from "../store";
 import { ValueProps } from "../../types";
 import style from "./styles.module.css";
 
 export default function Value({ value, client, onReset, ctx }: ValueProps) {
   const dispatch = useDispatch();
 
-  const { product, status } = useSelector((state: State) => {
-    const selectedProduct = state.products[value];
-
-    return {
-      status:
-        selectedProduct && selectedProduct.status
-          ? selectedProduct.status
-          : "loading",
-      product: selectedProduct && selectedProduct.result,
-    };
-  });
-
   const findProduct = useCallback(
-    (code: string) => {
-      dispatch(fetchProductByCode({ code, client }));
+    (id: string) => {
+      dispatch(fetchFormById({ id, client }));
     },
     [client, dispatch]
   );
@@ -31,33 +19,81 @@ export default function Value({ value, client, onReset, ctx }: ValueProps) {
     findProduct(value);
   }, [value, findProduct]);
 
+  const { form, status, results } = useSelector((state: State) => {
+    const selectedProduct = state.forms[value];
+
+    return {
+      status:
+        selectedProduct && selectedProduct.status
+          ? selectedProduct.status
+          : "loading",
+      form: selectedProduct && selectedProduct.result,
+      results: state.results[value],
+    };
+  });
+
+  let backgroundImage = null;
+
+  if (form && form.theme && form.theme.background) {
+    backgroundImage = form.theme.background.href;
+  } else if (
+    form &&
+    form.welcome_screens &&
+    form.welcome_screens.length > 0 &&
+    form.welcome_screens[0].attachment
+  ) {
+    backgroundImage = form.welcome_screens[0].attachment.href;
+  }
+
   return (
     <div className={status === "loading" ? style.value__loading : style.value}>
-      {product && (
-        <div className={style.value__product}>
+      {form && (
+        <div className={style.value__form}>
           <div
-            className={style.value__product__image}
+            className={style.value__form__image}
             style={{
-              backgroundImage: `url(${product.attributes.image_url})`,
+              backgroundImage: backgroundImage ? `url(${backgroundImage})` : "",
+              backgroundColor: form.theme && form.theme.colors.background,
             }}
           />
-          <div className={style.value__product__info}>
-            <div className={style.value__product__title}>
+          <div className={style.value__form__info}>
+            <div className={style.value__form__title}>
               <a
-                href={`${ctx.parameters.corsUrlPrefix}/admin/skus/${product.id}`}
+                href={form._links.display}
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                {product.attributes.name}
+                {form.title}
               </a>
             </div>
-            <div className={style.value__product__code}>
-              SKU &nbsp;
-              {product.attributes.code}
+            <div className={style.value__form__description}>
+              {form.welcome_screens && form.welcome_screens.length > 0 && (
+                <p>{form.welcome_screens[0].title}</p>
+              )}
             </div>
-            <div className={style.value__product__description}>
-              {product.attributes.description}
-            </div>
+            {form.fields && (
+              <div className={style.value__form__info}>
+                <strong>Fields:</strong>
+                &nbsp;
+                {form.fields.length}
+                &nbsp;
+                <span>fields</span>
+              </div>
+            )}
+            {results && (
+              <a
+                href={`https://admin.typeform.com/form/${form.id}/results`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={style.value__form__info}
+              >
+                <strong>Responses:</strong>
+                &nbsp;
+                {results.total_items}
+                &nbsp;
+                <span>responses</span>
+              </a>
+            )}
           </div>
         </div>
       )}

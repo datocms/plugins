@@ -28,21 +28,43 @@ export type ValueProps = {
   ctx: RenderFieldExtensionCtx;
 };
 
-export type onSelectType = ({ product }: { product: Form | null }) => void;
+export type onSelectType = ({ form }: { form: Form | null }) => void;
+
+type Forms = {
+  [key: string]: Form;
+};
 
 export type State = {
   searches: Record<string, any>;
   query: string;
-  forms: Record<string, Form>;
+  forms: Forms;
   themes: Record<string, Theme>;
   results: Record<string, Result>;
 };
 
 export type Form = {
   id: string;
-  result: Form;
+  handle: string;
+  title: string;
+  result: Form | null;
   status: string;
-  theme: { href: string };
+  fields: [];
+  welcome_screens: [
+    {
+      title: string;
+      attachment: {
+        href: string;
+      };
+    }
+  ];
+  theme?: {
+    href: string;
+    background: { href: string };
+    colors: { background: string; question: string };
+  };
+  _links: {
+    display: string;
+  };
 };
 
 export type Theme = {
@@ -55,6 +77,7 @@ export type Result = {
   id: string;
   result: Result;
   status: string;
+  total_items: number;
 };
 
 export type TypeformIdentityTypes = {
