@@ -4,13 +4,43 @@ import ConfigScreen from "./entrypoints/ConfigScreen";
 import FieldExtension from "./entrypoints/FieldExtension";
 import BrowseProductsModal from "./components/BrowseProductsModal";
 import { PluginAttributes } from "datocms-plugin-sdk/dist/types/SiteApiSchema";
-import { RenderModalCtx } from "datocms-plugin-sdk";
+import { RenderModalCtx, OnBootCtx } from "datocms-plugin-sdk";
 import { Provider } from "react-redux";
 import store from "./components/store";
 
 import "datocms-react-ui/styles.css";
 
 connect({
+  async onBoot(ctx: OnBootCtx) {
+    if (
+      !ctx.currentRole.meta.final_permissions.can_edit_schema ||
+      ctx.plugin.attributes.parameters.migratedFromLegacyPlugin
+    ) {
+      return;
+    }
+
+    const fields = await ctx.loadFieldsUsingPlugin();
+
+    await Promise.all(
+      fields.map(async (field) => {
+        if (field.attributes.appearance.editor === ctx.plugin.id) {
+          await ctx.updateFieldAppearance(field.id, [
+            {
+              operation: "updateEditor",
+              newFieldExtensionId: "typeform",
+            },
+          ]);
+        }
+      })
+    );
+
+    await ctx.updatePluginParameters({
+      ...ctx.plugin.attributes.parameters,
+      migratedFromLegacyPlugin: true,
+    });
+
+    ctx.notice("Plugin upgraded successfully!");
+  },
   renderConfigScreen(ctx) {
     return render(<ConfigScreen ctx={ctx} />);
   },

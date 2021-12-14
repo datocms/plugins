@@ -80,15 +80,16 @@ export const fetchFormById =
       dispatch(fetchResultsById({ id: formId, client }));
     }
 
-    return client.formById(id).then((form) => {
+    return client.formById(id).then(async (form) => {
       if (form.theme) {
         const themeId = hrefToId(form.theme.href);
+
         if (themeId) {
-          dispatch(fetchThemeById({ id: themeId, client }));
+          await dispatch(fetchThemeById({ id: themeId, client }));
         }
       }
 
-      dispatch(
+      await dispatch(
         act((state: State) => {
           state.forms[id].result = form;
           state.forms[id].status = "success";

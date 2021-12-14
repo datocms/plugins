@@ -1,10 +1,17 @@
-.empty__search {
-  display: flex;
-  align-items: center;
+.empty {
+  border: 1px solid var(--border-color);
+  text-align: center;
+  padding: 20px;
 }
 
-.empty__search > div {
-  flex: 1;
+.empty__label {
+  margin-bottom: 20px;
+  font-size: 17px;
+}
+
+.empty__search {
+  display: flex;
+  align-items: stretch;
 }
 
 .empty__search__input {
@@ -17,59 +24,70 @@
   padding-left: 38px;
 }
 
-.empty__products {
+.empty__forms {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  justify-content: space-around;
   margin-top: 20px;
+  margin-left: -10px;
+  margin-bottom: -10px;
   opacity: 1;
   transition: opacity 0.2s ease-in-out;
 }
 
-.empty__products__loading {
+.empty__forms__loading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  justify-content: space-around;
   margin-top: 20px;
-  transition: opacity 0.2s ease-in-out;
+  margin-left: -10px;
+  margin-bottom: -10px;
   opacity: 0.6;
+  transition: opacity 0.2s ease-in-out;
 }
 
-.empty__product {
-  padding: 8px;
+.empty__form {
+  width: 170px;
+  text-align: center;
+  padding: 3px;
+  padding-bottom: 0;
   border-radius: 3px;
   border: 1px solid var(--border-color);
-  margin-bottom: 3px;
+  margin-left: 10px;
+  margin-bottom: 10px;
   overflow: hidden;
   cursor: pointer;
   background-color: transparent;
   appearance: none;
   color: var(--base-body-color);
   font: inherit;
-  display: flex;
-  align-items: center;
-  width: 100%;
+  text-align: center;
+  padding: 3px;
   box-sizing: border-box;
 }
 
-.empty__product:hover {
+.empty__form:hover {
   border-color: var(--accent-color);
 }
 
-.empty__product__image {
-  display: block;
-  width: 60px;
-  height: 60px;
-  margin-right: 10px;
-  background-size: cover;
-  background-position: center center;
-  border-radius: 3px 3px 0 0;
+.empty__form__bg {
+  content: "";
+  padding-top: 90%;
+  position: relative;
+  background-size: contain;
 }
 
-.empty__product__content {
+.empty__form__title {
   line-height: 1.2;
-  text-align: left;
-  flex: 1;
-}
-
-.empty__product__code {
-  font-size: 13px;
-  margin-top: 2px;
-  color: #999;
+  font-size: 14px;
+  position: absolute;
+  padding: 15px;
+  top: 50%;
+  transform: translateY(-50%);
+  left: 0;
+  right: 0;
 }
 
 .button {

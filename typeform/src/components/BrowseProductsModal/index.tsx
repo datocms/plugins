@@ -64,9 +64,9 @@ export default function BrowseProductsModal({ ctx }: { ctx: RenderModalCtx }) {
   const renderResult = ({ form }: { form: Form }) => {
     return (
       <div
-        key={form.handle}
+        key={form.id}
         onClick={() => handleSelect({ form })}
-        className={style.empty__product}
+        className={style.empty__form}
       >
         <div
           className={style.empty__form__bg}
@@ -118,8 +118,8 @@ export default function BrowseProductsModal({ ctx }: { ctx: RenderModalCtx }) {
           <div
             className={
               status === "loading"
-                ? style.empty__products__loading
-                : style.empty__products
+                ? style.empty__forms__loading
+                : style.empty__forms
             }
           >
             {forms.map((form: Form) => renderResult({ form }))}

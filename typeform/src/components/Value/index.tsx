@@ -8,7 +8,7 @@ import style from "./styles.module.css";
 export default function Value({ value, client, onReset, ctx }: ValueProps) {
   const dispatch = useDispatch();
 
-  const findProduct = useCallback(
+  const findForm = useCallback(
     (id: string) => {
       dispatch(fetchFormById({ id, client }));
     },
@@ -16,18 +16,23 @@ export default function Value({ value, client, onReset, ctx }: ValueProps) {
   );
 
   useEffect(() => {
-    findProduct(value);
-  }, [value, findProduct]);
+    findForm(value);
+  }, [value, findForm]);
 
   const { form, status, results } = useSelector((state: State) => {
-    const selectedProduct = state.forms[value];
+    const info = state.forms[value] || {
+      status: "loading",
+      result: null,
+    };
+
+    const form = info.result;
 
     return {
-      status:
-        selectedProduct && selectedProduct.status
-          ? selectedProduct.status
-          : "loading",
-      form: selectedProduct && selectedProduct.result,
+      status: info.status,
+      form:
+        form && form.theme
+          ? Object.assign({}, form, { theme: state.themes[form.theme.href] })
+          : form,
       results: state.results[value],
     };
   });
@@ -47,13 +52,14 @@ export default function Value({ value, client, onReset, ctx }: ValueProps) {
 
   return (
     <div className={status === "loading" ? style.value__loading : style.value}>
-      {form && (
+      {form && !form.code && (
         <div className={style.value__form}>
           <div
             className={style.value__form__image}
             style={{
               backgroundImage: backgroundImage ? `url(${backgroundImage})` : "",
-              backgroundColor: form.theme && form.theme.colors.background,
+              backgroundColor:
+                form.theme && form.theme.colors && form.theme.colors.background,
             }}
           />
           <div className={style.value__form__info}>
@@ -72,7 +78,7 @@ export default function Value({ value, client, onReset, ctx }: ValueProps) {
               )}
             </div>
             {form.fields && (
-              <div className={style.value__form__info}>
+              <div className={style.value__form__form__info}>
                 <strong>Fields:</strong>
                 &nbsp;
                 {form.fields.length}
@@ -85,7 +91,7 @@ export default function Value({ value, client, onReset, ctx }: ValueProps) {
                 href={`https://admin.typeform.com/form/${form.id}/results`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className={style.value__form__info}
+                className={style.value__form__form__info}
               >
                 <strong>Responses:</strong>
                 &nbsp;

@@ -24,12 +24,13 @@
 .value__form__image {
   width: 150px;
   margin-right: 20px;
-  background-size: cover;
+  background-size: contain;
   border-radius: 4px;
   background-position: center center;
   border-radius: 1px solid var(--border-color);
   padding: 2px;
 }
+
 .value__form__image:before {
   content: "";
   display: block;
@@ -44,13 +45,16 @@
 .value__form__title {
   margin-bottom: 3px;
 }
+
 .value__form__title a {
   font-size: 17px;
   text-decoration: none;
 }
+
 .value__form__title a:hover {
   text-decoration: underline;
 }
+
 .value__form__title a:after {
   content: "";
   width: 14px;
@@ -71,13 +75,13 @@
   -webkit-box-orient: vertical;
 }
 
-.value__form__form-info {
+.value__form__form__info {
   font-size: 0.9em;
   color: var(--light-body-color);
   text-decoration: none;
 }
 
-a.value__form__form-info:hover {
+a.value__form__form__info:hover {
   text-decoration: underline;
 }
 

@@ -30,25 +30,21 @@ export type ValueProps = {
 
 export type onSelectType = ({ form }: { form: Form | null }) => void;
 
-type Forms = {
-  [key: string]: Form;
-};
-
 export type State = {
   searches: Record<string, any>;
   query: string;
-  forms: Forms;
+  forms: Record<string, Form>;
   themes: Record<string, Theme>;
   results: Record<string, Result>;
 };
 
 export type Form = {
   id: string;
-  handle: string;
   title: string;
   result: Form | null;
   status: string;
   fields: [];
+  code?: string;
   welcome_screens: [
     {
       title: string;

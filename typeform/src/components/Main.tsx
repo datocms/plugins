@@ -34,7 +34,7 @@ export default function Main({ ctx }: PropTypes) {
   }, [ctx]);
 
   const handleSelect: onSelectType = ({ form }) => {
-    ctx.setFieldValue(ctx.fieldPath, form ? form.handle : "");
+    ctx.setFieldValue(ctx.fieldPath, form ? form.id : "");
   };
 
   const handleReset = () => {

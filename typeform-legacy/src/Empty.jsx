@@ -57,7 +57,7 @@ export default class Empty extends Component {
       <button
         className="empty__form"
         type="button"
-        key={form.handle}
+        key={form.id}
         onClick={this.handleSelect.bind(this, form)}
       >
         <div
