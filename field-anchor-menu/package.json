@@ -1,7 +1,14 @@
 {
   "name": "datocms-plugin-field-anchor-menu",
-  "version": "0.1.0",
-  "private": false,
+  "version": "0.1.3",
+  "homepage": "https://github.com/datocms/plugins/tree/master/field-anchor-menu#readme",
+  "description": "A simple plugin that displays an anchor links menu on the sidebar",
+  "datoCmsPlugin": {
+    "title": "Field anchor menu",
+    "previewImage": "docs/demo.gif",
+    "coverImage": "docs/cover.png",
+    "entryPoint": "build/index.html"
+  },
   "dependencies": {
     "@types/node": "^16.11.12",
     "@types/react": "^17.0.37",
@@ -39,11 +46,5 @@
   },
   "devDependencies": {
     "cross-env": "^7.0.3"
-  },
-  "datoCmsPlugin": {
-    "title": "",
-    "previewImage": "",
-    "coverImage": "",
-    "entryPoint": "build/index.html"
   }
 }
