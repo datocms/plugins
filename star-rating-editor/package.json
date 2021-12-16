@@ -1,7 +1,8 @@
 {
-  "name": "star-rating-editor",
-  "version": "0.1.0",
-  "private": false,
+  "name": "datocms-plugin-star-rating-editor",
+  "version": "0.1.6",
+  "homepage": "https://github.com/datocms/plugins/tree/master/star-rating-editor#readme",
+  "description": "A plugin that presents integer fields as star rating widgets",
   "dependencies": {
     "@types/lodash-es": "^4.17.5",
     "@types/node": "^16.11.12",
@@ -15,6 +16,20 @@
     "react-rating-stars-component": "^2.2.0",
     "react-scripts": "4.0.3",
     "typescript": "^4.5.2"
+  },
+  "keywords": [
+    "datocms",
+    "datocms-plugin",
+    "field-editor",
+    "integer-field",
+    "rating"
+  ],
+  "datoCmsPlugin": {
+    "title": "Star rating editor",
+    "previewImage": "docs/demo.gif",
+    "coverImage": "docs/cover.jpg",
+    "entryPoint": "build/index.html",
+    "permissions": []
   },
   "scripts": {
     "start": "cross-env BROWSER='none' PUBLIC_URL='/' react-scripts start",
@@ -42,11 +57,5 @@
   },
   "devDependencies": {
     "cross-env": "^7.0.3"
-  },
-  "datoCmsPlugin": {
-    "title": "",
-    "previewImage": "",
-    "coverImage": "",
-    "entryPoint": "build/index.html"
   }
 }
