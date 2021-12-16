@@ -1,7 +1,30 @@
 {
   "name": "datocms-plugin-disabled-field",
-  "version": "0.1.0",
-  "private": false,
+  "version": "0.1.6",
+  "description": "A simple, no-configuration plugin that allows you to disable a field that you don't want anyone to edit. You can apply this plugin to every type of field.",
+  "homepage": "https://github.com/datocms/plugins/tree/master/hidden-field#readme",
+  "keywords": [
+    "datocms",
+    "datocms-plugin",
+    "field-addon",
+    "boolean-field",
+    "date-field",
+    "date-time-field",
+    "float-field",
+    "integer-field",
+    "string-field",
+    "text-field",
+    "json-field",
+    "color-field",
+    "hide-field"
+  ],
+  "datoCmsPlugin": {
+    "title": "Disabled Field",
+    "previewImage": "docs/preview.png",
+    "coverImage": "docs/cover.png",
+    "entryPoint": "build/index.html",
+    "permissions": []
+  },
   "dependencies": {
     "@types/node": "^16.11.12",
     "@types/react": "^17.0.37",
@@ -39,11 +62,5 @@
   },
   "devDependencies": {
     "cross-env": "^7.0.3"
-  },
-  "datoCmsPlugin": {
-    "title": "",
-    "previewImage": "",
-    "coverImage": "",
-    "entryPoint": "build/index.html"
   }
 }
