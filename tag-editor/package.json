@@ -11,6 +11,10 @@
     "coverImage": "docs/cover.png",
     "entryPoint": "build/index.html"
   },
+  "files": [
+    "docs",
+    "build"
+  ],
   "keywords": [
     "datocms",
     "datocms-plugin",
