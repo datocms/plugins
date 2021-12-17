@@ -6,6 +6,7 @@
   "author": "DatoCMS <support@datocms.com>",
   "license": "ISC",
   "version": "0.1.0",
+  
   "dependencies": {
     "@types/node": "^16.11.12",
     "@types/react": "^17.0.37",
@@ -58,6 +59,10 @@
     "@types/qs": "^6.9.7",
     "cross-env": "^7.0.3"
   },
+  "files": [
+    "docs",
+    "build"
+  ],
   "datoCmsPlugin": {
     "title": "Commerce Layer",
     "previewImage": "docs/demo.gif",
