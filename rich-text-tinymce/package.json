@@ -1,17 +1,10 @@
 {
   "name": "datocms-plugin-tinymce-rich-text",
-  "homepage": "https://github.com/datocms/plugins/tree/master/tinymce-rich-text#readme",
-  "version": "0.0.1",
+  "homepage": "https://github.com/datocms/plugins/tree/master/rich-text-tinymce#readme",
   "description": "Custom rich text HTML editor using TinyMCE",
-  "main": "index.js",
-  "scripts": {
-    "start": "NODE_ENV=development webpack-dev-server --port 5000",
-    "dist": "NODE_ENV=production webpack --progress",
-    "addToProject": "yo datocms-plugin:add-to-project",
-    "prepublishOnly": "rimraf lib dist && mkdir dist && npm run dist",
-    "lint": "eslint \"./src/*.{js,jsx}\"",
-    "test": "echo 1"
-  },
+  "version": "0.1.0",
+  "author": "DatoCMS <support@datocms.com>",
+  "license": "ISC",
   "keywords": [
     "datocms",
     "datocms-plugin",
@@ -22,51 +15,55 @@
     "html editor plugin"
   ],
   "files": [
-    "dist",
-    "docs"
+    "docs",
+    "build"
   ],
-  "author": "DatoCMS <support@datocms.com>",
-  "license": "ISC",
+  "dependencies": {
+    "@types/node": "^16.11.14",
+    "@types/qs": "^6.9.7",
+    "@types/react": "^17.0.37",
+    "@types/react-dom": "^17.0.11",
+    "@types/tinymce": "^4.6.4",
+    "datocms-plugin-sdk": "^0.3.27",
+    "datocms-react-ui": "^0.3.28",
+    "qs": "^6.10.2",
+    "react": "^17.0.2",
+    "react-dom": "^17.0.2",
+    "react-scripts": "5.0.0",
+    "tinymce": "^5.10.2",
+    "typescript": "^4.5.4"
+  },
+  "scripts": {
+    "start": "cross-env BROWSER='none' PUBLIC_URL='/' react-scripts start",
+    "build": "cross-env PUBLIC_URL='.' react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject",
+    "prepublishOnly": "npm run build"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3"
+  },
   "datoCmsPlugin": {
     "title": "TinyMCE Rich Text",
     "previewImage": "docs/rich-editor-plugin-preview.png",
     "coverImage": "docs/cover.png",
-    "entryPoint": "dist/index.html",
-    "pluginType": "field_editor",
-    "fieldTypes": [
-      "text"
-    ],
-    "parameters": {
-      "global": [],
-      "instance": []
-    }
-  },
-  "devDependencies": {
-    "@babel/cli": "^7.15.7",
-    "@babel/core": "^7.15.8",
-    "@babel/preset-env": "^7.15.8",
-    "@babel/register": "^7.15.3",
-    "babel-eslint": "^10.1.0",
-    "babel-loader": "^8.2.2",
-    "css-loader": "^6.3.0",
-    "eslint": "^7.32.0",
-    "eslint-config-airbnb-base": "^14.2.1",
-    "eslint-import-resolver-webpack": "^0.13.1",
-    "eslint-loader": "^4.0.2",
-    "eslint-plugin-import": "^2.24.2",
-    "generator-datocms-plugin": "^1.1.0",
-    "html-webpack-inline-source-plugin": "^0.0.10",
-    "html-webpack-plugin": "^5.3.2",
-    "mini-css-extract-plugin": "^2.4.2",
-    "style-loader": "^3.3.0",
-    "webpack": "^5.58.0",
-    "webpack-cli": "^4.9.0",
-    "webpack-dev-server": "^4.3.1",
-    "yo": "^4.3.0"
-  },
-  "dependencies": {
-    "html-webpack-tags-plugin": "^3.0.1",
-    "qs": "^6.10.1",
-    "tinymce": "^5.9.2"
+    "entryPoint": "build/index.html"
   }
 }
