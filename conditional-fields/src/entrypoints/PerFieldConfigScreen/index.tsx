@@ -28,7 +28,9 @@ export function PerFieldConfigScreen({ ctx }: PropTypes) {
 
   const options = Object.values(ctx.fields)
     .filter(
-      (field) => field.relationships.item_type.data.id === ctx.itemType.id,
+      (field) =>
+        field.relationships.item_type.data.id === ctx.itemType.id &&
+        field.id !== ctx.pendingField.id,
     )
     .map((field) => ({
       label: field.attributes.label,
