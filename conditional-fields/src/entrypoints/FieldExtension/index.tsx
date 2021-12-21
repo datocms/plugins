@@ -1,75 +1,77 @@
-import { useCallback, useEffect, useMemo } from "react";
-import { RenderFieldExtensionCtx } from "datocms-plugin-sdk";
-import get from "lodash/get";
-import { Canvas } from "datocms-react-ui";
-import { ManualExtensionParameters } from "../../types";
+import { useCallback, useEffect, useMemo } from 'react';
+import { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
+import get from 'lodash/get';
+import { isValidParameters, ValidManualExtensionParameters } from '../../types';
 
 type Props = {
   ctx: RenderFieldExtensionCtx;
 };
 
-export function FieldExtension({ ctx }: Props) {
-  const parameters = ctx.parameters as ManualExtensionParameters;
+function checkedToShow(invert: boolean, value: boolean | null) {
+  return invert ? !value : !!value;
+}
 
-  const followerFields = useMemo(
-    () =>
-      parameters.slaveFields ? parameters.slaveFields.split(/\s*,\s*/) : [],
-    [parameters]
-  );
-  const { invert } = parameters;
-  const leaderField = ctx.field;
+function FieldExtensionWithValidParams({ ctx }: Props) {
+  const { invert, targetFieldsApiKey } =
+    ctx.parameters as ValidManualExtensionParameters;
 
-  const toggleFields = useCallback(
-    (value) => {
-      followerFields.forEach((followerFieldApiKey) => {
-        const followerField = Object.values(ctx.fields).find(
-          (field) => field.attributes.api_key === followerFieldApiKey
+  const sourceField = ctx.field;
+
+  const targetFields = useMemo(() => {
+    return targetFieldsApiKey
+      .map((targetFieldApiKey) => {
+        const targetField = Object.values(ctx.fields).find(
+          (field) => field.attributes.api_key === targetFieldApiKey,
         );
 
-        if (followerField) {
-          const followerPath = ctx.parentField
-            ? `${ctx.fieldPath.replace(/.[^.]*$/, "")}.${followerFieldApiKey}`
-            : followerFieldApiKey;
-
-          if (leaderField.attributes.localized) {
-            if (followerField.attributes.localized) {
-              ctx.toggleField(`${followerPath}.${ctx.locale}`, value);
-            }
-          } else if (followerField.attributes.localized) {
-            ctx.site.attributes.locales.forEach((locale) => {
-              ctx.toggleField(`${followerPath}.${locale}`, value);
-            });
-          } else {
-            ctx.toggleField(followerPath, value);
-          }
-        } else {
+        if (!targetField) {
           console.error(
-            `Plugin error: The field "${followerFieldApiKey}" does not exist`
+            `Plugin error: The field "${targetFieldApiKey}" does not exist`,
           );
+          return null;
+        }
+
+        return targetField;
+      })
+      .filter((x) => x);
+  }, [ctx.fields, targetFieldsApiKey]);
+
+  const toggleFields = useCallback(
+    (show) => {
+      targetFields.forEach((targetField) => {
+        const targetPath = ctx.parentField
+          ? `${ctx.fieldPath.replace(/.[^.]*$/, '')}.${
+              targetField.attributes.api_key
+            }`
+          : targetField.attributes.api_key;
+
+        if (sourceField.attributes.localized) {
+          if (targetField.attributes.localized) {
+            ctx.toggleField(`${targetPath}.${ctx.locale}`, show);
+          }
+        } else if (targetField.attributes.localized) {
+          ctx.site.attributes.locales.forEach((locale) => {
+            ctx.toggleField(`${targetPath}.${locale}`, show);
+          });
+        } else {
+          ctx.toggleField(targetPath, show);
         }
       });
     },
-    [ctx, followerFields, leaderField.attributes.localized]
-  );
-
-  const normaliseValue = useCallback(
-    (value) => {
-      return invert ? !value : !!value;
-    },
-    [invert]
+    [ctx, sourceField.attributes.localized, targetFields],
   );
 
   const currentValue = get(ctx.formValues, ctx.fieldPath);
-  const initialValue = normaliseValue(currentValue);
-  toggleFields(initialValue);
 
   useEffect(() => {
-    toggleFields(normaliseValue(currentValue));
-  }, [currentValue, toggleFields, normaliseValue]);
+    toggleFields(checkedToShow(invert, currentValue));
+  }, [currentValue, toggleFields, invert]);
 
-  return (
-    <Canvas ctx={ctx}>
-      <div />
-    </Canvas>
-  );
+  return null;
+}
+
+export function FieldExtension({ ctx }: Props) {
+  return isValidParameters(ctx.parameters) ? (
+    <FieldExtensionWithValidParams ctx={ctx} />
+  ) : null;
 }

@@ -1,7 +1,8 @@
-import { RenderManualFieldExtensionConfigScreenCtx } from "datocms-plugin-sdk";
-import { Canvas, Form, TextField, SwitchField } from "datocms-react-ui";
-import { useCallback, useState } from "react";
-import { ManualExtensionParameters } from "../../types";
+import { RenderManualFieldExtensionConfigScreenCtx } from 'datocms-plugin-sdk';
+import { Canvas, Form, SwitchField, SelectField } from 'datocms-react-ui';
+import { useCallback, useState } from 'react';
+import { isValidParameters, ValidManualExtensionParameters } from '../../types';
+import normalizeParams from '../../utils/normalizeParams';
 
 type PropTypes = {
   ctx: RenderManualFieldExtensionConfigScreenCtx;
@@ -9,36 +10,57 @@ type PropTypes = {
 
 export function PerFieldConfigScreen({ ctx }: PropTypes) {
   const [formValues, setFormValues] = useState<
-    Partial<ManualExtensionParameters>
-  >(ctx.parameters);
+    Partial<ValidManualExtensionParameters>
+  >(
+    isValidParameters(ctx.parameters)
+      ? ctx.parameters
+      : normalizeParams(ctx.parameters),
+  );
 
   const update = useCallback(
-    (field, value) => {
+    (field: string, value: unknown) => {
       const newParameters = { ...formValues, [field]: value };
       setFormValues(newParameters);
       ctx.setParameters(newParameters);
     },
-    [formValues, setFormValues, ctx]
+    [formValues, setFormValues, ctx],
   );
+
+  const options = Object.values(ctx.fields)
+    .filter(
+      (field) => field.relationships.item_type.data.id === ctx.itemType.id,
+    )
+    .map((field) => ({
+      label: field.attributes.label,
+      value: field.attributes.api_key,
+    }));
 
   return (
     <Canvas ctx={ctx}>
       <Form>
-        <TextField
-          id="followerFields"
-          name="slaveFields"
-          label="Fields that will be toggled based upon this field's value*"
-          hint="Please insert the follower fields API key separated by commas"
+        <SelectField
+          id="targetFieldsApiKey"
+          name="targetFieldsApiKey"
+          label="Fields to be hidden/shown"
           required
-          value={formValues.slaveFields}
-          onChange={update.bind(null, "slaveFields")}
+          selectInputProps={{ isMulti: true, options }}
+          value={formValues.targetFieldsApiKey.map((apiKey) =>
+            options.find((o) => o.value === apiKey),
+          )}
+          onChange={(selectedOptions) => {
+            update(
+              'targetFieldsApiKey',
+              selectedOptions.map((o) => o.value),
+            );
+          }}
         />
         <SwitchField
           id="invert"
           name="invert"
-          label="Show follower fields when this field is false"
+          label="Invert visibility?"
+          hint="When this field is checked, hide target fields"
           value={formValues.invert}
-          onChange={update.bind(null, "invert")}
+          onChange={update.bind(null, 'invert')}
         />
       </Form>
     </Canvas>
