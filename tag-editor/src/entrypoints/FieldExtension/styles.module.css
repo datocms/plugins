@@ -1,0 +1,75 @@
+/* Example Styles for React Tags*/
+.tags {
+  position: relative;
+}
+
+/* Styles for the input */
+.tagInput,
+.tagInputField:focus-visible {
+  width: 200px;
+  display: inline-block;
+  margin: 4px 0;
+  border: none !important;
+}
+
+.tagInputField,
+.tagInputField:focus,
+.tagInputField:focus-visible {
+  border-radius: 3px;
+  padding-left: 10px;
+  padding-right: 10px;
+  height: 31px;
+  margin: 0;
+  width: 100%;
+  border: 1px solid #eee !important;
+}
+
+.selected {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+/* Styles for selected tags */
+.tag {
+  background: var(--light-color);
+  padding: 5px 10px;
+  margin: 4px 0;
+  margin-right: 5px;
+  cursor: move;
+  border-radius: 2px;
+}
+
+.remove {
+  color: #aaa;
+  margin-left: 5px;
+  cursor: pointer;
+  text-decoration: none;
+  background-color: transparent;
+  border: none;
+}
+
+/* Styles for suggestions */
+.suggestions {
+  position: absolute;
+}
+.suggestions ul {
+  list-style-type: none;
+  box-shadow: 0.05em 0.01em 0.5em rgba(0, 0, 0, 0.2);
+  background: white;
+  width: 200px;
+}
+.suggestions li {
+  border-bottom: 1px solid #ddd;
+  padding: 5px 10px;
+  margin: 0;
+}
+.suggestions li mark {
+  text-decoration: underline;
+  background: none;
+  font-weight: 600;
+}
+
+.activeSuggestion {
+  background: #b7cfe0;
+  cursor: pointer;
+}
