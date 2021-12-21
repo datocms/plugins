@@ -1,87 +1,67 @@
 {
   "name": "datocms-plugin-yandex-translate",
+  "version": "0.1.0",
+  "author": "DatoCMS <support@datocms.com>",
   "homepage": "https://github.com/datocms/plugins/tree/master/yandex-translate#readme",
-  "version": "0.0.12",
   "description": "Makes it easier to automatically translate your content into secondary languages",
-  "main": "index.js",
+  "license": "ISC",
   "scripts": {
-    "start": "NODE_ENV=development webpack-dev-server --port 5000",
-    "dist": "NODE_ENV=production webpack --progress",
-    "addToProject": "yo datocms-plugin:add-to-project",
-    "prepublishOnly": "rimraf dist && mkdir dist && npm run dist",
-    "lint": "eslint \"./src/*.{js,jsx}\"",
-    "test": "echo 1"
+    "start": "cross-env BROWSER='none' PUBLIC_URL='/' react-scripts start",
+    "build": "cross-env PUBLIC_URL='.' react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject",
+    "prepublishOnly": "npm run build"
   },
   "files": [
     "docs",
-    "dist"
+    "build"
   ],
+  "datoCmsPlugin": {
+    "title": "Yandex Translate",
+    "previewImage": "docs/demo.gif",
+    "coverImage": "docs/cover.jpg",
+    "entryPoint": "build/index.html"
+  },
   "keywords": [
     "datocms",
     "datocms-plugin",
     "field-addon",
     "translate"
   ],
-  "author": "DatoCMS <support@datocms.com>",
-  "license": "ISC",
-  "datoCmsPlugin": {
-    "title": "Yandex Translate",
-    "previewImage": "docs/demo.gif",
-    "coverImage": "docs/cover.jpg",
-    "entryPoint": "dist/index.html",
-    "pluginType": "field_addon",
-    "fieldTypes": [
-      "string",
-      "text"
+  "dependencies": {
+    "@types/lodash-es": "^4.17.5",
+    "@types/node": "^16.11.14",
+    "@types/react": "^17.0.37",
+    "@types/react-dom": "^17.0.11",
+    "datocms-plugin-sdk": "^0.3.27",
+    "datocms-react-ui": "^0.3.28",
+    "final-form": "^4.20.4",
+    "lodash-es": "^4.17.21",
+    "react": "^17.0.2",
+    "react-dom": "^17.0.2",
+    "react-final-form": "^6.5.7",
+    "react-scripts": "4.0.3",
+    "to-querystring": "^1.1.1",
+    "typescript": "^4.5.4"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
     ],
-    "parameters": {
-      "global": [
-        {
-          "id": "developmentMode",
-          "label": "Development mode?",
-          "type": "boolean",
-          "hint": "Enable development logs on the console"
-        },
-        {
-          "id": "yandexApiKey",
-          "label": "Yandex API Key",
-          "type": "string",
-          "required": true,
-          "hint": "The Yandex API Key to use (see https://tech.yandex.com/translate/)",
-          "default": "trnsl.1.1.20181022T142246Z.8d9b2c12de17725e.d2d85afd4157926134bfca612318925e84418efc"
-        }
-      ],
-      "instance": []
-    }
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
   },
   "devDependencies": {
-    "@babel/cli": "^7.0.0-beta.54",
-    "@babel/core": "^7.0.0-beta.54",
-    "@babel/preset-env": "^7.0.0-beta.54",
-    "@babel/register": "^7.0.0-beta.54",
-    "babel-eslint": "^8.2.6",
-    "babel-loader": "^8.0.0-beta",
-    "css-loader": "^1.0.0",
-    "eslint": "^5.3.0",
-    "eslint-config-airbnb-base": "13.1.0",
-    "eslint-loader": "^2.1.0",
-    "eslint-plugin-import": "^2.14.0",
-    "generator-datocms-plugin": "^1.0.22",
-    "html-webpack-inline-source-plugin": "^0.0.10",
-    "html-webpack-plugin": "^3.2.0",
-    "html-webpack-tags-plugin": "^2.0.17",
-    "mini-css-extract-plugin": "^0.4.3",
-    "node-sass": "^4.9.3",
-    "sass-loader": "^7.1.0",
-    "style-loader": "^0.23.0",
-    "webpack": "^4.16.1",
-    "webpack-cli": "^3.1.0",
-    "webpack-dev-server": "^3.1.10",
-    "yo": "^3.1.1"
-  },
-  "dependencies": {
-    "debounce": "^1.2.0",
-    "eslint-import-resolver-webpack": "^0.10.1",
-    "to-querystring": "^1.0.4"
+    "cross-env": "^7.0.3"
   }
 }
