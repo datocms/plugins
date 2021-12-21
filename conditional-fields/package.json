@@ -9,7 +9,7 @@
     "title": "Conditional fields",
     "previewImage": "docs/demo.gif",
     "coverImage": "docs/cover.jpg",
-    "entryPoint": "dist/index.html"
+    "entryPoint": "build/index.html"
   },
   "scripts": {
     "start": "cross-env BROWSER='none' PUBLIC_URL='/' react-scripts start",
