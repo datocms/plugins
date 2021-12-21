@@ -1,9 +1,8 @@
-import { useState, useEffect } from "react";
-import { RenderFieldExtensionCtx } from "datocms-plugin-sdk";
-import { Canvas } from "datocms-react-ui";
-import get from "lodash-es/get";
-import { WithContext as ReactTags } from "react-tag-input";
-import s from "./styles.module.css";
+import { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
+import { Canvas } from 'datocms-react-ui';
+import get from 'lodash-es/get';
+import { WithContext as ReactTags } from 'react-tag-input';
+import s from './styles.module.css';
 
 type Props = {
   ctx: RenderFieldExtensionCtx;
@@ -14,91 +13,122 @@ type TagValue = {
   text: string;
 };
 
-type SerializedValue = Array<TagValue>;
+function isValidJson(value: any): value is string[] {
+  return (
+    Array.isArray(value) && value.every((item) => typeof item === 'string')
+  );
+}
 
-type SerializeProps = {
-  ctx: RenderFieldExtensionCtx;
-  newValue: SerializedValue;
-};
-
-function deserialize({ ctx }: Props) {
-  const fieldValue = get(ctx.formValues, ctx.fieldPath) as string | null;
-
-  if (!fieldValue) {
+function deserialize(value: any, fieldType: 'json' | 'string'): TagValue[] {
+  if (!value) {
     return [];
   }
 
-  if (ctx.field.attributes.field_type === "json") {
-    return JSON.parse(fieldValue).map((key: string) => ({
-      id: key,
-      text: key,
+  if (fieldType === 'json') {
+    const parsed = JSON.parse(value);
+
+    if (!isValidJson(parsed)) {
+      throw new Error('Incompatible value!');
+    }
+
+    return parsed.map((tag: string) => ({
+      id: tag,
+      text: tag,
     }));
   }
 
-  return fieldValue.split(", ").map((key) => ({ id: key, text: key }));
-}
-
-function serializeValue({ newValue, ctx }: SerializeProps) {
-  if (ctx.field.attributes.field_type === "json") {
-    return JSON.stringify(newValue.map((o) => o.text));
+  if (typeof value === 'string') {
+    return value
+      .trim()
+      .split(/\s*,\s*/)
+      .map((tag) => ({ id: tag, text: tag }));
   }
 
-  return newValue.map((o) => o.text).join(", ");
+  throw new Error('Incompatible value!');
+}
+
+function serialize(value: TagValue[], fieldType: 'json' | 'string'): string {
+  if (fieldType === 'json') {
+    return JSON.stringify(value.map((o) => o.text));
+  }
+
+  return value.map((o) => o.text).join(', ');
 }
 
 export default function FieldExtension({ ctx }: Props) {
-  const [value, setValue] = useState(deserialize({ ctx }));
+  const fieldType = ctx.field.attributes.field_type as 'string' | 'json';
+  const value = get(ctx.formValues, ctx.fieldPath);
 
-  useEffect(() => {
-    setValue(deserialize({ ctx }));
-  }, [ctx, setValue]);
+  let tags: TagValue[] | undefined;
+
+  try {
+    tags = deserialize(value, fieldType);
+  } catch (e) {
+    tags = undefined;
+  }
 
   const handleAddition = (inputValue: TagValue) => {
+    if (!tags) {
+      return;
+    }
+
     ctx.setFieldValue(
       ctx.fieldPath,
-      serializeValue({ newValue: [...value, inputValue], ctx })
+      serialize([...tags, inputValue], fieldType),
     );
   };
 
   const handleDelete = (index: number) => {
-    value.splice(index, 1);
+    if (!tags) {
+      return;
+    }
 
-    ctx.setFieldValue(ctx.fieldPath, serializeValue({ newValue: value, ctx }));
+    tags.splice(index, 1);
+    ctx.setFieldValue(ctx.fieldPath, serialize(tags, fieldType));
   };
 
   const handleDrag = (
     inputValue: TagValue,
     currPos: number,
-    newPos: number
+    newPos: number,
   ) => {
-    const newValue = value.slice();
+    if (!tags) {
+      return;
+    }
 
+    const newValue = [...tags];
     newValue.splice(currPos, 1);
     newValue.splice(newPos, 0, inputValue);
 
-    ctx.setFieldValue(ctx.fieldPath, serializeValue({ newValue, ctx }));
+    ctx.setFieldValue(ctx.fieldPath, serialize(newValue, fieldType));
   };
 
   return (
     <Canvas ctx={ctx}>
-      <ReactTags
-        tags={value}
-        autofocus={false}
-        placeholder="Add new string"
-        handleAddition={handleAddition}
-        handleDrag={handleDrag}
-        handleDelete={handleDelete}
-        classNames={{
-          tags: s.tags,
-          tagInput: s.tagInput,
-          tagInputField: s.tagInputField,
-          selected: s.selected,
-          tag: s.tag,
-          remove: s.remove,
-          suggestions: s.suggestions,
-          activeSuggestion: s.activeSuggestion,
-        }}
-      />
+      {tags ? (
+        <ReactTags
+          tags={tags}
+          autofocus={false}
+          placeholder="Add new string"
+          handleAddition={handleAddition}
+          handleDrag={handleDrag}
+          handleDelete={handleDelete}
+          classNames={{
+            tags: s.tags,
+            tagInput: s.tagInput,
+            tagInputField: s.tagInputField,
+            selected: s.selected,
+            tag: s.tag,
+            remove: s.remove,
+            suggestions: s.suggestions,
+            activeSuggestion: s.activeSuggestion,
+          }}
+        />
+      ) : (
+        <div>
+          Invalid value for this plugin! <code>{JSON.stringify(value)}</code>
+        </div>
+      )}
     </Canvas>
   );
 }

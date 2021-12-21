@@ -67,11 +67,9 @@ connect({
     }
 
     return {
-      addons: [
-        {
-          id: 'tagEditor',
-        },
-      ],
+      editor: {
+        id: 'tagEditor',
+      },
     };
   },
   renderFieldExtension(id, ctx) {

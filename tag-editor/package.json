@@ -34,6 +34,7 @@
     "datocms-plugin-sdk": "^0.3.26",
     "datocms-react-ui": "^0.3.26",
     "final-form-arrays": "^3.0.2",
+    "lodash-es": "^4.17.21",
     "react": "^17.0.2",
     "react-dnd": "^14.0.4",
     "react-dnd-html5-backend": "^14.0.2",
