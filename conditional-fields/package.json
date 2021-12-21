@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-conditional-fields",
   "homepage": "https://github.com/datocms/plugins/tree/master/conditional-fields#readme",
-  "version": "0.1.0-next",
+  "version": "0.1.0",
   "author": "DatoCMS <support@datocms.com>",
   "license": "ISC",
   "description": "Show/hide fields when you toggle a checkbox boolean field",
