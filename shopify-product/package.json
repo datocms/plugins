@@ -4,7 +4,7 @@
   "description": "A plugin that allows users to search and select Shopify products",
   "author": "DatoCMS <support@datocms.com>",
   "license": "ISC",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "keywords": [
     "datocms",
     "datocms-plugin",
