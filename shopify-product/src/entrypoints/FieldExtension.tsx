@@ -1,24 +1,32 @@
-import { RenderFieldExtensionCtx } from "datocms-plugin-sdk";
-import { Canvas } from "datocms-react-ui";
-import Main from "../components/Main";
-import { ConfigParameters } from "../types";
+import { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
+import { Canvas } from 'datocms-react-ui';
+import Value from '../components/Value';
+import Empty from '../components/Empty';
+import { Product } from '../utils/ShopifyClient';
+import get from 'lodash-es/get';
 
 type PropTypes = {
   ctx: RenderFieldExtensionCtx;
 };
 
 export default function FieldExtension({ ctx }: PropTypes) {
-  const parameters = ctx.plugin.attributes.parameters as ConfigParameters;
+  const value = get(ctx.formValues, ctx.fieldPath) as string | null;
 
-  if (
-    !("shopifyDomain" in parameters || "storefrontAccessToken" in parameters)
-  ) {
-    return <p>Invalid configuration!</p>;
-  }
+  const handleSelect = (product: Product) => {
+    ctx.setFieldValue(ctx.fieldPath, product.handle);
+  };
+
+  const handleReset = () => {
+    ctx.setFieldValue(ctx.fieldPath, null);
+  };
 
   return (
     <Canvas ctx={ctx}>
-      <Main ctx={ctx} />
+      {value ? (
+        <Value value={value} onReset={handleReset} />
+      ) : (
+        <Empty onSelect={handleSelect} />
+      )}
     </Canvas>
   );
 }

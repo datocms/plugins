@@ -1,75 +1,35 @@
-import { RenderFieldExtensionCtx } from "datocms-plugin-sdk";
-import Client from "./components/client";
-
 export type FirstInstallationParameters = {};
 
-export type ValidParameters = {
+export type ValidConfig = {
   shopifyDomain: string;
   storefrontAccessToken: string;
+  autoApplyToFieldsWithApiKey: string;
+  paramsVersion: '2';
 };
 
-export type ConfigParameters = FirstInstallationParameters | ValidParameters;
+export type LegacyConfig =
+  | {
+      shopifyDomain: string;
+      storefrontAccessToken: string;
+    }
+  | FirstInstallationParameters;
 
-export type EmptyProps = {
-  ctx: RenderFieldExtensionCtx;
-  onSelect: onSelectType;
-};
+export type Config = ValidConfig | LegacyConfig | FirstInstallationParameters;
 
-export type ValueProps = {
-  value: string;
-  client: Client | null;
-  onReset: () => void;
-  ctx: RenderFieldExtensionCtx;
-};
+export function isValidConfig(params: Config): params is ValidConfig {
+  return params && 'paramsVersion' in params && params.paramsVersion === '2';
+}
 
-export type onSelectType = ({ product }: { product: Product | null }) => void;
+export function normalizeConfig(params: Config): ValidConfig {
+  if (isValidConfig(params)) {
+    return params;
+  }
 
-export type State = {
-  searches: Record<string, any>;
-  query: string;
-  products: Record<string, Product>;
-};
-
-export type Product = {
-  status: string;
-  handle: string;
-  result: Product;
-  description: string;
-  title: string;
-  productType: string;
-  onlineStoreUrl: string;
-  imageUrl: string;
-  priceRange: {
-    maxVariantPrice: PriceTypes;
-    minVariantPrice: PriceTypes;
+  return {
+    paramsVersion: '2',
+    storefrontAccessToken:
+      'storefrontAccessToken' in params ? params.storefrontAccessToken : '078bc5caa0ddebfa89cccb4a1baa1f5c',
+    shopifyDomain: 'shopifyDomain' in params ? params.shopifyDomain : 'graphql',
+    autoApplyToFieldsWithApiKey: '',
   };
-  images: {
-    edges: [
-      {
-        node: {
-          src: string;
-        };
-      }
-    ];
-  };
-};
-
-export type PriceTypes = {
-  amount: number;
-  currencyCode: string;
-};
-
-export type Products = {
-  edges: [{ node: Product }];
-};
-
-export type StoreTypes = {
-  handle: string;
-  client: Client | null;
-};
-
-export type MainStateTypes = {
-  storefrontAccessToken: string;
-  shopifyDomain: string;
-  value: string | null;
-};
+}

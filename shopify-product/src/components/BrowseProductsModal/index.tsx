@@ -1,115 +1,96 @@
-import { useDispatch, useSelector } from "react-redux";
-import { State, onSelectType, Product } from "../../types";
-import Client from "../client";
-import { RenderModalCtx } from "datocms-plugin-sdk";
-import { fetchProductsMatching } from "../store";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { Button, TextInput, Canvas } from "datocms-react-ui";
-import style from "./styles.module.css";
+import { RenderModalCtx } from 'datocms-plugin-sdk';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { Button, TextInput, Canvas, Spinner } from 'datocms-react-ui';
+import s from './styles.module.css';
+import ShopifyClient, { Product } from '../../utils/ShopifyClient';
+import useStore, { State } from '../../utils/useStore';
+import { normalizeConfig } from '../../types';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faSearch } from '@fortawesome/free-solid-svg-icons';
+import classNames from 'classnames';
+
+const currentSearchSelector = (state: State) => state.getCurrentSearch();
+const currentFetchProductsMatchingSelector = (state: State) =>
+  state.fetchProductsMatching;
 
 export default function BrowseProductsModal({ ctx }: { ctx: RenderModalCtx }) {
-  const dispatch = useDispatch();
-  const [sku, setSku] = useState<string>("");
+  const performSearch = useStore(currentFetchProductsMatchingSelector);
+  const { query, status, products } = useStore(currentSearchSelector);
 
-  const storefrontAccessToken = ctx.plugin.attributes.parameters
-    .storefrontAccessToken as string;
-  const shopifyDomain = ctx.plugin.attributes.parameters
-    .shopifyDomain as string;
+  const [sku, setSku] = useState<string>('');
 
-  const client = useMemo(() => {
-    return new Client({ shopifyDomain, storefrontAccessToken });
-  }, [storefrontAccessToken, shopifyDomain]);
-
-  const performSearch = useCallback(
-    (query: string) => {
-      dispatch(fetchProductsMatching({ query, client }));
-    },
-    [client, dispatch]
+  const { storefrontAccessToken, shopifyDomain } = normalizeConfig(
+    ctx.plugin.attributes.parameters,
   );
 
-  const { query, status, products } = useSelector((state: State) => {
-    const search = state.searches[state.query] || {
-      status: "loading",
-      result: [],
-    };
-
-    return {
-      query: state.query,
-      status: search.status,
-      products: search.result.map((id: string) => state.products[id].result),
-    };
-  });
+  const client = useMemo(() => {
+    return new ShopifyClient({ shopifyDomain, storefrontAccessToken });
+  }, [storefrontAccessToken, shopifyDomain]);
 
   useEffect(() => {
-    performSearch(query);
-  }, [performSearch, query]);
+    performSearch(client, query);
+  }, [performSearch, query, client]);
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-
-    if (sku) {
-      performSearch(sku);
-    }
-  };
-
-  const handleSelect: onSelectType = ({ product }) => {
-    ctx.resolve({ product });
-  };
-
-  const renderResult = ({ product }: { product: Product }) => {
-    return (
-      <div
-        key={product.handle}
-        onClick={() => handleSelect({ product })}
-        className={style.empty__product}
-      >
-        <div
-          className={style.empty__product__image}
-          style={{ backgroundImage: `url(${product.imageUrl})` }}
-        />
-        <div className={style.empty__product__content}>
-          <div className={style.empty__product__title}>{product.title}</div>
-        </div>
-      </div>
-    );
+    performSearch(client, sku);
   };
 
   return (
     <Canvas ctx={ctx}>
-      <div className={style.empty}>
-        <form className={style.empty__search} onSubmit={handleSubmit}>
-          <div className={style.empty__search__input}>
-            <TextInput
-              placeholder="Search products... (ie. mens shirts)"
-              id="sku"
-              name="sku"
-              value={sku}
-              onChange={setSku}
-            />
-          </div>
+      <div className={s['browse']}>
+        <form className={s['search']} onSubmit={handleSubmit}>
+          <TextInput
+            placeholder="Search products... (ie. mens shirts)"
+            id="sku"
+            name="sku"
+            value={sku}
+            onChange={setSku}
+            className={s['search__input']}
+          />
+
           <Button
             type="submit"
-            buttonType="negative"
+            buttonType="primary"
             buttonSize="s"
-            className={
-              status === "loading" ? style.button__loading : style.button
-            }
+            leftIcon={<FontAwesomeIcon icon={faSearch} />}
+            disabled={status === 'loading'}
           >
             Search
-            <span className={style.spinner} />
           </Button>
         </form>
-        {products.filter((x: any) => !!x) && (
-          <div
-            className={
-              status === "loading"
-                ? style.empty__products__loading
-                : style.empty__products
-            }
-          >
-            {products.map((product: Product) => renderResult({ product }))}
-          </div>
-        )}
+        <div className={s['container']}>
+          {products && products.filter((x: any) => !!x) && (
+            <div
+              className={classNames(s['products'], {
+                [s['products__loading']]: status === 'loading',
+              })}
+            >
+              {products.map((product: Product) => (
+                <div
+                  key={product.handle}
+                  onClick={() => ctx.resolve(product)}
+                  className={s['product']}
+                >
+                  <div
+                    className={s['product__image']}
+                    style={{ backgroundImage: `url(${product.imageUrl})` }}
+                  />
+                  <div className={s['product__content']}>
+                    <div className={s['product__title']}>{product.title}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {status === 'loading' && <Spinner size={25} placement="centered" />}
+          {status === 'success' && products && products.length === 0 && (
+            <div className={s['empty']}>No products found!</div>
+          )}
+          {status === 'error' && (
+            <div className={s['empty']}>API call failed!</div>
+          )}
+        </div>
       </div>
     </Canvas>
   );

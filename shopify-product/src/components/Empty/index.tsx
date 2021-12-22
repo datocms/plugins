@@ -1,24 +1,39 @@
-import { EmptyProps, Product } from "../../types";
-import { Button } from "datocms-react-ui";
+import { Button, useCtx } from 'datocms-react-ui';
+import s from './styles.module.css';
+import { Product } from '../../utils/ShopifyClient';
+import { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faSearch } from '@fortawesome/free-solid-svg-icons';
 
-import style from "./styles.module.css";
+export type EmptyProps = {
+  onSelect: (product: Product) => void;
+};
 
-export default function Empty({ ctx, onSelect }: EmptyProps) {
+export default function Empty({ onSelect }: EmptyProps) {
+  const ctx = useCtx<RenderFieldExtensionCtx>();
+
   const handleOpenModal = async () => {
-    const result = (await ctx.openModal({
-      id: "browseProducts",
-      title: "Browse products",
-      width: "l",
-    })) as { product: Product | null };
+    const product = (await ctx.openModal({
+      id: 'browseProducts',
+      title: 'Browse Shipify products',
+      width: 'xl',
+    })) as Product | null;
 
-    onSelect({ product: result && result.product });
+    if (product) {
+      onSelect(product);
+    }
   };
 
   return (
-    <div className={style.empty}>
-      <div className={style.empty__label}>No product selected</div>
-
-      <Button onClick={handleOpenModal}>Browse</Button>
+    <div className={s['empty']}>
+      <div className={s['empty__label']}>No product selected!</div>
+      <Button
+        onClick={handleOpenModal}
+        buttonSize="s"
+        leftIcon={<FontAwesomeIcon icon={faSearch} />}
+      >
+        Browse Shopify products
+      </Button>
     </div>
   );
 }

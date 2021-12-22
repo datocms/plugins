@@ -1,47 +1,68 @@
-import { useCallback, useEffect } from "react";
-import { useDispatch, useSelector } from "react-redux";
-import { State } from "../../types";
-import { fetchProductByHandle } from "../store";
-import { ValueProps } from "../../types";
-import style from "./styles.module.css";
-import Price from "../Price";
+import { useCallback, useEffect, useMemo } from 'react';
+import { normalizeConfig } from '../../types';
+import Price from '../Price';
+import { useCtx } from 'datocms-react-ui';
+import { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
+import ShopifyClient from '../../utils/ShopifyClient';
+import useStore, { State } from '../../utils/useStore';
+import s from './styles.module.css';
+import classNames from 'classnames';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import {
+  faExternalLinkAlt,
+  faTimesCircle,
+} from '@fortawesome/free-solid-svg-icons';
 
-export default function Value({ value, client, onReset, ctx }: ValueProps) {
-  const dispatch = useDispatch();
+const fetchProductByHandleSelector = (state: State) =>
+  state.fetchProductByHandle;
 
-  const { product, status } = useSelector((state: State) => {
-    const selectedProduct = state.products[value];
+export type ValueProps = {
+  value: string;
+  onReset: () => void;
+};
 
-    return {
-      status:
-        selectedProduct && selectedProduct.status
-          ? selectedProduct.status
-          : "loading",
-      product: selectedProduct && selectedProduct.result,
-    };
-  });
+export default function Value({ value, onReset }: ValueProps) {
+  const ctx = useCtx<RenderFieldExtensionCtx>();
 
-  const findProduct = useCallback(
-    (handle: string) => {
-      dispatch(fetchProductByHandle({ handle, client }));
-    },
-    [client, dispatch]
+  const { storefrontAccessToken, shopifyDomain } = normalizeConfig(
+    ctx.plugin.attributes.parameters,
   );
 
+  const client = useMemo(
+    () => new ShopifyClient({ shopifyDomain, storefrontAccessToken }),
+    [storefrontAccessToken, shopifyDomain],
+  );
+
+  const { product, status } = useStore(
+    useCallback((state) => state.getProduct(value), [value]),
+  );
+
+  const fetchProductByHandle = useStore(fetchProductByHandleSelector);
+
   useEffect(() => {
-    findProduct(value);
-  }, [value, findProduct]);
+    fetchProductByHandle(client, value);
+  }, [client, value, fetchProductByHandle]);
 
   return (
-    <div className={status === "loading" ? style.value__loading : style.value}>
+    <div
+      className={classNames(s['value'], {
+        [s['loading']]: status === 'loading',
+      })}
+    >
+      {
+        status === 'error' &&
+        <div className={s['product']}>
+          API Error! Could not fetch details for product:&nbsp;<code>{value}</code>
+        </div>
+      }
       {product && (
-        <div className={style.value__product}>
+        <div className={s['product']}>
           <div
-            className={style.value__product__image}
+            className={s['product__image']}
             style={{ backgroundImage: `url(${product.imageUrl})` }}
           />
-          <div className={style.value__product__info}>
-            <div className={style.value__product__title}>
+          <div className={s['product__info']}>
+            <div className={s['product__title']}>
               <a
                 href={product.onlineStoreUrl}
                 target="_blank"
@@ -49,19 +70,20 @@ export default function Value({ value, client, onReset, ctx }: ValueProps) {
               >
                 {product.title}
               </a>
+              <FontAwesomeIcon icon={faExternalLinkAlt} />
             </div>
-            <div className={style.value__product__description}>
+            <div className={s['product__description']}>
               {product.description}
             </div>
             {product.productType && (
-              <div className={style.value__product__producttype}>
+              <div className={s['product__producttype']}>
                 <strong>Product type:</strong>
                 &nbsp;
                 {product.productType}
               </div>
             )}
 
-            <div className={style.value__product__price}>
+            <div className={s['product__price']}>
               <strong>Price:</strong>
               &nbsp;
               {product.priceRange.maxVariantPrice.amount !==
@@ -78,7 +100,9 @@ export default function Value({ value, client, onReset, ctx }: ValueProps) {
           </div>
         </div>
       )}
-      <button type="button" onClick={onReset} className={style.value__reset} />
+      <button type="button" onClick={onReset} className={s['reset']}>
+        <FontAwesomeIcon icon={faTimesCircle} />
+      </button>
     </div>
   );
 }
