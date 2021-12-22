@@ -2,7 +2,6 @@ import { ValidConfig } from '../types';
 
 export type Product = {
   handle: string;
-  result: Product;
   description: string;
   title: string;
   productType: string;
@@ -90,7 +89,7 @@ export default class ShopifyClient {
       query: `
         query getProducts($query: String) {
           shop {
-            products(first: 8, query: $query) {
+            products(first: 10, query: $query) {
               edges {
                 node {
                   ${productFragment}
@@ -144,7 +143,7 @@ export default class ShopifyClient {
 
     if (!contentType || !contentType.includes('application/json')) {
       throw new Error(
-        `Invalid content type: ${res.headers.get('content-type')}`,
+        `Invalid content type: ${contentType}`,
       );
     }
 

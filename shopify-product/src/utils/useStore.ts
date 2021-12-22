@@ -110,7 +110,7 @@ const useStore = create<State>(
       };
     },
     {
-      name: 'store',
+      name: 'shopifyStore',
     },
   ),
 );

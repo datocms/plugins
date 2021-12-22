@@ -15,7 +15,7 @@ export default function Empty({ onSelect }: EmptyProps) {
   const handleOpenModal = async () => {
     const product = (await ctx.openModal({
       id: 'browseProducts',
-      title: 'Browse Shipify products',
+      title: 'Browse Shopify products',
       width: 'xl',
     })) as Product | null;
 
