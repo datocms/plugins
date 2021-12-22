@@ -1,67 +1,91 @@
-import { useCallback, useEffect } from "react";
-import { useDispatch, useSelector } from "react-redux";
-import { State } from "../../types";
-import { fetchProductByCode } from "../store";
-import { ValueProps } from "../../types";
-import style from "./styles.module.css";
+import { useCallback, useEffect, useMemo } from 'react';
+import { normalizeConfig } from '../../types';
+import { useCtx } from 'datocms-react-ui';
+import { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
+import CommerceLayerClient from '../../utils/CommerceLayerClient';
+import useStore, { State } from '../../utils/useStore';
+import s from './styles.module.css';
+import classNames from 'classnames';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import {
+  faExternalLinkAlt,
+  faTimesCircle,
+} from '@fortawesome/free-solid-svg-icons';
 
-export default function Value({ value, client, onReset, ctx }: ValueProps) {
-  const dispatch = useDispatch();
+const fetchProductByCodeSelector = (state: State) => state.fetchProductByCode;
 
-  const { product, status } = useSelector((state: State) => {
-    const selectedProduct = state.products[value];
+export type ValueProps = {
+  value: string;
+  onReset: () => void;
+};
 
-    return {
-      status:
-        selectedProduct && selectedProduct.status
-          ? selectedProduct.status
-          : "loading",
-      product: selectedProduct && selectedProduct.result,
-    };
-  });
+export default function Value({ value, onReset }: ValueProps) {
+  const ctx = useCtx<RenderFieldExtensionCtx>();
 
-  const findProduct = useCallback(
-    (code: string) => {
-      dispatch(fetchProductByCode({ code, client }));
-    },
-    [client, dispatch]
+  const { baseEndpoint, clientId } = normalizeConfig(
+    ctx.plugin.attributes.parameters,
   );
 
+  const client = useMemo(
+    () => new CommerceLayerClient({ baseEndpoint, clientId }),
+    [baseEndpoint, clientId],
+  );
+
+  const { product, status } = useStore(
+    useCallback((state) => state.getProduct(value), [value]),
+  );
+
+  const fetchProductByCode = useStore(fetchProductByCodeSelector);
+
   useEffect(() => {
-    findProduct(value);
-  }, [value, findProduct]);
+    fetchProductByCode(client, value);
+  }, [client, value, fetchProductByCode]);
 
   return (
-    <div className={status === "loading" ? style.value__loading : style.value}>
+    <div
+      className={classNames(s['value'], {
+        [s['loading']]: status === 'loading',
+      })}
+    >
+      {status === 'error' && (
+        <div className={s['product']}>
+          API Error! Could not fetch details for product:&nbsp;
+          <code>{value}</code>
+        </div>
+      )}
       {product && (
-        <div className={style.value__product}>
+        <div className={s['product']}>
           <div
-            className={style.value__product__image}
-            style={{
-              backgroundImage: `url(${product.attributes.image_url})`,
-            }}
+            className={s['product__image']}
+            style={{ backgroundImage: `url(${product.attributes.image_url})` }}
           />
-          <div className={style.value__product__info}>
-            <div className={style.value__product__title}>
+          <div className={s['product__info']}>
+            <div className={s['product__title']}>
               <a
-                href={`${ctx.parameters.baseEndpoint}/admin/skus/${product.id}`}
+                href={`${baseEndpoint}/admin/skus/${product.id}`}
                 target="_blank"
                 rel="noopener noreferrer"
               >
                 {product.attributes.name}
               </a>
+              <FontAwesomeIcon icon={faExternalLinkAlt} />
             </div>
-            <div className={style.value__product__code}>
-              SKU &nbsp;
+            <div className={s['product__producttype']}>
+              <strong>SKU:</strong>
+              &nbsp;
               {product.attributes.code}
             </div>
-            <div className={style.value__product__description}>
+            <div className={s['product__producttype']}>
+              <strong>Description:</strong>
+              &nbsp;
               {product.attributes.description}
             </div>
           </div>
         </div>
       )}
-      <button type="button" onClick={onReset} className={style.value__reset} />
+      <button type="button" onClick={onReset} className={s['reset']}>
+        <FontAwesomeIcon icon={faTimesCircle} />
+      </button>
     </div>
   );
 }

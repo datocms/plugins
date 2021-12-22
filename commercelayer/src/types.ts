@@ -1,53 +1,34 @@
-import Client from "./components/client";
 export type FirstInstallationParameters = {};
-import { RenderFieldExtensionCtx } from "datocms-plugin-sdk";
 
-export type ValidParameters = {
+export type ValidConfig = {
   baseEndpoint: string;
   clientId: string;
+  autoApplyToFieldsWithApiKey: string;
+  paramsVersion: '2';
 };
 
-export type ConfigParameters = FirstInstallationParameters | ValidParameters;
+export type LegacyConfig =
+  | {
+      baseEndpoint: string;
+      clientId: string;
+    }
+  | FirstInstallationParameters;
 
-export type EmptyProps = {
-  ctx: RenderFieldExtensionCtx;
-  onSelect: onSelectType;
-};
+export type Config = ValidConfig | LegacyConfig | FirstInstallationParameters;
 
-export type ValueProps = {
-  value: string;
-  client: Client | null;
-  onReset: () => void;
-  ctx: RenderFieldExtensionCtx;
-};
+export function isValidConfig(params: Config): params is ValidConfig {
+  return params && 'paramsVersion' in params && params.paramsVersion === '2';
+}
 
-export type onSelectType = ({ product }: { product: Product | null }) => void;
+export function normalizeConfig(params: Config): ValidConfig {
+  if (isValidConfig(params)) {
+    return params;
+  }
 
-export type State = {
-  searches: Record<string, any>;
-  query: string;
-  products: Record<string, Product>;
-};
-
-export type Product = {
-  id: string;
-  result: Product;
-  status: string;
-  attributes: {
-    image_url: string;
-    name: string;
-    code: string;
-    description: string;
+  return {
+    paramsVersion: '2',
+    baseEndpoint: 'baseEndpoint' in params ? params.baseEndpoint : '',
+    clientId: 'clientId' in params ? params.clientId : '',
+    autoApplyToFieldsWithApiKey: '',
   };
-};
-
-export type StoreTypes = {
-  code: string;
-  client: Client | null;
-};
-
-export type MainStateTypes = {
-  baseEndpoint: string;
-  clientId: string;
-  value: string | null;
-};
+}

@@ -1,114 +1,83 @@
-.empty__search {
+.search {
   display: flex;
-  align-items: center;
+  align-items: stretch;
 }
 
-.empty__search > div {
-  flex: 1;
-}
-
-.empty__search__input {
+.search__input {
   flex: 1;
   margin-right: 15px;
+}
+
+.container {
+  min-height: 200px;
   position: relative;
+  margin-top: var(--spacing-l);
 }
 
-.empty__search__input input[type="text"] {
-  padding-left: 38px;
-}
-
-.empty__products {
-  margin-top: 20px;
+.products {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-column-gap: var(--spacing-m);
+  grid-row-gap: var(--spacing-m);
+  transition: opacity 0.2s ease-in-out;
   opacity: 1;
-  transition: opacity 0.2s ease-in-out;
 }
 
-.empty__products__loading {
-  margin-top: 20px;
-  transition: opacity 0.2s ease-in-out;
+.products__loading {
   opacity: 0.6;
 }
 
-.empty__product {
-  padding: 8px;
+.product {
+  text-align: center;
+  padding: 3px;
+  padding-bottom: 0;
   border-radius: 3px;
   border: 1px solid var(--border-color);
-  margin-bottom: 3px;
   overflow: hidden;
   cursor: pointer;
   background-color: transparent;
   appearance: none;
-  color: var(--base-body-color);
   font: inherit;
-  display: flex;
-  align-items: center;
-  width: 100%;
-  box-sizing: border-box;
 }
 
-.empty__product:hover {
+.product:hover {
   border-color: var(--accent-color);
 }
 
-.empty__product__image {
+.product__image {
   display: block;
-  width: 60px;
-  height: 60px;
-  margin-right: 10px;
+  padding-top: 100%;
   background-size: cover;
-  background-position: center center;
-  border-radius: 3px 3px 0 0;
 }
 
-.empty__product__content {
+.product__title {
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+  margin: var(--spacing-s) 0;
+}
+
+.product__content {
   line-height: 1.2;
   text-align: left;
   flex: 1;
 }
 
-.empty__product__code {
+.product__code {
   font-size: 13px;
   margin-top: 2px;
   color: #999;
 }
 
-.button {
-  position: relative;
-}
-
-.button__loading {
-  position: relative;
-  padding-right: 33px;
-}
-
-.button__loading .spinner {
-  border: 3px solid #fff;
-  border-top-color: transparent;
-  border-left-color: transparent;
-  width: 8px;
-  height: 8px;
-  opacity: 0.8;
-  border-radius: 50%;
-  animation: loadingSpinner 0.7s infinite linear;
-  margin-left: 15px;
-  vertical-align: middle;
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  margin-top: -7px;
-  opacity: 0;
-  transition: opacity 0.2s ease-in-out;
-  opacity: 1;
-}
-.button .spinner {
-  opacity: 0;
-}
-
-@keyframes loadingSpinner {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
+.empty {
+  text-align: center;
+  font-size: var(--font-size-xl);
+  color: var(--light-body-color);
+  height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--light-bg-color);
 }
