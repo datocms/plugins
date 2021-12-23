@@ -1,6 +1,5 @@
 import {
   connect,
-  FieldAppearanceChange,
   IntentCtx,
   OnBootCtx,
   RenderFieldExtensionCtx,
@@ -9,25 +8,20 @@ import {
 import { render } from './utils/render';
 import 'datocms-react-ui/styles.css';
 import StarRatingEditor from './entrypoints/StarRatingEditor';
-import React from 'react';
-import ReactDOM from 'react-dom';
-import StarRatingConfigScreen from './entrypoints/StarRatingConfigScreen';
+import FieldConfigScreen, { validate } from './entrypoints/FieldConfigScreen';
+import {
+  isValidGlobalParams,
+  normalizeGlobalParams,
+} from './utils/globalParams';
+import {
+  FieldParams,
+  isValidFieldParams,
+  normalizeFieldParams,
+} from './utils/fieldParams';
+import ConfigScreen from './entrypoints/ConfigScreen';
 
-const isValidCSSColor = (strColor: string) => {
-  const s = new Option().style;
-  s.color = strColor;
-  return s.color !== '';
-};
-
-type OldColor = {
-  red: number;
-  blue: number;
-  green: number;
-};
-
-const convertOldColorToNew = ({ red, green, blue }: OldColor): string => {
-  return `rgb(${red}, ${green}, ${blue})`;
-};
+const FIELD_EXTENSION_ID = 'starRating';
+const INITIAL_HEIGHT = 48;
 
 connect({
   async onBoot(ctx: OnBootCtx) {
@@ -35,82 +29,103 @@ connect({
       return;
     }
 
-    if (ctx.plugin.attributes.parameters.migratedFromLegacyPlugin) {
+    if (isValidGlobalParams(ctx.plugin.attributes.parameters)) {
       return;
     }
 
-    const fields = await ctx.loadFieldsUsingPlugin();
-
-    await Promise.all(
-      fields.map(async (field) => {
-        const { appearance } = field.attributes;
-        const changes: FieldAppearanceChange[] = [];
-
-        if (appearance.editor === ctx.plugin.id) {
-          changes.push({
-            operation: 'updateEditor',
-            newFieldExtensionId: 'starRating',
-            newParameters: {
-              ...appearance.parameters,
-              starsColor: convertOldColorToNew(
-                appearance.parameters.starsColor as OldColor,
-              ),
-            },
-          });
-        }
-
-        if (changes.length > 0) {
-          await ctx.updateFieldAppearance(field.id, changes);
-        }
-      }),
+    const validGlobalParams = normalizeGlobalParams(
+      ctx.plugin.attributes.parameters,
     );
 
-    ctx.updatePluginParameters({
-      ...ctx.plugin.attributes.parameters,
-      migratedFromLegacyPlugin: true,
-    });
+    const fields = await ctx.loadFieldsUsingPlugin();
+
+    const someUpgraded = (
+      await Promise.all(
+        fields.map(async (field) => {
+          const { appearance } = field.attributes;
+
+          if (
+            appearance.editor === ctx.plugin.id &&
+            (appearance.field_extension !== FIELD_EXTENSION_ID ||
+              isValidFieldParams(appearance.parameters as FieldParams))
+          ) {
+            await ctx.updateFieldAppearance(field.id, [
+              {
+                operation: 'updateEditor',
+                newFieldExtensionId: FIELD_EXTENSION_ID,
+                newParameters: normalizeFieldParams(
+                  appearance.parameters as FieldParams,
+                  validGlobalParams,
+                ),
+              },
+            ]);
+
+            return true;
+          }
+
+          return false;
+        }),
+      )
+    ).some((x) => x);
+
+    ctx.updatePluginParameters(validGlobalParams);
+
+    if (someUpgraded) {
+      ctx.notice('Plugin settings successfully upgraded!');
+    }
+  },
+  renderConfigScreen(ctx) {
+    render(<ConfigScreen ctx={ctx} />);
   },
   manualFieldExtensions(ctx: IntentCtx) {
     return [
       {
-        id: 'starRating',
+        id: FIELD_EXTENSION_ID,
         name: 'Star rating',
         type: 'editor',
         fieldTypes: ['integer'],
         configurable: true,
+        initialHeight: INITIAL_HEIGHT,
       },
     ];
+  },
+  overrideFieldExtensions(field, ctx) {
+    const config = normalizeGlobalParams(ctx.plugin.attributes.parameters);
+
+    if (field.attributes.field_type !== 'integer') {
+      return;
+    }
+
+    if (
+      !config.autoApplyToFieldsWithApiKey ||
+      !new RegExp(config.autoApplyToFieldsWithApiKey).test(
+        field.attributes.api_key,
+      )
+    ) {
+      return;
+    }
+
+    return {
+      editor: {
+        id: FIELD_EXTENSION_ID,
+        initialHeight: INITIAL_HEIGHT,
+      },
+    };
   },
   renderManualFieldExtensionConfigScreen(
     fieldExtensionId: string,
     ctx: RenderManualFieldExtensionConfigScreenCtx,
   ) {
-    ReactDOM.render(
-      <React.StrictMode>
-        <StarRatingConfigScreen ctx={ctx} />
-      </React.StrictMode>,
-      document.getElementById('root'),
-    );
+    render(<FieldConfigScreen ctx={ctx} />);
   },
   validateManualFieldExtensionParameters(
     fieldExtensionId: string,
     parameters: Record<string, any>,
   ) {
-    const errors: Record<string, string> = {};
-    if (
-      isNaN(parseInt(parameters.maxRating)) ||
-      parameters.maxRating < 2 ||
-      parameters.maxRating > 10
-    ) {
-      errors.maxRating = 'Rating must be between 2 and 10!';
-    }
-    if (!parameters.starsColor || !isValidCSSColor(parameters.starsColor)) {
-      errors.starsColor = 'Invalid CSS color!';
-    }
-    return errors;
+    return validate(parameters);
   },
   renderFieldExtension(fieldExtensionId: string, ctx: RenderFieldExtensionCtx) {
-    if (fieldExtensionId === 'starRating') {
+    if (fieldExtensionId === FIELD_EXTENSION_ID) {
       return render(<StarRatingEditor ctx={ctx} />);
     }
   },

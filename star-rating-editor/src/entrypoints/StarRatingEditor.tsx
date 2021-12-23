@@ -1,7 +1,8 @@
-import { RenderFieldExtensionCtx } from "datocms-plugin-sdk";
-import { Canvas } from "datocms-react-ui";
-import ReactStars from "react-rating-stars-component";
-import get from "lodash-es/get";
+import { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
+import { Canvas } from 'datocms-react-ui';
+import ReactStars from 'react-rating-stars-component';
+import get from 'lodash-es/get';
+import { useFieldSettings } from '../utils/fieldParams';
 
 type PropTypes = {
   ctx: RenderFieldExtensionCtx;
@@ -9,17 +10,18 @@ type PropTypes = {
 
 const StarRatingEditor = ({ ctx }: PropTypes) => {
   const currentValue = get(ctx.formValues, ctx.fieldPath);
+
   const handleChange = (newValue: number) => {
     ctx.setFieldValue(ctx.fieldPath, newValue);
   };
 
-  const maxRating = +(ctx.parameters.maxRating as string);
+  const [maxRating, starsColor] = useFieldSettings(ctx);
 
   return (
     <Canvas ctx={ctx}>
       <ReactStars
-        count={maxRating || 5}
-        activeColor={ctx.parameters.starsColor || "yellow"}
+        count={maxRating}
+        activeColor={starsColor}
         size={32}
         isHalf={false}
         edit={!ctx.disabled}
