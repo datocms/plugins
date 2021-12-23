@@ -30,7 +30,7 @@
   "datoCmsPlugin": {
     "title": "Star rating editor",
     "previewImage": "docs/demo.mp4",
-    "coverImage": "docs/cover.jpg",
+    "coverImage": "docs/cover.png",
     "entryPoint": "build/index.html",
     "permissions": []
   },
