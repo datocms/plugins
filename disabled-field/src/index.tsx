@@ -4,8 +4,10 @@ import {
   IntentCtx,
   OnBootCtx,
   RenderFieldExtensionCtx,
-} from "datocms-plugin-sdk";
-import "datocms-react-ui/styles.css";
+} from 'datocms-plugin-sdk';
+import 'datocms-react-ui/styles.css';
+
+const FIELD_EXTENSION_ID = 'disableField';
 
 connect({
   async onBoot(ctx: OnBootCtx) {
@@ -19,57 +21,56 @@ connect({
 
     const fields = await ctx.loadFieldsUsingPlugin();
 
-    await Promise.all(
-      fields.map(async (field) => {
-        const { appearance } = field.attributes;
-        const changes: FieldAppearanceChange[] = [];
-        appearance.addons.forEach((addon, index) => {
-          changes.push({
-            operation: "updateAddon",
-            index,
-            newFieldExtensionId: "disableField",
+    const someUpgraded = (
+      await Promise.all(
+        fields.map(async (field) => {
+          const { appearance } = field.attributes;
+
+          const changes: FieldAppearanceChange[] = [];
+
+          appearance.addons.forEach((addon, index) => {
+            if (addon.field_extension === FIELD_EXTENSION_ID) {
+              return;
+            }
+
+            changes.push({
+              operation: 'updateAddon',
+              index,
+              newFieldExtensionId: FIELD_EXTENSION_ID,
+            });
           });
-        });
-        await ctx.updateFieldAppearance(field.id, changes);
-      })
-    );
+
+          if (changes.length === 0) {
+            return false;
+          }
+
+          await ctx.updateFieldAppearance(field.id, changes);
+        }),
+      )
+    ).some((x) => x);
 
     ctx.updatePluginParameters({
       ...ctx.plugin.attributes.parameters,
       migratedFromLegacyPlugin: true,
     });
+
+    if (someUpgraded) {
+      ctx.notice('Plugin settings upgraded successfully!');
+    }
   },
   manualFieldExtensions(ctx: IntentCtx) {
     return [
       {
-        id: "disableField",
-        name: "Disable Field",
-        type: "addon",
-        fieldTypes: [
-          "boolean",
-          "color",
-          "date",
-          "date_time",
-          "file",
-          "float",
-          "gallery",
-          "integer",
-          "json",
-          "lat_lon",
-          "link",
-          "links",
-          "rich_text",
-          "seo",
-          "slug",
-          "string",
-          "text",
-          "video",
-        ],
+        id: FIELD_EXTENSION_ID,
+        name: 'Disable Field',
+        type: 'addon',
+        fieldTypes: 'all',
+        initialHeight: 0,
       },
     ];
   },
   renderFieldExtension(fieldExtensionId: string, ctx: RenderFieldExtensionCtx) {
-    if (fieldExtensionId === "disableField") {
+    if (fieldExtensionId === FIELD_EXTENSION_ID) {
       ctx.disableField(ctx.fieldPath, true);
     }
   },
