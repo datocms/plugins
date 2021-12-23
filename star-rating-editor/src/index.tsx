@@ -5,18 +5,18 @@ import {
   OnBootCtx,
   RenderFieldExtensionCtx,
   RenderManualFieldExtensionConfigScreenCtx,
-} from "datocms-plugin-sdk";
-import { render } from "./utils/render";
-import "datocms-react-ui/styles.css";
-import StarRatingEditor from "./entrypoints/StarRatingEditor";
-import React from "react";
-import ReactDOM from "react-dom";
-import StarRatingConfigScreen from "./entrypoints/StarRatingConfigScreen";
+} from 'datocms-plugin-sdk';
+import { render } from './utils/render';
+import 'datocms-react-ui/styles.css';
+import StarRatingEditor from './entrypoints/StarRatingEditor';
+import React from 'react';
+import ReactDOM from 'react-dom';
+import StarRatingConfigScreen from './entrypoints/StarRatingConfigScreen';
 
 const isValidCSSColor = (strColor: string) => {
   const s = new Option().style;
   s.color = strColor;
-  return s.color !== "";
+  return s.color !== '';
 };
 
 type OldColor = {
@@ -48,12 +48,12 @@ connect({
 
         if (appearance.editor === ctx.plugin.id) {
           changes.push({
-            operation: "updateEditor",
-            newFieldExtensionId: "starRating",
+            operation: 'updateEditor',
+            newFieldExtensionId: 'starRating',
             newParameters: {
               ...appearance.parameters,
               starsColor: convertOldColorToNew(
-                appearance.parameters.starsColor as OldColor
+                appearance.parameters.starsColor as OldColor,
               ),
             },
           });
@@ -62,7 +62,7 @@ connect({
         if (changes.length > 0) {
           await ctx.updateFieldAppearance(field.id, changes);
         }
-      })
+      }),
     );
 
     ctx.updatePluginParameters({
@@ -73,28 +73,28 @@ connect({
   manualFieldExtensions(ctx: IntentCtx) {
     return [
       {
-        id: "starRating",
-        name: "Star rating",
-        type: "editor",
-        fieldTypes: ["integer"],
+        id: 'starRating',
+        name: 'Star rating',
+        type: 'editor',
+        fieldTypes: ['integer'],
         configurable: true,
       },
     ];
   },
   renderManualFieldExtensionConfigScreen(
     fieldExtensionId: string,
-    ctx: RenderManualFieldExtensionConfigScreenCtx
+    ctx: RenderManualFieldExtensionConfigScreenCtx,
   ) {
     ReactDOM.render(
       <React.StrictMode>
         <StarRatingConfigScreen ctx={ctx} />
       </React.StrictMode>,
-      document.getElementById("root")
+      document.getElementById('root'),
     );
   },
   validateManualFieldExtensionParameters(
     fieldExtensionId: string,
-    parameters: Record<string, any>
+    parameters: Record<string, any>,
   ) {
     const errors: Record<string, string> = {};
     if (
@@ -102,15 +102,15 @@ connect({
       parameters.maxRating < 2 ||
       parameters.maxRating > 10
     ) {
-      errors.maxRating = "Rating must be between 2 and 10!";
+      errors.maxRating = 'Rating must be between 2 and 10!';
     }
     if (!parameters.starsColor || !isValidCSSColor(parameters.starsColor)) {
-      errors.starsColor = "Invalid CSS color!";
+      errors.starsColor = 'Invalid CSS color!';
     }
     return errors;
   },
   renderFieldExtension(fieldExtensionId: string, ctx: RenderFieldExtensionCtx) {
-    if (fieldExtensionId === "starRating") {
+    if (fieldExtensionId === 'starRating') {
       return render(<StarRatingEditor ctx={ctx} />);
     }
   },
