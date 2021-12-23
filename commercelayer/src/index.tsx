@@ -8,6 +8,8 @@ import { RenderModalCtx } from 'datocms-plugin-sdk';
 import 'datocms-react-ui/styles.css';
 import { isValidConfig, normalizeConfig } from './types';
 
+const FIELD_EXTENSION_ID = 'commerceLayerSku';
+
 connect({
   async onBoot(ctx: OnBootCtx) {
     if (
@@ -24,7 +26,7 @@ connect({
         fields.map(async (field) => {
           if (
             field.attributes.appearance.editor !== ctx.plugin.id ||
-            field.attributes.appearance.field_extension === 'commerceLayer'
+            field.attributes.appearance.field_extension === FIELD_EXTENSION_ID
           ) {
             return false;
           }
@@ -32,7 +34,7 @@ connect({
           await ctx.updateFieldAppearance(field.id, [
             {
               operation: 'updateEditor',
-              newFieldExtensionId: 'commerceLayer',
+              newFieldExtensionId: FIELD_EXTENSION_ID,
             },
           ]);
 
@@ -56,12 +58,32 @@ connect({
   manualFieldExtensions() {
     return [
       {
-        id: 'commerceLayer',
-        name: 'Commerce Layer',
+        id: FIELD_EXTENSION_ID,
+        name: 'Commerce Layer SKU',
         type: 'editor',
         fieldTypes: ['string'],
       },
     ];
+  },
+  overrideFieldExtensions(field, ctx) {
+    const config = normalizeConfig(ctx.plugin.attributes.parameters);
+
+    if (field.attributes.field_type !== 'string') {
+      return;
+    }
+
+    if (
+      !config.autoApplyToFieldsWithApiKey ||
+      !new RegExp(config.autoApplyToFieldsWithApiKey).test(
+        field.attributes.api_key,
+      )
+    ) {
+      return;
+    }
+
+    return {
+      editor: { id: FIELD_EXTENSION_ID },
+    };
   },
   renderFieldExtension(id, ctx) {
     render(<FieldExtension ctx={ctx} />);

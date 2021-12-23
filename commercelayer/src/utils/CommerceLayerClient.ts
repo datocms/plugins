@@ -28,7 +28,7 @@ export default class CommerceLayerClient {
   async productsMatching(query: string): Promise<Product[]> {
     const result = await this.get('/api/skus', {
       'filter[q][code_or_name_or_description_cont]': query,
-      'page[size]': 10,
+      'page[size]': 24,
     });
 
     return result.data;

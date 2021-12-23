@@ -115,7 +115,7 @@ const useStore = create<State>(
       };
     },
     {
-      name: 'commerceLayerStore',
+      name: 'datocms-plugin-commercelayer',
     },
   ),
 );

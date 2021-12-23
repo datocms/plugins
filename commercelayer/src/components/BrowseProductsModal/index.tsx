@@ -60,7 +60,7 @@ export default function BrowseProductsModal({ ctx }: { ctx: RenderModalCtx }) {
           </Button>
         </form>
         <div className={s['container']}>
-          {products && products.filter((x: any) => !!x) && (
+          {products && (
             <div
               className={classNames(s['products'], {
                 [s['products__loading']]: status === 'loading',
@@ -72,13 +72,16 @@ export default function BrowseProductsModal({ ctx }: { ctx: RenderModalCtx }) {
                   onClick={() => ctx.resolve(product)}
                   className={s['product']}
                 >
-                  <div
-                    className={s['product__image']}
-                    style={{
-                      backgroundImage: `url(${product.attributes.image_url})`,
-                    }}
-                  />
+                  <div className={s['product__image']}>
+                    <img
+                      src={`${product.attributes.image_url}?auto=format&w=100&h=100&fit=crop`}
+                      alt={product.attributes.code}
+                    />
+                  </div>
                   <div className={s['product__content']}>
+                    <div className={s['product__code']}>
+                      {product.attributes.code}
+                    </div>
                     <div className={s['product__title']}>
                       {product.attributes.name}
                     </div>

@@ -17,3 +17,5 @@ Get the application's Base endpoint and Client ID:
 Please specify your Commerce Layer parameters in the plugin settings:
 
 ![Demo](docs/settings.png)
+
+You can either hook this plugin manually to your single-line fields, or specifying an automatic match rule based on the API key.

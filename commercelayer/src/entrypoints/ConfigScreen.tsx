@@ -34,7 +34,7 @@ export default function ConfigScreen({ ctx }: Props) {
           } catch (e) {
             return {
               tupleFailing:
-                'The API key seems to be invalid for the specified CommerceLayer project!',
+                'The Client ID seems to be invalid for the specified Commerce Layer base endpoint!',
             };
           }
 
@@ -42,7 +42,7 @@ export default function ConfigScreen({ ctx }: Props) {
           ctx.notice('Settings updated successfully!');
         }}
       >
-        {({ handleSubmit, submitting, dirty, submitErrors }) => (
+        {({ values, handleSubmit, submitting, dirty, submitErrors }) => (
           <Form onSubmit={handleSubmit}>
             {submitErrors && submitErrors.tupleFailing && (
               <div className={s.error}>{submitErrors.tupleFailing}</div>
@@ -53,7 +53,7 @@ export default function ConfigScreen({ ctx }: Props) {
                   <TextField
                     id="baseEndpoint"
                     label="Commerce Layer Base endpoint"
-                    placeholder="https://dato-commerce.commercelayer.io"
+                    placeholder="https://XXXXXXXXX.commercelayer.io"
                     required
                     error={error}
                     textInputProps={{ monospaced: true }}
@@ -66,7 +66,26 @@ export default function ConfigScreen({ ctx }: Props) {
                   <TextField
                     id="clientId"
                     label="OAuth Application Client ID"
-                    hint="Go to https://[your-instance].commercelayer.io/admin/settings/applications to find your OAuth applications"
+                    hint={
+                      values.baseEndpoint ? (
+                        <>
+                          Go to{' '}
+                          <a
+                            href={`${values.baseEndpoint}/admin/settings/applications`}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            {values.baseEndpoint}/admin/settings/applications
+                          </a>{' '}
+                          to find your OAuth applications
+                        </>
+                      ) : (
+                        <>
+                          Go to Admin &gt; Settings &gt; Applications to find
+                          your OAuth applications
+                        </>
+                      )
+                    }
                     required
                     textInputProps={{ monospaced: true }}
                     placeholder="XXXYYY"
@@ -81,7 +100,7 @@ export default function ConfigScreen({ ctx }: Props) {
                     id="autoApplyToFieldsWithApiKey"
                     label="Auto-apply this plugin to all Single-line fields fields matching the following API identifier:"
                     hint="A regular expression can be used"
-                    placeholder="shopify_product_id"
+                    placeholder="commercelayer_sku"
                     error={error}
                     textInputProps={{ monospaced: true }}
                     {...input}

@@ -15,7 +15,7 @@ export default function Empty({ onSelect }: EmptyProps) {
   const handleOpenModal = async () => {
     const product = (await ctx.openModal({
       id: 'browseProducts',
-      title: 'Browse CommerceLayer SKUs',
+      title: 'Browse Commerce Layer SKUs',
       width: 'xl',
     })) as Product | null;
 
@@ -32,7 +32,7 @@ export default function Empty({ onSelect }: EmptyProps) {
         buttonSize="s"
         leftIcon={<FontAwesomeIcon icon={faSearch} />}
       >
-        Browse CommerceLayer SKUs
+        Browse Commerce Layer SKUs
       </Button>
     </div>
   );

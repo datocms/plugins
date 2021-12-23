@@ -49,7 +49,7 @@ export default function Value({ value, onReset }: ValueProps) {
     >
       {status === 'error' && (
         <div className={s['product']}>
-          API Error! Could not fetch details for product:&nbsp;
+          API Error! Could not fetch details for SKU:&nbsp;
           <code>{value}</code>
         </div>
       )}
@@ -62,7 +62,7 @@ export default function Value({ value, onReset }: ValueProps) {
           <div className={s['product__info']}>
             <div className={s['product__title']}>
               <a
-                href={`${baseEndpoint}/admin/skus/${product.id}`}
+                href={`${baseEndpoint}/admin/skus/${product.id}/edit`}
                 target="_blank"
                 rel="noopener noreferrer"
               >
