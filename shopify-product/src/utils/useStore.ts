@@ -110,7 +110,7 @@ const useStore = create<State>(
       };
     },
     {
-      name: 'shopifyStore',
+      name: 'datocms-plugin-shopify-product',
     },
   ),
 );

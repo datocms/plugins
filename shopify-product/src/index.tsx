@@ -3,9 +3,10 @@ import { render } from './utils/render';
 import ConfigScreen from './entrypoints/ConfigScreen';
 import BrowseProductsModal from './components/BrowseProductsModal';
 import FieldExtension from './entrypoints/FieldExtension';
-
 import 'datocms-react-ui/styles.css';
 import { isValidConfig, normalizeConfig } from './types';
+
+const FIELD_EXTENSION_ID = 'shopifyProduct';
 
 connect({
   async onBoot(ctx: OnBootCtx) {
@@ -23,7 +24,7 @@ connect({
         fields.map(async (field) => {
           if (
             field.attributes.appearance.editor !== ctx.plugin.id ||
-            field.attributes.appearance.field_extension === 'shopifyProduct'
+            field.attributes.appearance.field_extension === FIELD_EXTENSION_ID
           ) {
             return false;
           }
@@ -31,7 +32,7 @@ connect({
           await ctx.updateFieldAppearance(field.id, [
             {
               operation: 'updateEditor',
-              newFieldExtensionId: 'shopifyProduct',
+              newFieldExtensionId: FIELD_EXTENSION_ID,
             },
           ]);
 
@@ -54,7 +55,7 @@ connect({
   manualFieldExtensions() {
     return [
       {
-        id: 'shopifyProduct',
+        id: FIELD_EXTENSION_ID,
         name: 'Shopify Product',
         type: 'editor',
         fieldTypes: ['string'],
@@ -78,7 +79,7 @@ connect({
     }
 
     return {
-      editor: { id: 'shopifyProduct' },
+      editor: { id: FIELD_EXTENSION_ID },
     };
   },
   renderFieldExtension(id, ctx) {
