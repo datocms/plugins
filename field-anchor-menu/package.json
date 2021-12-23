@@ -3,6 +3,10 @@
   "version": "0.1.4",
   "homepage": "https://github.com/datocms/plugins/tree/master/field-anchor-menu#readme",
   "description": "A plugin that displays an anchor links menu on the sidebar to scroll directly to a specific field",
+  "keywords": [
+    "datocms",
+    "datocms-plugin"
+  ],
   "datoCmsPlugin": {
     "title": "Scroll to field",
     "previewImage": "docs/demo.mp4",
