@@ -26,7 +26,6 @@
   left: 0;
   width: 100%;
   height: 100%;
-  pointer-events: none;
   box-sizing: border-box;
   opacity: 0;
   transition: opacity 0.3s var(--material-ease);
@@ -76,9 +75,10 @@
   right: 0;
   color: #f0f0f0;
   font-size: var(--font-size-xs);
-  padding: var(--spacing-l);
+  padding: var(--spacing-m);
   display: flex;
   align-items: center;
+  text-decoration: none;
 }
 
 .authorAvatar {
@@ -89,4 +89,8 @@
   display: block;
   border-radius: 100%;
   width: 30px;
+}
+
+.author:hover .authorName {
+  text-decoration: underline;
 }

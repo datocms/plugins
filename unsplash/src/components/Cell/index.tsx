@@ -13,7 +13,7 @@ const Cell = ({ photo, onClick }: { photo: Photo; onClick: () => void }) => {
   }, [photo.urls.small]);
 
   return (
-    <div className={s.cell}>
+    <div className={s.cell} onClick={onClick}>
       <div
         className={s.cellBlurhash}
         style={{ paddingTop: `${(photo.height / photo.width) * 100}%` }}
@@ -26,16 +26,23 @@ const Cell = ({ photo, onClick }: { photo: Photo; onClick: () => void }) => {
         className={s.image}
         src={photo.urls.small}
         alt={photo.alt_description || `Image ${photo.id}`}
-        onClick={onClick}
         style={{ opacity: loaded ? 1 : 0 }}
       />
       <div className={s.hover}>
-        <div className={s.author}>
+        <a
+          className={s.author}
+          href={`https://unsplash.com/@${photo.user.username}?utm_source=datocms&utm_medium=referral`}
+          target="_blank"
+          rel="noreferrer"
+          onClick={(e) => {
+            e.stopPropagation();
+          }}
+        >
           <div className={s.authorAvatar}>
             <img src={photo.user.profile_image.small} alt={photo.user.name} />
           </div>
           <div className={s.authorName}>{photo.user.name}</div>
-        </div>
+        </a>
       </div>
     </div>
   );
