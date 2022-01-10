@@ -1,0 +1,16 @@
+.add-note-button {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  border-width: 0;
+  background-color: transparent;
+  padding: 0;
+  display: inline-block;
+  font-size: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.add-note-button:hover {
+  text-decoration: underline;
+}
