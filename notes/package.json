@@ -1,6 +1,6 @@
 {
   "name": "datocms-plugin-notes",
-  "version": "0.1.2",
+  "version": "0.1.0",
   "private": false,
   "description": "Add Post-it notes to your records",
   "homepage": "https://github.com/datocms/plugins/tree/master/notes#readme",
