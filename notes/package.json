@@ -9,6 +9,10 @@
     "datocms-plugin",
     "sidebar"
   ],
+  "files": [
+    "docs",
+    "build"
+  ],
   "datoCmsPlugin": {
     "title": "Sidebar notes",
     "previewImage": "docs/demo.mp4",
