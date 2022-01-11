@@ -21,6 +21,7 @@ const Note: React.FC<noteProps> = (props) => {
     >
       <Textarea
         onChange={(event) => setTextAreaValue(event.target.value)}
+        placeholder="Enter your note..."
         value={textAreaValue}
       />
       <div

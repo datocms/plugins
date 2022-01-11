@@ -6,7 +6,7 @@ import {
 } from "datocms-plugin-sdk";
 import { render } from "./utils/render";
 import "datocms-react-ui/styles.css";
-import Notes from "./entrypoints/NotesSidebar";
+import NotesSidebar from "./entrypoints/NotesSidebar";
 import TimeAgo from "javascript-time-ago";
 import en from "javascript-time-ago/locale/en.json";
 
@@ -30,6 +30,7 @@ connect({
           {
             operation: "updateEditor",
             newFieldExtensionId: "sidebarNotes",
+            newParameters: {},
           },
         ]);
       })
@@ -54,7 +55,7 @@ connect({
   },
   renderFieldExtension(fieldExtensionId: string, ctx: RenderFieldExtensionCtx) {
     if (fieldExtensionId === "sidebarNotes") {
-      return render(<Notes ctx={ctx} />);
+      return render(<NotesSidebar ctx={ctx} />);
     }
   },
 });

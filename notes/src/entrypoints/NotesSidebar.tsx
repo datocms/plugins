@@ -50,7 +50,7 @@ const Notes = ({ ctx }: PropTypes) => {
     });
   };
 
-  //to avoid unecessary field value updates:
+  // to avoid unecessary field value updates:
   useEffect(() => {
     const arrayIsEmpty = !savedNotes.length;
     if (arrayIsEmpty) {

@@ -25,7 +25,7 @@
 }
 
 .notes__item:focus-within {
-  box-shadow: 0 -3px 15px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 18px 7px rgba(0, 0, 0, 0.2);
 }
 
 .notes__item textarea {

@@ -2,7 +2,7 @@
   "name": "datocms-plugin-notes",
   "version": "0.1.2",
   "private": false,
-  "description": "Add Post-it notes to your records sidebar",
+  "description": "Add Post-it notes to your records",
   "homepage": "https://github.com/datocms/plugins/tree/master/notes#readme",
   "keywords": [
     "datocms",
@@ -11,8 +11,8 @@
   ],
   "datoCmsPlugin": {
     "title": "Sidebar notes",
-    "previewImage": "docs/demo.gif",
-    "coverImage": "docs/cover.jpg",
+    "previewImage": "docs/demo.mp4",
+    "coverImage": "docs/cover.png",
     "entryPoint": "build/index.html",
     "permissions": []
   },
