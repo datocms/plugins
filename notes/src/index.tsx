@@ -30,7 +30,6 @@ connect({
           {
             operation: "updateEditor",
             newFieldExtensionId: "sidebarNotes",
-            newParameters: {},
           },
         ]);
       })
