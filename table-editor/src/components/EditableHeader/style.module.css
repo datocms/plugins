@@ -1,0 +1,41 @@
+.button {
+  all: inherit;
+  display: block;
+  cursor: pointer;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px;
+  font-weight: bold;
+  background: rgba(var(--light-body-color-rgb-components), 0.1);
+  transition: background 0.2s var(--material-ease);
+  user-select: none;
+  display: flex;
+  align-items: center;
+}
+
+.button span {
+  flex: 1;
+}
+
+.button:hover {
+  background: rgba(var(--light-body-color-rgb-components), 0.2);
+}
+
+.button svg {
+  margin-left: 10px;
+  color: rgba(var(--light-body-color-rgb-components), 0.8);
+  opacity: 0;
+  transition: opacity 0.2s var(--material-ease);
+}
+
+.button:hover svg {
+  opacity: 1;
+}
+
+.editForm {
+  padding: 0 15px;
+}
+
+.editForm button {
+  margin-top: 5px;
+}

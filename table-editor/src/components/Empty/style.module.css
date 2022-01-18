@@ -1,0 +1,11 @@
+.noValue {
+  padding: var(--spacing-xl);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  text-align: center;
+}
+
+.noValue_label {
+  font-size: var(--font-size-l);
+  margin-bottom: var(--spacing-m);
+}
