@@ -1,6 +1,6 @@
 # Table editor
 
-A table editor for DatoCMS that outputs JSON string-only objects.
+A table editor for DatoCMS that outputs JSON string-only objects. You can manually add this editor to any JSON field in your projects.
 
 ### Output example
 

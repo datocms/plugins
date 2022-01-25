@@ -2,7 +2,7 @@
   "name": "datocms-plugin-table-editor",
   "description": "A table editor that outputs JSON objects",
   "homepage": "https://github.com/datocms/plugins/tree/master/table-editor#readme",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^1.2.36",
     "@fortawesome/free-solid-svg-icons": "^5.15.4",
