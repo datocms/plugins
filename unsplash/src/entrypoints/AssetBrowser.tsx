@@ -253,7 +253,7 @@ const AssetBrowser = () => {
             />
           </div>
           <div className={s.searchFilter}>
-            <div className={s.searchFilterLabel}>Orientation</div>
+            <div className={s.searchFilterLabel}>Color</div>
             <SelectInput
               options={colorOptions}
               value={colorOptions.find((o) => o.value === color)}
