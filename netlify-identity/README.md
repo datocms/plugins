@@ -34,4 +34,4 @@ Start the local development server with:
 npm start
 ```
 
-The plugin will be served from [https://datocms-plugin-netlify-identity.localtunnel.me/](https://datocms-plugin-netlify-identity.localtunnel.me/). Insert this URL as the plugin [Entry point URL](https://www.datocms.com/docs/plugins/creating-a-new-plugin/).
+The plugin will be served from localhost:3000. Insert this URL as the plugin [Entry point URL](https://www.datocms.com/docs/plugins/creating-a-new-plugin/).
