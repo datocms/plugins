@@ -5,6 +5,7 @@ import tinymce from 'tinymce/tinymce';
 import { Editor as ReactEditor } from '@tinymce/tinymce-react';
 import imgixThumbUrl from '../../utils/imgixThumbUrl';
 import { Editor } from 'tinymce';
+import { useEffect, useRef, useState } from 'react';
 
 (global as any).tinymce = tinymce;
 
@@ -26,10 +27,38 @@ type Props = {
   ctx: RenderFieldExtensionCtx;
 };
 
+// Caution: The controlled component can have performance problems on large documents
+// as it requires converting the entire document to a string on each keystroke or modification.
+//
+// The `onEditorChange` prop is used to provide an event handler that will be run when any change
+// is made to the editor content. Changes to the editor must be applied to the `value` prop
+// **within 200 milliseconds** to prevent the changes being rolled back.
+
 export default function FieldExtension({ ctx }: Props) {
-  const value = (get(ctx.formValues, ctx.fieldPath) as string | null) || '';
+  const externalValue =
+    (get(ctx.formValues, ctx.fieldPath) as string | null) || '';
+
+  const [value, setValue] = useState(externalValue || '');
+  const expectedValue = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (expectedValue !== null && expectedValue.current === externalValue) {
+      expectedValue.current = null;
+    }
+  }, [expectedValue, externalValue]);
+
+  useEffect(() => {
+    if (externalValue === value) return;
+
+    if (expectedValue.current !== null) {
+      return;
+    }
+    setValue(externalValue || '');
+  }, [expectedValue, externalValue, value]);
 
   const handleChange = (newValue: string) => {
+    setValue(newValue || '');
+    expectedValue.current = newValue || '';
     ctx.setFieldValue(ctx.fieldPath, newValue);
   };
 
@@ -60,11 +89,6 @@ export default function FieldExtension({ ctx }: Props) {
           });
       });
     };
-
-    editor.on('change', () => {
-      console.log(editor.getContent());
-      ctx.setFieldValue(ctx.fieldPath, editor.getContent());
-    });
 
     editor.ui.registry.addButton('customimage', {
       icon: 'image',
