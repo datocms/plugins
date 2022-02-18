@@ -1,9 +1,8 @@
-import { connect, OnBootCtx } from "datocms-plugin-sdk";
-import { render } from "./utils/render";
-import { PluginAttributes } from "datocms-plugin-sdk/dist/types/SiteApiSchema";
-import FieldExtension from "./entrypoints/FieldExtension";
-import ConfigScreen from "./entrypoints/ConfigScreen";
-import "datocms-react-ui/styles.css";
+import { connect, OnBootCtx } from 'datocms-plugin-sdk';
+import { render } from './utils/render';
+import { PluginAttributes } from 'datocms-plugin-sdk/dist/types/SiteApiSchema';
+import FieldExtension from './entrypoints/FieldExtension';
+import 'datocms-react-ui/styles.css';
 
 connect({
   async onBoot(ctx: OnBootCtx) {
@@ -21,12 +20,12 @@ connect({
         if (field.attributes.appearance.editor === ctx.plugin.id) {
           await ctx.updateFieldAppearance(field.id, [
             {
-              operation: "updateEditor",
-              newFieldExtensionId: "tinyMce",
+              operation: 'updateEditor',
+              newFieldExtensionId: 'tinymce',
             },
           ]);
         }
-      })
+      }),
     );
 
     await ctx.updatePluginParameters({
@@ -34,18 +33,15 @@ connect({
       migratedFromLegacyPlugin: true,
     });
 
-    ctx.notice("Plugin upgraded successfully!");
-  },
-  renderConfigScreen(ctx) {
-    return render(<ConfigScreen ctx={ctx} />);
+    ctx.notice('Plugin upgraded successfully!');
   },
   manualFieldExtensions() {
     return [
       {
-        id: "tinyMce",
-        name: "Tiny MCE",
-        type: "editor",
-        fieldTypes: ["text"] as NonNullable<PluginAttributes["field_types"]>,
+        id: 'tinymce',
+        name: 'TinyMCE',
+        type: 'editor',
+        fieldTypes: ['text'] as NonNullable<PluginAttributes['field_types']>,
       },
     ];
   },
