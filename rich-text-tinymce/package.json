@@ -2,7 +2,7 @@
   "name": "datocms-plugin-tinymce-rich-text",
   "homepage": "https://github.com/datocms/plugins/tree/master/rich-text-tinymce#readme",
   "description": "Custom TinyMCE HTML editor",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": "DatoCMS <support@datocms.com>",
   "license": "ISC",
   "keywords": [
