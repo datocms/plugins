@@ -48,6 +48,7 @@
   display: block;
   padding-top: 100%;
   background-size: cover;
+  background-color: var(--light-bg-color);
 }
 
 .product__title {

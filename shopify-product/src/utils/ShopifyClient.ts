@@ -65,7 +65,7 @@ const normalizeProduct = (product: any): Product => {
 
   return {
     ...product,
-    imageUrl: product.images.edges[0].node.src,
+    imageUrl: product.images.edges[0]?.node.src || '',
   };
 };
 
