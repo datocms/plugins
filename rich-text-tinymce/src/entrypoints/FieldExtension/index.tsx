@@ -23,6 +23,24 @@ require('tinymce/plugins/paste');
 require('tinymce/plugins/table');
 require('tinymce/plugins/autoresize');
 
+const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+
+function randomId(length = 8) {
+  let str = '';
+  for (let i = 0; i < length; i++) {
+    str += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return str;
+}
+
+const id = randomId();
+
+function log(step: string, object?: Record<string, unknown>) {
+  if (localStorage.getItem('DEBUG')) {
+    console.log({ id, step, ...(object || {}) });
+  }
+}
+
 type Props = {
   ctx: RenderFieldExtensionCtx;
 };
@@ -42,28 +60,53 @@ export default function FieldExtension({ ctx }: Props) {
   const expectedValue = useRef<string | null>(null);
 
   useEffect(() => {
+    log('BEFORE resetExpectedValue', {
+      expectedValue: expectedValue.current,
+      externalValue,
+    });
+
     if (
       expectedValue.current !== null &&
       expectedValue.current === (externalValue || '')
     ) {
+      log('resetExpectedValue');
       expectedValue.current = null;
     }
   }, [expectedValue, externalValue]);
 
   useEffect(() => {
+    log('BEFORE setValueToExternalValue', {
+      externalValue,
+      expectedValue: expectedValue.current,
+    });
+
     if (externalValue === value) return;
 
     if (expectedValue.current !== null) {
       return;
     }
 
+    log('setValueToExternalValue', {
+      value,
+      externalValue,
+      expectedValue: expectedValue.current,
+    });
+
     setValue(externalValue || '');
   }, [expectedValue, externalValue, value]);
 
   const handleChange = (newValue: string) => {
+    log('handleChange setValue', {
+      newValue,
+      externalValue,
+      expectedValue: expectedValue.current,
+    });
     setValue(newValue);
 
     if (newValue !== externalValue) {
+      log('setExpectedValue', {
+        newValue,
+      });
       expectedValue.current = newValue;
       ctx.setFieldValue(ctx.fieldPath, newValue);
     }
