@@ -42,7 +42,10 @@ export default function FieldExtension({ ctx }: Props) {
   const expectedValue = useRef<string | null>(null);
 
   useEffect(() => {
-    if (expectedValue !== null && expectedValue.current === externalValue) {
+    if (
+      expectedValue.current !== null &&
+      expectedValue.current === (externalValue || '')
+    ) {
       expectedValue.current = null;
     }
   }, [expectedValue, externalValue]);
@@ -53,13 +56,17 @@ export default function FieldExtension({ ctx }: Props) {
     if (expectedValue.current !== null) {
       return;
     }
+
     setValue(externalValue || '');
   }, [expectedValue, externalValue, value]);
 
   const handleChange = (newValue: string) => {
-    setValue(newValue || '');
-    expectedValue.current = newValue || '';
-    ctx.setFieldValue(ctx.fieldPath, newValue);
+    setValue(newValue);
+
+    if (newValue !== externalValue) {
+      expectedValue.current = newValue;
+      ctx.setFieldValue(ctx.fieldPath, newValue);
+    }
   };
 
   const initialize = (editor: Editor) => {
