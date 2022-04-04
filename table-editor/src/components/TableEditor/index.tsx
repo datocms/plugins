@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import {
   useTable,
   useFlexLayout,
@@ -183,7 +183,7 @@ export default function TableEditor({
 
   const handleClear = () => {
     onChange(null);
-  }
+  };
 
   const { getTableProps, getTableBodyProps, headerGroups, rows, prepareRow } =
     useTable(
@@ -203,10 +203,35 @@ export default function TableEditor({
       useFlexLayout,
     );
 
+  const tbodyRef = useRef<HTMLDivElement>(null);
+  const theadRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!tbodyRef.current) {
+      return;
+    }
+
+    const tbody = tbodyRef.current;
+
+    const handler = (event: Event) => {
+      if (!theadRef.current) {
+        return;
+      }
+
+      theadRef.current.scrollLeft = (event.target as any).scrollLeft;
+    };
+
+    tbody.addEventListener('scroll', handler);
+
+    return () => {
+      tbody.removeEventListener('scroll', handler);
+    };
+  }, []);
+
   return (
     <div>
       <div {...getTableProps()} className={s.table}>
-        <div className={s.thead}>
+        <div className={s.thead} ref={theadRef} style={{ overflowX: 'hidden' }}>
           {headerGroups.map((headerGroup) => (
             <div {...headerGroup.getHeaderGroupProps()} className={s.tr}>
               {headerGroup.headers.map((column) => (
@@ -224,7 +249,11 @@ export default function TableEditor({
           ))}
         </div>
 
-        <div {...getTableBodyProps()}>
+        <div
+          {...getTableBodyProps()}
+          ref={tbodyRef}
+          style={{ overflowX: 'auto' }}
+        >
           {rows.map((row, i) => {
             prepareRow(row);
             return (
