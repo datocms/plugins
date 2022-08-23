@@ -45,10 +45,16 @@ export default function EditableHeader({
 
   const handleChangeName = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (!nameValue) {
+      ctx.alert("Please provide a valid name");
+      return;
+    }
+
     if (columns.find((c) => c.id === nameValue)) {
       ctx.alert("Column names must be unique!");
       return;
     }
+
     onColumnRename(id!, nameValue);
   };
 
