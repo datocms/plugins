@@ -1,18 +1,18 @@
-import { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
-import { Canvas } from 'datocms-react-ui';
-import get from 'lodash-es/get';
-import deepEqual from 'fast-deep-equal';
-import { useRef, useState } from 'react';
-import { useDeepCompareEffect } from 'use-deep-compare';
-import { Empty } from '../../components/Empty';
-import TableEditor from '../../components/TableEditor';
-import { Value, isValue } from '../../types';
+import { RenderFieldExtensionCtx } from "datocms-plugin-sdk";
+import { Canvas } from "datocms-react-ui";
+import get from "lodash-es/get";
+import deepEqual from "fast-deep-equal";
+import { useRef, useState } from "react";
+import { useDeepCompareEffect } from "use-deep-compare";
+import { Empty } from "../../components/Empty";
+import TableEditor from "../../components/TableEditor";
+import { Value, isValue } from "../../types";
 
 type Props = {
   ctx: RenderFieldExtensionCtx;
 };
 
-type InnerValue = 'invalid' | Value | null;
+type InnerValue = "invalid" | Value | null;
 
 function toInnerValue(value: string | null): InnerValue {
   if (value === null) {
@@ -22,7 +22,7 @@ function toInnerValue(value: string | null): InnerValue {
   const parsedValue = JSON.parse(value);
 
   if (!isValue(parsedValue)) {
-    return 'invalid';
+    return "invalid";
   }
 
   return parsedValue;
@@ -47,7 +47,7 @@ export default function FieldExtension({ ctx }: Props) {
     setValue(newValue);
   }, [rawValue, value]);
 
-  if (value === 'invalid') {
+  if (value === "invalid") {
     return <Canvas ctx={ctx}>Invalid value!</Canvas>;
   }
 
@@ -56,20 +56,20 @@ export default function FieldExtension({ ctx }: Props) {
     setValue(value);
     ctx.setFieldValue(
       ctx.fieldPath,
-      value === null ? null : JSON.stringify(value, null, 2),
+      value === null ? null : JSON.stringify(value, null, 2)
     );
   };
 
   const handleOpenInFullScreen = async () => {
     const exitValue = (await ctx.openModal({
-      id: 'table-editor',
+      id: "table-editor",
       parameters: { value },
       width: 1900,
-      title: 'Edit table',
+      title: "Edit table",
       closeDisabled: true,
-    })) as Value | null | 'abort';
+    })) as Value | null | "abort";
 
-    if (exitValue === 'abort') {
+    if (exitValue === "abort") {
       return;
     }
 

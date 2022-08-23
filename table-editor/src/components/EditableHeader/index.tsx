@@ -1,6 +1,6 @@
-import { Column } from 'react-table';
-import { Actions, Row } from '../../types';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { Column } from "react-table";
+import { Actions, Row } from "../../types";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faCog,
   faLongArrowAltLeft,
@@ -8,7 +8,7 @@ import {
   faPen,
   faTimes,
   faTrashAlt,
-} from '@fortawesome/free-solid-svg-icons';
+} from "@fortawesome/free-solid-svg-icons";
 import {
   Button,
   Dropdown,
@@ -17,9 +17,9 @@ import {
   DropdownSeparator,
   TextField,
   useCtx,
-} from 'datocms-react-ui';
-import s from './style.module.css';
-import { useEffect, useState } from 'react';
+} from "datocms-react-ui";
+import s from "./style.module.css";
+import { useEffect, useState } from "react";
 
 type Props = Actions & {
   value: string;
@@ -36,7 +36,7 @@ export default function EditableHeader({
   onRemoveColumn,
 }: Props) {
   const ctx = useCtx();
-  const [panel, setPanel] = useState('root');
+  const [panel, setPanel] = useState("root");
   const [nameValue, setNameValue] = useState(id!);
 
   useEffect(() => {
@@ -46,7 +46,7 @@ export default function EditableHeader({
   const handleChangeName = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (columns.find((c) => c.id === nameValue)) {
-      ctx.alert('Column names must be unique!');
+      ctx.alert("Column names must be unique!");
       return;
     }
     onColumnRename(id!, nameValue);
@@ -65,11 +65,11 @@ export default function EditableHeader({
         <DropdownMenu
           alignment={
             columns.findIndex((c) => c.id === id) >= columns.length / 2
-              ? 'right'
-              : 'left'
+              ? "right"
+              : "left"
           }
         >
-          {panel === 'root' && (
+          {panel === "root" && (
             <>
               <DropdownOption onClick={onAddColumn.bind(null, id!, false)}>
                 <FontAwesomeIcon icon={faLongArrowAltRight} /> Add column to the
@@ -83,7 +83,7 @@ export default function EditableHeader({
               <DropdownOption
                 closeMenuOnClick={false}
                 onClick={() => {
-                  setPanel('rename');
+                  setPanel("rename");
                 }}
               >
                 <FontAwesomeIcon icon={faPen} /> Rename column
@@ -93,7 +93,7 @@ export default function EditableHeader({
               </DropdownOption>
             </>
           )}
-          {panel === 'rename' && (
+          {panel === "rename" && (
             <>
               <form className={s.editForm} onSubmit={handleChangeName}>
                 <TextField
@@ -111,7 +111,7 @@ export default function EditableHeader({
               <DropdownOption
                 closeMenuOnClick={false}
                 onClick={() => {
-                  setPanel('root');
+                  setPanel("root");
                 }}
               >
                 <FontAwesomeIcon icon={faTimes} /> Cancel

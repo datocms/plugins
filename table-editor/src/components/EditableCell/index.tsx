@@ -1,6 +1,6 @@
-import { Column as TableColumn, Row as TableRow } from 'react-table';
-import Textarea from 'react-textarea-autosize';
-import { Actions, Row } from '../../types';
+import { Column as TableColumn, Row as TableRow } from "react-table";
+import Textarea from "react-textarea-autosize";
+import { Actions, Row } from "../../types";
 
 type Props = Actions & {
   value: string;
@@ -12,19 +12,19 @@ type Props = Actions & {
 };
 
 function toTable(transfer: DataTransfer) {
-  const html = transfer.getData('text/html');
+  const html = transfer.getData("text/html");
   if (html) {
-    const document = new DOMParser().parseFromString(html, 'text/html');
-    const tableEl = document.querySelector('table');
+    const document = new DOMParser().parseFromString(html, "text/html");
+    const tableEl = document.querySelector("table");
 
     if (tableEl) {
       return Array.from(tableEl.rows).reduce((acc, row) => {
         const columns = Array.from(row.children).map(
           (column) =>
             column.textContent
-              ?.replace(/\n/g, ' ')
-              .replace(/\s+/, ' ')
-              .trim() || '',
+              ?.replace(/\n/g, " ")
+              .replace(/\s+/, " ")
+              .trim() || ""
         );
 
         return [...acc, columns];
@@ -32,12 +32,12 @@ function toTable(transfer: DataTransfer) {
     }
   }
 
-  const data = transfer.getData('text/plain');
+  const data = transfer.getData("text/plain");
 
   return data
     .trim()
     .split(/\r\n|\n|\r/)
-    .map((row) => row.split('\t'));
+    .map((row) => row.split("\t"));
 }
 
 export default function EditableCell({

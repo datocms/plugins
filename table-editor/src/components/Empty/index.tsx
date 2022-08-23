@@ -1,6 +1,6 @@
-import { Button } from 'datocms-react-ui';
-import { Value } from '../../types';
-import s from './style.module.css';
+import { Button } from "datocms-react-ui";
+import { Value } from "../../types";
+import s from "./style.module.css";
 
 type Props = {
   onChange: (newValue: Value | null) => void;
@@ -14,8 +14,8 @@ export const Empty = ({ onChange }: Props) => {
         buttonSize="s"
         onClick={() => {
           onChange({
-            columns: ['Column A', 'Column B'],
-            data: [{ 'Column A': '', 'Column B': '' }],
+            columns: ["Column A", "Column B"],
+            data: [{ "Column A": "", "Column B": "" }],
           });
         }}
       >

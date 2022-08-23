@@ -6,11 +6,7 @@ A table editor for DatoCMS that outputs JSON string-only objects. You can manual
 
 ```json
 {
-  "columns": [
-    "Attributes",
-    "Vue",
-    "React"
-  ],
+  "columns": ["Attributes", "Vue", "React"],
   "data": [
     {
       "Attributes": "Size",
