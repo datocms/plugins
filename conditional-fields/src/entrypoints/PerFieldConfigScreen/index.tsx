@@ -1,8 +1,8 @@
-import { RenderManualFieldExtensionConfigScreenCtx } from 'datocms-plugin-sdk';
-import { Canvas, Form, SwitchField, SelectField } from 'datocms-react-ui';
-import { useCallback, useState } from 'react';
-import { isValidParameters, ValidManualExtensionParameters } from '../../types';
-import normalizeParams from '../../utils/normalizeParams';
+import { RenderManualFieldExtensionConfigScreenCtx } from "datocms-plugin-sdk";
+import { Canvas, Form, SwitchField, SelectField } from "datocms-react-ui";
+import { useCallback, useState } from "react";
+import { isValidParameters, ValidManualExtensionParameters } from "../../types";
+import normalizeParams from "../../utils/normalizeParams";
 
 type PropTypes = {
   ctx: RenderManualFieldExtensionConfigScreenCtx;
@@ -14,7 +14,7 @@ export function PerFieldConfigScreen({ ctx }: PropTypes) {
   >(
     isValidParameters(ctx.parameters)
       ? ctx.parameters
-      : normalizeParams(ctx.parameters),
+      : normalizeParams(ctx.parameters)
   );
 
   const update = useCallback(
@@ -23,14 +23,14 @@ export function PerFieldConfigScreen({ ctx }: PropTypes) {
       setFormValues(newParameters);
       ctx.setParameters(newParameters);
     },
-    [formValues, setFormValues, ctx],
+    [formValues, setFormValues, ctx]
   );
 
   const options = Object.values(ctx.fields)
     .filter(
       (field) =>
         field.relationships.item_type.data.id === ctx.itemType.id &&
-        field.id !== ctx.pendingField.id,
+        field.id !== ctx.pendingField.id
     )
     .map((field) => ({
       label: field.attributes.label,
@@ -47,12 +47,12 @@ export function PerFieldConfigScreen({ ctx }: PropTypes) {
           required
           selectInputProps={{ isMulti: true, options }}
           value={formValues.targetFieldsApiKey.map((apiKey) =>
-            options.find((o) => o.value === apiKey),
+            options.find((o) => o.value === apiKey)
           )}
           onChange={(selectedOptions) => {
             update(
-              'targetFieldsApiKey',
-              selectedOptions.map((o) => o.value),
+              "targetFieldsApiKey",
+              selectedOptions.map((o) => o.value)
             );
           }}
         />
@@ -62,7 +62,7 @@ export function PerFieldConfigScreen({ ctx }: PropTypes) {
           label="Invert visibility?"
           hint="When this field is checked, hide target fields"
           value={formValues.invert}
-          onChange={update.bind(null, 'invert')}
+          onChange={update.bind(null, "invert")}
         />
       </Form>
     </Canvas>
