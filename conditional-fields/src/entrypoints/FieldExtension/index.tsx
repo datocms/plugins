@@ -20,9 +20,13 @@ function FieldExtensionWithValidParams({ ctx }: Props) {
   const targetFields = useMemo(() => {
     return targetFieldsApiKey
       .map((targetFieldApiKey) => {
-        const targetField = Object.values(ctx.fields).find(
-          (field) => field.attributes.api_key === targetFieldApiKey
-        );
+        const targetField = Object.values(ctx.fields).find((field) => {
+          return (
+            field.attributes.api_key === targetFieldApiKey &&
+            field.relationships.item_type.data.id ===
+              sourceField.relationships.item_type.data.id
+          );
+        });
 
         if (!targetField) {
           console.error(
@@ -34,7 +38,7 @@ function FieldExtensionWithValidParams({ ctx }: Props) {
         return targetField;
       })
       .filter((x) => x);
-  }, [ctx.fields, targetFieldsApiKey]);
+  }, [ctx.fields, targetFieldsApiKey, sourceField]);
 
   const toggleFields = useCallback(
     (show) => {
