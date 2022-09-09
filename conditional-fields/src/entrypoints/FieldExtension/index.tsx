@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useMemo } from 'react';
-import { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
-import get from 'lodash/get';
-import { isValidParameters, ValidManualExtensionParameters } from '../../types';
+import { useCallback, useEffect, useMemo } from "react";
+import { RenderFieldExtensionCtx } from "datocms-plugin-sdk";
+import get from "lodash/get";
+import { isValidParameters, ValidManualExtensionParameters } from "../../types";
 
 type Props = {
   ctx: RenderFieldExtensionCtx;
@@ -20,13 +20,17 @@ function FieldExtensionWithValidParams({ ctx }: Props) {
   const targetFields = useMemo(() => {
     return targetFieldsApiKey
       .map((targetFieldApiKey) => {
-        const targetField = Object.values(ctx.fields).find(
-          (field) => field.attributes.api_key === targetFieldApiKey,
-        );
+        const targetField = Object.values(ctx.fields).find((field) => {
+          return (
+            field.attributes.api_key === targetFieldApiKey &&
+            field.relationships.item_type.data.id ===
+              sourceField.relationships.item_type.data.id
+          );
+        });
 
         if (!targetField) {
           console.error(
-            `Plugin error: The field "${targetFieldApiKey}" does not exist`,
+            `Plugin error: The field "${targetFieldApiKey}" does not exist`
           );
           return null;
         }
@@ -34,13 +38,13 @@ function FieldExtensionWithValidParams({ ctx }: Props) {
         return targetField;
       })
       .filter((x) => x);
-  }, [ctx.fields, targetFieldsApiKey]);
+  }, [ctx.fields, targetFieldsApiKey, sourceField]);
 
   const toggleFields = useCallback(
     (show) => {
       targetFields.forEach((targetField) => {
         const targetPath = ctx.parentField
-          ? `${ctx.fieldPath.replace(/.[^.]*$/, '')}.${
+          ? `${ctx.fieldPath.replace(/.[^.]*$/, "")}.${
               targetField.attributes.api_key
             }`
           : targetField.attributes.api_key;
@@ -58,7 +62,7 @@ function FieldExtensionWithValidParams({ ctx }: Props) {
         }
       });
     },
-    [ctx, sourceField.attributes.localized, targetFields],
+    [ctx, sourceField.attributes.localized, targetFields]
   );
 
   const currentValue = get(ctx.formValues, ctx.fieldPath);

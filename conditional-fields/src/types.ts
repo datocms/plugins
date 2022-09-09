@@ -18,25 +18,25 @@ export type ManualExtensionParameters =
   | EmptyParameters;
 
 export type ValidGlobalParameters = {
-  parametersVersion: '2';
+  parametersVersion: "2";
 };
 
 export type GlobalParameters = ValidGlobalParameters | EmptyParameters;
 
 export function isValidParameters(
-  params: ManualExtensionParameters,
+  params: ManualExtensionParameters
 ): params is ValidManualExtensionParameters {
   return (
     params &&
-    'targetFieldsApiKey' in params &&
+    "targetFieldsApiKey" in params &&
     Array.isArray(params.targetFieldsApiKey)
   );
 }
 
 export function isValidGlobalParameters(
-  params: GlobalParameters,
+  params: GlobalParameters
 ): params is ValidGlobalParameters {
   return (
-    params && 'parametersVersion' in params && params.parametersVersion === '2'
+    params && "parametersVersion" in params && params.parametersVersion === "2"
   );
 }

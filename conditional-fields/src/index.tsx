@@ -2,17 +2,17 @@ import {
   connect,
   FieldAppearanceChange,
   RenderManualFieldExtensionConfigScreenCtx,
-} from 'datocms-plugin-sdk';
-import 'datocms-react-ui/styles.css';
-import { PerFieldConfigScreen } from './entrypoints/PerFieldConfigScreen';
-import { FieldExtension } from './entrypoints/FieldExtension';
+} from "datocms-plugin-sdk";
+import "datocms-react-ui/styles.css";
+import { PerFieldConfigScreen } from "./entrypoints/PerFieldConfigScreen";
+import { FieldExtension } from "./entrypoints/FieldExtension";
 import {
   isValidGlobalParameters,
   isValidParameters,
   ValidGlobalParameters,
-} from './types';
-import { render } from './utils/render';
-import normalizeParams from './utils/normalizeParams';
+} from "./types";
+import { render } from "./utils/render";
+import normalizeParams from "./utils/normalizeParams";
 
 connect({
   async onBoot(ctx) {
@@ -38,9 +38,9 @@ connect({
 
             if (!isValidParameters(addon.parameters)) {
               changes.push({
-                operation: 'updateAddon',
+                operation: "updateAddon",
                 index,
-                newFieldExtensionId: 'conditionalFields',
+                newFieldExtensionId: "conditionalFields",
                 newParameters: normalizeParams(addon.parameters),
               });
             }
@@ -52,25 +52,25 @@ connect({
           }
 
           return false;
-        }),
+        })
       )
     ).some((x) => x);
 
     if (upgraded) {
-      ctx.notice('Plugin upgraded successfully!');
+      ctx.notice("Plugin upgraded successfully!");
     }
 
     ctx.updatePluginParameters({
-      parametersVersion: '2',
+      parametersVersion: "2",
     } as ValidGlobalParameters);
   },
   manualFieldExtensions() {
     return [
       {
-        id: 'conditionalFields',
-        name: 'Conditional fields',
-        type: 'addon',
-        fieldTypes: ['boolean'],
+        id: "conditionalFields",
+        name: "Conditional fields",
+        type: "addon",
+        fieldTypes: ["boolean"],
         configurable: true,
         initialHeight: 0,
       },
@@ -81,7 +81,7 @@ connect({
   },
   renderManualFieldExtensionConfigScreen(
     fieldExtensionId: string,
-    ctx: RenderManualFieldExtensionConfigScreenCtx,
+    ctx: RenderManualFieldExtensionConfigScreenCtx
   ) {
     render(<PerFieldConfigScreen ctx={ctx} />);
   },

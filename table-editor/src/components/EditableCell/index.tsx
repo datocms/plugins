@@ -34,10 +34,14 @@ function toTable(transfer: DataTransfer) {
 
   const data = transfer.getData("text/plain");
 
-  return data
-    .trim()
-    .split(/\r\n|\n|\r/)
-    .map((row) => row.split("\t"));
+  if (data.includes("\t")) {
+    return data
+      .trim()
+      .split(/\r\n|\n|\r/)
+      .map((row) => row.split("\t"));
+  }
+
+  return [[data.trim()]];
 }
 
 export default function EditableCell({
