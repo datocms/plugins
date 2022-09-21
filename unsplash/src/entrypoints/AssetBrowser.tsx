@@ -129,7 +129,10 @@ const AssetBrowser = () => {
                 [locale]: {
                   alt: photo.alt_description,
                   title: null,
-                  custom_data: {},
+                  custom_data: {
+                    unsplash_author_username: photo.user.username,
+                    unsplash_photo_id: photo.id,
+                  },
                 },
               };
             }
