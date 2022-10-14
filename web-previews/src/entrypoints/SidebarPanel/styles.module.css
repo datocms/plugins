@@ -1,0 +1,23 @@
+.grid {
+  display: grid;
+  grid-template-columns: 3fr 40px;
+  column-gap: var(--spacing-s);
+  margin-bottom: var(--spacing-s);
+  align-items: baseline;
+}
+
+.link {
+  all: inherit;
+  color: var(--base-body-color);
+  padding: 0;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.link:hover {
+  text-decoration: underline;
+}
+
+.icon {
+  margin-left: 5px;
+}
