@@ -8,12 +8,12 @@ This plugin adds quick links in the record sidebar to preview your webpages.
 
 Once the plugin is installed you need to specify :
 
-- Web Preview Webhook: this hook will be called as soon as the plugin is loaded. Read more about it on the next chapter.
-- Frontends URLs and names: the domains of the frontends that you want to pass to the webhook and link in the Web Previews plugin panel.
+- Frontends
+  - name: the name that identifies the frontend.
+  - preview webhook: this hook will be called as soon as the plugin is loaded. Read more about it on the next chapter.
 
 Optional settings
 
-- Preview models endpoint: you can specify an additional endpoint that should return a list of models api keys that you want to display the Web Previews plugin panel. If this endpoint is not specified the panel will be applied to all models' sidebars.
 - Sidebar Open: to specify whether you want the web preview sidebar panel to be opened by default.
 
 ## The Previews Webhook
@@ -26,26 +26,17 @@ Every time it is loaded into the page, the plugin performs a POST request to the
 {
   "item": {…},
   "itemType": {…},
-  "sandboxEnvironmentId": "primary",
+  "sandboxEnvironmentId": "main",
   "locale": "en",
-  "frontends": [
-    {
-      "previewUrl": "https://mysite.com",
-      "name": "Production"
-    },
-    {
-      "previewUrl": "https://staging.mysite.com",
-      "name": "Staging"
-    },
-  ]
+  "name": "Production"
 }
 ```
 
 - `item` all the info on the record
 - `itemType` all the info on the model
 - `sandboxEnvironmentId` the environment ID
-- `locale` the selected locale
-- `frontends` the URLs specified in the plugin settins
+- `locale` the current locale
+- `name` the name you associated to the frontend in the global settings
 
 The endpoint is expected to return a 200 response, with the following JSON structure:
 
@@ -64,11 +55,11 @@ The endpoint is expected to return a 200 response, with the following JSON struc
 }
 ```
 
-The plugin will display as many buttons as the specified urls
+The plugin will display as many preview links as the specified urls.
 
 ### An example implementation for Next.js apps
 
-For the purpose of this example, let's say we want to create two buttons, one that links to a webpage that contains published content, and another with draft content.
+For the purpose of this example, let's say we want to create two preview links, one that links to a webpage that contains published content, and another with draft content.
 
 #### Next.js preview mode
 
@@ -80,9 +71,9 @@ This API Route uses the `response.setPreviewData` method to obtain the proper co
 
 #### The web previews webhook
 
-Now we need to build our webhook that should be able to generate a preview link from the info on the record. In this case let's say that we have a slug field that identifies the record.
+Now we need to build our webhook, that should be able to generate both a preview link to the published content and a preview to the draft content, using Next preview mode. In this case let's say that we have a slug field that identifies the record.
 
-Our webhook will generate a draft and published link from each frontend we specified in the settings
+DatoCMS will make a POST request to each frontend webhook we specified in the settings, with the info on the current record. We need to imlement a CORS enabled webhook that handles the information and returns an array of preview URLs.
 
 ```js
 // Put this code in the following path of your Next.js website:
@@ -90,7 +81,7 @@ Our webhook will generate a draft and published link from each frontend we speci
 
 // this "routing" function knows how to convert a DatoCMS record
 // into its slug and canonical URL within the website
-const findPermalink = async ({ item, itemType, locale }) => {
+const findPermalink = ({ item, itemType, locale }) => {
   const localePrefix = locale === "en" ? "" : `/${locale}`;
 
   switch (itemType.attributes.api_key) {
@@ -105,7 +96,7 @@ const findPermalink = async ({ item, itemType, locale }) => {
   }
 };
 
-const handler = async (req, res) => {
+const handler = (req, res) => {
   // setup CORS permissions
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST");
@@ -117,68 +108,33 @@ const handler = async (req, res) => {
     return res.status(200).send("ok");
   }
 
-  const { item, itemType, sandboxEnvironmentId, locale, frontends } = req.body;
+  const { item, itemType, sandboxEnvironmentId, locale, name } = req.body;
 
-  // this "routing" function knows which record is linked to which URL
-  // in the website
-  const permalink = await findPermalink({
+  const permalink = findPermalink({
     item,
     itemType,
     locale,
   });
 
   if (!permalink) {
-    res.status(200).json({ urls: [] });
-    return;
+    return res.status(200).json({ urls: [] });
   }
 
-  let urls = [];
+  const urls = [
+    {
+      label: `${name} (${locale})`,
+      url: `https://mysite.com/${permalink}`,
+    },
+    {
+      label: `Draft ${name} (${locale})`,
+      url: `https://mysite.com/api/preview/start?slug=${permalink}`,
+    },
+  ];
 
-  frontends.forEach(
-    ({ previewUrl, name }) =>
-      (urls = [
-        ...urls,
-        {
-          label: `${name} (${locale})`,
-          url: `${previewUrl}/${permalink}`,
-        },
-        {
-          label: `Draft ${name} (${locale})`,
-          url: `${previewUrl}/api/preview/start?slug=${permalink}`,
-        },
-      ])
-  );
-
-  res.status(200).json({ urls });
+  return res.status(200).json({ urls });
 };
 
 export default handler;
 ```
 
 If you have built alternative endpoint implementations for other frameworks/SSGs, please open up a PR to this plugin and share it with the community!
-
-### The Preview Models Endpoint
-
-You can optionally specify a GET endpoint that should return a list containing all the api_keys of the models that you want to display a Web Previews panel in the sidebar. It is expected to return a 200 response, with the following JSON structure:
-
-```json
-{
-  "model_api_keys": ["blog_post", "page"]
-}
-```
-
-Here is an example of a Preview Models Endpoint implemented on Next.js
-
-```js
-const handler = async (req, res) => {
-  // setup CORS permissions
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  res.setHeader("Content-Type", "application/json");
-
-  if (req.method === "GET") {
-    return res.status(200).json({ model_api_keys: ["blog_post", "page"] });
-  }
-};
-```

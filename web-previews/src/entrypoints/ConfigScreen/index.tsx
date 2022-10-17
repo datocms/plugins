@@ -27,9 +27,15 @@ export default function ConfigScreen({ ctx }: PropTypes) {
         initialValues={ctx.plugin.attributes.parameters}
         validate={(values) => {
           const errors: Record<string, string> = {};
-          if (!("previewsWebhook" in values) || !values.previewsWebhook) {
-            errors.previewsWebhook = "This field is required!";
+
+          if (
+            !("frontends" in values) ||
+            !values.frontends ||
+            values.frontends.length === 0
+          ) {
+            errors.frontends = "You need to specify at least one frontend";
           }
+
           return errors;
         }}
         onSubmit={async (values) => {
@@ -40,37 +46,18 @@ export default function ConfigScreen({ ctx }: PropTypes) {
       >
         {({ handleSubmit, submitting, dirty }) => (
           <Form onSubmit={handleSubmit}>
-            <FieldGroup>
-              <p>
-                Specify a webhook that should be able to generate a preview link
-                from the info on the record.
-              </p>
-              <Field name="previewsWebhook">
-                {({ input, meta: { error } }) => (
-                  <TextField
-                    id="previewsWebhook"
-                    label="Web previews webhook"
-                    hint="A CORS-enabled endpoint that returns the preview links. It can include a query string. The item, itemType, sandboxsandboxEnvironmentId and locale parameters will be added dynamically."
-                    placeholder="https://yourwebsite.com/api/previews/generate-links?token=XXX"
-                    required
-                    error={error}
-                    {...input}
-                  />
-                )}
-              </Field>
-            </FieldGroup>
-
             <Section
               title="Configure frontends"
               headerStyle={{ marginBottom: "var(--spacing-m)" }}
             >
               <p>
-                Specify which frontend you want to link, and we will send the
-                following name and URLs to your web previews webhook.
+                Specify the webhook that will generate the preview links, and a
+                name for each frontend.
               </p>
               <FieldArray name="frontends">
-                {({ fields }) => (
+                {({ fields, meta: { error: fieldError } }) => (
                   <FieldGroup>
+                    {fieldError && <p className={s.error}>{fieldError}</p>}
                     {fields.map((name, index) => (
                       <FieldGroup key={name}>
                         <div className={s.grid}>
@@ -81,18 +68,20 @@ export default function ConfigScreen({ ctx }: PropTypes) {
                                   id="name"
                                   label="Frontend name"
                                   placeholder="Staging"
-                                  error={error}
+                                  required
+                                  error={error || fieldError}
                                   {...input}
                                 />
                               )}
                             </Field>
                           </div>
                           <div>
-                            <Field name={`${name}.previewUrl`}>
+                            <Field name={`${name}.previewWebhook`}>
                               {({ input, meta: { error } }) => (
                                 <TextField
-                                  id="previewUrl"
-                                  label="Frontend URL"
+                                  id="previewWebhook"
+                                  required
+                                  label="Preview webhook"
                                   placeholder="https://staging.yourwebsite.com/"
                                   error={error}
                                   {...input}
@@ -124,24 +113,6 @@ export default function ConfigScreen({ ctx }: PropTypes) {
             </Section>
             <Section title="Optional">
               <FieldGroup>
-                <p>
-                  Specify an endpoint that should return the models
-                  <code>api_keys</code> that you want to show the Web Previews
-                  Plugin panel in the sidebar .
-                </p>
-                <Field name="previewModelsEndpoint">
-                  {({ input, meta: { error } }) => (
-                    <TextField
-                      id="previewModelsEndpoint"
-                      label="Preview models endpoint"
-                      placeholder="https://yourwebsite.com/api/previews/models"
-                      required
-                      error={error}
-                      {...input}
-                    />
-                  )}
-                </Field>
-
                 <Field name="startOpen">
                   {({ input, meta: { error } }) => (
                     <SwitchField

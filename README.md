@@ -23,3 +23,4 @@ This repository provides samples of DatoCMS plugins developed using the [Plugins
 - [SEO Analysis](https://github.com/datocms/plugins/tree/master/seo-readability-analysis/): Runs SEO/Readability analysis using YoastSEO.js on your frontend everytime you make a change to the content of a record.
 - [Rich Text TinyMCE](https://github.com/datocms/plugins/tree/master/tinymce-rich-text/): Custom TinyMCE configuration for multi-paragraph fields.
 - [Table editor](https://github.com/datocms/plugins/tree/master/table-editor/): A plugin that transforms any JSON field into a table editor
+- [Web Previews](https://github.com/datocms/plugins/tree/master/web-previews/): Shows links to the matching webpage previews on selected records

@@ -1,13 +1,13 @@
 export type FirstInstallationParameters = {};
 
+export type Frontend = {
+  name: string;
+  previewWebhook: string;
+};
+
 export type Parameters = {
-  previewsWebhook: string;
+  frontends: Frontend[];
   startOpen?: boolean;
-  frontends: {
-    name: string;
-    previewUrl: string;
-  }[];
-  previewModelsEndpoint?: string;
 };
 
 export type PreviewLinks = {
