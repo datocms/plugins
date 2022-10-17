@@ -7,6 +7,7 @@ export type Parameters = {
     name: string;
     previewUrl: string;
   }[];
+  previewModelsEndpoint?: string;
 };
 
 export type PreviewLinks = {

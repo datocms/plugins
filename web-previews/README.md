@@ -8,15 +8,19 @@ This plugin adds quick links in the record sidebar to preview your webpages.
 
 Once the plugin is installed you need to specify :
 
-- A Web Preview Webhook: this hook will be called as soon as the plugin is loaded. Read more about it on the next chapter.
-- The frontends URLs and names you want to show in the web previews plugin.
-- The last setting is to determine whether you want the web preview sidebar panel to be opened by default.
+- Web Preview Webhook: this hook will be called as soon as the plugin is loaded. Read more about it on the next chapter.
+- Frontends URLs and names: the domains of the frontends that you want to pass to the webhook and link in the Web Previews plugin panel.
 
-## The preview webhook
+Optional settings
+
+- Preview models endpoint: you can specify an additional endpoint that should return a list of models api keys that you want to display the Web Previews plugin panel. If this endpoint is not specified the panel will be applied to all models' sidebars.
+- Sidebar Open: to specify whether you want the web preview sidebar panel to be opened by default.
+
+## The Previews Webhook
 
 In order to work, this plugin needs a CORS-ready endpoint API that is able to return, given the payload of a DatoCMS record, the preview links you want to show.
 
-The plugin performs a POST request to the URL specified in the settings, passing down the following payload:
+Every time it is loaded into the page, the plugin performs a POST request to the Previews Webhook URL, passing a payload that includes the info on the record and model and the frontends that you specified in the global settings:
 
 ```json
 {
@@ -60,7 +64,7 @@ The endpoint is expected to return a 200 response, with the following JSON struc
 }
 ```
 
-The plugin will display as many buttons as the specified URLs
+The plugin will display as many buttons as the specified urls
 
 ### An example implementation for Next.js apps
 
@@ -152,3 +156,29 @@ export default handler;
 ```
 
 If you have built alternative endpoint implementations for other frameworks/SSGs, please open up a PR to this plugin and share it with the community!
+
+### The Preview Models Endpoint
+
+You can optionally specify a GET endpoint that should return a list containing all the api_keys of the models that you want to display a Web Previews panel in the sidebar. It is expected to return a 200 response, with the following JSON structure:
+
+```json
+{
+  "model_api_keys": ["blog_post", "page"]
+}
+```
+
+Here is an example of a Preview Models Endpoint implemented on Next.js
+
+```js
+const handler = async (req, res) => {
+  // setup CORS permissions
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader("Content-Type", "application/json");
+
+  if (req.method === "GET") {
+    return res.status(200).json({ model_api_keys: ["blog_post", "page"] });
+  }
+};
+```
