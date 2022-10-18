@@ -2,47 +2,40 @@
 
 This plugin adds quick links in the record sidebar to preview your webpages.
 
-🚨 **Important:** This is not a drag & drop plugin! It requires some work on your frontend website in order to function. Read more in the following sections!
+🚨 **Important:** This is not a drag & drop plugin! It requires some work on your frontend website(s) in order to function. Read more in the following sections!
 
 ## Installation and configuration
 
-Once the plugin is installed you need to specify :
+Once the plugin is installed you need to specify:
 
-- Frontends
-  - name: the name that identifies the frontend.
-  - preview webhook: this hook will be called as soon as the plugin is loaded. Read more about it on the next chapter.
+- A list of frontends. Each frontend specifies a name and a preview webhook, which will be called as soon as the plugin is loaded. Read more about it on the next chapter.
+- Sidebar open: to specify whether you want the sidebar panel to be opened by default.
 
-Optional settings
+## The Previews webhook
 
-- Sidebar Open: to specify whether you want the web preview sidebar panel to be opened by default.
+Each frontend must implement a CORS-ready JSON endpoint that, given a specific DatoCMS record, returns an array of preview link(s).
 
-## The Previews Webhook
-
-In order to work, this plugin needs a CORS-ready endpoint API that is able to return, given the payload of a DatoCMS record, the preview links you want to show.
-
-Every time it is loaded into the page, the plugin performs a POST request to the Previews Webhook URL, passing a payload that includes the info on the record and model and the frontends that you specified in the global settings:
+The plugin performs a POST request to the Previews webhook URL, passing a payload that includes the current environment, record and model:
 
 ```json
 {
   "item": {…},
   "itemType": {…},
-  "sandboxEnvironmentId": "main",
+  "environmentId": "main",
   "locale": "en",
-  "name": "Production"
 }
 ```
 
-- `item` all the info on the record
-- `itemType` all the info on the model
-- `sandboxEnvironmentId` the environment ID
-- `locale` the current locale
-- `name` the name you associated to the frontend in the global settings
+- `item`: [CMA entity](https://www.datocms.com/docs/content-management-api/resources/item) of the current record
+- `itemType`: [CMA entity](https://www.datocms.com/docs/content-management-api/resources/item-type) of the model of the current record
+- `environmentId`: the current environment ID
+- `locale`: the locale currently active on the form
 
-The endpoint is expected to return a 200 response, with the following JSON structure:
+The endpoint is expected to return a `200` response, with the following JSON structure:
 
 ```json
 {
-  "urls": [
+  "previewLinks": [
     {
       "label": "Published (en)",
       "url": "https://mysite.com/blog/my-article"
@@ -55,42 +48,35 @@ The endpoint is expected to return a 200 response, with the following JSON struc
 }
 ```
 
-The plugin will display as many preview links as the specified urls.
+The plugin will display all the returned preview links.
 
 ### An example implementation for Next.js apps
 
-For the purpose of this example, let's say we want to create two preview links, one that links to a webpage that contains published content, and another with draft content.
+For the purpose of this example, let's say we want to return two preview links, one that links to the webpage that contains the published content, and another with draft content using [Next.js Preview Mode](https://www.datocms.com/docs/next-js/setting-up-next-js-preview-mode).
 
-#### Next.js preview mode
-
-To do that you need to have a preview endpoint on a Next.js app configured to fetch draft content from DatoCMS when [Preview Mode](https://nextjs.org/docs/advanced-features/preview-mode) is activated. To learn how to do that that, please read [the DatoCMS documentation](https://www.datocms.com/docs/next-js/setting-up-next-js-preview-mode), or take a look at this [example website](https://github.com/datocms/nextjs-demo/tree/master).
-
-Next step is to implement such endpoint as an [API Route](https://nextjs.org/docs/api-routes/introduction).
-
-This API Route uses the `response.setPreviewData` method to obtain the proper cookies for Preview Mode, which are immediately used to fetch the webpage related to the DatoCMS record.
-
-#### The web previews webhook
-
-Now we need to build our webhook, that should be able to generate both a preview link to the published content and a preview to the draft content, using Next preview mode. In this case let's say that we have a slug field that identifies the record.
-
-DatoCMS will make a POST request to each frontend webhook we specified in the settings, with the info on the current record. We need to imlement a CORS enabled webhook that handles the information and returns an array of preview URLs.
+DatoCMS will make a POST request the webhook with the info about the current record. We need to implement a CORS enabled API endpoint that handles the information and returns an array of preview links:
 
 ```js
 // Put this code in the following path of your Next.js website:
 // /pages/api/preview/links.js
 
 // this "routing" function knows how to convert a DatoCMS record
-// into its slug and canonical URL within the website
-const findPermalink = ({ item, itemType, locale }) => {
+// into canonical URL within the website
+const generatePreviewLink = ({ item, itemType, locale }) => {
   const localePrefix = locale === "en" ? "" : `/${locale}`;
 
   switch (itemType.attributes.api_key) {
-    case "blog_post":
-      return `${localePrefix}/blog/${item.slug}`;
     case "landing_page":
-      return `${localePrefix}/landing-pages/${item.slug}`;
-    case "updates":
-      return `${localePrefix}/product-updates/${item.slug}`;
+      return {
+        url: `${item.title}`,
+        label: `/landing-pages/${item.slug}`,
+      };
+    case "blog_post":
+      // blog posts are localized, let's use the locale to show relevant information:
+      return {
+        url: `${item.title[locale]}`,
+        label: `${localePrefix}/blog/${item.slug[locale]}`,
+      };
     default:
       return null;
   }
@@ -108,30 +94,22 @@ const handler = (req, res) => {
     return res.status(200).send("ok");
   }
 
-  const { item, itemType, sandboxEnvironmentId, locale, name } = req.body;
+  const previewLink = generatePreviewLink(req.body);
 
-  const permalink = findPermalink({
-    item,
-    itemType,
-    locale,
-  });
-
-  if (!permalink) {
-    return res.status(200).json({ urls: [] });
+  if (!previewLink) {
+    return res.status(200).json({ previewLinks: [] });
   }
 
-  const urls = [
+  const previewLinks = [
+    previewLink,
+    // we generate the Preview Mode URL:
     {
-      label: `${name} (${locale})`,
-      url: `https://mysite.com/${permalink}`,
-    },
-    {
-      label: `Draft ${name} (${locale})`,
-      url: `https://mysite.com/api/preview/start?slug=${permalink}`,
+      label: `${previewLink.label} - Preview`,
+      url: `https://mysite.com/api/preview/start?redirect=${previewLink.url}`,
     },
   ];
 
-  return res.status(200).json({ urls });
+  return res.status(200).json({ previewLinks });
 };
 
 export default handler;
