@@ -44,17 +44,17 @@ export default function ConfigScreen({ ctx }: PropTypes) {
               const ruleErrors: Record<string, string> = {};
 
               if (!rule.name) {
-                ruleErrors.name = "Name required!";
+                ruleErrors.name = 'Name required!';
               }
 
               if (
                 values.frontends.filter((f) => f.name === rule.name).length > 1
               ) {
-                ruleErrors.name = "Name must be unique!";
+                ruleErrors.name = 'Name must be unique!';
               }
 
               if (!rule.previewWebhook || !isValidUrl(rule.previewWebhook)) {
-                ruleErrors.previewWebhook = "Please specify an URL!";
+                ruleErrors.previewWebhook = 'Please specify an URL!';
               }
 
               return ruleErrors;

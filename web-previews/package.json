@@ -19,7 +19,7 @@
   "private": false,
   "datoCmsPlugin": {
     "title": "Web Previews",
-    "previewImage": "docs/preview.png",
+    "previewImage": "docs/video.mp4",
     "coverImage": "docs/cover.png",
     "entryPoint": "build/index.html"
   },
