@@ -1,8 +1,8 @@
 {
   "name": "datocms-plugin-web-previews",
   "homepage": "https://github.com/datocms/plugins/tree/master/web-previews#readme",
-  "description": "Shows links to the matching webpage previews, on a record sidebar",
-  "version": "0.1.0",
+  "description": "Adds quick links in the sidebar to preview your records in the final webpages",
+  "version": "1.0.0",
   "author": "DatoCMS <support@datocms.com>",
   "license": "GPLv3",
   "files": [
