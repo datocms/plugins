@@ -38,25 +38,27 @@ export default function ConfigScreen({ ctx }: PropTypes) {
         validate={(values) => {
           const errors: Record<string, any> = {};
 
-          errors.frontends = values.frontends.map((rule) => {
-            const ruleErrors: Record<string, string> = {};
+          errors.frontends =
+            values.frontends &&
+            values.frontends.map((rule) => {
+              const ruleErrors: Record<string, string> = {};
 
-            if (!rule.name) {
-              ruleErrors.name = 'Name required!';
-            }
+              if (!rule.name) {
+                ruleErrors.name = "Name required!";
+              }
 
-            if (
-              values.frontends.filter((f) => f.name === rule.name).length > 1
-            ) {
-              ruleErrors.name = 'Name must be unique!';
-            }
+              if (
+                values.frontends.filter((f) => f.name === rule.name).length > 1
+              ) {
+                ruleErrors.name = "Name must be unique!";
+              }
 
-            if (!rule.previewWebhook || !isValidUrl(rule.previewWebhook)) {
-              ruleErrors.previewWebhook = 'Please specify an URL!';
-            }
+              if (!rule.previewWebhook || !isValidUrl(rule.previewWebhook)) {
+                ruleErrors.previewWebhook = "Please specify an URL!";
+              }
 
-            return ruleErrors;
-          });
+              return ruleErrors;
+            });
 
           return errors;
         }}
