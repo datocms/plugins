@@ -68,14 +68,14 @@ const generatePreviewLink = ({ item, itemType, locale }) => {
   switch (itemType.attributes.api_key) {
     case "landing_page":
       return {
-        url: `${item.title}`,
-        label: `/landing-pages/${item.slug}`,
+        label: `${item.title}`,
+        url: `/landing-pages/${item.slug}`,
       };
     case "blog_post":
       // blog posts are localized, let's use the locale to show relevant information:
       return {
-        url: `${item.title[locale]}`,
-        label: `${localePrefix}/blog/${item.slug[locale]}`,
+        label: `${item.title[locale]}`,
+        url: `${localePrefix}/blog/${item.slug[locale]}`,
       };
     default:
       return null;
