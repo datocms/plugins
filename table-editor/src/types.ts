@@ -1,4 +1,4 @@
-import { dequal } from "dequal";
+import { dequal } from 'dequal';
 
 export type Value = {
   columns: string[];
@@ -14,22 +14,24 @@ export type Actions = {
   onMultipleCellUpdate: (
     index: number,
     column: string,
-    value: string[][]
+    value: string[][],
   ) => void;
   onAddColumn: (column: string, toTheLeft: boolean) => void;
+  onMoveColumn: (column: string, toTheLeft: boolean) => void;
   onRemoveColumn: (column: string) => void;
   onColumnRename: (column: string, newColumn: string) => void;
   onAddRow: (row: number, toTheBottom: boolean) => void;
+  onMoveRow: (row: number, toTheBottom: boolean) => void;
   onRemoveRow: (row: number) => void;
 };
 
 const isObject = (data: unknown): data is Record<string, unknown> => {
-  return typeof data === "object" && !Array.isArray(data) && data !== null;
+  return typeof data === 'object' && !Array.isArray(data) && data !== null;
 };
 
 const isRow = (data: unknown): data is Row => {
   return (
-    isObject(data) && Object.values(data).every((v) => typeof v === "string")
+    isObject(data) && Object.values(data).every((v) => typeof v === 'string')
   );
 };
 
@@ -42,7 +44,7 @@ const isColumns = (data: unknown): data is string[] => {
     return false;
   }
 
-  return data.every((column) => typeof column === "string");
+  return data.every((column) => typeof column === 'string');
 };
 
 const isData = (data: unknown, columns: string[]): data is Data => {
@@ -52,16 +54,16 @@ const isData = (data: unknown, columns: string[]): data is Data => {
   const sortedColumns = [...columns].sort();
 
   return data.every(
-    (row) => isRow(row) && dequal(sortedColumns, Object.keys(row).sort())
+    (row) => isRow(row) && dequal(sortedColumns, Object.keys(row).sort()),
   );
 };
 
 export const isValue = (data: unknown): data is Value => {
   return (
     isObject(data) &&
-    "columns" in data &&
+    'columns' in data &&
     isColumns((data as any).columns) &&
-    "data" in data &&
+    'data' in data &&
     isData((data as any).data, (data as any).columns as string[])
   );
 };

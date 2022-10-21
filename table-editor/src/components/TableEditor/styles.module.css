@@ -1,16 +1,14 @@
 .table {
   border-spacing: 0;
-  border: 1px solid var(--border-color);
   border-bottom: 0;
   margin-bottom: var(--spacing-m);
-  border-radius: 4px;
-  margin-left: 15px;
 }
 
 .thead {
   /* These styles are required for a scrollable body to align with the header properly */
   overflow-y: auto;
   overflow-x: hidden;
+  margin-left: 15px;
 }
 
 .tbody {
@@ -70,7 +68,7 @@
 }
 
 .dropdownWrapper {
-  width: 0;
+  width: 15px;
 }
 
 .dropdownWrapper > * {
@@ -95,7 +93,6 @@
   justify-content: center;
   background: rgba(var(--light-body-color-rgb-components), 0.1);
   cursor: pointer;
-  border-radius: 4px 0 0 4px;
   transition: background 0.2s var(--material-ease);
 }
 

@@ -1,6 +1,6 @@
-import { Column } from "react-table";
-import { Actions, Row } from "../../types";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { Column } from 'react-table';
+import { Actions, Row } from '../../types';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faCog,
   faLongArrowAltLeft,
@@ -8,7 +8,7 @@ import {
   faPen,
   faTimes,
   faTrashAlt,
-} from "@fortawesome/free-solid-svg-icons";
+} from '@fortawesome/free-solid-svg-icons';
 import {
   Button,
   Dropdown,
@@ -17,9 +17,9 @@ import {
   DropdownSeparator,
   TextField,
   useCtx,
-} from "datocms-react-ui";
-import s from "./style.module.css";
-import { useEffect, useState } from "react";
+} from 'datocms-react-ui';
+import s from './style.module.css';
+import { useEffect, useState } from 'react';
 
 type Props = Actions & {
   value: string;
@@ -33,10 +33,11 @@ export default function EditableHeader({
   columns,
   onColumnRename,
   onAddColumn,
+  onMoveColumn,
   onRemoveColumn,
 }: Props) {
   const ctx = useCtx();
-  const [panel, setPanel] = useState("root");
+  const [panel, setPanel] = useState('root');
   const [nameValue, setNameValue] = useState(id!);
 
   useEffect(() => {
@@ -46,17 +47,19 @@ export default function EditableHeader({
   const handleChangeName = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!nameValue) {
-      ctx.alert("Please provide a valid name");
+      ctx.alert('Please provide a valid name');
       return;
     }
 
     if (columns.find((c) => c.id === nameValue)) {
-      ctx.alert("Column names must be unique!");
+      ctx.alert('Column names must be unique!');
       return;
     }
 
     onColumnRename(id!, nameValue);
   };
+
+  const columnIndex = columns.findIndex((c) => c.id === id);
 
   return (
     <>
@@ -69,14 +72,25 @@ export default function EditableHeader({
         )}
       >
         <DropdownMenu
-          alignment={
-            columns.findIndex((c) => c.id === id) >= columns.length / 2
-              ? "right"
-              : "left"
-          }
+          alignment={columnIndex >= columns.length / 2 ? 'right' : 'left'}
         >
-          {panel === "root" && (
+          {panel === 'root' && (
             <>
+              <DropdownOption
+                onClick={onMoveColumn.bind(null, id!, false)}
+                disabled={columnIndex === columns.length - 1}
+              >
+                <FontAwesomeIcon icon={faLongArrowAltRight} /> Move column to
+                the right
+              </DropdownOption>
+              <DropdownOption
+                onClick={onMoveColumn.bind(null, id!, true)}
+                disabled={columnIndex === 0}
+              >
+                <FontAwesomeIcon icon={faLongArrowAltLeft} /> Move column to the
+                left
+              </DropdownOption>
+              <DropdownSeparator />
               <DropdownOption onClick={onAddColumn.bind(null, id!, false)}>
                 <FontAwesomeIcon icon={faLongArrowAltRight} /> Add column to the
                 right
@@ -89,7 +103,7 @@ export default function EditableHeader({
               <DropdownOption
                 closeMenuOnClick={false}
                 onClick={() => {
-                  setPanel("rename");
+                  setPanel('rename');
                 }}
               >
                 <FontAwesomeIcon icon={faPen} /> Rename column
@@ -99,7 +113,7 @@ export default function EditableHeader({
               </DropdownOption>
             </>
           )}
-          {panel === "rename" && (
+          {panel === 'rename' && (
             <>
               <form className={s.editForm} onSubmit={handleChangeName}>
                 <TextField
@@ -117,7 +131,7 @@ export default function EditableHeader({
               <DropdownOption
                 closeMenuOnClick={false}
                 onClick={() => {
-                  setPanel("root");
+                  setPanel('root');
                 }}
               >
                 <FontAwesomeIcon icon={faTimes} /> Cancel

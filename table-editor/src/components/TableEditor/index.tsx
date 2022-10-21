@@ -1,38 +1,64 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from 'react';
 import {
   useTable,
   useFlexLayout,
   useResizeColumns,
   Column,
   TableOptions,
-} from "react-table";
-import { useDeepCompareMemo } from "use-deep-compare";
-import { Actions, Row, Value } from "../../types";
-import EditableCell from "../EditableCell";
-import { Button } from "datocms-react-ui";
-import omit from "lodash-es/omit";
-import EditableHeader from "../EditableHeader";
-import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faExpand, faPlus, faTrash } from "@fortawesome/free-solid-svg-icons";
+} from 'react-table';
+import { useDeepCompareMemo } from 'use-deep-compare';
+import { Actions, Row, Value } from '../../types';
+import EditableCell from '../EditableCell';
+import { Button } from 'datocms-react-ui';
+import omit from 'lodash-es/omit';
+import EditableHeader from '../EditableHeader';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faExpand, faPlus, faTrash } from '@fortawesome/free-solid-svg-icons';
 import {
   faLongArrowAltDown,
   faLongArrowAltUp,
   faTrashAlt,
-} from "@fortawesome/free-solid-svg-icons";
+} from '@fortawesome/free-solid-svg-icons';
 import {
   Dropdown,
   DropdownMenu,
   DropdownOption,
   DropdownSeparator,
-} from "datocms-react-ui";
-import classNames from "classnames";
-import s from "./styles.module.css";
+} from 'datocms-react-ui';
+import classNames from 'classnames';
+import s from './styles.module.css';
 
 type Props = {
   value: Value;
   onChange: (value: Value | null) => void;
   onOpenInFullScreen?: () => void;
 };
+
+function orderedKeys<T extends { [k: string]: unknown }>(
+  object: T,
+  columns: string[],
+): T {
+  return Object.fromEntries(
+    Object.entries(object).sort(
+      ([key1], [key2]) => columns.indexOf(key1) - columns.indexOf(key2),
+    ),
+  ) as T;
+}
+
+function moveItemInArray<T>(
+  arr: T[],
+  fromIndex: number,
+  toTheLeft: boolean,
+): T[] {
+  const newArray = [...arr];
+  const toIndex = toTheLeft ? fromIndex - 1 : fromIndex + 1;
+
+  var element = newArray[fromIndex];
+  newArray.splice(fromIndex, 1);
+  newArray.splice(toIndex, 0, element);
+
+  return newArray;
+}
 
 export default function TableEditor({
   value,
@@ -45,7 +71,7 @@ export default function TableEditor({
       width: 150,
       maxWidth: 400,
     }),
-    []
+    [],
   );
 
   const tableColumns = useDeepCompareMemo<Column<Row>[]>(
@@ -56,34 +82,45 @@ export default function TableEditor({
         id: column,
         accessor: (row) => row[column],
       })),
-    [value.columns]
+    [value.columns],
   );
 
-  const onCellUpdate: Actions["onCellUpdate"] = (index, column, cellValue) => {
+  const onCellUpdate: Actions['onCellUpdate'] = (index, column, cellValue) => {
     onChange({
       ...value,
       data: value.data.map((row, i) =>
         i !== index
           ? row
-          : {
-              ...row,
-              [column]: cellValue,
-            }
+          : orderedKeys(
+              {
+                ...row,
+                [column]: cellValue,
+              },
+              value.columns,
+            ),
       ),
     });
   };
 
-  const onColumnRename: Actions["onColumnRename"] = (oldColumn, newColumn) => {
+  const onColumnRename: Actions['onColumnRename'] = (oldColumn, newColumn) => {
+    const newColumns = value.columns.map((c) =>
+      c === oldColumn ? newColumn : c,
+    );
     onChange({
-      columns: value.columns.map((c) => (c === oldColumn ? newColumn : c)),
-      data: value.data.map((row, i) => ({
-        ...omit(row, [oldColumn]),
-        [newColumn]: row[oldColumn],
-      })),
+      columns: newColumns,
+      data: value.data.map((row, i) =>
+        orderedKeys(
+          {
+            ...omit(row, [oldColumn]),
+            [newColumn]: row[oldColumn],
+          },
+          newColumns,
+        ),
+      ),
     });
   };
 
-  const onRemoveColumn: Actions["onRemoveColumn"] = (column) => {
+  const onRemoveColumn: Actions['onRemoveColumn'] = (column) => {
     onChange({
       columns: value.columns.filter((c) => c !== column),
       data: value.data.map((row, i) => omit(row, [column])),
@@ -91,7 +128,7 @@ export default function TableEditor({
   };
 
   const findNewColumnName = () => {
-    let columnName = "New Column";
+    let columnName = 'New Column';
     let i = 1;
 
     while (value.columns.indexOf(columnName) !== -1) {
@@ -102,29 +139,47 @@ export default function TableEditor({
     return columnName;
   };
 
-  const onAddColumn: Actions["onAddColumn"] = (column, toTheLeft) => {
+  const onAddColumn: Actions['onAddColumn'] = (column, toTheLeft) => {
     const columnName = findNewColumnName();
 
     const newColumns = [...value.columns];
     newColumns.splice(
       value.columns.indexOf(column) + (toTheLeft ? 0 : 1),
       0,
-      columnName
+      columnName,
     );
 
     onChange({
       columns: newColumns,
-      data: value.data.map((row, i) => ({
-        ...row,
-        [columnName]: "",
-      })),
+      data: value.data.map((row, i) =>
+        orderedKeys(
+          {
+            ...row,
+            [columnName]: '',
+          },
+          newColumns,
+        ),
+      ),
     });
   };
 
-  const onAddRow: Actions["onAddRow"] = (row, toTheBottom) => {
+  const onMoveColumn: Actions['onMoveColumn'] = (column, toTheLeft) => {
+    const newColumns = moveItemInArray(
+      value.columns,
+      value.columns.indexOf(column),
+      toTheLeft,
+    );
+
+    onChange({
+      columns: newColumns,
+      data: value.data.map((row, i) => orderedKeys(row, newColumns)),
+    });
+  };
+
+  const onAddRow: Actions['onAddRow'] = (row, toTheBottom) => {
     const newRow = value.columns.reduce<Row>(
-      (acc, column) => ({ ...acc, [column]: "" }),
-      {}
+      (acc, column) => ({ ...acc, [column]: '' }),
+      {},
     );
 
     const newData = [...value.data];
@@ -136,7 +191,14 @@ export default function TableEditor({
     });
   };
 
-  const onRemoveRow: Actions["onRemoveRow"] = (row) => {
+  const onMoveRow: Actions['onMoveRow'] = (row, toTheBottom) => {
+    onChange({
+      ...value,
+      data: moveItemInArray(value.data, row, !toTheBottom),
+    });
+  };
+
+  const onRemoveRow: Actions['onRemoveRow'] = (row) => {
     const newData = [...value.data];
     newData.splice(row, 1);
 
@@ -146,10 +208,10 @@ export default function TableEditor({
     });
   };
 
-  const onMultipleCellUpdate: Actions["onMultipleCellUpdate"] = (
+  const onMultipleCellUpdate: Actions['onMultipleCellUpdate'] = (
     index,
     id,
-    table
+    table,
   ) => {
     let currentRow = index;
     let currentCol = value.columns.indexOf(id);
@@ -157,8 +219,8 @@ export default function TableEditor({
     const newData = [...value.data];
 
     const newRow = value.columns.reduce<Row>(
-      (acc, column) => ({ ...acc, [column]: "" }),
-      {}
+      (acc, column) => ({ ...acc, [column]: '' }),
+      {},
     );
 
     for (const row of table) {
@@ -195,12 +257,13 @@ export default function TableEditor({
         onColumnRename,
         onAddColumn,
         onAddRow,
+        onMoveColumn,
         onRemoveColumn,
         onRemoveRow,
         onMultipleCellUpdate,
       } as TableOptions<Row>,
       useResizeColumns,
-      useFlexLayout
+      useFlexLayout,
     );
 
   const tbodyRef = useRef<HTMLDivElement>(null);
@@ -221,22 +284,22 @@ export default function TableEditor({
       theadRef.current.scrollLeft = (event.target as any).scrollLeft;
     };
 
-    tbody.addEventListener("scroll", handler);
+    tbody.addEventListener('scroll', handler);
 
     return () => {
-      tbody.removeEventListener("scroll", handler);
+      tbody.removeEventListener('scroll', handler);
     };
   }, []);
 
   return (
     <div>
       <div {...getTableProps()} className={s.table}>
-        <div className={s.thead} ref={theadRef} style={{ overflowX: "hidden" }}>
+        <div className={s.thead} ref={theadRef} style={{ overflowX: 'hidden' }}>
           {headerGroups.map((headerGroup) => (
             <div {...headerGroup.getHeaderGroupProps()} className={s.tr}>
               {headerGroup.headers.map((column) => (
                 <div {...column.getHeaderProps()} className={s.th}>
-                  {column.render("Header")}
+                  {column.render('Header')}
                   <div
                     {...column.getResizerProps()}
                     className={classNames(s.resizer, {
@@ -252,7 +315,7 @@ export default function TableEditor({
         <div
           {...getTableBodyProps()}
           ref={tbodyRef}
-          style={{ overflowX: "auto" }}
+          style={{ overflowX: 'auto' }}
         >
           {rows.map((row, i) => {
             prepareRow(row);
@@ -265,6 +328,20 @@ export default function TableEditor({
                     )}
                   >
                     <DropdownMenu>
+                      <DropdownOption
+                        onClick={onMoveRow.bind(null, i, false)}
+                        disabled={i === 0}
+                      >
+                        <FontAwesomeIcon icon={faLongArrowAltUp} /> Move row up
+                      </DropdownOption>
+                      <DropdownOption
+                        onClick={onMoveRow.bind(null, i, true)}
+                        disabled={i === rows.length - 1}
+                      >
+                        <FontAwesomeIcon icon={faLongArrowAltDown} /> Move row
+                        down
+                      </DropdownOption>
+                      <DropdownSeparator />
                       <DropdownOption onClick={onAddRow.bind(null, i, false)}>
                         <FontAwesomeIcon icon={faLongArrowAltUp} /> Add row
                         above
@@ -283,7 +360,7 @@ export default function TableEditor({
                 {row.cells.map((cell) => {
                   return (
                     <div {...cell.getCellProps()} className={s.td}>
-                      {cell.render("Cell")}
+                      {cell.render('Cell')}
                     </div>
                   );
                 })}
