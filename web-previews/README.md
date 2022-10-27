@@ -64,17 +64,17 @@ DatoCMS will make a POST request the webhook with the info about the current rec
 // into a canonical URL within the website
 const generatePreviewLink = ({ item, itemType, locale }) => {
   switch (itemType.attributes.api_key) {
-    case "landing_page":
+    case 'landing_page':
       return {
         label: `${item.attributes.title}`,
         url: `/landing-pages/${item.attributes.slug}`,
       };
-    case "blog_post":
+    case 'blog_post':
       // blog posts are localized:
-      const localePrefix = locale === "en" ? "" : `/${locale}`;
+      const localePrefix = locale === 'en' ? '' : `/${locale}`;
 
       return {
-        label: `${item.title[locale]}`,
+        label: `${item.attributes.title[locale]}`,
         url: `${localePrefix}/blog/${item.attributes.slug[locale]}`,
       };
     default:
@@ -84,14 +84,14 @@ const generatePreviewLink = ({ item, itemType, locale }) => {
 
 const handler = (req, res) => {
   // setup CORS permissions
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "POST");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-  res.setHeader("Content-Type", "application/json");
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Content-Type', 'application/json');
 
   // This will allow OPTIONS request
-  if (req.method === "OPTIONS") {
-    return res.status(200).send("ok");
+  if (req.method === 'OPTIONS') {
+    return res.status(200).send('ok');
   }
 
   const previewLink = generatePreviewLink(req.body);
@@ -102,14 +102,20 @@ const handler = (req, res) => {
 
   const { label, url } = previewLink;
 
+  const baseUrl = process.env.VERCEL_URL
+    // Vercel auto-populates this environment variable
+    ? `https://${process.env.VERCEL_URL}`
+    // Netlify auto-populates this environment variable
+    : process.env.URL;
+
   const previewLinks = [
     {
       label,
-      url: `${process.env.SITE_URL}${url}`,
+      url: `${baseUrl}${url}`,
     },
     {
       label: `${label} (Preview Mode)`,
-      url: `${process.env.SITE_URL}/api/start-preview-mode?redirect=${url}&secret=${process.env.PREVIEW_MODE_SECRET}`,
+      url: `${baseUrl}/api/start-preview-mode?redirect=${url}&secret=${process.env.PREVIEW_MODE_SECRET}`,
     },
   ];
 
