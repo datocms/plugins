@@ -62,21 +62,14 @@ DatoCMS will make a POST request the webhook with the info about the current rec
 
 // this function knows how to convert a DatoCMS record
 // into a canonical URL within the website
-const generatePreviewLink = ({ item, itemType, locale }) => {
+const generatePreviewUrl = ({ item, itemType, locale }) => {
   switch (itemType.attributes.api_key) {
     case 'landing_page':
-      return {
-        label: `${item.attributes.title}`,
-        url: `/landing-pages/${item.attributes.slug}`,
-      };
+      return `/landing-pages/${item.attributes.slug}`;
     case 'blog_post':
       // blog posts are localized:
       const localePrefix = locale === 'en' ? '' : `/${locale}`;
-
-      return {
-        label: `${item.attributes.title[locale]}`,
-        url: `${localePrefix}/blog/${item.attributes.slug[locale]}`,
-      };
+      return `${localePrefix}/blog/${item.attributes.slug[locale]}`;
     default:
       return null;
   }
@@ -94,13 +87,11 @@ const handler = (req, res) => {
     return res.status(200).send('ok');
   }
 
-  const previewLink = generatePreviewLink(req.body);
+  const url = generatePreviewUrl(req.body);
 
-  if (!previewLink) {
+  if (!url) {
     return res.status(200).json({ previewLinks: [] });
   }
-
-  const { label, url } = previewLink;
 
   const baseUrl = process.env.VERCEL_URL
     // Vercel auto-populates this environment variable
@@ -110,11 +101,11 @@ const handler = (req, res) => {
 
   const previewLinks = [
     {
-      label,
+      label: 'Published version',
       url: `${baseUrl}${url}`,
     },
     {
-      label: `${label} (Preview Mode)`,
+      label: 'Open in Preview Mode',
       url: `${baseUrl}/api/start-preview-mode?redirect=${url}&secret=${process.env.PREVIEW_MODE_SECRET}`,
     },
   ];
