@@ -100,12 +100,15 @@ const handler = (req, res) => {
     : process.env.URL;
 
   const previewLinks = [
+    // Public URL:
     {
       label: 'Published version',
       url: `${baseUrl}${url}`,
     },
+    // This requires an API route on your project that starts Next.js Preview Mode
+    // and redirects to the URL provided with the `redirect` parameter:
     {
-      label: 'Open in Preview Mode',
+      label: 'Draft version',
       url: `${baseUrl}/api/start-preview-mode?redirect=${url}&secret=${process.env.PREVIEW_MODE_SECRET}`,
     },
   ];
