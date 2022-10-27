@@ -2,7 +2,7 @@
 
 This plugin adds quick links in the record sidebar to preview your webpages.
 
-🚨 **Important:** This is not a drag & drop plugin! It requires some work on your frontend website(s) in order to function. Read more in the following sections!
+🚨 **Important:** This is not a drag & drop plugin! It requires a lambda function on your frontend website(s) in order to function. Read more in the following sections!
 
 ## Installation and configuration
 
@@ -57,22 +57,22 @@ For the purpose of this example, let's say we want to return two preview links, 
 DatoCMS will make a POST request the webhook with the info about the current record. We need to implement a CORS enabled API endpoint that handles the information and returns an array of preview links:
 
 ```js
-// Put this code in the following path of your Next.js website:
-// /pages/api/preview/links.js
+// Put this code in the /pages/api directory of your Next.js website:
+// (ie. /pages/api/preview-links.js)
 
-// this "routing" function knows how to convert a DatoCMS record
-// into canonical URL within the website
+// this function knows how to convert a DatoCMS record
+// into a canonical URL within the website
 const generatePreviewLink = ({ item, itemType, locale }) => {
-  const localePrefix = locale === "en" ? "" : `/${locale}`;
-
   switch (itemType.attributes.api_key) {
     case "landing_page":
       return {
-        label: `${item.title}`,
+        label: `${item.attributes.title}`,
         url: `/landing-pages/${item.attributes.slug}`,
       };
     case "blog_post":
-      // blog posts are localized, let's use the locale to show relevant information:
+      // blog posts are localized:
+      const localePrefix = locale === "en" ? "" : `/${locale}`;
+
       return {
         label: `${item.title[locale]}`,
         url: `${localePrefix}/blog/${item.attributes.slug[locale]}`,
@@ -100,12 +100,16 @@ const handler = (req, res) => {
     return res.status(200).json({ previewLinks: [] });
   }
 
+  const { label, url } = previewLink;
+
   const previewLinks = [
-    previewLink,
-    // we generate the Preview Mode URL:
     {
-      label: `${previewLink.label} - Preview`,
-      url: `https://mysite.com/api/preview/start?redirect=${previewLink.url}`,
+      label,
+      url: `${process.env.SITE_URL}${url}`,
+    },
+    {
+      label: `${label} (Preview Mode)`,
+      url: `${process.env.SITE_URL}/api/start-preview-mode?redirect=${url}&secret=${process.env.PREVIEW_MODE_SECRET}`,
     },
   ];
 
