@@ -2,7 +2,7 @@
   "name": "datocms-plugin-web-previews",
   "homepage": "https://github.com/datocms/plugins/tree/master/web-previews#readme",
   "description": "Offer your editors some links to preview the record they're working on in the website frontend",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "author": "DatoCMS <support@datocms.com>",
   "license": "GPLv3",
   "files": [
