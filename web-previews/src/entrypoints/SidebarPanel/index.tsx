@@ -135,7 +135,13 @@ const PreviewUrl = ({ ctx }: PropTypes) => {
   >();
   const { frontends } = ctx.plugin.attributes.parameters as Parameters;
 
-  const { item, locale, itemType, environment: environmentId } = ctx;
+  const {
+    item,
+    locale,
+    itemType,
+    environment: environmentId,
+    currentUser,
+  } = ctx;
 
   const payloadBody = useDeepCompareMemo(
     () =>
@@ -145,11 +151,12 @@ const PreviewUrl = ({ ctx }: PropTypes) => {
           itemType,
           environmentId,
           locale,
+          currentUser,
         },
         null,
         2,
       ),
-    [environmentId, item, itemType, locale],
+    [environmentId, item, itemType, locale, currentUser],
   );
 
   const run = useDeepCompareCallback(
