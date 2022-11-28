@@ -1,7 +1,8 @@
 {
-  "name": "dall-e",
+  "name": "datocms-plugin-dall-e-asset-source",
+  "description": "Generate images using DALL-E, and insert them directly inside your DatoCMS project",
   "version": "0.1.0",
-  "private": true,
+  "private": false,
   "dependencies": {
     "@fortawesome/free-solid-svg-icons": "^6.2.1",
     "@fortawesome/react-fontawesome": "^0.2.0",
@@ -18,6 +19,10 @@
     "sanity-plugin-asset-source-dall-e": "^1.0.0",
     "typescript": "^4.9.3"
   },
+  "files": [
+    "build",
+    "docs"
+  ],
   "scripts": {
     "start": "cross-env BROWSER='none' PUBLIC_URL='/' react-scripts start",
     "build": "cross-env PUBLIC_URL='.' react-scripts build",
@@ -46,9 +51,9 @@
     "cross-env": "^7.0.3"
   },
   "datoCmsPlugin": {
-    "title": "",
-    "previewImage": "",
-    "coverImage": "",
+    "title": "DALL-E Asset Source",
+    "previewImage": "docs/demo.mp4",
+    "coverImage": "docs/cover.png",
     "entryPoint": "build/index.html"
   }
 }
