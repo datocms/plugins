@@ -1,0 +1,67 @@
+.search {
+  margin-bottom: var(--spacing-l);
+}
+
+.searchFirstRow {
+  display: flex;
+  align-items: stretch;
+  margin-bottom: var(--spacing-m);
+}
+
+.searchSecondRow {
+  display: flex;
+}
+
+.searchFilter {
+  display: flex;
+  margin-right: 30px;
+  align-items: center;
+}
+
+.searchFilterLabel {
+  margin-right: 10px;
+  color: var(--light-body-color);
+}
+
+.search__input {
+  margin-right: 10px;
+  flex: 1;
+}
+
+.container {
+  position: relative;
+  min-height: 150px;
+}
+
+.imageRequest {
+  margin-bottom: var(--spacing-xl);
+  border: 1px solid var(--border-color);
+  padding: var(--spacing-l);
+  border-radius: 5px;
+}
+
+.imageRequest:last-child {
+  margin-bottom: 0;
+}
+
+.imageRequestPrompt {
+  font-size: var(--font-size-xl);
+  font-weight: bold;
+    margin-bottom: var(--spacing-l);
+}
+
+.imageRequestMasonry {
+  grid-column-gap: var(--spacing-m);
+  align-items: start;
+  display: grid;
+  grid-template-columns: repeat(var(--columns), minmax(0, 1fr));
+  transition: opacity 0.3s var(--material-ease);
+}
+
+.imageRequestMasonryLoading {
+  opacity: 0.7;
+}
+
+.footer {
+  margin-top: var(--spacing-l);
+}
