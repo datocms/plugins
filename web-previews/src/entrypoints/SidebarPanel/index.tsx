@@ -145,23 +145,34 @@ const PreviewUrl = ({ ctx }: PropTypes) => {
 
   const payloadBody = useDeepCompareMemo(
     () =>
-      JSON.stringify(
-        {
-          item,
-          itemType,
-          environmentId,
-          locale,
-          currentUser,
-        },
-        null,
-        2,
-      ),
+      item
+        ? JSON.stringify(
+            {
+              item,
+              itemType,
+              environmentId,
+              locale,
+              currentUser,
+            },
+            null,
+            2,
+          )
+        : undefined,
     [environmentId, item, itemType, locale, currentUser],
   );
 
   const run = useDeepCompareCallback(
     async (frontends: Frontend[]) => {
       setStatusByFrontend(undefined);
+
+      if (!payloadBody) {
+        setStatusByFrontend(
+          Object.fromEntries(
+            frontends.map((frontend) => [frontend.name, { previewLinks: [] }]),
+          ),
+        );
+        return;
+      }
 
       const results = await Promise.all(
         frontends.map((frontend) => makeRequest(frontend, payloadBody)),
