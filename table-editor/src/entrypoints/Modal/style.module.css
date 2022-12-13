@@ -1,8 +1,0 @@
-.bar {
-  display: flex;
-  margin-top: var(--spacing-xl);
-}
-
-.barSpacer {
-  flex: 1;
-}
