@@ -37,7 +37,7 @@ async function makeRequest(
     const request = await fetch(url.toString(), {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'Content-Type': 'text/plain',
       },
       body: payload,
     });
