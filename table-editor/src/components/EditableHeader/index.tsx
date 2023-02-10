@@ -77,6 +77,19 @@ export default function EditableHeader({
           {panel === 'root' && (
             <>
               <DropdownOption
+                closeMenuOnClick={false}
+                onClick={() => {
+                  setPanel('rename');
+                }}
+              >
+                <FontAwesomeIcon icon={faPen} /> Rename column
+              </DropdownOption>
+              <DropdownOption red onClick={onRemoveColumn.bind(null, id!)}>
+                <FontAwesomeIcon icon={faTrashAlt} /> Remove column
+              </DropdownOption>
+              <DropdownSeparator />
+
+              <DropdownOption
                 onClick={onMoveColumn.bind(null, id!, false)}
                 disabled={columnIndex === columns.length - 1}
               >
@@ -98,18 +111,6 @@ export default function EditableHeader({
               <DropdownOption onClick={onAddColumn.bind(null, id!, true)}>
                 <FontAwesomeIcon icon={faLongArrowAltLeft} /> Add column to the
                 left
-              </DropdownOption>
-              <DropdownSeparator />
-              <DropdownOption
-                closeMenuOnClick={false}
-                onClick={() => {
-                  setPanel('rename');
-                }}
-              >
-                <FontAwesomeIcon icon={faPen} /> Rename column
-              </DropdownOption>
-              <DropdownOption red onClick={onRemoveColumn.bind(null, id!)}>
-                <FontAwesomeIcon icon={faTrashAlt} /> Remove column
               </DropdownOption>
             </>
           )}
