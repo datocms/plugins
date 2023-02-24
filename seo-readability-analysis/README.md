@@ -167,26 +167,26 @@ const handler = async (req, res) => {
     return;
   }
 
-  const content = contentEl.innerHTML;
+  const pageContent = contentEl.innerHTML;
 
   // get the page locale by looking at the "lang" attribute on the <html> tag
-  const locale = document.querySelector('html').getAttribute('lang') || 'en';
+  const pageLocale = document.querySelector('html').getAttribute('lang') || 'en';
 
   // get the <title> of the page
-  const title = document.querySelector('title').textContent;
+  const pageTitle = document.querySelector('title').textContent;
 
   // get the description meta of the page
-  const description = document
+  const pageDescription = document
     .querySelector('meta[name="description"]')
     .getAttribute('content');
 
   res.status(200).json({
-    locale,
+    locale: pageLocale,
     slug,
     permalink,
-    title,
-    description,
-    content,
+    title: pageTitle,
+    description: pageDescription,
+    content: pageContent,
   });
 };
 
