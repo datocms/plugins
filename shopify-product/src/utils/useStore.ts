@@ -1,4 +1,4 @@
-import create from 'zustand';
+import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import produce from 'immer';
 import ShopifyClient, { Product } from './ShopifyClient';
@@ -22,7 +22,7 @@ export type State = {
   fetchProductsMatching(client: ShopifyClient, query: string): Promise<void>;
 };
 
-const useStore = create<State>(
+const useStore = create(
   persist(
     (rawSet, get) => {
       const set = (setFn: (s: State) => void) => {
@@ -34,18 +34,17 @@ const useStore = create<State>(
         products: {},
         searches: {},
         getProduct(handle: string) {
-          const selectedProduct = get().products[handle];
+          const selectedProduct = (get() as State).products[handle];
 
           return {
-            status:
-              selectedProduct && selectedProduct.status
-                ? selectedProduct.status
-                : 'loading',
-            product: selectedProduct && selectedProduct.result,
+            status: selectedProduct?.status
+              ? selectedProduct.status
+              : 'loading',
+            product: selectedProduct?.result,
           };
         },
         getCurrentSearch() {
-          const state = get();
+          const state = get() as State;
 
           const search = state.searches[state.query] || {
             status: 'loading',
@@ -55,12 +54,14 @@ const useStore = create<State>(
           return {
             query: state.query,
             status: search.status,
-            products:
-              search.result &&
-              search.result.map((id: string) => state.products[id].result!),
+            products: search.result?.map((id: string) =>
+              state.products[id]?.result
+                ? state.products[id]?.result
+                : undefined,
+            ),
           };
         },
-        async fetchProductByHandle(client, handle) {
+        async fetchProductByHandle(client: ShopifyClient, handle: string) {
           set((state) => {
             state.products[handle] = state.products[handle] || { result: null };
             state.products[handle].status = 'loading';
@@ -80,7 +81,7 @@ const useStore = create<State>(
             });
           }
         },
-        async fetchProductsMatching(client, query) {
+        async fetchProductsMatching(client: ShopifyClient, query: string) {
           set((state) => {
             state.searches[query] = state.searches[query] || { result: [] };
             state.searches[query].status = 'loading';
