@@ -45,7 +45,7 @@ export default function FieldExtension({ ctx }: Props) {
     }
 
     setValue(newValue);
-  }, [rawValue, value]);
+  }, [value]);
 
   if (value === 'invalid') {
     return <Canvas ctx={ctx}>Invalid value!</Canvas>;
