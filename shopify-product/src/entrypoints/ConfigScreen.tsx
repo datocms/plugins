@@ -32,6 +32,8 @@ export default function ConfigScreen({ ctx }: Props) {
             const client = new ShopifyClient(values);
             await client.productsMatching('foo');
           } catch (e) {
+            console.log('test', e);
+
             return {
               tupleFailing:
                 'The API key seems to be invalid for the specified Shopify domain!',
@@ -44,7 +46,7 @@ export default function ConfigScreen({ ctx }: Props) {
       >
         {({ handleSubmit, submitting, dirty, submitErrors }) => (
           <Form onSubmit={handleSubmit}>
-            {submitErrors && submitErrors.tupleFailing && (
+            {submitErrors?.tupleFailing && (
               <div className={s.error}>{submitErrors.tupleFailing}</div>
             )}
             <FieldGroup>

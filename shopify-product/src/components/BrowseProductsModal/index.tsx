@@ -9,13 +9,13 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSearch } from '@fortawesome/free-solid-svg-icons';
 import classNames from 'classnames';
 
-const currentSearchSelector = (state: State) => state.getCurrentSearch();
-const currentFetchProductsMatchingSelector = (state: State) =>
-  state.fetchProductsMatching;
-
 export default function BrowseProductsModal({ ctx }: { ctx: RenderModalCtx }) {
-  const performSearch = useStore(currentFetchProductsMatchingSelector);
-  const { query, status, products } = useStore(currentSearchSelector);
+  const performSearch = useStore(
+    (state) => (state as State).fetchProductsMatching,
+  );
+  const { query, status, products } = useStore((state) =>
+    (state as State).getCurrentSearch(),
+  );
 
   const [sku, setSku] = useState<string>('');
 
@@ -60,14 +60,14 @@ export default function BrowseProductsModal({ ctx }: { ctx: RenderModalCtx }) {
           </Button>
         </form>
         <div className={s['container']}>
-          {products && products.filter((x: any) => !!x) && (
+          {products?.filter((x: any) => !!x) && (
             <div
               className={classNames(s['products'], {
                 [s['products__loading']]: status === 'loading',
               })}
             >
               {products.map((product: Product) => (
-                <div
+                <button
                   key={product.handle}
                   onClick={() => ctx.resolve(product)}
                   className={s['product']}
@@ -79,7 +79,7 @@ export default function BrowseProductsModal({ ctx }: { ctx: RenderModalCtx }) {
                   <div className={s['product__content']}>
                     <div className={s['product__title']}>{product.title}</div>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           )}

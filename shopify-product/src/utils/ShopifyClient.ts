@@ -88,38 +88,33 @@ export default class ShopifyClient {
     const response = await this.fetch({
       query: `
         query getProducts($query: String) {
-          shop {
             products(first: 10, query: $query) {
               edges {
                 node {
                   ${productFragment}
                 }
               }
-            }
           }
         }
       `,
       variables: { query: query || null },
     });
-
-    return normalizeProducts(response.shop.products);
+    return normalizeProducts(response.products);
   }
 
   async productByHandle(handle: string) {
     const response = await this.fetch({
       query: `
         query getProduct($handle: String!) {
-          shop {
-            product: productByHandle(handle: $handle) {
-              ${productFragment}
-            }
+          product: productByHandle(handle: $handle) {
+            ${productFragment}
           }
         }
       `,
       variables: { handle },
     });
 
-    return normalizeProduct(response.shop.product);
+    return normalizeProduct(response.product);
   }
 
   async fetch(requestBody: any) {
@@ -142,9 +137,7 @@ export default class ShopifyClient {
     const contentType = res.headers.get('content-type');
 
     if (!contentType || !contentType.includes('application/json')) {
-      throw new Error(
-        `Invalid content type: ${contentType}`,
-      );
+      throw new Error(`Invalid content type: ${contentType}`);
     }
 
     const body = await res.json();

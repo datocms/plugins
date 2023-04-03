@@ -13,9 +13,6 @@ import {
   faTimesCircle,
 } from '@fortawesome/free-solid-svg-icons';
 
-const fetchProductByHandleSelector = (state: State) =>
-  state.fetchProductByHandle;
-
 export type ValueProps = {
   value: string;
   onReset: () => void;
@@ -34,10 +31,12 @@ export default function Value({ value, onReset }: ValueProps) {
   );
 
   const { product, status } = useStore(
-    useCallback((state) => state.getProduct(value), [value]),
+    useCallback((state) => (state as State).getProduct(value), [value]),
   );
 
-  const fetchProductByHandle = useStore(fetchProductByHandleSelector);
+  const fetchProductByHandle = useStore(
+    (state) => (state as State).fetchProductByHandle,
+  );
 
   useEffect(() => {
     fetchProductByHandle(client, value);
@@ -49,12 +48,12 @@ export default function Value({ value, onReset }: ValueProps) {
         [s['loading']]: status === 'loading',
       })}
     >
-      {
-        status === 'error' &&
+      {status === 'error' && (
         <div className={s['product']}>
-          API Error! Could not fetch details for product:&nbsp;<code>{value}</code>
+          API Error! Could not fetch details for product:&nbsp;
+          <code>{value}</code>
         </div>
-      }
+      )}
       {product && (
         <div className={s['product']}>
           <div
