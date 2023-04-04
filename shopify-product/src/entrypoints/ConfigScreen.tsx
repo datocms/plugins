@@ -99,9 +99,9 @@ export default function ConfigScreen({ ctx }: Props) {
                 {({ input, meta: { error } }) => (
                   <TextField
                     id="autoApplyToFieldsWithApiKey"
-                    label="Auto-apply this plugin to all Single-line fields fields matching the following API identifier:"
+                    label="Auto-apply this plugin to all Single-line and JSON fields fields matching the following API identifier:"
                     hint="A regular expression can be used"
-                    placeholder="shopify_product_id"
+                    placeholder="shopify_product"
                     error={error}
                     textInputProps={{ monospaced: true }}
                     {...input}

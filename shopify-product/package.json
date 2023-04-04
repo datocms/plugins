@@ -10,6 +10,7 @@
     "datocms-plugin",
     "field-editor",
     "string-field",
+    "json-field",
     "shopify"
   ],
   "files": [

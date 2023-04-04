@@ -1,6 +1,7 @@
 import { ValidConfig } from '../types';
 
 export type Product = {
+  id: string;
   handle: string;
   description: string;
   title: string;

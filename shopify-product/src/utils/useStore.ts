@@ -9,7 +9,7 @@ export type State = {
   query: string;
   searches: Record<string, { result: string[] | null; status: Status }>;
   products: Record<string, { result: Product | null; status: Status }>;
-  getProduct(handle: string): {
+  getProduct(handleOrId: string): {
     status: Status;
     product: Product | null;
   };
@@ -33,8 +33,8 @@ const useStore = create(
         query: '',
         products: {},
         searches: {},
-        getProduct(handle: string) {
-          const selectedProduct = (get() as State).products[handle];
+        getProduct(handleOrId: string) {
+          const selectedProduct = (get() as State).products[handleOrId];
 
           return {
             status: selectedProduct?.status
