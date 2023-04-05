@@ -58,14 +58,14 @@ connect({
         id: FIELD_EXTENSION_ID,
         name: 'Shopify Product',
         type: 'editor',
-        fieldTypes: ['string'],
+        fieldTypes: ['string', 'json'],
       },
     ];
   },
   overrideFieldExtensions(field, ctx) {
     const config = normalizeConfig(ctx.plugin.attributes.parameters);
 
-    if (field.attributes.field_type !== 'string') {
+    if (!['string', 'json'].includes(field.attributes.field_type)) {
       return;
     }
 

@@ -10,10 +10,29 @@ type PropTypes = {
 };
 
 export default function FieldExtension({ ctx }: PropTypes) {
-  const value = get(ctx.formValues, ctx.fieldPath) as string | null;
+  const fieldType = ctx.field.attributes.field_type;
+
+  const rawValue = get(ctx.formValues, ctx.fieldPath) as string;
+
+  let shopifyHandle;
+
+  switch (fieldType) {
+    case 'json':
+      shopifyHandle = rawValue && JSON.parse(rawValue).handle;
+      break;
+    case 'string':
+      shopifyHandle = rawValue;
+      break;
+
+    default:
+      break;
+  }
 
   const handleSelect = (product: Product) => {
-    ctx.setFieldValue(ctx.fieldPath, product.handle);
+    ctx.setFieldValue(
+      ctx.fieldPath,
+      fieldType === 'json' ? JSON.stringify(product) : product.handle,
+    );
   };
 
   const handleReset = () => {
@@ -22,8 +41,8 @@ export default function FieldExtension({ ctx }: PropTypes) {
 
   return (
     <Canvas ctx={ctx}>
-      {value ? (
-        <Value value={value} onReset={handleReset} />
+      {shopifyHandle ? (
+        <Value value={shopifyHandle} onReset={handleReset} />
       ) : (
         <Empty onSelect={handleSelect} />
       )}

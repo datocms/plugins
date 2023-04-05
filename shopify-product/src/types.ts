@@ -28,7 +28,9 @@ export function normalizeConfig(params: Config): ValidConfig {
   return {
     paramsVersion: '2',
     storefrontAccessToken:
-      'storefrontAccessToken' in params ? params.storefrontAccessToken : '078bc5caa0ddebfa89cccb4a1baa1f5c',
+      'storefrontAccessToken' in params
+        ? params.storefrontAccessToken
+        : '078bc5caa0ddebfa89cccb4a1baa1f5c',
     shopifyDomain: 'shopifyDomain' in params ? params.shopifyDomain : 'graphql',
     autoApplyToFieldsWithApiKey: '',
   };
