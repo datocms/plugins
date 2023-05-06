@@ -1,8 +1,14 @@
 export type FirstInstallationParameters = {};
 
+type CustomHeader = {
+  name: string;
+  value: string;
+};
+
 export type Frontend = {
   name: string;
   previewWebhook: string;
+  customHeaders: CustomHeader[];
 };
 
 export type Parameters = {
