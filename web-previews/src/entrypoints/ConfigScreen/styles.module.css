@@ -1,7 +1,36 @@
+.group {
+  border: 1px solid var(--border-color);
+  padding: var(--spacing-l);
+  border-radius: 4px;
+  transition: all 0.3s cubic-bezier(0.55, 0, 0.1, 1);
+}
+
+.group:hover {
+  border-color: var(--darker-border-color);
+}
+
 .grid {
   display: grid;
-  grid-template-columns: 1fr 3fr 48px;
+  align-items: flex-start;
+  grid-template-columns: 1fr 48px;
   column-gap: var(--spacing-m);
+}
+
+.headerGrid {
+  display: flex;
+  gap: var(--spacing-m);
+}
+
+.headerGrid label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
 }
 
 .error {

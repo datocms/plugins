@@ -24,7 +24,7 @@ type PropTypes = {
 type FrontendStatus = { previewLinks: PreviewLink[] } | { error: any };
 
 async function makeRequest(
-  { previewWebhook, name }: Frontend,
+  { previewWebhook, name, customHeaders }: Frontend,
   payload: string,
 ): Promise<[string, FrontendStatus]> {
   try {
@@ -33,12 +33,12 @@ async function makeRequest(
     }
 
     const url = new URL(previewWebhook);
+    const headers = new Headers({ 'Content-Type': 'application/json' });
+    customHeaders?.forEach(({ name, value }) => headers.set(name, value));
 
     const request = await fetch(url.toString(), {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: payload,
     });
 
@@ -99,9 +99,9 @@ const FrontendResult = ({ status }: { status: FrontendStatus }) => {
       {status.previewLinks.length === 0 ? (
         <div>No preview links available.</div>
       ) : (
-        status.previewLinks.map(({ url, label }) => {
+        status.previewLinks.map(({ url, label }, index) => {
           return (
-            <div className={styles.grid}>
+            <div key={`${label}-${index}`} className={styles.grid}>
               <a
                 href={url}
                 className={styles.link}
@@ -203,6 +203,7 @@ const PreviewUrl = ({ ctx }: PropTypes) => {
           ) : (
             frontends.map((frontend) => (
               <FrontendGroup
+                key={frontend.name}
                 frontend={frontend}
                 status={statusByFrontend[frontend.name]}
                 hideIfNoLinks

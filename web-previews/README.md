@@ -81,7 +81,7 @@ const handler = (req, res) => {
   // setup CORS permissions
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization'); // add any other headers you need
   res.setHeader('Content-Type', 'application/json');
 
   // This will allow OPTIONS request
@@ -156,7 +156,7 @@ export default eventHandler(async (event) => {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Allow-Methods': 'POST',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization', // add any other headers you need
   })
 
   // This will allow OPTIONS request
