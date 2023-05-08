@@ -93,8 +93,6 @@ export function useStatusByFrontend(
 
   const run = useDeepCompareCallback(
     async (frontends: Frontend[]) => {
-      setStatusByFrontend(undefined);
-
       if (!payloadBody) {
         setStatusByFrontend(
           Object.fromEntries(
