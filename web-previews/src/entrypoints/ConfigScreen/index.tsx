@@ -35,13 +35,12 @@ export default function ConfigScreen({ ctx }: PropTypes) {
   return (
     <Canvas ctx={ctx}>
       <FormHandler<Parameters>
-        initialValues={ctx.plugin.attributes.parameters}
+        initialValues={{ ...ctx.plugin.attributes.parameters, frontends: ctx.plugin.attributes.parameters.frontends as Frontend[] || [] }}
         validate={(values) => {
           const errors: Record<string, any> = {};
 
           errors.frontends =
-            values.frontends &&
-            values.frontends.map((rule) => {
+            values.frontends?.map((rule) => {
               const ruleErrors: Record<string, any> = {};
 
               if (!rule.name) {
@@ -56,7 +55,7 @@ export default function ConfigScreen({ ctx }: PropTypes) {
                 ruleErrors.previewWebhook = 'Please specify an URL!';
               }
 
-              ruleErrors.customHeaders = rule.customHeaders.map((header) => {
+              ruleErrors.customHeaders = rule.customHeaders?.map((header) => {
                 const headerErrors: Record<string, string> = {};
 
                 if (!header.name) {

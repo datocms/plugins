@@ -21,6 +21,10 @@
   gap: var(--spacing-m);
 }
 
+.headerGrid > div {
+  flex: 1;
+}
+
 .headerGrid label {
   position: absolute;
   width: 1px;
