@@ -5,17 +5,8 @@
   "version": "1.0.4",
   "author": "DatoCMS <support@datocms.com>",
   "license": "GPLv3",
-  "files": [
-    "docs",
-    "build"
-  ],
-  "keywords": [
-    "datocms",
-    "datocms-plugin",
-    "sidebar",
-    "preview",
-    "links"
-  ],
+  "files": ["docs", "build"],
+  "keywords": ["datocms", "datocms-plugin", "sidebar", "preview", "links"],
   "private": false,
   "datoCmsPlugin": {
     "title": "Web Previews",
@@ -26,8 +17,8 @@
   "dependencies": {
     "@fortawesome/free-solid-svg-icons": "^6.2.0",
     "@fortawesome/react-fontawesome": "^0.2.0",
-    "datocms-plugin-sdk": "^0.6.15",
-    "datocms-react-ui": "^0.6.15",
+    "datocms-plugin-sdk": "^0.7.11",
+    "datocms-react-ui": "^0.7.11",
     "final-form": "^4.20.9",
     "final-form-arrays": "^3.1.0",
     "react": "^18.2.0",
@@ -45,20 +36,12 @@
     "prepublishOnly": "npm run build"
   },
   "eslintConfig": {
-    "extends": [
-      "react-app"
-    ]
+    "extends": ["react-app"]
   },
   "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
+    "production": [">0.2%", "not dead", "not op_mini all"],
     "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
+      "last 1 chrome version", "last 1 firefox version", "last 1 safari version"
     ]
   },
   "devDependencies": {

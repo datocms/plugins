@@ -1,66 +1,14 @@
+import { faCopy } from '@fortawesome/free-solid-svg-icons';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { RenderItemFormSidebarPanelCtx } from 'datocms-plugin-sdk';
 import { Canvas, Spinner, useCtx } from 'datocms-react-ui';
-import { useState } from 'react';
-import {
-  Frontend,
-  isValidResponse,
-  Parameters,
-  PreviewLink,
-  Response,
-} from '../../types';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faCopy } from '@fortawesome/free-solid-svg-icons';
+import { Frontend } from '../../types';
+import { FrontendStatus, useStatusByFrontend } from '../../utils/common';
 import styles from './styles.module.css';
-import {
-  useDeepCompareCallback,
-  useDeepCompareEffect,
-  useDeepCompareMemo,
-} from 'use-deep-compare';
 
 type PropTypes = {
   ctx: RenderItemFormSidebarPanelCtx;
 };
-
-type FrontendStatus = { previewLinks: PreviewLink[] } | { error: any };
-
-async function makeRequest(
-  { previewWebhook, name, customHeaders }: Frontend,
-  payload: string,
-): Promise<[string, FrontendStatus]> {
-  try {
-    if (!previewWebhook) {
-      throw new Error(`Missing "Preview Webhook URL" option!`);
-    }
-
-    const url = new URL(previewWebhook);
-    const headers = new Headers({ 'Content-Type': 'application/json' });
-    customHeaders?.forEach(({ name, value }) => headers.set(name, value));
-
-    const request = await fetch(url.toString(), {
-      method: 'POST',
-      headers,
-      body: payload,
-    });
-
-    if (request.status !== 200) {
-      throw new Error(
-        `[Web Previews] Webhook for frontend "${name}" returned a ${request.status} status!`,
-      );
-    }
-
-    const response: Response = await request.json();
-
-    if (!isValidResponse(response)) {
-      throw new Error(
-        `[Web Previews] Webhook for frontend "${name}" returned an invalid payload!`,
-      );
-    }
-
-    return [name, { previewLinks: response.previewLinks }];
-  } catch (error) {
-    return [name, { error }];
-  }
-}
 
 const FrontendGroup = ({
   status,
@@ -130,62 +78,7 @@ const FrontendResult = ({ status }: { status: FrontendStatus }) => {
 };
 
 const PreviewUrl = ({ ctx }: PropTypes) => {
-  const [statusByFrontend, setStatusByFrontend] = useState<
-    Record<string, FrontendStatus> | undefined
-  >();
-  const { frontends } = ctx.plugin.attributes.parameters as Parameters;
-
-  const {
-    item,
-    locale,
-    itemType,
-    environment: environmentId,
-    currentUser,
-  } = ctx;
-
-  const payloadBody = useDeepCompareMemo(
-    () =>
-      item
-        ? JSON.stringify(
-            {
-              item,
-              itemType,
-              environmentId,
-              locale,
-              currentUser,
-            },
-            null,
-            2,
-          )
-        : undefined,
-    [environmentId, item, itemType, locale, currentUser],
-  );
-
-  const run = useDeepCompareCallback(
-    async (frontends: Frontend[]) => {
-      setStatusByFrontend(undefined);
-
-      if (!payloadBody) {
-        setStatusByFrontend(
-          Object.fromEntries(
-            frontends.map((frontend) => [frontend.name, { previewLinks: [] }]),
-          ),
-        );
-        return;
-      }
-
-      const results = await Promise.all(
-        frontends.map((frontend) => makeRequest(frontend, payloadBody)),
-      );
-
-      setStatusByFrontend(Object.fromEntries(results));
-    },
-    [payloadBody],
-  );
-
-  useDeepCompareEffect(() => {
-    run(frontends);
-  }, [run, frontends]);
+  const [frontends, statusByFrontend] = useStatusByFrontend(ctx);
 
   return (
     <Canvas ctx={ctx}>
@@ -196,9 +89,9 @@ const PreviewUrl = ({ ctx }: PropTypes) => {
           ) : frontends.length === 1 ? (
             <FrontendResult status={Object.values(statusByFrontend)[0]} />
           ) : Object.values(statusByFrontend).every(
-              (status) =>
-                'previewLinks' in status && status.previewLinks.length === 0,
-            ) ? (
+            (status) =>
+              'previewLinks' in status && status.previewLinks.length === 0,
+          ) ? (
             <div>No preview links available.</div>
           ) : (
             frontends.map((frontend) => (
