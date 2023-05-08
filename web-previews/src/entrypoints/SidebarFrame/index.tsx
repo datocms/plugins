@@ -184,7 +184,9 @@ const PreviewFrame = ({ ctx }: PropTypes) => {
             )}
           </>
         ) : (
-          <Spinner />
+          <div className={styles.spinnerWrapper}>
+            <Spinner />
+          </div>
         )}
       </div>
     </Canvas>
