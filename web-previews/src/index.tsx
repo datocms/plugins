@@ -32,7 +32,7 @@ connect({
     return [
       {
         id: "webPreviews",
-        label: "Web previews",
+        label: "Side-by-side web previews",
         preferredWidth: 900,
       },
     ];

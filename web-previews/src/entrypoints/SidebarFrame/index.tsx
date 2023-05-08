@@ -10,7 +10,7 @@ import {
   DropdownOption,
   Spinner
 } from 'datocms-react-ui';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   useDeepCompareEffect
 } from 'use-deep-compare';
@@ -93,6 +93,7 @@ const FrontendPreviewLinks = ({
 const PreviewFrame = ({ ctx }: PropTypes) => {
   const [frontends, statusByFrontend] = useStatusByFrontend(ctx);
   const [previewLink, setPreviewLink] = useState<PreviewLink | undefined>();
+  const [iframeLoading, setIframeLoading] = useState(false);
 
   useDeepCompareEffect(() => {
     if (!statusByFrontend) {
@@ -112,6 +113,15 @@ const PreviewFrame = ({ ctx }: PropTypes) => {
       setPreviewLink(previewLinks[0]);
     }
   }, [statusByFrontend]);
+
+  useEffect(() => {
+    if (!previewLink) {
+      setIframeLoading(false);
+      return;
+    }
+
+    setIframeLoading(true);
+  }, [previewLink?.url])
 
   return (
     <Canvas ctx={ctx} noAutoResizer={true}>
@@ -179,13 +189,14 @@ const PreviewFrame = ({ ctx }: PropTypes) => {
             </div>
             {previewLink && (
               <div className={styles.frame}>
-                <iframe title={previewLink.url} src={previewLink.url} />
+                <iframe key={previewLink.url} title={previewLink.url} src={previewLink.url} onLoad={() => setIframeLoading(false)} />
+                {iframeLoading && <Spinner placement="centered" size={48} />}
               </div>
             )}
           </>
         ) : (
           <div className={styles.spinnerWrapper}>
-            <Spinner />
+            <Spinner placement="centered" size={48} />
           </div>
         )}
       </div>

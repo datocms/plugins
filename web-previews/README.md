@@ -1,6 +1,6 @@
 # Web Previews DatoCMS plugin
 
-This plugin adds quick links in the record sidebar to preview your webpages.
+This plugin adds side-by-side previews, and quick links in the record sidebar to preview your webpages.
 
 🚨 **Important:** This is not a drag & drop plugin! It requires a lambda function on your frontend website(s) in order to function. Read more in the following sections!
 
@@ -10,6 +10,12 @@ Once the plugin is installed you need to specify:
 
 - A list of frontends. Each frontend specifies a name and a preview webhook, which will be called as soon as the plugin is loaded. Read more about it on the next chapter.
 - Sidebar open: to specify whether you want the sidebar panel to be opened by default.
+
+:warning: For side-by-side previews to work, if your website implements a [Content Security Policy `frame-ancestors` directive](https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP), you need to add `https://plugins-cdn.datocms.com` to your list of allowed sources, ie.:
+
+```
+Content-Security-Policy: frame-ancestors 'self' https://plugins-cdn.datocms.com;
+```
 
 ## The Previews webhook
 
