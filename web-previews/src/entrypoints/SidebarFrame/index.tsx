@@ -136,7 +136,7 @@ const PreviewFrame = ({ ctx }: PropTypes) => {
                       onClick={onClick}
                       className={styles.toolbarTitle}
                     >
-                      {previewLink ? previewLink.label : 'Please select...'} {
+                      {previewLink ? previewLink.label : 'Please select a preview...'} {
                         open ? (
                           <FontAwesomeIcon icon={faCaretUp} />
                         ) : (
@@ -160,7 +160,7 @@ const PreviewFrame = ({ ctx }: PropTypes) => {
                         'previewLinks' in status &&
                         status.previewLinks.length === 0,
                     ) ? (
-                      <div>No preview links available.</div>
+                      <DropdownOption>No preview links available for this record.</DropdownOption>
                     ) : (
                       frontends.map((frontend) => (
                         <FrontendGroup
