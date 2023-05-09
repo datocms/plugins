@@ -1,0 +1,58 @@
+{
+  "name": "datocms-plugin-schema-erd",
+  "homepage": "https://github.com/datocms/plugins/tree/master/schema-erd#readme",
+  "description": "Generate Graphviz ERD diagrams of your project schema, and export them in SVG, PDF and DOT formats",
+  "version": "1.0.0",
+  "author": "DatoCMS <support@datocms.com>",
+  "license": "GPLv3",
+  "files": ["docs", "build"],
+  "keywords": ["datocms", "datocms-plugin", "erd"],
+  "private": false,
+  "datoCmsPlugin": {
+    "title": "Schema ERD",
+    "previewImage": "docs/video.mp4",
+    "coverImage": "docs/cover.png",
+    "entryPoint": "build/index.html"
+  },
+  "dependencies": {
+    "@types/node": "^18.15.11",
+    "@types/react": "^18.0.37",
+    "@types/react-dom": "^18.0.11",
+    "@types/viz.js": "^2.1.2",
+    "datocms-plugin-sdk": "^0.7.12",
+    "datocms-react-ui": "^0.7.12",
+    "jspdf": "^2.5.1",
+    "promise-queue": "^2.2.5",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-scripts": "5.0.1",
+    "react-zoom-pan-pinch": "^3.0.7",
+    "svg2pdf.js": "^2.2.1",
+    "ts-graphviz": "^1.5.5",
+    "typescript": "^4.9.5",
+    "universal-base64": "^2.1.0",
+    "usehooks-ts": "^2.9.1",
+    "viz.js": "^2.1.2"
+  },
+  "scripts": {
+    "start": "cross-env BROWSER='none' PUBLIC_URL='/' react-scripts start",
+    "build": "cross-env PUBLIC_URL='.' react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject",
+    "prepublishOnly": "npm run build"
+  },
+  "eslintConfig": {
+    "extends": ["react-app"]
+  },
+  "browserslist": {
+    "production": [">0.2%", "not dead", "not op_mini all"],
+    "development": [
+      "last 1 chrome version", "last 1 firefox version", "last 1 safari version"
+    ]
+  },
+  "devDependencies": {
+    "@types/dagre": "^0.7.48",
+    "@types/promise-queue": "^2.2.0",
+    "cross-env": "^7.0.3"
+  }
+}
