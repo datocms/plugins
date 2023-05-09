@@ -72,7 +72,7 @@ const FrontendPreviewLinks = ({
   return (
     <>
       {status.previewLinks.length === 0 ? (
-        <div>No preview links available.</div>
+        <DropdownOption>No preview links available for this record.</DropdownOption>
       ) : (
         status.previewLinks.map((previewLink) => {
           return (
