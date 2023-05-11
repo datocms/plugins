@@ -35,7 +35,7 @@ export default function ConfigScreen({ ctx }: PropTypes) {
   return (
     <Canvas ctx={ctx}>
       <FormHandler<Parameters>
-        initialValues={{ ...ctx.plugin.attributes.parameters, frontends: ctx.plugin.attributes.parameters.frontends as Frontend[] || [] }}
+        initialValues={{ sidebarWidth: 900, ...ctx.plugin.attributes.parameters, frontends: ctx.plugin.attributes.parameters.frontends as Frontend[] || [] }}
         validate={(values) => {
           const errors: Record<string, any> = {};
 
@@ -219,6 +219,18 @@ export default function ConfigScreen({ ctx }: PropTypes) {
                     <SwitchField
                       id="startOpen"
                       label="Start the sidebar panel open?"
+                      error={error}
+                      {...input}
+                    />
+                  )}
+                </Field>
+                <Field name="sidebarWidth">
+                  {({ input, meta: { error } }) => (
+                    <TextField
+                      id="sidebarWidth"
+                      label="Sidebar width"
+                      hint="Specifies the sibebar preview panel initial width"
+                      type="number"
                       error={error}
                       {...input}
                     />

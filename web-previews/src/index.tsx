@@ -1,4 +1,4 @@
-import { connect, RenderItemFormSidebarCtx, RenderItemFormSidebarPanelCtx } from "datocms-plugin-sdk";
+import { connect, InitPropertiesAndMethods, RenderItemFormSidebarCtx, RenderItemFormSidebarPanelCtx } from "datocms-plugin-sdk";
 import { render } from "./utils/render";
 import ConfigScreen from "./entrypoints/ConfigScreen";
 import SidebarPanel from "./entrypoints/SidebarPanel";
@@ -28,12 +28,14 @@ connect({
   ) {
     render(<SidebarPanel ctx={ctx} />);
   },
-  itemFormSidebars() {
+  itemFormSidebars(_itemType, ctx: InitPropertiesAndMethods) {
+    const { sidebarWidth = 900 } = ctx.plugin.attributes.parameters as Parameters;
+
     return [
       {
         id: "webPreviews",
         label: "Side-by-side web previews",
-        preferredWidth: 900,
+        preferredWidth: sidebarWidth,
       },
     ];
   },
