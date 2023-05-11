@@ -1,5 +1,4 @@
 import {
-  Plugin,
   RenderItemFormSidebarCtx,
   RenderItemFormSidebarPanelCtx,
 } from 'datocms-plugin-sdk';

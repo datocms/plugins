@@ -1,4 +1,8 @@
-import { faCaretDown, faCaretUp } from '@fortawesome/free-solid-svg-icons';
+import {
+  faArrowsRotate,
+  faCaretDown,
+  faCaretUp,
+} from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
 import { faCopy } from '@fortawesome/free-solid-svg-icons';
@@ -10,11 +14,30 @@ import {
   DropdownOption,
   Spinner,
 } from 'datocms-react-ui';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useDeepCompareEffect } from 'use-deep-compare';
 import { Frontend, PreviewLink } from '../../types';
 import { FrontendStatus, useStatusByFrontend } from '../../utils/common';
 import styles from './styles.module.css';
+
+function Iframe({ previewLink }: { previewLink: PreviewLink }) {
+  const [iframeLoading, setIframeLoading] = useState(true);
+
+  return (
+    <div className={styles.frame}>
+      {iframeLoading && <div className={styles.progressBar}>
+        <div className={styles.progressBarValue} />
+      </div>}
+      <iframe
+        title={previewLink.url}
+        src={previewLink.url}
+        onLoad={() => {
+          setIframeLoading(false);
+        }}
+      />
+    </div>
+  );
+}
 
 type PropTypes = {
   ctx: RenderItemFormSidebarCtx;
@@ -89,9 +112,9 @@ const FrontendPreviewLinks = ({
 };
 
 const PreviewFrame = ({ ctx }: PropTypes) => {
+  const [reloadCounter, setReloadCounter] = useState(0);
   const [frontends, statusByFrontend] = useStatusByFrontend(ctx);
   const [previewLink, setPreviewLink] = useState<PreviewLink | undefined>();
-  const [iframeLoading, setIframeLoading] = useState(false);
 
   useDeepCompareEffect(() => {
     if (!statusByFrontend) {
@@ -111,15 +134,6 @@ const PreviewFrame = ({ ctx }: PropTypes) => {
       setPreviewLink(previewLinks[0]);
     }
   }, [statusByFrontend]);
-
-  useEffect(() => {
-    if (!previewLink) {
-      setIframeLoading(false);
-      return;
-    }
-
-    setIframeLoading(true);
-  }, [previewLink?.url]);
 
   return (
     <Canvas ctx={ctx} noAutoResizer={true}>
@@ -174,29 +188,36 @@ const PreviewFrame = ({ ctx }: PropTypes) => {
                 </Dropdown>
               </div>
               {previewLink && (
-                <button
-                  type="button"
-                  className={styles.copy}
-                  title="Copy URL to clipboard"
-                  onClick={() => {
-                    navigator.clipboard.writeText(previewLink.url);
-                    ctx.notice('URL saved in clipboard!');
-                  }}
-                >
-                  <FontAwesomeIcon icon={faCopy} />
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className={styles.copy}
+                    title="Refresh the preview"
+                    onClick={() => {
+                      setReloadCounter((old) => old + 1);
+                    }}
+                  >
+                    <FontAwesomeIcon icon={faArrowsRotate} />
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.copy}
+                    title="Copy URL to clipboard"
+                    onClick={() => {
+                      navigator.clipboard.writeText(previewLink.url);
+                      ctx.notice('URL saved in clipboard!');
+                    }}
+                  >
+                    <FontAwesomeIcon icon={faCopy} />
+                  </button>
+                </>
               )}
             </div>
             {previewLink && (
-              <div className={styles.frame}>
-                <iframe
-                  key={previewLink.url}
-                  title={previewLink.url}
-                  src={previewLink.url}
-                  onLoad={() => setIframeLoading(false)}
-                />
-                {iframeLoading && <Spinner placement="centered" size={48} />}
-              </div>
+              <Iframe
+                key={`${previewLink.url}-${reloadCounter}`}
+                previewLink={previewLink}
+              />
             )}
           </>
         ) : (
