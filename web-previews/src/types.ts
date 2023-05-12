@@ -15,6 +15,7 @@ export type Parameters = {
   frontends: Frontend[];
   startOpen?: boolean;
   sidebarWidth?: number;
+  allowAttribute?: string;
 };
 
 export type PreviewLink = {

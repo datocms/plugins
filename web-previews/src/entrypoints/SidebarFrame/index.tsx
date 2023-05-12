@@ -16,11 +16,17 @@ import {
 } from 'datocms-react-ui';
 import { useState } from 'react';
 import { useDeepCompareEffect } from 'use-deep-compare';
-import { Frontend, PreviewLink } from '../../types';
+import { Frontend, PreviewLink, Parameters } from '../../types';
 import { FrontendStatus, useStatusByFrontend } from '../../utils/common';
 import styles from './styles.module.css';
 
-function Iframe({ previewLink }: { previewLink: PreviewLink }) {
+function Iframe({ 
+  previewLink, 
+  allowAttribute 
+}: { 
+  previewLink: PreviewLink;
+  allowAttribute?: string;
+}) {
   const [iframeLoading, setIframeLoading] = useState(true);
 
   return (
@@ -31,6 +37,7 @@ function Iframe({ previewLink }: { previewLink: PreviewLink }) {
       <iframe
         title={previewLink.url}
         src={previewLink.url}
+        {...(allowAttribute ? { allow: allowAttribute } : {})}
         onLoad={() => {
           setIframeLoading(false);
         }}
@@ -112,6 +119,7 @@ const FrontendPreviewLinks = ({
 };
 
 const PreviewFrame = ({ ctx }: PropTypes) => {
+  const { allowAttribute } = ctx.plugin.attributes.parameters as Parameters;
   const [reloadCounter, setReloadCounter] = useState(0);
   const [frontends, statusByFrontend] = useStatusByFrontend(ctx);
   const [previewLink, setPreviewLink] = useState<PreviewLink | undefined>();
@@ -217,6 +225,7 @@ const PreviewFrame = ({ ctx }: PropTypes) => {
               <Iframe
                 key={`${previewLink.url}-${reloadCounter}`}
                 previewLink={previewLink}
+                allowAttribute={allowAttribute}
               />
             )}
           </>

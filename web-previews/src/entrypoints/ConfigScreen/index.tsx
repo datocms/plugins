@@ -212,6 +212,35 @@ export default function ConfigScreen({ ctx }: PropTypes) {
                 )}
               </FieldArray>
             </Section>
+            <Section title="Sidebar preview">
+              <FieldGroup>
+                <Field name="sidebarWidth">
+                  {({ input, meta: { error } }) => (
+                    <TextField
+                      id="sidebarWidth"
+                      label="Preview width"
+                      hint="Specifies the sidebar preview panel initial width"
+                      type="number"
+                      error={error}
+                      {...input}
+                    />
+                  )}
+                </Field>
+                <Field name="allowAttribute">
+                  {({ input, meta: { error } }) => (
+                    <TextField
+                      id="allowAttribute"
+                      label="Iframe allow attribute"
+                      hint={
+                        <>{'Specifies the iframe allow attribute. '}<a href="https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe#allow">Read more.</a></>
+                      }
+                      error={error}
+                      {...input}
+                    />
+                  )}
+                </Field>
+              </FieldGroup>
+            </Section>
             <Section title="Optional settings">
               <FieldGroup>
                 <Field name="startOpen">
@@ -224,18 +253,7 @@ export default function ConfigScreen({ ctx }: PropTypes) {
                     />
                   )}
                 </Field>
-                <Field name="sidebarWidth">
-                  {({ input, meta: { error } }) => (
-                    <TextField
-                      id="sidebarWidth"
-                      label="Sidebar width"
-                      hint="Specifies the sibebar preview panel initial width"
-                      type="number"
-                      error={error}
-                      {...input}
-                    />
-                  )}
-                </Field>
+                
               </FieldGroup>
             </Section>
             <Button
