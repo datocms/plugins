@@ -16,11 +16,12 @@ import {
 } from 'datocms-react-ui';
 import { useState } from 'react';
 import { useDeepCompareEffect } from 'use-deep-compare';
-import { Frontend, PreviewLink } from '../../types';
+import { Frontend, normalizeParameters, Parameters, PreviewLink } from '../../types';
 import { FrontendStatus, useStatusByFrontend } from '../../utils/common';
 import styles from './styles.module.css';
+import { usePersistedSidebarWidth } from '../../utils/persistedWidth';
 
-function Iframe({ previewLink }: { previewLink: PreviewLink }) {
+function Iframe({ previewLink, allow }: { previewLink: PreviewLink, allow?: string }) {
   const [iframeLoading, setIframeLoading] = useState(true);
 
   return (
@@ -29,6 +30,7 @@ function Iframe({ previewLink }: { previewLink: PreviewLink }) {
         <div className={styles.progressBarValue} />
       </div>}
       <iframe
+        allow={allow}
         title={previewLink.url}
         src={previewLink.url}
         onLoad={() => {
@@ -111,10 +113,14 @@ const FrontendPreviewLinks = ({
   );
 };
 
+
 const PreviewFrame = ({ ctx }: PropTypes) => {
   const [reloadCounter, setReloadCounter] = useState(0);
   const [frontends, statusByFrontend] = useStatusByFrontend(ctx);
   const [previewLink, setPreviewLink] = useState<PreviewLink | undefined>();
+  const { iframeAllowAttribute } = normalizeParameters(ctx.plugin.attributes.parameters as Parameters);
+
+  usePersistedSidebarWidth(ctx.site);
 
   useDeepCompareEffect(() => {
     if (!statusByFrontend) {
@@ -144,7 +150,7 @@ const PreviewFrame = ({ ctx }: PropTypes) => {
               <div className={styles.toolbarMain}>
                 <Dropdown
                   renderTrigger={({ open, onClick }) => (
-                    <button onClick={onClick} className={styles.toolbarTitle}>
+                    <button type="button" onClick={onClick} className={styles.toolbarTitle}>
                       {previewLink
                         ? previewLink.label
                         : 'Please select a preview...'}{' '}
@@ -217,6 +223,7 @@ const PreviewFrame = ({ ctx }: PropTypes) => {
               <Iframe
                 key={`${previewLink.url}-${reloadCounter}`}
                 previewLink={previewLink}
+                allow={iframeAllowAttribute}
               />
             )}
           </>

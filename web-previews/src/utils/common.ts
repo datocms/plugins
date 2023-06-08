@@ -11,6 +11,7 @@ import {
 import {
   Frontend,
   isValidResponse,
+  normalizeParameters,
   Parameters,
   PreviewLink,
   Response,
@@ -62,7 +63,9 @@ export function useStatusByFrontend(
   const [statusByFrontend, setStatusByFrontend] = useState<
     Record<string, FrontendStatus> | undefined
   >();
-  const { frontends } = ctx.plugin.attributes.parameters as Parameters;
+  const { frontends } = normalizeParameters(
+    ctx.plugin.attributes.parameters as Parameters,
+  );
 
   const {
     item,

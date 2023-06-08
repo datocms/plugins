@@ -14,7 +14,7 @@ import arrayMutators from 'final-form-arrays';
 import { FieldArray } from 'react-final-form-arrays';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPlus, faTrash } from '@fortawesome/free-solid-svg-icons';
-import { Frontend, Parameters } from '../../types';
+import { Frontend, NormalizedParameters, normalizeParameters, Parameters } from '../../types';
 import s from './styles.module.css';
 
 type PropTypes = {
@@ -34,13 +34,13 @@ function isValidUrl(string: string) {
 export default function ConfigScreen({ ctx }: PropTypes) {
   return (
     <Canvas ctx={ctx}>
-      <FormHandler<Parameters>
-        initialValues={{ ...ctx.plugin.attributes.parameters, frontends: ctx.plugin.attributes.parameters.frontends as Frontend[] || [] }}
+      <FormHandler<NormalizedParameters>
+        initialValues={normalizeParameters(ctx.plugin.attributes.parameters as Parameters)}
         validate={(values) => {
           const errors: Record<string, any> = {};
 
           errors.frontends =
-            values.frontends?.map((rule) => {
+            values.frontends.map((rule) => {
               const ruleErrors: Record<string, any> = {};
 
               if (!rule.name) {
@@ -212,13 +212,46 @@ export default function ConfigScreen({ ctx }: PropTypes) {
                 )}
               </FieldArray>
             </Section>
-            <Section title="Optional settings">
+            <Section title="Web previews sidebar">
+              <FieldGroup>
+                <Field name="defaultSidebarWidth">
+                  {({ input, meta: { error } }) => (
+                    <TextField
+                      id="sidebarWidth"
+                      label="Default sidebar width (px)"
+                      hint="Specify the initial width for the sidebar"
+                      type="number"
+                      error={error}
+                      {...input}
+                    />
+                  )}
+                </Field>
+                <Field name="iframeAllowAttribute">
+                  {({ input, meta: { error } }) => (
+                    <TextField
+                      id="iframeAllowAttribute"
+                      label={<>Iframe <code>allow</code> attribute</>}
+                      hint={
+                        <>
+                          Defines what features will be available to the <code>&lt;iframe&gt;</code> pointing{' '}
+                          to the frontend (ie. access to the microphone, camera).{' '}
+                          <a href="https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe#allow" rel="noreferrer" target="_blank">Read more</a>
+                        </>
+                      }
+                      error={error}
+                      {...input}
+                    />
+                  )}
+                </Field>
+              </FieldGroup>
+            </Section>
+            <Section title="Web previews panel">
               <FieldGroup>
                 <Field name="startOpen">
                   {({ input, meta: { error } }) => (
                     <SwitchField
                       id="startOpen"
-                      label="Start the sidebar panel open?"
+                      label="Start with the sidebar panel open?"
                       error={error}
                       {...input}
                     />

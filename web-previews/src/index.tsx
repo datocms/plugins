@@ -4,14 +4,15 @@ import ConfigScreen from "./entrypoints/ConfigScreen";
 import SidebarPanel from "./entrypoints/SidebarPanel";
 import SidebarFrame from "./entrypoints/SidebarFrame";
 import "datocms-react-ui/styles.css";
-import { Parameters } from "./types";
+import { normalizeParameters, Parameters } from "./types";
+import { readSidebarWidth } from "./utils/persistedWidth";
 
 connect({
   renderConfigScreen(ctx) {
     return render(<ConfigScreen ctx={ctx} />);
   },
   itemFormSidebarPanels(_itemType, ctx) {
-    const { startOpen } = ctx.plugin.attributes.parameters as Parameters;
+    const { startOpen } = normalizeParameters(ctx.plugin.attributes.parameters as Parameters);
 
     return [
       {
@@ -28,12 +29,14 @@ connect({
   ) {
     render(<SidebarPanel ctx={ctx} />);
   },
-  itemFormSidebars() {
+  itemFormSidebars(_itemType, ctx) {
+    const { defaultSidebarWidth } = normalizeParameters(ctx.plugin.attributes.parameters as Parameters);
+
     return [
       {
         id: "webPreviews",
         label: "Side-by-side web previews",
-        preferredWidth: 900,
+        preferredWidth: readSidebarWidth(ctx.site) || defaultSidebarWidth,
       },
     ];
   },

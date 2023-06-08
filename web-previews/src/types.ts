@@ -12,9 +12,32 @@ export type Frontend = {
 };
 
 export type Parameters = {
-  frontends: Frontend[];
+  frontends?: Frontend[];
   startOpen?: boolean;
+  defaultSidebarWidth?: number;
+  iframeAllowAttribute?: string;
 };
+
+export type NormalizedParameters = {
+  frontends: Frontend[];
+  startOpen: boolean;
+  defaultSidebarWidth: number;
+  iframeAllowAttribute: string | undefined;
+};
+
+export function normalizeParameters({
+  frontends,
+  startOpen,
+  defaultSidebarWidth,
+  iframeAllowAttribute,
+}: Parameters): NormalizedParameters {
+  return {
+    frontends: frontends || [],
+    startOpen: Boolean(startOpen),
+    defaultSidebarWidth: defaultSidebarWidth || 900,
+    iframeAllowAttribute,
+  };
+}
 
 export type PreviewLink = {
   url: string;
