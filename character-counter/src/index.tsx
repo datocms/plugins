@@ -19,6 +19,10 @@ connect({
       return;
     }
 
+    if (field.attributes.appearance.addons.find((addon) => addon.field_extension === 'character-count')) {
+      return;
+    }
+
     return {
       addons: [
         {
