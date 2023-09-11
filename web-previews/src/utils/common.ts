@@ -19,7 +19,7 @@ import {
 export type FrontendStatus = { previewLinks: PreviewLink[] } | { error: any };
 
 export async function makeRequest(
-  { previewWebhook, name }: Frontend,
+  { previewWebhook, name, customHeaders }: Frontend,
   payload: string,
 ): Promise<[string, FrontendStatus]> {
   try {
@@ -29,11 +29,12 @@ export async function makeRequest(
 
     const url = new URL(previewWebhook);
 
+    const headers = new Headers({ 'Content-Type': 'application/json' });
+    customHeaders?.forEach(({ name, value }) => headers.set(name, value));
+
     const request = await fetch(url.toString(), {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: payload,
     });
 
