@@ -6,6 +6,7 @@ import { Editor as ReactEditor } from '@tinymce/tinymce-react';
 import imgixThumbUrl from '../../utils/imgixThumbUrl';
 import { Editor } from 'tinymce';
 import { useEffect, useRef, useState } from 'react';
+import { buildClient } from '@datocms/cma-client-browser';
 
 (global as any).tinymce = tinymce;
 
@@ -172,7 +173,8 @@ export default function FieldExtension({ ctx }: Props) {
       <ReactEditor
         disabled={ctx.disabled}
         init={{
-          plugins: 'image advlist code emoticons link lists table autoresize',
+          plugins:
+            'image advlist code emoticons link lists table autoresize paste',
           toolbar:
             'undo redo | formatselect | ' +
             'bold italic backcolor | link customimage |' +
@@ -183,6 +185,30 @@ export default function FieldExtension({ ctx }: Props) {
             'body { font-family:Helvetica,Arial,sans-serif; font-size:16px }',
           setup: initialize,
           autoresize_bottom_margin: 10,
+          paste_data_images: true,
+          async images_upload_handler(blobInfo, success, failure, progress) {
+            try {
+              const client = buildClient({
+                // biome-ignore lint/style/noNonNullAssertion: We're sure we have currentUserAccessToken
+                apiToken: ctx.currentUserAccessToken!,
+                environment: ctx.environment,
+              });
+
+              const upload = await client.uploads.createFromFileOrBlob({
+                fileOrBlob: blobInfo.blob(),
+                filename: blobInfo.filename(),
+                onProgress(info) {
+                  if (info.type === 'UPLOADING_FILE') {
+                    progress?.(Math.round(info.payload.progress * 0.99));
+                  }
+                },
+              });
+
+              success?.(upload.url);
+            } catch (_e) {
+              failure('Could not upload image');
+            }
+          },
         }}
         value={value}
         onEditorChange={handleChange}
