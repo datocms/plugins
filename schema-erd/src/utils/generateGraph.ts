@@ -7,6 +7,7 @@ const fieldTypeValidators: Partial<Record<string, string[]>> = {
   link: ['item_item_type'],
   links: ['items_item_type'],
   rich_text: ['rich_text_blocks'],
+  single_block: ['single_block_blocks'],
   structured_text: ['structured_text_blocks', 'structured_text_links'],
 };
 
@@ -24,7 +25,8 @@ const fieldTypes: Record<string, string> = {
   lat_lon: 'Geolocation',
   link: 'Single link',
   links: 'Multiple links',
-  rich_text: 'Modular content',
+  rich_text: 'Modular content (Multiple block)',
+  single_block: 'Modular content (Single block)',
   seo: 'SEO meta tags',
   slug: 'Slug',
   string: 'Single-line string',
@@ -98,8 +100,8 @@ export function generateGraph({
               <b><font point-size="11">${escapeHtml(
                 itemType.attributes.name,
               )}</font></b>     <font color="grey50">${
-        itemType.attributes.modular_block ? 'Block model' : 'Model'
-      }</font>
+                itemType.attributes.modular_block ? 'Block model' : 'Model'
+              }</font>
               <br/>
               <font color="grey50" face="Courier">${escapeHtml(
                 itemType.attributes.api_key,
