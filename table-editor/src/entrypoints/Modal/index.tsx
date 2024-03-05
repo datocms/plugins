@@ -28,7 +28,7 @@ export default function Modal({ ctx }: Props) {
       {value === null ? (
         <Empty onChange={setValue} />
       ) : (
-        <TableEditor value={value} onChange={setValue} />
+        <TableEditor value={value} onChange={setValue} ctx={ctx} />
       )}
       <div className={s.bar}>
         <Button onClick={handleClose}>Cancel</Button>{" "}
