@@ -27,11 +27,13 @@ import {
 } from 'datocms-react-ui';
 import classNames from 'classnames';
 import s from './styles.module.css';
+import {RenderFieldExtensionCtx, RenderModalCtx} from "datocms-plugin-sdk";
 
 type Props = {
   value: Value;
   onChange: (value: Value | null) => void;
   onOpenInFullScreen?: () => void;
+  ctx: RenderFieldExtensionCtx | RenderModalCtx;
 };
 
 function orderedKeys<T extends { [k: string]: unknown }>(
@@ -64,6 +66,7 @@ export default function TableEditor({
   value,
   onChange,
   onOpenInFullScreen,
+  ctx
 }: Props) {
   const defaultColumn = useMemo(
     () => ({
@@ -243,8 +246,28 @@ export default function TableEditor({
     });
   };
 
-  const handleClear = () => {
-    onChange(null);
+  const handleClear = async () => {
+    const result = await ctx.openConfirm({
+      title: 'Clear the table?',
+      content:
+          'Are you sure you want to clear the table and start over? All rows and headers will be destroyed. This cannot be undone.',
+      choices: [
+        {
+          label: 'Yes, clear the table',
+          value: true,
+          intent: 'negative',
+        }
+      ],
+      cancel: {
+        label: 'Go back',
+        value: false,
+      },
+    });
+
+    if (result === true) {
+      onChange(null);
+      await ctx.notice(`Table cleared.`);
+    }
   };
 
   const { getTableProps, getTableBodyProps, headerGroups, rows, prepareRow } =

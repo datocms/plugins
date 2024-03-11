@@ -85,6 +85,7 @@ export default function FieldExtension({ ctx }: Props) {
           value={value}
           onChange={handleUpdate}
           onOpenInFullScreen={handleOpenInFullScreen}
+          ctx={ctx}
         />
       )}
     </Canvas>
