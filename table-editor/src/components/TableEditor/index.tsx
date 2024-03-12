@@ -9,7 +9,7 @@ import {
 import { useDeepCompareMemo } from 'use-deep-compare';
 import { Actions, Row, Value } from '../../types';
 import EditableCell from '../EditableCell';
-import { Button } from 'datocms-react-ui';
+import { Button, useCtx } from 'datocms-react-ui';
 import omit from 'lodash-es/omit';
 import EditableHeader from '../EditableHeader';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -27,13 +27,11 @@ import {
 } from 'datocms-react-ui';
 import classNames from 'classnames';
 import s from './styles.module.css';
-import {RenderFieldExtensionCtx, RenderModalCtx} from "datocms-plugin-sdk";
 
 type Props = {
   value: Value;
   onChange: (value: Value | null) => void;
   onOpenInFullScreen?: () => void;
-  ctx: RenderFieldExtensionCtx | RenderModalCtx;
 };
 
 function orderedKeys<T extends { [k: string]: unknown }>(
@@ -55,7 +53,7 @@ function moveItemInArray<T>(
   const newArray = [...arr];
   const toIndex = toTheLeft ? fromIndex - 1 : fromIndex + 1;
 
-  var element = newArray[fromIndex];
+  const element = newArray[fromIndex];
   newArray.splice(fromIndex, 1);
   newArray.splice(toIndex, 0, element);
 
@@ -66,8 +64,9 @@ export default function TableEditor({
   value,
   onChange,
   onOpenInFullScreen,
-  ctx
 }: Props) {
+  const ctx = useCtx();
+
   const defaultColumn = useMemo(
     () => ({
       minWidth: 30,
@@ -250,13 +249,13 @@ export default function TableEditor({
     const result = await ctx.openConfirm({
       title: 'Clear the table?',
       content:
-          'Are you sure you want to clear the table and start over? All rows and headers will be destroyed. This cannot be undone.',
+        'Are you sure you want to clear the table and start over? All rows and headers will be destroyed.',
       choices: [
         {
           label: 'Yes, clear the table',
           value: true,
           intent: 'negative',
-        }
+        },
       ],
       cancel: {
         label: 'Go back',
@@ -266,7 +265,6 @@ export default function TableEditor({
 
     if (result === true) {
       onChange(null);
-      await ctx.notice(`Table cleared.`);
     }
   };
 
@@ -347,7 +345,11 @@ export default function TableEditor({
                 <div className={s.dropdownWrapper}>
                   <Dropdown
                     renderTrigger={({ onClick }) => (
-                      <button onClick={onClick} className={s.handle} />
+                      <button
+                        onClick={onClick}
+                        className={s.handle}
+                        type="button"
+                      />
                     )}
                   >
                     <DropdownMenu>
@@ -397,7 +399,7 @@ export default function TableEditor({
         <Button
           onClick={onAddRow.bind(null, value.data.length, true)}
           buttonSize="s"
-          leftIcon={<FontAwesomeIcon icon={faPlus}></FontAwesomeIcon>}
+          leftIcon={<FontAwesomeIcon icon={faPlus} />}
         >
           Add new row
         </Button>
@@ -408,7 +410,7 @@ export default function TableEditor({
           <Button
             onClick={onOpenInFullScreen}
             buttonSize="s"
-            leftIcon={<FontAwesomeIcon icon={faExpand}></FontAwesomeIcon>}
+            leftIcon={<FontAwesomeIcon icon={faExpand} />}
           >
             Edit in full-screen
           </Button>
@@ -416,7 +418,7 @@ export default function TableEditor({
         <Button
           onClick={handleClear}
           buttonSize="s"
-          leftIcon={<FontAwesomeIcon icon={faTrash}></FontAwesomeIcon>}
+          leftIcon={<FontAwesomeIcon icon={faTrash} />}
         >
           Clear
         </Button>
