@@ -201,4 +201,66 @@ export default eventHandler(async (event) => {
 })
 ```
 
+### An example of implementation in SvelteKit 2
+
+Below here, you'll find a similar example, adapted for SvelteKit. For the purpose of this example, let's say we want to return a link to the webpage that contains the published content.
+
+Create a `+server.ts` file under `src/routes/api/preview-links/` with following contents:
+
+```js
+import { json } from '@sveltejs/kit';
+
+const generatePreviewUrl = ({ item, itemType, locale }: any) => {
+	switch (itemType.attributes.api_key) {
+		case 'landing_page':
+			return `/landing-pages/${item.attributes.slug}`;
+		case 'blog_post':
+			// blog posts are localized:
+			const localePrefix = locale === 'en' ? '' : `/${locale}`;
+			return `${localePrefix}/blog/${item.attributes.slug[locale]}`;
+		case 'post':
+			return `posts/${item.attributes.slug}`;
+		default:
+			return null;
+	}
+};
+
+export async function OPTIONS() {
+	return json('ok');
+}
+
+export async function POST({ request, setHeaders }) {
+	setHeaders({
+		'Access-Control-Allow-Origin': '*',
+		'Access-Control-Allow-Methods': 'POST',
+		'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+		'Content-Type': 'application/json'
+	});
+
+	const data = await request.json();
+
+	const url = generatePreviewUrl(data);
+
+	if (!url) {
+		return json({ previewLinks: [] });
+	}
+
+	const baseUrl = process.env.VERCEL_URL
+		? // Vercel auto-populates this environment variable
+		  `https://${process.env.VERCEL_URL}`
+		: // Netlify auto-populates this environment variable
+		  process.env.URL;
+
+	const previewLinks = [
+		// Public URL:
+		{
+			label: 'Published version',
+			url: `${baseUrl}${url}`
+		}
+	];
+
+	return json({ previewLinks });
+}
+```
+
 If you have built alternative endpoint implementations for other frameworks/SSGs, please open up a PR to this plugin and share it with the community!
