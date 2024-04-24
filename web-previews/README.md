@@ -62,10 +62,7 @@ The plugin will display all the returned preview links.
 
 If you have built alternative endpoint implementations for other frameworks/SSGs, please open up a PR to this plugin and share it with the community!
 
-<details>
-<summary>Next.js</summary>
-
-### Next.js apps
+#### Next.js
 
 We suggest you look at the code of our [official Next.js demo](https://www.datocms.com/marketplace/starters/marketing-website):
 
@@ -73,12 +70,8 @@ We suggest you look at the code of our [official Next.js demo](https://www.datoc
 * Endpoint to enter Next.js [Draft Mode](https://www.datocms.com/docs/next-js/setting-up-next-js-draft-mode): [`app/draft/enable/route.tsx`](https://github.com/datocms/next-landing-page-demo/blob/main/app/draft/enable/route.tsx)
 * Endpoint to exit Next.js [Draft Mode](https://www.datocms.com/docs/next-js/setting-up-next-js-draft-mode): [`app/draft/disable/route.tsx`](https://github.com/datocms/next-landing-page-demo/blob/main/app/draft/disable/route.tsx)
 
-</details>
 
-<details>
-<summary>Nuxt</summary>
-
-### An example of implementation in Nuxt 3
+#### Nuxt 3
 
 Below here, you'll find a similar example, adapted for Nuxt. For the purpose of this example, let's say we want to return a link to the webpage that contains the published content.
 
@@ -132,9 +125,9 @@ export default eventHandler(async (event) => {
   // Let's guess the base URL using environment variables:
   // if you're not working with Vercel or Netlify,
   // ask for instructions to the provider you're deploying to.
-  const baseUrl = process.env.VERCEL_URL
+  const baseUrl = process.env.VERCEL_BRANCH_URL
     ? // Vercel auto-populates this environment variable
-      `https://${process.env.VERCEL_URL}`
+      `https://${process.env.VERCEL_BRANCH_URL}`
     : // Netlify auto-populates this environment variable
       process.env.URL
 
@@ -152,12 +145,7 @@ export default eventHandler(async (event) => {
 })
 ```
 
-</details>
-
-<details>
-<summary>SvelteKit</summary>
-
-### An example of implementation in SvelteKit 2
+#### SvelteKit 2
 
 Below here, you'll find a similar example, adapted for SvelteKit. For the purpose of this example, let's say we want to return a link to the webpage that contains the published content.
 
@@ -167,58 +155,61 @@ Create a `+server.ts` file under `src/routes/api/preview-links/` with following 
 import { json } from '@sveltejs/kit';
 
 const generatePreviewUrl = ({ item, itemType, locale }: any) => {
-	switch (itemType.attributes.api_key) {
-		case 'landing_page':
-			return `/landing-pages/${item.attributes.slug}`;
-		case 'blog_post':
-			// blog posts are localized:
-			const localePrefix = locale === 'en' ? '' : `/${locale}`;
-			return `${localePrefix}/blog/${item.attributes.slug[locale]}`;
-		case 'post':
-			return `posts/${item.attributes.slug}`;
-		default:
-			return null;
-	}
+  switch (itemType.attributes.api_key) {
+    case 'landing_page':
+      return `/landing-pages/${item.attributes.slug}`;
+    case 'blog_post':
+      // blog posts are localized:
+      const localePrefix = locale === 'en' ? '' : `/${locale}`;
+      return `${localePrefix}/blog/${item.attributes.slug[locale]}`;
+    case 'post':
+      return `posts/${item.attributes.slug}`;
+    default:
+      return null;
+  }
+};
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'POST',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Content-Type': 'application/json'
 };
 
 export async function OPTIONS() {
-	return json('ok');
+  setHeaders(corsHeaders);
+
+  return json('ok');
 }
 
 export async function POST({ request, setHeaders }) {
-	setHeaders({
-		'Access-Control-Allow-Origin': '*',
-		'Access-Control-Allow-Methods': 'POST',
-		'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-		'Content-Type': 'application/json'
-	});
+  setHeaders(corsHeaders);
 
-	const data = await request.json();
+  const data = await request.json();
 
-	const url = generatePreviewUrl(data);
+  const url = generatePreviewUrl(data);
 
-	if (!url) {
-		return json({ previewLinks: [] });
-	}
+  if (!url) {
+    return json({ previewLinks: [] });
+  }
 
-	const baseUrl = process.env.VERCEL_URL
-		? // Vercel auto-populates this environment variable
-		  `https://${process.env.VERCEL_URL}`
-		: // Netlify auto-populates this environment variable
-		  process.env.URL;
+  const baseUrl = process.env.VERCEL_BRANCH_URL
+    ? // Vercel auto-populates this environment variable
+      `https://${process.env.VERCEL_BRANCH_URL}`
+    : // Netlify auto-populates this environment variable
+      process.env.URL;
 
-	const previewLinks = [
-		// Public URL:
-		{
-			label: 'Published version',
-			url: `${baseUrl}${url}`
-		}
-	];
+  const previewLinks = [
+    // Public URL:
+    {
+      label: 'Published version',
+      url: `${baseUrl}${url}`
+    }
+  ];
 
-	return json({ previewLinks });
+  return json({ previewLinks });
 }
 ```
-</details>
 
 
 
