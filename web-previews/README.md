@@ -58,74 +58,25 @@ The endpoint is expected to return a `200` response, with the following JSON str
 
 The plugin will display all the returned preview links.
 
-### An example implementation for Next.js apps
+### Implementation examples
 
-For the purpose of this example, let's say we want to return two preview links, one that links to the webpage that contains the published content, and another with draft content using [Next.js Preview Mode](https://www.datocms.com/docs/next-js/setting-up-next-js-preview-mode).
+If you have built alternative endpoint implementations for other frameworks/SSGs, please open up a PR to this plugin and share it with the community!
 
-DatoCMS will make a POST request the webhook with the info about the current record. We need to implement a CORS enabled API endpoint that handles the information and returns an array of preview links:
+<details>
+<summary>Next.js</summary>
 
-```js
-// Put this code in the /pages/api directory of your Next.js website:
-// (ie. /pages/api/preview-links.js)
+### Next.js apps
 
-// this function knows how to convert a DatoCMS record
-// into a canonical URL within the website
-const generatePreviewUrl = ({ item, itemType, locale }) => {
-  switch (itemType.attributes.api_key) {
-    case 'landing_page':
-      return `/landing-pages/${item.attributes.slug}`;
-    case 'blog_post':
-      // blog posts are localized:
-      const localePrefix = locale === 'en' ? '' : `/${locale}`;
-      return `${localePrefix}/blog/${item.attributes.slug[locale]}`;
-    default:
-      return null;
-  }
-};
+We suggest you look at the code of our [official Next.js demo](https://www.datocms.com/marketplace/starters/marketing-website):
 
-const handler = (req, res) => {
-  // setup CORS permissions
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization'); // add any other headers you need
-  res.setHeader('Content-Type', 'application/json');
+* Endpoint called by this plugin, returning the preview links: [`app/api/draft/preview-links/route.tsx`](https://github.com/datocms/next-landing-page-demo/blob/main/app/api/draft/preview-links/route.tsx)
+* Endpoint to enter Next.js [Draft Mode](https://www.datocms.com/docs/next-js/setting-up-next-js-draft-mode): [`app/draft/enable/route.tsx`](https://github.com/datocms/next-landing-page-demo/blob/main/app/draft/enable/route.tsx)
+* Endpoint to exit Next.js [Draft Mode](https://www.datocms.com/docs/next-js/setting-up-next-js-draft-mode): [`app/draft/disable/route.tsx`](https://github.com/datocms/next-landing-page-demo/blob/main/app/draft/disable/route.tsx)
 
-  // This will allow OPTIONS request
-  if (req.method === 'OPTIONS') {
-    return res.status(200).send('ok');
-  }
+</details>
 
-  const url = generatePreviewUrl(req.body);
-
-  if (!url) {
-    return res.status(200).json({ previewLinks: [] });
-  }
-
-  const baseUrl = process.env.VERCEL_URL
-    // Vercel auto-populates this environment variable
-    ? `https://${process.env.VERCEL_URL}`
-    // Netlify auto-populates this environment variable
-    : process.env.URL;
-
-  const previewLinks = [
-    // Public URL:
-    {
-      label: 'Published version',
-      url: `${baseUrl}${url}`,
-    },
-    // This requires an API route on your project that starts Next.js Preview Mode
-    // and redirects to the URL provided with the `redirect` parameter:
-    {
-      label: 'Draft version',
-      url: `${baseUrl}/api/start-preview-mode?redirect=${url}&secret=${process.env.PREVIEW_MODE_SECRET}`,
-    },
-  ];
-
-  return res.status(200).json({ previewLinks });
-};
-
-export default handler;
-```
+<details>
+<summary>Nuxt</summary>
 
 ### An example of implementation in Nuxt 3
 
@@ -201,6 +152,11 @@ export default eventHandler(async (event) => {
 })
 ```
 
+</details>
+
+<details>
+<summary>SvelteKit</summary>
+
 ### An example of implementation in SvelteKit 2
 
 Below here, you'll find a similar example, adapted for SvelteKit. For the purpose of this example, let's say we want to return a link to the webpage that contains the published content.
@@ -262,5 +218,7 @@ export async function POST({ request, setHeaders }) {
 	return json({ previewLinks });
 }
 ```
+</details>
 
-If you have built alternative endpoint implementations for other frameworks/SSGs, please open up a PR to this plugin and share it with the community!
+
+
