@@ -4,7 +4,7 @@ import { Parameters } from './types';
 import ConfigScreen from './entrypoints/ConfigScreen';
 import FieldExtension from './entrypoints/FieldExtension';
 import 'datocms-react-ui/styles.css';
-import './style.sass';
+import './style.css';
 
 const initialHeight = 200;
 
