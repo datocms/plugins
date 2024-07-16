@@ -72,12 +72,10 @@ If you have built alternative endpoint implementations for other frameworks/SSGs
 
 #### Next.js
 
-We suggest you look at the code of our [official Next.js demo](https://www.datocms.com/marketplace/starters/marketing-website):
+We suggest you look at the code of our [official Next.js Starter Kit](https://github.com/datocms/nextjs-starter-kit):
 
-* Endpoint called by this plugin, returning the preview links: [`app/api/draft/preview-links/route.tsx`](https://github.com/datocms/next-landing-page-demo/blob/main/app/api/draft/preview-links/route.tsx)
-* Endpoint to enter Next.js [Draft Mode](https://www.datocms.com/docs/next-js/setting-up-next-js-draft-mode): [`app/draft/enable/route.tsx`](https://github.com/datocms/next-landing-page-demo/blob/main/app/draft/enable/route.tsx)
-* Endpoint to exit Next.js [Draft Mode](https://www.datocms.com/docs/next-js/setting-up-next-js-draft-mode): [`app/draft/disable/route.tsx`](https://github.com/datocms/next-landing-page-demo/blob/main/app/draft/disable/route.tsx)
-
+* Route handler called returning the preview links: [`app/api/preview-links/route.tsx`](https://github.com/datocms/nextjs-starter-kit/blob/main/src/app/api/preview-links/route.tsx)
+* Route handlers to toggle Next.js [Draft Mode](https://www.datocms.com/docs/next-js/setting-up-next-js-draft-mode): [`app/api/draft-mode/enable/route.tsx`](https://github.com/datocms/nextjs-starter-kit/blob/main/src/app/api/draft-mode/enable/route.tsx) and [`app/api/draft-mode/disable/route.tsx`](https://github.com/datocms/nextjs-starter-kit/blob/main/src/app/api/draft-mode/disable/route.tsx)
 
 #### Nuxt 3
 
