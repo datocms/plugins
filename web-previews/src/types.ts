@@ -42,6 +42,7 @@ export function normalizeParameters({
 export type PreviewLink = {
   url: string;
   label: string;
+  reloadPreviewOnRecordUpdate: boolean | { delayInMs: number };
 };
 
 export type Response = {

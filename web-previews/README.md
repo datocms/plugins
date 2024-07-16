@@ -56,7 +56,15 @@ The endpoint is expected to return a `200` response, with the following JSON str
 }
 ```
 
-The plugin will display all the returned preview links.
+The plugin will show all the preview links that are returned. If you want to make sure that a preview's URL is reloaded after each save, you can include an extra option (please be aware that because of cross-origin iframe issues, maintaining the scroll position between reloads will not be possible):
+
+```json
+{
+  "label": "Draft (en)",
+  "url": "https://mysite.com/api/preview/start?slug=/blog/my-article",
+  "reloadPreviewOnRecordUpdate": { "delayInMs": 100 }
+}
+```
 
 ### Implementation examples
 

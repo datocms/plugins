@@ -14,21 +14,31 @@ import {
   DropdownOption,
   Spinner,
 } from 'datocms-react-ui';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useDeepCompareEffect } from 'use-deep-compare';
-import { Frontend, normalizeParameters, Parameters, PreviewLink } from '../../types';
+import {
+  Frontend,
+  normalizeParameters,
+  Parameters,
+  PreviewLink,
+} from '../../types';
 import { FrontendStatus, useStatusByFrontend } from '../../utils/common';
 import styles from './styles.module.css';
 import { usePersistedSidebarWidth } from '../../utils/persistedWidth';
 
-function Iframe({ previewLink, allow }: { previewLink: PreviewLink, allow?: string }) {
+function Iframe({
+  previewLink,
+  allow,
+}: { previewLink: PreviewLink; allow?: string }) {
   const [iframeLoading, setIframeLoading] = useState(true);
 
   return (
     <div className={styles.frame}>
-      {iframeLoading && <div className={styles.progressBar}>
-        <div className={styles.progressBarValue} />
-      </div>}
+      {iframeLoading && (
+        <div className={styles.progressBar}>
+          <div className={styles.progressBarValue} />
+        </div>
+      )}
       <iframe
         allow={allow}
         title={previewLink.url}
@@ -113,12 +123,16 @@ const FrontendPreviewLinks = ({
   );
 };
 
-
 const PreviewFrame = ({ ctx }: PropTypes) => {
   const [reloadCounter, setReloadCounter] = useState(0);
+
+  const forceReload = () => setReloadCounter((old) => old + 1);
+
   const [frontends, statusByFrontend] = useStatusByFrontend(ctx);
   const [previewLink, setPreviewLink] = useState<PreviewLink | undefined>();
-  const { iframeAllowAttribute } = normalizeParameters(ctx.plugin.attributes.parameters as Parameters);
+  const { iframeAllowAttribute } = normalizeParameters(
+    ctx.plugin.attributes.parameters as Parameters,
+  );
 
   usePersistedSidebarWidth(ctx.site);
 
@@ -141,6 +155,21 @@ const PreviewFrame = ({ ctx }: PropTypes) => {
     }
   }, [statusByFrontend]);
 
+  useEffect(() => {
+    const reloadSettings = previewLink?.reloadPreviewOnRecordUpdate;
+
+    if (!reloadSettings) {
+      return;
+    }
+
+    const delayInMs = reloadSettings === true ? 100 : reloadSettings.delayInMs;
+
+    setTimeout(forceReload, delayInMs);
+  }, [
+    ctx.item?.meta.current_version,
+    previewLink?.reloadPreviewOnRecordUpdate,
+  ]);
+
   return (
     <Canvas ctx={ctx} noAutoResizer={true}>
       <div className={styles.wrapper}>
@@ -150,7 +179,11 @@ const PreviewFrame = ({ ctx }: PropTypes) => {
               <div className={styles.toolbarMain}>
                 <Dropdown
                   renderTrigger={({ open, onClick }) => (
-                    <button type="button" onClick={onClick} className={styles.toolbarTitle}>
+                    <button
+                      type="button"
+                      onClick={onClick}
+                      className={styles.toolbarTitle}
+                    >
                       {previewLink
                         ? previewLink.label
                         : 'Please select a preview...'}{' '}
@@ -172,10 +205,10 @@ const PreviewFrame = ({ ctx }: PropTypes) => {
                         onSelectPreviewLink={setPreviewLink}
                       />
                     ) : Object.values(statusByFrontend).every(
-                      (status) =>
-                        'previewLinks' in status &&
-                        status.previewLinks.length === 0,
-                    ) ? (
+                        (status) =>
+                          'previewLinks' in status &&
+                          status.previewLinks.length === 0,
+                      ) ? (
                       <DropdownOption>
                         No preview links available for this record.
                       </DropdownOption>
@@ -200,7 +233,7 @@ const PreviewFrame = ({ ctx }: PropTypes) => {
                     className={styles.copy}
                     title="Refresh the preview"
                     onClick={() => {
-                      setReloadCounter((old) => old + 1);
+                      forceReload();
                     }}
                   >
                     <FontAwesomeIcon icon={faArrowsRotate} />
