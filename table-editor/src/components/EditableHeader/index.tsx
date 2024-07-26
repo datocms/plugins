@@ -46,7 +46,7 @@ export default function EditableHeader({
 
   const handleChangeName = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!nameValue) {
+    if (!nameValue?.trim()) {
       ctx.alert('Please provide a valid name');
       return;
     }
