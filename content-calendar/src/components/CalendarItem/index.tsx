@@ -1,14 +1,15 @@
 import { format } from 'date-fns';
-import { Item, ModelBlock } from 'datocms-plugin-sdk';
+import type { ModelBlock } from 'datocms-plugin-sdk';
 import { useCtx } from 'datocms-react-ui';
-import { CSSProperties, useContext, useEffect, useMemo } from 'react';
+import { type CSSProperties, useContext, useEffect, useMemo } from 'react';
 import { HoverItemContext } from '../../context/HoverItemContext';
-import { Criteria } from '../../types';
+import type { Criteria } from '../../types';
 import { colorForModel } from '../../utils/colorForModel';
 import s from './styles.module.css';
+import type { SchemaTypes } from '@datocms/cma-client';
 
 type PropTypes = {
-  item: Item;
+  item: SchemaTypes.Item;
   criteria: Criteria;
 };
 
@@ -39,10 +40,13 @@ export default function CalendarItem({ item, criteria }: PropTypes) {
   const title = !titleField
     ? `Item #${item.id}`
     : titleField.attributes.localized
-    ? (
-        item.attributes[titleField.attributes.api_key] as Record<string, string>
-      )[ctx.site.attributes.locales[0]]
-    : (item.attributes[titleField.attributes.api_key] as string);
+      ? (
+          item.attributes[titleField.attributes.api_key] as Record<
+            string,
+            string
+          >
+        )[ctx.site.attributes.locales[0]]
+      : (item.attributes[titleField.attributes.api_key] as string);
 
   return (
     <button

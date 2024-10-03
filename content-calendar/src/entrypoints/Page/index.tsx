@@ -1,4 +1,3 @@
-import { Item, RenderPagePropertiesAndMethods } from 'datocms-plugin-sdk';
 import { useCallback, useMemo, useState, useEffect } from 'react';
 import { generateMatrix } from '../../utils/calendar';
 import {
@@ -29,16 +28,17 @@ import {
 } from 'datocms-react-ui';
 import CalendarGrid from '../../components/CalendarGrid';
 import {
-  ActiveModels,
+  type ActiveModels,
   allCriteria,
-  Criteria,
+  type Criteria,
   criteriaLabel,
 } from '../../types';
 import { ActiveModelsPanel } from '../../components/ActiveModelsPanel';
-import { SiteClient } from 'datocms-client';
 import { HoverItemContext } from '../../context/HoverItemContext';
 import { weekStartLocale } from '../../utils/getWeekStart';
 import { useStickyState } from '../../hooks/useStickyState';
+import { buildClient, type SchemaTypes } from '@datocms/cma-client';
+import type { RenderPagePropertiesAndMethods } from 'datocms-plugin-sdk';
 
 type PropTypes = {
   ctx: RenderPagePropertiesAndMethods;
@@ -58,29 +58,30 @@ export default function Page({ ctx }: PropTypes) {
   );
 
   const [isSidebarOpen, setSidebarOpen] = useState(true);
-  const [items, setItems] = useState<Item[]>([]);
+  const [items, setItems] = useState<SchemaTypes.Item[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const weekStartsOn = weekStartLocale(ctx.ui.locale);
 
   const handlePrev = useCallback(() => {
     setMonth((d) => subMonths(d, 1));
-  }, [setMonth]);
+  }, []);
 
   const handleNext = useCallback(() => {
     setMonth((d) => addMonths(d, 1));
-  }, [setMonth]);
+  }, []);
 
   const handleCurr = useCallback(() => {
     setMonth(startOfMonth(new Date()));
-  }, [setMonth]);
+  }, []);
 
   const handleToggleSidebar = useCallback(() => {
     setSidebarOpen((x) => !x);
-  }, [setSidebarOpen]);
+  }, []);
 
   const client = useMemo(
     () =>
-      new SiteClient(ctx.currentUserAccessToken, {
+      buildClient({
+        apiToken: ctx.currentUserAccessToken!,
         environment: ctx.environment,
       }),
     [ctx.currentUserAccessToken, ctx.environment],
@@ -109,24 +110,21 @@ export default function Page({ ctx }: PropTypes) {
       setItems([]);
 
       if (activeModelIds !== '') {
-        const { data: items } = await client.items.all(
-          {
-            version: 'current',
-            filter: {
-              type: activeModelIds,
-              fields: {
-                [`_${criteria}`]: {
-                  gt: firstDay.toISOString(),
-                  lt: addDays(lastDay, 1).toISOString(),
-                },
+        const { data: items } = await client.items.rawList({
+          version: 'current',
+          filter: {
+            type: activeModelIds,
+            fields: {
+              [`_${criteria}`]: {
+                gt: firstDay.toISOString(),
+                lt: addDays(lastDay, 1).toISOString(),
               },
             },
-            page: {
-              limit: 500,
-            },
           },
-          { deserializeResponse: false },
-        );
+          page: {
+            limit: 500,
+          },
+        });
 
         setItems(items);
       }
@@ -134,24 +132,16 @@ export default function Page({ ctx }: PropTypes) {
       setIsLoading(false);
     }
     run();
-  }, [
-    firstDay,
-    lastDay,
-    setIsLoading,
-    setItems,
-    client,
-    criteria,
-    activeModelIds,
-  ]);
+  }, [firstDay, lastDay, client, criteria, activeModelIds]);
 
   return (
     <Canvas ctx={ctx}>
       <HoverItemContext.Provider
         value={{ modelId: hoverModelId, setModelId: setHoverModelId }}
       >
-        <div className={s['layout']}>
+        <div className={s.layout}>
           {isSidebarOpen && (
-            <div className={s['layoutSidebar']}>
+            <div className={s.layoutSidebar}>
               <Toolbar>
                 <ToolbarStack />
                 <ToolbarButton onClick={handleToggleSidebar}>
@@ -168,7 +158,7 @@ export default function Page({ ctx }: PropTypes) {
               </SidebarPanel>
             </div>
           )}
-          <div className={s['layoutMain']}>
+          <div className={s.layoutMain}>
             <Toolbar>
               {!isSidebarOpen && (
                 <ToolbarButton onClick={handleToggleSidebar}>
@@ -221,7 +211,7 @@ export default function Page({ ctx }: PropTypes) {
                 </ButtonGroup>
               </ToolbarStack>
             </Toolbar>
-            <div className={s['layoutCal']}>
+            <div className={s.layoutCal}>
               <CalendarGrid
                 month={month}
                 criteria={criteria}

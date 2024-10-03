@@ -2,7 +2,7 @@
   "name": "datocms-plugin-content-calendar",
   "description": "Explore your editorial calendar, right inside DatoCMS",
   "homepage": "https://github.com/datocms/plugins/tree/master/content-calendar#readme",
-  "version": "0.1.1-next",
+  "version": "0.1.2",
   "keywords": [
     "datocms",
     "datocms-plugin"
@@ -12,23 +12,20 @@
     "docs"
   ],
   "dependencies": {
+    "@datocms/cma-client": "^3.3.12",
     "@fortawesome/fontawesome-svg-core": "^1.2.36",
     "@fortawesome/free-solid-svg-icons": "^5.15.4",
     "@fortawesome/react-fontawesome": "^0.1.16",
-    "@types/node": "^16.11.11",
-    "@types/react": "^17.0.37",
-    "@types/react-dom": "^17.0.11",
     "classnames": "^2.3.1",
     "color-hash": "^2.0.1",
     "date-fns": "^2.27.0",
-    "datocms-client": "^3.5.9",
     "datocms-plugin-sdk": "^0.3.20",
     "datocms-react-ui": "^0.3.23",
+    "lodash-es": "^4.17.21",
     "react": "^17.0.2",
     "react-dom": "^17.0.2",
     "react-scripts": "4.0.3",
-    "typescript": "^4.5.2",
-    "@types/color-hash": "^1.0.2"
+    "typescript": "^4.5.2"
   },
   "scripts": {
     "start": "cross-env BROWSER='none' PUBLIC_URL='/' react-scripts start",
@@ -55,6 +52,11 @@
     ]
   },
   "devDependencies": {
+    "@types/lodash-es": "^4.17.12",
+    "@types/color-hash": "^1.0.2",
+    "@types/node": "^16.11.11",
+    "@types/react": "^17.0.37",
+    "@types/react-dom": "^17.0.11",
     "cross-env": "^7.0.3"
   },
   "datoCmsPlugin": {

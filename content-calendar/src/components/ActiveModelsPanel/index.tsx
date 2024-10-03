@@ -1,12 +1,17 @@
 import classNames from 'classnames';
-import { ModelBlock } from 'datocms-plugin-sdk';
+import type { ModelBlock } from 'datocms-plugin-sdk';
 import { Button, useCtx } from 'datocms-react-ui';
-import { CSSProperties, useCallback } from 'react';
+import { type CSSProperties, useCallback, useMemo } from 'react';
 import { useHoverModelId } from '../../context/HoverItemContext';
 import useDebouncedEffect from '../../hooks/useDebouncedEffect';
-import { ActiveModels } from '../../types';
+import type { ActiveModels } from '../../types';
 import { colorForModel } from '../../utils/colorForModel';
 import s from './styles.module.css';
+import {
+  buildPermissions,
+  canReadAtLeastSomeItem,
+  type Permissions,
+} from '../../utils/canRead';
 
 type ActiveModelsPanelProps = {
   activeModels: ActiveModels;
@@ -40,8 +45,14 @@ export function ActiveModelsPanel({
     onChange('all');
   }, [onChange]);
 
+  const permissions = useMemo<Permissions>(
+    () => buildPermissions(ctx.currentRole, ctx.environment),
+    [ctx.currentRole, ctx.environment],
+  );
+
   const allSortedModels = (Object.values(ctx.itemTypes) as ModelBlock[])
     .filter((model) => !model.attributes.modular_block)
+    .filter((model) => canReadAtLeastSomeItem(permissions, model))
     .sort((a, b) => a.attributes.name.localeCompare(b.attributes.name));
 
   return (

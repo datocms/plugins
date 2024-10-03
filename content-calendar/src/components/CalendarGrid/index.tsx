@@ -1,16 +1,16 @@
-import { Item } from 'datocms-plugin-sdk';
 import React from 'react';
 import { format, isSameDay, isSameMonth, isToday } from 'date-fns';
 import classNames from 'classnames';
 import s from './styles.module.css';
 import CalendarItem from '../../components/CalendarItem';
 import { Spinner } from 'datocms-react-ui';
-import { Criteria } from '../../types';
+import type { Criteria } from '../../types';
+import type { SchemaTypes } from '@datocms/cma-client';
 
 type CalendarGridProps = {
   month: Date;
   criteria: Criteria;
-  items: Item[];
+  items: SchemaTypes.Item[];
   matrix: Date[][];
   isLoading: boolean;
 };
