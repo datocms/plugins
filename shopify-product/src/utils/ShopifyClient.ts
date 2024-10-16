@@ -59,6 +59,33 @@ const productFragment = `
   }
 `;
 
+const productFragmentWithoutCropping = `
+  id
+  title
+  handle
+  description
+  onlineStoreUrl
+  availableForSale
+  productType
+  priceRange {
+    maxVariantPrice {
+      amount
+      currencyCode
+    }
+    minVariantPrice {
+      amount
+      currencyCode
+    }
+  }
+  images(first: 1) {
+    edges {
+      node {
+        src
+      }
+    }
+  }
+`;
+
 const normalizeProduct = (product: any): Product => {
   if (!product || typeof product !== 'object') {
     throw new Error('Invalid product');
@@ -76,13 +103,15 @@ const normalizeProducts = (products: any): Product[] =>
 export default class ShopifyClient {
   storefrontAccessToken: string;
   shopifyDomain: string;
-
+  cropImages?: boolean;
   constructor({
     storefrontAccessToken,
     shopifyDomain,
-  }: Pick<ValidConfig, 'shopifyDomain' | 'storefrontAccessToken'>) {
+    disableImageCropping
+  }: Pick<ValidConfig, 'shopifyDomain' | 'storefrontAccessToken' | 'disableImageCropping'>) {
     this.storefrontAccessToken = storefrontAccessToken;
     this.shopifyDomain = shopifyDomain;
+    this.disableImageCropping = Boolean(cropImages)
   }
 
   async productsMatching(query: string) {
@@ -92,7 +121,7 @@ export default class ShopifyClient {
             products(first: 10, query: $query) {
               edges {
                 node {
-                  ${productFragment}
+                  ${this.disableImageCropping ? productFragmentWithoutCropping : productFragment}
                 }
               }
           }
@@ -108,7 +137,7 @@ export default class ShopifyClient {
       query: `
         query getProduct($handle: String!) {
           product: productByHandle(handle: $handle) {
-            ${productFragment}
+            ${this.disableImageCropping ? productFragmentWithoutCropping : productFragment}
           }
         }
       `,
