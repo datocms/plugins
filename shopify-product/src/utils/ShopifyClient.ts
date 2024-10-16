@@ -103,7 +103,7 @@ const normalizeProducts = (products: any): Product[] =>
 export default class ShopifyClient {
   storefrontAccessToken: string;
   shopifyDomain: string;
-  cropImages?: boolean;
+  disableImageCropping?: boolean;
   constructor({
     storefrontAccessToken,
     shopifyDomain,
@@ -111,7 +111,7 @@ export default class ShopifyClient {
   }: Pick<ValidConfig, 'shopifyDomain' | 'storefrontAccessToken' | 'disableImageCropping'>) {
     this.storefrontAccessToken = storefrontAccessToken;
     this.shopifyDomain = shopifyDomain;
-    this.disableImageCropping = Boolean(cropImages)
+    this.disableImageCropping = Boolean(disableImageCropping)
   }
 
   async productsMatching(query: string) {
