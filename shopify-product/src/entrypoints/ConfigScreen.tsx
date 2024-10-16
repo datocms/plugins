@@ -108,7 +108,7 @@ export default function ConfigScreen({ ctx }: Props) {
                   />
                 )}
               </Field>
-              <Field name="cropImages">
+              <Field name="disableImageCropping">
                 {({ input, meta: { error } }) => (
                   <SwitchField
                     id="autoApplyToFieldsWithApiKey"
