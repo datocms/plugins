@@ -4,7 +4,7 @@ export type ValidConfig = {
   shopifyDomain: string;
   storefrontAccessToken: string;
   autoApplyToFieldsWithApiKey: string;
-  cropImages?: boolean;
+  disableImageCropping?: boolean;
   paramsVersion: '2';
 };
 
@@ -34,6 +34,6 @@ export function normalizeConfig(params: Config): ValidConfig {
         : '078bc5caa0ddebfa89cccb4a1baa1f5c',
     shopifyDomain: 'shopifyDomain' in params ? params.shopifyDomain : 'graphql',
     autoApplyToFieldsWithApiKey: '',
-    cropImages: false
+    disableImageCropping: false
   };
 }
