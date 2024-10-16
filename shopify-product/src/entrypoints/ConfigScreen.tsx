@@ -111,7 +111,7 @@ export default function ConfigScreen({ ctx }: Props) {
               <Field name="disableImageCropping">
                 {({ input, meta: { error } }) => (
                   <SwitchField
-                    id="autoApplyToFieldsWithApiKey"
+                    id="disableImageCropping"
                     label="Do you want to disable image cropping?"
                     hint="By default we apply a crop center with maxWidth and maxHeight set to 200px"
                     error={error}
