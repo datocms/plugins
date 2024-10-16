@@ -1,5 +1,5 @@
 import { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
-import { Button, Canvas, TextField, Form, FieldGroup } from 'datocms-react-ui';
+import { Button, Canvas, TextField, Form, FieldGroup, SwitchField } from 'datocms-react-ui';
 import { Form as FormHandler, Field } from 'react-final-form';
 import { ValidConfig, normalizeConfig } from '../types';
 import ShopifyClient from '../utils/ShopifyClient';
@@ -104,6 +104,17 @@ export default function ConfigScreen({ ctx }: Props) {
                     placeholder="shopify_product"
                     error={error}
                     textInputProps={{ monospaced: true }}
+                    {...input}
+                  />
+                )}
+              </Field>
+              <Field name="cropImages">
+                {({ input, meta: { error } }) => (
+                  <SwitchField
+                    id="autoApplyToFieldsWithApiKey"
+                    label="Do you want to disable image cropping?"
+                    hint="By default we apply a crop center with maxWidth and maxHeight set to 200px"
+                    error={error}
                     {...input}
                   />
                 )}
