@@ -19,10 +19,12 @@
 .product__image {
   width: 150px;
   margin-right: 20px;
-  background-size: cover;
+  background-size: contain;
   border-radius: 4px;
   background-position: center center;
   border-radius: 1px solid var(--border-color);
+  background-repeat: no-repeat;
+  background-color: var(--light-bg-color);
   padding: 2px;
 }
 .product__image:before {
