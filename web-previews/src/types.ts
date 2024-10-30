@@ -14,14 +14,14 @@ export type Frontend = {
 export type Parameters = {
   frontends?: Frontend[];
   startOpen?: boolean;
-  defaultSidebarWidth?: number;
+  defaultSidebarWidth?: string;
   iframeAllowAttribute?: string;
 };
 
 export type NormalizedParameters = {
   frontends: Frontend[];
   startOpen: boolean;
-  defaultSidebarWidth: number;
+  defaultSidebarWidth: string;
   iframeAllowAttribute: string | undefined;
 };
 
@@ -34,7 +34,7 @@ export function normalizeParameters({
   return {
     frontends: frontends || [],
     startOpen: Boolean(startOpen),
-    defaultSidebarWidth: defaultSidebarWidth || 900,
+    defaultSidebarWidth: defaultSidebarWidth || '900',
     iframeAllowAttribute,
   };
 }

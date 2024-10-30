@@ -13,7 +13,7 @@ function saveSidebarWidth(site: Site, width: number) {
 export function readSidebarWidth(site: Site) {
   const value = localStorage.getItem(keyForSidebarWidth(site));
 
-  return value ? parseInt(value) : undefined;
+  return value ? Number.parseInt(value) : undefined;
 }
 
 export function usePersistedSidebarWidth(site: Site) {
