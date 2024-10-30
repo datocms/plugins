@@ -36,7 +36,7 @@ connect({
       {
         id: "webPreviews",
         label: "Side-by-side web previews",
-        preferredWidth: readSidebarWidth(ctx.site) || defaultSidebarWidth,
+        preferredWidth: readSidebarWidth(ctx.site) || Number.parseInt(defaultSidebarWidth),
       },
     ];
   },
