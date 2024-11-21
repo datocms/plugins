@@ -27,7 +27,7 @@ import Cell from '../components/Cell';
 const PER_PAGE = 30;
 
 const unsplash = createApi({
-  apiUrl: 'https://www.datocms.com/api/unsplash-proxy',
+  apiUrl: 'https://unsplash-api.datocms.com',
 });
 
 type Orientation = 'all' | 'landscape' | 'portrait' | 'squarish';
