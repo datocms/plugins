@@ -92,7 +92,7 @@ connect({
     ];
   },
   renderItemFormSidebarPanel(
-    sidebarPanelId,
+    _sidebarPanelId,
     ctx: RenderItemFormSidebarPanelCtx,
   ) {
     render(<FieldAnchorMenu ctx={ctx} />);

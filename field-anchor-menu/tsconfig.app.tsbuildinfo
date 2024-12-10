@@ -1,0 +1,1 @@
+{"root":["./src/main.tsx","./src/vite-env.d.ts","./src/entrypoints/configscreen/index.tsx","./src/entrypoints/sidebarpanel/index.tsx","./src/utils/globalparams.ts","./src/utils/render.tsx"],"version":"5.7.2"}
