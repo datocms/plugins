@@ -55,7 +55,7 @@ export default function FieldExtension({ ctx }: Props) {
   return (
     <Canvas ctx={ctx}>
       {charCount > 0 && (
-        <div className={s.wrapper}>Character count: {charCount}</div>
+        <div className={s.wrapper}>Character count: {charCount.toLocaleString()}</div>
       )}
     </Canvas>
   );

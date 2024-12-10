@@ -6,7 +6,7 @@ import 'datocms-react-ui/styles.css';
 const FIELDS_TYPES: FieldType[] = ['string', 'text', 'structured_text'];
 
 connect({
-  overrideFieldExtensions(field, ctx) {
+  overrideFieldExtensions(field) {
     if (
       !FIELDS_TYPES.includes(
         field.attributes.field_type as FieldType,
@@ -44,7 +44,7 @@ connect({
       },
     ];
   },
-  renderFieldExtension(id, ctx) {
+  renderFieldExtension(_id, ctx) {
     return render(<FieldExtension ctx={ctx} />);
   },
 });

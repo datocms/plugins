@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-character-counter",
   "homepage": "https://github.com/datocms/plugins/tree/master/character-counter#readme",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "author": "DatoCMS <support@datocms.com>",
   "license": "ISC",
   "description": "Show a character counter on fields with validations on length",
@@ -9,7 +9,7 @@
     "title": "Character counter",
     "previewImage": "docs/demo.mp4",
     "coverImage": "docs/cover.png",
-    "entryPoint": "build/index.html"
+    "entryPoint": "dist/index.html"
   },
   "keywords": [
     "datocms",
@@ -17,47 +17,32 @@
   ],
   "files": [
     "docs",
-    "build"
+    "dist"
   ],
+  "type": "module",
   "dependencies": {
     "datocms-plugin-sdk": "^0.6.12",
     "datocms-react-ui": "^0.6.14",
     "datocms-structured-text-slate-utils": "^2.1.2",
     "lodash-es": "^4.17.21",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-scripts": "5.0.1",
-    "typescript": "^4.9.3"
+    "react-dom": "^18.2.0"
   },
   "scripts": {
-    "start": "cross-env BROWSER='none' PUBLIC_URL='/' react-scripts start",
-    "build": "cross-env PUBLIC_URL='.' react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject",
-    "prepublishOnly": "npm run build"
-  },
-  "eslintConfig": {
-    "extends": [
-      "react-app"
-    ]
-  },
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
+    "build": "tsc -b && vite build",
+    "prepublishOnly": "npm run build",
+    "dev": "vite",
+    "preview": "vite preview"
   },
   "devDependencies": {
+    "@types/css-modules": "^1.0.5",
     "@types/lodash-es": "^4.17.6",
-    "@types/node": "^18.11.9",
     "@types/react": "^18.0.25",
     "@types/react-dom": "^18.0.9",
-    "cross-env": "^7.0.3"
+    "@vitejs/plugin-react": "^4.3.1",
+    "cross-env": "^7.0.3",
+    "globals": "^15.9.0",
+    "typescript": "^5.5.3",
+    "vite": "^5.4.1"
   }
 }
