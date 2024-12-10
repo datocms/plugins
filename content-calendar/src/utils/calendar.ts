@@ -1,9 +1,9 @@
 import {
   addDays,
-  startOfWeek,
   differenceInCalendarWeeks,
   endOfMonth,
   startOfMonth,
+  startOfWeek,
 } from 'date-fns';
 
 type GenerateMatrixArgs = {
@@ -29,7 +29,7 @@ export function generateMatrix({
 
   return Array.from({ length: totalDays })
     .map((_, index) => addDays(startDate, index))
-    .reduce<Date[][]>((matrix, current, index, days) => {
+    .reduce<Date[][]>((matrix, _current, index, days) => {
       return index % cols === 0
         ? [...matrix, days.slice(index, index + cols)]
         : matrix;

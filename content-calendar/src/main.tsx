@@ -4,7 +4,7 @@ import Page from './entrypoints/Page';
 import 'datocms-react-ui/styles.css';
 
 connect({
-  mainNavigationTabs(ctx) {
+  mainNavigationTabs() {
     return [
       {
         label: 'Calendar',
@@ -15,7 +15,7 @@ connect({
       },
     ];
   },
-  renderPage(pageId, ctx) {
+  renderPage(_pageId, ctx) {
     return render(<Page ctx={ctx} />);
   },
 });
