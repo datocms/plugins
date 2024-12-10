@@ -1,0 +1,1 @@
+{"root":["./src/main.tsx","./src/types.ts","./src/vite-env.d.ts","./src/entrypoints/configscreen/index.tsx","./src/entrypoints/fieldextension/index.tsx","./src/utils/domains.ts","./src/utils/generatedummytext.ts","./src/utils/names.ts","./src/utils/render.tsx","./src/utils/text.ts"],"version":"5.7.2"}
