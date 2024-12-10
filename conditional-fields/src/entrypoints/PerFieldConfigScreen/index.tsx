@@ -3,6 +3,7 @@ import { Canvas, Form, SwitchField, SelectField } from "datocms-react-ui";
 import { useCallback, useState } from "react";
 import { isValidParameters, ValidManualExtensionParameters } from "../../types";
 import normalizeParams from "../../utils/normalizeParams";
+import { isDefined } from "../../utils/isDefined";
 
 type PropTypes = {
   ctx: RenderManualFieldExtensionConfigScreenCtx;
@@ -27,6 +28,7 @@ export function PerFieldConfigScreen({ ctx }: PropTypes) {
   );
 
   const options = Object.values(ctx.fields)
+    .filter(isDefined)
     .filter(
       (field) =>
         field.relationships.item_type.data.id === ctx.itemType.id &&
@@ -46,13 +48,13 @@ export function PerFieldConfigScreen({ ctx }: PropTypes) {
           label="Fields to be hidden/shown"
           required
           selectInputProps={{ isMulti: true, options }}
-          value={formValues.targetFieldsApiKey.map((apiKey) =>
+          value={formValues.targetFieldsApiKey ? formValues.targetFieldsApiKey.map((apiKey) =>
             options.find((o) => o.value === apiKey)
-          )}
+          ) : []}
           onChange={(selectedOptions) => {
             update(
               "targetFieldsApiKey",
-              selectedOptions.map((o) => o.value)
+              selectedOptions.filter(isDefined).map((o) => o.value)
             );
           }}
         />
@@ -61,7 +63,7 @@ export function PerFieldConfigScreen({ ctx }: PropTypes) {
           name="invert"
           label="Invert visibility?"
           hint="When this field is checked, hide target fields"
-          value={formValues.invert}
+          value={formValues.invert || false}
           onChange={update.bind(null, "invert")}
         />
       </Form>

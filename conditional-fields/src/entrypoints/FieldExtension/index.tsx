@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo } from "react";
 import { RenderFieldExtensionCtx } from "datocms-plugin-sdk";
-import get from "lodash/get";
 import { isValidParameters, ValidManualExtensionParameters } from "../../types";
+import get from 'lodash-es/get';
+import { isDefined } from "../../utils/isDefined";
 
 type Props = {
   ctx: RenderFieldExtensionCtx;
@@ -20,7 +21,7 @@ function FieldExtensionWithValidParams({ ctx }: Props) {
   const targetFields = useMemo(() => {
     return targetFieldsApiKey
       .map((targetFieldApiKey) => {
-        const targetField = Object.values(ctx.fields).find((field) => {
+        const targetField = Object.values(ctx.fields).filter(isDefined).find((field) => {
           return (
             field.attributes.api_key === targetFieldApiKey &&
             field.relationships.item_type.data.id ===
@@ -37,7 +38,7 @@ function FieldExtensionWithValidParams({ ctx }: Props) {
 
         return targetField;
       })
-      .filter((x) => x);
+      .filter(isDefined);
   }, [ctx.fields, targetFieldsApiKey, sourceField]);
 
   const toggleFields = useCallback(
@@ -65,7 +66,7 @@ function FieldExtensionWithValidParams({ ctx }: Props) {
     [ctx, sourceField.attributes.localized, targetFields]
   );
 
-  const currentValue = get(ctx.formValues, ctx.fieldPath);
+  const currentValue = get(ctx.formValues, ctx.fieldPath) as boolean | null;
 
   useEffect(() => {
     toggleFields(checkedToShow(invert, currentValue));
