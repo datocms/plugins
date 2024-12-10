@@ -18,6 +18,10 @@
     "color-field",
     "hide-field"
   ],
+  "files": [
+    "dist",
+    "docs"
+  ],
   "datoCmsPlugin": {
     "title": "Disabled Field",
     "previewImage": "docs/preview.png",
