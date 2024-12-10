@@ -1,7 +1,6 @@
 import {
   connect,
   FieldAppearanceChange,
-  IntentCtx,
   OnBootCtx,
   RenderFieldExtensionCtx,
 } from 'datocms-plugin-sdk';
@@ -58,11 +57,11 @@ connect({
       ctx.notice('Plugin settings upgraded successfully!');
     }
   },
-  manualFieldExtensions(ctx: IntentCtx) {
+  manualFieldExtensions() {
     return [
       {
         id: FIELD_EXTENSION_ID,
-        name: 'Disable Field',
+        name: 'Disabled Field',
         type: 'addon',
         fieldTypes: 'all',
         initialHeight: 0,
