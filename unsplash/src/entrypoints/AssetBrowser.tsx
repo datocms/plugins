@@ -60,7 +60,7 @@ function chunkArray<T extends Photo>(array: T[], chunks: number): T[][] {
   }));
 
   array.forEach((item) => {
-    const minCol = results.reduce<Chunk<T> | null>((winner, col, i) => {
+    const minCol = results.reduce<Chunk<T> | null>((winner, col) => {
       return !winner || col.total < winner.total ? col : winner;
     }, null);
 
@@ -264,7 +264,7 @@ const AssetBrowser = () => {
               onChange={(o) => {
                 setColor(o?.value || 'all');
               }}
-              formatOptionLabel={(option, { context }) => {
+              formatOptionLabel={(option) => {
                 return (
                   <>
                     <div

@@ -22,7 +22,7 @@ connect({
       },
     ];
   },
-  renderAssetSource(sourceId, ctx) {
+  renderAssetSource(_sourceId, ctx) {
     render(
       <Canvas ctx={ctx}>
         <AssetBrowser />
