@@ -21,6 +21,7 @@ window.DatoCmsPlugin.init(async (plugin) => {
     error.textContent = 'Please insert a valid Model ID in your field settings';
     error.classList.add('error');
     container.appendChild(error);
+    return;
   }
 
   const findLinkingFields = fields => fields.find(
