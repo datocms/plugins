@@ -1,6 +1,6 @@
 {
   "name": "datocms-plugin-lorem-ipsum",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Fill your textual fields with dummy content",
   "keywords": [
     "datocms-plugin"

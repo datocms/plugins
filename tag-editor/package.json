@@ -2,7 +2,7 @@
   "name": "datocms-plugin-tag-editor",
   "homepage": "https://github.com/datocms/plugins/tree/master/tag-editor#readme",
   "description": "A plugin that transforms any string and JSON field into a tag editor",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "author": "DatoCMS <support@datocms.com>",
   "license": "ISC",
   "datoCmsPlugin": {

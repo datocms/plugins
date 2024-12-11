@@ -1,6 +1,6 @@
 {
   "name": "datocms-plugin-field-anchor-menu",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "homepage": "https://github.com/datocms/plugins/tree/master/field-anchor-menu#readme",
   "description": "A plugin that displays an anchor links menu on the sidebar to scroll directly to a specific field",
   "keywords": [
