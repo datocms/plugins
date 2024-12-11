@@ -19,7 +19,7 @@ connect({
         id: "webPreviews",
         label: "Web previews",
         startOpen,
-        placement: ["after", "actions"],
+        placement: ["before", "links"],
       },
     ];
   },

@@ -2,12 +2,12 @@
   "name": "datocms-plugin-web-previews",
   "homepage": "https://github.com/datocms/plugins/tree/master/web-previews#readme",
   "description": "Offer your editors side-by-side previews of unpublished/draft content, directly within DatoCMS",
-  "version": "1.0.18",
+  "version": "1.0.19",
   "author": "DatoCMS <support@datocms.com>",
   "license": "GPLv3",
   "files": [
     "docs",
-    "build"
+    "dist"
   ],
   "keywords": [
     "datocms",
@@ -21,7 +21,7 @@
     "title": "Web Previews",
     "previewImage": "docs/video.mp4",
     "coverImage": "docs/cover.png",
-    "entryPoint": "build/index.html"
+    "entryPoint": "dist/index.html"
   },
   "dependencies": {
     "@fortawesome/free-solid-svg-icons": "^6.2.0",
@@ -34,39 +34,23 @@
     "react-dom": "^18.2.0",
     "react-final-form": "^6.5.9",
     "react-final-form-arrays": "^3.1.4",
-    "react-scripts": "5.0.1",
     "use-deep-compare": "1.1.0",
     "usehooks-ts": "^2.9.1"
   },
   "scripts": {
-    "start": "cross-env BROWSER='none' PUBLIC_URL='/' react-scripts start",
-    "build": "cross-env PUBLIC_URL='.' react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject",
-    "prepublishOnly": "npm run build"
-  },
-  "eslintConfig": {
-    "extends": [
-      "react-app"
-    ]
-  },
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
+    "build": "tsc -b && vite build",
+    "prepublishOnly": "npm run build",
+    "dev": "vite",
+    "preview": "vite preview"
   },
   "devDependencies": {
-    "@types/node": "^18.11.9",
     "@types/react": "^18.0.25",
     "@types/react-dom": "^18.0.9",
     "cross-env": "^7.0.3",
-    "typescript": "^4.9.3"
-  }
+    "@vitejs/plugin-react": "^4.3.1",
+    "globals": "^15.9.0",
+    "typescript": "^5.5.3",
+    "vite": "^5.4.1"
+  },
+  "type": "module"
 }
