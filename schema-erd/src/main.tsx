@@ -15,7 +15,7 @@ connect({
       }
     ]
   },
-  renderPage(pageId, ctx) {
+  renderPage(_pageId, ctx) {
     return render(<Graphviz ctx={ctx} />);
   }
 });

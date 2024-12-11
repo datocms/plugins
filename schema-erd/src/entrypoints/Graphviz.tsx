@@ -11,8 +11,6 @@ import {
   promiseAllWithProgress,
   useAsyncEffect,
 } from '../utils/useAsyncEffect';
-import { jsPDF } from 'jspdf';
-import 'svg2pdf.js';
 import { useRef, useState } from 'react';
 import { encode } from 'universal-base64';
 import {
@@ -21,9 +19,9 @@ import {
   ReactZoomPanPinchContentRef,
 } from 'react-zoom-pan-pinch';
 import { useElementSize } from 'usehooks-ts';
-import Queue from 'promise-queue';
+import { Scheduler } from 'async-scheduler';
 
-const queue = new Queue(50, Infinity);
+const queue = new Scheduler(10);
 
 type Props = {
   ctx: RenderPagePropertiesAndMethods;
@@ -72,7 +70,6 @@ export default function Graphviz({ ctx }: Props) {
   >();
   const [dot, setDot] = useState<undefined | string>();
   const [svg, setSvg] = useState<undefined | string>();
-  const [pdf, setPdf] = useState<undefined | string>();
   const [size, setSize] = useState<undefined | [number, number]>();
 
   useAsyncEffect(async () => {
@@ -90,7 +87,7 @@ export default function Graphviz({ ctx }: Props) {
         return Promise.resolve();
       }
 
-      return queue.add(() => ctx.loadItemTypeFields(itemType.id));
+      return queue.enqueue(() => ctx.loadItemTypeFields(itemType.id));
     });
 
     await promiseAllWithProgress(promises, (completed, total) =>
@@ -140,11 +137,6 @@ export default function Graphviz({ ctx }: Props) {
     const width = svgElement.width.baseVal.value;
     const height = svgElement.height.baseVal.value;
 
-    const pdf = new jsPDF(width > height ? 'l' : 'p', 'pt', [width, height]);
-
-    await pdf.svg(svgElement, { width, height });
-
-    setPdf(pdf.output('datauristring'));
     setSize([width, height]);
   }, [svg]);
 
@@ -167,17 +159,9 @@ export default function Graphviz({ ctx }: Props) {
     download('schema.svg', `data:image/svg+xml;base64,${encode(svg)}`);
   }
 
-  async function downloadAsPdf() {
-    if (!pdf) {
-      return;
-    }
-
-    download('schema.pdf', pdf);
-  }
-
   const [setRef, elementSize] = useElementSize();
 
-  const minScale = size
+  const minScale = size && elementSize.width && elementSize.height
     ? Math.min(elementSize.width / size[0], elementSize.height / size[1])
     : undefined;
 
@@ -195,9 +179,6 @@ export default function Graphviz({ ctx }: Props) {
               <Button buttonSize="xs" onClick={downloadAsSvg}>
                 .SVG
               </Button>{' '}
-              <Button buttonSize="xs" onClick={downloadAsPdf}>
-                .PDF
-              </Button>
             </div>
           </div>
         </div>
