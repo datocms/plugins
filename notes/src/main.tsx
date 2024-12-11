@@ -1,6 +1,5 @@
 import {
   connect,
-  IntentCtx,
   OnBootCtx,
   RenderFieldExtensionCtx,
 } from "datocms-plugin-sdk";
@@ -41,7 +40,7 @@ connect({
     });
   },
 
-  manualFieldExtensions(ctx: IntentCtx) {
+  manualFieldExtensions() {
     return [
       {
         id: "sidebarNotes",

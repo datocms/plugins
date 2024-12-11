@@ -1,6 +1,6 @@
 import { RenderFieldExtensionCtx } from "datocms-plugin-sdk";
 import { Canvas } from "datocms-react-ui";
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Note from "./Note";
 import styles from "./notesSidebar.module.css";
 
