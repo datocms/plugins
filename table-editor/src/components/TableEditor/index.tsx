@@ -110,7 +110,7 @@ export default function TableEditor({
     );
     onChange({
       columns: newColumns,
-      data: value.data.map((row, i) =>
+      data: value.data.map((row) =>
         orderedKeys(
           {
             ...omit(row, [oldColumn]),
@@ -125,7 +125,7 @@ export default function TableEditor({
   const onRemoveColumn: Actions['onRemoveColumn'] = (column) => {
     onChange({
       columns: value.columns.filter((c) => c !== column),
-      data: value.data.map((row, i) => omit(row, [column])),
+      data: value.data.map((row) => omit(row, [column])),
     });
   };
 
@@ -153,7 +153,7 @@ export default function TableEditor({
 
     onChange({
       columns: newColumns,
-      data: value.data.map((row, i) =>
+      data: value.data.map((row) =>
         orderedKeys(
           {
             ...row,
@@ -174,7 +174,7 @@ export default function TableEditor({
 
     onChange({
       columns: newColumns,
-      data: value.data.map((row, i) => orderedKeys(row, newColumns)),
+      data: value.data.map((row) => orderedKeys(row, newColumns)),
     });
   };
 

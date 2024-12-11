@@ -1,6 +1,6 @@
-/// <reference types="react-scripts" />
+/// <reference types="vite/client" />
 
-import { UseResizeColumnsColumnProps } from "react-table";
+import "react-table";
 
 declare module "react-table" {
   export interface ColumnInstance<

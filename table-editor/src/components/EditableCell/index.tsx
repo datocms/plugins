@@ -46,7 +46,6 @@ function toTable(transfer: DataTransfer) {
 
 export default function EditableCell({
   value,
-  columns,
   row: { index },
   column: { id },
   onCellUpdate,
