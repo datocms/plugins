@@ -4,7 +4,7 @@
   "description": "A plugin that allows users to search and select Shopify products",
   "author": "DatoCMS <support@datocms.com>",
   "license": "ISC",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "keywords": [
     "datocms",
     "datocms-plugin",
@@ -15,59 +15,44 @@
   ],
   "files": [
     "docs",
-    "build"
+    "dist"
   ],
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^6.4.0",
     "@fortawesome/free-solid-svg-icons": "^6.4.0",
     "@fortawesome/react-fontawesome": "^0.2.0",
     "@types/lodash-es": "^4.17.7",
-    "@types/node": "^18.15.11",
     "@types/react": "^18.0.31",
     "@types/react-dom": "^18.0.11",
     "classnames": "^2.3.2",
     "datocms-plugin-sdk": "^0.7.4",
     "datocms-react-ui": "^0.7.4",
     "final-form": "^4.20.9",
+    "immer": "^10.1.1",
     "lodash-es": "^4.17.21",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-final-form": "^6.5.9",
-    "react-scripts": "^5.0.1",
-    "typescript": "^5.0.3",
     "zustand": "^4.3.6"
   },
   "scripts": {
-    "start": "cross-env BROWSER='none' PUBLIC_URL='/' react-scripts start",
-    "build": "cross-env PUBLIC_URL='.' react-scripts build",
-    "test": "echo 1",
-    "eject": "react-scripts eject",
-    "prepublishOnly": "npm run build"
-  },
-  "eslintConfig": {
-    "extends": [
-      "react-app"
-    ]
-  },
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
+    "build": "tsc -b && vite build",
+    "prepublishOnly": "npm run build",
+    "dev": "vite",
+    "preview": "vite preview"
   },
   "devDependencies": {
-    "cross-env": "^7.0.3"
+    "@vitejs/plugin-react": "^4.3.1",
+    "cross-env": "^7.0.3",
+    "globals": "^15.9.0",
+    "typescript": "^5.5.3",
+    "vite": "^5.4.1"
   },
   "datoCmsPlugin": {
     "title": "Shopify product",
     "previewImage": "docs/demo.gif",
-    "coverImage": "docs/cover.jpg",
-    "entryPoint": "build/index.html"
-  }
+    "coverImage": "docs/cover.png",
+    "entryPoint": "dist/index.html"
+  },
+  "type": "module"
 }

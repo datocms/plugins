@@ -82,7 +82,7 @@ connect({
       editor: { id: FIELD_EXTENSION_ID },
     };
   },
-  renderFieldExtension(id, ctx) {
+  renderFieldExtension(_id, ctx) {
     render(<FieldExtension ctx={ctx} />);
   },
   renderModal(modalId: string, ctx: RenderModalCtx) {

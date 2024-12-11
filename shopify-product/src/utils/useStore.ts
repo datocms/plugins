@@ -1,6 +1,6 @@
+import { produce } from 'immer';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import produce from 'immer';
 import ShopifyClient, { Product } from './ShopifyClient';
 
 export type Status = 'loading' | 'success' | 'error';
