@@ -51,7 +51,7 @@ export default function ConfigScreen({ ctx }: Props) {
                         id="defaultMaxRating"
                         label="Max rating"
                         hint="The maximum number of stars that can be set for a field"
-                        placeholder="my-shop"
+                        placeholder="5"
                         required
                         error={error}
                         {...input}

@@ -1,6 +1,5 @@
 import {
   connect,
-  IntentCtx,
   OnBootCtx,
   RenderFieldExtensionCtx,
   RenderManualFieldExtensionConfigScreenCtx,
@@ -77,7 +76,7 @@ connect({
   renderConfigScreen(ctx) {
     render(<ConfigScreen ctx={ctx} />);
   },
-  manualFieldExtensions(ctx: IntentCtx) {
+  manualFieldExtensions() {
     return [
       {
         id: FIELD_EXTENSION_ID,
@@ -113,13 +112,13 @@ connect({
     };
   },
   renderManualFieldExtensionConfigScreen(
-    fieldExtensionId: string,
+    _fieldExtensionId: string,
     ctx: RenderManualFieldExtensionConfigScreenCtx,
   ) {
     render(<FieldConfigScreen ctx={ctx} />);
   },
   validateManualFieldExtensionParameters(
-    fieldExtensionId: string,
+    _fieldExtensionId: string,
     parameters: Record<string, any>,
   ) {
     return validate(parameters);

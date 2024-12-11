@@ -1,0 +1,1 @@
+{"root":["./src/main.tsx","./src/vite-env.d.ts","./src/components/colorinput.tsx","./src/entrypoints/configscreen.tsx","./src/entrypoints/fieldconfigscreen.tsx","./src/entrypoints/starratingeditor.tsx","./src/utils/fieldparams.ts","./src/utils/globalparams.ts","./src/utils/render.tsx"],"version":"5.7.2"}

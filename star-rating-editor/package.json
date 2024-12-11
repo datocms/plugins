@@ -1,11 +1,10 @@
 {
   "name": "datocms-plugin-star-rating-editor",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "homepage": "https://github.com/datocms/plugins/tree/master/star-rating-editor#readme",
   "description": "A plugin that presents integer fields as star rating widgets",
   "dependencies": {
     "@types/lodash-es": "^4.17.5",
-    "@types/node": "^16.11.12",
     "@types/react": "^17.0.37",
     "@types/react-color": "^3.0.6",
     "@types/react-dom": "^17.0.11",
@@ -16,9 +15,7 @@
     "react-color": "^2.19.3",
     "react-dom": "^17.0.2",
     "react-final-form": "^6.5.7",
-    "react-rating-stars-component": "^2.2.0",
-    "react-scripts": "4.0.3",
-    "typescript": "^4.5.2"
+    "react-rating-stars-component": "^2.2.0"
   },
   "keywords": [
     "datocms",
@@ -31,34 +28,25 @@
     "title": "Star rating editor",
     "previewImage": "docs/demo.mp4",
     "coverImage": "docs/cover.png",
-    "entryPoint": "build/index.html",
+    "entryPoint": "dist/index.html",
     "permissions": []
   },
   "scripts": {
-    "start": "cross-env BROWSER='none' PUBLIC_URL='/' react-scripts start",
-    "build": "cross-env PUBLIC_URL='.' react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject",
-    "prepublishOnly": "npm run build"
-  },
-  "eslintConfig": {
-    "extends": [
-      "react-app"
-    ]
-  },
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
+    "build": "tsc -b && vite build",
+    "prepublishOnly": "npm run build",
+    "dev": "vite",
+    "preview": "vite preview"
   },
   "devDependencies": {
-    "cross-env": "^7.0.3"
-  }
+    "cross-env": "^7.0.3",
+    "@vitejs/plugin-react": "^4.3.1",
+    "globals": "^15.9.0",
+    "typescript": "^5.5.3",
+    "vite": "^5.4.1"
+  },
+  "files": [
+    "dist",
+    "docs"
+  ],
+  "type": "module"
 }
