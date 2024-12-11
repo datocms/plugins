@@ -2,7 +2,7 @@
   "name": "datocms-plugin-schema-erd",
   "homepage": "https://github.com/datocms/plugins/tree/master/schema-erd#readme",
   "description": "Generate Graphviz ERD diagrams of your project schema, and export them in SVG, PDF and DOT formats",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "author": "DatoCMS <support@datocms.com>",
   "license": "GPLv3",
   "files": [
