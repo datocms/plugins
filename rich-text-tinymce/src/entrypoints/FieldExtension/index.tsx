@@ -8,21 +8,21 @@ import { Editor } from 'tinymce';
 import { useEffect, useRef, useState } from 'react';
 import { buildClient } from '@datocms/cma-client-browser';
 
-(global as any).tinymce = tinymce;
+(window as any).tinymce = tinymce;
 
-require('tinymce/icons/default');
-require('tinymce/themes/silver');
-require('tinymce/skins/ui/oxide/skin.css');
-require('tinymce/plugins/image');
-require('tinymce/plugins/advlist');
-require('tinymce/plugins/code');
-require('tinymce/plugins/emoticons');
-require('tinymce/plugins/emoticons/js/emojis');
-require('tinymce/plugins/link');
-require('tinymce/plugins/lists');
-require('tinymce/plugins/paste');
-require('tinymce/plugins/table');
-require('tinymce/plugins/autoresize');
+import 'tinymce/icons/default';
+import 'tinymce/themes/silver';
+import 'tinymce/skins/ui/oxide/skin.css';
+import 'tinymce/plugins/image';
+import 'tinymce/plugins/advlist';
+import 'tinymce/plugins/code';
+import 'tinymce/plugins/emoticons';
+import 'tinymce/plugins/emoticons/js/emojis';
+import 'tinymce/plugins/link';
+import 'tinymce/plugins/lists';
+import 'tinymce/plugins/paste';
+import 'tinymce/plugins/table';
+import 'tinymce/plugins/autoresize';
 
 const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 

@@ -2,7 +2,7 @@
   "name": "datocms-plugin-tinymce-rich-text",
   "homepage": "https://github.com/datocms/plugins/tree/master/rich-text-tinymce#readme",
   "description": "Custom TinyMCE HTML editor",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "author": "DatoCMS <support@datocms.com>",
   "license": "ISC",
   "keywords": [
@@ -15,60 +15,45 @@
   ],
   "files": [
     "docs",
-    "build"
+    "dist"
   ],
   "dependencies": {
+    "@datocms/cma-client-browser": "^3.1.1",
     "@tinymce/tinymce-react": "^3.13.0",
-    "@types/node": "^16.11.14",
     "@types/qs": "^6.9.7",
     "@types/react": "^17.0.37",
     "@types/react-dom": "^17.0.11",
     "@types/tinymce": "^4.6.4",
     "datocms-plugin-sdk": "^0.5.2",
     "datocms-react-ui": "^0.5.2",
-    "@datocms/cma-client-browser": "^3.1.1",
+    "lodash": "^4.17.21",
     "qs": "^6.10.2",
     "react": "^17.0.2",
     "react-dom": "^17.0.2",
-    "react-scripts": "5.0.0",
-    "tinymce": "^5.10.9",
-    "typescript": "^4.5.4"
+    "tinymce": "^5.10.9"
   },
   "scripts": {
-    "start": "cross-env BROWSER='none' PUBLIC_URL='/' react-scripts start",
-    "build": "cross-env PUBLIC_URL='.' react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject",
-    "prepublishOnly": "npm run build"
-  },
-  "eslintConfig": {
-    "extends": [
-      "react-app"
-    ]
-  },
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
+    "build": "tsc -b && vite build",
+    "prepublishOnly": "npm run build",
+    "dev": "vite",
+    "preview": "vite preview"
   },
   "devDependencies": {
     "@types/lodash": "^4.14.178",
-    "cross-env": "^7.0.3"
+    "@vitejs/plugin-react": "^4.3.1",
+    "cross-env": "^7.0.3",
+    "globals": "^15.9.0",
+    "typescript": "^5.5.3",
+    "vite": "^5.4.1"
   },
   "datoCmsPlugin": {
     "title": "TinyMCE Editor",
     "previewImage": "docs/rich-editor-plugin-preview.png",
     "coverImage": "docs/cover.png",
-    "entryPoint": "build/index.html",
+    "entryPoint": "dist/index.html",
     "permissions": [
       "currentUserAccessToken"
     ]
-  }
+  },
+  "type": "module"
 }
