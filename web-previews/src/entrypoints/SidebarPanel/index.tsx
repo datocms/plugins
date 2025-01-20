@@ -1,9 +1,9 @@
 import { faCopy } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { RenderItemFormSidebarPanelCtx } from 'datocms-plugin-sdk';
+import type { RenderItemFormSidebarPanelCtx } from 'datocms-plugin-sdk';
 import { Canvas, Spinner, useCtx } from 'datocms-react-ui';
-import { Frontend } from '../../types';
-import { FrontendStatus, useStatusByFrontend } from '../../utils/common';
+import type { Frontend } from '../../types';
+import { type FrontendStatus, useStatusByFrontend } from '../../utils/common';
 import styles from './styles.module.css';
 
 type PropTypes = {
@@ -47,9 +47,9 @@ const FrontendResult = ({ status }: { status: FrontendStatus }) => {
       {status.previewLinks.length === 0 ? (
         <div>No preview links available.</div>
       ) : (
-        status.previewLinks.map(({ url, label }, index) => {
+        status.previewLinks.map(({ url, label }) => {
           return (
-            <div key={`${label}-${index}`} className={styles.grid}>
+            <div key={`${url}`} className={styles.grid}>
               <a
                 href={url}
                 className={styles.link}
@@ -89,9 +89,9 @@ const PreviewUrl = ({ ctx }: PropTypes) => {
           ) : frontends.length === 1 ? (
             <FrontendResult status={Object.values(statusByFrontend)[0]} />
           ) : Object.values(statusByFrontend).every(
-            (status) =>
-              'previewLinks' in status && status.previewLinks.length === 0,
-          ) ? (
+              (status) =>
+                'previewLinks' in status && status.previewLinks.length === 0,
+            ) ? (
             <div>No preview links available.</div>
           ) : (
             frontends.map((frontend) => (

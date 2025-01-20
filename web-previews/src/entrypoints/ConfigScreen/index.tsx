@@ -1,20 +1,25 @@
-import { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
+import { faPlus, faTrash } from '@fortawesome/free-solid-svg-icons';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import {
   Button,
   Canvas,
-  TextField,
-  Form,
   FieldGroup,
-  SwitchField,
-  Section,
+  Form,
   FormLabel,
+  Section,
+  SwitchField,
+  TextField,
 } from 'datocms-react-ui';
-import { Form as FormHandler, Field } from 'react-final-form';
 import arrayMutators from 'final-form-arrays';
+import { Field, Form as FormHandler } from 'react-final-form';
 import { FieldArray } from 'react-final-form-arrays';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPlus, faTrash } from '@fortawesome/free-solid-svg-icons';
-import { Frontend, NormalizedParameters, normalizeParameters, Parameters } from '../../types';
+import {
+  type Frontend,
+  type NormalizedParameters,
+  type Parameters,
+  normalizeParameters,
+} from '../../types';
 import s from './styles.module.css';
 
 type PropTypes = {
@@ -22,7 +27,7 @@ type PropTypes = {
 };
 
 function isValidUrl(string: string) {
-  let url;
+  let url: URL;
   try {
     url = new URL(string);
   } catch (_) {
@@ -35,46 +40,52 @@ export default function ConfigScreen({ ctx }: PropTypes) {
   return (
     <Canvas ctx={ctx}>
       <FormHandler<NormalizedParameters>
-        initialValues={normalizeParameters(ctx.plugin.attributes.parameters as Parameters)}
+        initialValues={normalizeParameters(
+          ctx.plugin.attributes.parameters as Parameters,
+        )}
         validate={(values) => {
           const errors: Record<string, any> = {};
 
-          errors.frontends =
-            values.frontends.map((rule) => {
-              const ruleErrors: Record<string, any> = {};
+          errors.frontends = values.frontends.map((rule) => {
+            const ruleErrors: Record<string, any> = {};
 
-              if (!rule.name) {
-                ruleErrors.name = 'Name required!';
+            if (!rule.name) {
+              ruleErrors.name = 'Name required!';
+            }
+
+            if (
+              values.frontends.filter((f) => f.name === rule.name).length > 1
+            ) {
+              ruleErrors.name = 'Name must be unique!';
+            }
+
+            if (!rule.previewWebhook || !isValidUrl(rule.previewWebhook)) {
+              ruleErrors.previewWebhook = 'Please specify an URL!';
+            }
+
+            ruleErrors.customHeaders = rule.customHeaders?.map((header) => {
+              const headerErrors: Record<string, string> = {};
+
+              if (!header.name) {
+                headerErrors.name = 'Name required!';
               }
 
-              if (values.frontends.filter((f) => f.name === rule.name).length > 1) {
-                ruleErrors.name = 'Name must be unique!';
+              if (
+                rule.customHeaders.filter((h) => h.name === header.name)
+                  .length > 1
+              ) {
+                headerErrors.name = 'Name must be unique!';
               }
 
-              if (!rule.previewWebhook || !isValidUrl(rule.previewWebhook)) {
-                ruleErrors.previewWebhook = 'Please specify an URL!';
+              if (!header.value) {
+                headerErrors.value = 'Value required!';
               }
 
-              ruleErrors.customHeaders = rule.customHeaders?.map((header) => {
-                const headerErrors: Record<string, string> = {};
-
-                if (!header.name) {
-                  headerErrors.name = 'Name required!';
-                }
-
-                if (rule.customHeaders.filter((h) => h.name === header.name).length > 1) {
-                  headerErrors.name = 'Name must be unique!';
-                }
-
-                if (!header.value) {
-                  headerErrors.value = 'Value required!';
-                }
-
-                return headerErrors;
-              });
-
-              return ruleErrors;
+              return headerErrors;
             });
+
+            return ruleErrors;
+          });
 
           return errors;
         }}
@@ -127,7 +138,9 @@ export default function ConfigScreen({ ctx }: PropTypes) {
                             </Field>
                             <div>
                               <FormLabel htmlFor="">Custom Headers</FormLabel>
-                              <FieldArray<Frontend['customHeaders'][number]> name={`${name}.customHeaders`}>
+                              <FieldArray<Frontend['customHeaders'][number]>
+                                name={`${name}.customHeaders`}
+                              >
                                 {({ fields }) => (
                                   <FieldGroup>
                                     {fields.map((header, headerIndex) => (
@@ -166,16 +179,24 @@ export default function ConfigScreen({ ctx }: PropTypes) {
                                           type="button"
                                           buttonType="muted"
                                           buttonSize="xxs"
-                                          leftIcon={<FontAwesomeIcon icon={faTrash} />}
-                                          onClick={() => fields.remove(headerIndex)}
+                                          leftIcon={
+                                            <FontAwesomeIcon icon={faTrash} />
+                                          }
+                                          onClick={() =>
+                                            fields.remove(headerIndex)
+                                          }
                                         />
                                       </div>
                                     ))}
                                     <Button
                                       type="button"
                                       buttonSize="s"
-                                      leftIcon={<FontAwesomeIcon icon={faPlus} />}
-                                      onClick={() => fields.push({ name: '', value: '' })}
+                                      leftIcon={
+                                        <FontAwesomeIcon icon={faPlus} />
+                                      }
+                                      onClick={() =>
+                                        fields.push({ name: '', value: '' })
+                                      }
                                     >
                                       Add new header
                                     </Button>
@@ -230,12 +251,23 @@ export default function ConfigScreen({ ctx }: PropTypes) {
                   {({ input, meta: { error } }) => (
                     <TextField
                       id="iframeAllowAttribute"
-                      label={<>Iframe <code>allow</code> attribute</>}
+                      label={
+                        <>
+                          Iframe <code>allow</code> attribute
+                        </>
+                      }
                       hint={
                         <>
-                          Defines what features will be available to the <code>&lt;iframe&gt;</code> pointing{' '}
-                          to the frontend (ie. access to the microphone, camera).{' '}
-                          <a href="https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe#allow" rel="noreferrer" target="_blank">Read more</a>
+                          Defines what features will be available to the{' '}
+                          <code>&lt;iframe&gt;</code> pointing to the frontend
+                          (ie. access to the microphone, camera).{' '}
+                          <a
+                            href="https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe#allow"
+                            rel="noreferrer"
+                            target="_blank"
+                          >
+                            Read more
+                          </a>
                         </>
                       }
                       error={error}

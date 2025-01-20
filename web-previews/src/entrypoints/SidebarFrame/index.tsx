@@ -3,9 +3,9 @@ import {
   faCaretDown,
   faCaretUp,
 } from '@fortawesome/free-solid-svg-icons';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
 import { faCopy } from '@fortawesome/free-solid-svg-icons';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
 import {
   Canvas,
   Dropdown,
@@ -17,14 +17,14 @@ import {
 import { useEffect, useState } from 'react';
 import { useDeepCompareEffect } from 'use-deep-compare';
 import {
-  Frontend,
+  type Frontend,
+  type Parameters,
+  type PreviewLink,
   normalizeParameters,
-  Parameters,
-  PreviewLink,
 } from '../../types';
-import { FrontendStatus, useStatusByFrontend } from '../../utils/common';
-import styles from './styles.module.css';
+import { type FrontendStatus, useStatusByFrontend } from '../../utils/common';
 import { usePersistedSidebarWidth } from '../../utils/persistedWidth';
+import styles from './styles.module.css';
 
 function Iframe({
   previewLink,
@@ -215,6 +215,7 @@ const PreviewFrame = ({ ctx }: PropTypes) => {
                     ) : (
                       frontends.map((frontend) => (
                         <FrontendGroup
+                          key={frontend.name}
                           frontend={frontend}
                           status={statusByFrontend[frontend.name]}
                           hideIfNoLinks

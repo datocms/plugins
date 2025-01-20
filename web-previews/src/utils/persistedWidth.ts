@@ -1,4 +1,4 @@
-import { Site } from 'datocms-plugin-sdk';
+import type { Site } from 'datocms-plugin-sdk';
 import { useEffect } from 'react';
 import { useWindowSize } from 'usehooks-ts';
 
@@ -21,6 +21,5 @@ export function usePersistedSidebarWidth(site: Site) {
 
   useEffect(() => {
     saveSidebarWidth(site, width);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [site.id, width]);
 }

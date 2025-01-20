@@ -5,17 +5,8 @@
   "version": "1.0.20",
   "author": "DatoCMS <support@datocms.com>",
   "license": "GPLv3",
-  "files": [
-    "docs",
-    "dist"
-  ],
-  "keywords": [
-    "datocms",
-    "datocms-plugin",
-    "sidebar",
-    "preview",
-    "links"
-  ],
+  "files": ["docs", "dist"],
+  "keywords": ["datocms", "datocms-plugin", "sidebar", "preview", "links"],
   "private": false,
   "datoCmsPlugin": {
     "title": "Web Previews",
@@ -41,13 +32,15 @@
     "build": "tsc -b && vite build",
     "prepublishOnly": "npm run build",
     "dev": "vite",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "format": "biome check --write --unsafe"
   },
   "devDependencies": {
+    "@biomejs/biome": "1.9.4",
     "@types/react": "^18.0.25",
     "@types/react-dom": "^18.0.9",
-    "cross-env": "^7.0.3",
     "@vitejs/plugin-react": "^4.3.1",
+    "cross-env": "^7.0.3",
     "globals": "^15.9.0",
     "typescript": "^5.5.3",
     "vite": "^5.4.1"

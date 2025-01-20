@@ -1,4 +1,4 @@
-import {
+import type {
   RenderItemFormSidebarCtx,
   RenderItemFormSidebarPanelCtx,
 } from 'datocms-plugin-sdk';
@@ -9,12 +9,12 @@ import {
   useDeepCompareMemo,
 } from 'use-deep-compare';
 import {
-  Frontend,
+  type Frontend,
+  type Parameters,
+  type PreviewLink,
+  type Response,
   isValidResponse,
   normalizeParameters,
-  Parameters,
-  PreviewLink,
-  Response,
 } from '../types';
 export type FrontendStatus = { previewLinks: PreviewLink[] } | { error: any };
 
@@ -30,7 +30,9 @@ export async function makeRequest(
     const url = new URL(previewWebhook);
 
     const headers = new Headers({ 'Content-Type': 'application/json' });
-    customHeaders?.forEach(({ name, value }) => headers.set(name, value));
+    for (const { name, value } of customHeaders) {
+      headers.set(name, value);
+    }
 
     const request = await fetch(url.toString(), {
       method: 'POST',

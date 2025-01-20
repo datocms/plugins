@@ -1,4 +1,5 @@
-import React, { StrictMode } from 'react';
+import type React from 'react';
+import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 const container = document.getElementById('root');
