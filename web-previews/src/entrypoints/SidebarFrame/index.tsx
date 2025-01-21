@@ -1,11 +1,11 @@
 import {
-  faArrowsRotate,
   faCaretDown,
   faCaretUp,
+  faEye,
+  faEyeSlash,
 } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
-import { faCopy } from '@fortawesome/free-solid-svg-icons';
+import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
 import {
   Canvas,
   Dropdown,
@@ -14,38 +14,52 @@ import {
   DropdownOption,
   Spinner,
 } from 'datocms-react-ui';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useDeepCompareEffect } from 'use-deep-compare';
 import {
-  Frontend,
+  type Frontend,
   normalizeParameters,
-  Parameters,
-  PreviewLink,
+  type Parameters,
+  type PreviewLink,
 } from '../../types';
-import { FrontendStatus, useStatusByFrontend } from '../../utils/common';
+import { type FrontendStatus, useStatusByFrontend } from '../../utils/common';
 import styles from './styles.module.css';
 import { usePersistedSidebarWidth } from '../../utils/persistedWidth';
+import { type Viewport, DEFAULT_VIEWPORTS } from '../../types/viewport';
+import { ViewportSelector } from '../../components/ViewportSelector';
+import { ViewportCustomizer } from '../../components/ViewportCustomizer';
+import { useIframeScaling } from '../../hooks/useIframeScaling';
+import { computeIframeStyles } from '../../utils/iframeStyles';
 
 function Iframe({
   previewLink,
   allow,
-}: { previewLink: PreviewLink; allow?: string }) {
+  viewport,
+}: {
+  previewLink: PreviewLink;
+  allow?: string;
+  viewport: Viewport;
+}) {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [iframeLoading, setIframeLoading] = useState(true);
+  const { scale } = useIframeScaling(viewport, containerRef);
+  const iframeStyle = computeIframeStyles(viewport, scale);
 
   return (
-    <div className={styles.frame}>
+    <div ref={containerRef} className={`${styles.frame} ${viewport.isFitToSidebar ? styles.frameFitToSidebar : ''}`}>
       {iframeLoading && (
         <div className={styles.progressBar}>
           <div className={styles.progressBarValue} />
         </div>
       )}
       <iframe
-        allow={allow}
-        title={previewLink.url}
+        ref={iframeRef}
         src={previewLink.url}
-        onLoad={() => {
-          setIframeLoading(false);
-        }}
+        title="Content preview"
+        allow={allow}
+        style={iframeStyle}
+        onLoad={() => setIframeLoading(false)}
       />
     </div>
   );
@@ -125,11 +139,25 @@ const FrontendPreviewLinks = ({
 
 const PreviewFrame = ({ ctx }: PropTypes) => {
   const [reloadCounter, setReloadCounter] = useState(0);
+  const [isOpen, setIsOpen] = useState(true);
+  const [currentViewport, setCurrentViewport] = useState<Viewport>(DEFAULT_VIEWPORTS[0]);
 
-  const forceReload = () => setReloadCounter((old) => old + 1);
+  const handleViewportChange = useCallback((viewport: Viewport) => {
+    setCurrentViewport(viewport);
+  }, []);
+
+  const handleDimensionChange = useCallback((dimension: number, type: 'width' | 'height') => {
+    setCurrentViewport(prev => ({
+      ...prev,
+      [type]: dimension,
+    }));
+  }, []);
 
   const [frontends, statusByFrontend] = useStatusByFrontend(ctx);
-  const [previewLink, setPreviewLink] = useState<PreviewLink | undefined>();
+  const [currentPreviewLink, setCurrentPreviewLink] = useState<
+    PreviewLink | undefined
+  >();
+
   const { iframeAllowAttribute } = normalizeParameters(
     ctx.plugin.attributes.parameters as Parameters,
   );
@@ -151,12 +179,12 @@ const PreviewFrame = ({ ctx }: PropTypes) => {
     });
 
     if (previewLinks.length > 0) {
-      setPreviewLink(previewLinks[0]);
+      setCurrentPreviewLink(previewLinks[0]);
     }
   }, [statusByFrontend]);
 
   useEffect(() => {
-    const reloadSettings = previewLink?.reloadPreviewOnRecordUpdate;
+    const reloadSettings = currentPreviewLink?.reloadPreviewOnRecordUpdate;
 
     if (!reloadSettings) {
       return;
@@ -164,11 +192,8 @@ const PreviewFrame = ({ ctx }: PropTypes) => {
 
     const delayInMs = reloadSettings === true ? 100 : reloadSettings.delayInMs;
 
-    setTimeout(forceReload, delayInMs);
-  }, [
-    ctx.item?.meta.current_version,
-    previewLink?.reloadPreviewOnRecordUpdate,
-  ]);
+    setTimeout(() => setReloadCounter((old) => old + 1), delayInMs);
+  }, [currentPreviewLink]);
 
   return (
     <Canvas ctx={ctx} noAutoResizer={true}>
@@ -176,6 +201,20 @@ const PreviewFrame = ({ ctx }: PropTypes) => {
         {statusByFrontend ? (
           <>
             <div className={styles.toolbar}>
+              <div className={styles.toolbarButtons}>
+                <button
+                  type="button"
+                  className={styles.toolbarTitle}
+                  onClick={() => setIsOpen((open) => !open)}
+                  title={isOpen ? "Hide preview" : "Show preview"}
+                >
+                  <FontAwesomeIcon icon={isOpen ? faEye : faEyeSlash} />
+                </button>
+                <ViewportSelector
+                  currentViewport={currentViewport}
+                  onViewportChange={handleViewportChange}
+                />
+              </div>
               <div className={styles.toolbarMain}>
                 <Dropdown
                   renderTrigger={({ open, onClick }) => (
@@ -184,14 +223,15 @@ const PreviewFrame = ({ ctx }: PropTypes) => {
                       onClick={onClick}
                       className={styles.toolbarTitle}
                     >
-                      {previewLink
-                        ? previewLink.label
-                        : 'Please select a preview...'}{' '}
-                      {open ? (
-                        <FontAwesomeIcon icon={faCaretUp} />
-                      ) : (
-                        <FontAwesomeIcon icon={faCaretDown} />
-                      )}
+                      <span className={styles.toolbarTitleText}>
+                        {currentPreviewLink
+                          ? currentPreviewLink.label
+                          : 'Please select a preview...'}
+                      </span>
+                      <FontAwesomeIcon
+                        icon={open ? faCaretUp : faCaretDown}
+                        className={styles.toolbarTitleIcon}
+                      />
                     </button>
                   )}
                 >
@@ -201,8 +241,8 @@ const PreviewFrame = ({ ctx }: PropTypes) => {
                     ) : frontends.length === 1 ? (
                       <FrontendPreviewLinks
                         status={Object.values(statusByFrontend)[0]}
-                        currentPreviewLink={previewLink}
-                        onSelectPreviewLink={setPreviewLink}
+                        currentPreviewLink={currentPreviewLink}
+                        onSelectPreviewLink={setCurrentPreviewLink}
                       />
                     ) : Object.values(statusByFrontend).every(
                         (status) =>
@@ -215,49 +255,35 @@ const PreviewFrame = ({ ctx }: PropTypes) => {
                     ) : (
                       frontends.map((frontend) => (
                         <FrontendGroup
+                          key={frontend.name}
                           frontend={frontend}
                           status={statusByFrontend[frontend.name]}
                           hideIfNoLinks
-                          currentPreviewLink={previewLink}
-                          onSelectPreviewLink={setPreviewLink}
+                          currentPreviewLink={currentPreviewLink}
+                          onSelectPreviewLink={setCurrentPreviewLink}
                         />
                       ))
                     )}
                   </DropdownMenu>
                 </Dropdown>
               </div>
-              {previewLink && (
-                <>
-                  <button
-                    type="button"
-                    className={styles.copy}
-                    title="Refresh the preview"
-                    onClick={() => {
-                      forceReload();
-                    }}
-                  >
-                    <FontAwesomeIcon icon={faArrowsRotate} />
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.copy}
-                    title="Copy URL to clipboard"
-                    onClick={() => {
-                      navigator.clipboard.writeText(previewLink.url);
-                      ctx.notice('URL saved in clipboard!');
-                    }}
-                  >
-                    <FontAwesomeIcon icon={faCopy} />
-                  </button>
-                </>
-              )}
             </div>
-            {previewLink && (
-              <Iframe
-                key={`${previewLink.url}-${reloadCounter}`}
-                previewLink={previewLink}
-                allow={iframeAllowAttribute}
-              />
+
+            {isOpen && currentPreviewLink && (
+              <>
+                {currentViewport.isCustom && (
+                  <ViewportCustomizer
+                    viewport={currentViewport}
+                    onDimensionChange={handleDimensionChange}
+                  />
+                )}
+                <Iframe
+                  key={`${currentPreviewLink.url}-${reloadCounter}`}
+                  previewLink={currentPreviewLink}
+                  viewport={currentViewport}
+                  allow={iframeAllowAttribute}
+                />
+              </>
             )}
           </>
         ) : (
