@@ -9,97 +9,44 @@
   border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: stretch;
+  min-height: 45px;
+  background-color: white;
 }
 
-.toolbarMain {
+.previewLinksWrapper {
   flex: 1;
   display: flex;
   align-items: stretch;
+  border-left: 1px solid var(--border-color);
+  overflow: hidden;
 }
 
-.toolbarMain > * {
+.previewLinksWrapper > * {
   flex: 1;
   display: flex;
   align-items: stretch;
+  overflow: hidden;
 }
 
-.toolbarTitle {
-  display: block;
-  width: 100%;
-  background: none;
-  color: inherit;
-  border: none;
-  font: inherit;
-  cursor: pointer;
-  outline: inherit;
-  padding: 10px 15px;
-  text-align: left;
-}
-
-.toolbarTitle svg {
-  margin-left: 10px;
-}
-
-.frame {
-  flex: 1;
-  position: relative;
-}
-
-.frame iframe {
-  position: absolute;
-  top: 0;
-  left: 0;
-  height: 100%;
-  width: 100%;
+.toolbarButton {
   border: 0;
-}
-
-.copy {
-  border: 0;
-  padding: 15px;
   margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: transparent;
   cursor: pointer;
   color: #666;
   border-left: 1px solid var(--border-color);
+  aspect-ratio: 1 / 1;
 }
 
-.copy:hover {
+.toolbarButton:hover {
   color: #444;
+  background-color: var(--light-bg-color);
 }
 
 .spinnerWrapper {
   flex: 1;
   background: var(--light-bg-color);
-}
-
-.progressBar {
-  position: absolute;
-  top: 0;
-  left: 0;
-  height: 4px;
-  background-color: var(--light-bg-color);
-  width: 100%;
-  overflow: hidden;
-  z-index: 2;
-}
-
-.progressBarValue {
-  width: 100%;
-  height: 100%;
-  background-color: var(--primary-color);
-  animation: indeterminateAnimation 1s infinite linear;
-  transform-origin: 0% 50%;
-}
-
-@keyframes indeterminateAnimation {
-  0% {
-    transform: translateX(0) scaleX(0);
-  }
-  40% {
-    transform: translateX(0) scaleX(0.4);
-  }
-  100% {
-    transform: translateX(100%) scaleX(0.5);
-  }
 }

@@ -41,3 +41,10 @@
   color: var(--alert-color);
   margin-bottom: var(--spacing-m);
 }
+
+.viewportGrid {
+  display: grid;
+  align-items: flex-start;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-m);
+}

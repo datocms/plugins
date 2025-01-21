@@ -1,10 +1,16 @@
-import { faPlus, faTrash } from '@fortawesome/free-solid-svg-icons';
+import { findIconDefinition } from '@fortawesome/fontawesome-svg-core';
+import {
+  type IconName,
+  faPlus,
+  faTrash,
+} from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import {
   Button,
   Canvas,
   FieldGroup,
+  FieldWrapper,
   Form,
   FormLabel,
   Section,
@@ -18,8 +24,10 @@ import {
   type Frontend,
   type NormalizedParameters,
   type Parameters,
+  type Viewport,
   normalizeParameters,
 } from '../../types';
+import { IconPickerInput } from './IconPickerInput';
 import s from './styles.module.css';
 
 type PropTypes = {
@@ -87,6 +95,37 @@ export default function ConfigScreen({ ctx }: PropTypes) {
             return ruleErrors;
           });
 
+          errors.defaultViewports = values.defaultViewports.map((rule) => {
+            const ruleErrors: Record<string, string> = {};
+
+            if (!rule.name) {
+              ruleErrors.name = 'Name required!';
+            }
+
+            if (!rule.width) {
+              ruleErrors.width = 'Width required!';
+            }
+
+            if (!rule.height) {
+              ruleErrors.height = 'Height required!';
+            }
+
+            if (!rule.icon) {
+              ruleErrors.icon = 'Icon required!';
+            }
+
+            const definition = findIconDefinition({
+              prefix: 'fas',
+              iconName: rule.icon,
+            });
+
+            if (!definition) {
+              ruleErrors.icon = 'Invalid icon!';
+            }
+
+            return ruleErrors;
+          });
+
           return errors;
         }}
         onSubmit={async (values) => {
@@ -103,7 +142,7 @@ export default function ConfigScreen({ ctx }: PropTypes) {
             >
               <p>
                 Please configure the different frontends that will return
-                preview links:
+                preview links.
               </p>
               <FieldArray<Frontend> name="frontends">
                 {({ fields }) => (
@@ -129,9 +168,23 @@ export default function ConfigScreen({ ctx }: PropTypes) {
                                 <TextField
                                   id={`frontend-${index}-previewWebhook`}
                                   required
-                                  label="Previews webhook URL"
+                                  label="Webhook URL"
                                   placeholder="https://yourwebsite.com/api/preview-links"
                                   error={error}
+                                  hint={
+                                    <>
+                                      Read more about the JSON output required
+                                      by Web Preview webhooks in the{' '}
+                                      <a
+                                        href="https://www.datocms.com/marketplace/plugins/i/datocms-plugin-web-previews#the-previews-webhook"
+                                        target="_blank"
+                                        rel="noreferrer"
+                                      >
+                                        README
+                                      </a>
+                                      .
+                                    </>
+                                  }
                                   {...input}
                                 />
                               )}
@@ -233,7 +286,7 @@ export default function ConfigScreen({ ctx }: PropTypes) {
                 )}
               </FieldArray>
             </Section>
-            <Section title="Web previews sidebar">
+            <Section title="Web Previews sidebar">
               <FieldGroup>
                 <Field name="defaultSidebarWidth">
                   {({ input, meta: { error } }) => (
@@ -277,7 +330,112 @@ export default function ConfigScreen({ ctx }: PropTypes) {
                 </Field>
               </FieldGroup>
             </Section>
-            <Section title="Web previews panel">
+            <Section
+              title="Custom viewports"
+              headerStyle={{ marginBottom: 'var(--spacing-m)' }}
+            >
+              <p>
+                Please configure the predefined list of viewports that will be
+                offered in the sidebar:
+              </p>
+
+              <FieldArray<Viewport> name="defaultViewports">
+                {({ fields }) => (
+                  <FieldGroup>
+                    {fields.map((name, index) => (
+                      <div key={name} className={s.group}>
+                        <div className={s.grid}>
+                          <FieldGroup>
+                            <div className={s.viewportGrid}>
+                              <div>
+                                <Field name={`${name}.name`}>
+                                  {({ input, meta: { error } }) => (
+                                    <TextField
+                                      id={`custom-viewport-${index}-name`}
+                                      label="Viewport name"
+                                      placeholder="Tablet"
+                                      required
+                                      error={error}
+                                      {...input}
+                                    />
+                                  )}
+                                </Field>
+                              </div>
+                              <div>
+                                <Field name={`${name}.icon`}>
+                                  {({ input, meta: { error } }) => (
+                                    <FieldWrapper
+                                      id={`custom-viewport-${index}-icon`}
+                                      label="Icon"
+                                      required
+                                      error={error}
+                                    >
+                                      <IconPickerInput
+                                        {...input}
+                                        error={error}
+                                      />
+                                    </FieldWrapper>
+                                  )}
+                                </Field>
+                              </div>
+                              <div>
+                                <Field name={`${name}.width`}>
+                                  {({ input, meta: { error } }) => (
+                                    <TextField
+                                      id={`custom-viewport-${index}-width`}
+                                      required
+                                      label="Viewport width (px)"
+                                      error={error}
+                                      {...input}
+                                    />
+                                  )}
+                                </Field>
+                              </div>
+                              <div>
+                                <Field name={`${name}.height`}>
+                                  {({ input, meta: { error } }) => (
+                                    <TextField
+                                      id={`custom-viewport-${index}-height`}
+                                      required
+                                      label="Viewport Height (px)"
+                                      error={error}
+                                      {...input}
+                                    />
+                                  )}
+                                </Field>
+                              </div>
+                            </div>
+                          </FieldGroup>
+                          <Button
+                            type="button"
+                            buttonType="negative"
+                            buttonSize="xxs"
+                            leftIcon={<FontAwesomeIcon icon={faTrash} />}
+                            onClick={() => fields.remove(index)}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                    <Button
+                      type="button"
+                      buttonSize="s"
+                      leftIcon={<FontAwesomeIcon icon={faPlus} />}
+                      onClick={() =>
+                        fields.push({
+                          name: '',
+                          width: 0,
+                          height: 0,
+                          icon: '' as IconName,
+                        })
+                      }
+                    >
+                      Add new viewport
+                    </Button>
+                  </FieldGroup>
+                )}
+              </FieldArray>
+            </Section>
+            <Section title="Web Previews panel">
               <FieldGroup>
                 <Field name="startOpen">
                   {({ input, meta: { error } }) => (

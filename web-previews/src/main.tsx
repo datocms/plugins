@@ -8,8 +8,12 @@ import SidebarFrame from './entrypoints/SidebarFrame';
 import SidebarPanel from './entrypoints/SidebarPanel';
 import { render } from './utils/render';
 import 'datocms-react-ui/styles.css';
+import { library } from '@fortawesome/fontawesome-svg-core';
+import { fas } from '@fortawesome/free-solid-svg-icons';
 import { type Parameters, normalizeParameters } from './types';
 import { readSidebarWidth } from './utils/persistedWidth';
+
+library.add(fas);
 
 connect({
   renderConfigScreen(ctx) {
@@ -44,8 +48,7 @@ connect({
       {
         id: 'webPreviews',
         label: 'Side-by-side web previews',
-        preferredWidth:
-          readSidebarWidth(ctx.site) || Number.parseInt(defaultSidebarWidth),
+        preferredWidth: readSidebarWidth(ctx.site) || defaultSidebarWidth,
       },
     ];
   },

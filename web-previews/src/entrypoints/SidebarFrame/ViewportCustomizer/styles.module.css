@@ -1,0 +1,34 @@
+.customViewportPill {
+  position: absolute;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  background: white;
+  border-radius: 20px;
+  padding: 6px 25px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-shadow:
+    0px 0px 2px rgba(0, 0, 0, 0.039),
+    0px 0px 4.9px rgba(0, 0, 0, 0.057), 0px 0px 9.3px rgba(0, 0, 0, 0.07),
+    0px 0px 16.5px rgba(0, 0, 0, 0.083), 0px 0px 30.9px rgba(0, 0, 0, 0.101),
+    0px 0px 74px rgba(0, 0, 0, 0.14);
+  color: var(--light-body-color);
+}
+
+.dimensionInput {
+  width: 60px;
+  padding: 4px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  font-size: 14px;
+  color: inherit;
+  text-align: center;
+}
+
+.dimensionInput:focus {
+  outline: none;
+  border-color: var(--accent-color);
+}
