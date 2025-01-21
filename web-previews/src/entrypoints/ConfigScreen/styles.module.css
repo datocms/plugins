@@ -45,6 +45,6 @@
 .viewportGrid {
   display: grid;
   align-items: flex-start;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
   gap: var(--spacing-m);
 }
