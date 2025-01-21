@@ -1,9 +1,10 @@
 import { useRef, useState } from 'react';
 import type { PreviewLink } from '../../../types';
-import type { SizingStrategy } from '../Iframe';
 import { computeIframeStyles } from './iframeStyles';
 import styles from './styles.module.css';
 import { useIframeScaling } from './useIframeScaling';
+
+export type SizingStrategy = { width: number; height: number } | 'responsive';
 
 export function Iframe({
   previewLink,
