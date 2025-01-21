@@ -7,7 +7,7 @@ type CustomHeader = {
   value: string;
 };
 
-export type Frontend = {
+export type RawFrontend = {
   name: string;
   previewWebhook: string;
   customHeaders?: CustomHeader[];
@@ -21,7 +21,7 @@ export type RawViewport = {
 };
 
 export type Parameters = {
-  frontends?: Frontend[];
+  frontends?: RawFrontend[];
   startOpen?: boolean;
   defaultSidebarWidth?: string;
   iframeAllowAttribute?: string;
@@ -33,6 +33,12 @@ export type Viewport = {
   width: number;
   height: number;
   icon: IconName;
+};
+
+export type Frontend = {
+  name: string;
+  previewWebhook: string;
+  customHeaders: CustomHeader[];
 };
 
 export type NormalizedParameters = {

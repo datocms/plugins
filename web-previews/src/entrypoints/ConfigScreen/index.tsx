@@ -79,6 +79,7 @@ export default function ConfigScreen({ ctx }: PropTypes) {
               }
 
               if (
+                rule.customHeaders &&
                 rule.customHeaders.filter((h) => h.name === header.name)
                   .length > 1
               ) {
@@ -191,7 +192,9 @@ export default function ConfigScreen({ ctx }: PropTypes) {
                             </Field>
                             <div>
                               <FormLabel htmlFor="">Custom Headers</FormLabel>
-                              <FieldArray<Frontend['customHeaders'][number]>
+                              <FieldArray<
+                                NonNullable<Frontend['customHeaders']>[number]
+                              >
                                 name={`${name}.customHeaders`}
                               >
                                 {({ fields }) => (
