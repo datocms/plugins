@@ -4,6 +4,10 @@
   align-items: stretch;
 }
 
+.root > * {
+  width: 45px;
+}
+
 .button {
   border: 0;
   margin: 0;
@@ -13,7 +17,7 @@
   background: transparent;
   cursor: pointer;
   color: #666;
-  aspect-ratio: 1 / 1;
+  width: 45px;
 }
 
 .button:hover {

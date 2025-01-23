@@ -38,7 +38,7 @@
   cursor: pointer;
   color: #666;
   border-left: 1px solid var(--border-color);
-  aspect-ratio: 1 / 1;
+  width: 45px;
 }
 
 .toolbarButton:hover {
