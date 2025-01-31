@@ -84,7 +84,11 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
     const delayInMs = reloadSettings === true ? 100 : reloadSettings.delayInMs;
 
     setTimeout(forceReload, delayInMs);
-  }, [currentPreviewLink, currentPreviewLink?.reloadPreviewOnRecordUpdate]);
+  }, [
+    ctx.item?.meta.current_version,
+    currentPreviewLink,
+    currentPreviewLink?.reloadPreviewOnRecordUpdate,
+  ]);
 
   return (
     <Canvas ctx={ctx} noAutoResizer={true}>
