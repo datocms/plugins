@@ -22,10 +22,25 @@ connect({
       width: 2000,
       parameters: { itemType },
     });
-
-    console.log('CHIUSO', result);
   },
   renderModal(_modalId, ctx) {
     return render(<ExportModal ctx={ctx} />);
+  },
+  settingsAreaSidebarItemGroups() {
+    return [
+      {
+        label: 'Import',
+        items: [
+          {
+            label: 'Import from JSON',
+            icon: 'file-import',
+            pointsTo: { pageId: 'import' },
+          },
+        ],
+      },
+    ];
+  },
+  renderPage(_id, ctx) {
+    return render(<ImportPage ctx={ctx} />);
   },
 });

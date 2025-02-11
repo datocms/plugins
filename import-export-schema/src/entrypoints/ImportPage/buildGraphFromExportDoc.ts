@@ -36,6 +36,8 @@ export function buildGraphFromExportDoc(exportDoc: ExportDoc): Graph {
         continue;
       }
 
+      processedNodes.add(itemTypeOrPlugin);
+
       if (itemTypeOrPlugin.type === 'item_type') {
         const itemType = itemTypeOrPlugin;
 
@@ -44,10 +46,8 @@ export function buildGraphFromExportDoc(exportDoc: ExportDoc): Graph {
 
         graph.nodes.push(buildItemTypeNode(itemType, fields, fieldsets));
 
-        processedNodes.add(itemType);
-
         const [edges, linkedItemTypeIds, linkedPluginIds] =
-          buildEdgesForItemType(itemType, fields);
+          buildEdgesForItemType(itemType, fields, schema.rootItemType);
 
         graph.edges.push(...edges);
 
@@ -65,9 +65,6 @@ export function buildGraphFromExportDoc(exportDoc: ExportDoc): Graph {
 
         // Add current node to graph
         graph.nodes.push(buildPluginNode(plugin));
-
-        // Mark as processed
-        processedNodes.add(plugin);
       }
     }
 

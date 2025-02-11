@@ -1,5 +1,5 @@
 import type { ItemTypeNode } from '@/components/ItemTypeNodeRenderer';
-import { PluginNode } from '@/components/PluginNodeRenderer';
+import type { PluginNode } from '@/components/PluginNodeRenderer';
 import type { ItemTypeManager } from '@/utils/itemTypeManager';
 import {
   type AppEdge,
@@ -47,6 +47,9 @@ export async function buildGraphFromSchema({
           return;
         }
 
+        // Mark as processed
+        processedNodes.add(itemTypeOrPlugin);
+
         if (itemTypeOrPlugin.type === 'item_type') {
           const itemType = itemTypeOrPlugin;
 
@@ -57,15 +60,12 @@ export async function buildGraphFromSchema({
           // Add current node to graph
           graph.nodes.push(buildItemTypeNode(itemType, fields, fieldsets));
 
-          // Mark as processed
-          processedNodes.add(itemType);
-
           if (!selectedItemTypeIds.includes(itemType.id)) {
             return;
           }
 
           const [edges, linkedItemTypeIds, linkedPluginIds] =
-            buildEdgesForItemType(itemType, fields);
+            buildEdgesForItemType(itemType, fields, initialItemType);
 
           graph.edges.push(...edges);
 
@@ -92,9 +92,6 @@ export async function buildGraphFromSchema({
 
           // Add current node to graph
           graph.nodes.push(buildPluginNode(plugin));
-
-          // Mark as processed
-          processedNodes.add(plugin);
         }
       }),
     );
@@ -105,12 +102,15 @@ export async function buildGraphFromSchema({
     }
   }
 
+  console.log(graph);
+
   return deterministicGraphSort(graph);
 }
 
 export function buildEdgesForItemType(
   itemType: SchemaTypes.ItemType,
   fields: SchemaTypes.Field[],
+  rootItemType: SchemaTypes.ItemType,
 ) {
   const edges: AppEdge[] = [];
   const linkedItemTypeIds = new Set<string>();
@@ -118,6 +118,10 @@ export function buildEdgesForItemType(
 
   for (const field of fields) {
     for (const linkedItemTypeId of findLinkedItemTypeIds(field)) {
+      if (linkedItemTypeId === rootItemType.id) {
+        continue;
+      }
+
       const id = `toItemType--${itemType.id}->${linkedItemTypeId}`;
       linkedItemTypeIds.add(linkedItemTypeId);
 

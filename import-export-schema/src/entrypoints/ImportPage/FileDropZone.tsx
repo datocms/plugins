@@ -1,6 +1,6 @@
 import type React from 'react';
 import { type ReactNode, useCallback, useState } from 'react';
-import { ExportDoc } from '../ExportModal/buildExportDoc';
+import type { ExportDoc } from '../ExportModal/buildExportDoc';
 
 type Props = {
   onJsonDrop: (exportDoc: ExportDoc) => void;

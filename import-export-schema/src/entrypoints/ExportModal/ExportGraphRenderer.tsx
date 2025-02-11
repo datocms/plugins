@@ -9,14 +9,14 @@ import {
 import '@xyflow/react/dist/style.css';
 import type { ItemTypeManager } from '@/utils/itemTypeManager';
 import { type AppNode, type Graph, edgeTypes, nodeTypes } from '@/utils/types';
+import type { RenderModalCtx } from 'datocms-plugin-sdk';
+import { Button, useCtx } from 'datocms-react-ui';
 import { without } from 'lodash-es';
 import { useCallback, useEffect, useState } from 'react';
 import { SelectedEntitiesContext } from './SelectedEntitiesContext';
 import { buildGraphFromSchema } from './buildGraphFromSchema';
 import { useAnimatedNodes } from './useAnimatedNodes';
 import { useExpandCollapse } from './useExpandCollapse';
-import { useCtx } from 'datocms-react-ui';
-import { RenderModalCtx } from 'datocms-plugin-sdk';
 
 type Props = {
   initialItemType: SchemaTypes.ItemType;
@@ -41,10 +41,6 @@ export default function ExportGraphRenderer({
   // biome-ignore lint/correctness/useExhaustiveDependencies: <explanation>
   useEffect(() => {
     async function run() {
-      if (!initialItemType) {
-        return;
-      }
-
       const graph = await buildGraphFromSchema({
         initialItemType,
         selectedItemTypeIds,
@@ -55,8 +51,7 @@ export default function ExportGraphRenderer({
     }
 
     run();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialItemType, selectedItemTypeIds.sort().join('-'), schema]);
+  }, [initialItemType.id, selectedItemTypeIds.sort().join('-'), schema]);
 
   const { nodes: visibleNodes, edges: visibleEdges } = useExpandCollapse(
     graph || { nodes: [], edges: [] },
@@ -118,12 +113,12 @@ export default function ExportGraphRenderer({
           <Background />
           <MiniMap />
           <Panel position="bottom-center">
-            <button
+            <Button
               type="button"
               onClick={() => onExport(selectedItemTypeIds, selectedPluginIds)}
             >
               Export {selectedItemTypeIds.length} elements
-            </button>
+            </Button>
           </Panel>
         </ReactFlow>
       </div>
