@@ -1,0 +1,206 @@
+svg {
+  display: block;
+}
+
+.export-wrapper,
+.dropzone {
+  height: 100vh;
+}
+
+.dropzone--pending {
+  opacity: 0.4;
+}
+
+.app-node {
+  display: flex;
+  width: 230px;
+  --color-components: 42, 157, 143;
+}
+
+.app-node__body {
+  margin: 0 auto;
+  max-width: 100%;
+  min-width: 120px;
+  box-sizing: border-box;
+  padding: 20px 15px 15px 15px;
+  border-radius: 5px;
+  text-wrap: nowrap;
+  overflow: hidden;
+  cursor: pointer;
+  border: 1px solid rgb(var(--color-components));
+  background: color-mix(in srgb, rgb(var(--color-components)), white 94%);
+
+  &:hover {
+    box-shadow: 0 0 0 3px transparent,
+      0 0 0 3px rgb(var(--color-components), 40%);
+  }
+
+  * {
+    text-overflow: ellipsis;
+    overflow: hidden;
+  }
+}
+
+.react-flow__handle-top {
+  top: -10px;
+}
+
+.app-node__type {
+  background: rgb(var(--color-components));
+  font-size: 11px;
+  color: white;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  top: 0;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  position: absolute;
+  border-radius: 5px;
+  padding: 3px 20px;
+  z-index: 100;
+}
+
+.app-node--block {
+  --color-components: 88, 42, 157;
+}
+
+.app-node--plugin {
+  --color-components: 19, 145, 15;
+}
+
+.app-node__name {
+  font-weight: bold;
+}
+
+.app-node__apikey {
+  font-size: 12px;
+}
+
+.app-node__icon {
+  width: 11px;
+  fill: white;
+}
+
+.is-not-selected {
+  opacity: 0.2;
+}
+
+.tooltip {
+  background: white;
+  padding: 20px;
+  border-radius: 10px;
+  /* http://smoothshadows.com/#djEsMSw2LDAuMTIsNzgsMCwwLCMwMzA3MTIsI2YzZjRmNiwjZmZmZmZmLDI%3D */
+  box-shadow: 0px 0px 2px rgba(3, 7, 18, 0.02), 0px 0px 9px rgba(3, 7, 18, 0.04),
+    0px 0px 20px rgba(3, 7, 18, 0.06), 0px 0px 35px rgba(3, 7, 18, 0.08),
+    0px 0px 54px rgba(3, 7, 18, 0.1), 0px 0px 78px rgba(3, 7, 18, 0.12);
+
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.fieldset {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 10px;
+  margin-top: 10px;
+}
+
+.fieldset__title {
+  font-weight: bold;
+  font-size: 15px;
+}
+
+.fieldset__fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-wrap: nowrap;
+}
+
+.field__icon {
+  flex: 0 0;
+  min-width: 24px;
+  min-height: 24px;
+  border-radius: 5px;
+  padding: 6px;
+}
+
+.field__body {
+  flex: 1;
+  overflow: hidden;
+
+  * {
+    text-overflow: ellipsis;
+    overflow: hidden;
+  }
+}
+
+.field__label {
+  font-weight: bold;
+}
+
+.field__type {
+  color: #666;
+}
+
+code {
+  color: #666;
+}
+
+.fieldEdge {
+  width: 30px;
+  height: 30px;
+  position: relative;
+  pointer-events: all;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  &:before {
+    display: block;
+    content: "";
+    width: 10px;
+    height: 10px;
+    border-radius: 100px;
+    background: #999;
+  }
+
+  .fieldEdge__tooltip {
+    display: none;
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  &:hover {
+    &:before {
+      background: #555;
+    }
+
+    .fieldEdge__tooltip {
+      display: block;
+    }
+  }
+
+  .field {
+    font-size: 10px;
+  }
+
+  .field__icon {
+    min-width: 16px;
+    min-height: 16px;
+    border-radius: 5px;
+    padding: 5px;
+  }
+}
