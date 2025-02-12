@@ -4,21 +4,21 @@ import {
   rebuildGraphWithPositionsFromHierarchy,
 } from '@/utils/types';
 import type { SchemaTypes } from '@datocms/cma-client';
-import { type ExportDoc, ExportSchema } from '../ExportModal/buildExportDoc';
+import { type ExportDoc, ExportSchema } from '../ExportPage/buildExportDoc';
 import {
   buildEdgesForItemType,
   buildItemTypeNode,
   buildPluginNode,
   deterministicGraphSort,
-} from '../ExportModal/buildGraphFromSchema';
+} from '../ExportPage/buildGraphFromSchema';
 
 type QueueItem = SchemaTypes.ItemType | SchemaTypes.Plugin;
 
 export function buildGraphFromExportDoc(exportDoc: ExportDoc): Graph {
-  const schema = new ExportSchema(exportDoc);
+  const exportSchema = new ExportSchema(exportDoc);
 
   const graph: Graph = { nodes: [], edges: [] };
-  const queue: QueueItem[][] = [[schema.rootItemType]];
+  const queue: QueueItem[][] = [[exportSchema.rootItemType]];
   const processedNodes = new Set<QueueItem>();
 
   // Process each level of the graph
@@ -41,23 +41,24 @@ export function buildGraphFromExportDoc(exportDoc: ExportDoc): Graph {
       if (itemTypeOrPlugin.type === 'item_type') {
         const itemType = itemTypeOrPlugin;
 
-        const fields = schema.findItemTypeFields(itemType);
-        const fieldsets = schema.findItemTypeFieldsets(itemType);
+        const fields = exportSchema.findItemTypeFields(itemType);
+        const fieldsets = exportSchema.findItemTypeFieldsets(itemType);
 
         graph.nodes.push(buildItemTypeNode(itemType, fields, fieldsets));
 
         const [edges, linkedItemTypeIds, linkedPluginIds] =
-          buildEdgesForItemType(itemType, fields, schema.rootItemType);
+          buildEdgesForItemType(itemType, fields, exportSchema.rootItemType);
 
         graph.edges.push(...edges);
 
         for (const linkedItemTypeId of linkedItemTypeIds) {
-          const linkedItemType = schema.itemTypesById.get(linkedItemTypeId)!;
+          const linkedItemType =
+            exportSchema.itemTypesById.get(linkedItemTypeId)!;
           nextLevelQueue.add(linkedItemType);
         }
 
         for (const linkedPluginId of linkedPluginIds) {
-          const linkedPlugin = schema.pluginsById.get(linkedPluginId)!;
+          const linkedPlugin = exportSchema.pluginsById.get(linkedPluginId)!;
           nextLevelQueue.add(linkedPlugin);
         }
       } else {

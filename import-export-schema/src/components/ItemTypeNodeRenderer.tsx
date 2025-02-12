@@ -1,3 +1,6 @@
+import { EntitiesToExportContext } from '@/entrypoints/ExportPage/EntitiesToExportContext';
+import { ConflictsContext } from '@/entrypoints/ImportPage/ConflictsContext';
+import { SelectedEntityContext } from '@/entrypoints/ImportPage/SelectedEntityContext';
 import { Schema } from '@/utils/icons';
 import type { SchemaTypes } from '@datocms/cma-client';
 import {
@@ -12,7 +15,6 @@ import {
 import { sortBy } from 'lodash-es';
 import { useContext, useState } from 'react';
 import { Field } from '../components/Field';
-import { SelectedEntitiesContext } from '../entrypoints/ExportModal/SelectedEntitiesContext';
 
 export type ItemTypeNode = Node<
   {
@@ -49,16 +51,20 @@ const zoomSelector = (s: ReactFlowState) => s.transform[2] >= 0.9;
 export function ItemTypeNodeRenderer({
   data: { itemType, fields, fieldsets },
 }: NodeProps<ItemTypeNode>) {
+  const entitiesToExport = useContext(EntitiesToExportContext);
+  const conflicts = useContext(ConflictsContext);
+  const selectedEntityContext = useContext(SelectedEntityContext);
+
   const [isTooltipVisible, setTooltipVisible] = useState(false);
-  const selectedEntities = useContext(SelectedEntitiesContext);
-  const selected = selectedEntities
-    ? selectedEntities.itemTypeIds.includes(itemType.id)
-    : true;
+
   const showDetails = useStore(zoomSelector);
+
+  const conflictingEntity = conflicts?.itemTypes[itemType.id];
 
   const TypeIconComponent = itemType.attributes.modular_block
     ? Schema.BlocksIcon
     : Schema.ModelsIcon;
+
   return (
     <>
       <Handle type="target" position={Position.Top} style={{ opacity: '0' }} />
@@ -90,7 +96,13 @@ export function ItemTypeNodeRenderer({
         )}
       </NodeToolbar>
       <div
-        className={`app-node ${itemType.attributes.modular_block ? 'app-node--block' : 'app-node--model'} ${selected ? 'is-selected' : 'is-not-selected'}`}
+        className={`
+          app-node
+          ${itemType.attributes.modular_block ? 'app-node--block' : 'app-node--model'}
+          ${conflictingEntity ? 'app-node--conflict' : ''}
+          ${entitiesToExport && !entitiesToExport.itemTypeIds.includes(itemType.id) ? 'app-node__excluded-from-export' : ''}
+          ${selectedEntityContext && selectedEntityContext.entity === itemType ? 'app-node__focused' : ''}
+        `}
         onMouseEnter={() => setTooltipVisible(true)}
         onMouseLeave={() => setTooltipVisible(false)}
       >

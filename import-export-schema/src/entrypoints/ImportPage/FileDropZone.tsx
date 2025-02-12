@@ -1,9 +1,9 @@
 import type React from 'react';
 import { type ReactNode, useCallback, useState } from 'react';
-import type { ExportDoc } from '../ExportModal/buildExportDoc';
+import type { ExportDoc } from '../ExportPage/buildExportDoc';
 
 type Props = {
-  onJsonDrop: (exportDoc: ExportDoc) => void;
+  onJsonDrop: (filename: string, exportDoc: ExportDoc) => void;
   children: ReactNode;
 };
 
@@ -56,7 +56,7 @@ export default function FileDropZone({ onJsonDrop, children }: Props) {
           }
 
           const json = JSON.parse(result) as ExportDoc;
-          onJsonDrop(json);
+          onJsonDrop(file.name, json);
         } catch (err) {
           console.error('Invalid JSON format');
         }

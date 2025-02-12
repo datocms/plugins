@@ -1,3 +1,6 @@
+import { EntitiesToExportContext } from '@/entrypoints/ExportPage/EntitiesToExportContext';
+import { ConflictsContext } from '@/entrypoints/ImportPage/ConflictsContext';
+import { SelectedEntityContext } from '@/entrypoints/ImportPage/SelectedEntityContext';
 import { Schema } from '@/utils/icons';
 import type { SchemaTypes } from '@datocms/cma-client';
 import {
@@ -9,7 +12,6 @@ import {
   useStore,
 } from '@xyflow/react';
 import { useContext } from 'react';
-import { SelectedEntitiesContext } from '../entrypoints/ExportModal/SelectedEntitiesContext';
 
 export type PluginNode = Node<
   {
@@ -23,17 +25,25 @@ const zoomSelector = (s: ReactFlowState) => s.transform[2] >= 0.9;
 export function PluginNodeRenderer({
   data: { plugin },
 }: NodeProps<PluginNode>) {
-  const selectedEntities = useContext(SelectedEntitiesContext);
-  const selected = selectedEntities
-    ? selectedEntities.pluginIds.includes(plugin.id)
-    : true;
+  const entitiesToExport = useContext(EntitiesToExportContext);
+  const conflicts = useContext(ConflictsContext);
+  const selectedEntityContext = useContext(SelectedEntityContext);
+
+  const conflictingEntity = conflicts?.plugins[plugin.id];
+
   const showDetails = useStore(zoomSelector);
 
   return (
     <>
       <Handle type="target" position={Position.Top} style={{ opacity: '0' }} />
       <div
-        className={`app-node app-node--plugin ${selected ? 'is-selected' : 'is-not-selected'}`}
+        className={`
+          app-node
+          app-node--plugin
+          ${conflictingEntity ? 'app-node--conflict' : ''}
+          ${entitiesToExport && !entitiesToExport.pluginIds.includes(plugin.id) ? 'app-node__excluded-from-export' : ''}
+          ${selectedEntityContext && selectedEntityContext.entity === plugin ? 'app-node__focused' : ''}
+        `}
       >
         {showDetails && (
           <div className="app-node__type">

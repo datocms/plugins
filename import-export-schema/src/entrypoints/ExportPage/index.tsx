@@ -2,20 +2,18 @@ import { downloadJSON } from '@/utils/downloadJson';
 import { ItemTypeManager } from '@/utils/itemTypeManager';
 import { type SchemaTypes, buildClient } from '@datocms/cma-client';
 import { ReactFlowProvider } from '@xyflow/react';
-import type { RenderModalCtx } from 'datocms-plugin-sdk';
-import { Canvas } from 'datocms-react-ui';
+import type { RenderPageCtx } from 'datocms-plugin-sdk';
+import { Canvas, Spinner } from 'datocms-react-ui';
 import { useEffect, useMemo, useState } from 'react';
 import ExportGraphRenderer from './ExportGraphRenderer';
 import buildExportDoc from './buildExportDoc';
 
 type Props = {
-  ctx: RenderModalCtx;
+  ctx: RenderPageCtx;
+  initialItemTypeId: string;
 };
 
-export default function ExportModal({ ctx }: Props) {
-  const initialItemTypeId = (ctx.parameters.itemType as SchemaTypes.ItemType)
-    .id;
-
+export default function ExportPage({ ctx, initialItemTypeId }: Props) {
   const [initialItemType, setInitialItemType] = useState<
     SchemaTypes.ItemType | undefined
   >();
@@ -42,12 +40,14 @@ export default function ExportModal({ ctx }: Props) {
     downloadJSON(exportDoc, { fileName: 'export.json', prettify: true });
   }
 
-  useEffect(() => {
-    ctx.setHeight(600);
-  }, []);
-
   if (!initialItemType) {
-    return null;
+    return (
+      <div className="page">
+        <div className="page__content">
+          <Spinner />
+        </div>
+      </div>
+    );
   }
 
   return (

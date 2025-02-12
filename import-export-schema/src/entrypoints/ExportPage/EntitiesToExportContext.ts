@@ -1,5 +1,5 @@
 import { createContext } from 'react';
 
-export const SelectedEntitiesContext = createContext<
+export const EntitiesToExportContext = createContext<
   undefined | { itemTypeIds: string[]; pluginIds: string[] }
 >(undefined);

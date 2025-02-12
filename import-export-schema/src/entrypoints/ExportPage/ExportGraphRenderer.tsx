@@ -9,11 +9,13 @@ import {
 import '@xyflow/react/dist/style.css';
 import type { ItemTypeManager } from '@/utils/itemTypeManager';
 import { type AppNode, type Graph, edgeTypes, nodeTypes } from '@/utils/types';
-import type { RenderModalCtx } from 'datocms-plugin-sdk';
+import { faXmark } from '@fortawesome/free-solid-svg-icons';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import { Button, useCtx } from 'datocms-react-ui';
 import { without } from 'lodash-es';
 import { useCallback, useEffect, useState } from 'react';
-import { SelectedEntitiesContext } from './SelectedEntitiesContext';
+import { EntitiesToExportContext } from './EntitiesToExportContext';
 import { buildGraphFromSchema } from './buildGraphFromSchema';
 import { useAnimatedNodes } from './useAnimatedNodes';
 import { useExpandCollapse } from './useExpandCollapse';
@@ -29,7 +31,8 @@ export default function ExportGraphRenderer({
   schema,
   onExport,
 }: Props) {
-  const ctx = useCtx<RenderModalCtx>();
+  const ctx = useCtx<RenderPageCtx>();
+
   const [graph, setGraph] = useState<Graph | undefined>();
 
   const [selectedItemTypeIds, setSelectedItemTypeIds] = useState<string[]>([
@@ -51,7 +54,7 @@ export default function ExportGraphRenderer({
     }
 
     run();
-  }, [initialItemType.id, selectedItemTypeIds.sort().join('-'), schema]);
+  }, [initialItemType, selectedItemTypeIds.sort().join('-'), schema]);
 
   const { nodes: visibleNodes, edges: visibleEdges } = useExpandCollapse(
     graph || { nodes: [], edges: [] },
@@ -92,36 +95,62 @@ export default function ExportGraphRenderer({
   }
 
   return (
-    <SelectedEntitiesContext.Provider
-      value={{ itemTypeIds: selectedItemTypeIds, pluginIds: selectedPluginIds }}
-    >
-      <div className="export-wrapper">
-        <ReactFlow
-          style={{ position: 'absolute' }}
-          fitView={true}
-          nodes={animatedNodes}
-          edges={visibleEdges}
-          onNodeClick={onNodeClick}
-          nodesDraggable={false}
-          nodesConnectable={false}
-          zoomOnDoubleClick={false}
-          elementsSelectable={false}
-          nodeTypes={nodeTypes}
-          edgeTypes={edgeTypes}
-          proOptions={{ hideAttribution: true }}
-        >
-          <Background />
-          <MiniMap />
-          <Panel position="bottom-center">
-            <Button
-              type="button"
-              onClick={() => onExport(selectedItemTypeIds, selectedPluginIds)}
-            >
-              Export {selectedItemTypeIds.length} elements
-            </Button>
-          </Panel>
-        </ReactFlow>
+    <div className="page">
+      <div className="page__toolbar">
+        <div className="page__toolbar__title">
+          Export {initialItemType.attributes.name}
+        </div>
+        <div className="page__toolbar__actions">
+          <Button
+            leftIcon={<FontAwesomeIcon icon={faXmark} />}
+            buttonSize="s"
+            onClick={() =>
+              ctx.navigateTo(
+                `${ctx.isEnvironmentPrimary ? '' : `/environments/${ctx.environment}`}/configuration/p/${ctx.plugin.id}/pages/import-export`,
+              )
+            }
+          >
+            Close
+          </Button>
+        </div>
       </div>
-    </SelectedEntitiesContext.Provider>
+      <div className="page__content">
+        <div className="export-wrapper">
+          <EntitiesToExportContext.Provider
+            value={{
+              itemTypeIds: selectedItemTypeIds,
+              pluginIds: selectedPluginIds,
+            }}
+          >
+            <ReactFlow
+              style={{ position: 'absolute' }}
+              fitView={true}
+              nodes={animatedNodes}
+              edges={visibleEdges}
+              onNodeClick={onNodeClick}
+              nodesDraggable={false}
+              nodesConnectable={false}
+              zoomOnDoubleClick={false}
+              elementsSelectable={false}
+              nodeTypes={nodeTypes}
+              edgeTypes={edgeTypes}
+              proOptions={{ hideAttribution: true }}
+            >
+              <Background />
+              <Panel position="bottom-center">
+                <Button
+                  type="button"
+                  onClick={() =>
+                    onExport(selectedItemTypeIds, selectedPluginIds)
+                  }
+                >
+                  Export {selectedItemTypeIds.length} elements
+                </Button>
+              </Panel>
+            </ReactFlow>
+          </EntitiesToExportContext.Provider>
+        </div>
+      </div>
+    </div>
   );
 }
