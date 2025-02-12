@@ -41,8 +41,8 @@ export function buildGraphFromExportDoc(exportDoc: ExportDoc): Graph {
       if (itemTypeOrPlugin.type === 'item_type') {
         const itemType = itemTypeOrPlugin;
 
-        const fields = exportSchema.findItemTypeFields(itemType);
-        const fieldsets = exportSchema.findItemTypeFieldsets(itemType);
+        const fields = exportSchema.getItemTypeFields(itemType);
+        const fieldsets = exportSchema.getItemTypeFieldsets(itemType);
 
         graph.nodes.push(buildItemTypeNode(itemType, fields, fieldsets));
 

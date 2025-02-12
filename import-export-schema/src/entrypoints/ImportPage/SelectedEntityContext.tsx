@@ -5,6 +5,7 @@ type Context = {
   entity: undefined | SchemaTypes.ItemType | SchemaTypes.Plugin;
   set: (
     newEntity: undefined | SchemaTypes.ItemType | SchemaTypes.Plugin,
+    zoomIn?: boolean,
   ) => void;
 };
 

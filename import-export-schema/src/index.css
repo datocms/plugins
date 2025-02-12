@@ -44,8 +44,8 @@ body {
   background: color-mix(in srgb, rgb(var(--color-components)), white 94%);
 
   &:hover {
-    box-shadow: 0 0 0 3px transparent,
-      0 0 0 3px rgb(var(--color-components), 40%);
+    box-shadow: 0 0 0 3px transparent, 0 0 0 3px
+      rgb(var(--color-components), 40%);
   }
 
   * {
@@ -112,7 +112,8 @@ body {
   padding: 20px;
   border-radius: 10px;
   /* http://smoothshadows.com/#djEsMSw2LDAuMTIsNzgsMCwwLCMwMzA3MTIsI2YzZjRmNiwjZmZmZmZmLDI%3D */
-  box-shadow: 0px 0px 2px rgba(3, 7, 18, 0.02), 0px 0px 9px rgba(3, 7, 18, 0.04),
+  box-shadow:
+    0px 0px 2px rgba(3, 7, 18, 0.02), 0px 0px 9px rgba(3, 7, 18, 0.04),
     0px 0px 20px rgba(3, 7, 18, 0.06), 0px 0px 35px rgba(3, 7, 18, 0.08),
     0px 0px 54px rgba(3, 7, 18, 0.1), 0px 0px 78px rgba(3, 7, 18, 0.12);
 
@@ -249,9 +250,6 @@ code {
   flex: 1;
 }
 
-.page__toolbar__actions {
-}
-
 .page__content {
   flex: 1;
   position: relative;
@@ -292,4 +290,19 @@ code {
   width: 400px;
   border-left: 1px solid var(--border-left);
   overflow: auto;
+  position: relative;
+}
+
+.conflict {
+  border-bottom: 1px solid var(--border-color);
+  padding: var(--spacing-l);
+
+  &:hover,
+  &.conflict--selected {
+    background: var(--light-color);
+  }
+}
+
+.conflict__title {
+  font-weight: bold;
 }

@@ -91,7 +91,17 @@ export class ExportSchema {
     return Array.from(this.pluginsById.values());
   }
 
-  findItemTypeFields(itemType: SchemaTypes.ItemType) {
+  getItemTypeById(itemTypeId: string) {
+    const itemType = this.itemTypesById.get(itemTypeId);
+
+    if (!itemType) {
+      throw new Error('Not existing');
+    }
+
+    return itemType;
+  }
+
+  getItemTypeFields(itemType: SchemaTypes.ItemType) {
     return (
       get(itemType, 'relationships.fields.data', []) as Array<{ id: string }>
     )
@@ -100,7 +110,7 @@ export class ExportSchema {
       .filter(isDefined);
   }
 
-  findItemTypeFieldsets(itemType: SchemaTypes.ItemType) {
+  getItemTypeFieldsets(itemType: SchemaTypes.ItemType) {
     return (
       get(itemType, 'relationships.fieldsets.data', []) as Array<{
         id: string;
