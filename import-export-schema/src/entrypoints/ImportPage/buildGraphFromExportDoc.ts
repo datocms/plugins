@@ -14,7 +14,11 @@ import {
 
 type QueueItem = SchemaTypes.ItemType | SchemaTypes.Plugin;
 
-export function buildGraphFromExportDoc(exportDoc: ExportDoc): Graph {
+export function buildGraphFromExportDoc(
+  exportDoc: ExportDoc,
+  itemTypeIdsToSkip: string[],
+  pluginIdsToSkip: string[],
+): Graph {
   const exportSchema = new ExportSchema(exportDoc);
 
   const graph: Graph = { nodes: [], edges: [] };
@@ -46,6 +50,10 @@ export function buildGraphFromExportDoc(exportDoc: ExportDoc): Graph {
 
         graph.nodes.push(buildItemTypeNode(itemType, fields, fieldsets));
 
+        if (itemTypeIdsToSkip.includes(itemType.id)) {
+          continue;
+        }
+
         const [edges, linkedItemTypeIds, linkedPluginIds] =
           buildEdgesForItemType(itemType, fields, exportSchema.rootItemType);
 
@@ -59,6 +67,10 @@ export function buildGraphFromExportDoc(exportDoc: ExportDoc): Graph {
 
         for (const linkedPluginId of linkedPluginIds) {
           const linkedPlugin = exportSchema.pluginsById.get(linkedPluginId)!;
+
+          if (pluginIdsToSkip.includes(linkedPlugin.id)) {
+            continue;
+          }
           nextLevelQueue.add(linkedPlugin);
         }
       } else {

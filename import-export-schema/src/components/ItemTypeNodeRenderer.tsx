@@ -12,8 +12,10 @@ import {
   type ReactFlowState,
   useStore,
 } from '@xyflow/react';
-import { sortBy } from 'lodash-es';
+import classNames from 'classnames';
+import { get, sortBy } from 'lodash-es';
 import { useContext, useState } from 'react';
+import { useFormState } from 'react-final-form';
 import { Field } from '../components/Field';
 
 export type ItemTypeNode = Node<
@@ -54,12 +56,30 @@ export function ItemTypeNodeRenderer({
   const entitiesToExport = useContext(EntitiesToExportContext);
   const conflicts = useContext(ConflictsContext);
   const selectedEntityContext = useContext(SelectedEntityContext);
+  const formState = conflicts ? useFormState() : undefined;
 
   const [isTooltipVisible, setTooltipVisible] = useState(false);
 
   const showDetails = useStore(zoomSelector);
 
-  const conflictingEntity = conflicts?.itemTypes[itemType.id];
+  const unresolvedConflict =
+    conflicts?.itemTypes[itemType.id] &&
+    get(formState?.errors, `itemType-${itemType.id}`);
+
+  const resolutionStrategyIsReuseExisting =
+    get(formState?.values, `itemType-${itemType.id}.strategy`) ===
+    'reuseExisting';
+
+  const resolutionStrategyIsRename =
+    get(formState?.values, `itemType-${itemType.id}.strategy`) === 'rename';
+
+  const resolutionNewName =
+    resolutionStrategyIsRename &&
+    get(formState?.values, `itemType-${itemType.id}.name`);
+
+  const resolutionNewApiKey =
+    resolutionStrategyIsRename &&
+    get(formState?.values, `itemType-${itemType.id}.apiKey`);
 
   const TypeIconComponent = itemType.attributes.modular_block
     ? Schema.BlocksIcon
@@ -96,13 +116,21 @@ export function ItemTypeNodeRenderer({
         )}
       </NodeToolbar>
       <div
-        className={`
-          app-node
-          ${itemType.attributes.modular_block ? 'app-node--block' : 'app-node--model'}
-          ${conflictingEntity ? 'app-node--conflict' : ''}
-          ${entitiesToExport && !entitiesToExport.itemTypeIds.includes(itemType.id) ? 'app-node__excluded-from-export' : ''}
-          ${selectedEntityContext && selectedEntityContext.entity === itemType ? 'app-node__focused' : ''}
-        `}
+        className={classNames(
+          'app-node',
+          itemType.attributes.modular_block
+            ? 'app-node--block'
+            : 'app-node--model',
+          unresolvedConflict ? 'app-node--conflict' : '',
+          entitiesToExport &&
+            !entitiesToExport.itemTypeIds.includes(itemType.id)
+            ? 'app-node__excluded-from-export'
+            : '',
+          resolutionStrategyIsReuseExisting && 'app-node__excluded-from-export',
+          selectedEntityContext && selectedEntityContext.entity === itemType
+            ? 'app-node__focused'
+            : '',
+        )}
         onMouseEnter={() => setTooltipVisible(true)}
         onMouseLeave={() => setTooltipVisible(false)}
       >
@@ -115,10 +143,12 @@ export function ItemTypeNodeRenderer({
           </div>
         )}
         <div className="app-node__body">
-          <div className="app-node__name">{itemType.attributes.name}</div>
+          <div className="app-node__name">
+            {resolutionNewName || itemType.attributes.name}
+          </div>
           {showDetails && (
             <div className="app-node__apikey">
-              <code>{itemType.attributes.api_key}</code>
+              <code>{resolutionNewApiKey || itemType.attributes.api_key}</code>
             </div>
           )}
         </div>

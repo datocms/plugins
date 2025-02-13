@@ -7,13 +7,18 @@ import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import { Button, Canvas } from 'datocms-react-ui';
 import { useEffect, useMemo, useState } from 'react';
 import type { ExportDoc } from '../ExportPage/buildExportDoc';
+import { ConflictsContext } from './ConflictsContext';
 import FileDropZone from './FileDropZone';
 import { Inner } from './Inner';
+import ResolutionsForm from './ResolutionsForm';
 import buildConflicts, { type Conflicts } from './buildConflicts';
-import { buildGraphFromExportDoc } from './buildGraphFromExportDoc';
 type Props = {
   ctx: RenderPageCtx;
 };
+
+// ExportDoc + Schema -> Conflicts
+// Conflicts -> Resolutions
+// ExportDoc + Resolutions -> Graph
 
 export function ImportPage({ ctx }: Props) {
   const [exportDoc, setExportDoc] = useState<[string, ExportDoc] | undefined>();
@@ -43,14 +48,6 @@ export function ImportPage({ ctx }: Props) {
     run();
   }, [exportDoc, schema]);
 
-  const graph = useMemo(() => {
-    if (!exportDoc) {
-      return undefined;
-    }
-
-    return buildGraphFromExportDoc(exportDoc[1]);
-  }, [exportDoc]);
-
   return (
     <Canvas ctx={ctx}>
       <ReactFlowProvider>
@@ -79,12 +76,12 @@ export function ImportPage({ ctx }: Props) {
           </div>
           <div className="page__content">
             <FileDropZone onJsonDrop={handleImport}>
-              {graph && conflicts && exportDoc ? (
-                <Inner
-                  graph={graph}
-                  conflicts={conflicts}
-                  exportDoc={exportDoc[1]}
-                />
+              {conflicts && exportDoc ? (
+                <ConflictsContext.Provider value={conflicts}>
+                  <ResolutionsForm schema={schema} onSubmit={() => {}}>
+                    <Inner exportDoc={exportDoc[1]} />
+                  </ResolutionsForm>
+                </ConflictsContext.Provider>
               ) : (
                 <div className="blank-slate">
                   <div className="blank-slate__content">

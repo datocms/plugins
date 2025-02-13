@@ -1,7 +1,10 @@
+import { Button } from 'datocms-react-ui';
 import { useContext } from 'react';
-import { type ExportDoc, ExportSchema } from '../ExportPage/buildExportDoc';
-import { ConflictsContext } from './ConflictsContext';
+import { useFormState } from 'react-final-form';
+import { type ExportDoc, ExportSchema } from '../../ExportPage/buildExportDoc';
+import { ConflictsContext } from '../ConflictsContext';
 import { ItemTypeConflict } from './ItemTypeConflict';
+import { PluginConflict } from './PluginConflict';
 
 type Props = {
   exportDoc: ExportDoc;
@@ -10,6 +13,7 @@ type Props = {
 export default function ConflictsManager({ exportDoc }: Props) {
   const exportSchema = new ExportSchema(exportDoc);
   const conflicts = useContext(ConflictsContext);
+  const { submitting, dirty } = useFormState();
 
   if (!conflicts) {
     return null;
@@ -35,6 +39,29 @@ export default function ConflictsManager({ exportDoc }: Props) {
             );
           },
         )}
+        {Object.entries(conflicts.plugins).map(
+          ([exportPluginId, projectPlugin]) => {
+            const exportPlugin = exportSchema.getPluginById(exportPluginId);
+
+            return (
+              <PluginConflict
+                key={exportPluginId}
+                exportPlugin={exportPlugin}
+                projectPlugin={projectPlugin}
+              />
+            );
+          },
+        )}
+
+        <Button
+          type="submit"
+          fullWidth
+          buttonSize="m"
+          buttonType="primary"
+          disabled={submitting || !dirty}
+        >
+          Save settings
+        </Button>
       </div>
     </div>
   );

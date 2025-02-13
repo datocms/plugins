@@ -11,7 +11,10 @@ import {
   type ReactFlowState,
   useStore,
 } from '@xyflow/react';
+import classNames from 'classnames';
+import { get } from 'lodash-es';
 import { useContext } from 'react';
+import { useFormState } from 'react-final-form';
 
 export type PluginNode = Node<
   {
@@ -28,8 +31,14 @@ export function PluginNodeRenderer({
   const entitiesToExport = useContext(EntitiesToExportContext);
   const conflicts = useContext(ConflictsContext);
   const selectedEntityContext = useContext(SelectedEntityContext);
+  const formState = conflicts ? useFormState() : undefined;
 
-  const conflictingEntity = conflicts?.plugins[plugin.id];
+  const unresolvedConflict =
+    conflicts?.plugins[plugin.id] &&
+    get(formState?.errors, `plugin-${plugin.id}`);
+
+  const resolutionStrategyIsReuseExisting =
+    get(formState?.values, `plugin-${plugin.id}.strategy`) === 'reuseExisting';
 
   const showDetails = useStore(zoomSelector);
 
@@ -37,13 +46,18 @@ export function PluginNodeRenderer({
     <>
       <Handle type="target" position={Position.Top} style={{ opacity: '0' }} />
       <div
-        className={`
-          app-node
-          app-node--plugin
-          ${conflictingEntity ? 'app-node--conflict' : ''}
-          ${entitiesToExport && !entitiesToExport.pluginIds.includes(plugin.id) ? 'app-node__excluded-from-export' : ''}
-          ${selectedEntityContext && selectedEntityContext.entity === plugin ? 'app-node__focused' : ''}
-        `}
+        className={classNames(
+          'app-node',
+          'app-node--plugin',
+          unresolvedConflict ? 'app-node--conflict' : '',
+          entitiesToExport && !entitiesToExport.pluginIds.includes(plugin.id)
+            ? 'app-node__excluded-from-export'
+            : '',
+          resolutionStrategyIsReuseExisting && 'app-node__excluded-from-export',
+          selectedEntityContext && selectedEntityContext.entity === plugin
+            ? 'app-node__focused'
+            : '',
+        )}
       >
         {showDetails && (
           <div className="app-node__type">

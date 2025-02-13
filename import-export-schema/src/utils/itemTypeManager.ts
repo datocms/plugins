@@ -8,6 +8,7 @@ export class ItemTypeManager {
   private pluginsById: Map<string, SchemaTypes.Plugin> = new Map();
   private itemTypesByApiKey: Map<string, SchemaTypes.ItemType> = new Map();
   private itemTypesById: Map<string, SchemaTypes.ItemType> = new Map();
+  private itemTypesByName: Map<string, SchemaTypes.ItemType> = new Map();
   private fieldsByItemType: Map<string, SchemaTypes.Field[]> = new Map();
   private fieldsetsByItemType: Map<string, SchemaTypes.Fieldset[]> = new Map();
   private alreadyFetchedRelatedFields: Map<string, true> = new Map();
@@ -25,6 +26,7 @@ export class ItemTypeManager {
         for (const itemType of itemTypes) {
           this.itemTypesByApiKey.set(itemType.attributes.api_key, itemType);
           this.itemTypesById.set(itemType.id, itemType);
+          this.itemTypesByName.set(itemType.attributes.name, itemType);
         }
 
         return itemTypes;
@@ -77,6 +79,17 @@ export class ItemTypeManager {
     const itemType = this.itemTypesByApiKey.get(apiKey);
     if (!itemType) {
       throw new Error(`Item type with API key '${apiKey}' not found`);
+    }
+
+    return itemType;
+  }
+
+  async getItemTypeByName(name: string): Promise<SchemaTypes.ItemType> {
+    await this.loadItemTypes();
+
+    const itemType = this.itemTypesByName.get(name);
+    if (!itemType) {
+      throw new Error(`Item type with API key '${name}' not found`);
     }
 
     return itemType;

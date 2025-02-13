@@ -23,6 +23,7 @@ export default async function buildConflicts(
 
   const projectPlugins = await projectSchema.getAllPlugins();
   const projectPluginsByName = keyBy(projectPlugins, 'attributes.name');
+  const projectPluginsByUrl = keyBy(projectPlugins, 'attributes.url');
 
   const conflicts: Conflicts = { plugins: {}, itemTypes: {} };
 
@@ -37,7 +38,9 @@ export default async function buildConflicts(
   }
 
   for (const plugin of exportSchema.plugins) {
-    const conflictingPlugin = projectPluginsByName[plugin.attributes.name];
+    const conflictingPlugin =
+      projectPluginsByUrl[plugin.attributes.url] ||
+      projectPluginsByName[plugin.attributes.name];
 
     if (conflictingPlugin) {
       conflicts.plugins[plugin.id] = conflictingPlugin;

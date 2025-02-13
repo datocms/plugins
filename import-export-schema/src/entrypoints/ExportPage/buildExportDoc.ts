@@ -59,8 +59,11 @@ export class ExportSchema {
     const targetItemTypeIds = new Set<string>();
 
     for (const field of this.fields) {
+      const itemTypeId = field.relationships.item_type.data.id;
       for (const linkedItemTypeId of findLinkedItemTypeIds(field)) {
-        targetItemTypeIds.add(linkedItemTypeId);
+        if (linkedItemTypeId !== itemTypeId) {
+          targetItemTypeIds.add(linkedItemTypeId);
+        }
       }
     }
 
@@ -99,6 +102,16 @@ export class ExportSchema {
     }
 
     return itemType;
+  }
+
+  getPluginById(pluginId: string) {
+    const plugin = this.pluginsById.get(pluginId);
+
+    if (!plugin) {
+      throw new Error('Not existing');
+    }
+
+    return plugin;
   }
 
   getItemTypeFields(itemType: SchemaTypes.ItemType) {
