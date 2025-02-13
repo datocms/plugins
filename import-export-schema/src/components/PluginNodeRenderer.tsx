@@ -37,8 +37,9 @@ export function PluginNodeRenderer({
     conflicts?.plugins[plugin.id] &&
     get(formState?.errors, `plugin-${plugin.id}`);
 
-  const resolutionStrategyIsReuseExisting =
-    get(formState?.values, `plugin-${plugin.id}.strategy`) === 'reuseExisting';
+  const resolvedConflict =
+    conflicts?.plugins[plugin.id] &&
+    !get(formState?.errors, `plugin-${plugin.id}`);
 
   const showDetails = useStore(zoomSelector);
 
@@ -53,7 +54,7 @@ export function PluginNodeRenderer({
           entitiesToExport && !entitiesToExport.pluginIds.includes(plugin.id)
             ? 'app-node__excluded-from-export'
             : '',
-          resolutionStrategyIsReuseExisting && 'app-node__excluded-from-export',
+          resolvedConflict && 'app-node__excluded-from-export',
           selectedEntityContext && selectedEntityContext.entity === plugin
             ? 'app-node__focused'
             : '',

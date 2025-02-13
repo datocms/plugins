@@ -1,4 +1,4 @@
-import { Button } from 'datocms-react-ui';
+import { Button, Toolbar, ToolbarStack, ToolbarTitle } from 'datocms-react-ui';
 import { useContext } from 'react';
 import { useFormState } from 'react-final-form';
 import { type ExportDoc, ExportSchema } from '../../ExportPage/buildExportDoc';
@@ -25,9 +25,12 @@ export default function ConflictsManager({ exportDoc }: Props) {
 
   return (
     <div className="page">
-      <div className="page__toolbar">
-        <div className="page__toolbar__title">Import conflicts</div>
-      </div>
+      <Toolbar className="page__toolbar">
+        <ToolbarStack>
+          <ToolbarTitle>Import conflicts</ToolbarTitle>
+          <div style={{ flex: '1' }} />
+        </ToolbarStack>
+      </Toolbar>
       <div className="page__content">
         <div className="conflicts-manager__actions">
           {noPotentialConflicts ? (

@@ -6,6 +6,7 @@ import {
   ReactFlow,
   useReactFlow,
 } from '@xyflow/react';
+import { VerticalSplit } from 'datocms-react-ui';
 import { get } from 'lodash-es';
 import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useFormState } from 'react-final-form';
@@ -14,7 +15,6 @@ import { ConflictsContext } from './ConflictsContext';
 import ConflictsManager from './ConflictsManager';
 import { SelectedEntityContext } from './SelectedEntityContext';
 import { buildGraphFromExportDoc } from './buildGraphFromExportDoc';
-import { VerticalSplit } from 'datocms-react-ui';
 
 type Props = {
   exportDoc: ExportDoc;

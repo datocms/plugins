@@ -4,7 +4,14 @@ import { faXmark } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { ReactFlowProvider } from '@xyflow/react';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
-import { Button, Canvas, Spinner } from 'datocms-react-ui';
+import {
+  Button,
+  Canvas,
+  Spinner,
+  Toolbar,
+  ToolbarStack,
+  ToolbarTitle,
+} from 'datocms-react-ui';
 import { useEffect, useMemo, useState } from 'react';
 import type { ExportDoc } from '../ExportPage/buildExportDoc';
 import { ConflictsContext } from './ConflictsContext';
@@ -52,26 +59,28 @@ export function ImportPage({ ctx }: Props) {
     <Canvas ctx={ctx}>
       <ReactFlowProvider>
         <div className="page">
-          <div className="page__toolbar">
-            {exportDoc ? (
-              <>
-                <div className="page__toolbar__title">
-                  📄 Import "{exportDoc[0]}"
-                </div>
-                <div className="page__toolbar__actions">
-                  <Button
-                    leftIcon={<FontAwesomeIcon icon={faXmark} />}
-                    buttonSize="s"
-                    onClick={() => setExportDoc(undefined)}
-                  >
-                    Close
-                  </Button>
-                </div>
-              </>
-            ) : (
-              <div className="page__toolbar__title">Schema Import/Export</div>
-            )}
-          </div>
+          {exportDoc ? (
+            <Toolbar className="page__toolbar">
+              <ToolbarStack stackSize="l">
+                <ToolbarTitle>📄 Import "{exportDoc[0]}"</ToolbarTitle>
+                <div style={{ flex: '1' }} />
+                <Button
+                  leftIcon={<FontAwesomeIcon icon={faXmark} />}
+                  buttonSize="s"
+                  onClick={() => setExportDoc(undefined)}
+                >
+                  Close
+                </Button>
+              </ToolbarStack>
+            </Toolbar>
+          ) : (
+            <Toolbar className="page__toolbar">
+              <ToolbarStack stackSize="l">
+                <ToolbarTitle>Schema Import/Export</ToolbarTitle>
+                <div style={{ flex: '1' }} />
+              </ToolbarStack>
+            </Toolbar>
+          )}
           <div className="page__content">
             <FileDropZone onJsonDrop={handleImport}>
               {exportDoc ? (

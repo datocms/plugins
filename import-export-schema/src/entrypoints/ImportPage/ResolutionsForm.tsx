@@ -1,9 +1,9 @@
+import type { ItemTypeManager } from '@/utils/itemTypeManager';
+import { useReactFlow } from '@xyflow/react';
 import { get, keyBy, set } from 'lodash-es';
 import { type ReactNode, useContext, useMemo } from 'react';
 import { Form as FormHandler } from 'react-final-form';
 import { ConflictsContext } from './ConflictsContext';
-import { ItemTypeManager } from '@/utils/itemTypeManager';
-import { useReactFlow } from '@xyflow/react';
 
 type ItemTypeConflictResolution = {
   strategy: 'rename' | 'reuseExisting' | null;

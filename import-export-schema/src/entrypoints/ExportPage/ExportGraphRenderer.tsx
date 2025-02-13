@@ -9,10 +9,16 @@ import {
 import '@xyflow/react/dist/style.css';
 import type { ItemTypeManager } from '@/utils/itemTypeManager';
 import { type AppNode, type Graph, edgeTypes, nodeTypes } from '@/utils/types';
-import { faXmark, faFileExport } from '@fortawesome/free-solid-svg-icons';
+import { faFileExport, faXmark } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
-import { Button, useCtx } from 'datocms-react-ui';
+import {
+  Button,
+  Toolbar,
+  ToolbarStack,
+  ToolbarTitle,
+  useCtx,
+} from 'datocms-react-ui';
 import { without } from 'lodash-es';
 import { useCallback, useEffect, useState } from 'react';
 import { EntitiesToExportContext } from './EntitiesToExportContext';
@@ -41,7 +47,6 @@ export default function ExportGraphRenderer({
 
   const [selectedPluginIds, setSelectedPluginIds] = useState<string[]>([]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: <explanation>
   useEffect(() => {
     async function run() {
       const graph = await buildGraphFromSchema({
@@ -96,11 +101,10 @@ export default function ExportGraphRenderer({
 
   return (
     <div className="page">
-      <div className="page__toolbar">
-        <div className="page__toolbar__title">
-          Export {initialItemType.attributes.name}
-        </div>
-        <div className="page__toolbar__actions">
+      <Toolbar className="page__toolbar">
+        <ToolbarStack stackSize="l">
+          <ToolbarTitle>Export {initialItemType.attributes.name}</ToolbarTitle>
+          <div style={{ flex: '1' }} />
           <Button
             leftIcon={<FontAwesomeIcon icon={faXmark} />}
             buttonSize="s"
@@ -112,8 +116,8 @@ export default function ExportGraphRenderer({
           >
             Close
           </Button>
-        </div>
-      </div>
+        </ToolbarStack>
+      </Toolbar>
       <div className="page__content">
         <div className="export-wrapper">
           <EntitiesToExportContext.Provider

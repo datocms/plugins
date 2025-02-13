@@ -68,9 +68,6 @@ export function buildGraphFromExportDoc(
         for (const linkedPluginId of linkedPluginIds) {
           const linkedPlugin = exportSchema.pluginsById.get(linkedPluginId)!;
 
-          if (pluginIdsToSkip.includes(linkedPlugin.id)) {
-            continue;
-          }
           nextLevelQueue.add(linkedPlugin);
         }
       } else {
