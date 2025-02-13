@@ -7,22 +7,27 @@ import {
   useReactFlow,
 } from '@xyflow/react';
 import { get } from 'lodash-es';
-import { useCallback, useContext, useMemo, useState } from 'react';
+import { useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { useFormState } from 'react-final-form';
 import type { ExportDoc } from '../ExportPage/buildExportDoc';
 import { ConflictsContext } from './ConflictsContext';
 import ConflictsManager from './ConflictsManager';
 import { SelectedEntityContext } from './SelectedEntityContext';
 import { buildGraphFromExportDoc } from './buildGraphFromExportDoc';
+import { VerticalSplit } from 'datocms-react-ui';
 
 type Props = {
   exportDoc: ExportDoc;
 };
 
 export function Inner({ exportDoc }: Props) {
-  const { fitBounds } = useReactFlow();
+  const { fitBounds, fitView } = useReactFlow();
   const conflicts = useContext(ConflictsContext)!;
   const formState = useFormState();
+
+  useEffect(() => {
+    setTimeout(() => fitView(), 100);
+  }, []);
 
   const skippedItemTypeIds = useMemo(
     () =>
@@ -74,17 +79,22 @@ export function Inner({ exportDoc }: Props) {
   ) {
     setSelectedEntity(newEntity);
 
-    if (zoomIn && newEntity) {
-      const node = graph.nodes.find((node) =>
-        newEntity.type === 'plugin'
-          ? node.type === 'plugin' && node.data.plugin.id === newEntity.id
-          : node.type === 'itemType' && node.data.itemType.id === newEntity.id,
-      )!;
+    if (zoomIn) {
+      if (newEntity) {
+        const node = graph.nodes.find((node) =>
+          newEntity.type === 'plugin'
+            ? node.type === 'plugin' && node.data.plugin.id === newEntity.id
+            : node.type === 'itemType' &&
+              node.data.itemType.id === newEntity.id,
+        )!;
 
-      fitBounds(
-        { x: node.position.x, y: node.position.y, width: 200, height: 200 },
-        { duration: 800, padding: 1 },
-      );
+        fitBounds(
+          { x: node.position.x, y: node.position.y, width: 200, height: 200 },
+          { duration: 800, padding: 1 },
+        );
+      } else {
+        fitView({ duration: 800 });
+      }
     }
   }
 
@@ -92,7 +102,7 @@ export function Inner({ exportDoc }: Props) {
     <SelectedEntityContext.Provider
       value={{ entity: selectedEntity, set: handleSelectEntity }}
     >
-      <div className="import">
+      <VerticalSplit primaryPane="left" size="25%" minSize={300}>
         <div className="import__graph">
           <ReactFlow
             fitView={true}
@@ -114,7 +124,7 @@ export function Inner({ exportDoc }: Props) {
         <div className="import__details">
           <ConflictsManager exportDoc={exportDoc} />
         </div>
-      </div>
+      </VerticalSplit>
     </SelectedEntityContext.Provider>
   );
 }

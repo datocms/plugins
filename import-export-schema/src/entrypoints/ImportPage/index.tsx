@@ -4,7 +4,7 @@ import { faXmark } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { ReactFlowProvider } from '@xyflow/react';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
-import { Button, Canvas } from 'datocms-react-ui';
+import { Button, Canvas, Spinner } from 'datocms-react-ui';
 import { useEffect, useMemo, useState } from 'react';
 import type { ExportDoc } from '../ExportPage/buildExportDoc';
 import { ConflictsContext } from './ConflictsContext';
@@ -56,7 +56,7 @@ export function ImportPage({ ctx }: Props) {
             {exportDoc ? (
               <>
                 <div className="page__toolbar__title">
-                  Import "{exportDoc[0]}"
+                  📄 Import "{exportDoc[0]}"
                 </div>
                 <div className="page__toolbar__actions">
                   <Button
@@ -69,23 +69,31 @@ export function ImportPage({ ctx }: Props) {
                 </div>
               </>
             ) : (
-              <div className="page__toolbar__title">
-                Import schema from JSON
-              </div>
+              <div className="page__toolbar__title">Schema Import/Export</div>
             )}
           </div>
           <div className="page__content">
             <FileDropZone onJsonDrop={handleImport}>
-              {conflicts && exportDoc ? (
-                <ConflictsContext.Provider value={conflicts}>
-                  <ResolutionsForm schema={schema} onSubmit={() => {}}>
-                    <Inner exportDoc={exportDoc[1]} />
-                  </ResolutionsForm>
-                </ConflictsContext.Provider>
+              {exportDoc ? (
+                conflicts ? (
+                  <ConflictsContext.Provider value={conflicts}>
+                    <ResolutionsForm schema={schema} onSubmit={() => {}}>
+                      <Inner exportDoc={exportDoc[1]} />
+                    </ResolutionsForm>
+                  </ConflictsContext.Provider>
+                ) : (
+                  <Spinner placement="centered" size={60} />
+                )
               ) : (
                 <div className="blank-slate">
-                  <div className="blank-slate__content">
-                    Please drop an export JSON file
+                  <div className="blank-slate__body">
+                    <div className="blank-slate__body__title">
+                      Please drop an export JSON file
+                    </div>
+                    <div className="blank-slate__body__content">
+                      To generate an export, navigate to one of your
+                      models/blocks and select the "Export as JSON" option.
+                    </div>
                   </div>
                 </div>
               )}

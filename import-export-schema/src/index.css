@@ -17,7 +17,17 @@ body {
 }
 
 .dropzone--pending {
-  opacity: 0.4;
+  &:before {
+    content: "";
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    width: calc(100% - 40px);
+    height: calc(100% - 40px);
+    box-sizing: border-box;
+    border-radius: 20px;
+    border: 4px dashed var(--accent-color);
+  }
 }
 
 .app-node {
@@ -237,6 +247,8 @@ code {
   padding: var(--spacing-m) var(--spacing-l);
   display: flex;
   align-items: center;
+  min-height: 70px;
+  box-sizing: border-box;
 }
 
 .page__toolbar__title {
@@ -248,6 +260,7 @@ code {
 .page__content {
   flex: 1;
   position: relative;
+  overflow: auto;
 }
 
 .blank-slate {
@@ -259,33 +272,37 @@ code {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--light-bg-color);
 }
 
-.blank-slate__content {
-  font-size: var(--font-size-xl);
+.blank-slate__body {
+  border: 1px solid var(--border-color);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  border-radius: 4px;
+  max-width: 600px;
+  padding: var(--spacing-xxl);
 }
 
-.import {
-  display: flex;
+.blank-slate__body__title {
+  font-size: var(--font-size-xxxl);
+  letter-spacing: -0.05em;
+  line-height: 1.1;
+  font-weight: bold;
+  margin-bottom: var(--spacing-l);
+}
+
+.import__graph,
+.import__details {
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 100%;
-  overflow: hidden;
-}
-
-.import__graph {
-  position: relative;
-  flex: 1;
+  overflow: auto;
 }
 
 .import__details {
-  width: 400px;
   border-left: 1px solid var(--border-color);
-  overflow: auto;
-  position: relative;
+  box-sizing: border-box;
 }
 
 .conflict {
@@ -295,12 +312,27 @@ code {
     border-top: 8px solid var(--border-color);
     border-bottom: 8px solid var(--border-color);
   }
+
+  &:first-child {
+    border-top: 1px solid var(--border-color);
+  }
 }
 
 .conflict__title {
   font-weight: bold;
   padding: var(--spacing-m) var(--spacing-l);
   cursor: pointer;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+
+  svg {
+    color: var(--base-body-color);
+  }
+
+  &:hover {
+    background: var(--light-bg-color);
+  }
 
   .conflict--selected & {
     border-bottom: 1px solid var(--border-color);
@@ -317,4 +349,27 @@ code {
 
 .form__item {
   margin-top: var(--spacing-m);
+}
+
+.conflicts-manager__actions {
+  padding: var(--spacing-l);
+}
+
+.conflicts-manager__actions__reassurance {
+  text-align: center;
+  color: var(--light-body-color);
+  font-size: var(--font-size-s);
+  line-height: 1;
+}
+
+.no-text-wrap {
+  text-wrap: nowrap;
+}
+
+form {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
 }

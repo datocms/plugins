@@ -9,7 +9,7 @@ import {
 import '@xyflow/react/dist/style.css';
 import type { ItemTypeManager } from '@/utils/itemTypeManager';
 import { type AppNode, type Graph, edgeTypes, nodeTypes } from '@/utils/types';
-import { faXmark } from '@fortawesome/free-solid-svg-icons';
+import { faXmark, faFileExport } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import { Button, useCtx } from 'datocms-react-ui';
@@ -140,11 +140,14 @@ export default function ExportGraphRenderer({
               <Panel position="bottom-center">
                 <Button
                   type="button"
+                  buttonSize="xl"
+                  buttonType="primary"
+                  leftIcon={<FontAwesomeIcon icon={faFileExport} />}
                   onClick={() =>
                     onExport(selectedItemTypeIds, selectedPluginIds)
                   }
                 >
-                  Export {selectedItemTypeIds.length} elements
+                  Export {selectedItemTypeIds.length} elements as JSON
                 </Button>
               </Panel>
             </ReactFlow>

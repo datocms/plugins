@@ -23,7 +23,7 @@ export type PluginNode = Node<
   'plugin'
 >;
 
-const zoomSelector = (s: ReactFlowState) => s.transform[2] >= 0.9;
+const zoomSelector = (s: ReactFlowState) => s.transform[2] >= 0.8;
 
 export function PluginNodeRenderer({
   data: { plugin },

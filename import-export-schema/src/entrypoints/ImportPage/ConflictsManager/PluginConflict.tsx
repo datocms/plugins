@@ -33,12 +33,16 @@ export function PluginConflict({ exportPlugin, projectPlugin }: Props) {
 
   useEffect(() => {
     if (isSelected) {
-      elRef.current?.scrollIntoView();
+      elRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   }, [isSelected]);
 
   function handleSelect() {
-    selectedEntityContext?.set(exportPlugin, true);
+    if (selectedEntityContext?.entity === exportPlugin) {
+      selectedEntityContext?.set(undefined, true);
+    } else {
+      selectedEntityContext?.set(exportPlugin, true);
+    }
   }
 
   if (!node) {
@@ -54,7 +58,7 @@ export function PluginConflict({ exportPlugin, projectPlugin }: Props) {
       title={exportPlugin.attributes.name}
     >
       <p>
-        The project already has a plugin{' '}
+        The project already has the plugin{' '}
         <strong>{projectPlugin.attributes.name}</strong>.
       </p>
       <Field name={`${fieldPrefix}.strategy`}>
@@ -62,7 +66,7 @@ export function PluginConflict({ exportPlugin, projectPlugin }: Props) {
           <SelectField<Option, false, GroupBase<Option>>
             {...input}
             id="fieldTypes"
-            label="To solve this conflict:"
+            label="To resolve this conflict:"
             selectInputProps={{
               options,
             }}

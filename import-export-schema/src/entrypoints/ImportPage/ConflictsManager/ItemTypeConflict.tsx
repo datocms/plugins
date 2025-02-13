@@ -26,18 +26,30 @@ export function ItemTypeConflict({ exportItemType, projectItemType }: Props) {
 
   const isSelected = selectedEntityContext?.entity === exportItemType;
 
-  const type = exportItemType.attributes.modular_block ? 'block' : 'model';
+  const exportType = exportItemType.attributes.modular_block
+    ? 'block'
+    : 'model';
+  const projectType = projectItemType.attributes.modular_block
+    ? 'block'
+    : 'model';
+
   const options: Option[] = [
-    {
-      label: `Reuse the existing ${type}`,
-      value: 'reuseExisting',
-    },
-    { label: `Import ${type} using a different name`, value: 'rename' },
+    { label: `Import ${exportType} using a different name`, value: 'rename' },
   ];
+
+  if (
+    exportItemType.attributes.modular_block ===
+    projectItemType.attributes.modular_block
+  ) {
+    options.push({
+      label: `Reuse the existing ${exportType}`,
+      value: 'reuseExisting',
+    });
+  }
 
   useEffect(() => {
     if (isSelected) {
-      elRef.current?.scrollIntoView();
+      elRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
   }, [isSelected]);
 
@@ -62,16 +74,18 @@ export function ItemTypeConflict({ exportItemType, projectItemType }: Props) {
       title={exportItemType.attributes.name}
     >
       <p>
-        The project already has a {type} called{' '}
-        <strong>{projectItemType.attributes.name}</strong> (
-        <code>{projectItemType.attributes.api_key}</code>).
+        The project already has a {projectType} called{' '}
+        <span className="no-text-wrap">
+          <strong>{projectItemType.attributes.name}</strong>
+        </span>{' '}
+        (<code>{projectItemType.attributes.api_key}</code>).
       </p>
       <Field name={`${fieldPrefix}.strategy`}>
         {({ input, meta: { error } }) => (
           <SelectField<Option, false, GroupBase<Option>>
             {...input}
             id="fieldTypes"
-            label="To solve this conflict:"
+            label="To resolve this conflict:"
             selectInputProps={{
               options,
             }}

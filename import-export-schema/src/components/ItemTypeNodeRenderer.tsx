@@ -48,7 +48,7 @@ function Fieldset({
   );
 }
 
-const zoomSelector = (s: ReactFlowState) => s.transform[2] >= 0.9;
+const zoomSelector = (s: ReactFlowState) => s.transform[2] >= 0.8;
 
 export function ItemTypeNodeRenderer({
   data: { itemType, fields, fieldsets },

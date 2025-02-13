@@ -38,13 +38,17 @@ export default function ExportPage({ ctx, initialItemTypeId }: Props) {
   async function handleExport(itemTypeIds: string[], pluginIds: string[]) {
     const exportDoc = await buildExportDoc(schema, itemTypeIds, pluginIds);
     downloadJSON(exportDoc, { fileName: 'export.json', prettify: true });
+    ctx.notice('Export completed with success!');
+    ctx.navigateTo(
+      `${ctx.isEnvironmentPrimary ? '' : `/environments/${ctx.environment}`}/configuration/p/${ctx.plugin.id}/pages/import-export`,
+    );
   }
 
   if (!initialItemType) {
     return (
       <div className="page">
         <div className="page__content">
-          <Spinner />
+          <Spinner size={60} placement="centered" />
         </div>
       </div>
     );

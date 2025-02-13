@@ -24,10 +24,10 @@ connect({
   settingsAreaSidebarItemGroups() {
     return [
       {
-        label: 'Import',
+        label: 'Schema',
         items: [
           {
-            label: 'JSON Import/Export',
+            label: 'Import/Export',
             icon: 'file-import',
             pointsTo: { pageId: 'import-export' },
           },
