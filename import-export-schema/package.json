@@ -1,0 +1,63 @@
+{
+  "name": "datocms-plugin-schema-import-export",
+  "description": "Export a project schema subset as a JSON, and then import it somewhere else",
+  "homepage": "https://github.com/datocms/plugins",
+  "private": false,
+  "version": "0.1.0",
+  "author": "Stefano Verna <s.verna@datocms.com>",
+  "type": "module",
+  "keywords": [
+    "datocms-plugin"
+  ],
+  "datoCmsPlugin": {
+    "title": "Schema Import/Export",
+    "coverImage": "docs/cover.png",
+    "previewImage": "docs/preview.mp4",
+    "entryPoint": "dist/index.html",
+    "permissions": [
+      "currentUserAccessToken"
+    ]
+  },
+  "files": [
+    "dist",
+    "docs"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "prepublishOnly": "npm run build",
+    "format": "npx @biomejs/biome check --unsafe --write ."
+  },
+  "dependencies": {
+    "@datocms/cma-client": "^3.4.3",
+    "@datocms/rest-api-events": "^3.4.3",
+    "@fortawesome/fontawesome-svg-core": "^6.7.2",
+    "@fortawesome/free-solid-svg-icons": "^6.7.2",
+    "@fortawesome/react-fontawesome": "^0.2.2",
+    "@types/d3-hierarchy": "^3.1.7",
+    "@xyflow/react": "^12.3.6",
+    "classnames": "^2.5.1",
+    "d3-hierarchy": "^3.1.2",
+    "d3-timer": "^3.0.1",
+    "datocms-plugin-sdk": "^2.0.13",
+    "datocms-react-ui": "^2.0.13",
+    "final-form": "^4.20.10",
+    "lodash-es": "^4.17.21",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-final-form": "^6.5.9",
+    "ts-easing": "^0.2.0"
+  },
+  "devDependencies": {
+    "@types/d3-timer": "^3.0.2",
+    "@types/node": "^22.13.1",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "globals": "^15.9.0",
+    "typescript": "^5.5.3",
+    "vite": "^5.4.1",
+    "vite-plugin-svgr": "^4.3.0"
+  }
+}
