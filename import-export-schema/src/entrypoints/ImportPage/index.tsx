@@ -67,6 +67,8 @@ export function ImportPage({ ctx }: Props) {
     }
 
     try {
+      setImportProgress({ finished: 0, total: 1 });
+
       const importDoc = await buildImportDoc(
         exportDoc[1],
         conflicts,
