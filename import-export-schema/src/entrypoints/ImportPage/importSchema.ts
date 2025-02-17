@@ -193,6 +193,51 @@ export default async function importSchema(
     ),
   );
 
+  // Finalize new item types
+
+  const relationshipsToUpdate = [
+    'ordering_field',
+    'title_field',
+    'image_preview_field',
+    'excerpt_field',
+  ] as const;
+
+  await Promise.all(
+    importDoc.itemTypes.entitiesToCreate.map(
+      track(async (toCreate) => {
+        const id = itemTypeIdMappings.get(toCreate.entity.id)!;
+
+        const data: SchemaTypes.ItemTypeUpdateSchema['data'] = {
+          type: 'item_type',
+          id,
+          relationships: relationshipsToUpdate.reduce(
+            (acc, relationshipName) => {
+              const handle =
+                toCreate.entity.relationships[relationshipName].data;
+
+              return {
+                ...acc,
+                [relationshipName]: {
+                  data: handle
+                    ? {
+                        type: 'field',
+                        id: fieldIdMappings.get(handle.id)!,
+                      }
+                    : undefined,
+                },
+              };
+            },
+            {} as NonNullable<
+              SchemaTypes.ItemTypeUpdateSchema['data']['relationships']
+            >,
+          ),
+        };
+
+        await client.itemTypes.rawUpdate(id, { data });
+      }),
+    ),
+  );
+
   // Reorder fields and fieldsets
   await Promise.all(
     importDoc.itemTypes.entitiesToCreate.map(
