@@ -74,10 +74,11 @@ If you have built alternative endpoint implementations for other frameworks/SSGs
 
 We suggest you look at the code of our [official Next.js Starter Kit](https://github.com/datocms/nextjs-starter-kit):
 
-* Route handler called returning the preview links: [`app/api/preview-links/route.tsx`](https://github.com/datocms/nextjs-starter-kit/blob/main/src/app/api/preview-links/route.tsx)
-* Route handlers to toggle Next.js [Draft Mode](https://www.datocms.com/docs/next-js/setting-up-next-js-draft-mode): [`app/api/draft-mode/enable/route.tsx`](https://github.com/datocms/nextjs-starter-kit/blob/main/src/app/api/draft-mode/enable/route.tsx) and [`app/api/draft-mode/disable/route.tsx`](https://github.com/datocms/nextjs-starter-kit/blob/main/src/app/api/draft-mode/disable/route.tsx)
+- Route handler called returning the preview links: [`app/api/preview-links/route.tsx`](https://github.com/datocms/nextjs-starter-kit/blob/main/src/app/api/preview-links/route.tsx)
+- Route handlers to toggle Next.js [Draft Mode](https://www.datocms.com/docs/next-js/setting-up-next-js-draft-mode): [`app/api/draft-mode/enable/route.tsx`](https://github.com/datocms/nextjs-starter-kit/blob/main/src/app/api/draft-mode/enable/route.tsx) and [`app/api/draft-mode/disable/route.tsx`](https://github.com/datocms/nextjs-starter-kit/blob/main/src/app/api/draft-mode/disable/route.tsx)
 
 ##### Lightweight Authentication
+
 In our Next.js starter kit, the preview link URLs also include a `token` query parameter that the plugin would send to the webhook receiver, like `https://www.mywebsite.com/api/preview-links?token=some-secret-ish-string`. The `token` is a string of your choice that just has to match in both the plugin settings and [in your frontend's environment variables](https://github.com/datocms/nextjs-starter-kit/blob/main/src/app/api/preview-links/route.tsx#L31-L34). While not encryption, this token is an easy way to limit access to your preview content.
 
 #### Nuxt 3
@@ -94,11 +95,11 @@ If you deploy on a provider that supports edge functions, Nuxt 3 applications ca
 // into a canonical URL within the website
 const generatePreviewUrl = ({ item, itemType, locale }) => {
   switch (itemType.attributes.api_key) {
-    case 'landing_page':
+    case "landing_page":
       return `/landing-pages/${item.attributes.slug}`;
-    case 'blog_post':
+    case "blog_post":
       // blog posts are localized:
-      const localePrefix = locale === 'en' ? '' : `/${locale}`;
+      const localePrefix = locale === "en" ? "" : `/${locale}`;
       return `${localePrefix}/blog/${item.attributes.slug[locale]}`;
     default:
       return null;
@@ -106,29 +107,29 @@ const generatePreviewUrl = ({ item, itemType, locale }) => {
 };
 
 export default eventHandler(async (event) => {
-  // In this method, we'll make good use of the utility methods that 
+  // In this method, we'll make good use of the utility methods that
   // H3 make available: they all take the `event` as first parameter.
   // For more info, see: https://github.com/unjs/h3#utilities
 
   // Setup content-type and CORS permissions.
   setResponseHeaders(event, {
-    'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization', // add any other headers you need
-  })
+    "Content-Type": "application/json",
+    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Methods": "POST",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization", // add any other headers you need
+  });
 
   // This will allow OPTIONS request
-  if (event.req.method === 'OPTIONS') {
-    return send(event, 'ok')
+  if (event.req.method === "OPTIONS") {
+    return send(event, "ok");
   }
 
   // Actually generate the URL using the info that DatoCMS is sending.
-  const url = generatePreviewUrl(await readBody(event))
+  const url = generatePreviewUrl(await readBody(event));
 
   // No URL? No problem: let's send back no link.
   if (!url) {
-    return { previewLinks: [] }
+    return { previewLinks: [] };
   }
 
   // Let's guess the base URL using environment variables:
@@ -138,20 +139,20 @@ export default eventHandler(async (event) => {
     ? // Vercel auto-populates this environment variable
       `https://${process.env.VERCEL_BRANCH_URL}`
     : // Netlify auto-populates this environment variable
-      process.env.URL
+      process.env.URL;
 
   // Here is the list of links we're returnig to DatoCMS and that
   // will be made available in the sidebar of the record editing page.
   const previewLinks = [
     // Public URL:
     {
-      label: 'Published version',
+      label: "Published version",
       url: `${baseUrl}${url}`,
     },
-  ]
+  ];
 
-  return { previewLinks }
-})
+  return { previewLinks };
+});
 ```
 
 #### SvelteKit 2
@@ -161,17 +162,17 @@ Below here, you'll find a similar example, adapted for SvelteKit. For the purpos
 Create a `+server.ts` file under `src/routes/api/preview-links/` with following contents:
 
 ```js
-import { json } from '@sveltejs/kit';
+import { json } from "@sveltejs/kit";
 
 const generatePreviewUrl = ({ item, itemType, locale }: any) => {
   switch (itemType.attributes.api_key) {
-    case 'landing_page':
+    case "landing_page":
       return `/landing-pages/${item.attributes.slug}`;
-    case 'blog_post':
+    case "blog_post":
       // blog posts are localized:
-      const localePrefix = locale === 'en' ? '' : `/${locale}`;
+      const localePrefix = locale === "en" ? "" : `/${locale}`;
       return `${localePrefix}/blog/${item.attributes.slug[locale]}`;
-    case 'post':
+    case "post":
       return `posts/${item.attributes.slug}`;
     default:
       return null;
@@ -179,16 +180,16 @@ const generatePreviewUrl = ({ item, itemType, locale }: any) => {
 };
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  'Content-Type': 'application/json'
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  "Content-Type": "application/json",
 };
 
 export async function OPTIONS() {
   setHeaders(corsHeaders);
 
-  return json('ok');
+  return json("ok");
 }
 
 export async function POST({ request, setHeaders }) {
@@ -211,14 +212,101 @@ export async function POST({ request, setHeaders }) {
   const previewLinks = [
     // Public URL:
     {
-      label: 'Published version',
-      url: `${baseUrl}${url}`
-    }
+      label: "Published version",
+      url: `${baseUrl}${url}`,
+    },
   ];
 
   return json({ previewLinks });
 }
 ```
 
+#### Astro
 
+Here's how to integrate with Astro - using server side rendering.
 
+Create a `preview-links.ts` file under `pages/api` with following contents:
+
+```js
+export const prerender = false;
+import type { APIRoute } from "astro";
+
+const HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
+
+export const OPTIONS: APIRoute = async () => {
+  return new Response(null, {
+    status: 204,
+    headers: HEADERS,
+  });
+};
+
+export const POST: APIRoute = async ({ request }) => {
+  const body = await request.json();
+  if (!body) {
+    return new Response("No body found.", { status: 400 });
+  }
+  const { item } = body;
+  if (!item) {
+    return new Response("No item found.", { status: 400 });
+  }
+  const slug = item.attributes.slug;
+  if (!slug) {
+    return new Response("No slug found.", { status: 400 });
+  }
+  const siteUrl = new URL(request.url).origin;
+  if (!siteUrl) {
+    return new Response("No siteUrl found.", { status: 400 });
+  }
+  const previewLinks = [
+    {
+      label: "Live version",
+      url: `${siteUrl}/${slug}`,
+      reloadPreviewOnRecordUpdate: { delayInMs: 100 },
+    },
+    {
+      label: "Draft version",
+      url: `${siteUrl}/${slug}?draft=true`,
+      reloadPreviewOnRecordUpdate: { delayInMs: 100 },
+    },
+  ];
+  return new Response(
+    JSON.stringify({
+      previewLinks,
+    }),
+    {
+      status: 200,
+    }
+  );
+};
+```
+
+We're simply adding a `draft=true` query parameter to the URL to differentiate between the live and draft versions of the page.
+Then in your page frontmatter, you can check for this query parameter and render the draft content by adding the `includeDrafts` header.
+
+```js
+const query = graphql(
+  `
+    query HomeQuery {
+      home {
+        title
+        content
+      }
+    }
+  `
+);
+
+const graphQlOptions = {
+  includeDrafts: false,
+};
+
+const doDrafts = Astro.url.searchParams.get("draft");
+if (doDrafts) {
+  graphQlOptions.includeDrafts = true;
+}
+
+const data = await executeQuery(query, graphQlOptions);
+```
