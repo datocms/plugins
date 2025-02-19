@@ -288,6 +288,8 @@ We're simply adding a `draft=true` query parameter to the URL to differentiate b
 Then in your page frontmatter, you can check for this query parameter and render the draft content by adding the `includeDrafts` header.
 
 ```js
+---
+export const prerender = false;
 const query = graphql(
   `
     query HomeQuery {
@@ -309,4 +311,5 @@ if (doDrafts) {
 }
 
 const data = await executeQuery(query, graphQlOptions);
+---
 ```
