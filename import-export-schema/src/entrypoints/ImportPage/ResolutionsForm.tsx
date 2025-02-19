@@ -210,9 +210,7 @@ export default function ResolutionsForm({ schema, children, onSubmit }: Props) {
       }}
       onSubmit={handleSubmit}
     >
-      {({ handleSubmit, errors }) => (
-        <form onSubmit={handleSubmit}>{children}</form>
-      )}
+      {({ handleSubmit }) => <form onSubmit={handleSubmit}>{children}</form>}
     </FormHandler>
   );
 }
