@@ -1,5 +1,5 @@
-import type { ItemTypeManager } from '@/utils/itemTypeManager';
-import { useReactFlow } from '@xyflow/react';
+import type { ProjectSchema } from '@/utils/ProjectSchema';
+import { useNodes, useReactFlow } from '@xyflow/react';
 import { get, keyBy, set } from 'lodash-es';
 import { type ReactNode, useContext, useMemo } from 'react';
 import { Form as FormHandler, useFormState } from 'react-final-form';
@@ -35,7 +35,7 @@ type FormValues = Record<string, ItemTypeValues | PluginValues>;
 
 type Props = {
   children: ReactNode;
-  schema: ItemTypeManager;
+  schema: ProjectSchema;
   onSubmit: (values: Resolutions) => void;
 };
 
@@ -68,6 +68,10 @@ export default function ResolutionsForm({ schema, children, onSubmit }: Props) {
   const conflicts = useContext(ConflictsContext);
 
   const { getNode } = useReactFlow();
+
+  // we need this to re-render this component everytime the nodes change, and
+  // revalidate the form!
+  useNodes();
 
   const initialValues = useMemo<FormValues>(
     () =>
@@ -206,7 +210,9 @@ export default function ResolutionsForm({ schema, children, onSubmit }: Props) {
       }}
       onSubmit={handleSubmit}
     >
-      {({ handleSubmit }) => <form onSubmit={handleSubmit}>{children}</form>}
+      {({ handleSubmit, errors }) => (
+        <form onSubmit={handleSubmit}>{children}</form>
+      )}
     </FormHandler>
   );
 }

@@ -2,9 +2,8 @@ import {
   findLinkedItemTypeIds,
   findLinkedPluginIds,
 } from '@/utils/datocms/schema';
-import type { ExportDoc } from '@/utils/types';
 import type { SchemaTypes } from '@datocms/cma-client';
-import { ExportSchema } from '../ExportPage/ExportSchema';
+import type { ExportSchema } from '../ExportPage/ExportSchema';
 import type { Conflicts } from './ConflictsManager/buildConflicts';
 import type {
   ItemTypeConflictResolutionRename,
@@ -30,12 +29,10 @@ export type ImportDoc = {
 };
 
 export async function buildImportDoc(
-  exportDoc: ExportDoc,
+  exportSchema: ExportSchema,
   conflicts: Conflicts,
   resolutions: Resolutions,
 ): Promise<ImportDoc> {
-  const exportSchema = new ExportSchema(exportDoc);
-
   const result: ImportDoc = {
     itemTypes: {
       entitiesToCreate: [],

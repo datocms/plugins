@@ -1,5 +1,6 @@
 import type { ItemTypeNode } from '@/components/ItemTypeNodeRenderer';
 import type { PluginNode } from '@/components/PluginNodeRenderer';
+import type { ProjectSchema } from '@/utils/ProjectSchema';
 import {
   findLinkedItemTypeIds,
   findLinkedPluginIds,
@@ -7,7 +8,6 @@ import {
 import { buildHierarchyNodes } from '@/utils/graph/buildHierarchyNodes';
 import { rebuildGraphWithPositionsFromHierarchy } from '@/utils/graph/rebuildGraphWithPositionsFromHierarchy';
 import type { AppEdge, Graph } from '@/utils/graph/types';
-import type { ItemTypeManager } from '@/utils/itemTypeManager';
 import type { SchemaTypes } from '@datocms/cma-client';
 import { MarkerType } from '@xyflow/react';
 import { find, sortBy } from 'lodash-es';
@@ -15,7 +15,7 @@ import { find, sortBy } from 'lodash-es';
 type Options = {
   initialItemType: SchemaTypes.ItemType;
   selectedItemTypeIds: string[];
-  schema: ItemTypeManager;
+  schema: ProjectSchema;
 };
 
 type QueueItem = SchemaTypes.ItemType | SchemaTypes.Plugin;

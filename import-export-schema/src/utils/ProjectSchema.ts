@@ -1,7 +1,7 @@
 import type { Client, SchemaTypes } from '@datocms/cma-client';
 import { groupBy } from 'lodash-es';
 
-export class ItemTypeManager {
+export class ProjectSchema {
   public client: Client;
   private itemTypesPromise: Promise<SchemaTypes.ItemType[]> | null = null;
   private pluginsPromise: Promise<SchemaTypes.Plugin[]> | null = null;

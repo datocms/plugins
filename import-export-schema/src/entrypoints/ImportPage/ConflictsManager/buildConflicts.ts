@@ -1,6 +1,5 @@
-import { ExportSchema } from '@/entrypoints/ExportPage/ExportSchema';
-import type { ItemTypeManager } from '@/utils/itemTypeManager';
-import type { ExportDoc } from '@/utils/types';
+import type { ExportSchema } from '@/entrypoints/ExportPage/ExportSchema';
+import type { ProjectSchema } from '@/utils/ProjectSchema';
 import type { SchemaTypes } from '@datocms/cma-client';
 import { keyBy } from 'lodash-es';
 
@@ -10,11 +9,9 @@ export type Conflicts = {
 };
 
 export default async function buildConflicts(
-  exportDoc: ExportDoc,
-  projectSchema: ItemTypeManager,
+  exportSchema: ExportSchema,
+  projectSchema: ProjectSchema,
 ) {
-  const exportSchema = new ExportSchema(exportDoc);
-
   const projectItemTypes = await projectSchema.getAllItemTypes();
   const projectItemTypesByName = keyBy(projectItemTypes, 'attributes.name');
   const projectItemTypesByApiKey = keyBy(

@@ -1,4 +1,4 @@
-import { ItemTypeManager } from '@/utils/itemTypeManager';
+import { ProjectSchema } from '@/utils/ProjectSchema';
 import type { ExportDoc } from '@/utils/types';
 import { buildClient } from '@datocms/cma-client';
 import { faXmark } from '@fortawesome/free-solid-svg-icons';
@@ -14,6 +14,7 @@ import {
   ToolbarTitle,
 } from 'datocms-react-ui';
 import { useEffect, useMemo, useState } from 'react';
+import { ExportSchema } from '../ExportPage/ExportSchema';
 import { ConflictsContext } from './ConflictsManager/ConflictsContext';
 import buildConflicts, {
   type Conflicts,
@@ -28,13 +29,21 @@ type Props = {
 };
 
 export function ImportPage({ ctx }: Props) {
-  const [exportDoc, setExportDoc] = useState<[string, ExportDoc] | undefined>();
+  const [exportSchema, setExportSchema] = useState<
+    [string, ExportSchema] | undefined
+  >();
   const [importProgress, setImportProgress] = useState<
     ImportProgress | undefined
   >(undefined);
 
   async function handleDrop(filename: string, doc: ExportDoc) {
-    setExportDoc([filename, doc]);
+    try {
+      const schema = new ExportSchema(doc);
+      setExportSchema([filename, schema]);
+    } catch (e) {
+      console.error(e);
+      ctx.alert(e instanceof Error ? e.message : 'Invalid export file!');
+    }
   }
 
   const client = useMemo(
@@ -46,23 +55,23 @@ export function ImportPage({ ctx }: Props) {
     [ctx.currentUserAccessToken, ctx.environment],
   );
 
-  const schema = useMemo(() => new ItemTypeManager(client), [client]);
+  const projectSchema = useMemo(() => new ProjectSchema(client), [client]);
 
   const [conflicts, setConflicts] = useState<Conflicts | undefined>();
 
   useEffect(() => {
     async function run() {
-      if (!exportDoc) {
+      if (!exportSchema) {
         return;
       }
-      setConflicts(await buildConflicts(exportDoc[1], schema));
+      setConflicts(await buildConflicts(exportSchema[1], projectSchema));
     }
 
     run();
-  }, [exportDoc, schema]);
+  }, [exportSchema, projectSchema]);
 
   async function handleImport(resolutions: Resolutions) {
-    if (!exportDoc || !conflicts) {
+    if (!exportSchema || !conflicts) {
       throw new Error('Invariant');
     }
 
@@ -70,7 +79,7 @@ export function ImportPage({ ctx }: Props) {
       setImportProgress({ finished: 0, total: 1 });
 
       const importDoc = await buildImportDoc(
-        exportDoc[1],
+        exportSchema[1],
         conflicts,
         resolutions,
       );
@@ -83,7 +92,7 @@ export function ImportPage({ ctx }: Props) {
       );
 
       setImportProgress(undefined);
-      setExportDoc(undefined);
+      setExportSchema(undefined);
     } catch (e) {
       console.error(e);
       ctx.alert('Import could not be completed successfully.');
@@ -121,15 +130,15 @@ export function ImportPage({ ctx }: Props) {
       ) : (
         <ReactFlowProvider>
           <div className="page">
-            {exportDoc ? (
+            {exportSchema ? (
               <Toolbar className="page__toolbar">
                 <ToolbarStack stackSize="l">
-                  <ToolbarTitle>📄 Import "{exportDoc[0]}"</ToolbarTitle>
+                  <ToolbarTitle>📄 Import "{exportSchema[0]}"</ToolbarTitle>
                   <div style={{ flex: '1' }} />
                   <Button
                     leftIcon={<FontAwesomeIcon icon={faXmark} />}
                     buttonSize="s"
-                    onClick={() => setExportDoc(undefined)}
+                    onClick={() => setExportSchema(undefined)}
                   >
                     Close
                   </Button>
@@ -145,11 +154,14 @@ export function ImportPage({ ctx }: Props) {
             )}
             <div className="page__content">
               <FileDropZone onJsonDrop={handleDrop}>
-                {exportDoc ? (
+                {exportSchema ? (
                   conflicts ? (
                     <ConflictsContext.Provider value={conflicts}>
-                      <ResolutionsForm schema={schema} onSubmit={handleImport}>
-                        <Inner exportDoc={exportDoc[1]} />
+                      <ResolutionsForm
+                        schema={projectSchema}
+                        onSubmit={handleImport}
+                      >
+                        <Inner exportSchema={exportSchema[1]} />
                       </ResolutionsForm>
                     </ConflictsContext.Provider>
                   ) : (

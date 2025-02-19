@@ -1,5 +1,4 @@
-import { ExportSchema } from '@/entrypoints/ExportPage/ExportSchema';
-import type { ExportDoc } from '@/utils/types';
+import type { ExportSchema } from '@/entrypoints/ExportPage/ExportSchema';
 import { Button, Toolbar, ToolbarStack, ToolbarTitle } from 'datocms-react-ui';
 import { useContext } from 'react';
 import { useFormState } from 'react-final-form';
@@ -8,11 +7,10 @@ import { ItemTypeConflict } from './ItemTypeConflict';
 import { PluginConflict } from './PluginConflict';
 
 type Props = {
-  exportDoc: ExportDoc;
+  exportSchema: ExportSchema;
 };
 
-export default function ConflictsManager({ exportDoc }: Props) {
-  const exportSchema = new ExportSchema(exportDoc);
+export default function ConflictsManager({ exportSchema }: Props) {
   const conflicts = useContext(ConflictsContext);
   const { submitting, valid } = useFormState();
 

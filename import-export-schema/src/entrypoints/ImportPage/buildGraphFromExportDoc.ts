@@ -1,9 +1,8 @@
 import { buildHierarchyNodes } from '@/utils/graph/buildHierarchyNodes';
 import { rebuildGraphWithPositionsFromHierarchy } from '@/utils/graph/rebuildGraphWithPositionsFromHierarchy';
 import type { Graph } from '@/utils/graph/types';
-import type { ExportDoc } from '@/utils/types';
 import type { SchemaTypes } from '@datocms/cma-client';
-import { ExportSchema } from '../ExportPage/ExportSchema';
+import type { ExportSchema } from '../ExportPage/ExportSchema';
 import {
   buildEdgesForItemType,
   buildItemTypeNode,
@@ -14,11 +13,9 @@ import {
 type QueueItem = SchemaTypes.ItemType | SchemaTypes.Plugin;
 
 export async function buildGraphFromExportDoc(
-  exportDoc: ExportDoc,
+  exportSchema: ExportSchema,
   itemTypeIdsToSkip: string[],
 ): Promise<Graph> {
-  const exportSchema = new ExportSchema(exportDoc);
-
   const graph: Graph = { nodes: [], edges: [] };
   const queue: QueueItem[][] = [[exportSchema.rootItemType]];
   const processedNodes = new Set<QueueItem>();

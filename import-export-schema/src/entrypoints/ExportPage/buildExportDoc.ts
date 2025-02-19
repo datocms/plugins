@@ -1,3 +1,4 @@
+import type { ProjectSchema } from '@/utils/ProjectSchema';
 import {
   defaultAppearanceForFieldType,
   isHardcodedEditor,
@@ -6,17 +7,18 @@ import {
   validatorsContainingBlocks,
   validatorsContainingLinks,
 } from '@/utils/datocms/schema';
-import type { ItemTypeManager } from '@/utils/itemTypeManager';
-import type { ExportDoc } from '@/utils/types';
+import type { ExportDocV2 } from '@/utils/types';
 import { cloneDeep, get, intersection, set } from 'lodash-es';
 
 export default async function buildExportDoc(
-  schema: ItemTypeManager,
+  schema: ProjectSchema,
+  initialItemTypeId: string,
   itemTypeIdsToExport: string[],
   pluginIdsToExport: string[],
-): Promise<ExportDoc> {
-  const doc: ExportDoc = {
-    version: '1',
+): Promise<ExportDocV2> {
+  const doc: ExportDocV2 = {
+    version: '2',
+    rootItemTypeId: initialItemTypeId,
     entities: [],
   };
 

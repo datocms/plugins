@@ -1,5 +1,4 @@
 import { type AppNode, type Graph, edgeTypes } from '@/utils/graph/types';
-import type { ExportDoc } from '@/utils/types';
 import type { SchemaTypes } from '@datocms/cma-client';
 import {
   Background,
@@ -10,6 +9,7 @@ import {
 } from '@xyflow/react';
 import { VerticalSplit } from 'datocms-react-ui';
 import { useCallback, useEffect, useState } from 'react';
+import type { ExportSchema } from '../ExportPage/ExportSchema';
 import ConflictsManager from './ConflictsManager';
 import { ImportItemTypeNodeRenderer } from './ImportItemTypeNodeRenderer';
 import { ImportPluginNodeRenderer } from './ImportPluginNodeRenderer';
@@ -23,10 +23,10 @@ const nodeTypes: NodeTypes = {
 };
 
 type Props = {
-  exportDoc: ExportDoc;
+  exportSchema: ExportSchema;
 };
 
-export function Inner({ exportDoc }: Props) {
+export function Inner({ exportSchema }: Props) {
   const { fitBounds, fitView } = useReactFlow();
   const { skippedItemTypeIds, skippedPluginIds } =
     useSkippedItemsAndPluginIds();
@@ -39,11 +39,11 @@ export function Inner({ exportDoc }: Props) {
 
   useEffect(() => {
     async function run() {
-      setGraph(await buildGraphFromExportDoc(exportDoc, skippedItemTypeIds));
+      setGraph(await buildGraphFromExportDoc(exportSchema, skippedItemTypeIds));
     }
 
     run();
-  }, [exportDoc, skippedItemTypeIds.join('-'), skippedPluginIds.join('-')]);
+  }, [exportSchema, skippedItemTypeIds.join('-'), skippedPluginIds.join('-')]);
 
   const [selectedEntity, setSelectedEntity] = useState<
     undefined | SchemaTypes.ItemType | SchemaTypes.Plugin
@@ -112,7 +112,7 @@ export function Inner({ exportDoc }: Props) {
           )}
         </div>
         <div className="import__details">
-          <ConflictsManager exportDoc={exportDoc} />
+          <ConflictsManager exportSchema={exportSchema} />
         </div>
       </VerticalSplit>
     </SelectedEntityContext.Provider>

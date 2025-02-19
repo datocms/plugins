@@ -1,5 +1,5 @@
+import { ProjectSchema } from '@/utils/ProjectSchema';
 import { downloadJSON } from '@/utils/downloadJson';
-import { ItemTypeManager } from '@/utils/itemTypeManager';
 import { type SchemaTypes, buildClient } from '@datocms/cma-client';
 import { ReactFlowProvider } from '@xyflow/react';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
@@ -23,7 +23,7 @@ export default function ExportPage({ ctx, initialItemTypeId }: Props) {
       apiToken: ctx.currentUserAccessToken!,
       environment: ctx.environment,
     });
-    return new ItemTypeManager(client);
+    return new ProjectSchema(client);
   }, [ctx.currentUserAccessToken, ctx.environment]);
 
   useEffect(() => {
@@ -36,7 +36,12 @@ export default function ExportPage({ ctx, initialItemTypeId }: Props) {
   }, [schema, initialItemTypeId]);
 
   async function handleExport(itemTypeIds: string[], pluginIds: string[]) {
-    const exportDoc = await buildExportDoc(schema, itemTypeIds, pluginIds);
+    const exportDoc = await buildExportDoc(
+      schema,
+      initialItemTypeId,
+      itemTypeIds,
+      pluginIds,
+    );
     downloadJSON(exportDoc, { fileName: 'export.json', prettify: true });
     ctx.notice('Export completed with success!');
     ctx.navigateTo(

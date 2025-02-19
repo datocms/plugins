@@ -1,4 +1,4 @@
-import type { ItemTypeManager } from '@/utils/itemTypeManager';
+import type { ProjectSchema } from '@/utils/ProjectSchema';
 import type { SchemaTypes } from '@datocms/cma-client';
 import { faFileExport, faXmark } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -34,7 +34,7 @@ const nodeTypes: NodeTypes = {
 
 type Props = {
   initialItemType: SchemaTypes.ItemType;
-  schema: ItemTypeManager;
+  schema: ProjectSchema;
   onExport: (itemTypeIds: string[], pluginIds: string[]) => void;
 };
 
