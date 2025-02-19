@@ -220,5 +220,95 @@ export async function POST({ request, setHeaders }) {
 }
 ```
 
+#### Astro
 
+Here's how to integrate with Astro - using server side rendering.
 
+Create a `preview-links.ts` file under `pages/api` with following contents:
+
+```js
+export const prerender = false;
+import type { APIRoute } from "astro";
+
+const HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Content-Type, Authorization",
+};
+
+export const OPTIONS: APIRoute = async () => {
+  return new Response(null, {
+    status: 204,
+    headers: HEADERS,
+  });
+};
+
+export const POST: APIRoute = async ({ request }) => {
+  const body = await request.json();
+  if (!body) {
+    return new Response("No body found.", { status: 400 });
+  }
+  const { item } = body;
+  if (!item) {
+    return new Response("No item found.", { status: 400 });
+  }
+  const slug = item.attributes.slug;
+  if (!slug) {
+    return new Response("No slug found.", { status: 400 });
+  }
+  const siteUrl = new URL(request.url).origin;
+  if (!siteUrl) {
+    return new Response("No siteUrl found.", { status: 400 });
+  }
+  const previewLinks = [
+    {
+      label: "Live version",
+      url: `${siteUrl}/${slug}`,
+      reloadPreviewOnRecordUpdate: { delayInMs: 100 },
+    },
+    {
+      label: "Draft version",
+      url: `${siteUrl}/${slug}?draft=true`,
+      reloadPreviewOnRecordUpdate: { delayInMs: 100 },
+    },
+  ];
+  return new Response(
+    JSON.stringify({
+      previewLinks,
+    }),
+    {
+      status: 200,
+    }
+  );
+};
+```
+
+We're simply adding a `draft=true` query parameter to the URL to differentiate between the live and draft versions of the page.
+Then in your page frontmatter, you can check for this query parameter and render the draft content by adding the `includeDrafts` header.
+
+```js
+---
+export const prerender = false;
+const query = graphql(
+  `
+    query HomeQuery {
+      home {
+        title
+        content
+      }
+    }
+  `
+);
+
+const graphQlOptions = {
+  includeDrafts: false,
+};
+
+const doDrafts = Astro.url.searchParams.get("draft");
+if (doDrafts) {
+  graphQlOptions.includeDrafts = true;
+}
+
+const data = await executeQuery(query, graphQlOptions);
+---
+```
