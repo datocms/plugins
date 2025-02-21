@@ -154,32 +154,42 @@ export function ImportPage({ ctx }: Props) {
             )}
             <div className="page__content">
               <FileDropZone onJsonDrop={handleDrop}>
-                {exportSchema ? (
-                  conflicts ? (
-                    <ConflictsContext.Provider value={conflicts}>
-                      <ResolutionsForm
-                        schema={projectSchema}
-                        onSubmit={handleImport}
-                      >
-                        <Inner exportSchema={exportSchema[1]} />
-                      </ResolutionsForm>
-                    </ConflictsContext.Provider>
+                {(button) =>
+                  exportSchema ? (
+                    conflicts ? (
+                      <ConflictsContext.Provider value={conflicts}>
+                        <ResolutionsForm
+                          schema={projectSchema}
+                          onSubmit={handleImport}
+                        >
+                          <Inner exportSchema={exportSchema[1]} />
+                        </ResolutionsForm>
+                      </ConflictsContext.Provider>
+                    ) : (
+                      <Spinner placement="centered" size={60} />
+                    )
                   ) : (
-                    <Spinner placement="centered" size={60} />
-                  )
-                ) : (
-                  <div className="blank-slate">
-                    <div className="blank-slate__body">
-                      <div className="blank-slate__body__title">
-                        Please drop an export JSON file
+                    <div className="blank-slate">
+                      <div className="blank-slate__body">
+                        <div className="blank-slate__body__title">
+                          Upload your schema export file
+                        </div>
+
+                        <div className="blank-slate__body__content">
+                          <p>
+                            Drag and drop your exported JSON file here, or click
+                            the button to select one from your computer.
+                          </p>
+                          {button}
+                        </div>
                       </div>
-                      <div className="blank-slate__body__content">
-                        To generate an export, navigate to one of your
-                        models/blocks and select the "Export as JSON" option.
+                      <div className="blank-slate__body__outside">
+                        💡 Need to export your schema? Go to one of your models
+                        or blocks and choose "Export as JSON".
                       </div>
                     </div>
-                  </div>
-                )}
+                  )
+                }
               </FileDropZone>
             </div>
           </div>

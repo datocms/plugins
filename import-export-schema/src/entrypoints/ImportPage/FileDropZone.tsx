@@ -1,16 +1,19 @@
 import type { ExportDoc } from '@/utils/types';
+import { faFolderOpen } from '@fortawesome/free-solid-svg-icons';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
-import { useCtx } from 'datocms-react-ui';
+import { Button, useCtx } from 'datocms-react-ui';
 import type React from 'react';
-import { type ReactNode, useCallback, useState } from 'react';
+import { type ReactNode, useCallback, useRef, useState } from 'react';
 
 type Props = {
   onJsonDrop: (filename: string, exportDoc: ExportDoc) => void;
-  children: ReactNode;
+  children: (button: ReactNode) => ReactNode;
 };
 
 export default function FileDropZone({ onJsonDrop, children }: Props) {
   const ctx = useCtx<RenderPageCtx>();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [pendingDrop, setPendingDrop] = useState(false);
 
@@ -31,19 +34,10 @@ export default function FileDropZone({ onJsonDrop, children }: Props) {
     setPendingDrop(false);
   }, []);
 
-  const handleDrop = useCallback(
-    (e: React.DragEvent<HTMLDivElement>) => {
-      e.preventDefault();
-      e.stopPropagation();
-
-      setPendingDrop(false);
-
-      const file = e.dataTransfer.files[0];
-      if (!file) {
-        return;
-      }
-
+  const handleFileSelection = useCallback(
+    (file: File) => {
       if (!file.type.includes('json') && !file.name.endsWith('.json')) {
+        ctx.alert('Please select a JSON file');
         return;
       }
 
@@ -67,7 +61,38 @@ export default function FileDropZone({ onJsonDrop, children }: Props) {
       };
       reader.readAsText(file);
     },
-    [onJsonDrop],
+    [onJsonDrop, ctx],
+  );
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      setPendingDrop(false);
+
+      const file = e.dataTransfer.files[0];
+      if (!file) {
+        return;
+      }
+
+      handleFileSelection(file);
+    },
+    [handleFileSelection],
+  );
+
+  const handleUploadClick = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleFileInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) {
+        handleFileSelection(file);
+      }
+    },
+    [handleFileSelection],
   );
 
   return (
@@ -78,7 +103,25 @@ export default function FileDropZone({ onJsonDrop, children }: Props) {
       onDragLeave={handleDragLeave}
       className={`dropzone ${pendingDrop ? 'dropzone--pending' : ''}`}
     >
-      {children}
+      {children(
+        <>
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileInputChange}
+            accept=".json"
+            style={{ display: 'none' }}
+          />
+          <Button
+            buttonSize="l"
+            fullWidth
+            onClick={handleUploadClick}
+            leftIcon={<FontAwesomeIcon icon={faFolderOpen} />}
+          >
+            Select a JSON export file...
+          </Button>
+        </>,
+      )}
     </div>
   );
 }

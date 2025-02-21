@@ -1,5 +1,7 @@
 import type { ExportSchema } from '@/entrypoints/ExportPage/ExportSchema';
+import { getTextWithoutRepresentativeEmojiAndPadding } from '@/utils/emojiAgnosticSorter';
 import { Button, Toolbar, ToolbarStack, ToolbarTitle } from 'datocms-react-ui';
+import { chain, sortBy } from 'lodash-es';
 import { useContext } from 'react';
 import { useFormState } from 'react-final-form';
 import { ConflictsContext } from './ConflictsContext';
@@ -21,6 +23,31 @@ export default function ConflictsManager({ exportSchema }: Props) {
   const noPotentialConflicts =
     Object.keys(conflicts.itemTypes).length === 0 &&
     Object.keys(conflicts.plugins).length === 0;
+
+  const groupedItemTypes = chain(conflicts.itemTypes)
+    .map((projectItemType, exportItemTypeId) => {
+      const exportItemType = exportSchema.getItemTypeById(exportItemTypeId);
+      return { exportItemTypeId, exportItemType, projectItemType };
+    })
+    .groupBy(({ exportItemType }) =>
+      exportItemType?.attributes.modular_block ? 'blocks' : 'models',
+    )
+    .mapValues((group) =>
+      sortBy(group, ({ exportItemType }) =>
+        getTextWithoutRepresentativeEmojiAndPadding(
+          exportItemType.attributes.name,
+        ),
+      ),
+    )
+    .value();
+
+  const sortedPlugins = chain(conflicts.plugins)
+    .map((projectPlugin, exportPluginId) => {
+      const exportPlugin = exportSchema.getPluginById(exportPluginId);
+      return { exportPluginId, exportPlugin, projectPlugin };
+    })
+    .sortBy(({ exportPlugin }) => exportPlugin.attributes.name)
+    .value();
 
   return (
     <div className="page">
@@ -45,34 +72,60 @@ export default function ConflictsManager({ exportSchema }: Props) {
         </div>
 
         <div>
-          {Object.entries(conflicts.itemTypes).map(
-            ([exportItemTypeId, projectItemType]) => {
-              const exportItemType =
-                exportSchema.getItemTypeById(exportItemTypeId);
-
-              return (
-                <ItemTypeConflict
-                  key={exportItemTypeId}
-                  exportItemType={exportItemType}
-                  projectItemType={projectItemType}
-                />
-              );
-            },
+          {groupedItemTypes.models.length > 0 && (
+            <div className="conflicts-manager__group">
+              <div className="conflicts-manager__group__title">Models</div>
+              <div className="conflicts-manager__group__content">
+                {groupedItemTypes.models.map(
+                  ({ exportItemTypeId, exportItemType, projectItemType }) => (
+                    <ItemTypeConflict
+                      key={exportItemTypeId}
+                      exportItemType={exportItemType}
+                      projectItemType={projectItemType}
+                    />
+                  ),
+                )}
+              </div>
+            </div>
           )}
-          {Object.entries(conflicts.plugins).map(
-            ([exportPluginId, projectPlugin]) => {
-              const exportPlugin = exportSchema.getPluginById(exportPluginId);
 
-              return (
-                <PluginConflict
-                  key={exportPluginId}
-                  exportPlugin={exportPlugin}
-                  projectPlugin={projectPlugin}
-                />
-              );
-            },
+          {groupedItemTypes.blocks.length > 0 && (
+            <div className="conflicts-manager__group">
+              <div className="conflicts-manager__group__title">
+                Block models
+              </div>
+              <div className="conflicts-manager__group__content">
+                {groupedItemTypes.blocks.map(
+                  ({ exportItemTypeId, exportItemType, projectItemType }) => (
+                    <ItemTypeConflict
+                      key={exportItemTypeId}
+                      exportItemType={exportItemType}
+                      projectItemType={projectItemType}
+                    />
+                  ),
+                )}
+              </div>
+            </div>
+          )}
+
+          {sortedPlugins.length > 0 && (
+            <div className="conflicts-manager__group">
+              <div className="conflicts-manager__group__title">Plugins</div>
+              <div className="conflicts-manager__group__content">
+                {sortedPlugins.map(
+                  ({ exportPluginId, exportPlugin, projectPlugin }) => (
+                    <PluginConflict
+                      key={exportPluginId}
+                      exportPlugin={exportPlugin}
+                      projectPlugin={projectPlugin}
+                    />
+                  ),
+                )}
+              </div>
+            </div>
           )}
         </div>
+
         <div className="conflicts-manager__actions">
           <Button
             type="submit"

@@ -3,6 +3,7 @@ import 'datocms-react-ui/styles.css';
 import '@xyflow/react/dist/style.css';
 import './index.css';
 import { render } from '@/utils/render';
+import { Config } from './entrypoints/Config';
 import ExportPage from './entrypoints/ExportPage';
 import { ImportPage } from './entrypoints/ImportPage';
 
@@ -44,5 +45,8 @@ connect({
     }
 
     return render(<ExportPage ctx={ctx} initialItemTypeId={itemTypeId} />);
+  },
+  renderConfigScreen(ctx) {
+    return render(<Config ctx={ctx} />);
   },
 });
