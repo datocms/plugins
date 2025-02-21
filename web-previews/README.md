@@ -72,7 +72,7 @@ If you have built alternative endpoint implementations for other frameworks/SSGs
 
 #### Next.js
 
-We suggest you look at the code of our [official Next.js Starter Kit](https://github.com/datocms/nextjs-starter-kit):
+We suggest you look at the code of our [official Starter Kit](https://github.com/datocms/nextjs-starter-kit):
 
 * Route handler called returning the preview links: [`app/api/preview-links/route.tsx`](https://github.com/datocms/nextjs-starter-kit/blob/main/src/app/api/preview-links/route.tsx)
 * Route handlers to toggle Next.js [Draft Mode](https://www.datocms.com/docs/next-js/setting-up-next-js-draft-mode): [`app/api/draft-mode/enable/route.tsx`](https://github.com/datocms/nextjs-starter-kit/blob/main/src/app/api/draft-mode/enable/route.tsx) and [`app/api/draft-mode/disable/route.tsx`](https://github.com/datocms/nextjs-starter-kit/blob/main/src/app/api/draft-mode/disable/route.tsx)
@@ -81,7 +81,7 @@ The preview link URLs also include a `token` query parameter that the plugin wou
 
 #### Nuxt
 
-We suggest you look at the code of our [official Nuxt Starter Kit](https://github.com/datocms/nuxt-starter-kit):
+We suggest you look at the code of our [official Starter Kit](https://github.com/datocms/nuxt-starter-kit):
 
 * Route handler called returning the preview links: [server/api/preview-links/index.ts](https://github.com/datocms/nuxt-starter-kit/blob/main/server/api/preview-links/index.ts)
 * Route handlers to toggle draft mode: [`server/api/draft-mode/enable.ts`](https://github.com/datocms/nuxt-starter-kit/blob/main/server/api/draft-mode/enable.ts) and [`server/api/draft-mode/disable.ts`](https://github.com/datocms/nuxt-starter-kit/blob/main/server/api/draft-mode/disable.ts)
@@ -90,7 +90,7 @@ The preview link URLs also include a `token` query parameter that the plugin wou
 
 #### SvelteKit
 
-We suggest you look at the code of our [official SvelteKit Starter Kit](https://github.com/datocms/sveltekit-starter-kit):
+We suggest you look at the code of our [official Starter Kit](https://github.com/datocms/sveltekit-starter-kit):
 
 * Route handler called returning the preview links: [`src/routes/api/preview-links/%2Bserver.ts`](https://github.com/datocms/sveltekit-starter-kit/blob/main/src/routes/api/preview-links/%2Bserver.ts)
 * Route handlers to toggle draft mode: [`routes/api/draft-mode/enable/%2Bserver.ts`](https://github.com/datocms/sveltekit-starter-kit/blob/main/src/routes/api/draft-mode/enable/%2Bserver.ts) and [`routes/api/draft-mode/disable/%2Bserver.ts`](https://github.com/datocms/sveltekit-starter-kit/blob/main/src/routes/api/draft-mode/disable/%2Bserver.ts)
@@ -99,7 +99,7 @@ The preview link URLs also include a `token` query parameter that the plugin wou
 
 #### Astro
 
-We suggest you look at the code of our [official SvelteKit Starter Kit](https://github.com/datocms/astro-starter-kit):
+We suggest you look at the code of our [official Starter Kit](https://github.com/datocms/astro-starter-kit):
 
 * Route handler called returning the preview links: [`src/pages/api/preview-links/index.ts`](https://github.com/datocms/astro-starter-kit/blob/main/src/pages/api/preview-links/index.ts)
 * Route handlers to toggle draft mode: [`src/pages/api/draft-mode/enable/index.ts`](https://github.com/datocms/astro-starter-kit/blob/main/src/pages/api/draft-mode/enable/index.ts) and [`src/pages/api/draft-mode/disable/index.ts`](https://github.com/datocms/astro-starter-kit/blob/main/src/pages/api/draft-mode/disable/index.ts)
