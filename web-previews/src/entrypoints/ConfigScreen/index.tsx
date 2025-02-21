@@ -152,6 +152,22 @@ export default function ConfigScreen({ ctx }: PropTypes) {
                       <div key={name} className={s.group}>
                         <div className={s.grid}>
                           <FieldGroup>
+                            <Field name={`${name}.disabled`}>
+                              {({ input, meta: { error } }) => (
+                                <SwitchField
+                                  id={`frontend-${index}-disabled`}
+                                  label="Enable this frontend?"
+                                  hint="Toggle this frontend on or off. Disabled frontends remain configured but won't be visible to editors."
+                                  error={error}
+                                  {...{
+                                    ...input,
+                                    value: !input.value,
+                                    checked: !input.checked,
+                                    onChange: (value) => input.onChange(!value),
+                                  }}
+                                />
+                              )}
+                            </Field>
                             <Field name={`${name}.name`}>
                               {({ input, meta: { error } }) => (
                                 <TextField
@@ -190,6 +206,7 @@ export default function ConfigScreen({ ctx }: PropTypes) {
                                 />
                               )}
                             </Field>
+
                             <div>
                               <FormLabel htmlFor="">Custom Headers</FormLabel>
                               <FieldArray<
@@ -278,6 +295,7 @@ export default function ConfigScreen({ ctx }: PropTypes) {
                       onClick={() =>
                         fields.push({
                           name: '',
+                          disabled: false,
                           previewWebhook: '',
                           customHeaders: [],
                         })

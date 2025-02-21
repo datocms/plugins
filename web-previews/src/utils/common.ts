@@ -66,9 +66,12 @@ export function useStatusByFrontend(
   const [statusByFrontend, setStatusByFrontend] = useState<
     Record<string, FrontendStatus> | undefined
   >();
-  const { frontends } = normalizeParameters(
+
+  const { frontends: rawFrontends } = normalizeParameters(
     ctx.plugin.attributes.parameters as Parameters,
   );
+
+  const frontends = rawFrontends.filter((f) => !f.disabled);
 
   const {
     item,

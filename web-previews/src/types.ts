@@ -11,6 +11,7 @@ export type RawFrontend = {
   name: string;
   previewWebhook: string;
   customHeaders?: CustomHeader[];
+  disabled?: boolean;
 };
 
 export type RawViewport = {
@@ -39,6 +40,7 @@ export type Frontend = {
   name: string;
   previewWebhook: string;
   customHeaders: CustomHeader[];
+  disabled: boolean;
 };
 
 export type NormalizedParameters = {
@@ -70,6 +72,7 @@ export function normalizeParameters({
       frontends?.map((frontend) => ({
         ...frontend,
         customHeaders: frontend.customHeaders || [],
+        disabled: Boolean(frontend.disabled),
       })) || [],
     startOpen: Boolean(startOpen),
     defaultSidebarWidth: defaultSidebarWidth
