@@ -77,148 +77,37 @@ We suggest you look at the code of our [official Next.js Starter Kit](https://gi
 * Route handler called returning the preview links: [`app/api/preview-links/route.tsx`](https://github.com/datocms/nextjs-starter-kit/blob/main/src/app/api/preview-links/route.tsx)
 * Route handlers to toggle Next.js [Draft Mode](https://www.datocms.com/docs/next-js/setting-up-next-js-draft-mode): [`app/api/draft-mode/enable/route.tsx`](https://github.com/datocms/nextjs-starter-kit/blob/main/src/app/api/draft-mode/enable/route.tsx) and [`app/api/draft-mode/disable/route.tsx`](https://github.com/datocms/nextjs-starter-kit/blob/main/src/app/api/draft-mode/disable/route.tsx)
 
-##### Lightweight Authentication
-In our Next.js starter kit, the preview link URLs also include a `token` query parameter that the plugin would send to the webhook receiver, like `https://www.mywebsite.com/api/preview-links?token=some-secret-ish-string`. The `token` is a string of your choice that just has to match in both the plugin settings and [in your frontend's environment variables](https://github.com/datocms/nextjs-starter-kit/blob/main/src/app/api/preview-links/route.tsx#L31-L34). While not encryption, this token is an easy way to limit access to your preview content.
+The preview link URLs also include a `token` query parameter that the plugin would send to the webhook receiver, like `https://www.mywebsite.com/api/preview-links?token=some-secret-ish-string`. The `token` is a string of your choice that just has to match in both the plugin settings and [in your frontend's environment variables](https://github.com/datocms/nextjs-starter-kit/blob/main/src/app/api/preview-links/route.tsx#L31-L34). While not encryption, this token is an easy way to limit access to your preview content.
 
-#### Nuxt 3
+#### Nuxt
 
-Below here, you'll find a similar example, adapted for Nuxt. For the purpose of this example, let's say we want to return a link to the webpage that contains the published content.
+We suggest you look at the code of our [official Nuxt Starter Kit](https://github.com/datocms/nuxt-starter-kit):
 
-If you deploy on a provider that supports edge functions, Nuxt 3 applications can expose a dynamic API: files in the `/server/api` folders will be converted into endpoints. So it's possible for DatoCMS to make a POST request to the Nuxt app with the info about the current record. What we'll actually do, is to implement a CORS enabled API endpoint returning an array of preview links built on the base of the record, the item type and so on:
+* Route handler called returning the preview links: [server/api/preview-links/index.ts](https://github.com/datocms/nuxt-starter-kit/blob/main/server/api/preview-links/index.ts)
+* Route handlers to toggle draft mode: [`server/api/draft-mode/enable.ts`](https://github.com/datocms/nuxt-starter-kit/blob/main/server/api/draft-mode/enable.ts) and [`server/api/draft-mode/disable.ts`](https://github.com/datocms/nuxt-starter-kit/blob/main/server/api/draft-mode/disable.ts)
 
-```js
-// Put this code in the /server/api directory of your Nuxt website (`/server/api/preview-links.ts` will work):
-// this function knows how to convert a DatoCMS record into a canonical URL within the website.
+The preview link URLs also include a `token` query parameter that the plugin would send to the webhook receiver, like `https://www.mywebsite.com/api/preview-links?token=some-secret-ish-string`. The `token` is a string of your choice that just has to match in both the plugin settings and [in your frontend's environment variables](https://github.com/datocms/nuxt-starter-kit/blob/main/server/api/preview-links/index.ts#L42-L44). While not encryption, this token is an easy way to limit access to your preview content.
 
-// this function knows how to convert a DatoCMS record
-// into a canonical URL within the website
-const generatePreviewUrl = ({ item, itemType, locale }) => {
-  switch (itemType.attributes.api_key) {
-    case 'landing_page':
-      return `/landing-pages/${item.attributes.slug}`;
-    case 'blog_post':
-      // blog posts are localized:
-      const localePrefix = locale === 'en' ? '' : `/${locale}`;
-      return `${localePrefix}/blog/${item.attributes.slug[locale]}`;
-    default:
-      return null;
-  }
-};
+#### SvelteKit
 
-export default eventHandler(async (event) => {
-  // In this method, we'll make good use of the utility methods that 
-  // H3 make available: they all take the `event` as first parameter.
-  // For more info, see: https://github.com/unjs/h3#utilities
+We suggest you look at the code of our [official SvelteKit Starter Kit](https://github.com/datocms/sveltekit-starter-kit):
 
-  // Setup content-type and CORS permissions.
-  setResponseHeaders(event, {
-    'Content-Type': 'application/json',
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'POST',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization', // add any other headers you need
-  })
+* Route handler called returning the preview links: [`src/routes/api/preview-links/%2Bserver.ts`](https://github.com/datocms/sveltekit-starter-kit/blob/main/src/routes/api/preview-links/%2Bserver.ts)
+* Route handlers to toggle draft mode: [`routes/api/draft-mode/enable/%2Bserver.ts`](https://github.com/datocms/sveltekit-starter-kit/blob/main/src/routes/api/draft-mode/enable/%2Bserver.ts) and [`routes/api/draft-mode/disable/%2Bserver.ts`](https://github.com/datocms/sveltekit-starter-kit/blob/main/src/routes/api/draft-mode/disable/%2Bserver.ts)
 
-  // This will allow OPTIONS request
-  if (event.req.method === 'OPTIONS') {
-    return send(event, 'ok')
-  }
+The preview link URLs also include a `token` query parameter that the plugin would send to the webhook receiver, like `https://www.mywebsite.com/api/preview-links?token=some-secret-ish-string`. The `token` is a string of your choice that just has to match in both the plugin settings and [in your frontend's environment variables](https://github.com/datocms/sveltekit-starter-kit/blob/main/src/routes/api/preview-links/%2Bserver.ts#L34-L36). While not encryption, this token is an easy way to limit access to your preview content.
 
-  // Actually generate the URL using the info that DatoCMS is sending.
-  const url = generatePreviewUrl(await readBody(event))
+#### Astro
 
-  // No URL? No problem: let's send back no link.
-  if (!url) {
-    return { previewLinks: [] }
-  }
+We suggest you look at the code of our [official SvelteKit Starter Kit](https://github.com/datocms/astro-starter-kit):
 
-  // Let's guess the base URL using environment variables:
-  // if you're not working with Vercel or Netlify,
-  // ask for instructions to the provider you're deploying to.
-  const baseUrl = process.env.VERCEL_BRANCH_URL
-    ? // Vercel auto-populates this environment variable
-      `https://${process.env.VERCEL_BRANCH_URL}`
-    : // Netlify auto-populates this environment variable
-      process.env.URL
+* Route handler called returning the preview links: [`src/pages/api/preview-links/index.ts`](https://github.com/datocms/astro-starter-kit/blob/main/src/pages/api/preview-links/index.ts)
+* Route handlers to toggle draft mode: [`src/pages/api/draft-mode/enable/index.ts`](https://github.com/datocms/astro-starter-kit/blob/main/src/pages/api/draft-mode/enable/index.ts) and [`src/pages/api/draft-mode/disable/index.ts`](https://github.com/datocms/astro-starter-kit/blob/main/src/pages/api/draft-mode/disable/index.ts)
 
-  // Here is the list of links we're returnig to DatoCMS and that
-  // will be made available in the sidebar of the record editing page.
-  const previewLinks = [
-    // Public URL:
-    {
-      label: 'Published version',
-      url: `${baseUrl}${url}`,
-    },
-  ]
+The preview link URLs also include a `token` query parameter that the plugin would send to the webhook receiver, like `https://www.mywebsite.com/api/preview-links?token=some-secret-ish-string`. The `token` is a string of your choice that just has to match in both the plugin settings and [in your frontend's environment variables](https://github.com/datocms/astro-starter-kit/blob/main/src/pages/api/preview-links/index.ts#L33-L35). While not encryption, this token is an easy way to limit access to your preview content.
 
-  return { previewLinks }
-})
-```
 
-#### SvelteKit 2
 
-Below here, you'll find a similar example, adapted for SvelteKit. For the purpose of this example, let's say we want to return a link to the webpage that contains the published content.
-
-Create a `+server.ts` file under `src/routes/api/preview-links/` with following contents:
-
-```js
-import { json } from '@sveltejs/kit';
-
-const generatePreviewUrl = ({ item, itemType, locale }: any) => {
-  switch (itemType.attributes.api_key) {
-    case 'landing_page':
-      return `/landing-pages/${item.attributes.slug}`;
-    case 'blog_post':
-      // blog posts are localized:
-      const localePrefix = locale === 'en' ? '' : `/${locale}`;
-      return `${localePrefix}/blog/${item.attributes.slug[locale]}`;
-    case 'post':
-      return `posts/${item.attributes.slug}`;
-    default:
-      return null;
-  }
-};
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-  'Content-Type': 'application/json'
-};
-
-export async function OPTIONS() {
-  setHeaders(corsHeaders);
-
-  return json('ok');
-}
-
-export async function POST({ request, setHeaders }) {
-  setHeaders(corsHeaders);
-
-  const data = await request.json();
-
-  const url = generatePreviewUrl(data);
-
-  if (!url) {
-    return json({ previewLinks: [] });
-  }
-
-  const baseUrl = process.env.VERCEL_BRANCH_URL
-    ? // Vercel auto-populates this environment variable
-      `https://${process.env.VERCEL_BRANCH_URL}`
-    : // Netlify auto-populates this environment variable
-      process.env.URL;
-
-  const previewLinks = [
-    // Public URL:
-    {
-      label: 'Published version',
-      url: `${baseUrl}${url}`
-    }
-  ];
-
-  return json({ previewLinks });
-}
-```
 
 
 
