@@ -1,53 +1,29 @@
-import { connect } from 'datocms-plugin-sdk';
+import { connect, type FieldDropdownActionsCtx, type ExecuteFieldDropdownActionCtx } from 'datocms-plugin-sdk';
 import { render } from './utils/render';
 import ConfigScreen from './entrypoints/ConfigScreen';
 import 'datocms-react-ui/styles.css';
-import { Config, ValidFieldType } from './types';
-import { PluginAttributes } from 'datocms-plugin-sdk/dist/types/SiteApiSchema';
-import FieldExtension from './entrypoints/FieldExtension';
+import generateDummyText from './utils/generateDummyText';
 
 connect({
   renderConfigScreen(ctx) {
     return render(<ConfigScreen ctx={ctx} />);
   },
-  manualFieldExtensions() {
-    return [
-      {
-        id: 'loremIpsum',
-        name: 'Lorem Ipsum',
-        type: 'addon',
-        fieldTypes: ['text', 'string', 'structured_text'] as NonNullable<
-          PluginAttributes['field_types']
-        >,
-        configurable: true,
-      },
-    ];
-  },
-  overrideFieldExtensions(field, { plugin }) {
-    const parameters = plugin.attributes.parameters as Config;
-
-    if (!('autoApplyRules' in parameters)) {
-      return;
+  fieldDropdownActions(field, _ctx: FieldDropdownActionsCtx) {
+    // Apply the dropdown action to fields of type string, text, or structured_text
+    if (['string', 'text', 'structured_text'].includes(field.attributes.field_type)) {
+      return [{
+        id: "loremIpsum",
+        label: "Generate Lorem Ipsum",
+        icon: "font"
+      }];
     }
-    const foundRule = parameters.autoApplyRules.find(
-      (rule) =>
-        new RegExp(rule.apiKeyRegexp).test(field.attributes.api_key) &&
-        rule.fieldTypes.includes(field.attributes.field_type as ValidFieldType),
-    );
-
-    if (!foundRule) {
-      return;
-    }
-
-    return {
-      addons: [
-        {
-          id: 'loremIpsum',
-        },
-      ],
-    };
+    return [];
   },
-  renderFieldExtension(_id, ctx) {
-    render(<FieldExtension ctx={ctx} />);
-  }
+  async executeFieldDropdownAction(actionId, ctx: ExecuteFieldDropdownActionCtx) {
+    if (actionId === "loremIpsum") {
+      const generated = generateDummyText(ctx.field);
+      await ctx.setFieldValue(ctx.fieldPath, generated);
+      ctx.notice("Lorem Ipsum generated!");
+    }
+  },
 });

@@ -74,24 +74,24 @@ export default function generateDummyText(field: Field): string | Node[] {
     return title();
   }
 
-  if (attributes.appeareance.editor === 'markdown') {
+  if (attributes.appearance.editor === 'markdown') {
     return toMarkdown(
-      article(attributes.appeareance.parameters.toolbar as string[]),
+      article(attributes.appearance.parameters.toolbar as string[])
     );
   }
 
-  if (attributes.appeareance.editor === 'wysiwyg') {
+  if (attributes.appearance.editor === 'wysiwyg') {
     return toHtml(
-      article(attributes.appeareance.parameters.toolbar as string[]),
+      article(attributes.appearance.parameters.toolbar as string[])
     );
   }
 
-  if (attributes.appeareance.editor === 'structured_text') {
+  if (attributes.appearance.editor === 'structured_text') {
     const result = toStructuredText(
       article([
-        ...(attributes.appeareance.parameters.nodes as string[]),
-        ...(attributes.appeareance.parameters.marks as string[]),
-      ]),
+        ...(attributes.appearance.parameters.nodes as string[]),
+        ...(attributes.appearance.parameters.marks as string[]),
+      ])
     );
     return result;
   }
