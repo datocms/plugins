@@ -17,12 +17,15 @@ import { GroupBase } from 'react-select';
 import { Config } from '../../types';
 import s from './styles.module.css';
 
+// Props for the ConfigScreen component, receiving DatoCMS context
 type Props = {
   ctx: RenderConfigScreenCtx;
 };
 
+// Basic option interface for the field types
 type Option = { label: string; value: string };
 
+// List of valid field types the plugin can handle
 const fieldTypes: Option[] = [
   {
     value: 'string',
@@ -38,19 +41,24 @@ const fieldTypes: Option[] = [
   },
 ];
 
+// Error shape to validate the auto-apply rules
 type Errors = {
   autoApplyRules?: Array<{ fieldTypes?: string; apiKeyRegexp?: string }>;
 };
 
+// Main ConfigScreen component that handles plugin parameter configuration
 export default function ConfigScreen({ ctx }: Props) {
   return (
+    // Canvas ensures proper styling and auto-resizing within DatoCMS
     <Canvas ctx={ctx}>
       <FormHandler<Config>
+        // Allows array-based form mutations
         mutators={{
-          // potentially other mutators could be merged here
           ...arrayMutators,
         }}
+        // Load existing plugin parameters
         initialValues={ctx.plugin.attributes.parameters}
+        // Custom validation to ensure user input is correct
         validate={(values) => {
           const errors: Errors = {};
 
@@ -72,6 +80,7 @@ export default function ConfigScreen({ ctx }: Props) {
 
           return errors;
         }}
+        // Handles form submission, saving parameters back to the plugin
         onSubmit={async (values) => {
           await ctx.updatePluginParameters(values);
           ctx.notice('Settings updated successfully!');
@@ -91,6 +100,7 @@ export default function ConfigScreen({ ctx }: Props) {
                       <FieldGroup key={name}>
                         <div className={s.grid}>
                           <div>
+                            {/* SelectField to pick which field types the rule should match */}
                             <Field name={`${name}.fieldTypes`}>
                               {({ input, meta: { error } }) => (
                                 <SelectField<Option, true, GroupBase<Option>>
@@ -115,6 +125,7 @@ export default function ConfigScreen({ ctx }: Props) {
                             </Field>
                           </div>
                           <div>
+                            {/* Regex field to match field API keys */}
                             <Field name={`${name}.apiKeyRegexp`}>
                               {({ input, meta: { error } }) => (
                                 <TextField
@@ -127,6 +138,7 @@ export default function ConfigScreen({ ctx }: Props) {
                               )}
                             </Field>
                           </div>
+                          {/* Button to remove a rule */}
                           <Button
                             type="button"
                             buttonType="negative"
@@ -137,6 +149,7 @@ export default function ConfigScreen({ ctx }: Props) {
                         </div>
                       </FieldGroup>
                     ))}
+                    {/* Button to add a new auto-apply rule */}
                     <Button
                       type="button"
                       buttonSize="xxs"
@@ -151,6 +164,7 @@ export default function ConfigScreen({ ctx }: Props) {
                 )}
               </FieldArray>
             </Section>
+            {/* Submit button to save the settings */}
             <Button
               type="submit"
               fullWidth

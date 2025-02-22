@@ -8,12 +8,16 @@ import ConfigScreen from './entrypoints/ConfigScreen';
 import 'datocms-react-ui/styles.css';
 import generateDummyText from './utils/generateDummyText';
 
+// The core plugin connection logic
 connect({
+  // Renders the plugin's config screen in DatoCMS
   renderConfigScreen(ctx) {
     return render(<ConfigScreen ctx={ctx} />);
   },
+  // Declares which dropdown actions are available on a field, based on plugin parameters
   fieldDropdownActions(field, ctx: FieldDropdownActionsCtx) {
     const pluginParams = ctx.plugin.attributes.parameters;
+
     if (pluginParams && Array.isArray(pluginParams.autoApplyRules)) {
       for (const rule of pluginParams.autoApplyRules) {
         if (
@@ -32,11 +36,12 @@ connect({
               ];
             }
           } catch (e) {
-            // Skip rule if regex is invalid
+            // If regex is invalid, skip this rule
           }
         }
       }
     }
+
     // Also add dropdown action if the manual field extension is applied
     if (
       field.attributes.appearance?.addons?.some(
@@ -51,8 +56,10 @@ connect({
         },
       ];
     }
+
     return [];
   },
+  // Executes the chosen dropdown action, filling the field with dummy text
   async executeFieldDropdownAction(
     actionId,
     ctx: ExecuteFieldDropdownActionCtx
@@ -63,6 +70,7 @@ connect({
       ctx.notice('Lorem Ipsum generated!');
     }
   },
+  // Exposes a manual field extension that can be applied to text/string fields
   manualFieldExtensions() {
     return [
       {
