@@ -8,14 +8,25 @@ connect({
   renderConfigScreen(ctx) {
     return render(<ConfigScreen ctx={ctx} />);
   },
-  fieldDropdownActions(field, _ctx: FieldDropdownActionsCtx) {
-    // Apply the dropdown action to fields of type string, text, or structured_text
-    if (['string', 'text', 'structured_text'].includes(field.attributes.field_type)) {
-      return [{
-        id: "loremIpsum",
-        label: "Generate Lorem Ipsum",
-        icon: "font"
-      }];
+  fieldDropdownActions(field, ctx: FieldDropdownActionsCtx) {
+    const pluginParams = ctx.plugin.attributes.parameters;
+    if (pluginParams && Array.isArray(pluginParams.autoApplyRules)) {
+      for (const rule of pluginParams.autoApplyRules) {
+        if (rule.fieldTypes && rule.fieldTypes.includes(field.attributes.field_type)) {
+          try {
+            const regex = new RegExp(rule.apiKeyRegexp);
+            if (regex.test(field.attributes.api_key)) {
+              return [{
+                id: "loremIpsum",
+                label: "Generate Lorem Ipsum",
+                icon: "font"
+              }];
+            }
+          } catch (e) {
+            // Skip rule if regex is invalid
+          }
+        }
+      }
     }
     return [];
   },
