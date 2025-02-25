@@ -39,6 +39,7 @@ export default function ConflictsManager({ exportSchema }: Props) {
         ),
       ),
     )
+    .defaults({ blocks: [], models: [] })
     .value();
 
   const sortedPlugins = chain(conflicts.plugins)
