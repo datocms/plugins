@@ -13,25 +13,30 @@ import {
   Text,
 } from 'datocms-structured-text-slate-utils';
 
+// A Tag object wraps a 'tag' and child elements for flexible transformations
 export type Tag = { tag: string; children: any[] };
 
+// Returns an array of n indices, useful for repeating generation
 export function times(n: number) {
-  /* eslint-disable prefer-spread */
   return Array.from(Array(n).keys());
 }
 
+// Returns a random integer between min and max
 export function rand(min: number, max: number) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+// Creates a Tag object with provided children
 export function t(tag: string, ...children: any[]): Tag {
   return { tag, children };
 }
 
+// Generates a short sentence that can serve as a title
 export function title() {
   return loremIpsum({ units: 'sentences', count: 1 }).slice(0, -1);
 }
 
+// Creates a random sentence with optional formatting tags like strong/em/link
 export function sentence(
   count: number,
   buttons: string[],
@@ -40,6 +45,7 @@ export function sentence(
     const die = rand(1, 30);
     let word = loremIpsum({ units: 'words', count: rand(1, 3) });
 
+    // Capitalize the first word
     if (i === 0) {
       word = word.charAt(0).toUpperCase() + word.slice(1);
     }
@@ -59,9 +65,11 @@ export function sentence(
     return word;
   });
 
+  // Build the sentence with spaces and a period
   return intersperse(words, ' ').concat(['.']);
 }
 
+// Generates multiple sentences separated by spaces
 export function sentences(count: number, buttons: string[]) {
   return intersperse(
     times(count).map(() => sentence(rand(4, 10), buttons)),
@@ -69,6 +77,7 @@ export function sentences(count: number, buttons: string[]) {
   );
 }
 
+// Converts a tree of Tags into HTML string
 export function toHtml(tree: Tag | Tag[] | string): string {
   if (typeof tree === 'string') {
     return tree;
@@ -87,6 +96,7 @@ export function toHtml(tree: Tag | Tag[] | string): string {
   return `<${tree.tag}>${content}</${tree.tag}>`;
 }
 
+// Converts a tree of Tags into Markdown string
 export function toMarkdown(tree: Tag | Tag[] | string): string {
   if (typeof tree === 'string') {
     return tree;
@@ -133,14 +143,17 @@ export function toMarkdown(tree: Tag | Tag[] | string): string {
   return `${content}`;
 }
 
+// Picks a random item from an array
 function pickRandom(items: string[]): string {
   return items[Math.floor(Math.random() * items.length)];
 }
 
+// Returns a mock email using random names and known email domains
 export function email() {
   return [pickRandom(names).toLowerCase(), pickRandom(emailDomains)].join('@');
 }
 
+// Returns a mock URL using random name and domain suffix
 export function url() {
   return [
     'https://',
@@ -151,10 +164,14 @@ export function url() {
   ].join('');
 }
 
+// Overloads to handle creation of structured text data from different Tag inputs
 export function toStructuredText(tree: Tag): Node;
 export function toStructuredText(tree: Tag[]): Node[];
 export function toStructuredText(tree: string): Node;
 
+/**
+ * Recursively transforms a Tag-based tree into a DatoCMS-structured-text format.
+ */
 export function toStructuredText(tree: Tag | Tag[] | string): Node[] | Node {
   if (typeof tree === 'string') {
     return { text: tree };

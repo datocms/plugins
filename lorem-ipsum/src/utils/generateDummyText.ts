@@ -16,6 +16,10 @@ import {
   Tag,
 } from './text';
 
+/**
+ * Generates a simple article structure with optional headings, lists, and blockquotes
+ * depending on which formatting buttons are available.
+ */
 function article(buttons: string[]) {
   const s = (count = rand(2, 4)) => sentences(count, buttons);
 
@@ -53,9 +57,13 @@ function article(buttons: string[]) {
   ].filter((x) => !!x) as Tag[];
 }
 
+/**
+ * Generates dummy text based on the provided field's type and editor configuration.
+ */
 export default function generateDummyText(field: Field): string | Node[] {
   const { attributes } = field;
 
+  // Check for single-line string with special formats
   if (attributes.field_type === 'string') {
     if (
       attributes.validators.format &&
@@ -74,27 +82,31 @@ export default function generateDummyText(field: Field): string | Node[] {
     return title();
   }
 
-  if (attributes.appeareance.editor === 'markdown') {
+  // Handle text fields with markdown
+  if (attributes.appearance.editor === 'markdown') {
     return toMarkdown(
-      article(attributes.appeareance.parameters.toolbar as string[]),
+      article(attributes.appearance.parameters.toolbar as string[])
     );
   }
 
-  if (attributes.appeareance.editor === 'wysiwyg') {
+  // Handle text fields with wysiwyg
+  if (attributes.appearance.editor === 'wysiwyg') {
     return toHtml(
-      article(attributes.appeareance.parameters.toolbar as string[]),
+      article(attributes.appearance.parameters.toolbar as string[])
     );
   }
 
-  if (attributes.appeareance.editor === 'structured_text') {
+  // Handle structured text
+  if (attributes.appearance.editor === 'structured_text') {
     const result = toStructuredText(
       article([
-        ...(attributes.appeareance.parameters.nodes as string[]),
-        ...(attributes.appeareance.parameters.marks as string[]),
-      ]),
+        ...(attributes.appearance.parameters.nodes as string[]),
+        ...(attributes.appearance.parameters.marks as string[]),
+      ])
     );
     return result;
   }
 
+  // Fallback to plain lorem ipsum for other cases
   return loremIpsum({ units: 'paragraphs', count: 3 });
 }
