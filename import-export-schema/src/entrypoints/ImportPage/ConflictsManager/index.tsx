@@ -1,7 +1,7 @@
 import type { ExportSchema } from '@/entrypoints/ExportPage/ExportSchema';
 import { getTextWithoutRepresentativeEmojiAndPadding } from '@/utils/emojiAgnosticSorter';
 import { Button, Toolbar, ToolbarStack, ToolbarTitle } from 'datocms-react-ui';
-import { chain, sortBy } from 'lodash-es';
+import { defaults, groupBy, map, mapValues, sortBy } from 'lodash-es';
 import { useContext } from 'react';
 import { useFormState } from 'react-final-form';
 import { ConflictsContext } from './ConflictsContext';
@@ -24,31 +24,33 @@ export default function ConflictsManager({ exportSchema }: Props) {
     Object.keys(conflicts.itemTypes).length === 0 &&
     Object.keys(conflicts.plugins).length === 0;
 
-  const groupedItemTypes = chain(conflicts.itemTypes)
-    .map((projectItemType, exportItemTypeId) => {
-      const exportItemType = exportSchema.getItemTypeById(exportItemTypeId);
-      return { exportItemTypeId, exportItemType, projectItemType };
-    })
-    .groupBy(({ exportItemType }) =>
-      exportItemType?.attributes.modular_block ? 'blocks' : 'models',
-    )
-    .mapValues((group) =>
-      sortBy(group, ({ exportItemType }) =>
-        getTextWithoutRepresentativeEmojiAndPadding(
-          exportItemType.attributes.name,
-        ),
+  const groupedItemTypes = defaults(
+    mapValues(
+      groupBy(
+        map(conflicts.itemTypes, (projectItemType, exportItemTypeId) => {
+          const exportItemType = exportSchema.getItemTypeById(exportItemTypeId);
+          return { exportItemTypeId, exportItemType, projectItemType };
+        }),
+        ({ exportItemType }) =>
+          exportItemType?.attributes.modular_block ? 'blocks' : 'models',
       ),
-    )
-    .defaults({ blocks: [], models: [] })
-    .value();
+      (group) =>
+        sortBy(group, ({ exportItemType }) =>
+          getTextWithoutRepresentativeEmojiAndPadding(
+            exportItemType.attributes.name,
+          ),
+        ),
+    ),
+    { blocks: [], models: [] },
+  );
 
-  const sortedPlugins = chain(conflicts.plugins)
-    .map((projectPlugin, exportPluginId) => {
+  const sortedPlugins = sortBy(
+    map(conflicts.plugins, (projectPlugin, exportPluginId) => {
       const exportPlugin = exportSchema.getPluginById(exportPluginId);
       return { exportPluginId, exportPlugin, projectPlugin };
-    })
-    .sortBy(({ exportPlugin }) => exportPlugin.attributes.name)
-    .value();
+    }),
+    ({ exportPlugin }) => exportPlugin.attributes.name,
+  );
 
   return (
     <div className="page">
