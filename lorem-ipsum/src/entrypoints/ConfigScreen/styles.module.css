@@ -1,4 +1,5 @@
 .grid {
+  /* Grid layout for form fields and actions */
   display: grid;
   grid-template-columns: 3fr 1fr 40px;
   column-gap: var(--spacing-m);
