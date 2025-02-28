@@ -221,6 +221,8 @@ export default async function importSchema(
     'title_field',
     'image_preview_field',
     'excerpt_field',
+    'presentation_title_field',
+    'presentation_image_field',
   ] as const;
 
   await Promise.all(
@@ -234,8 +236,10 @@ export default async function importSchema(
           id,
           relationships: relationshipsToUpdate.reduce(
             (acc, relationshipName) => {
-              const handle =
-                toCreate.entity.relationships[relationshipName].data;
+              const handle = get(
+                toCreate.entity,
+                `relationships.${relationshipName}.data`,
+              );
 
               return {
                 ...acc,

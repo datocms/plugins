@@ -6,15 +6,22 @@
   "version": "0.1.7",
   "author": "Stefano Verna <s.verna@datocms.com>",
   "type": "module",
-  "keywords": ["datocms-plugin"],
+  "keywords": [
+    "datocms-plugin"
+  ],
   "datoCmsPlugin": {
     "title": "Schema Import/Export",
     "coverImage": "docs/cover.png",
     "previewImage": "docs/preview.mp4",
     "entryPoint": "dist/index.html",
-    "permissions": ["currentUserAccessToken"]
+    "permissions": [
+      "currentUserAccessToken"
+    ]
   },
-  "files": ["dist", "docs"],
+  "files": [
+    "dist",
+    "docs"
+  ],
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -23,7 +30,7 @@
     "format": "npx @biomejs/biome check --unsafe --write ."
   },
   "dependencies": {
-    "@datocms/cma-client": "^3.4.3",
+    "@datocms/cma-client": "^3.4.5",
     "@datocms/rest-api-events": "^3.4.3",
     "@fortawesome/fontawesome-svg-core": "^6.7.2",
     "@fortawesome/free-solid-svg-icons": "^6.7.2",
