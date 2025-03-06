@@ -32,6 +32,7 @@ export function ImportPage({ ctx }: Props) {
   const params = new URLSearchParams(ctx.location.search);
   const recipeUrl = params.get('recipe_url');
   const recipeTitle = params.get('recipe_title');
+  const [loadingRecipeByUrl, setLoadingRecipeByUrl] = useState(false);
 
   useEffect(() => {
     async function run() {
@@ -39,13 +40,21 @@ export function ImportPage({ ctx }: Props) {
         return;
       }
 
-      const uri = new URL(recipeUrl);
+      try {
+        setLoadingRecipeByUrl(true);
+        const uri = new URL(recipeUrl);
 
-      const response = await fetch(recipeUrl);
-      const body = await response.json();
+        const response = await fetch(recipeUrl);
+        const body = await response.json();
 
-      const schema = new ExportSchema(body as ExportDoc);
-      setExportSchema([recipeTitle || uri.pathname.split('/').pop()!, schema]);
+        const schema = new ExportSchema(body as ExportDoc);
+        setExportSchema([
+          recipeTitle || uri.pathname.split('/').pop()!,
+          schema,
+        ]);
+      } finally {
+        setLoadingRecipeByUrl(false);
+      }
     }
 
     run();
@@ -191,6 +200,8 @@ export function ImportPage({ ctx }: Props) {
                     ) : (
                       <Spinner placement="centered" size={60} />
                     )
+                  ) : loadingRecipeByUrl ? (
+                    <Spinner placement="centered" size={60} />
                   ) : (
                     <div className="blank-slate">
                       <div className="blank-slate__body">
