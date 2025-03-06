@@ -29,9 +29,32 @@ type Props = {
 };
 
 export function ImportPage({ ctx }: Props) {
+  const params = new URLSearchParams(ctx.location.search);
+  const recipeUrl = params.get('recipe_url');
+  const recipeTitle = params.get('recipe_title');
+
+  useEffect(() => {
+    async function run() {
+      if (!recipeUrl) {
+        return;
+      }
+
+      const uri = new URL(recipeUrl);
+
+      const response = await fetch(recipeUrl);
+      const body = await response.json();
+
+      const schema = new ExportSchema(body as ExportDoc);
+      setExportSchema([recipeTitle || uri.pathname.split('/').pop()!, schema]);
+    }
+
+    run();
+  }, [recipeUrl]);
+
   const [exportSchema, setExportSchema] = useState<
     [string, ExportSchema] | undefined
   >();
+
   const [importProgress, setImportProgress] = useState<
     ImportProgress | undefined
   >(undefined);
