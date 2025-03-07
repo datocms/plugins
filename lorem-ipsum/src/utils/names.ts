@@ -1,3 +1,6 @@
+/**
+ * List of sample first names used for random content generation.
+ */
 const names = [
   'Aaliyah',
   'Abigail',
