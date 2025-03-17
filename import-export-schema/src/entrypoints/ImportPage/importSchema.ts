@@ -122,7 +122,11 @@ export default async function importSchema(
         const data: SchemaTypes.ItemTypeCreateSchema['data'] = {
           type: 'item_type',
           id: itemTypeIdMappings.get(toCreate.entity.id),
-          attributes: omit(toCreate.entity.attributes, ['has_singleton_item']),
+          attributes: omit(toCreate.entity.attributes, [
+            'has_singleton_item',
+            'ordering_direction',
+            'ordering_meta',
+          ]),
         };
 
         try {
@@ -225,6 +229,8 @@ export default async function importSchema(
     'presentation_image_field',
   ] as const;
 
+  const attributesToUpdate = ['ordering_direction', 'ordering_meta'];
+
   await Promise.all(
     importDoc.itemTypes.entitiesToCreate.map(
       track(async (toCreate) => {
@@ -234,6 +240,7 @@ export default async function importSchema(
         const data: SchemaTypes.ItemTypeUpdateSchema['data'] = {
           type: 'item_type',
           id,
+          attributes: pick(toCreate.entity.attributes, attributesToUpdate),
           relationships: relationshipsToUpdate.reduce(
             (acc, relationshipName) => {
               const handle = get(
@@ -262,12 +269,17 @@ export default async function importSchema(
         try {
           console.log(
             data.relationships,
+            pick(createdItemType.attributes, attributesToUpdate),
             pick(createdItemType.relationships, relationshipsToUpdate),
           );
           if (
             !isEqual(
               data.relationships,
               pick(createdItemType.relationships, relationshipsToUpdate),
+            ) ||
+            !isEqual(
+              data.attributes,
+              pick(createdItemType.attributes, attributesToUpdate),
             )
           ) {
             console.log('Finalizing item type', data);
