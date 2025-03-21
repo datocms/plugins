@@ -262,6 +262,11 @@ code {
   overflow: auto;
 }
 
+.page__actions {
+  border-top: 1px solid var(--border-color);
+  padding: var(--spacing-l);
+}
+
 .blank-slate {
   position: absolute;
   top: 0;
@@ -366,6 +371,8 @@ code {
   color: var(--light-body-color);
   font-size: var(--font-size-s);
   line-height: 1;
+  margin: 0;
+  margin-top: 10px;
 }
 
 .conflicts-manager__group {

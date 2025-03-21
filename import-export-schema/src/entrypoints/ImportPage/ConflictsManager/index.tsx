@@ -128,21 +128,20 @@ export default function ConflictsManager({ exportSchema }: Props) {
             </div>
           )}
         </div>
-
-        <div className="conflicts-manager__actions">
-          <Button
-            type="submit"
-            fullWidth
-            buttonSize="l"
-            buttonType="primary"
-            disabled={submitting || !valid}
-          >
-            Proceed with the import
-          </Button>
-          <p className="conflicts-manager__actions__reassurance">
-            The import will never alter any existing elements in the schema.
-          </p>
-        </div>
+      </div>
+      <div className="page__actions">
+        <Button
+          type="submit"
+          fullWidth
+          buttonSize="l"
+          buttonType="primary"
+          disabled={submitting || !valid}
+        >
+          Proceed with the import
+        </Button>
+        <p className="conflicts-manager__actions__reassurance">
+          The import will never alter any existing elements in the schema.
+        </p>
       </div>
     </div>
   );
