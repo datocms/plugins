@@ -6,22 +6,15 @@
   "version": "0.1.13",
   "author": "Stefano Verna <s.verna@datocms.com>",
   "type": "module",
-  "keywords": [
-    "datocms-plugin"
-  ],
+  "keywords": ["datocms-plugin"],
   "datoCmsPlugin": {
     "title": "Schema Import/Export",
     "coverImage": "docs/cover.png",
     "previewImage": "docs/preview.mp4",
     "entryPoint": "dist/index.html",
-    "permissions": [
-      "currentUserAccessToken"
-    ]
+    "permissions": ["currentUserAccessToken"]
   },
-  "files": [
-    "dist",
-    "docs"
-  ],
+  "files": ["dist", "docs"],
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

@@ -205,7 +205,11 @@ export function findLinkedItemTypeIds(field: SchemaTypes.Field) {
   ].map((i) => i.validator);
 
   for (const validator of validators) {
-    for (const id of get(field.attributes.validators, validator, []) as string[]) {
+    for (const id of get(
+      field.attributes.validators,
+      validator,
+      [],
+    ) as string[]) {
       fieldLinkedItemTypeIds.add(id);
     }
   }

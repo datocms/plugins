@@ -153,7 +153,7 @@ export function ImportPage({ ctx }: Props) {
               </div>
               <div className="progress__content">
                 <Spinner size={25} />
-                Import in progress: please not close the window or change
+                Import in progress: please do not close the window or change
                 section! 🙏
               </div>
             </div>
@@ -170,9 +170,31 @@ export function ImportPage({ ctx }: Props) {
                   <Button
                     leftIcon={<FontAwesomeIcon icon={faXmark} />}
                     buttonSize="s"
-                    onClick={() => setExportSchema(undefined)}
+                    buttonType="negative"
+                    onClick={async () => {
+                      const result = await ctx.openConfirm({
+                        title: 'Cancel the import?',
+                        content: `Do you really want to cancel the import process of "${exportSchema[0]}"?`,
+                        choices: [
+                          {
+                            label: 'Yes, cancel the import',
+                            value: 'yes',
+                            intent: 'negative',
+                          },
+                        ],
+                        cancel: {
+                          label: 'Nevermind',
+                          value: false,
+                          intent: 'positive',
+                        },
+                      });
+
+                      if (result === 'yes') {
+                        setExportSchema(undefined);
+                      }
+                    }}
                   >
-                    Close
+                    Cancel
                   </Button>
                 </ToolbarStack>
               </Toolbar>
