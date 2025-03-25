@@ -132,6 +132,7 @@ export default function ConfigScreen({ ctx }: Props) {
                                   id="apiKeyRegexp"
                                   label="API key (regexp)"
                                   textInputProps={{ monospaced: true }}
+                                  placeholder=".*"
                                   error={error}
                                   {...input}
                                 />
