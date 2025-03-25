@@ -30,7 +30,7 @@ connect({
               return [
                 {
                   id: 'loremIpsum',
-                  label: 'Generate Lorem Ipsum',
+                  label: 'Generate dummy text',
                   icon: 'font',
                 },
               ];
@@ -51,7 +51,7 @@ connect({
       return [
         {
           id: 'loremIpsum',
-          label: 'Generate Lorem Ipsum',
+          label: 'Generate dummy text',
           icon: 'font',
         },
       ];
@@ -67,7 +67,7 @@ connect({
     if (actionId === 'loremIpsum') {
       const generated = generateDummyText(ctx.field);
       await ctx.setFieldValue(ctx.fieldPath, generated);
-      ctx.notice('Lorem Ipsum generated!');
+      ctx.notice('Dummy text successfully generated!');
     }
   },
   // Exposes a manual field extension that can be applied to text/string fields
