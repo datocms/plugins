@@ -1,3 +1,4 @@
+// Common email service providers
 export const emailDomains = [
   'aol.com', 'att.net', 'comcast.net', 'facebook.com', 'gmail.com', 'gmx.com', 'googlemail.com',
   'google.com', 'hotmail.com', 'hotmail.co.uk', 'mac.com', 'me.com', 'mail.com', 'msn.com',
@@ -7,4 +8,5 @@ export const emailDomains = [
   'rocketmail.com', 'ymail.com', 'zoho.com', 'yandex.com',
 ];
 
+// Possible domain suffixes for generating random URLs
 export const domainSuffixes = ['com', 'us', 'biz', 'info', 'name', 'net', 'org'];
