@@ -3,8 +3,15 @@ svg {
 }
 
 html,
-body {
+body,
+#root {
   height: 100%;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
 }
 
 .dropzone,
@@ -17,7 +24,7 @@ body {
 }
 
 .dropzone--pending {
-  &:before {
+  &::before {
     content: "";
     position: absolute;
     top: 20px;
@@ -48,12 +55,14 @@ body {
   cursor: pointer;
   border: 1px solid rgb(var(--color-components));
   background: color-mix(in srgb, rgb(var(--color-components)), white 94%);
+}
 
+.app-node__body {
   &:hover {
-    box-shadow: 0 0 0 3px transparent, 0 0 0 3px
-      rgb(var(--color-components), 40%);
+    box-shadow:
+      0 0 0 3px transparent,
+      0 0 0 3px rgb(var(--color-components), 40%);
   }
-
   * {
     text-overflow: ellipsis;
     overflow: hidden;
@@ -109,8 +118,16 @@ body {
   opacity: 0.2;
 }
 
-.app-node__focused .app-node__body {
-  box-shadow: 0 0 0 3px transparent, 0 0 0 3px rgb(var(--color-components), 50%);
+/* New standardized modifier class; keep legacy for backward compatibility */
+.app-node--excluded {
+  opacity: 0.2;
+}
+
+.app-node__focused .app-node__body,
+.app-node--focused .app-node__body {
+  box-shadow:
+    0 0 0 3px transparent,
+    0 0 0 3px rgb(var(--color-components), 50%);
 }
 
 .tooltip {
@@ -119,9 +136,12 @@ body {
   border-radius: 10px;
   /* http://smoothshadows.com/#djEsMSw2LDAuMTIsNzgsMCwwLCMwMzA3MTIsI2YzZjRmNiwjZmZmZmZmLDI%3D */
   box-shadow:
-    0px 0px 2px rgba(3, 7, 18, 0.02), 0px 0px 9px rgba(3, 7, 18, 0.04),
-    0px 0px 20px rgba(3, 7, 18, 0.06), 0px 0px 35px rgba(3, 7, 18, 0.08),
-    0px 0px 54px rgba(3, 7, 18, 0.1), 0px 0px 78px rgba(3, 7, 18, 0.12);
+    0px 0px 2px rgba(3, 7, 18, 0.02),
+    0px 0px 9px rgba(3, 7, 18, 0.04),
+    0px 0px 20px rgba(3, 7, 18, 0.06),
+    0px 0px 35px rgba(3, 7, 18, 0.08),
+    0px 0px 54px rgba(3, 7, 18, 0.1),
+    0px 0px 78px rgba(3, 7, 18, 0.12);
 
   display: flex;
   flex-direction: column;
@@ -193,8 +213,10 @@ code {
   display: flex;
   align-items: center;
   justify-content: center;
+}
 
-  &:before {
+.fieldEdge {
+  &::before {
     display: block;
     content: "";
     width: 10px;
@@ -202,7 +224,6 @@ code {
     border-radius: 100px;
     background: #999;
   }
-
   .fieldEdge__tooltip {
     display: none;
     position: absolute;
@@ -213,21 +234,17 @@ code {
     backdrop-filter: blur(2px);
     padding: 10px;
   }
-
   &:hover {
-    &:before {
+    &::before {
       background: #555;
     }
-
     .fieldEdge__tooltip {
       display: block;
     }
   }
-
   .field {
     font-size: 10px;
   }
-
   .field__icon {
     min-width: 16px;
     min-height: 16px;
@@ -246,8 +263,97 @@ code {
   flex-direction: column;
 }
 
+/* Ensure export page never scrolls at the outer container */
+.page--export {
+  overflow: hidden;
+}
+
 .page__toolbar {
-  min-height: 65px;
+  /* Keep toolbar compact so content sits higher */
+  min-height: 44px;
+  padding: 6px var(--spacing-l);
+  display: flex;
+  align-items: center;
+  border-bottom: none; /* remove separator line */
+  box-shadow: none; /* ensure no shadow line */
+}
+
+/* Also remove any inner toolbar border/shadow if present */
+.page__toolbar > * {
+  border-bottom: none;
+  box-shadow: none;
+}
+
+/* Centered, prominent Import/Export toggle */
+.mode-toggle {
+  --toggle-inset: 6px;
+  --blob-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
+  display: inline-flex;
+  position: relative;
+  gap: 0;
+  padding: var(--toggle-inset);
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: #fff;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+}
+
+/* Sliding blob background */
+.mode-toggle::before {
+  content: "";
+  position: absolute;
+  top: var(--toggle-inset);
+  left: var(--toggle-inset);
+  width: calc((100% - (var(--toggle-inset) * 2)) / 2);
+  height: calc(100% - (var(--toggle-inset) * 2));
+  border-radius: 999px;
+  transform: translateX(0%);
+  transition: transform 420ms var(--blob-ease);
+  pointer-events: none;
+}
+
+/* Base blob */
+.mode-toggle::before {
+  background: var(--accent-color);
+  box-shadow:
+    0 10px 20px rgba(0, 0, 0, 0.08),
+    0 2px 6px rgba(0, 0, 0, 0.06) inset;
+}
+
+/* Move blob when Export is active */
+.mode-toggle[data-mode="export"]::before {
+  transform: translateX(100%);
+}
+
+.mode-toggle__button {
+  appearance: none;
+  border: 0;
+  margin: 0;
+  background: transparent;
+  padding: 8px 16px; /* more compact to fit toolbar */
+  font: inherit;
+  font-size: 14px;
+  color: var(--base-body-color);
+  cursor: pointer;
+  border-radius: 999px;
+  position: relative;
+  z-index: 2; /* above blob */
+  flex: 1 1 0;
+  text-align: center;
+  transition: color 200ms ease;
+}
+
+.mode-toggle__button:hover {
+  color: color-mix(in srgb, var(--base-body-color), black 15%);
+}
+
+.mode-toggle__button.is-active,
+.mode-toggle__button[aria-selected="true"] {
+  color: #fff;
 }
 
 .page__toolbar__title {
@@ -262,9 +368,519 @@ code {
   overflow: auto;
 }
 
+/* Center the main blank-slate body on the page */
+.blank-slate {
+  height: 100%;
+}
+
+/* Ensure centering fills the available content area in both pages and dropzones */
+.page__content > .blank-slate,
+.dropzone > .blank-slate {
+  position: absolute;
+  inset: 0;
+}
+
+/* Center only the main square, regardless of tips above/below */
+.blank-slate__body {
+  position: absolute;
+  top: 35%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.blank-slate__body__outside {
+  position: absolute;
+  left: 50%;
+  bottom: 20px;
+  transform: translateX(-50%);
+  text-align: center;
+}
+
+/* Generic list resets for clean summaries */
+.list--plain {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 8px; /* consistent vertical rhythm */
+}
+
+/* Neutralize ad-hoc margins for items inside plain lists */
+.list--plain > li {
+  margin: 0;
+}
+
+/* When using connection cards inside plain lists, rely on list gap for spacing */
+:where(.list--plain) .connection-card {
+  margin: 0;
+}
+
+/* Default row styling for simple list items (not cards) */
+/* Non-card, non-link items styled as simple rows */
+.list--plain > li:not(.connection-card):not(.list-item--link) {
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  /* Allow contents to shrink and ellipsize within the tile */
+  min-width: 0;
+}
+
+/* Ensure direct children can shrink and truncate text properly */
+.list--plain > li:not(.connection-card):not(.list-item--link) > * {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.list--plain > li:not(.connection-card):not(.list-item--link):hover {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+/* Linked items: move row chrome to the anchor for full-click area */
+.list--plain > li.list-item--link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+:where(.list--plain) .list-item--link > a {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: #fff;
+  color: inherit;
+  text-decoration: none;
+  box-sizing: border-box;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  position: relative;
+  z-index: 1;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+:where(.list--plain) .list-item--link > a:hover {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+/* Slim variant for compact summaries */
+.list--slim {
+  gap: 4px;
+}
+
+.list--slim > li:not(.connection-card):not(.list-item--link) {
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+
+.list--plain code {
+  background: #f6f7f9;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+.list--dashed {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.list--dashed li {
+  position: relative;
+  padding-left: 12px;
+}
+
+.list--dashed li::before {
+  content: "–";
+  position: absolute;
+  left: 0;
+  color: var(--light-body-color);
+}
+
+/* Summary toolbar meta and chips */
+.summary-toolbar__meta {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  background: #fff;
+  font-size: 12px;
+  color: var(--base-body-color);
+}
+
+.chip--muted {
+  color: var(--light-body-color);
+}
+
+/* Make button-based chips look like pills, not default grey buttons */
+button.chip {
+  appearance: none;
+  background: #fff;
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  color: var(--base-body-color);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  padding: 3px 10px;
+}
+
+button.chip:hover {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+/* Active/pressed state for toggle chips */
+button.chip.is-active,
+button.chip[aria-pressed="true"] {
+  background: var(--accent-color);
+  color: #fff;
+  border-color: var(--accent-color);
+}
+
+/* Softer variant still works on buttons */
+button.chip.chip--soft {
+  background: rgba(59, 130, 246, 0.06);
+  border-color: rgba(59, 130, 246, 0.25);
+  color: color-mix(in srgb, #3b82f6, black 35%);
+}
+
+button.chip.chip--muted {
+  color: var(--light-body-color);
+}
+
+/* Accessibility focus ring */
+button.chip:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+}
+
+/* Connections UI */
+.summary {
+  background: linear-gradient(180deg, #fafcff, #f5f7ff);
+}
+
+.summary__section {
+  padding: 16px;
+  display: grid;
+  gap: 12px;
+}
+
+.summary__title {
+  font-weight: 700;
+  letter-spacing: -0.2px;
+}
+
+.summary__grid {
+  display: grid;
+  /* Fluid columns that adapt from 1 → n nicely */
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: var(--spacing-m, 12px);
+  align-items: stretch; /* equal height tiles per row */
+  grid-auto-flow: row dense;
+}
+
+/* Avoid overflow on long content inside tiles */
+.summary__grid > * {
+  min-width: 0;
+}
+
+.surface {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: #fff;
+  padding: 12px;
+}
+
+/* New summary layout: left nav + right content */
+.summary__layout {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: var(--spacing-m, 12px);
+  align-items: start;
+}
+
+.summary__nav {
+  display: grid;
+  gap: 6px;
+  position: sticky;
+  top: 8px;
+}
+
+.summary__nav__item {
+  appearance: none;
+  border: 1px solid var(--border-color);
+  background: #fff;
+  border-radius: 8px;
+  padding: 8px 10px;
+  width: 100%;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.summary__nav__item.is-active {
+  border-color: var(--accent-color);
+  background: color-mix(in srgb, var(--accent-color), white 94%);
+}
+
+.summary__nav__label {
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.summary__content {
+  min-width: 0;
+}
+
+.summary__content__title {
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+@media (max-width: 900px) {
+  .summary__layout {
+    grid-template-columns: 1fr;
+  }
+  .summary__nav {
+    position: relative;
+    top: auto;
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+  .summary__nav__item {
+    flex: 0 0 auto;
+    min-width: 160px;
+  }
+}
+
+.box__title {
+  font-weight: 600;
+}
+
+.box__meta {
+  color: var(--light-body-color);
+}
+
+.collapsible__toggle {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: transparent; /* keep surface white */
+  border: 0;
+  padding: 8px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  position: relative; /* ensure stacking context so content doesn't overlay */
+  z-index: 0;
+}
+
+.collapsible__toggle:hover {
+  background: transparent;
+}
+
+.collapsible__title {
+  font-weight: 600;
+}
+
+.collapsible__content {
+  margin-top: 8px;
+  position: relative;
+  z-index: 0;
+}
+
+.chip--soft {
+  background: color-mix(in srgb, var(--accent-color, #4f46e5), white 92%);
+  border-color: color-mix(in srgb, var(--accent-color, #4f46e5), white 70%);
+  color: var(--accent-color, #4f46e5);
+}
+
+.connections {
+  display: grid;
+  gap: 12px;
+}
+
+.connections__toolbar {
+  display: grid;
+  grid-template-columns: minmax(260px, 420px) 1fr auto;
+  align-items: end;
+  gap: 10px;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 8px;
+}
+
+.connections__spacer {
+  width: 100%;
+}
+
+.connections__actions {
+  display: grid;
+  gap: 6px;
+  align-items: end;
+  justify-items: end;
+}
+
+.connections__count {
+  font-size: 12px;
+  color: var(--light-body-color);
+}
+
+.button-group {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.connection-card {
+  margin: 0 0 8px 0;
+}
+
+.connection-card__container {
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+  transition:
+    box-shadow 160ms ease,
+    border-color 160ms ease,
+    transform 160ms ease;
+}
+
+.connection-card__toggle {
+  display: grid;
+  grid-template-columns: 20px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  background: transparent;
+  border: 0;
+  padding: 10px 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 150ms ease;
+}
+
+.connection-card__toggle:hover {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.connection-card__toggle:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--accent-color, #4f46e5);
+  border-radius: 6px;
+}
+
+.connection-card__toggle[aria-expanded="true"] {
+  background: rgba(0, 0, 0, 0.02);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.caret {
+  display: inline-block;
+  width: 14px;
+  text-align: center;
+  color: var(--light-body-color);
+}
+
+.connection-card__title {
+  font-weight: 600;
+}
+
+.connection-card__apikey {
+  color: #666;
+  font-weight: 400;
+}
+
+.connection-card__counts {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.connection-card__body {
+  /* Align content with the start of the title column: 12 (container padding) + 20 (caret) + 8 (gap) */
+  padding: var(--spacing-l, 16px) var(--spacing-l, 16px) var(--spacing-l, 16px)
+    calc(12px + 20px + 8px);
+  border-top: 1px solid var(--border-color);
+  background: #fafafa;
+}
+
+/* Improve readability of lists within card body */
+.connection-card__body .list--dashed li {
+  margin: 4px 0;
+}
+
+.connection-card__body code {
+  background: #f6f7f9;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+/* Subtle elevation when open/hover */
+.connection-card__container.is-open,
+.connection-card__container:hover {
+  border-color: color-mix(in srgb, var(--accent-color, #4f46e5), white 60%);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+}
+
+/* Export page: prevent outer content scrolling; only inner panes scroll */
+.page--export .page__content {
+  overflow: hidden;
+  overflow-y: hidden;
+  min-height: 0;
+  padding: 0;
+}
+
+.page--export .export-wrapper {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 .page__actions {
   border-top: 1px solid var(--border-color);
   padding: var(--spacing-l);
+  display: grid;
+  gap: var(--spacing-s);
 }
 
 .blank-slate {
@@ -273,11 +889,19 @@ code {
   left: 0;
   width: 100%;
   height: 100%;
+  box-sizing: border-box; /* prevent padding from causing overflow */
   display: flex;
   flex-direction: column;
   gap: 15px;
   align-items: center;
-  justify-content: center;
+  /* Prefer near-top layout with a bit of breathing room */
+  justify-content: flex-start;
+  padding-top: var(--spacing-l);
+}
+
+/* Ensure blank slates on export never create outer scrollbars */
+.page--export .blank-slate {
+  overflow: hidden;
 }
 
 .blank-slate__body {
@@ -286,6 +910,8 @@ code {
   border-radius: 4px;
   max-width: 600px;
   padding: var(--spacing-xxl);
+  /* Ensure some breathing room from toolbar/top */
+  margin-top: var(--spacing-xl);
 }
 
 .blank-slate__body__title {
@@ -301,6 +927,33 @@ code {
   color: var(--light-body-color);
 }
 
+/* Export selection panel */
+.export-selector {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--spacing-m);
+  align-items: start;
+  min-width: 420px;
+}
+
+.export-selector__field {
+  width: 100%;
+}
+
+.export-selector__actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-s);
+}
+
+.export-selector__actions button {
+  width: 100%;
+}
+
+.export-selector__cta button {
+  width: 100%;
+}
+
 .import__graph,
 .import__details {
   position: absolute;
@@ -314,6 +967,160 @@ code {
 .import__details {
   border-left: 1px solid var(--border-color);
   box-sizing: border-box;
+  background: #fff;
+  /* Slightly tighter padding for redesigned conflicts UI */
+}
+
+/* Conflicts manager mass actions */
+.conflicts-setup {
+  display: grid;
+  gap: var(--spacing-m);
+  margin: var(--spacing-m) 0 var(--spacing-l);
+}
+.setup-inline {
+  display: grid;
+  gap: 12px;
+}
+
+.setup-group {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  align-items: start;
+  gap: 12px;
+}
+
+/* Vertical variant for compact, column-like layout */
+.setup-group--vertical {
+  grid-template-columns: 1fr;
+}
+
+.setup-group__label {
+  font-weight: 600;
+  color: var(--light-body-color);
+  padding-top: 0;
+}
+
+.setup-group__content {
+  display: grid;
+  gap: 6px;
+}
+
+.setup__fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-m);
+  align-items: start;
+}
+
+.setup__hint {
+  color: var(--light-body-color);
+  font-size: 12px;
+}
+
+.segmented {
+  display: inline-grid;
+  grid-auto-flow: column;
+  gap: 6px;
+  background: #fff;
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+}
+
+.segmented__button {
+  border-radius: 999px;
+}
+
+.segmented__button.is-selected {
+  background: color-mix(in srgb, var(--accent-color), white 90%);
+  box-shadow: 0 0 0 2px var(--accent-color);
+}
+
+/* New vertical choice list */
+.choice-list {
+  display: grid;
+  gap: 10px;
+}
+
+.choice-button {
+  width: 100%;
+  justify-content: center;
+}
+
+.choice-button.is-selected {
+  background: color-mix(in srgb, var(--accent-color), white 90%);
+  border-color: var(--accent-color);
+}
+
+.mass-actions__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-m);
+  align-items: start;
+}
+
+.mass-actions__apply {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-s);
+  margin-top: var(--spacing-m);
+}
+
+.mass-actions__plugin-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-s);
+  margin-top: var(--spacing-m);
+}
+
+/* Clear, guided choice groups in conflicts manager */
+.mass-actions__section {
+  display: grid;
+  gap: var(--spacing-xs, 6px);
+  margin-top: var(--spacing-m);
+}
+
+.mass-actions__section__label {
+  font-weight: 700;
+  color: var(--base-body-color);
+}
+
+.choice-group {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-items: stretch;
+  gap: var(--spacing-s);
+}
+
+.choice-group__or {
+  color: var(--light-body-color);
+  font-weight: 600;
+}
+
+.choice-button.is-selected {
+  box-shadow:
+    0 0 0 3px var(--accent-color),
+    0 0 0 6px color-mix(in srgb, var(--accent-color), white 65%);
+  transform: translateZ(0);
+}
+
+@media (max-width: 900px) {
+  .setup-group {
+    grid-template-columns: 1fr;
+  }
+
+  .setup__fields {
+    grid-template-columns: 1fr;
+  }
+
+  .segmented {
+    grid-auto-flow: row;
+    justify-items: stretch;
+  }
+
+  .choice-group {
+    grid-template-columns: 1fr;
+  }
 }
 
 .conflict {
@@ -330,32 +1137,141 @@ code {
 }
 
 .conflict__title {
-  font-weight: bold;
-  padding: var(--spacing-m) var(--spacing-l);
+  font-weight: 700;
+  appearance: none;
+  background: transparent;
+  border: 0;
+  width: 100%;
+  text-align: left;
   cursor: pointer;
   display: flex;
   gap: 10px;
   align-items: center;
-
-  svg {
-    color: var(--base-body-color);
-  }
-
-  &:hover {
-    background: var(--light-bg-color);
-  }
-
-  .conflict--selected & {
-    border-bottom: 1px solid var(--border-color);
-  }
-
-  .conflict--invalid & {
-    color: var(--alert-color);
-  }
+  color: var(--base-body-color);
+  padding: 10px 12px;
 }
 
 .conflict__content {
-  padding: var(--spacing-l);
+  padding: 12px 16px; /* reduce inner padding for a tighter look */
+}
+
+/* Pretty export overlay styles */
+.export-overlay__card {
+  background: #fff;
+  border: 1px solid var(--border-color);
+  border-radius: 14px;
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.12);
+  padding: 28px 30px;
+  width: 720px;
+  max-width: 92vw;
+}
+
+.export-overlay__title {
+  font-weight: 800;
+  font-size: 22px;
+  letter-spacing: -0.01em;
+  margin-bottom: 10px;
+}
+
+.export-overlay__subtitle {
+  color: var(--light-body-color);
+  margin-bottom: 18px;
+  font-size: 14px;
+}
+
+.export-overlay__bar {
+  height: 14px;
+  /* Lighter track to increase contrast with the fill */
+  background: color-mix(in srgb, var(--accent-color, #4f46e5), white 96%);
+  border-radius: 999px;
+  overflow: hidden;
+  position: relative;
+  margin-bottom: 12px;
+}
+
+.export-overlay__bar__fill {
+  position: relative;
+  height: 100%;
+  /* Solid base using project accent color */
+  background-color: var(--accent-color, #4f46e5);
+  transition: width 180ms ease;
+  overflow: hidden;
+}
+
+/* Independent shimmer overlay to avoid jitter during width updates */
+.export-overlay__bar__fill::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -50%;
+  width: 50%;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(255, 255, 255, 0.28) 45%,
+    rgba(255, 255, 255, 0.42) 50%,
+    rgba(255, 255, 255, 0.28) 55%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  animation: exportBarShimmer 1.4s linear infinite;
+  will-change: transform;
+}
+
+@keyframes exportBarShimmer {
+  0% {
+    transform: translateX(0%);
+  }
+  100% {
+    transform: translateX(300%);
+  }
+}
+
+@keyframes exportBarShift {
+  0% {
+    background-position: 0% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+.export-overlay__meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--light-body-color);
+}
+
+.export-overlay__steps {
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--base-body-color);
+}
+
+.export-overlay__step {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  opacity: 0.9;
+}
+
+.export-overlay__step::before {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #3b82f6;
+}
+
+/* Tiny helper note shown when progress stalls due to rate-limiting */
+.rate-limit-notice {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--light-body-color);
+  text-align: center;
 }
 
 .form__item {
@@ -377,16 +1293,16 @@ code {
 
 .conflicts-manager__group {
   margin: 20px 0;
-
   &:first-child {
     margin-top: 0;
   }
 }
 
 .conflicts-manager__group__title {
-  font-weight: bold;
-  font-size: var(--font-size-l);
-  padding: var(--spacing-m) var(--spacing-l);
+  font-weight: 700;
+  font-size: var(--font-size-m);
+  padding: 8px var(--spacing-l);
+  color: var(--light-body-color);
 }
 
 .no-text-wrap {
@@ -427,9 +1343,12 @@ form {
   border: 3px solid white;
   /* http://smoothshadows.com/#djEsMSw2LDAuMTIsNzgsMCwwLCMwMzA3MTIsI2YzZjRmNiwjZmZmZmZmLDI%3D */
   box-shadow:
-    0px 0px 2px rgba(3, 7, 18, 0.02), 0px 0px 9px rgba(3, 7, 18, 0.04),
-    0px 0px 20px rgba(3, 7, 18, 0.06), 0px 0px 35px rgba(3, 7, 18, 0.08),
-    0px 0px 54px rgba(3, 7, 18, 0.1), 0px 0px 78px rgba(3, 7, 18, 0.12);
+    0px 0px 2px rgba(3, 7, 18, 0.02),
+    0px 0px 9px rgba(3, 7, 18, 0.04),
+    0px 0px 20px rgba(3, 7, 18, 0.06),
+    0px 0px 35px rgba(3, 7, 18, 0.08),
+    0px 0px 54px rgba(3, 7, 18, 0.1),
+    0px 0px 78px rgba(3, 7, 18, 0.12);
 }
 
 .progress__meter__track {
@@ -447,7 +1366,6 @@ form {
   a {
     color: var(--accent-color);
   }
-
   ul {
     padding: 0 0 0 20px;
   }

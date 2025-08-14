@@ -1,4 +1,3 @@
-import { type AppNode, type Graph, edgeTypes } from '@/utils/graph/types';
 import type { SchemaTypes } from '@datocms/cma-client';
 import {
   Background,
@@ -7,15 +6,17 @@ import {
   ReactFlow,
   useReactFlow,
 } from '@xyflow/react';
-import { VerticalSplit } from 'datocms-react-ui';
 import { useCallback, useEffect, useState } from 'react';
+import { type AppNode, edgeTypes, type Graph } from '@/utils/graph/types';
+import type { ProjectSchema } from '@/utils/ProjectSchema';
 import type { ExportSchema } from '../ExportPage/ExportSchema';
+import { buildGraphFromExportDoc } from './buildGraphFromExportDoc';
 import ConflictsManager from './ConflictsManager';
 import { ImportItemTypeNodeRenderer } from './ImportItemTypeNodeRenderer';
 import { ImportPluginNodeRenderer } from './ImportPluginNodeRenderer';
+import LargeSelectionView from './LargeSelectionView';
 import { useSkippedItemsAndPluginIds } from './ResolutionsForm';
 import { SelectedEntityContext } from './SelectedEntityContext';
-import { buildGraphFromExportDoc } from './buildGraphFromExportDoc';
 
 const nodeTypes: NodeTypes = {
   itemType: ImportItemTypeNodeRenderer,
@@ -24,9 +25,11 @@ const nodeTypes: NodeTypes = {
 
 type Props = {
   exportSchema: ExportSchema;
+  schema: ProjectSchema;
+  ctx: import('datocms-plugin-sdk').RenderPageCtx;
 };
 
-export function Inner({ exportSchema }: Props) {
+export function Inner({ exportSchema, schema, ctx: _ctx }: Props) {
   const { fitBounds, fitView } = useReactFlow();
   const { skippedItemTypeIds, skippedPluginIds } =
     useSkippedItemsAndPluginIds();
@@ -74,7 +77,8 @@ export function Inner({ exportSchema }: Props) {
             ? node.type === 'plugin' && node.data.plugin.id === newEntity.id
             : node.type === 'itemType' &&
               node.data.itemType.id === newEntity.id,
-        )!;
+        );
+        if (!node) return;
 
         fitBounds(
           { x: node.position.x, y: node.position.y, width: 200, height: 200 },
@@ -86,35 +90,99 @@ export function Inner({ exportSchema }: Props) {
     }
   }
 
+  const GRAPH_NODE_THRESHOLD = 60;
+
+  const totalPotentialNodes =
+    exportSchema.itemTypes.length + exportSchema.plugins.length;
+
+  const showGraph =
+    !!graph &&
+    graph.nodes.length <= GRAPH_NODE_THRESHOLD &&
+    totalPotentialNodes <= GRAPH_NODE_THRESHOLD;
+
   return (
     <SelectedEntityContext.Provider
       value={{ entity: selectedEntity, set: handleSelectEntity }}
     >
-      <VerticalSplit primaryPane="left" size="25%" minSize={300}>
-        <div className="import__graph">
-          {graph && (
-            <ReactFlow
-              fitView={true}
-              nodes={graph.nodes}
-              edges={graph.edges}
-              nodesDraggable={false}
-              nodesConnectable={false}
-              zoomOnDoubleClick={false}
-              elementsSelectable={false}
-              nodeTypes={nodeTypes}
-              edgeTypes={edgeTypes}
-              proOptions={{ hideAttribution: true }}
-              onClick={() => setSelectedEntity(undefined)}
-              onNodeClick={onNodeClick}
-            >
-              <Background />
-            </ReactFlow>
-          )}
-        </div>
-        <div className="import__details">
-          <ConflictsManager exportSchema={exportSchema} />
-        </div>
-      </VerticalSplit>
+      <div style={{ display: 'flex', width: '100%', height: '100%' }}>
+        <section
+          style={{
+            width: '66%',
+            minWidth: 480,
+            position: 'relative',
+          }}
+          aria-label="Import graph panel"
+        >
+          <div
+            className="import__graph"
+            style={{ position: 'relative', height: '100%' }}
+          >
+            {graph && showGraph && (
+              <ReactFlow
+                fitView={true}
+                nodes={graph.nodes}
+                edges={graph.edges}
+                nodesDraggable={false}
+                nodesConnectable={false}
+                zoomOnDoubleClick={false}
+                elementsSelectable={false}
+                nodeTypes={nodeTypes}
+                edgeTypes={edgeTypes}
+                proOptions={{ hideAttribution: true }}
+                onClick={() => setSelectedEntity(undefined)}
+                onNodeClick={onNodeClick}
+              >
+                <Background />
+              </ReactFlow>
+            )}
+            {graph && !showGraph && (
+              <>
+                {/* List view for large selections */}
+                <LargeSelectionView
+                  graph={graph}
+                  onSelect={(entity) => handleSelectEntity(entity, true)}
+                />
+                {/* Hidden ReactFlow to keep nodes available for Conflicts UI */}
+                <div
+                  style={{
+                    position: 'absolute',
+                    width: 1,
+                    height: 1,
+                    overflow: 'hidden',
+                    opacity: 0,
+                    pointerEvents: 'none',
+                  }}
+                  aria-hidden
+                >
+                  <ReactFlow
+                    fitView={false}
+                    nodes={graph.nodes}
+                    edges={graph.edges}
+                    nodesDraggable={false}
+                    nodesConnectable={false}
+                    elementsSelectable={false}
+                    nodeTypes={nodeTypes}
+                    edgeTypes={edgeTypes}
+                    proOptions={{ hideAttribution: true }}
+                  />
+                </div>
+              </>
+            )}
+          </div>
+        </section>
+        <section
+          style={{
+            width: '33%',
+            minWidth: 340,
+            position: 'relative',
+          }}
+          aria-label="Import details panel"
+        >
+          <div className="import__details">
+            <ConflictsManager exportSchema={exportSchema} schema={schema} />
+          </div>
+        </section>
+      </div>
     </SelectedEntityContext.Provider>
   );
 }

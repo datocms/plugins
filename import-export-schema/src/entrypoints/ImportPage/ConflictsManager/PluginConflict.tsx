@@ -1,6 +1,7 @@
 import type { SchemaTypes } from '@datocms/cma-client';
 import { useReactFlow } from '@xyflow/react';
 import { SelectField } from 'datocms-react-ui';
+import { useId } from 'react';
 import { Field } from 'react-final-form';
 import type { GroupBase } from 'react-select';
 import { useResolutionStatusForPlugin } from '../ResolutionsForm';
@@ -22,6 +23,7 @@ type Props = {
 };
 
 export function PluginConflict({ exportPlugin, projectPlugin }: Props) {
+  const selectId = useId();
   const fieldPrefix = `plugin-${exportPlugin.id}`;
   const resolution = useResolutionStatusForPlugin(exportPlugin.id)!;
   const node = useReactFlow().getNode(`plugin--${exportPlugin.id}`);
@@ -44,7 +46,7 @@ export function PluginConflict({ exportPlugin, projectPlugin }: Props) {
         {({ input, meta: { error } }) => (
           <SelectField<Option, false, GroupBase<Option>>
             {...input}
-            id="fieldTypes"
+            id={selectId}
             label="To resolve this conflict:"
             selectInputProps={{
               options,

@@ -1,3 +1,6 @@
+import type { SchemaTypes } from '@datocms/cma-client';
+import type { FieldAttributes } from '@datocms/cma-client/dist/types/generated/SchemaTypes';
+import { get } from 'lodash-es';
 import boolean from '@/icons/fieldgroup-boolean.svg?react';
 import color from '@/icons/fieldgroup-color.svg?react';
 import datetime from '@/icons/fieldgroup-datetime.svg?react';
@@ -9,10 +12,10 @@ import reference from '@/icons/fieldgroup-reference.svg?react';
 import richText from '@/icons/fieldgroup-rich_text.svg?react';
 import seo from '@/icons/fieldgroup-seo.svg?react';
 import structuredText from '@/icons/fieldgroup-structured_text.svg?react';
-import type { SchemaTypes } from '@datocms/cma-client';
-import type { FieldAttributes } from '@datocms/cma-client/dist/types/generated/SchemaTypes';
-import { get } from 'lodash-es';
-import { isHardcodedEditor } from './fieldTypeInfo';
+
+// Note: Avoid network requests when resolving plugin dependencies.
+// Call sites should pass the set of installed plugin IDs to determine
+// whether an editor/addon refers to a plugin.
 
 type SvgComponent = React.FunctionComponent<
   React.ComponentProps<'svg'> & {
@@ -217,15 +220,27 @@ export function findLinkedItemTypeIds(field: SchemaTypes.Field) {
   return fieldLinkedItemTypeIds;
 }
 
-export async function findLinkedPluginIds(field: SchemaTypes.Field) {
+export function findLinkedPluginIds(
+  field: SchemaTypes.Field,
+  installedPluginIds?: Set<string>,
+) {
   const fieldLinkedPluginIds = new Set<string>();
+  // Some fields may have no appearance set (older exports or defaults)
+  const editorId = field.attributes.appearance?.editor;
+  const hasInstalledList = !!installedPluginIds && installedPluginIds.size > 0;
 
-  if (!(await isHardcodedEditor(field.attributes.appearance.editor))) {
-    fieldLinkedPluginIds.add(field.attributes.appearance.editor);
+  // If we have a list of installed plugins, only collect editors that match.
+  // If not, skip editor to avoid false-positives for built-in editors.
+  if (editorId && hasInstalledList && installedPluginIds!.has(editorId)) {
+    fieldLinkedPluginIds.add(editorId);
   }
 
-  for (const addon of field.attributes.appearance.addons) {
-    fieldLinkedPluginIds.add(addon.id);
+  for (const addon of field.attributes.appearance?.addons ?? []) {
+    // If we don't have the installed list yet, include addons optimistically;
+    // otherwise include only if installed.
+    if (!hasInstalledList || installedPluginIds!.has(addon.id)) {
+      fieldLinkedPluginIds.add(addon.id);
+    }
   }
 
   return fieldLinkedPluginIds;

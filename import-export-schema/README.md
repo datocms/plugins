@@ -1,56 +1,84 @@
 # DatoCMS Schema Import/Export Plugin
 
-A powerful plugin for DatoCMS that enables seamless schema migration between projects through JSON import/export functionality.
+Powerful, safe schema migration for DatoCMS. Export models/blocks and plugins as JSON, then import them into another project with guided conflict resolution.
 
-## Features
+## Highlights
 
-- Export single or multiple models/block models as JSON files
-- Import models into different DatoCMS projects
-- Smart conflict resolution with guided instructions
-- Automatic plugin dependency detection and inclusion
-- Safe import operations that preserve existing schema
+- Export from anywhere: start from a single model’s “Export as JSON…” action, select multiple models/blocks, or export the entire schema.
+- Dependency-aware: auto-detects linked models/blocks and plugins; add them with one click (“Select all dependencies”).
+- Scales to large projects: graph preview for small selections, fast list view with search and relation counts for big ones.
+- Guided imports: detect conflicts, choose to reuse or rename, and confirm sensitive actions with typed confirmation.
+- Post-action summaries: clear, filterable summaries after export/import with connections and plugin usage.
+- Safe by design: imports are additive; existing models/blocks and plugins are never modified unless you explicitly opt to reuse.
 
-## Safety Features
+## Where To Find It
 
-As a security measure, this plugin is designed to never modify existing schema entities in the target project during JSON imports. It only adds new entities to the project, making the operation completely safe and non-destructive.
+- Settings > Plugins > Schema Import/Export > Export: start a new export, select multiple models/blocks, or export the entire current environment.
+- Settings > Plugins > Schema Import/Export > Import: upload an export file (or paste a recipe URL) and import safely into the current environment.
+- From a model/block: in Schema, open a model/block, click the three dots beside the model/block name, and pick “Export as JSON…” to export starting from that entity.
 
 ## Installation
 
-1. Navigate to your DatoCMS environment configuration
-2. Go to the Plugins section
-3. Search for "Schema Import/Export"
-4. Click Install
+- In DatoCMS, open your project, go to Plugins, search for “Schema Import/Export”, then install. The plugin only requests `currentUserAccessToken`.
 
-## Usage
+## Export
 
-### Exporting Models
+- Start from a model/block
+  - Open Schema, select a model/block.
+  - Click the three dots beside the model/block name.
+  - Choose “Export as JSON…”.
+  - Preview dependencies and optionally include related models/blocks and plugins.
+  - Download the generated `export.json`.
 
-1. In the Schema section, navigate to one of your models/block models
-2. Select the "Export as JSON..." option
-3. If the model/block model references other models/block models, you can decide to export them as well
-4. Save the generated JSON file
+- Start a new export (Schema > Export)
+  - Pick one or more starting models/blocks, then refine the selection.
+  - Use “Select all dependencies” to include all linked models/blocks and any used plugins.
+  - Search and filter in list view; see inbound/outbound relation counts and “Why included?” explanations.
+- For large projects the graph is replaced with a fast list view.
 
-### Importing Models
+- Export the entire schema (one click)
+  - From Schema > Export, choose “Export entire current schema” to include all models/blocks and plugins.
+  - A progress overlay appears with a cancel button and a stall notice if rate limited; the JSON is downloaded when done.
 
-1. Navigate to your DatoCMS environment configuration
-2. Go to the Import/Export section
-3. Drop your JSON file
-4. Follow the conflict resolution prompts if any appear
-5. Confirm the import
+- After export
+  - A Post‑export summary shows counts (models, blocks, fields, fieldsets, plugins) and, for each model/block, the number of linked models/blocks and used plugins.
+  - You can re-download the JSON and close back to the export screen.
 
-## Conflict Resolution
+## Import
 
-When importing models, the plugin will:
+- Start an import (Schema > Import)
+  - Drag and drop an exported JSON file, or provide a recipe URL via `?recipe_url=https://…` (optional `recipe_title=…`).
+  - The plugin prepares a conflicts view by comparing the file against your project’s schema.
 
-- Detect potential conflicts with existing schema
-- Provide clear instructions for resolving each conflict
-- Allow you to review changes before applying them
+- Resolve conflicts safely
+  - For models/blocks: choose “Reuse existing” or “Rename” (typed confirmation required if you select any renames).
+  - For plugins: choose “Reuse existing” or “Skip”.
+  - The graph switches to a searchable list for large selections; click “Open details” to focus an entity.
 
-## Dependencies
+- Run the import
+  - The operation is additive: new models/blocks/plugins/fields/fieldsets are created; existing ones are never changed unless “reuse” is chosen.
+  - Field appearances are reconstructed safely: built‑in editors are preserved; external plugin editors/addons are mapped when included, otherwise sensible defaults are applied.
+  - A progress overlay (with cancel) shows what’s happening and warns if progress stalls due to API rate limits.
 
-The plugin automatically handles the following dependencies:
+- After import
+  - A Post‑import summary shows what was created, what was reused/skipped, any renames applied, and the connections to other models/blocks and plugins.
 
-- Required field plugins
-- Block model relationships
-- Field validations
-- Field appearance settings
+## Notes & Limits
+
+- Plugin detection: editor/addon plugins used by fields are included when “Select all dependencies” is used. If the list of installed plugins cannot be fetched, the UI warns and detection may be incomplete.
+- Appearance portability: if an editor plugin is not selected, that field falls back to a valid built‑in editor; addons are included only if selected or already installed.
+- Rate limiting: long operations show a gentle notice if progress stalls; they usually resume automatically. You can cancel exports/imports at any time.
+
+## Export File Format
+
+- Version 2 (current): `{ version: '2', rootItemTypeId, entities: […] }` — preserves the explicit root model/block used to seed the export, to re-generate the export graph deterministically.
+- Version 1 (legacy): `{ version: '1', entities: […] }` — still supported for import; the root is inferred from references.
+
+## Safety
+
+- Imports are additive and non‑destructive. The plugin never overwrites existing models/blocks or plugins. When conflicts are detected, you explicitly pick “Reuse existing” or “Rename”.
+
+## Troubleshooting
+
+- “Why did the graph disappear?” For very large selections, the UI switches to a faster list view.
+- “Fields lost their editor?” If you don’t include a custom editor plugin in the export/import, the plugin selects a safe, built‑in editor so the field remains valid in the target project.

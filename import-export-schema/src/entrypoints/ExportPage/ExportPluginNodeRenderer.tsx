@@ -1,11 +1,11 @@
+import type { NodeProps } from '@xyflow/react';
+import classNames from 'classnames';
+import { useContext } from 'react';
 import {
   type PluginNode,
   PluginNodeRenderer,
 } from '@/components/PluginNodeRenderer';
 import { EntitiesToExportContext } from '@/entrypoints/ExportPage/EntitiesToExportContext';
-import type { NodeProps } from '@xyflow/react';
-import classNames from 'classnames';
-import { useContext } from 'react';
 
 export function ExportPluginNodeRenderer(props: NodeProps<PluginNode>) {
   const { plugin } = props.data;
@@ -18,7 +18,7 @@ export function ExportPluginNodeRenderer(props: NodeProps<PluginNode>) {
       className={classNames(
         entitiesToExport &&
           !entitiesToExport.pluginIds.includes(plugin.id) &&
-          'app-node__excluded-from-export',
+          'app-node--excluded',
       )}
     />
   );

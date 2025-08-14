@@ -24,7 +24,8 @@ function Link({ href, children }: { href: string; children: ReactNode }) {
 
 export function Config({ ctx }: Props) {
   const schemaUrl = `${ctx.isEnvironmentPrimary ? '' : `/environments/${ctx.environment}`}/schema`;
-  const pageUrl = `${ctx.isEnvironmentPrimary ? '' : `/environments/${ctx.environment}`}/configuration/p/${ctx.plugin.id}/pages/import-export`;
+  const importUrl = `${ctx.isEnvironmentPrimary ? '' : `/environments/${ctx.environment}`}/configuration/p/${ctx.plugin.id}/pages/import`;
+  const exportUrl = `${ctx.isEnvironmentPrimary ? '' : `/environments/${ctx.environment}`}/configuration/p/${ctx.plugin.id}/pages/export`;
 
   return (
     <Canvas ctx={ctx}>
@@ -41,12 +42,18 @@ export function Config({ ctx }: Props) {
           </li>
 
           <li>
-            Need to import some models/blocks from an already generated export?
-            Go to the{' '}
-            <Link href={pageUrl}>
-              <strong>Schema &gt; Import/Export</strong> section
+            To import models/blocks from an exported JSON, go to the{' '}
+            <Link href={importUrl}>
+              <strong>Schema &gt; Import</strong>
             </Link>{' '}
-            on the sidebar.
+            page in the sidebar.
+          </li>
+          <li>
+            To export a selection or the entire schema, go to the{' '}
+            <Link href={exportUrl}>
+              <strong>Schema &gt; Export</strong>
+            </Link>{' '}
+            page.
           </li>
         </ul>
       </div>

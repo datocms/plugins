@@ -1,6 +1,7 @@
 import type { SchemaTypes } from '@datocms/cma-client';
 import { useReactFlow } from '@xyflow/react';
 import { SelectField, TextField } from 'datocms-react-ui';
+import { useId } from 'react';
 import { Field } from 'react-final-form';
 import type { GroupBase } from 'react-select';
 import { useResolutionStatusForItemType } from '../ResolutionsForm';
@@ -14,6 +15,9 @@ type Props = {
 };
 
 export function ItemTypeConflict({ exportItemType, projectItemType }: Props) {
+  const selectId = useId();
+  const nameId = useId();
+  const apiKeyId = useId();
   const fieldPrefix = `itemType-${exportItemType.id}`;
   const resolution = useResolutionStatusForItemType(exportItemType.id)!;
   const node = useReactFlow().getNode(`itemType--${exportItemType.id}`);
@@ -60,7 +64,7 @@ export function ItemTypeConflict({ exportItemType, projectItemType }: Props) {
         {({ input, meta: { error } }) => (
           <SelectField<Option, false, GroupBase<Option>>
             {...input}
-            id="fieldTypes"
+            id={selectId}
             label="To resolve this conflict:"
             selectInputProps={{
               options,
@@ -77,7 +81,7 @@ export function ItemTypeConflict({ exportItemType, projectItemType }: Props) {
             <Field name={`${fieldPrefix}.name`}>
               {({ input, meta: { error } }) => (
                 <TextField
-                  id="name"
+                  id={nameId}
                   label="Name"
                   required
                   error={error}
@@ -90,7 +94,7 @@ export function ItemTypeConflict({ exportItemType, projectItemType }: Props) {
             <Field name={`${fieldPrefix}.apiKey`}>
               {({ input, meta: { error } }) => (
                 <TextField
-                  id="apiKey"
+                  id={apiKeyId}
                   label="API Identifier"
                   required
                   error={error}

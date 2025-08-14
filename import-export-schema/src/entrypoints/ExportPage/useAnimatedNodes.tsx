@@ -1,8 +1,8 @@
-import type { AppNode } from '@/utils/graph/types';
 import { useReactFlow } from '@xyflow/react';
 import { timer } from 'd3-timer';
 import { useEffect, useState } from 'react';
 import { easing } from 'ts-easing';
+import type { AppNode } from '@/utils/graph/types';
 
 export function useAnimatedNodes(
   initialNodes: AppNode[],

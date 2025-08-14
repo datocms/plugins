@@ -1,4 +1,3 @@
-import { Schema } from '@/utils/icons';
 import type { SchemaTypes } from '@datocms/cma-client';
 import {
   Handle,
@@ -12,6 +11,7 @@ import {
 import classNames from 'classnames';
 import { sortBy } from 'lodash-es';
 import { useState } from 'react';
+import { Schema } from '@/utils/icons';
 import { Field } from '../components/Field';
 
 export type ItemTypeNode = Node<
@@ -26,7 +26,10 @@ export type ItemTypeNode = Node<
 function Fieldset({
   fieldset,
   allFields,
-}: { fieldset: SchemaTypes.Fieldset; allFields: SchemaTypes.Field[] }) {
+}: {
+  fieldset: SchemaTypes.Fieldset;
+  allFields: SchemaTypes.Field[];
+}) {
   return (
     <div className="fieldset">
       <div className="fieldset__title">{fieldset.attributes.title}</div>
@@ -36,7 +39,7 @@ function Fieldset({
             (f) => f.relationships.fieldset.data?.id === fieldset.id,
           ),
           'attributes.position',
-        ).map((field) => (
+        ).map((field: SchemaTypes.Field) => (
           <Field key={field.id} field={field} />
         ))}
       </div>
@@ -72,27 +75,26 @@ export function ItemTypeNodeRenderer({
         isVisible={isTooltipVisible}
         className="tooltip"
       >
-        {fields.length + fieldsets.length === 0 ? (
-          <>No fields</>
-        ) : (
-          sortBy(
-            [
-              ...fields.filter((e) => !e.relationships.fieldset.data),
-              ...fieldsets,
-            ],
-            'attributes.position',
-          ).map((fieldOrFieldset) =>
-            fieldOrFieldset.type === 'field' ? (
-              <Field key={fieldOrFieldset.id} field={fieldOrFieldset} />
-            ) : (
-              <Fieldset
-                key={fieldOrFieldset.id}
-                fieldset={fieldOrFieldset}
-                allFields={fields}
-              />
-            ),
-          )
-        )}
+        {fields.length + fieldsets.length === 0
+          ? 'No fields'
+          : sortBy(
+              [
+                ...fields.filter((e) => !e.relationships.fieldset.data),
+                ...fieldsets,
+              ],
+              'attributes.position',
+            ).map(
+              (fieldOrFieldset: SchemaTypes.Field | SchemaTypes.Fieldset) =>
+                fieldOrFieldset.type === 'field' ? (
+                  <Field key={fieldOrFieldset.id} field={fieldOrFieldset} />
+                ) : (
+                  <Fieldset
+                    key={fieldOrFieldset.id}
+                    fieldset={fieldOrFieldset}
+                    allFields={fields}
+                  />
+                ),
+            )}
       </NodeToolbar>
       <div
         className={classNames(
@@ -102,6 +104,7 @@ export function ItemTypeNodeRenderer({
             : 'app-node--model',
           className,
         )}
+        role="group"
         onMouseEnter={() => setTooltipVisible(true)}
         onMouseLeave={() => setTooltipVisible(false)}
       >

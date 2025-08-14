@@ -49,15 +49,24 @@ export default function Collapsible({
       )}
       ref={elRef}
     >
-      <div className="conflict__title" onClick={handleSelect}>
+      <button
+        type="button"
+        className="conflict__title"
+        onClick={handleSelect}
+        aria-expanded={isSelected}
+        aria-controls={`conflict-panel-${entity.id}`}
+        id={`conflict-button-${entity.id}`}
+      >
         <FontAwesomeIcon icon={isSelected ? faExpanded : faCollapsed} /> {title}
-      </div>
-      <div
+      </button>
+      <section
+        id={`conflict-panel-${entity.id}`}
         className="conflict__content"
         style={{ display: isSelected ? 'block' : 'none' }}
+        aria-labelledby={`conflict-button-${entity.id}`}
       >
         {children}
-      </div>
+      </section>
     </div>
   );
 }

@@ -3,7 +3,7 @@
   "description": "Export one or multiple models/block models as JSON files for reimport into another DatoCMS project.",
   "homepage": "https://github.com/datocms/plugins",
   "private": false,
-  "version": "0.1.14",
+  "version": "0.1.15",
   "author": "Stefano Verna <s.verna@datocms.com>",
   "type": "module",
   "keywords": [
@@ -26,11 +26,13 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
+    "analyze": "ANALYZE=true npm run build",
     "prepublishOnly": "npm run build",
     "format": "npx @biomejs/biome check --unsafe --write ."
   },
   "dependencies": {
     "@datocms/cma-client": "^3.4.5",
+    "@datocms/cma-client-browser": "^3.4.5",
     "@datocms/rest-api-events": "^3.4.3",
     "@fortawesome/fontawesome-svg-core": "^6.7.2",
     "@fortawesome/free-solid-svg-icons": "^6.7.2",
@@ -51,14 +53,17 @@
     "ts-easing": "^0.2.0"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.2.0",
     "@types/d3-timer": "^3.0.2",
     "@types/node": "^22.13.1",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
     "globals": "^15.9.0",
+    "postcss-preset-env": "^9.6.0",
     "typescript": "^5.5.3",
     "vite": "^5.4.1",
-    "vite-plugin-svgr": "^4.3.0"
+    "vite-plugin-svgr": "^4.3.0",
+    "rollup-plugin-visualizer": "^5.12.0"
   }
 }

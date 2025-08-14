@@ -1,10 +1,10 @@
-import type { ExportDoc } from '@/utils/types';
 import { faFolderOpen } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import { Button, useCtx } from 'datocms-react-ui';
 import type React from 'react';
 import { type ReactNode, useCallback, useRef, useState } from 'react';
+import type { ExportDoc } from '@/utils/types';
 
 type Props = {
   onJsonDrop: (filename: string, exportDoc: ExportDoc) => void;
@@ -14,24 +14,36 @@ type Props = {
 export default function FileDropZone({ onJsonDrop, children }: Props) {
   const ctx = useCtx<RenderPageCtx>();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Track nested dragenter/leaves so moving over children does not cancel pending state
+  const dragDepthRef = useRef(0);
 
   const [pendingDrop, setPendingDrop] = useState(false);
 
-  const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+  const handleDragOver = useCallback((e: React.DragEvent<HTMLElement>) => {
     e.preventDefault();
     e.stopPropagation();
   }, []);
 
-  const handleDragEnter = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+  const handleDragEnter = useCallback((e: React.DragEvent<HTMLElement>) => {
     e.preventDefault();
     e.stopPropagation();
-    setPendingDrop(true);
+    // Increment depth on every dragenter (including children)
+    dragDepthRef.current += 1;
+    // Only show pending if a file is being dragged
+    const hasFiles = Array.from(e.dataTransfer?.types ?? []).includes('Files');
+    if (hasFiles) {
+      setPendingDrop(true);
+    }
   }, []);
 
-  const handleDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+  const handleDragLeave = useCallback((e: React.DragEvent<HTMLElement>) => {
     e.preventDefault();
     e.stopPropagation();
-    setPendingDrop(false);
+    // Decrement depth; only clear pending when leaving root entirely
+    dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+    if (dragDepthRef.current === 0) {
+      setPendingDrop(false);
+    }
   }, []);
 
   const handleFileSelection = useCallback(
@@ -55,7 +67,7 @@ export default function FileDropZone({ onJsonDrop, children }: Props) {
 
           const json = JSON.parse(result) as ExportDoc;
           onJsonDrop(file.name, json);
-        } catch (err) {
+        } catch (_err) {
           ctx.alert('Invalid JSON format');
         }
       };
@@ -65,10 +77,12 @@ export default function FileDropZone({ onJsonDrop, children }: Props) {
   );
 
   const handleDrop = useCallback(
-    (e: React.DragEvent<HTMLDivElement>) => {
+    (e: React.DragEvent<HTMLElement>) => {
       e.preventDefault();
       e.stopPropagation();
 
+      // Reset depth and pending state on drop
+      dragDepthRef.current = 0;
       setPendingDrop(false);
 
       const file = e.dataTransfer.files[0];
@@ -96,12 +110,13 @@ export default function FileDropZone({ onJsonDrop, children }: Props) {
   );
 
   return (
-    <div
+    <section
       onDragOver={handleDragOver}
       onDrop={handleDrop}
       onDragEnter={handleDragEnter}
       onDragLeave={handleDragLeave}
       className={`dropzone ${pendingDrop ? 'dropzone--pending' : ''}`}
+      aria-label="File drop area"
     >
       {children(
         <>
@@ -122,6 +137,6 @@ export default function FileDropZone({ onJsonDrop, children }: Props) {
           </Button>
         </>,
       )}
-    </div>
+    </section>
   );
 }

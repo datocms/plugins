@@ -12,21 +12,19 @@ export function rebuildGraphWithPositionsFromHierarchy(
   const root = layout(hierarchy);
 
   return {
-    nodes: root.descendants().map((hierarchyNode) => {
-      return {
-        ...hierarchyNode.data,
-        // This bit is super important! We *mutated* the object in the `forEach`
-        // above so the reference is the same. React needs to see a new reference
-        // to trigger a re-render of the node.
-        data: { ...hierarchyNode.data.data },
-        // targetPosition : 'left',
-        // sourcePosition : 'right',
-        position: {
-          x: hierarchyNode.x!,
-          y: hierarchyNode.y!,
-        },
-      } as AppNode;
-    }),
+    nodes: root
+      .descendants()
+      .filter((n) => n.data.id !== 'synthetic-root')
+      .map((hierarchyNode) => {
+        return {
+          ...hierarchyNode.data,
+          data: { ...hierarchyNode.data.data },
+          position: {
+            x: hierarchyNode.x!,
+            y: hierarchyNode.y!,
+          },
+        } as AppNode;
+      }),
     edges,
   };
 }

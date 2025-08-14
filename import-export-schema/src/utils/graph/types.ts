@@ -1,10 +1,10 @@
+import type { EdgeTypes } from '@xyflow/react';
 import {
   type FieldEdge,
   FieldEdgeRenderer,
 } from '@/components/FieldEdgeRenderer';
 import type { ItemTypeNode } from '@/components/ItemTypeNodeRenderer';
 import type { PluginNode } from '@/components/PluginNodeRenderer';
-import type { EdgeTypes } from '@xyflow/react';
 
 export type AppNode = ItemTypeNode | PluginNode;
 
