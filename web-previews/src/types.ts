@@ -27,6 +27,7 @@ export type Parameters = {
   defaultSidebarWidth?: string;
   iframeAllowAttribute?: string;
   defaultViewports?: RawViewport[];
+  expandedFields?: string[];
 };
 
 export type Viewport = {
@@ -49,6 +50,7 @@ export type NormalizedParameters = {
   defaultSidebarWidth: number;
   iframeAllowAttribute: string | undefined;
   defaultViewports: Viewport[];
+  expandedFields: string[];
 };
 
 const DEFAULT_VIEWPORTS: readonly Viewport[] = [
@@ -66,6 +68,7 @@ export function normalizeParameters({
   defaultSidebarWidth,
   iframeAllowAttribute,
   defaultViewports,
+  expandedFields,
 }: Parameters): NormalizedParameters {
   return {
     frontends:
@@ -91,6 +94,7 @@ export function normalizeParameters({
           : Number.parseInt(viewport.height),
       icon: viewport.icon as IconName,
     })) || [...DEFAULT_VIEWPORTS],
+    expandedFields: expandedFields || [],
   };
 }
 

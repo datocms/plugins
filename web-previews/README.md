@@ -66,6 +66,12 @@ The plugin will show all the preview links that are returned. If you want to mak
 }
 ```
 
+## Expanded fields
+
+When granting the plugin the permission to perform actions and API calls on behalf of the logged-in user, you can configure which single link fields should be automatically expanded with their full record data in the webhook payload. This is useful when you need attributes like `slug` from linked records to construct your preview URLs.
+
+Instead of receiving just the linked record ID, you'll receive the complete linked record. Configure expanded fields in the plugin settings by entering the API keys of single link fields you want to resolve.
+
 ## Implementation examples
 
 If you have built alternative endpoint implementations for other frameworks/SSGs, please open up a PR to this plugin and share it with the community!

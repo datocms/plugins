@@ -2,7 +2,8 @@ import type {
   RenderItemFormSidebarCtx,
   RenderItemFormSidebarPanelCtx,
 } from 'datocms-plugin-sdk';
-import { useState } from 'react';
+import { buildClient } from '@datocms/cma-client';
+import { useMemo, useState } from 'react';
 import {
   useDeepCompareCallback,
   useDeepCompareEffect,
@@ -67,7 +68,7 @@ export function useStatusByFrontend(
     Record<string, FrontendStatus> | undefined
   >();
 
-  const { frontends: rawFrontends } = normalizeParameters(
+  const { frontends: rawFrontends, expandedFields } = normalizeParameters(
     ctx.plugin.attributes.parameters as Parameters,
   );
 
@@ -80,6 +81,17 @@ export function useStatusByFrontend(
     environment: environmentId,
     currentUser,
   } = ctx;
+
+  const client = useMemo(
+    () =>
+      ctx.currentUserAccessToken
+        ? buildClient({
+            apiToken: ctx.currentUserAccessToken,
+            environment: environmentId,
+          })
+        : null,
+    [ctx.currentUserAccessToken, environmentId],
+  );
 
   const payloadBody = useDeepCompareMemo(
     () =>
@@ -110,13 +122,35 @@ export function useStatusByFrontend(
         return;
       }
 
+      const payload = JSON.parse(payloadBody);
+
+      if (expandedFields.length > 0 && client) {
+        for (const fieldName of expandedFields) {
+          const fieldValue = payload.item?.attributes?.[fieldName];
+          
+          if (fieldValue && typeof fieldValue === 'string') {
+            try {
+              const linkedRecord = await client.items.find(fieldValue);
+              
+              if (linkedRecord) {
+                payload.item.attributes[fieldName] = linkedRecord;
+              }
+            } catch (error) {
+              console.warn(`Failed to expand field '${fieldName}':`, error);
+            }
+          }
+        }
+      }
+
+      const expandedPayload = JSON.stringify(payload, null, 2);
+
       const results = await Promise.all(
-        frontends.map((frontend) => makeRequest(frontend, payloadBody)),
+        frontends.map((frontend) => makeRequest(frontend, expandedPayload)),
       );
 
       setStatusByFrontend(Object.fromEntries(results));
     },
-    [payloadBody],
+    [payloadBody, client, expandedFields],
   );
 
   useDeepCompareEffect(() => {

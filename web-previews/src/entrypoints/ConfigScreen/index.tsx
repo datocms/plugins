@@ -127,6 +127,18 @@ export default function ConfigScreen({ ctx }: PropTypes) {
             return ruleErrors;
           });
 
+          errors.expandedFields = values.expandedFields?.map((fieldName) => {
+            if (!fieldName || fieldName.trim() === '') {
+              return 'Field name required!';
+            }
+            
+            if (values.expandedFields.filter(f => f === fieldName).length > 1) {
+              return 'Field name must be unique!';
+            }
+            
+            return undefined;
+          }) || [];
+
           return errors;
         }}
         onSubmit={async (values) => {
@@ -307,6 +319,59 @@ export default function ConfigScreen({ ctx }: PropTypes) {
                 )}
               </FieldArray>
             </Section>
+            {ctx.currentUserAccessToken && (
+              <Section
+                title="Expanded Fields"
+                headerStyle={{ marginBottom: 'var(--spacing-m)' }}
+              >
+                <p>
+                  Specify which linked fields should be automatically expanded with their full record data in the webhook payload.
+                  Enter the field names (API keys) that contain single link references you want to resolve.
+                </p>
+                <FieldArray<string> name="expandedFields">
+                  {({ fields }) => (
+                    <FieldGroup>
+                    {fields.map((name, index) => (
+                      <div key={name} className={s.grid}>
+                        <div className={s.headerGrid}>
+                          <div>
+                            <Field name={`${name}`}>
+                              {({ input, meta: { error } }) => (
+                                <TextField
+                                  id={`expandedField${index}`}
+                                  label="Field API key"
+                                  placeholder="e.g. category, author, etc."
+                                  hint="API key of a single link field"
+                                  required
+                                  error={error}
+                                  {...input}
+                                />
+                              )}
+                            </Field>
+                          </div>
+                        </div>
+                        <Button
+                          type="button"
+                          buttonType="negative"
+                          buttonSize="xxs"
+                          leftIcon={<FontAwesomeIcon icon={faTrash} />}
+                          onClick={() => fields.remove(index)}
+                        />
+                      </div>
+                    ))}
+                      <Button
+                        type="button"
+                        buttonSize="xxs"
+                        leftIcon={<FontAwesomeIcon icon={faPlus} />}
+                        onClick={() => fields.push('')}
+                      >
+                        Add field to expand
+                      </Button>
+                    </FieldGroup>
+                  )}
+                </FieldArray>
+              </Section>
+            )}
             <Section title="Web Previews sidebar">
               <FieldGroup>
                 <Field name="defaultSidebarWidth">

@@ -21,9 +21,13 @@
     "title": "Web Previews",
     "previewImage": "docs/video.mp4",
     "coverImage": "docs/cover.png",
-    "entryPoint": "dist/index.html"
+    "entryPoint": "dist/index.html",
+    "permissions": [
+      "currentUserAccessToken"
+    ]
   },
   "dependencies": {
+    "@datocms/cma-client": "^5.0.1",
     "@fortawesome/free-solid-svg-icons": "^6.7.2",
     "@fortawesome/react-fontawesome": "^0.2.0",
     "@types/lodash-es": "^4.17.12",
