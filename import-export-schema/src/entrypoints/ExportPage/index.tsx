@@ -7,10 +7,8 @@ import ProgressStallNotice from '@/components/ProgressStallNotice';
 import { createCmaClient } from '@/utils/createCmaClient';
 import { downloadJSON } from '@/utils/downloadJson';
 import { ProjectSchema } from '@/utils/ProjectSchema';
-import type { ExportDoc } from '@/utils/types';
 import buildExportDoc from './buildExportDoc';
 import Inner from './Inner';
-import PostExportSummary from './PostExportSummary';
 
 type Props = {
   ctx: RenderPageCtx;
@@ -53,23 +51,7 @@ export default function ExportPage({ ctx, initialItemTypeId }: Props) {
 
   const schema = useMemo(() => new ProjectSchema(client), [client]);
 
-  const [adminDomain, setAdminDomain] = useState<string | undefined>();
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        const site = await client.site.find();
-        console.log('[ExportPage] site:', site);
-        const domain = site.internal_domain || site.domain || undefined;
-        if (active) setAdminDomain(domain);
-      } catch {
-        // ignore; links will simply not be shown
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [client]);
+  // Removed adminDomain lookup; we no longer show a post-export overview
 
   // Preload installed plugin IDs once to avoid network calls during selection
   const [installedPluginIds, setInstalledPluginIds] = useState<
@@ -130,9 +112,6 @@ export default function ExportPage({ ctx, initialItemTypeId }: Props) {
   >();
   const [exportCancelled, setExportCancelled] = useState(false);
   const exportCancelRef = useRef(false);
-  const [postExportDoc, setPostExportDoc] = useState<ExportDoc | undefined>(
-    undefined,
-  );
 
   async function handleExport(itemTypeIds: string[], pluginIds: string[]) {
     try {
@@ -165,8 +144,7 @@ export default function ExportPage({ ctx, initialItemTypeId }: Props) {
       }
 
       downloadJSON(exportDoc, { fileName: 'export.json', prettify: true });
-      setPostExportDoc(exportDoc);
-      ctx.notice('Export completed with success!');
+      ctx.notice('Export completed successfully.');
     } catch (e) {
       console.error('Export failed', e);
       if (e instanceof Error && e.message === 'Export cancelled') {
@@ -195,24 +173,7 @@ export default function ExportPage({ ctx, initialItemTypeId }: Props) {
   return (
     <Canvas ctx={ctx} noAutoResizer>
       <ReactFlowProvider>
-        {postExportDoc ? (
-          <PostExportSummary
-            exportDoc={postExportDoc}
-            adminDomain={adminDomain}
-            onDownload={() =>
-              downloadJSON(postExportDoc, {
-                fileName: 'export.json',
-                prettify: true,
-              })
-            }
-            onClose={() =>
-              ctx.navigateTo(
-                `${ctx.isEnvironmentPrimary ? '' : `/environments/${ctx.environment}`}/configuration/p/${ctx.plugin.id}/pages/export`,
-              )
-            }
-          />
-        ) : (
-          <Inner
+        <Inner
             key={initialItemTypeId}
             initialItemTypes={[initialItemType]}
             schema={schema}
@@ -265,7 +226,6 @@ export default function ExportPage({ ctx, initialItemTypeId }: Props) {
               }
             }}
           />
-        )}
       </ReactFlowProvider>
       {preparingBusy && !suppressPreparingOverlay && (
         <div

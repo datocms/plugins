@@ -32,7 +32,7 @@ type ItemTypeValues = {
 };
 type PluginValues = { strategy: 'reuseExisting' | 'skip' | null };
 
-type MassValues = {
+export type MassValues = {
   itemTypesStrategy?: 'reuseExisting' | 'rename' | null;
   pluginsStrategy?: 'reuseExisting' | 'skip' | null;
   nameSuffix?: string;
@@ -394,4 +394,12 @@ export function useSkippedItemsAndPluginIds() {
   );
 
   return { skippedItemTypeIds, skippedPluginIds };
+}
+
+export function useMassStrategies() {
+  const state = useFormState<FormValues>({
+    subscription: { values: true },
+  });
+
+  return state.values?.mass ?? {};
 }

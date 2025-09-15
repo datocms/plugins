@@ -8,10 +8,8 @@ import ProgressStallNotice from '@/components/ProgressStallNotice';
 import { createCmaClient } from '@/utils/createCmaClient';
 import { downloadJSON } from '@/utils/downloadJson';
 import { ProjectSchema } from '@/utils/ProjectSchema';
-import type { ExportDoc } from '@/utils/types';
 import buildExportDoc from '../ExportPage/buildExportDoc';
 import ExportInner from '../ExportPage/Inner';
-import PostExportSummary from '../ExportPage/PostExportSummary';
 
 type Props = {
   ctx: RenderPageCtx;
@@ -26,22 +24,7 @@ export default function ExportHome({ ctx }: Props) {
 
   const projectSchema = useMemo(() => new ProjectSchema(client), [client]);
 
-  const [adminDomain, setAdminDomain] = useState<string | undefined>();
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        const site = await client.site.find();
-        const domain = site.internal_domain || site.domain || undefined;
-        if (active) setAdminDomain(domain);
-      } catch {
-        // ignore; links will simply not be shown
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [client]);
+  // adminDomain and post-export overview removed; we download and toast only
 
   const [allItemTypes, setAllItemTypes] = useState<
     SchemaTypes.ItemType[] | undefined
@@ -77,9 +60,6 @@ export default function ExportHome({ ctx }: Props) {
   }, [exportInitialItemTypeIds.join('-'), projectSchema]);
 
   const [exportStarted, setExportStarted] = useState(false);
-  const [postExportDoc, setPostExportDoc] = useState<ExportDoc | undefined>(
-    undefined,
-  );
 
   const [exportAllBusy, setExportAllBusy] = useState(false);
   const [exportAllProgress, setExportAllProgress] = useState<
@@ -109,24 +89,7 @@ export default function ExportHome({ ctx }: Props) {
         <div className="page">
           <div className="page__content">
             <div className="blank-slate">
-              {postExportDoc ? (
-                <PostExportSummary
-                  exportDoc={postExportDoc}
-                  adminDomain={adminDomain}
-                  onDownload={() =>
-                    downloadJSON(postExportDoc, {
-                      fileName: 'export.json',
-                      prettify: true,
-                    })
-                  }
-                  onClose={() => {
-                    setPostExportDoc(undefined);
-                    setExportStarted(false);
-                    setExportInitialItemTypeIds([]);
-                    setExportInitialItemTypes([]);
-                  }}
-                />
-              ) : !exportStarted ? (
+              {!exportStarted ? (
                 <div className="blank-slate__body">
                   <div className="blank-slate__body__title">
                     Start a new export
@@ -302,8 +265,7 @@ export default function ExportHome({ ctx }: Props) {
                                 fileName: 'export.json',
                                 prettify: true,
                               });
-                              setPostExportDoc(exportDoc);
-                              ctx.notice('Export completed with success!');
+                              ctx.notice('Export completed successfully.');
                             } catch (e) {
                               console.error('Export-all failed', e);
                               if (
@@ -395,8 +357,7 @@ export default function ExportHome({ ctx }: Props) {
                         fileName: 'export.json',
                         prettify: true,
                       });
-                      setPostExportDoc(exportDoc);
-                      ctx.notice('Export completed with success!');
+                      ctx.notice('Export completed successfully.');
                     } catch (e) {
                       console.error('Selection export failed', e);
                       if (

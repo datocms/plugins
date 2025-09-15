@@ -1,10 +1,14 @@
 import type { SchemaTypes } from '@datocms/cma-client';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
-import { Button, Spinner, TextField } from 'datocms-react-ui';
+import { Button, TextField } from 'datocms-react-ui';
 import { defaults, groupBy, map, mapValues, sortBy } from 'lodash-es';
-import { useContext, useId, useMemo, useState } from 'react';
-import { flushSync } from 'react-dom';
-import { useForm, useFormState } from 'react-final-form';
+import { type ReactNode, useContext, useId, useMemo } from 'react';
+import {
+  type FieldMetaState,
+  Field,
+  useForm,
+  useFormState,
+} from 'react-final-form';
 import type { ExportSchema } from '@/entrypoints/ExportPage/ExportSchema';
 import { getTextWithoutRepresentativeEmojiAndPadding } from '@/utils/emojiAgnosticSorter';
 import type { ProjectSchema } from '@/utils/ProjectSchema';
@@ -19,89 +23,202 @@ type Props = {
   ctx?: RenderPageCtx;
 };
 
+function resolveFieldError(meta: FieldMetaState<unknown> | undefined) {
+  if (!meta) {
+    return undefined;
+  }
+
+  const message = meta.error || meta.submitError;
+  if (!message) {
+    return undefined;
+  }
+
+  if (meta.touched || meta.submitFailed || meta.dirtySinceLastSubmit) {
+    return message;
+  }
+
+  return undefined;
+}
+
+type MassStrategyCardProps = {
+  checked: boolean;
+  children?: ReactNode;
+  description: string;
+  disabled?: boolean;
+  id: string;
+  label: string;
+  onToggle: (checked: boolean) => void;
+};
+
+function formatConflictCount(count: number) {
+  return `${count} conflict${count === 1 ? '' : 's'}`;
+}
+
+type MassStrategySectionProps = {
+  children: ReactNode;
+  conflictCount: number;
+  summary: string;
+  title: string;
+};
+
+function MassStrategyCard({
+  checked,
+  children,
+  description,
+  disabled,
+  id,
+  label,
+  onToggle,
+}: MassStrategyCardProps) {
+  const classNames = ['mass-choice'];
+  if (checked) {
+    classNames.push('mass-choice--active');
+  }
+  if (disabled) {
+    classNames.push('mass-choice--disabled');
+  }
+
+  return (
+    <div className={classNames.join(' ')}>
+      <div className="mass-choice__header">
+        <input
+          id={id}
+          type="checkbox"
+          className="mass-choice__checkbox"
+          checked={checked}
+          onChange={(event) => onToggle(event.target.checked)}
+          disabled={disabled}
+        />
+        <label className="mass-choice__label" htmlFor={id}>
+          <span className="mass-choice__label-text">{label}</span>
+        </label>
+      </div>
+      <p className="mass-choice__description">{description}</p>
+      {checked && children ? (
+        <div className="mass-choice__details">{children}</div>
+      ) : null}
+    </div>
+  );
+}
+
+function MassStrategySection({
+  children,
+  conflictCount,
+  summary,
+  title,
+}: MassStrategySectionProps) {
+  const classNames = ['mass-section'];
+  if (conflictCount === 0) {
+    classNames.push('mass-section--calm');
+  }
+
+  return (
+    <section className={classNames.join(' ')}>
+      <header className="mass-section__header">
+        <div className="mass-section__header-copy">
+          <span className="mass-section__title">{title}</span>
+          <span className="mass-section__summary">{summary}</span>
+        </div>
+        <span className="mass-section__badge">
+          {formatConflictCount(conflictCount)}
+        </span>
+      </header>
+      <div className="mass-section__actions">{children}</div>
+    </section>
+  );
+}
+
 export default function ConflictsManager({
   exportSchema,
   schema: _schema,
 }: Props) {
   const conflicts = useContext(ConflictsContext);
-  const { submitting, valid, validating } = useFormState();
+  const { submitting, valid, validating, values } = useFormState({
+    subscription: {
+      submitting: true,
+      valid: true,
+      validating: true,
+      values: true,
+    },
+  });
   const form = useForm();
-  const [nameSuffix, setNameSuffix] = useState(' (Import)');
-  const [apiKeySuffix, setApiKeySuffix] = useState('import');
   const nameSuffixId = useId();
   const apiKeySuffixId = useId();
-  // Mass action toggles — applied on submit only
-  const [selectedItemTypesAction, setSelectedItemTypesAction] = useState<
-    'rename' | 'reuse' | null
-  >(null);
-  const [selectedPluginsAction, setSelectedPluginsAction] = useState<
-    'reuse' | 'skip' | null
-  >(null);
-  const anyBusy = false;
-  const apiKeySuffixError = useMemo(() => {
-    // Canonical DatoCMS API key pattern for the final key:
-    // ^[a-z][a-z0-9_]*[a-z0-9]$
-    // We validate the suffix independently but with equivalent character rules
-    if (!apiKeySuffix || apiKeySuffix.length === 0) {
-      return 'API key suffix is required';
+  const massValues = values?.mass ?? {};
+  const itemTypesStrategy =
+    (massValues.itemTypesStrategy as 'rename' | 'reuseExisting' | null) ?? null;
+  const pluginsStrategy =
+    (massValues.pluginsStrategy as 'reuseExisting' | 'skip' | null) ?? null;
+
+  const groupedItemTypes = useMemo(() => {
+    if (!conflicts) {
+      return { blocks: [], models: [] };
     }
-    if (!/^[a-z0-9_]+$/.test(apiKeySuffix)) {
-      return 'Only lowercase letters, digits and underscores allowed';
+
+    return defaults(
+      mapValues(
+        groupBy(
+          map(
+            conflicts.itemTypes,
+            (
+              projectItemType: SchemaTypes.ItemType,
+              exportItemTypeId: string,
+            ) => {
+              const exportItemType =
+                exportSchema.getItemTypeById(exportItemTypeId);
+              return { exportItemTypeId, exportItemType, projectItemType };
+            },
+          ),
+          ({ exportItemType }: { exportItemType: SchemaTypes.ItemType }) =>
+            exportItemType?.attributes.modular_block ? 'blocks' : 'models',
+        ),
+        (group: Array<{ exportItemType: SchemaTypes.ItemType }>) =>
+          sortBy(
+            group,
+            ({ exportItemType }: { exportItemType: SchemaTypes.ItemType }) =>
+              getTextWithoutRepresentativeEmojiAndPadding(
+                exportItemType.attributes.name,
+              ),
+          ),
+      ),
+      { blocks: [], models: [] },
+    );
+  }, [conflicts, exportSchema]);
+
+  const sortedPlugins = useMemo(() => {
+    if (!conflicts) {
+      return [] as Array<{
+        exportPluginId: string;
+        exportPlugin: SchemaTypes.Plugin;
+        projectPlugin: SchemaTypes.Plugin;
+      }>;
     }
-    if (!/^[a-z]/.test(apiKeySuffix)) {
-      return 'Suffix must start with a lowercase letter';
-    }
-    if (!/[a-z0-9]$/.test(apiKeySuffix)) {
-      return 'Suffix must end with a letter or digit';
-    }
-    return undefined;
-  }, [apiKeySuffix]);
+
+    return sortBy(
+      map(
+        conflicts.plugins,
+        (projectPlugin: SchemaTypes.Plugin, exportPluginId: string) => {
+          const exportPlugin = exportSchema.getPluginById(exportPluginId);
+          return { exportPluginId, exportPlugin, projectPlugin };
+        },
+      ),
+      ({ exportPlugin }: { exportPlugin: SchemaTypes.Plugin }) =>
+        exportPlugin.attributes.name,
+    );
+  }, [conflicts, exportSchema]);
 
   if (!conflicts) {
     return null;
   }
 
+  const itemTypeConflictCount =
+    groupedItemTypes.blocks.length + groupedItemTypes.models.length;
+  const pluginConflictCount = sortedPlugins.length;
+  const canApplyItemTypeMass = itemTypeConflictCount > 0;
+  const canApplyPluginMass = pluginConflictCount > 0;
+
   const noPotentialConflicts =
-    Object.keys(conflicts.itemTypes).length === 0 &&
-    Object.keys(conflicts.plugins).length === 0;
-
-  const groupedItemTypes = defaults(
-    mapValues(
-      groupBy(
-        map(
-          conflicts.itemTypes,
-          (projectItemType: SchemaTypes.ItemType, exportItemTypeId: string) => {
-            const exportItemType =
-              exportSchema.getItemTypeById(exportItemTypeId);
-            return { exportItemTypeId, exportItemType, projectItemType };
-          },
-        ),
-        ({ exportItemType }: { exportItemType: SchemaTypes.ItemType }) =>
-          exportItemType?.attributes.modular_block ? 'blocks' : 'models',
-      ),
-      (group: Array<{ exportItemType: SchemaTypes.ItemType }>) =>
-        sortBy(
-          group,
-          ({ exportItemType }: { exportItemType: SchemaTypes.ItemType }) =>
-            getTextWithoutRepresentativeEmojiAndPadding(
-              exportItemType.attributes.name,
-            ),
-        ),
-    ),
-    { blocks: [], models: [] },
-  );
-
-  const sortedPlugins = sortBy(
-    map(
-      conflicts.plugins,
-      (projectPlugin: SchemaTypes.Plugin, exportPluginId: string) => {
-        const exportPlugin = exportSchema.getPluginById(exportPluginId);
-        return { exportPluginId, exportPlugin, projectPlugin };
-      },
-    ),
-    ({ exportPlugin }: { exportPlugin: SchemaTypes.Plugin }) =>
-      exportPlugin.attributes.name,
-  );
+    itemTypeConflictCount === 0 && pluginConflictCount === 0;
 
   return (
     <div className="page">
@@ -111,181 +228,136 @@ export default function ConflictsManager({
         </div>
       </div>
       <div className="page__content">
-        <div className="conflicts-manager__actions">
-          {noPotentialConflicts ? (
-            <p>
-              No conflicts have been found with the existing schema in this
-              project.
-            </p>
-          ) : (
-            <p>
-              Some conflicts exist with the current schema in this project.
-              Before importing, choose how to handle them below.
-            </p>
-          )}
-        </div>
 
         {!noPotentialConflicts && (
-          <div
-            className="conflicts-setup surface"
-            style={{ position: 'relative' }}
-            aria-busy={anyBusy}
-          >
-            {anyBusy && (
-              <div
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  background: 'rgba(250,252,255,0.6)',
-                  zIndex: 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  pointerEvents: 'all',
-                }}
-                role="status"
-                aria-label="Applying selection"
+          <div className="conflicts-setup surface">
+            <div className="mass-strategy-grid">
+              <MassStrategySection
+                title="Models & blocks"
+                conflictCount={itemTypeConflictCount}
+                summary={
+                  canApplyItemTypeMass
+                    ? 'Set the default resolution for detected model/block name clashes.'
+                    : 'No model or block conflicts detected in this import.'
+                }
               >
-                <Spinner size={20} />
-              </div>
-            )}
-
-            <div className="setup-inline">
-              <div className="setup-group setup-group--vertical">
-                <div className="setup-group__label">
-                  Models & blocks (Select One)
-                </div>
-                <div className="setup-group__content">
-                  <div
-                    className="choice-list"
-                    role="group"
-                    aria-label="Models and blocks import strategy"
-                  >
-                    <Button
-                      className={
-                        selectedItemTypesAction === 'rename'
-                          ? 'choice-button is-selected'
-                          : 'choice-button'
-                      }
-                      aria-pressed={selectedItemTypesAction === 'rename'}
-                      type="button"
-                      buttonSize="s"
-                      fullWidth
-                      onClick={() => {
-                        flushSync(() => setSelectedItemTypesAction('rename'));
-                        form.change('mass.itemTypesStrategy', 'rename');
-                        form.change('mass.nameSuffix', nameSuffix);
-                        form.change('mass.apiKeySuffix', apiKeySuffix);
-                      }}
-                      disabled={!!apiKeySuffixError}
-                    >
-                      Rename all with these suffixes
-                    </Button>
-                    <Button
-                      className={
-                        selectedItemTypesAction === 'reuse'
-                          ? 'choice-button is-selected'
-                          : 'choice-button'
-                      }
-                      aria-pressed={selectedItemTypesAction === 'reuse'}
-                      type="button"
-                      buttonSize="s"
-                      fullWidth
-                      onClick={() => {
-                        flushSync(() => setSelectedItemTypesAction('reuse'));
-                        form.change('mass.itemTypesStrategy', 'reuseExisting');
-                      }}
-                    >
-                      Reuse existing where possible
-                    </Button>
-                  </div>
-
-                  {selectedItemTypesAction === 'rename' && (
-                    <div
-                      className="mass-actions__section"
-                      role="group"
-                      aria-label="Default rename suffixes"
-                    >
-                      <div className="mass-actions__section__label">
-                        Default suffixes
-                      </div>
-                      <div className="setup__fields">
+                <MassStrategyCard
+                  id="mass-itemtypes-rename"
+                  label="Rename any conflicting models/blocks"
+                  description={
+                    canApplyItemTypeMass
+                      ? 'Adds suffixes to keep imports distinct.'
+                      : 'All clear — no model or block conflicts found.'
+                  }
+                  checked={canApplyItemTypeMass && itemTypesStrategy === 'rename'}
+                  disabled={!canApplyItemTypeMass}
+                  onToggle={(checked) => {
+                    const nextValue = checked ? 'rename' : null;
+                    form.change('mass.itemTypesStrategy', nextValue);
+                    if (!checked) {
+                      return;
+                    }
+                    if (!massValues.nameSuffix) {
+                      form.change('mass.nameSuffix', ' (Import)');
+                    }
+                    if (!massValues.apiKeySuffix) {
+                      form.change('mass.apiKeySuffix', 'import');
+                    }
+                  }}
+                >
+                  <div className="mass-choice__grid">
+                    <Field name="mass.nameSuffix">
+                      {({ input, meta }) => (
                         <TextField
+                          {...input}
                           id={nameSuffixId}
-                          name="mass-name-suffix"
-                          label="Model/block name suffix"
-                          value={nameSuffix}
-                          onChange={(val: string) => {
-                            setNameSuffix(val);
-                            form.change('mass.nameSuffix', val);
-                          }}
+                          label="Name suffix"
+                          placeholder="e.g. (Import)"
+                          error={resolveFieldError(meta)}
                         />
+                      )}
+                    </Field>
+                    <Field name="mass.apiKeySuffix">
+                      {({ input, meta }) => (
                         <TextField
+                          {...input}
                           id={apiKeySuffixId}
-                          name="mass-apikey-suffix"
                           label="API key suffix"
-                          value={apiKeySuffix}
-                          onChange={(val: string) => {
-                            setApiKeySuffix(val);
-                            form.change('mass.apiKeySuffix', val);
-                          }}
-                          error={apiKeySuffixError}
+                          placeholder="e.g. import"
+                          error={resolveFieldError(meta)}
                         />
-                      </div>
-                      <div className="setup__hint">
-                        These suffixes will be used if you choose to rename
-                        conflicting models/blocks.
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="setup-group setup-group--vertical">
-                <div className="setup-group__label">Plugins (Select One)</div>
-                <div className="setup-group__content">
-                  <div
-                    className="choice-list"
-                    role="group"
-                    aria-label="Plugins import strategy"
-                  >
-                    <Button
-                      className={
-                        selectedPluginsAction === 'reuse'
-                          ? 'choice-button is-selected'
-                          : 'choice-button'
-                      }
-                      aria-pressed={selectedPluginsAction === 'reuse'}
-                      type="button"
-                      buttonSize="s"
-                      fullWidth
-                      onClick={() => {
-                        flushSync(() => setSelectedPluginsAction('reuse'));
-                        form.change('mass.pluginsStrategy', 'reuseExisting');
-                      }}
-                    >
-                      Reuse all plugins
-                    </Button>
-                    <Button
-                      className={
-                        selectedPluginsAction === 'skip'
-                          ? 'choice-button is-selected'
-                          : 'choice-button'
-                      }
-                      aria-pressed={selectedPluginsAction === 'skip'}
-                      type="button"
-                      buttonSize="s"
-                      fullWidth
-                      onClick={() => {
-                        flushSync(() => setSelectedPluginsAction('skip'));
-                        form.change('mass.pluginsStrategy', 'skip');
-                      }}
-                    >
-                      Skip all plugins
-                    </Button>
+                      )}
+                    </Field>
                   </div>
-                </div>
-              </div>
+                  <p className="mass-choice__hint">
+                    Unique combinations are generated automatically if a suffix
+                    already exists in the project.
+                  </p>
+                </MassStrategyCard>
+                <MassStrategyCard
+                  id="mass-itemtypes-reuse"
+                  label="Reuse existing models/blocks when possible"
+                  description={
+                    canApplyItemTypeMass
+                      ? 'Keeps entries mapped to the current schema when types are compatible.'
+                      : 'No conflicting models or blocks to reuse.'
+                  }
+                  checked={
+                    canApplyItemTypeMass && itemTypesStrategy === 'reuseExisting'
+                  }
+                  disabled={!canApplyItemTypeMass}
+                  onToggle={(checked) =>
+                    form.change(
+                      'mass.itemTypesStrategy',
+                      checked ? 'reuseExisting' : null,
+                    )
+                  }
+                />
+              </MassStrategySection>
+
+              <MassStrategySection
+                title="Plugins"
+                conflictCount={pluginConflictCount}
+                summary={
+                  canApplyPluginMass
+                    ? 'Choose how conflicting plugins should be treated during the import.'
+                    : 'No plugin conflicts detected in this import.'
+                }
+              >
+                <MassStrategyCard
+                  id="mass-plugins-reuse"
+                  label="Reuse all detected plugins"
+                  description={
+                    canApplyPluginMass
+                      ? 'Resolves clashes by keeping the currently installed versions.'
+                      : 'No plugin conflicts detected.'
+                  }
+                  checked={
+                    canApplyPluginMass && pluginsStrategy === 'reuseExisting'
+                  }
+                  disabled={!canApplyPluginMass}
+                  onToggle={(checked) =>
+                    form.change(
+                      'mass.pluginsStrategy',
+                      checked ? 'reuseExisting' : null,
+                    )
+                  }
+                />
+                <MassStrategyCard
+                  id="mass-plugins-skip"
+                  label="Skip installing conflictive plugins"
+                  description={
+                    canApplyPluginMass
+                      ? 'Leaves conflicting extensions out of this import.'
+                      : 'All plugins can be imported safely.'
+                  }
+                  checked={canApplyPluginMass && pluginsStrategy === 'skip'}
+                  disabled={!canApplyPluginMass}
+                  onToggle={(checked) =>
+                    form.change('mass.pluginsStrategy', checked ? 'skip' : null)
+                  }
+                />
+              </MassStrategySection>
             </div>
           </div>
         )}
@@ -391,7 +463,7 @@ export default function ConflictsManager({
           Cancel
         </Button>
         {(() => {
-          const proceedDisabled = submitting || !valid || validating || anyBusy;
+          const proceedDisabled = submitting || !valid || validating;
           return (
             <div
               title={

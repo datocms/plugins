@@ -973,154 +973,155 @@ button.chip:focus-visible {
 
 /* Conflicts manager mass actions */
 .conflicts-setup {
-  display: grid;
-  gap: var(--spacing-m);
-  margin: var(--spacing-m) 0 var(--spacing-l);
-}
-.setup-inline {
-  display: grid;
-  gap: 12px;
-}
-
-.setup-group {
-  display: grid;
-  grid-template-columns: 160px 1fr;
-  align-items: start;
-  gap: 12px;
-}
-
-/* Vertical variant for compact, column-like layout */
-.setup-group--vertical {
-  grid-template-columns: 1fr;
-}
-
-.setup-group__label {
-  font-weight: 600;
-  color: var(--light-body-color);
-  padding-top: 0;
-}
-
-.setup-group__content {
-  display: grid;
-  gap: 6px;
-}
-
-.setup__fields {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--spacing-m);
-  align-items: start;
-}
-
-.setup__hint {
-  color: var(--light-body-color);
-  font-size: 12px;
-}
-
-.segmented {
-  display: inline-grid;
-  grid-auto-flow: column;
-  gap: 6px;
+  border: none;
+  border-radius: 18px;
   background: #fff;
-  padding: 4px;
+  padding: var(--spacing-l);
+  margin: var(--spacing-l) 0;
+  box-shadow: 0 18px 36px -28px rgba(17, 24, 39, 0.32);
+}
+
+.mass-strategy-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--spacing-l);
+}
+
+
+
+.mass-section {
+  display: grid;
+  gap: var(--spacing-m);
+  padding: var(--spacing-m);
+  border: 1px solid color-mix(in srgb, var(--border-color), transparent 55%);
+  border-radius: 14px;
+  background: #fff;
+  width: 100%;
+}
+
+.mass-section--calm {
+  border-color: color-mix(in srgb, var(--border-color), transparent 70%);
+}
+
+.mass-section__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--spacing-m);
+}
+
+.mass-section__header-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.mass-section__title {
+  font-weight: 600;
+  font-size: var(--font-size-m);
+}
+
+.mass-section__summary {
+  color: var(--light-body-color);
+  font-size: var(--font-size-s);
+  line-height: 1.4;
+}
+
+.mass-section__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 8px;
   border-radius: 999px;
-  border: 1px solid var(--border-color);
+  border: 1px solid color-mix(in srgb, var(--accent-color), white 50%);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--accent-color);
+  background: color-mix(in srgb, var(--accent-color), white 95%);
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
-.segmented__button {
-  border-radius: 999px;
+.mass-section__actions {
+  display: grid;
+  gap: var(--spacing-s);
 }
 
-.segmented__button.is-selected {
-  background: color-mix(in srgb, var(--accent-color), white 90%);
-  box-shadow: 0 0 0 2px var(--accent-color);
-}
-
-/* New vertical choice list */
-.choice-list {
+.mass-choice {
+  border: 1px solid color-mix(in srgb, var(--border-color), transparent 45%);
+  border-radius: 12px;
+  padding: 16px 18px;
+  background: #fff;
   display: grid;
   gap: 10px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-.choice-button {
-  width: 100%;
-  justify-content: center;
+.mass-choice:hover {
+  border-color: color-mix(in srgb, var(--accent-color), white 65%);
 }
 
-.choice-button.is-selected {
-  background: color-mix(in srgb, var(--accent-color), white 90%);
+.mass-choice--active {
   border-color: var(--accent-color);
-}
-
-.mass-actions__grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--spacing-m);
-  align-items: start;
-}
-
-.mass-actions__apply {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--spacing-s);
-  margin-top: var(--spacing-m);
-}
-
-.mass-actions__plugin-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: var(--spacing-s);
-  margin-top: var(--spacing-m);
-}
-
-/* Clear, guided choice groups in conflicts manager */
-.mass-actions__section {
-  display: grid;
-  gap: var(--spacing-xs, 6px);
-  margin-top: var(--spacing-m);
-}
-
-.mass-actions__section__label {
-  font-weight: 700;
-  color: var(--base-body-color);
-}
-
-.choice-group {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  align-items: stretch;
-  gap: var(--spacing-s);
-}
-
-.choice-group__or {
-  color: var(--light-body-color);
-  font-weight: 600;
-}
-
-.choice-button.is-selected {
   box-shadow:
-    0 0 0 3px var(--accent-color),
-    0 0 0 6px color-mix(in srgb, var(--accent-color), white 65%);
-  transform: translateZ(0);
+    0 0 0 1px color-mix(in srgb, var(--accent-color), white 50%),
+    0 8px 18px -12px rgba(18, 45, 94, 0.45);
 }
 
-@media (max-width: 900px) {
-  .setup-group {
-    grid-template-columns: 1fr;
-  }
+.mass-choice--disabled {
+  opacity: 0.6;
+  pointer-events: none;
+}
 
-  .setup__fields {
-    grid-template-columns: 1fr;
-  }
+.mass-choice__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
 
-  .segmented {
-    grid-auto-flow: row;
-    justify-items: stretch;
-  }
+.mass-choice__checkbox {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent-color);
+}
 
-  .choice-group {
-    grid-template-columns: 1fr;
-  }
+.mass-choice__label {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: var(--font-size-s);
+  color: var(--base-body-color);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.mass-choice__label-text {
+  display: block;
+}
+
+.mass-choice__description {
+  margin: 0;
+  font-size: var(--font-size-s);
+  color: var(--light-body-color);
+}
+
+.mass-choice__details {
+  display: grid;
+  gap: var(--spacing-s);
+  padding-top: var(--spacing-sm);
+  border-top: 1px solid color-mix(in srgb, var(--border-color), transparent 40%);
+}
+
+.mass-choice__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: var(--spacing-s);
+}
+
+.mass-choice__hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--light-body-color);
 }
 
 .conflict {
@@ -1153,6 +1154,23 @@ button.chip:focus-visible {
 
 .conflict__content {
   padding: 12px 16px; /* reduce inner padding for a tighter look */
+}
+
+.conflict__mass-rule {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--border-color), transparent 35%);
+  background: color-mix(in srgb, #fefefe, var(--border-color) 12%);
+  font-size: var(--font-size-s);
+  line-height: 1.5;
+  color: var(--base-body-color);
+}
+
+.conflict__mass-rule strong {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--accent-color);
 }
 
 /* Pretty export overlay styles */

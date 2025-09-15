@@ -2,13 +2,7 @@ import type { SchemaTypes } from '@datocms/cma-client';
 // Removed unused icons
 import { ReactFlowProvider } from '@xyflow/react';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
-import {
-  Button,
-  Canvas,
-  SelectField,
-  Spinner,
-  TextField,
-} from 'datocms-react-ui';
+import { Button, Canvas, SelectField, Spinner } from 'datocms-react-ui';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { GroupBase } from 'react-select';
 import ProgressStallNotice from '@/components/ProgressStallNotice';
@@ -19,8 +13,7 @@ import type { ExportDoc } from '@/utils/types';
 import buildExportDoc from '../ExportPage/buildExportDoc';
 import { ExportSchema } from '../ExportPage/ExportSchema';
 import ExportInner from '../ExportPage/Inner';
-import PostExportSummary from '../ExportPage/PostExportSummary';
-import type { ImportDoc } from './buildImportDoc';
+// PostExportSummary removed: exports now download directly with a toast
 import { buildImportDoc } from './buildImportDoc';
 import buildConflicts, {
   type Conflicts,
@@ -28,11 +21,8 @@ import buildConflicts, {
 import { ConflictsContext } from './ConflictsManager/ConflictsContext';
 import FileDropZone from './FileDropZone';
 import { Inner } from './Inner';
-import importSchema, {
-  type ImportProgress,
-  type ImportResult,
-} from './importSchema';
-import PostImportSummary from './PostImportSummary';
+import importSchema, { type ImportProgress } from './importSchema';
+// PostImportSummary removed: after import we just show a toast and reset
 import ResolutionsForm, { type Resolutions } from './ResolutionsForm';
 
 type Props = {
@@ -47,7 +37,6 @@ export function ImportPage({
   hideModeToggle = false,
 }: Props) {
   const exportInitialSelectId = useId();
-  const confirmTextId = useId();
   const params = new URLSearchParams(ctx.location.search);
   const recipeUrl = params.get('recipe_url');
   const recipeTitle = params.get('recipe_title');
@@ -90,16 +79,7 @@ export function ImportPage({
   const [importCancelled, setImportCancelled] = useState(false);
   const importCancelRef = useRef(false);
 
-  const [postImportSummary, setPostImportSummary] = useState<
-    | {
-        importDoc: ImportDoc;
-        exportSchema: ExportSchema;
-        idByApiKey?: Record<string, string>;
-        pluginIdByName?: Record<string, string>;
-        fieldIdByExportId?: Record<string, string>;
-      }
-    | undefined
-  >(undefined);
+  // Removed postImportSummary: no post-import overview screen
 
   async function handleDrop(filename: string, doc: ExportDoc) {
     try {
@@ -118,23 +98,7 @@ export function ImportPage({
 
   const projectSchema = useMemo(() => new ProjectSchema(client), [client]);
 
-  const [adminDomain, setAdminDomain] = useState<string | undefined>();
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        const site = await client.site.find();
-        const domain = site.internal_domain || site.domain || undefined;
-        if (active) setAdminDomain(domain);
-        console.log('[ImportPage] resolved admin domain:', domain, site);
-      } catch {
-        // ignore; links will simply not be shown
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [client]);
+  // Removed adminDomain lookup; no post-import summary links needed
 
   // State used only in Export tab: choose initial model/block for graph
   const [exportInitialItemTypeIds, setExportInitialItemTypeIds] = useState<
@@ -144,9 +108,7 @@ export function ImportPage({
     SchemaTypes.ItemType[]
   >([]);
   const [exportStarted, setExportStarted] = useState(false);
-  const [postExportDoc, setPostExportDoc] = useState<ExportDoc | undefined>(
-    undefined,
-  );
+  // Removed postExportDoc: no post-export overview for exports
   const [exportAllBusy, setExportAllBusy] = useState(false);
   const [exportAllProgress, setExportAllProgress] = useState<
     { done: number; total: number; label: string } | undefined
@@ -200,13 +162,6 @@ export function ImportPage({
     { done: number; total: number; label: string } | undefined
   >(undefined);
 
-  // Typed confirmation gate state
-  const [confirmVisible, setConfirmVisible] = useState(false);
-  const [confirmExpected, setConfirmExpected] = useState('');
-  const [confirmText, setConfirmText] = useState('');
-  const [pendingResolutions, setPendingResolutions] = useState<
-    Resolutions | undefined
-  >(undefined);
 
   useEffect(() => {
     async function run() {
@@ -274,19 +229,6 @@ export function ImportPage({
     try {
       setImportCancelled(false);
       importCancelRef.current = false;
-      // If any rename operations are selected, require typed confirmation
-      const renameCount = Object.values(resolutions.itemTypes).filter(
-        (r) => r && 'strategy' in r && r.strategy === 'rename',
-      ).length;
-
-      if (renameCount > 0) {
-        setPendingResolutions(resolutions);
-        setConfirmExpected(`RENAME ${renameCount}`);
-        setConfirmText('');
-        setConfirmVisible(true);
-        return;
-      }
-
       setImportProgress({ finished: 0, total: 1 });
 
       const importDoc = await buildImportDoc(
@@ -295,7 +237,7 @@ export function ImportPage({
         resolutions,
       );
 
-      const importResult: ImportResult = await importSchema(
+      await importSchema(
         importDoc,
         client,
         (p) => {
@@ -306,94 +248,11 @@ export function ImportPage({
         },
       );
 
-      ctx.notice('Import completed successfully!');
-      // Refresh models list to build API key -> ID map for linking
-      let idByApiKey: Record<string, string> | undefined;
-      let pluginIdByName: Record<string, string> | undefined;
-      try {
-        const itemTypes = await client.itemTypes.list();
-        idByApiKey = Object.fromEntries(
-          itemTypes.map((it) => [it.api_key, it.id]),
-        );
-        const plugins = await client.plugins.list();
-        pluginIdByName = Object.fromEntries(
-          plugins.map((pl) => [pl.name, pl.id]),
-        );
-      } catch {
-        // ignore: links will still render without IDs
-      }
-
-      setPostImportSummary({
-        importDoc,
-        exportSchema: exportSchema[1],
-        idByApiKey,
-        pluginIdByName,
-        fieldIdByExportId: importResult.fieldIdByExportId,
-      });
+      // Success: notify and reset to initial idle state
+      ctx.notice('Import completed successfully.');
       setImportProgress(undefined);
       setExportSchema(undefined);
-    } catch (e) {
-      console.error(e);
-      if (e instanceof Error && e.message === 'Import cancelled') {
-        ctx.notice('Import canceled');
-      } else {
-        ctx.alert('Import could not be completed successfully.');
-      }
-      setImportProgress(undefined);
-    }
-  }
-
-  async function proceedAfterConfirm() {
-    if (!pendingResolutions || !exportSchema || !conflicts) return;
-
-    try {
-      setConfirmVisible(false);
-      setImportCancelled(false);
-      importCancelRef.current = false;
-      setImportProgress({ finished: 0, total: 1 });
-
-      const importDoc = await buildImportDoc(
-        exportSchema[1],
-        conflicts,
-        pendingResolutions,
-      );
-
-      const importResult: ImportResult = await importSchema(
-        importDoc,
-        client,
-        (p) => {
-          if (!importCancelRef.current) setImportProgress(p);
-        },
-        {
-          shouldCancel: () => importCancelRef.current,
-        },
-      );
-
-      ctx.notice('Import completed successfully!');
-      // Refresh models list to build API key -> ID map for linking
-      let idByApiKey: Record<string, string> | undefined;
-      let pluginIdByName: Record<string, string> | undefined;
-      try {
-        const itemTypes = await client.itemTypes.list();
-        idByApiKey = Object.fromEntries(
-          itemTypes.map((it) => [it.api_key, it.id]),
-        );
-        const plugins = await client.plugins.list();
-        pluginIdByName = Object.fromEntries(
-          plugins.map((pl) => [pl.name, pl.id]),
-        );
-      } catch {}
-
-      setPostImportSummary({
-        importDoc,
-        exportSchema: exportSchema[1],
-        idByApiKey,
-        pluginIdByName,
-        fieldIdByExportId: importResult.fieldIdByExportId,
-      });
-      setImportProgress(undefined);
-      setExportSchema(undefined);
-      setPendingResolutions(undefined);
+      setConflicts(undefined);
     } catch (e) {
       console.error(e);
       if (e instanceof Error && e.message === 'Import cancelled') {
@@ -450,23 +309,7 @@ export function ImportPage({
               )}
           <div className="page__content">
             {mode === 'import' ? (
-              postImportSummary ? (
-                <PostImportSummary
-                  exportSchema={postImportSummary.exportSchema}
-                  importDoc={postImportSummary.importDoc}
-                  adminDomain={adminDomain}
-                  idByApiKey={postImportSummary.idByApiKey}
-                  pluginIdByName={postImportSummary.pluginIdByName}
-                  fieldIdByExportId={postImportSummary.fieldIdByExportId}
-                  onClose={() => {
-                    setPostImportSummary(undefined);
-                    ctx.navigateTo(
-                      `${ctx.isEnvironmentPrimary ? '' : `/environments/${ctx.environment}`}/configuration/p/${ctx.plugin.id}/pages/import`,
-                    );
-                  }}
-                />
-              ) : (
-                <FileDropZone onJsonDrop={handleDrop}>
+              <FileDropZone onJsonDrop={handleDrop}>
                   {(button) =>
                     exportSchema ? (
                       conflicts ? (
@@ -511,28 +354,9 @@ export function ImportPage({
                     )
                   }
                 </FileDropZone>
-              )
             ) : (
               <div className="blank-slate">
-                {postExportDoc ? (
-                  <PostExportSummary
-                    exportDoc={postExportDoc}
-                    adminDomain={adminDomain}
-                    onDownload={() =>
-                      downloadJSON(postExportDoc, {
-                        fileName: 'export.json',
-                        prettify: true,
-                      })
-                    }
-                    onClose={() => {
-                      setPostExportDoc(undefined);
-                      setMode('import');
-                      setExportStarted(false);
-                      setExportInitialItemTypeIds([]);
-                      setExportInitialItemTypes([]);
-                    }}
-                  />
-                ) : !exportStarted ? (
+                {!exportStarted ? (
                   <div className="blank-slate__body">
                     <div className="blank-slate__body__title">
                       Start a new export
@@ -706,8 +530,7 @@ export function ImportPage({
                                   fileName: 'export.json',
                                   prettify: true,
                                 });
-                                setPostExportDoc(exportDoc);
-                                ctx.notice('Export completed with success!');
+                                ctx.notice('Export completed successfully.');
                               } catch (e) {
                                 console.error('Export-all failed', e);
                                 if (
@@ -790,8 +613,7 @@ export function ImportPage({
                           fileName: 'export.json',
                           prettify: true,
                         });
-                        setPostExportDoc(exportDoc);
-                        ctx.notice('Export completed with success!');
+                        ctx.notice('Export completed successfully.');
                       } catch (e) {
                         console.error('Selection export failed', e);
                         if (
@@ -1185,89 +1007,6 @@ export function ImportPage({
                 }}
               >
                 Cancel export
-              </Button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Typed confirmation modal for renames */}
-      {confirmVisible && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.5)',
-            zIndex: 9999,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 16,
-          }}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Confirm rename operations"
-        >
-          <div
-            style={{
-              background: '#fff',
-              borderRadius: 8,
-              maxWidth: 560,
-              width: '100%',
-              padding: 20,
-              boxShadow: '0 8px 24px rgba(0,0,0,0.2)',
-            }}
-          >
-            <div style={{ fontSize: 18, fontWeight: 600, marginBottom: 8 }}>
-              Confirm rename operations
-            </div>
-            <div style={{ color: '#444', marginBottom: 16 }}>
-              You chose to import items with renamed models/blocks. To confirm,
-              type
-              <span style={{ fontFamily: 'monospace', fontWeight: 600 }}>
-                {' '}
-                {confirmExpected}
-              </span>{' '}
-              below.
-            </div>
-            <div style={{ marginBottom: 16 }}>
-              <TextField
-                id={confirmTextId}
-                name="confirm-typed-text"
-                label="Type to confirm"
-                placeholder={confirmExpected}
-                value={confirmText}
-                onChange={(val: string) => setConfirmText(val)}
-                textInputProps={{
-                  autoFocus: true,
-                  onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => {
-                    if (e.key === 'Enter' && confirmText === confirmExpected) {
-                      e.preventDefault();
-                      void proceedAfterConfirm();
-                    }
-                  },
-                }}
-              />
-            </div>
-            <div
-              style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}
-            >
-              <Button
-                buttonSize="s"
-                onClick={() => {
-                  setConfirmVisible(false);
-                  setPendingResolutions(undefined);
-                }}
-              >
-                Cancel
-              </Button>
-              <Button
-                buttonSize="s"
-                buttonType="primary"
-                disabled={confirmText !== confirmExpected}
-                onClick={proceedAfterConfirm}
-              >
-                I understand, proceed
               </Button>
             </div>
           </div>
