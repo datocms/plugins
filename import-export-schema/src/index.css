@@ -974,45 +974,46 @@ button.chip:focus-visible {
 /* Conflicts manager mass actions */
 .conflicts-setup {
   border: none;
-  border-radius: 18px;
+  border-radius: 16px;
   background: #fff;
-  padding: var(--spacing-l);
-  margin: var(--spacing-l) 0;
-  box-shadow: 0 18px 36px -28px rgba(17, 24, 39, 0.32);
+  padding: var(--spacing-m);
+  margin: calc(var(--spacing-m) * 0.75) 0;
+  box-shadow: 0 12px 34px -26px rgba(15, 23, 42, 0.28);
 }
 
 .mass-strategy-grid {
   display: grid;
   grid-template-columns: 1fr;
-  gap: var(--spacing-l);
+  gap: var(--spacing-m);
 }
+
 
 
 
 .mass-section {
   display: grid;
-  gap: var(--spacing-m);
-  padding: var(--spacing-m);
-  border: 1px solid color-mix(in srgb, var(--border-color), transparent 55%);
+  gap: var(--spacing-sm);
+  padding: calc(var(--spacing-m) - 2px);
+  border: 1px solid color-mix(in srgb, var(--border-color), transparent 65%);
   border-radius: 14px;
   background: #fff;
   width: 100%;
 }
 
 .mass-section--calm {
-  border-color: color-mix(in srgb, var(--border-color), transparent 70%);
+  border-color: color-mix(in srgb, var(--border-color), transparent 80%);
 }
 
 .mass-section__header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
-  gap: var(--spacing-m);
+  gap: var(--spacing-sm);
 }
 
 .mass-section__header-copy {
   display: grid;
-  gap: 4px;
+  gap: 2px;
 }
 
 .mass-section__title {
@@ -1023,14 +1024,14 @@ button.chip:focus-visible {
 .mass-section__summary {
   color: var(--light-body-color);
   font-size: var(--font-size-s);
-  line-height: 1.4;
+  line-height: 1.35;
 }
 
 .mass-section__badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 2px 8px;
+  padding: 2px 10px;
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--accent-color), white 50%);
   font-size: 12px;
@@ -1044,28 +1045,31 @@ button.chip:focus-visible {
 
 .mass-section__actions {
   display: grid;
-  gap: var(--spacing-s);
+  gap: var(--spacing-sm);
 }
 
 .mass-choice {
-  border: 1px solid color-mix(in srgb, var(--border-color), transparent 45%);
+  border: 1px solid color-mix(in srgb, var(--border-color), transparent 55%);
   border-radius: 12px;
-  padding: 16px 18px;
+  padding: 12px 16px;
   background: #fff;
   display: grid;
-  gap: 10px;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  grid-template-columns: auto 1fr;
+  column-gap: 12px;
+  row-gap: 4px;
+  align-items: flex-start;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease,
+    background-color 0.2s ease;
 }
 
 .mass-choice:hover {
-  border-color: color-mix(in srgb, var(--accent-color), white 65%);
+  border-color: color-mix(in srgb, var(--accent-color), white 70%);
 }
 
 .mass-choice--active {
-  border-color: var(--accent-color);
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--accent-color), white 50%),
-    0 8px 18px -12px rgba(18, 45, 94, 0.45);
+  border-color: color-mix(in srgb, var(--accent-color), white 30%);
+  background: color-mix(in srgb, var(--accent-color), white 96%);
+  box-shadow: 0 6px 16px -14px rgba(17, 24, 39, 0.32);
 }
 
 .mass-choice--disabled {
@@ -1074,15 +1078,14 @@ button.chip:focus-visible {
 }
 
 .mass-choice__header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
+  display: contents;
 }
 
 .mass-choice__checkbox {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   accent-color: var(--accent-color);
+  margin-top: 2px;
 }
 
 .mass-choice__label {
@@ -1093,6 +1096,7 @@ button.chip:focus-visible {
   display: inline-flex;
   align-items: center;
   gap: var(--spacing-xs);
+  grid-column: 2;
 }
 
 .mass-choice__label-text {
@@ -1103,19 +1107,22 @@ button.chip:focus-visible {
   margin: 0;
   font-size: var(--font-size-s);
   color: var(--light-body-color);
+  grid-column: 2;
+  line-height: 1.35;
 }
 
 .mass-choice__details {
   display: grid;
-  gap: var(--spacing-s);
-  padding-top: var(--spacing-sm);
-  border-top: 1px solid color-mix(in srgb, var(--border-color), transparent 40%);
+  gap: var(--spacing-xs);
+  padding-top: var(--spacing-xs);
+  border-top: 1px solid color-mix(in srgb, var(--border-color), transparent 45%);
+  grid-column: 2;
 }
 
 .mass-choice__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: var(--spacing-s);
+  grid-template-columns: repeat(auto-fit, minmax(152px, 1fr));
+  gap: var(--spacing-xs);
 }
 
 .mass-choice__hint {
@@ -1297,7 +1304,7 @@ button.chip:focus-visible {
 }
 
 .conflicts-manager__actions {
-  padding: var(--spacing-l);
+  padding: var(--spacing-m) var(--spacing-l) var(--spacing-s);
 }
 
 .conflicts-manager__actions__reassurance {
