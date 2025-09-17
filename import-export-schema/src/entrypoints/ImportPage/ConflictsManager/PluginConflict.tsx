@@ -3,11 +3,14 @@ import { useReactFlow } from '@xyflow/react';
 import { SelectField } from 'datocms-react-ui';
 import { useId } from 'react';
 import { Field } from 'react-final-form';
-import type { GroupBase } from 'react-select';
 import { useResolutionStatusForPlugin } from '../ResolutionsForm';
 import Collapsible from './Collapsible';
 
 type Option = { label: string; value: string };
+type SelectGroup<OptionType> = {
+  label?: string;
+  options: readonly OptionType[];
+};
 
 const options: Option[] = [
   {
@@ -44,7 +47,7 @@ export function PluginConflict({ exportPlugin, projectPlugin }: Props) {
       </p>
       <Field name={`${fieldPrefix}.strategy`}>
         {({ input, meta: { error } }) => (
-          <SelectField<Option, false, GroupBase<Option>>
+          <SelectField<Option, false, SelectGroup<Option>>
             {...input}
             id={selectId}
             label="To resolve this conflict:"

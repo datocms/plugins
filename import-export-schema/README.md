@@ -69,6 +69,17 @@ Powerful, safe schema migration for DatoCMS. Export models/blocks and plugins as
 - Appearance portability: if an editor plugin is not selected, that field falls back to a valid built‑in editor; addons are included only if selected or already installed.
 - Rate limiting: long operations show a gentle notice if progress stalls; they usually resume automatically. You can cancel exports/imports at any time.
 
+## Development Notes
+
+- Shared hooks:
+  - `useProjectSchema` memoizes CMA access per context.
+  - `useLongTask` drives all long-running progress overlays.
+  - `useExportGraph`, `useExportAllHandler`, and `useConflictsBuilder` encapsulate schema loading logic.
+- Shared UI:
+  - `ProgressOverlay` renders the full-screen overlay with accessible ARIA props and cancel handling.
+  - `ExportStartPanel` powers the initial export selector in both ExportHome and ImportPage.
+- Graph utilities expose a single entry point (`@/utils/graph`) with `SchemaProgressUpdate` progress typing.
+
 ## Export File Format
 
 - Version 2 (current): `{ version: '2', rootItemTypeId, entities: […] }` — preserves the explicit root model/block used to seed the export, to re-generate the export graph deterministically.

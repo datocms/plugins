@@ -15,12 +15,12 @@ import {
 } from '@/utils/datocms/schema';
 // import { collectDependencies } from '@/utils/graph/dependencies';
 import { type AppNode, edgeTypes, type Graph } from '@/utils/graph/types';
-import { buildGraphFromSchema } from './buildGraphFromSchema';
 import { EntitiesToExportContext } from './EntitiesToExportContext';
 import { ExportItemTypeNodeRenderer } from './ExportItemTypeNodeRenderer';
 import { ExportPluginNodeRenderer } from './ExportPluginNodeRenderer';
 import LargeSelectionView from './LargeSelectionView';
 import { useAnimatedNodes } from './useAnimatedNodes';
+import { useExportGraph } from './useExportGraph';
 
 const nodeTypes: NodeTypes = {
   itemType: ExportItemTypeNodeRenderer,
@@ -55,10 +55,6 @@ export default function Inner({
 }: Props) {
   const ctx = useCtx<RenderPageCtx>();
 
-  const [graph, setGraph] = useState<Graph | undefined>();
-  const [error, setError] = useState<Error | undefined>();
-  const [refreshKey, setRefreshKey] = useState(0);
-
   const [selectedItemTypeIds, setSelectedItemTypeIds] = useState<string[]>(
     initialItemTypes.map((it) => it.id),
   );
@@ -70,56 +66,16 @@ export default function Inner({
     pluginIds: Set<string>;
   }>({ itemTypeIds: new Set(), pluginIds: new Set() });
 
-  // Overlay is controlled by parent; we signal prepared after each build
-
-  useEffect(() => {
-    async function run() {
-      try {
-        setError(undefined);
-        if (
-          typeof window !== 'undefined' &&
-          window.localStorage?.getItem('schemaDebug') === '1'
-        ) {
-          console.log('[Inner] buildGraphFromSchema start', {
-            selectedItemTypeIds: selectedItemTypeIds.length,
-          });
-        }
-        const graph = await buildGraphFromSchema({
-          initialItemTypes,
-          selectedItemTypeIds,
-          schema,
-          onProgress: onPrepareProgress,
-          installedPluginIds,
-        });
-
-        setGraph(graph);
-        if (
-          typeof window !== 'undefined' &&
-          window.localStorage?.getItem('schemaDebug') === '1'
-        ) {
-          console.log('[Inner] buildGraphFromSchema done', {
-            nodes: graph.nodes.length,
-            edges: graph.edges.length,
-          });
-        }
-        onGraphPrepared?.();
-      } catch (e) {
-        console.error('Error building export graph:', e);
-        setError(e as Error);
-        onGraphPrepared?.();
-      }
-    }
-
-    run();
-  }, [
-    initialItemTypes
-      .map((it) => it.id)
-      .sort()
-      .join('-'),
-    selectedItemTypeIds.sort().join('-'),
+  const { graph, error, refresh } = useExportGraph({
+    initialItemTypes,
+    selectedItemTypeIds,
     schema,
-    refreshKey,
-  ]);
+    onPrepareProgress,
+    onGraphPrepared,
+    installedPluginIds,
+  });
+
+  // Overlay is controlled by parent; we signal prepared after each build
 
   // Keep selection in sync if the parent changes the initial set of item types
   useEffect(() => {
@@ -142,9 +98,6 @@ export default function Inner({
 
   const animatedNodes = useAnimatedNodes(
     showGraph && graph ? graph.nodes : [],
-    {
-      animationDuration: 300,
-    },
   );
 
   const onNodeClick: NodeMouseHandler<AppNode> = useCallback(
@@ -443,10 +396,7 @@ export default function Inner({
               <Button
                 buttonSize="m"
                 onClick={() => {
-                  // trigger effect by nudging selection state
-                  setGraph(undefined);
-                  setError(undefined);
-                  setRefreshKey((n) => n + 1);
+                  refresh();
                 }}
               >
                 Retry

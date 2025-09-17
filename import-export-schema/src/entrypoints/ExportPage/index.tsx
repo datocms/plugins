@@ -1,12 +1,12 @@
 import type { SchemaTypes } from '@datocms/cma-client';
 import { ReactFlowProvider } from '@xyflow/react';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
-import { Button, Canvas, Spinner } from 'datocms-react-ui';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import ProgressStallNotice from '@/components/ProgressStallNotice';
-import { createCmaClient } from '@/utils/createCmaClient';
+import { Canvas, Spinner } from 'datocms-react-ui';
+import { useEffect, useState } from 'react';
+import { ProgressOverlay } from '@/components/ProgressOverlay';
+import { useProjectSchema } from '@/shared/hooks/useProjectSchema';
+import { useLongTask } from '@/shared/tasks/useLongTask';
 import { downloadJSON } from '@/utils/downloadJson';
-import { ProjectSchema } from '@/utils/ProjectSchema';
 import buildExportDoc from './buildExportDoc';
 import Inner from './Inner';
 
@@ -16,40 +16,45 @@ type Props = {
 };
 
 export default function ExportPage({ ctx, initialItemTypeId }: Props) {
-  const client = useMemo(
-    () => createCmaClient(ctx),
-    [ctx.currentUserAccessToken, ctx.environment],
-  );
+  const schema = useProjectSchema(ctx);
 
   const [initialItemType, setInitialItemType] = useState<
     SchemaTypes.ItemType | undefined
   >();
-  const [preparingBusy, setPreparingBusy] = useState(true);
   const [suppressPreparingOverlay, setSuppressPreparingOverlay] =
     useState(false);
-  const [preparingProgress, setPreparingProgress] = useState<
-    | { done: number; total: number; label: string; phase?: 'scan' | 'build' }
-    | undefined
-  >(undefined);
+  const [preparingPhase, setPreparingPhase] = useState<'scan' | 'build'>('scan');
+  const preparingTask = useLongTask();
+  const exportTask = useLongTask();
+
+  const preparingProgress = preparingTask.state.progress;
+  const exportProgress = exportTask.state.progress;
+
+  const preparingHasTotals =
+    typeof preparingProgress.total === 'number' &&
+    preparingProgress.total > 0;
   // Smoothed visual progress percentage for the preparing overlay.
   // We map the initial scanning phase to 0–25%, then determinate build to 25–100%.
   const [preparingPercent, setPreparingPercent] = useState(0.1);
 
   // Heartbeat fallback: gently move during scan if no numeric totals arrive
   useEffect(() => {
-    if (!preparingBusy || suppressPreparingOverlay) return;
-    const phase = preparingProgress?.phase ?? 'scan';
-    if (phase !== 'scan') return;
+    if (preparingTask.state.status !== 'running' || suppressPreparingOverlay) {
+      return;
+    }
+    if (preparingPhase !== 'scan') return;
     const id = window.setInterval(() => {
-      // Only drift if totals are not provided
-      if (!preparingProgress || (preparingProgress.total ?? 0) === 0) {
+      if (!preparingHasTotals) {
         setPreparingPercent((prev) => Math.min(0.88, prev + 0.015));
       }
     }, 250);
     return () => window.clearInterval(id);
-  }, [preparingBusy, suppressPreparingOverlay, preparingProgress]);
-
-  const schema = useMemo(() => new ProjectSchema(client), [client]);
+  }, [
+    preparingTask.state.status,
+    preparingPhase,
+    preparingHasTotals,
+    suppressPreparingOverlay,
+  ]);
 
   // Removed adminDomain lookup; we no longer show a post-export overview
 
@@ -90,39 +95,27 @@ export default function ExportPage({ ctx, initialItemTypeId }: Props) {
             );
           }
         } catch {}
-        setPreparingBusy(true);
-        setPreparingProgress(undefined);
+        preparingTask.controller.start({
+          label: 'Preparing export…',
+        });
+        setPreparingPhase('scan');
         setPreparingPercent(0.1);
         setLastPreparedForId(initialItemTypeId);
       }
     }
 
     run();
-  }, [schema, initialItemTypeId, lastPreparedForId]);
-
-  // Progress overlay state for selection export
-  const [exportBusy, setExportBusy] = useState(false);
-  const [exportProgress, setExportProgress] = useState<
-    | {
-        done: number;
-        total: number;
-        label: string;
-      }
-    | undefined
-  >();
-  const [exportCancelled, setExportCancelled] = useState(false);
-  const exportCancelRef = useRef(false);
+  }, [schema, initialItemTypeId, lastPreparedForId, preparingTask]);
 
   async function handleExport(itemTypeIds: string[], pluginIds: string[]) {
     try {
-      setExportBusy(true);
-      setExportProgress(undefined);
-      setExportCancelled(false);
-      exportCancelRef.current = false;
-
       // Initialize progress bar
       const total = pluginIds.length + itemTypeIds.length * 2;
-      setExportProgress({ done: 0, total, label: 'Preparing export…' });
+      exportTask.controller.start({
+        done: 0,
+        total,
+        label: 'Preparing export…',
+      });
       let done = 0;
 
       const exportDoc = await buildExportDoc(
@@ -133,30 +126,34 @@ export default function ExportPage({ ctx, initialItemTypeId }: Props) {
         {
           onProgress: (label: string) => {
             done += 1;
-            setExportProgress({ done, total, label });
+            exportTask.controller.setProgress({ done, total, label });
           },
-          shouldCancel: () => exportCancelRef.current,
+          shouldCancel: () => exportTask.controller.isCancelRequested(),
         },
       );
 
-      if (exportCancelRef.current) {
+      if (exportTask.controller.isCancelRequested()) {
         throw new Error('Export cancelled');
       }
 
       downloadJSON(exportDoc, { fileName: 'export.json', prettify: true });
+      exportTask.controller.complete({
+        done: total,
+        total,
+        label: 'Export completed',
+      });
       ctx.notice('Export completed successfully.');
     } catch (e) {
       console.error('Export failed', e);
       if (e instanceof Error && e.message === 'Export cancelled') {
+        exportTask.controller.complete({ label: 'Export cancelled' });
         ctx.notice('Export canceled');
       } else {
+        exportTask.controller.fail(e);
         ctx.alert('Could not complete the export. Please try again.');
       }
     } finally {
-      setExportBusy(false);
-      setExportProgress(undefined);
-      setExportCancelled(false);
-      exportCancelRef.current = false;
+      exportTask.controller.reset();
     }
   }
 
@@ -179,7 +176,12 @@ export default function ExportPage({ ctx, initialItemTypeId }: Props) {
             schema={schema}
             onExport={handleExport}
             onPrepareProgress={(p) => {
-              setPreparingProgress(p);
+              if (preparingTask.state.status !== 'running') {
+                preparingTask.controller.start(p);
+              } else {
+                preparingTask.controller.setProgress(p);
+              }
+              setPreparingPhase(p.phase ?? 'scan');
               const phase = p.phase ?? 'scan';
               const hasTotals = (p.total ?? 0) > 0;
               if (phase === 'scan') {
@@ -214,154 +216,54 @@ export default function ExportPage({ ctx, initialItemTypeId }: Props) {
                   );
                 }
               } catch {}
-              setPreparingBusy(false);
+              setPreparingPercent(1);
+              preparingTask.controller.complete({
+                label: 'Graph prepared',
+              });
               setSuppressPreparingOverlay(false);
+              setPreparingPhase('build');
             }}
             installedPluginIds={installedPluginIds}
             onSelectingDependenciesChange={(busy) => {
               // Hide overlay during dependency expansion; release when graph is prepared
               if (busy) {
                 setSuppressPreparingOverlay(true);
-                setPreparingBusy(false);
               }
             }}
           />
       </ReactFlowProvider>
-      {preparingBusy && !suppressPreparingOverlay && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background:
-              'linear-gradient(180deg, rgba(250,252,255,0.96), rgba(245,247,255,0.96))',
-            zIndex: 9999,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexDirection: 'column',
-            gap: 16,
+      {preparingTask.state.status === 'running' && !suppressPreparingOverlay && (
+        <ProgressOverlay
+          title="Preparing export"
+          subtitle="Sit tight, we’re setting up your models, blocks, and plugins…"
+          ariaLabel="Preparing export"
+          progress={{
+            label: preparingProgress.label ?? 'Preparing export…',
+            done: preparingProgress.done,
+            total: preparingProgress.total,
+            percentOverride: preparingPercent,
           }}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Preparing export"
-        >
-          <div className="export-overlay__card">
-            <div className="export-overlay__title">Preparing export</div>
-            <div className="export-overlay__subtitle">
-              Sit tight, we’re setting up your models, blocks, and plugins…
-            </div>
-
-            <div
-              className="export-overlay__bar"
-              role="progressbar"
-              aria-label="Preparing"
-              aria-valuemin={0}
-              aria-valuemax={
-                preparingProgress && (preparingProgress.total ?? 0) > 0
-                  ? preparingProgress.total
-                  : undefined
-              }
-              aria-valuenow={
-                preparingProgress && (preparingProgress.total ?? 0) > 0
-                  ? preparingProgress.done
-                  : undefined
-              }
-            >
-              <div
-                className="export-overlay__bar__fill"
-                style={{ width: `${Math.round(preparingPercent * 100)}%` }}
-              />
-            </div>
-            <div className="export-overlay__meta">
-              <div>
-                {preparingProgress
-                  ? preparingProgress.label
-                  : 'Preparing export…'}
-              </div>
-              <div>
-                {preparingProgress && (preparingProgress.total ?? 0) > 0
-                  ? `${preparingProgress.done} / ${preparingProgress.total}`
-                  : ''}
-              </div>
-            </div>
-            <ProgressStallNotice current={preparingProgress?.done} />
-          </div>
-        </div>
+          stallCurrent={preparingProgress.done}
+        />
       )}
-      {exportBusy && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background:
-              'linear-gradient(180deg, rgba(250,252,255,0.96), rgba(245,247,255,0.96))',
-            zIndex: 9999,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            flexDirection: 'column',
-            gap: 16,
+      {exportTask.state.status === 'running' && (
+        <ProgressOverlay
+          title="Exporting selection"
+          subtitle="Sit tight, we’re gathering models, blocks, and plugins…"
+          ariaLabel="Export in progress"
+          progress={{
+            label: exportProgress.label ?? 'Preparing export…',
+            done: exportProgress.done,
+            total: exportProgress.total,
           }}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Export in progress"
-        >
-          <div className="export-overlay__card">
-            <div className="export-overlay__title">Exporting selection</div>
-            <div className="export-overlay__subtitle">
-              Sit tight, we’re gathering models, blocks, and plugins…
-            </div>
-
-            <div
-              className="export-overlay__bar"
-              role="progressbar"
-              aria-label="Export progress"
-              aria-valuemin={0}
-              aria-valuemax={exportProgress?.total}
-              aria-valuenow={exportProgress?.done}
-            >
-              <div
-                className="export-overlay__bar__fill"
-                style={{
-                  width: exportProgress
-                    ? `${(exportProgress.done / exportProgress.total) * 100}%`
-                    : '10%',
-                }}
-              />
-            </div>
-            <div className="export-overlay__meta">
-              <div>
-                {exportProgress ? exportProgress.label : 'Preparing export…'}
-              </div>
-              <div>
-                {exportProgress
-                  ? `${exportProgress.done} / ${exportProgress.total}`
-                  : ''}
-              </div>
-            </div>
-            <ProgressStallNotice current={exportProgress?.done} />
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'flex-end',
-                marginTop: 12,
-              }}
-            >
-              <Button
-                buttonSize="s"
-                buttonType={exportCancelled ? 'muted' : 'negative'}
-                disabled={exportCancelled}
-                onClick={() => {
-                  setExportCancelled(true);
-                  exportCancelRef.current = true;
-                  // Keep overlay visible to show cancellation progress
-                }}
-              >
-                Cancel export
-              </Button>
-            </div>
-          </div>
-        </div>
+          stallCurrent={exportProgress.done}
+          cancel={{
+            label: 'Cancel export',
+            intent: exportTask.state.cancelRequested ? 'muted' : 'negative',
+            disabled: exportTask.state.cancelRequested,
+            onCancel: () => exportTask.controller.requestCancel(),
+          }}
+        />
       )}
     </Canvas>
   );

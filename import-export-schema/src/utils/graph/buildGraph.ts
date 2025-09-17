@@ -4,7 +4,7 @@ import { buildEdgesForItemType } from '@/utils/graph/edges';
 import { buildItemTypeNode, buildPluginNode } from '@/utils/graph/nodes';
 import { rebuildGraphWithPositionsFromHierarchy } from '@/utils/graph/rebuildGraphWithPositionsFromHierarchy';
 import { deterministicGraphSort } from '@/utils/graph/sort';
-import type { Graph } from '@/utils/graph/types';
+import type { Graph, SchemaProgressUpdate } from '@/utils/graph/types';
 import type { ISchemaSource } from '@/utils/schema/ISchemaSource';
 
 type BuildGraphOptions = {
@@ -12,12 +12,7 @@ type BuildGraphOptions = {
   initialItemTypes: SchemaTypes.ItemType[];
   selectedItemTypeIds?: string[]; // export use-case to include edges
   itemTypeIdsToSkip?: string[]; // import use-case to avoid edges
-  onProgress?: (update: {
-    done: number;
-    total: number;
-    label: string;
-    phase?: 'scan' | 'build';
-  }) => void;
+  onProgress?: (update: SchemaProgressUpdate) => void;
 };
 
 export async function buildGraph({

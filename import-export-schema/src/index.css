@@ -2,6 +2,14 @@ svg {
   display: block;
 }
 
+:root {
+  --overlay-gradient: linear-gradient(
+    180deg,
+    rgba(250, 252, 255, 0.96),
+    rgba(245, 247, 255, 0.96)
+  );
+}
+
 html,
 body,
 #root {
@@ -1012,6 +1020,18 @@ button.chip:focus-visible {
   padding: 28px 30px;
   width: 720px;
   max-width: 92vw;
+}
+
+.progress-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay-gradient);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .export-overlay__title {

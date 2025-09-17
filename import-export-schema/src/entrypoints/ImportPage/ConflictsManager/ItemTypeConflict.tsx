@@ -3,11 +3,14 @@ import { useReactFlow } from '@xyflow/react';
 import { SelectField, TextField } from 'datocms-react-ui';
 import { useId } from 'react';
 import { Field } from 'react-final-form';
-import type { GroupBase } from 'react-select';
 import { useResolutionStatusForItemType } from '../ResolutionsForm';
 import Collapsible from './Collapsible';
 
 type Option = { label: string; value: string };
+type SelectGroup<OptionType> = {
+  label?: string;
+  options: readonly OptionType[];
+};
 
 type Props = {
   exportItemType: SchemaTypes.ItemType;
@@ -62,7 +65,7 @@ export function ItemTypeConflict({ exportItemType, projectItemType }: Props) {
       </p>
       <Field name={`${fieldPrefix}.strategy`}>
         {({ input, meta: { error } }) => (
-          <SelectField<Option, false, GroupBase<Option>>
+          <SelectField<Option, false, SelectGroup<Option>>
             {...input}
             id={selectId}
             label="To resolve this conflict:"

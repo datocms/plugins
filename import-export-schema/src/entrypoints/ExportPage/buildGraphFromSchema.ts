@@ -1,6 +1,6 @@
 import type { SchemaTypes } from '@datocms/cma-client';
 import { buildGraph } from '@/utils/graph/buildGraph';
-import type { Graph } from '@/utils/graph/types';
+import type { Graph, SchemaProgressUpdate } from '@/utils/graph/types';
 import type { ProjectSchema } from '@/utils/ProjectSchema';
 import { ProjectSchemaSource } from '@/utils/schema/ProjectSchemaSource';
 
@@ -8,12 +8,7 @@ type Options = {
   initialItemTypes: SchemaTypes.ItemType[];
   selectedItemTypeIds: string[];
   schema: ProjectSchema;
-  onProgress?: (update: {
-    done: number;
-    total: number;
-    label: string;
-    phase?: 'scan' | 'build';
-  }) => void;
+  onProgress?: (update: SchemaProgressUpdate) => void;
   installedPluginIds?: Set<string>;
 };
 

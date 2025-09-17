@@ -18,3 +18,10 @@ export type Graph = {
   nodes: Array<AppNode>;
   edges: Array<AppEdge>;
 };
+
+export type SchemaProgressUpdate = {
+  done: number;
+  total: number;
+  label: string;
+  phase?: 'scan' | 'build';
+};
