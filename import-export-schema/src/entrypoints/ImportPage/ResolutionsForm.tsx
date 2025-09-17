@@ -2,7 +2,6 @@ import { useNodes, useReactFlow } from '@xyflow/react';
 import { get, keyBy, set } from 'lodash-es';
 import { type ReactNode, useContext, useMemo } from 'react';
 import { Form as FormHandler, useFormState } from 'react-final-form';
-import type { ItemTypeNode } from '@/components/ItemTypeNodeRenderer';
 import type { ProjectSchema } from '@/utils/ProjectSchema';
 import { ConflictsContext } from './ConflictsManager/ConflictsContext';
 
@@ -32,16 +31,7 @@ type ItemTypeValues = {
 };
 type PluginValues = { strategy: 'reuseExisting' | 'skip' | null };
 
-export type MassValues = {
-  itemTypesStrategy?: 'reuseExisting' | 'rename' | null;
-  pluginsStrategy?: 'reuseExisting' | 'skip' | null;
-  nameSuffix?: string;
-  apiKeySuffix?: string;
-};
-
-type FormValues = Record<string, ItemTypeValues | PluginValues> & {
-  mass?: MassValues;
-};
+type FormValues = Record<string, ItemTypeValues | PluginValues>;
 
 type Props = {
   children: ReactNode;
@@ -87,12 +77,6 @@ export default function ResolutionsForm({ schema, children, onSubmit }: Props) {
     () =>
       conflicts
         ? {
-            mass: {
-              itemTypesStrategy: null,
-              pluginsStrategy: null,
-              nameSuffix: ' (Import)',
-              apiKeySuffix: 'import',
-            },
             ...Object.fromEntries(
               Object.keys(conflicts.plugins).map((id) => [
                 `plugin-${id}`,
@@ -123,54 +107,16 @@ export default function ResolutionsForm({ schema, children, onSubmit }: Props) {
       return resolutions;
     }
 
-    const mass = values.mass;
-    // Preload project names/apiKeys once to guarantee uniqueness for mass-renames
-    const projectItemTypes = await schema.getAllItemTypes();
-    const usedNames = new Set(projectItemTypes.map((it) => it.attributes.name));
-    const usedApiKeys = new Set(
-      projectItemTypes.map((it) => it.attributes.api_key),
-    );
-
-    function computeUniqueRename(
-      baseName: string,
-      baseApiKey: string,
-      nameSuffix: string,
-      apiKeySuffix: string,
-      usedNames: Set<string>,
-      usedApiKeys: Set<string>,
-    ) {
-      let name = `${baseName}${nameSuffix}`;
-      let apiKey = `${baseApiKey}${apiKeySuffix}`;
-      let i = 2;
-      while (usedNames.has(name)) {
-        name = `${baseName}${nameSuffix} ${i}`;
-        i += 1;
-      }
-      i = 2;
-      while (usedApiKeys.has(apiKey)) {
-        apiKey = `${baseApiKey}${apiKeySuffix}${i}`;
-        i += 1;
-      }
-      usedNames.add(name);
-      usedApiKeys.add(apiKey);
-      return { name, apiKey };
-    }
-
     for (const pluginId of Object.keys(conflicts.plugins)) {
       if (!getNode(`plugin--${pluginId}`)) {
         continue;
       }
 
-      // Apply mass plugin strategy if set; otherwise use per-plugin selection
-      if (mass?.pluginsStrategy) {
-        resolutions.plugins[pluginId] = { strategy: mass.pluginsStrategy };
-      } else {
-        const result = get(values, [`plugin-${pluginId}`]) as PluginValues;
-        if (result?.strategy) {
-          resolutions.plugins[pluginId] = {
-            strategy: result.strategy as 'reuseExisting' | 'skip',
-          };
-        }
+      const result = get(values, [`plugin-${pluginId}`]) as PluginValues;
+      if (result?.strategy) {
+        resolutions.plugins[pluginId] = {
+          strategy: result.strategy as 'reuseExisting' | 'skip',
+        };
       }
     }
 
@@ -180,62 +126,17 @@ export default function ResolutionsForm({ schema, children, onSubmit }: Props) {
         continue;
       }
 
-      const exportItemType = (node.data as ItemTypeNode['data'])
-        .itemType as import('@datocms/cma-client').SchemaTypes.ItemType;
+      const fieldPrefix = `itemType-${itemTypeId}`;
+      const result = get(values, fieldPrefix) as ItemTypeValues;
 
-      if (mass?.itemTypesStrategy) {
-        if (mass.itemTypesStrategy === 'reuseExisting') {
-          // Reuse only when modular_block matches; otherwise mass-rename fallback with suffixes
-          const projectItemType = conflicts.itemTypes[itemTypeId];
-          const compatible =
-            exportItemType.attributes.modular_block ===
-            projectItemType.attributes.modular_block;
-          if (compatible) {
-            resolutions.itemTypes[itemTypeId] = { strategy: 'reuseExisting' };
-          } else {
-            // Ensure unique names using suffixes
-            const { name, apiKey } = computeUniqueRename(
-              exportItemType.attributes.name,
-              exportItemType.attributes.api_key,
-              mass.nameSuffix || ' (Import)',
-              mass.apiKeySuffix || 'import',
-              usedNames,
-              usedApiKeys,
-            );
-            resolutions.itemTypes[itemTypeId] = {
-              strategy: 'rename',
-              name,
-              apiKey,
-            };
-          }
-        } else if (mass.itemTypesStrategy === 'rename') {
-          const { name, apiKey } = computeUniqueRename(
-            exportItemType.attributes.name,
-            exportItemType.attributes.api_key,
-            mass.nameSuffix || ' (Import)',
-            mass.apiKeySuffix || 'import',
-            usedNames,
-            usedApiKeys,
-          );
-          resolutions.itemTypes[itemTypeId] = {
-            strategy: 'rename',
-            name,
-            apiKey,
-          };
-        }
-      } else {
-        const fieldPrefix = `itemType-${itemTypeId}`;
-        const result = get(values, fieldPrefix) as ItemTypeValues;
-
-        if (result?.strategy === 'reuseExisting') {
-          resolutions.itemTypes[itemTypeId] = { strategy: 'reuseExisting' };
-        } else if (result?.strategy === 'rename') {
-          resolutions.itemTypes[itemTypeId] = {
-            strategy: 'rename',
-            apiKey: result.apiKey!,
-            name: result.name!,
-          };
-        }
+      if (result?.strategy === 'reuseExisting') {
+        resolutions.itemTypes[itemTypeId] = { strategy: 'reuseExisting' };
+      } else if (result?.strategy === 'rename') {
+        resolutions.itemTypes[itemTypeId] = {
+          strategy: 'rename',
+          apiKey: result.apiKey!,
+          name: result.name!,
+        };
       }
     }
 
@@ -260,18 +161,14 @@ export default function ResolutionsForm({ schema, children, onSubmit }: Props) {
         const itemTypesByName = keyBy(projectItemTypes, 'attributes.name');
         const itemTypesByApiKey = keyBy(projectItemTypes, 'attributes.api_key');
 
-        const mass = values.mass;
-
         for (const pluginId of Object.keys(conflicts.plugins)) {
           if (!getNode(`plugin--${pluginId}`)) {
             continue;
           }
 
           const fieldPrefix = `plugin-${pluginId}`;
-          if (!mass?.pluginsStrategy) {
-            if (!get(values, [fieldPrefix, 'strategy'])) {
-              set(errors, [fieldPrefix, 'strategy'], 'Required!');
-            }
+          if (!get(values, [fieldPrefix, 'strategy'])) {
+            set(errors, [fieldPrefix, 'strategy'], 'Required!');
           }
         }
 
@@ -281,45 +178,24 @@ export default function ResolutionsForm({ schema, children, onSubmit }: Props) {
           }
 
           const fieldPrefix = `itemType-${itemTypeId}`;
-          if (!mass?.itemTypesStrategy) {
-            const strategy = get(values, [fieldPrefix, 'strategy']);
-            if (!strategy) {
-              set(errors, [fieldPrefix, 'strategy'], 'Required!');
+          const strategy = get(values, [fieldPrefix, 'strategy']);
+          if (!strategy) {
+            set(errors, [fieldPrefix, 'strategy'], 'Required!');
+          }
+          if (strategy === 'rename') {
+            const name = get(values, [fieldPrefix, 'name']);
+            if (!name) {
+              set(errors, [fieldPrefix, 'name'], 'Required!');
+            } else if (name in itemTypesByName) {
+              set(errors, [fieldPrefix, 'name'], 'Already used in project!');
             }
-            if (strategy === 'rename') {
-              const name = get(values, [fieldPrefix, 'name']);
-              if (!name) {
-                set(errors, [fieldPrefix, 'name'], 'Required!');
-              } else if (name in itemTypesByName) {
-                set(errors, [fieldPrefix, 'name'], 'Already used in project!');
-              }
-              const apiKey = get(values, [fieldPrefix, 'apiKey']);
-              if (!apiKey) {
-                set(errors, [fieldPrefix, 'apiKey'], 'Required!');
-              } else if (!isValidApiKey(apiKey)) {
-                set(errors, [fieldPrefix, 'apiKey'], 'Invalid format');
-              } else if (apiKey in itemTypesByApiKey) {
-                set(
-                  errors,
-                  [fieldPrefix, 'apiKey'],
-                  'Already used in project!',
-                );
-              }
-            }
-          } else if (mass.itemTypesStrategy === 'rename') {
-            // Validate mass suffixes
-            const nameSuffix = mass.nameSuffix || ' (Import)';
-            const apiKeySuffix = mass.apiKeySuffix || 'import';
-            // Basic validation of apiKeySuffix
-            if (
-              !/^[a-z0-9_]+$/.test(apiKeySuffix) ||
-              !/^[a-z]/.test(apiKeySuffix) ||
-              !/[a-z0-9]$/.test(apiKeySuffix)
-            ) {
-              set(errors, ['mass', 'apiKeySuffix'], 'Invalid API key suffix');
-            }
-            if (nameSuffix === undefined) {
-              set(errors, ['mass', 'nameSuffix'], 'Name suffix required');
+            const apiKey = get(values, [fieldPrefix, 'apiKey']);
+            if (!apiKey) {
+              set(errors, [fieldPrefix, 'apiKey'], 'Required!');
+            } else if (!isValidApiKey(apiKey)) {
+              set(errors, [fieldPrefix, 'apiKey'], 'Invalid format');
+            } else if (apiKey in itemTypesByApiKey) {
+              set(errors, [fieldPrefix, 'apiKey'], 'Already used in project!');
             }
           }
         }
@@ -394,12 +270,4 @@ export function useSkippedItemsAndPluginIds() {
   );
 
   return { skippedItemTypeIds, skippedPluginIds };
-}
-
-export function useMassStrategies() {
-  const state = useFormState<FormValues>({
-    subscription: { values: true },
-  });
-
-  return state.values?.mass ?? {};
 }
