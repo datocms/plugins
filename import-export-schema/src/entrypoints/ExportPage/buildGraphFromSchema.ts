@@ -14,6 +14,10 @@ type Options = {
 
 // Note: queue type was unused; removed for strict build
 
+/**
+ * Lightweight wrapper that adapts the current project schema into the shared
+ * `buildGraph` helper so the export view can render a dependency graph.
+ */
 export async function buildGraphFromSchema({
   initialItemTypes,
   selectedItemTypeIds,

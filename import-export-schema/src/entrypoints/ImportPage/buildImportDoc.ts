@@ -28,6 +28,9 @@ export type ImportDoc = {
   };
 };
 
+/**
+ * Walk the export graph while honoring conflict resolutions, producing a document for import.
+ */
 export async function buildImportDoc(
   exportSchema: ExportSchema,
   conflicts: Conflicts,
@@ -44,6 +47,7 @@ export async function buildImportDoc(
     },
   };
 
+  // Breadth-first traversal keeps dependencies ordered for creation.
   const queue: QueueItem[][] = [exportSchema.rootItemTypes];
   const processedNodes = new Set<QueueItem>();
 

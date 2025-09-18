@@ -4,6 +4,9 @@ import { findLinkedItemTypeIds } from '@/utils/datocms/schema';
 import { isDefined } from '@/utils/isDefined';
 import type { ExportDoc } from '@/utils/types';
 
+/**
+ * Normalizes an export document into easy-to-query maps, helping both import and graph builders.
+ */
 export class ExportSchema {
   public rootItemType: SchemaTypes.ItemType;
   public rootItemTypes: SchemaTypes.ItemType[];

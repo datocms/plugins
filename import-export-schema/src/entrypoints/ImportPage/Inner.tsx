@@ -7,6 +7,7 @@ import {
   useReactFlow,
 } from '@xyflow/react';
 import { useCallback, useEffect, useState } from 'react';
+import { GRAPH_NODE_THRESHOLD } from '@/shared/constants/graph';
 import { type AppNode, edgeTypes, type Graph } from '@/utils/graph/types';
 import type { ProjectSchema } from '@/utils/ProjectSchema';
 import type { ExportSchema } from '../ExportPage/ExportSchema';
@@ -18,6 +19,7 @@ import LargeSelectionView from './LargeSelectionView';
 import { useSkippedItemsAndPluginIds } from './ResolutionsForm';
 import { SelectedEntityContext } from './SelectedEntityContext';
 
+// Map React Flow node types to the dedicated renderers for import graphs.
 const nodeTypes: NodeTypes = {
   itemType: ImportItemTypeNodeRenderer,
   plugin: ImportPluginNodeRenderer,
@@ -29,17 +31,23 @@ type Props = {
   ctx: import('datocms-plugin-sdk').RenderPageCtx;
 };
 
+/**
+ * Displays the import graph, helps the user inspect potential conflicts, and keeps
+ * the selection in sync with the conflict resolution form.
+ */
 export function Inner({ exportSchema, schema, ctx: _ctx }: Props) {
   const { fitBounds, fitView } = useReactFlow();
   const { skippedItemTypeIds, skippedPluginIds } =
     useSkippedItemsAndPluginIds();
 
+  // Zoom the viewport to the full graph once React Flow has mounted.
   useEffect(() => {
     setTimeout(() => fitView(), 100);
   }, []);
 
   const [graph, setGraph] = useState<Graph | undefined>();
 
+  // Rebuild the graph when the export document or skip lists change.
   useEffect(() => {
     async function run() {
       setGraph(await buildGraphFromExportDoc(exportSchema, skippedItemTypeIds));
@@ -64,6 +72,7 @@ export function Inner({ exportSchema, schema, ctx: _ctx }: Props) {
     );
   }, []);
 
+  // Allow external panels to highlight a specific entity while animating the view.
   function handleSelectEntity(
     newEntity: undefined | SchemaTypes.ItemType | SchemaTypes.Plugin,
     zoomIn?: boolean,
@@ -90,11 +99,10 @@ export function Inner({ exportSchema, schema, ctx: _ctx }: Props) {
     }
   }
 
-  const GRAPH_NODE_THRESHOLD = 60;
-
   const totalPotentialNodes =
     exportSchema.itemTypes.length + exportSchema.plugins.length;
 
+  // Prefer the interactive graph for small/medium selections; fall back otherwise.
   const showGraph =
     !!graph &&
     graph.nodes.length <= GRAPH_NODE_THRESHOLD &&

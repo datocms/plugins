@@ -1,5 +1,6 @@
 import type { SchemaTypes } from '@datocms/cma-client';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { isDefined } from '@/utils/isDefined';
 import type { ProjectSchema } from '@/utils/ProjectSchema';
 
 type UseExportSelectionOptions = {
@@ -16,6 +17,9 @@ type UseExportSelectionResult = {
   selectAllBlocks: () => void;
 };
 
+/**
+ * Fetches item types and keeps a derived selection list in sync with the schema client.
+ */
 export function useExportSelection({
   schema,
   enabled = true,
@@ -46,37 +50,26 @@ export function useExportSelection({
     };
   }, [schema, enabled]);
 
+  const itemTypesById = useMemo(() => {
+    if (!allItemTypes) {
+      return undefined;
+    }
+    return new Map(allItemTypes.map((it) => [it.id, it]));
+  }, [allItemTypes]);
+
   useEffect(() => {
     if (!enabled) {
-      return;
-    }
-
-    if (selectedIds.length === 0) {
       setSelectedItemTypes([]);
       return;
     }
-
-    let cancelled = false;
-    async function resolve() {
-      const list: SchemaTypes.ItemType[] = [];
-      for (const id of selectedIds) {
-        const itemType = await schema.getItemTypeById(id);
-        if (cancelled) {
-          return;
-        }
-        list.push(itemType);
-      }
-      if (!cancelled) {
-        setSelectedItemTypes(list);
-      }
+    if (!itemTypesById) {
+      return;
     }
 
-    void resolve();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [schema, enabled, selectedIds.join('-')]);
+    setSelectedItemTypes(
+      selectedIds.map((id) => itemTypesById.get(id)).filter(isDefined),
+    );
+  }, [enabled, itemTypesById, selectedIds.join('-')]);
 
   const selectAllModels = useCallback(() => {
     if (!allItemTypes) {

@@ -10,6 +10,9 @@ import { getBezierPath, getSelfPath } from './bezier';
 
 export type FieldEdge = Edge<{ fields: SchemaTypes.Field[] }, 'field'>;
 
+/**
+ * Custom React Flow edge that renders a tooltip listing the fields linking two nodes.
+ */
 export function FieldEdgeRenderer({
   id,
   source,
@@ -28,7 +31,8 @@ export function FieldEdgeRenderer({
 
   const [edgePath, labelX, labelY] =
     source === target
-      ? getSelfPath({
+      ? // Self-references loop back to the node so the label has space to render.
+        getSelfPath({
           sourceX,
           sourceY,
           sourcePosition,

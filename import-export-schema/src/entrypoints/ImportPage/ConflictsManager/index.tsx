@@ -18,7 +18,9 @@ type Props = {
   ctx?: RenderPageCtx;
 };
 
-
+/**
+ * Organizes detected conflicts by type, wiring them into the resolutions form.
+ */
 export default function ConflictsManager({
   exportSchema,
   schema: _schema,
@@ -67,6 +69,7 @@ export default function ConflictsManager({
     );
   }, [conflicts, exportSchema]);
 
+  // Deterministic sorting keeps plugin conflicts stable between renders.
   const sortedPlugins = useMemo(() => {
     if (!conflicts) {
       return [] as Array<{

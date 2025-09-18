@@ -27,6 +27,10 @@ type Props = {
   exportAllLabel?: string;
 };
 
+/**
+ * Blank-slate panel that lets editors pick the starting set of models/blocks and kick
+ * off either a targeted or full-schema export.
+ */
 export function ExportStartPanel({
   selectId,
   itemTypes,
@@ -56,6 +60,7 @@ export function ExportStartPanel({
     [itemTypes],
   );
 
+  // React-Select expects objects; keep them memoized so the control stays controlled.
   const value = useMemo(
     () => options.filter((opt) => selectedIds.includes(opt.value)),
     [options, selectedIds],
@@ -81,7 +86,9 @@ export function ExportStartPanel({
               }}
               value={value}
               onChange={(multi) =>
-                onSelectedIdsChange(Array.isArray(multi) ? multi.map((o) => o.value) : [])
+                onSelectedIdsChange(
+                  Array.isArray(multi) ? multi.map((o) => o.value) : [],
+                )
               }
             />
           </div>

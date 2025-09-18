@@ -6,6 +6,7 @@ import {
 import type { ItemTypeNode } from '@/components/ItemTypeNodeRenderer';
 import type { PluginNode } from '@/components/PluginNodeRenderer';
 
+/** Shared graph typings + edge registration used across export/import canvases. */
 export type AppNode = ItemTypeNode | PluginNode;
 
 export type AppEdge = FieldEdge;

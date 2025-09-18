@@ -12,6 +12,10 @@ type BuildExportDocOptions = {
   shouldCancel?: () => boolean;
 };
 
+/**
+ * Assemble an export document tailored to the selected item types and plugins, trimming
+ * validators and appearances so the payload is self-contained.
+ */
 export default async function buildExportDoc(
   schema: ProjectSchema,
   initialItemTypeId: string,
@@ -70,6 +74,7 @@ export default async function buildExportDoc(
           validator,
         ) as string[];
 
+        // Drop links to models outside the export selection so the document stays valid.
         set(
           exportableField.attributes.validators,
           validator,
@@ -77,6 +82,7 @@ export default async function buildExportDoc(
         );
       }
 
+      // Remove appearance references to non-exported plugins/media.
       exportableField.attributes.appearance = await ensureExportableAppearance(
         field,
         pluginIdsToExport,

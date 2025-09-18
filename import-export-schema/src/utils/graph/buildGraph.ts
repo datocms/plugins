@@ -7,6 +7,7 @@ import { deterministicGraphSort } from '@/utils/graph/sort';
 import type { Graph, SchemaProgressUpdate } from '@/utils/graph/types';
 import type { ISchemaSource } from '@/utils/schema/ISchemaSource';
 
+/** Build a dependency graph from any schema source, reporting progress as we traverse. */
 type BuildGraphOptions = {
   source: ISchemaSource;
   initialItemTypes: SchemaTypes.ItemType[];
@@ -23,6 +24,17 @@ export async function buildGraph({
   onProgress,
 }: BuildGraphOptions): Promise<Graph> {
   const graph: Graph = { nodes: [], edges: [] };
+  const hierarchyEdgeSet = new Set<string>();
+  const hierarchyEdges: Array<{ source: string; target: string }> = [];
+
+  function recordHierarchyEdge(sourceId: string, targetId: string) {
+    const key = `${sourceId}->${targetId}`;
+    if (hierarchyEdgeSet.has(key)) {
+      return;
+    }
+    hierarchyEdgeSet.add(key);
+    hierarchyEdges.push({ source: sourceId, target: targetId });
+  }
 
   const knownPluginIds = await source.getKnownPluginIds();
 
@@ -109,6 +121,20 @@ export async function buildGraph({
         knownPluginIds,
       );
 
+      for (const linkedItemTypeId of linkedItemTypeIds) {
+        recordHierarchyEdge(
+          `itemType--${itemType.id}`,
+          `itemType--${linkedItemTypeId}`,
+        );
+      }
+
+      for (const linkedPluginId of linkedPluginIds) {
+        recordHierarchyEdge(
+          `itemType--${itemType.id}`,
+          `plugin--${linkedPluginId}`,
+        );
+      }
+
       // Include edges when:
       // - No selection was provided (eg. Import graph) → include all edges
       // - The source item type is selected
@@ -118,7 +144,8 @@ export async function buildGraph({
         selectedItemTypeIds.includes(itemType.id) ||
         Array.from(linkedItemTypeIds).some((id) =>
           selectedItemTypeIds.includes(id),
-        );
+        ) ||
+        edges.length > 0;
 
       if (includeEdges) {
         graph.edges.push(...edges);
@@ -168,6 +195,10 @@ export async function buildGraph({
   const sortedGraph = deterministicGraphSort(graph);
   if (sortedGraph.nodes.length === 0) return sortedGraph;
 
-  const hierarchy = buildHierarchyNodes(sortedGraph, selectedItemTypeIds);
+  const hierarchy = buildHierarchyNodes(
+    sortedGraph,
+    selectedItemTypeIds,
+    hierarchyEdges,
+  );
   return rebuildGraphWithPositionsFromHierarchy(hierarchy, sortedGraph.edges);
 }

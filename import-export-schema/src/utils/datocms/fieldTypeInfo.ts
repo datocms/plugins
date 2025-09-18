@@ -1,5 +1,7 @@
 import type { FieldAttributes } from '@datocms/cma-client/dist/types/generated/SchemaTypes';
 
+/** Utilities for resolving editor metadata used in field appearance exports/imports. */
+
 type FieldTypeInfo = Record<
   string,
   {

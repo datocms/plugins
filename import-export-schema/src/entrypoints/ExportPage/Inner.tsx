@@ -1,27 +1,26 @@
 import type { SchemaTypes } from '@datocms/cma-client';
-import { faFileExport, faXmark } from '@fortawesome/free-solid-svg-icons';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { type NodeMouseHandler, type NodeTypes, Panel } from '@xyflow/react';
+import type { NodeMouseHandler, NodeTypes } from '@xyflow/react';
 import type { ProjectSchema } from '@/utils/ProjectSchema';
 import '@xyflow/react/dist/style.css';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import { Button, Spinner, useCtx } from 'datocms-react-ui';
 import { without } from 'lodash-es';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { GraphCanvas } from '@/components/GraphCanvas';
-import {
-  findLinkedItemTypeIds,
-  findLinkedPluginIds,
-} from '@/utils/datocms/schema';
-// import { collectDependencies } from '@/utils/graph/dependencies';
+import { GRAPH_NODE_THRESHOLD } from '@/shared/constants/graph';
+import { debugLog } from '@/utils/debug';
+import { expandSelectionWithDependencies } from '@/utils/graph/dependencies';
 import { type AppNode, edgeTypes, type Graph } from '@/utils/graph/types';
+import { DependencyActionsPanel } from './DependencyActionsPanel';
 import { EntitiesToExportContext } from './EntitiesToExportContext';
 import { ExportItemTypeNodeRenderer } from './ExportItemTypeNodeRenderer';
 import { ExportPluginNodeRenderer } from './ExportPluginNodeRenderer';
+import { ExportToolbar } from './ExportToolbar';
 import LargeSelectionView from './LargeSelectionView';
 import { useAnimatedNodes } from './useAnimatedNodes';
 import { useExportGraph } from './useExportGraph';
 
+// Map React Flow node types to their respective renderer components.
 const nodeTypes: NodeTypes = {
   itemType: ExportItemTypeNodeRenderer,
   plugin: ExportPluginNodeRenderer,
@@ -43,6 +42,10 @@ type Props = {
   onSelectingDependenciesChange?: (busy: boolean) => void;
 };
 
+/**
+ * Presents the export graph, wiring selection state, dependency resolution, and
+ * export call-outs for both graph and list views.
+ */
 export default function Inner({
   initialItemTypes,
   schema,
@@ -55,12 +58,13 @@ export default function Inner({
 }: Props) {
   const ctx = useCtx<RenderPageCtx>();
 
+  // Track the current selection while ensuring initial models stay checked.
   const [selectedItemTypeIds, setSelectedItemTypeIds] = useState<string[]>(
     initialItemTypes.map((it) => it.id),
   );
-
   const [selectedPluginIds, setSelectedPluginIds] = useState<string[]>([]);
   const [selectingDependencies, setSelectingDependencies] = useState(false);
+  // Remember which dependencies were auto-selected so we can undo the action later.
   const [autoSelectedDependencies, setAutoSelectedDependencies] = useState<{
     itemTypeIds: Set<string>;
     pluginIds: Set<string>;
@@ -74,6 +78,19 @@ export default function Inner({
     onGraphPrepared,
     installedPluginIds,
   });
+
+  const resolvedInstalledPluginIds = useMemo(() => {
+    if (installedPluginIds && installedPluginIds.size > 0) {
+      return installedPluginIds;
+    }
+    if (!graph) return undefined;
+    const discovered = new Set(
+      graph.nodes
+        .filter((node) => node.type === 'plugin')
+        .map((node) => (node.type === 'plugin' ? node.data.plugin.id : '')),
+    );
+    return discovered.size > 0 ? discovered : undefined;
+  }, [installedPluginIds, graph]);
 
   // Overlay is controlled by parent; we signal prepared after each build
 
@@ -92,13 +109,10 @@ export default function Inner({
       .join('-'),
   ]);
 
-  const GRAPH_NODE_THRESHOLD = 60;
-
+  // React Flow becomes cluttered past this many nodes, so we fall back to a list.
   const showGraph = !!graph && graph.nodes.length <= GRAPH_NODE_THRESHOLD;
 
-  const animatedNodes = useAnimatedNodes(
-    showGraph && graph ? graph.nodes : [],
-  );
+  const animatedNodes = useAnimatedNodes(showGraph && graph ? graph.nodes : []);
 
   const onNodeClick: NodeMouseHandler<AppNode> = useCallback(
     (_, node) => {
@@ -136,27 +150,13 @@ export default function Inner({
     try {
       // Ensure any preparation overlay is hidden during dependency selection
       onGraphPrepared?.();
-      // Determine installed plugin IDs, warn user once if unknown
-      // (avoids false positives when detecting plugin dependencies)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+
       const warnedKey = 'exportPluginIdsWarned';
-      const installedFromGraph = graph
-        ? new Set(
-            graph.nodes
-              .filter((n) => n.type === 'plugin')
-              .map((n) => (n.type === 'plugin' ? n.data.plugin.id : '')),
-          )
-        : undefined;
-      const installed =
-        installedPluginIds && installedPluginIds.size > 0
-          ? installedPluginIds
-          : installedFromGraph && installedFromGraph.size > 0
-            ? installedFromGraph
-            : undefined;
-      if (!installed && typeof window !== 'undefined') {
+      if (!resolvedInstalledPluginIds && typeof window !== 'undefined') {
         try {
-          const already = window.sessionStorage.getItem(warnedKey) === '1';
-          if (!already) {
+          const alreadyWarned =
+            window.sessionStorage.getItem(warnedKey) === '1';
+          if (!alreadyWarned) {
             void ctx.notice(
               'Plugin dependency detection may be incomplete (installed plugin list unavailable).',
             );
@@ -164,69 +164,37 @@ export default function Inner({
           }
         } catch {}
       }
-      if (
-        typeof window !== 'undefined' &&
-        window.localStorage?.getItem('schemaDebug') === '1'
-      ) {
-        console.log('[SelectAllDependencies] start', {
-          selectedItemTypeIds: selectedItemTypeIds.length,
-          selectedPluginIds: selectedPluginIds.length,
-          installedPluginIds: installed
-            ? Array.from(installed).slice(0, 5)
-            : 'unknown',
-        });
-      }
-      const beforeItemTypeIds = new Set<string>(selectedItemTypeIds);
-      const beforePluginIds = new Set<string>(selectedPluginIds);
-      const nextItemTypeIds = new Set<string>(selectedItemTypeIds);
-      const nextPluginIds = new Set<string>(selectedPluginIds);
 
-      const queue = [...selectedItemTypeIds];
+      debugLog('SelectAllDependencies start', {
+        selectedItemTypeCount: selectedItemTypeIds.length,
+        selectedPluginCount: selectedPluginIds.length,
+        installedPluginIds: resolvedInstalledPluginIds
+          ? Array.from(resolvedInstalledPluginIds).slice(0, 5)
+          : 'unknown',
+      });
 
-      while (queue.length > 0) {
-        const popped = queue.pop();
-        if (!popped) break;
-        const id = popped;
-        const node = graph?.nodes.find((n) => n.id === `itemType--${id}`);
-        const fields = node?.type === 'itemType' ? node.data.fields : [];
+      const expansion = expandSelectionWithDependencies({
+        graph,
+        seedItemTypeIds: selectedItemTypeIds,
+        seedPluginIds: selectedPluginIds,
+        installedPluginIds: resolvedInstalledPluginIds,
+      });
 
-        for (const field of fields) {
-          for (const linkedId of findLinkedItemTypeIds(field)) {
-            if (!nextItemTypeIds.has(linkedId)) {
-              nextItemTypeIds.add(linkedId);
-              queue.push(linkedId);
-            }
-          }
+      const { addedItemTypeIds, addedPluginIds } = expansion;
 
-          for (const pluginId of findLinkedPluginIds(field, installed)) {
-            nextPluginIds.add(pluginId);
-          }
-        }
-      }
-
-      const addedItemTypeIds = Array.from(nextItemTypeIds).filter(
-        (id) => !beforeItemTypeIds.has(id),
-      );
-      const addedPluginIds = Array.from(nextPluginIds).filter(
-        (id) => !beforePluginIds.has(id),
-      );
-
-      setSelectedItemTypeIds(Array.from(nextItemTypeIds));
-      setSelectedPluginIds(Array.from(nextPluginIds));
+      setSelectedItemTypeIds(Array.from(expansion.itemTypeIds));
+      setSelectedPluginIds(Array.from(expansion.pluginIds));
       setAutoSelectedDependencies({
         itemTypeIds: new Set(addedItemTypeIds),
         pluginIds: new Set(addedPluginIds),
       });
-      if (
-        typeof window !== 'undefined' &&
-        window.localStorage?.getItem('schemaDebug') === '1'
-      ) {
-        console.log('[SelectAllDependencies] done', {
-          itemTypeIds: nextItemTypeIds.size,
-          pluginIds: nextPluginIds.size,
-          samplePluginIds: Array.from(nextPluginIds).slice(0, 5),
-        });
-      }
+
+      debugLog('SelectAllDependencies done', {
+        itemTypeCount: expansion.itemTypeIds.size,
+        pluginCount: expansion.pluginIds.size,
+        samplePluginIds: Array.from(expansion.pluginIds).slice(0, 5),
+      });
+
       void ctx.notice(
         `Selected dependencies: +${addedItemTypeIds.length} models, +${addedPluginIds.length} plugins`,
       );
@@ -235,12 +203,13 @@ export default function Inner({
       // Do not lift overlay suppression here; let onGraphPrepared re-enable it
     }
   }, [
+    ctx,
     graph,
+    onGraphPrepared,
+    onSelectingDependenciesChange,
+    resolvedInstalledPluginIds,
     selectedItemTypeIds,
     selectedPluginIds,
-    installedPluginIds,
-    onSelectingDependenciesChange,
-    ctx,
   ]);
 
   const handleUnselectAllDependencies = useCallback(() => {
@@ -276,87 +245,36 @@ export default function Inner({
     );
   }, [autoSelectedDependencies, ctx, selectedItemTypeIds, selectedPluginIds]);
 
-  // Determine if all deps are selected to toggle label
-  const areAllDependenciesSelected = (() => {
+  // Determine if all dependencies are already selected to flip the CTA label.
+  const areAllDependenciesSelected = useMemo(() => {
     try {
-      const installedFromGraph = graph
-        ? new Set(
-            graph.nodes
-              .filter((n) => n.type === 'plugin')
-              .map((n) => (n.type === 'plugin' ? n.data.plugin.id : '')),
-          )
-        : undefined;
-      const installed =
-        installedPluginIds && installedPluginIds.size > 0
-          ? installedPluginIds
-          : installedFromGraph && installedFromGraph.size > 0
-            ? installedFromGraph
-            : undefined;
-
-      const nextItemTypeIds = new Set<string>(selectedItemTypeIds);
-      const nextPluginIds = new Set<string>(selectedPluginIds);
-      const queue = [...selectedItemTypeIds];
-      while (queue.length > 0) {
-        const popped = queue.pop();
-        if (!popped) break;
-        const id = popped;
-        const node = graph?.nodes.find((n) => n.id === `itemType--${id}`);
-        const fields = node?.type === 'itemType' ? node.data.fields : [];
-        for (const field of fields) {
-          for (const linkedId of findLinkedItemTypeIds(field)) {
-            if (!nextItemTypeIds.has(linkedId)) {
-              nextItemTypeIds.add(linkedId);
-              queue.push(linkedId);
-            }
-          }
-          for (const pluginId of findLinkedPluginIds(field, installed)) {
-            nextPluginIds.add(pluginId);
-          }
-        }
-      }
-      const toAddItemTypes = Array.from(nextItemTypeIds).filter(
-        (id) => !selectedItemTypeIds.includes(id),
+      const expansion = expandSelectionWithDependencies({
+        graph,
+        seedItemTypeIds: selectedItemTypeIds,
+        seedPluginIds: selectedPluginIds,
+        installedPluginIds: resolvedInstalledPluginIds,
+      });
+      return (
+        expansion.addedItemTypeIds.length === 0 &&
+        expansion.addedPluginIds.length === 0
       );
-      const toAddPlugins = Array.from(nextPluginIds).filter(
-        (id) => !selectedPluginIds.includes(id),
-      );
-      return toAddItemTypes.length === 0 && toAddPlugins.length === 0;
     } catch {
       return false;
     }
-  })();
+  }, [
+    graph,
+    resolvedInstalledPluginIds,
+    selectedItemTypeIds,
+    selectedPluginIds,
+  ]);
 
   return (
     <div className="page page--export">
-      <div
-        style={{
-          padding: '8px var(--spacing-l)',
-          display: 'flex',
-          alignItems: 'center',
-        }}
-      >
-        <div className="page__toolbar__title">
-          {initialItemTypes.length === 1
-            ? `Export ${initialItemTypes[0].attributes.name}`
-            : 'Export selection'}
-        </div>
-        <div style={{ flex: '1' }} />
-        <Button
-          leftIcon={<FontAwesomeIcon icon={faXmark} />}
-          buttonSize="s"
-          onClick={() => {
-            if (onClose) {
-              onClose();
-            } else {
-              ctx.navigateTo(
-                `${ctx.isEnvironmentPrimary ? '' : `/environments/${ctx.environment}`}/configuration/p/${ctx.plugin.id}/pages/export`,
-              );
-            }
-          }}
-        >
-          Close
-        </Button>
-      </div>
+      <ExportToolbar
+        ctx={ctx}
+        initialItemTypes={initialItemTypes}
+        onClose={onClose}
+      />
       <div className="page__content">
         <div className="export-wrapper">
           {!graph && !error ? (
@@ -419,40 +337,16 @@ export default function Inner({
                     style={{ position: 'absolute' }}
                     fitView
                   />
-                  <Panel position="bottom-center">
-                    <div
-                      style={{ display: 'flex', gap: 8, alignItems: 'center' }}
-                    >
-                      <Button
-                        type="button"
-                        buttonSize="m"
-                        onClick={
-                          areAllDependenciesSelected
-                            ? handleUnselectAllDependencies
-                            : handleSelectAllDependencies
-                        }
-                        disabled={selectingDependencies}
-                      >
-                        {areAllDependenciesSelected
-                          ? 'Unselect all dependencies'
-                          : 'Select all dependencies'}
-                      </Button>
-                      {selectingDependencies && <Spinner size={20} />}
-
-                      <Button
-                        type="button"
-                        buttonSize="xl"
-                        buttonType="primary"
-                        leftIcon={<FontAwesomeIcon icon={faFileExport} />}
-                        onClick={() =>
-                          onExport(selectedItemTypeIds, selectedPluginIds)
-                        }
-                        disabled={selectingDependencies}
-                      >
-                        Export {selectedItemTypeIds.length} elements as JSON
-                      </Button>
-                    </div>
-                  </Panel>
+                  <DependencyActionsPanel
+                    selectingDependencies={selectingDependencies}
+                    areAllDependenciesSelected={areAllDependenciesSelected}
+                    selectedItemCount={selectedItemTypeIds.length}
+                    onSelectAllDependencies={handleSelectAllDependencies}
+                    onUnselectAllDependencies={handleUnselectAllDependencies}
+                    onExport={() =>
+                      onExport(selectedItemTypeIds, selectedPluginIds)
+                    }
+                  />
                 </>
               ) : (
                 <LargeSelectionView

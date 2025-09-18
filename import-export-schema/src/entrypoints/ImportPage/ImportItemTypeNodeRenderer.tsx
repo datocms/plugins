@@ -9,6 +9,9 @@ import { ConflictsContext } from '@/entrypoints/ImportPage/ConflictsManager/Conf
 import { useResolutionStatusForItemType } from '@/entrypoints/ImportPage/ResolutionsForm';
 import { SelectedEntityContext } from '@/entrypoints/ImportPage/SelectedEntityContext';
 
+/**
+ * Renders import graph item-type nodes, overlaying conflict and resolution state styling.
+ */
 export function ImportItemTypeNodeRenderer(props: NodeProps<ItemTypeNode>) {
   const { itemType } = props.data;
 

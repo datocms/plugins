@@ -11,6 +11,9 @@ type Props = {
   fitView?: boolean;
 };
 
+/**
+ * Shared React Flow canvas configuration to keep export/import graphs consistent.
+ */
 export function GraphCanvas({
   graph,
   nodeTypes,
@@ -26,6 +29,7 @@ export function GraphCanvas({
       nodes={graph.nodes}
       edges={graph.edges}
       onNodeClick={onNodeClick}
+      // Keep the canvas read-only; selections are handled by higher-level components.
       nodesDraggable={false}
       nodesConnectable={false}
       zoomOnDoubleClick={false}

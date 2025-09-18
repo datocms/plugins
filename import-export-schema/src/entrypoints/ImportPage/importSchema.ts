@@ -5,25 +5,16 @@ import {
   validatorsContainingBlocks,
   validatorsContainingLinks,
 } from '@/utils/datocms/schema';
+import { debugLog } from '@/utils/debug';
 import type { ImportDoc } from './buildImportDoc';
 
+/** Convenience helper to surface clearer errors when an ID mapping is missing. */
 function getOrThrow<K, V>(map: Map<K, V>, key: K, context: string): V {
   const value = map.get(key);
   if (value === undefined) {
     throw new Error(`Missing mapping for ${String(key)} in ${context}`);
   }
   return value;
-}
-
-function isDebug() {
-  try {
-    return (
-      typeof window !== 'undefined' &&
-      window.localStorage?.getItem('schemaDebug') === '1'
-    );
-  } catch {
-    return false;
-  }
 }
 
 export type ImportProgress = {
@@ -39,6 +30,9 @@ export type ImportResult = {
   pluginIdByExportId: Record<string, string>;
 };
 
+/**
+ * Applies an import document to the target project while reporting granular progress.
+ */
 export default async function importSchema(
   importDoc: ImportDoc,
   client: Client,
@@ -82,6 +76,7 @@ export default async function importSchema(
 
   // debug helper is module-scoped to be available in helpers below
 
+  // Wrap API calls so each step updates the overlay and respects cancellation.
   function trackWithLabel<TArgs extends unknown[], TResult>(
     labelForArgs: (...args: TArgs) => string,
     promiseGeneratorFn: (...args: TArgs) => Promise<TResult>,
@@ -103,9 +98,10 @@ export default async function importSchema(
     };
   }
 
-  // Concurrency-limited mapper that preserves input order and
-  // stops scheduling new work after cancellation while letting
-  // in-flight jobs finish. It throws at the end if cancelled.
+  /**
+   * Concurrency-limited mapper that preserves order and stops scheduling new work after
+   * cancellation while letting in-flight jobs finish.
+   */
   async function pMap<T, R>(
     items: readonly T[],
     limit: number,
@@ -152,6 +148,7 @@ export default async function importSchema(
   const fieldsetIdMappings: Map<string, string> = new Map();
   const pluginIdMappings: Map<string, string> = new Map();
 
+  // Pre-assign project IDs so relationships can reference them during creation.
   for (const toCreate of importDoc.itemTypes.entitiesToCreate) {
     itemTypeIdMappings.set(toCreate.entity.id, generateId());
 
@@ -205,7 +202,7 @@ export default async function importSchema(
         };
 
         try {
-          if (isDebug()) console.log('Creating plugin', data);
+          debugLog('Creating plugin', data);
           const { data: created } = await client.plugins.rawCreate({ data });
 
           if (!isEqual(created.attributes.parameters, {})) {
@@ -217,7 +214,7 @@ export default async function importSchema(
               // ignore invalid legacy parameters
             }
           }
-          if (isDebug()) console.log('Created plugin', created);
+          debugLog('Created plugin', created);
         } catch (e) {
           console.error('Failed to create plugin', data, e);
         }
@@ -252,11 +249,11 @@ export default async function importSchema(
               data.attributes.name = t.rename.name;
               data.attributes.api_key = t.rename.apiKey;
             }
-            if (isDebug()) console.log('Creating item type', data);
+            debugLog('Creating item type', data);
             const { data: itemType } = await client.itemTypes.rawCreate({
               data,
             });
-            if (isDebug()) console.log('Created item type', itemType);
+            debugLog('Created item type', itemType);
             return itemType;
           } catch (e) {
             console.error('Failed to create item type', data, e);
@@ -287,7 +284,7 @@ export default async function importSchema(
             };
 
             try {
-              if (isDebug()) console.log('Creating fieldset', data);
+              debugLog('Creating fieldset', data);
               const itemTypeProjectId = getOrThrow(
                 itemTypeIdMappings,
                 itemTypeId,
@@ -297,7 +294,7 @@ export default async function importSchema(
                 itemTypeProjectId,
                 { data },
               );
-              if (isDebug()) console.log('Created fieldset', created);
+              debugLog('Created fieldset', created);
             } catch (e) {
               console.error('Failed to create fieldset', data, e);
             }
@@ -410,12 +407,17 @@ export default async function importSchema(
         };
 
         try {
-          if (isDebug())
-            console.log(
-              data.relationships,
-              pick(createdItemType.attributes, attributesToUpdate),
-              pick(createdItemType.relationships, relationshipsToUpdate),
-            );
+          debugLog('Finalize diff snapshot', {
+            relationships: data.relationships,
+            currentAttributes: pick(
+              createdItemType.attributes,
+              attributesToUpdate,
+            ),
+            currentRelationships: pick(
+              createdItemType.relationships,
+              relationshipsToUpdate,
+            ),
+          });
           if (
             !isEqual(
               data.relationships,
@@ -426,12 +428,12 @@ export default async function importSchema(
               pick(createdItemType.attributes, attributesToUpdate),
             )
           ) {
-            if (isDebug()) console.log('Finalizing item type', data);
+            debugLog('Finalizing item type', data);
             const { data: updatedItemType } = await client.itemTypes.rawUpdate(
               id,
               { data },
             );
-            if (isDebug()) console.log('Finalized item type', updatedItemType);
+            debugLog('Finalized item type', updatedItemType);
           }
         } catch (e) {
           console.error('Failed to finalize item type', data, e);
@@ -457,11 +459,13 @@ export default async function importSchema(
         }
 
         try {
-          if (isDebug())
-            console.log(
-              'Reordering fields/fieldsets for item type',
-              getOrThrow(itemTypeIdMappings, itemType.id, 'reorder start log'),
-            );
+          debugLog('Reordering fields/fieldsets for item type', {
+            itemTypeId: getOrThrow(
+              itemTypeIdMappings,
+              itemType.id,
+              'reorder start log',
+            ),
+          });
           for (const entity of sortBy(allEntities, [
             'attributes',
             'position',
@@ -483,11 +487,13 @@ export default async function importSchema(
               );
             }
           }
-          if (isDebug())
-            console.log(
-              'Reordered fields/fieldsets for item type',
-              getOrThrow(itemTypeIdMappings, itemType.id, 'reorder log'),
-            );
+          debugLog('Reordered fields/fieldsets for item type', {
+            itemTypeId: getOrThrow(
+              itemTypeIdMappings,
+              itemType.id,
+              'reorder log',
+            ),
+          });
         } catch (e) {
           console.error('Failed to reorder fields/fieldsets', e);
         }
@@ -612,7 +618,7 @@ async function importField(
   data.attributes.appearance = nextAppearance;
 
   try {
-    if (isDebug()) console.log('Creating field', data);
+    debugLog('Creating field', data);
     const itemTypeProjectId = getOrThrow(
       itemTypeIdMappings,
       field.relationships.item_type.data.id,
@@ -624,7 +630,7 @@ async function importField(
         data,
       },
     );
-    if (isDebug()) console.log('Created field', createdField);
+    debugLog('Created field', createdField);
   } catch (e) {
     console.error('Failed to create field', data, e);
   }

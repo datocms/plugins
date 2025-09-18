@@ -1,5 +1,6 @@
 import type { SchemaTypes } from '@datocms/cma-client';
 
+/** Contract implemented by both live project schemas and serialized export docs. */
 export interface ISchemaSource {
   getItemTypeById(id: string): Promise<SchemaTypes.ItemType>;
   getPluginById(id: string): Promise<SchemaTypes.Plugin>;

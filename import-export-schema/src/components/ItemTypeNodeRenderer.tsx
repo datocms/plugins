@@ -23,6 +23,10 @@ export type ItemTypeNode = Node<
   'itemType'
 >;
 
+/**
+ * Renders a fieldset summary inside the item-type tooltip, keeping field ordering in sync
+ * with their schema positions.
+ */
 function Fieldset({
   fieldset,
   allFields,
@@ -47,8 +51,13 @@ function Fieldset({
   );
 }
 
+// Show extra metadata once the canvas is sufficiently zoomed in.
 const zoomSelector = (s: ReactFlowState) => s.transform[2] >= 0.8;
 
+/**
+ * Node renderer used by React Flow to display a DatoCMS model/block with a hoverable
+ * field list and API key details that show when zoomed in.
+ */
 export function ItemTypeNodeRenderer({
   data: { itemType, fields, fieldsets },
   className,

@@ -6,6 +6,7 @@ type Props = {
   ctx: RenderConfigScreenCtx;
 };
 
+/** Lightweight anchor that uses the plugin navigation API instead of full page loads. */
 function Link({ href, children }: { href: string; children: ReactNode }) {
   const ctx = useCtx<RenderConfigScreenCtx>();
 
@@ -22,6 +23,7 @@ function Link({ href, children }: { href: string; children: ReactNode }) {
   );
 }
 
+/** Configuration screen shown in Settings → Plugins. */
 export function Config({ ctx }: Props) {
   const schemaUrl = `${ctx.isEnvironmentPrimary ? '' : `/environments/${ctx.environment}`}/schema`;
   const importUrl = `${ctx.isEnvironmentPrimary ? '' : `/environments/${ctx.environment}`}/configuration/p/${ctx.plugin.id}/pages/import`;

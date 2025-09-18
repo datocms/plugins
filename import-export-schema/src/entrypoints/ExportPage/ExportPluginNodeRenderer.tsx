@@ -7,6 +7,9 @@ import {
 } from '@/components/PluginNodeRenderer';
 import { EntitiesToExportContext } from '@/entrypoints/ExportPage/EntitiesToExportContext';
 
+/**
+ * Wraps the generic plugin renderer to flag nodes that are outside the current export selection.
+ */
 export function ExportPluginNodeRenderer(props: NodeProps<PluginNode>) {
   const { plugin } = props.data;
 

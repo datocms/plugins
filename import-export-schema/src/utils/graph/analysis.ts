@@ -2,6 +2,8 @@ import type { ItemTypeNode } from '@/components/ItemTypeNodeRenderer';
 import type { PluginNode } from '@/components/PluginNodeRenderer';
 import type { AppEdge, Graph } from './types';
 
+/** Graph analytics helpers for metrics, traversals, and conflict tooling. */
+
 type Adjacency = Map<string, Set<string>>;
 
 function ensure<T>(map: Map<string, Set<T>>, key: string) {

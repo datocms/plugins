@@ -25,6 +25,7 @@ type Props = {
   projectPlugin: SchemaTypes.Plugin;
 };
 
+/** Presents resolution choices for plugin conflicts (reuse vs. skip). */
 export function PluginConflict({ exportPlugin, projectPlugin }: Props) {
   const selectId = useId();
   const fieldPrefix = `plugin-${exportPlugin.id}`;

@@ -2,6 +2,7 @@ import type { SchemaTypes } from '@datocms/cma-client';
 import type { ItemTypeNode } from '@/components/ItemTypeNodeRenderer';
 import type { PluginNode } from '@/components/PluginNodeRenderer';
 
+/** Lightweight constructors for React Flow nodes representing schema entities. */
 export function buildPluginNode(plugin: SchemaTypes.Plugin): PluginNode {
   return {
     id: `plugin--${plugin.id}`,

@@ -17,6 +17,9 @@ type Props = {
   projectItemType: SchemaTypes.ItemType;
 };
 
+/**
+ * Renders the resolution UI for a conflicting model/block, including rename inputs.
+ */
 export function ItemTypeConflict({ exportItemType, projectItemType }: Props) {
   const selectId = useId();
   const nameId = useId();
@@ -32,6 +35,7 @@ export function ItemTypeConflict({ exportItemType, projectItemType }: Props) {
     ? 'block'
     : 'model';
 
+  // Base strategy options; reuse is only valid for matching model/block types.
   const options: Option[] = [
     { label: `Import ${exportType} using a different name`, value: 'rename' },
   ];

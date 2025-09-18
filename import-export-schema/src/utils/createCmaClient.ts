@@ -9,6 +9,7 @@ type CtxWithAuth =
   | Pick<RenderPageCtx, 'currentUserAccessToken' | 'environment'>
   | Pick<RenderConfigScreenCtx, 'currentUserAccessToken' | 'environment'>;
 
+/** Create a CMA client configured for the current plugin session. */
 export function createCmaClient(
   ctx: CtxWithAuth,
   overrides?: Partial<ClientConfigOptions>,

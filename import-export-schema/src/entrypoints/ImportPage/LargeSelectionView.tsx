@@ -16,9 +16,14 @@ type Props = {
   onSelect: (entity: SchemaTypes.ItemType | SchemaTypes.Plugin) => void;
 };
 
+/**
+ * Read-only overview used when the import graph is too dense to render. Mirrors the
+ * export-side list but drives the detail sidebar for conflicts.
+ */
 export default function LargeSelectionView({ graph, onSelect }: Props) {
   const searchInputId = useId();
   const [query, setQuery] = useState('');
+  // Keep the row selection in sync with the conflict/resolution panels.
   const selected = useContext(SelectedEntityContext).entity;
 
   const { itemTypeNodes, pluginNodes } = useMemo(

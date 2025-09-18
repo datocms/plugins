@@ -2,6 +2,7 @@ import type { SchemaTypes } from '@datocms/cma-client';
 import type { ExportSchema } from '@/entrypoints/ExportPage/ExportSchema';
 import type { ISchemaSource } from './ISchemaSource';
 
+/** Adapts an export document into the schema source interface for graph building. */
 export class ExportSchemaSource implements ISchemaSource {
   private schema: ExportSchema;
 

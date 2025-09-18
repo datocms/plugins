@@ -5,6 +5,7 @@ import {
   validatorsContainingLinks,
 } from '@/utils/datocms/schema';
 
+/** Map helper functions for trimming validator references during export/import. */
 export function collectLinkValidatorPaths(
   fieldType: SchemaTypes.Field['attributes']['field_type'],
 ): string[] {
@@ -14,6 +15,7 @@ export function collectLinkValidatorPaths(
   ].map((i) => i.validator);
 }
 
+// Clone a field's validators while keeping only allowed item type references.
 export function filterValidatorIds(
   field: SchemaTypes.Field,
   allowedItemTypeIds: string[],

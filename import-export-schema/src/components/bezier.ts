@@ -1,5 +1,9 @@
 import { type GetBezierPathParams, Position } from '@xyflow/react';
 
+/**
+ * Compute a point along an SVG arc using the endpoint parameterization.
+ * Ported from the SVG spec so self-loop edges can reserve space for labels.
+ */
 function getPointOnSimpleArc(
   arcFraction: number,
   rx: number,
@@ -66,6 +70,9 @@ function getPointOnSimpleArc(
   return [x, y];
 }
 
+/**
+ * Build a looped arc path for edges that start and end on the same node.
+ */
 export function getSelfPath({
   sourceX,
   targetX,
@@ -94,6 +101,7 @@ export function getSelfPath({
   ];
 }
 
+/** Classic cubic Bézier interpolation helper. */
 function bezierInterpolation(
   t: number,
   p0: number, // start point
@@ -115,6 +123,7 @@ function bezierInterpolation(
   );
 }
 
+// Inspired by React Flow: determine control point offsets based on curvature.
 function calculateControlOffset(distance: number, curvature: number) {
   if (distance >= 0) {
     return 0.5 * distance;
@@ -131,6 +140,7 @@ type GetControlWithCurvatureParams = {
   c: number;
 };
 
+/** Deduce control points based on the port position and desired curvature. */
 function getControlWithCurvature({
   pos,
   x1,
@@ -151,6 +161,7 @@ function getControlWithCurvature({
   }
 }
 
+/** Numerically approximate the arc length for a cubic Bézier segment. */
 function calculateBezierLength(
   sourceX: number,
   sourceY: number,
@@ -193,7 +204,7 @@ function calculateBezierLength(
 }
 
 /**
- * Find the t value for which the arc length of the cubic Bézier curve equals the target length
+ * Find the `t` value where the curve length reaches `targetLength` using bisection.
  */
 function getTForLength(
   sourceX: number,
@@ -239,6 +250,9 @@ function getTForLength(
   return t;
 }
 
+/**
+ * Generate a cubic Bézier path between two nodes and return coordinates suitable for React Flow.
+ */
 export function getBezierPath({
   sourceX,
   sourceY,
@@ -266,6 +280,7 @@ export function getBezierPath({
     c: curvature,
   });
 
+  // Place the edge label ~40px along the line so multi-field tooltips stay close to the source.
   const labelPercent = getTForLength(
     targetX,
     targetY,

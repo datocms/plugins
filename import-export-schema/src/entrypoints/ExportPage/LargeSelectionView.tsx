@@ -24,6 +24,10 @@ type Props = {
   selectingDependencies: boolean;
 };
 
+/**
+ * List-based fallback for very large graphs. Provides search, metrics, and dependency
+ * context so the user retains insight when the canvas is hidden.
+ */
 export default function LargeSelectionView({
   initialItemTypes,
   graph,
@@ -39,6 +43,7 @@ export default function LargeSelectionView({
 }: Props) {
   const searchInputId = useId();
   const [query, setQuery] = useState('');
+  // Track which rows have the dependency explanation expanded.
   const [expandedWhy, setExpandedWhy] = useState<Set<string>>(new Set());
 
   const initialItemTypeIdSet = useMemo(
@@ -97,6 +102,7 @@ export default function LargeSelectionView({
     setExpandedWhy(next);
   }
 
+  // Track selected nodes by React Flow id to surface "why included" reasons quickly.
   const selectedSourceSet = useMemo(
     () => new Set(selectedItemTypeIds.map((id) => `itemType--${id}`)),
     [selectedItemTypeIds],

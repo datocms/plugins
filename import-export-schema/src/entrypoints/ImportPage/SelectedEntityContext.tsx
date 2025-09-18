@@ -9,6 +9,9 @@ type Context = {
   ) => void;
 };
 
+/**
+ * Shares the currently highlighted entity between the graph and the detail sidebar.
+ */
 export const SelectedEntityContext = createContext<Context>({
   entity: undefined,
   set: () => {},

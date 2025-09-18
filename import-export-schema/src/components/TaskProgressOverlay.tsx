@@ -12,7 +12,7 @@ type CancelOptions = {
   disabled?: boolean;
 };
 
-type TaskProgressOverlayProps = {
+export type TaskProgressOverlayProps = {
   task: UseLongTaskResult;
   title: string;
   subtitle: string | ((state: LongTaskState) => string);
@@ -23,6 +23,10 @@ type TaskProgressOverlayProps = {
   cancel?: (state: LongTaskState) => CancelOptions | undefined;
 };
 
+/**
+ * Convenience wrapper over `ProgressOverlay` that wires up a `useLongTask` instance and
+ * allows callers to customize messaging via small callbacks.
+ */
 export function TaskProgressOverlay({
   task,
   title,

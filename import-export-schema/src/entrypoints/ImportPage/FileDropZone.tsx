@@ -11,6 +11,9 @@ type Props = {
   children: (button: ReactNode) => ReactNode;
 };
 
+/**
+ * Handles drag-and-drop and manual file selection, validating JSON before delegating upwards.
+ */
 export default function FileDropZone({ onJsonDrop, children }: Props) {
   const ctx = useCtx<RenderPageCtx>();
   const fileInputRef = useRef<HTMLInputElement>(null);

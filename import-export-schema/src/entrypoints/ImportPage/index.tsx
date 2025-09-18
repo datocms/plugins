@@ -4,15 +4,14 @@ import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import { Canvas, Spinner } from 'datocms-react-ui';
 import { useEffect, useId, useState } from 'react';
 import { ExportStartPanel } from '@/components/ExportStartPanel';
-import { TaskProgressOverlay } from '@/components/TaskProgressOverlay';
+import { TaskOverlayStack } from '@/components/TaskOverlayStack';
+import { useConflictsBuilder } from '@/shared/hooks/useConflictsBuilder';
+import { useExportAllHandler } from '@/shared/hooks/useExportAllHandler';
 import { useExportSelection } from '@/shared/hooks/useExportSelection';
 import { useProjectSchema } from '@/shared/hooks/useProjectSchema';
-import { useExportAllHandler } from '@/shared/hooks/useExportAllHandler';
-import { useConflictsBuilder } from '@/shared/hooks/useConflictsBuilder';
+import { useSchemaExportTask } from '@/shared/hooks/useSchemaExportTask';
 import { useLongTask } from '@/shared/tasks/useLongTask';
-import { downloadJSON } from '@/utils/downloadJson';
 import type { ExportDoc } from '@/utils/types';
-import buildExportDoc from '../ExportPage/buildExportDoc';
 import { ExportSchema } from '../ExportPage/ExportSchema';
 import ExportInner from '../ExportPage/Inner';
 // PostExportSummary removed: exports now download directly with a toast
@@ -30,6 +29,10 @@ type Props = {
   hideModeToggle?: boolean;
 };
 
+/**
+ * Unified Import/Export entrypoint rendered inside the Schema sidebar page. Handles
+ * file drops, conflict resolution, and the alternate export tab.
+ */
 export function ImportPage({
   ctx,
   initialMode = 'import',
@@ -42,6 +45,7 @@ export function ImportPage({
   const [loadingRecipeByUrl, setLoadingRecipeByUrl] = useState(false);
 
   useEffect(() => {
+    // Optional shortcut: pre-load an export recipe from a shared URL.
     async function run() {
       if (!recipeUrl) {
         return;
@@ -70,10 +74,12 @@ export function ImportPage({
   >();
 
   // Local tab to switch between importing a file and exporting from selection
+  // Toggle between the import dropzone and export selector screens.
   const [mode, setMode] = useState<'import' | 'export'>(initialMode);
 
   // Removed postImportSummary: no post-import overview screen
 
+  // Parse the dropped JSON and hydrate our `ExportSchema` helper.
   async function handleDrop(filename: string, doc: ExportDoc) {
     try {
       const schema = new ExportSchema(doc);
@@ -90,7 +96,11 @@ export function ImportPage({
   const importTask = useLongTask();
   const exportAllTask = useLongTask();
   const exportPreparingTask = useLongTask();
-  const exportSelectionTask = useLongTask();
+  const { task: exportSelectionTask, runExport: runSelectionExport } =
+    useSchemaExportTask({
+      schema: projectSchema,
+      ctx,
+    });
   const conflictsTask = useLongTask();
 
   // Removed adminDomain lookup; no post-import summary links needed
@@ -105,10 +115,7 @@ export function ImportPage({
     selectAllBlocks: handleSelectAllBlocks,
   } = useExportSelection({ schema: projectSchema, enabled: mode === 'export' });
 
-  const {
-    conflicts,
-    setConflicts,
-  } = useConflictsBuilder({
+  const { conflicts, setConflicts } = useConflictsBuilder({
     exportSchema: exportSchema?.[1],
     projectSchema,
     task: conflictsTask.controller,
@@ -127,9 +134,9 @@ export function ImportPage({
     setExportStarted(true);
   };
 
-
   // Listen for bottom Cancel action from ConflictsManager
   useEffect(() => {
+    // ConflictsManager dispatches a custom event when the user cancels from the sidebar CTA.
     const onRequestCancel = async () => {
       if (!exportSchema) return;
       const result = await ctx.openConfirm({
@@ -184,6 +191,7 @@ export function ImportPage({
         resolutions,
       );
 
+      // Execute the import while streaming progress updates into the overlay.
       await importSchema(
         importDoc,
         client,
@@ -274,50 +282,50 @@ export function ImportPage({
           <div className="page__content">
             {mode === 'import' ? (
               <FileDropZone onJsonDrop={handleDrop}>
-                  {(button) =>
-                    exportSchema ? (
-                      conflicts ? (
-                        <ConflictsContext.Provider value={conflicts}>
-                          <ResolutionsForm
+                {(button) =>
+                  exportSchema ? (
+                    conflicts ? (
+                      <ConflictsContext.Provider value={conflicts}>
+                        <ResolutionsForm
+                          schema={projectSchema}
+                          onSubmit={handleImport}
+                        >
+                          <Inner
+                            exportSchema={exportSchema[1]}
                             schema={projectSchema}
-                            onSubmit={handleImport}
-                          >
-                            <Inner
-                              exportSchema={exportSchema[1]}
-                              schema={projectSchema}
-                              ctx={ctx}
-                            />
-                          </ResolutionsForm>
-                        </ConflictsContext.Provider>
-                      ) : (
-                        <Spinner placement="centered" size={60} />
-                      )
-                    ) : loadingRecipeByUrl ? (
-                      <Spinner placement="centered" size={60} />
+                            ctx={ctx}
+                          />
+                        </ResolutionsForm>
+                      </ConflictsContext.Provider>
                     ) : (
-                      <div className="blank-slate">
-                        <div className="blank-slate__body">
-                          <div className="blank-slate__body__title">
-                            Upload your schema export file
-                          </div>
-
-                          <div className="blank-slate__body__content">
-                            <p>
-                              Drag and drop your exported JSON file here, or
-                              click the button to select one from your computer.
-                            </p>
-                            {button}
-                          </div>
+                      <Spinner placement="centered" size={60} />
+                    )
+                  ) : loadingRecipeByUrl ? (
+                    <Spinner placement="centered" size={60} />
+                  ) : (
+                    <div className="blank-slate">
+                      <div className="blank-slate__body">
+                        <div className="blank-slate__body__title">
+                          Upload your schema export file
                         </div>
-                        <div className="blank-slate__body__outside">
-                          {hideModeToggle
-                            ? '💡 Need to bulk export your schema? Go to the Export page under Schema.'
-                            : '💡 Need to bulk export your schema? Switch to the Export tab above.'}
+
+                        <div className="blank-slate__body__content">
+                          <p>
+                            Drag and drop your exported JSON file here, or click
+                            the button to select one from your computer.
+                          </p>
+                          {button}
                         </div>
                       </div>
-                    )
-                  }
-                </FileDropZone>
+                      <div className="blank-slate__body__outside">
+                        {hideModeToggle
+                          ? '💡 Need to bulk export your schema? Go to the Export page under Schema.'
+                          : '💡 Need to bulk export your schema? Switch to the Export tab above.'}
+                      </div>
+                    </div>
+                  )
+                }
+              </FileDropZone>
             ) : (
               <div className="blank-slate">
                 {!exportStarted ? (
@@ -360,69 +368,13 @@ export function ImportPage({
                       setExportStarted(false);
                       exportPreparingTask.controller.reset();
                     }}
-                    onExport={async (itemTypeIds, pluginIds) => {
-                      try {
-                        const total = pluginIds.length + itemTypeIds.length * 2;
-                        exportSelectionTask.controller.start({
-                          done: 0,
-                          total,
-                          label: 'Preparing export…',
-                        });
-                        let done = 0;
-
-                        const exportDoc = await buildExportDoc(
-                          projectSchema,
-                          exportInitialItemTypeIds[0],
-                          itemTypeIds,
-                          pluginIds,
-                          {
-                            onProgress: (label: string) => {
-                              done += 1;
-                              exportSelectionTask.controller.setProgress({
-                                done,
-                                total,
-                                label,
-                              });
-                            },
-                            shouldCancel: () =>
-                              exportSelectionTask.controller.isCancelRequested(),
-                          },
-                        );
-
-                        if (exportSelectionTask.controller.isCancelRequested()) {
-                          throw new Error('Export cancelled');
-                        }
-
-                        downloadJSON(exportDoc, {
-                          fileName: 'export.json',
-                          prettify: true,
-                        });
-                        exportSelectionTask.controller.complete({
-                          done: total,
-                          total,
-                          label: 'Export completed',
-                        });
-                        ctx.notice('Export completed successfully.');
-                      } catch (e) {
-                        console.error('Selection export failed', e);
-                        if (
-                          e instanceof Error &&
-                          e.message === 'Export cancelled'
-                        ) {
-                          exportSelectionTask.controller.complete({
-                            label: 'Export cancelled',
-                          });
-                          ctx.notice('Export canceled');
-                        } else {
-                          exportSelectionTask.controller.fail(e);
-                          ctx.alert(
-                            'Could not complete the export. Please try again.',
-                          );
-                        }
-                      } finally {
-                        exportSelectionTask.controller.reset();
-                      }
-                    }}
+                    onExport={(itemTypeIds, pluginIds) =>
+                      runSelectionExport({
+                        rootItemTypeId: exportInitialItemTypeIds[0],
+                        itemTypeIds,
+                        pluginIds,
+                      })
+                    }
                   />
                 )}
                 {/* Fallback note removed per UX request */}
@@ -432,96 +384,104 @@ export function ImportPage({
         </div>
       </ReactFlowProvider>
 
-      <TaskProgressOverlay
-        task={importTask}
-        title="Import in progress"
-        subtitle={(state) =>
-          state.cancelRequested
-            ? 'Cancelling import…'
-            : 'Sit tight, we’re applying models, fields, and plugins…'
-        }
-        ariaLabel="Import in progress"
-        progressLabel={(progress, state) =>
-          state.cancelRequested
-            ? 'Stopping at next safe point…'
-            : progress.label ?? ''
-        }
-        cancel={() => ({
-          label: 'Cancel import',
-          intent: importTask.state.cancelRequested ? 'muted' : 'negative',
-          disabled: importTask.state.cancelRequested,
-          onCancel: async () => {
-            if (!exportSchema) return;
-            const result = await ctx.openConfirm({
-              title: 'Cancel import in progress?',
-              content:
-                'Stopping now can leave partial changes in your project. Some models or blocks may be created without relationships, some fields or fieldsets may already exist, and plugin installations or editor settings may be incomplete. You can run the import again to finish or manually clean up. Are you sure you want to cancel?',
-              choices: [
-                {
-                  label: 'Yes, cancel the import',
-                  value: 'yes',
-                  intent: 'negative',
-                },
-              ],
-              cancel: {
-                label: 'Nevermind',
-                value: false,
-                intent: 'positive',
+      <TaskOverlayStack
+        items={[
+          {
+            id: 'import',
+            task: importTask,
+            title: 'Import in progress',
+            subtitle: (state) =>
+              state.cancelRequested
+                ? 'Cancelling import…'
+                : 'Sit tight, we’re applying models, fields, and plugins…',
+            ariaLabel: 'Import in progress',
+            progressLabel: (progress, state) =>
+              state.cancelRequested
+                ? 'Stopping at next safe point…'
+                : (progress.label ?? ''),
+            cancel: () => ({
+              label: 'Cancel import',
+              intent: importTask.state.cancelRequested ? 'muted' : 'negative',
+              disabled: importTask.state.cancelRequested,
+              onCancel: async () => {
+                if (!exportSchema) return;
+                const result = await ctx.openConfirm({
+                  title: 'Cancel import in progress?',
+                  content:
+                    'Stopping now can leave partial changes in your project. Some models or blocks may be created without relationships, some fields or fieldsets may already exist, and plugin installations or editor settings may be incomplete. You can run the import again to finish or manually clean up. Are you sure you want to cancel?',
+                  choices: [
+                    {
+                      label: 'Yes, cancel the import',
+                      value: 'yes',
+                      intent: 'negative',
+                    },
+                  ],
+                  cancel: {
+                    label: 'Nevermind',
+                    value: false,
+                    intent: 'positive',
+                  },
+                });
+
+                if (result === 'yes') {
+                  importTask.controller.requestCancel();
+                }
               },
-            });
-
-            if (result === 'yes') {
-              importTask.controller.requestCancel();
-            }
+            }),
           },
-        })}
-      />
-
-      <TaskProgressOverlay
-        task={exportAllTask}
-        title="Exporting entire schema"
-        subtitle="Sit tight, we’re gathering models, blocks, and plugins…"
-        ariaLabel="Export in progress"
-        progressLabel={(progress) =>
-          progress.label ?? 'Loading project schema…'
-        }
-        cancel={() => ({
-          label: 'Cancel export',
-          intent: exportAllTask.state.cancelRequested ? 'muted' : 'negative',
-          disabled: exportAllTask.state.cancelRequested,
-          onCancel: () => exportAllTask.controller.requestCancel(),
-        })}
-      />
-
-      <TaskProgressOverlay
-        task={conflictsTask}
-        title="Preparing import"
-        subtitle="Sit tight, we’re scanning your export against the project…"
-        ariaLabel="Preparing import"
-        progressLabel={(progress) => progress.label ?? 'Preparing import…'}
-        overlayZIndex={9998}
-      />
-
-      <TaskProgressOverlay
-        task={exportPreparingTask}
-        title="Preparing export"
-        subtitle="Sit tight, we’re setting up your models, blocks, and plugins…"
-        ariaLabel="Preparing export"
-        progressLabel={(progress) => progress.label ?? 'Preparing export…'}
-      />
-
-      <TaskProgressOverlay
-        task={exportSelectionTask}
-        title="Exporting selection"
-        subtitle="Sit tight, we’re gathering models, blocks, and plugins…"
-        ariaLabel="Export in progress"
-        progressLabel={(progress) => progress.label ?? 'Preparing export…'}
-        cancel={() => ({
-          label: 'Cancel export',
-          intent: exportSelectionTask.state.cancelRequested ? 'muted' : 'negative',
-          disabled: exportSelectionTask.state.cancelRequested,
-          onCancel: () => exportSelectionTask.controller.requestCancel(),
-        })}
+          {
+            id: 'export-all',
+            task: exportAllTask,
+            title: 'Exporting entire schema',
+            subtitle: 'Sit tight, we’re gathering models, blocks, and plugins…',
+            ariaLabel: 'Export in progress',
+            progressLabel: (progress) =>
+              progress.label ?? 'Loading project schema…',
+            cancel: () => ({
+              label: 'Cancel export',
+              intent: exportAllTask.state.cancelRequested
+                ? 'muted'
+                : 'negative',
+              disabled: exportAllTask.state.cancelRequested,
+              onCancel: () => exportAllTask.controller.requestCancel(),
+            }),
+          },
+          {
+            id: 'conflicts',
+            task: conflictsTask,
+            title: 'Preparing import',
+            subtitle:
+              'Sit tight, we’re scanning your export against the project…',
+            ariaLabel: 'Preparing import',
+            progressLabel: (progress) => progress.label ?? 'Preparing import…',
+            overlayZIndex: 9998,
+          },
+          {
+            id: 'export-prep',
+            task: exportPreparingTask,
+            title: 'Preparing export',
+            subtitle:
+              'Sit tight, we’re setting up your models, blocks, and plugins…',
+            ariaLabel: 'Preparing export',
+            progressLabel: (progress) => progress.label ?? 'Preparing export…',
+          },
+          {
+            id: 'export-selection',
+            task: exportSelectionTask,
+            title: 'Exporting selection',
+            subtitle: 'Sit tight, we’re gathering models, blocks, and plugins…',
+            ariaLabel: 'Export in progress',
+            progressLabel: (progress) => progress.label ?? 'Preparing export…',
+            cancel: () => ({
+              label: 'Cancel export',
+              intent: exportSelectionTask.state.cancelRequested
+                ? 'muted'
+                : 'negative',
+              disabled: exportSelectionTask.state.cancelRequested,
+              onCancel: () => exportSelectionTask.controller.requestCancel(),
+            }),
+          },
+        ]}
       />
     </Canvas>
   );

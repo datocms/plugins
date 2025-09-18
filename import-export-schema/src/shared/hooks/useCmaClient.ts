@@ -1,9 +1,6 @@
-import { useMemo } from 'react';
 import type { Client, ClientConfigOptions } from '@datocms/cma-client';
-import type {
-  RenderConfigScreenCtx,
-  RenderPageCtx,
-} from 'datocms-plugin-sdk';
+import type { RenderConfigScreenCtx, RenderPageCtx } from 'datocms-plugin-sdk';
+import { useMemo } from 'react';
 import { createCmaClient } from '@/utils/createCmaClient';
 
 type AuthCtx =

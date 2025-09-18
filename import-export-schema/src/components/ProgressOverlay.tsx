@@ -1,5 +1,5 @@
-import type { PropsWithChildren } from 'react';
 import { Button } from 'datocms-react-ui';
+import type { PropsWithChildren } from 'react';
 import ProgressStallNotice from './ProgressStallNotice';
 
 type CancelProps = {
@@ -27,6 +27,7 @@ type Props = {
   overlayZIndex?: number;
 };
 
+// Ensure the progress bar always renders with a minimal width when progress is unknown.
 function clampPercent(value: number | undefined): number {
   if (typeof value !== 'number' || Number.isNaN(value)) return 0.1;
   return Math.min(1, Math.max(0, value));
@@ -46,6 +47,10 @@ function resolvePercent(progress: ProgressData): number {
   return 0.1;
 }
 
+/**
+ * Fullscreen overlay that shows a determinate progress bar, optional stall warning,
+ * and cancel affordance while long-running tasks execute.
+ */
 export function ProgressOverlay({
   title,
   subtitle,

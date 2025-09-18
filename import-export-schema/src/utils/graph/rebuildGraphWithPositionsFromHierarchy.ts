@@ -1,6 +1,9 @@
 import { type HierarchyNode, tree } from 'd3-hierarchy';
 import type { AppNode, Graph } from './types';
 
+/**
+ * Convert a D3 hierarchy into positioned React Flow nodes while reusing edge data.
+ */
 export function rebuildGraphWithPositionsFromHierarchy(
   hierarchy: HierarchyNode<AppNode>,
   edges: Graph['edges'],

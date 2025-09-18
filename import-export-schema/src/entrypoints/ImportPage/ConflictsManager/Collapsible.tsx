@@ -15,6 +15,9 @@ type Props = {
   children: ReactNode;
 };
 
+/**
+ * Accordion-style wrapper that also syncs with the graph selection context.
+ */
 export default function Collapsible({
   entity,
   invalid,

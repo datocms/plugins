@@ -7,6 +7,7 @@ import {
 } from '@/utils/datocms/schema';
 import type { AppEdge } from '@/utils/graph/types';
 
+/** Build edges for a single item type, aggregating field references with arrows. */
 export function buildEdgesForItemType(
   itemType: SchemaTypes.ItemType,
   fields: SchemaTypes.Field[],

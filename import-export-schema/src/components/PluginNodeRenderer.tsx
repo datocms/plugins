@@ -17,8 +17,12 @@ export type PluginNode = Node<
   'plugin'
 >;
 
+// Only reveal meta information when zoomed in far enough.
 const zoomSelector = (s: ReactFlowState) => s.transform[2] >= 0.8;
 
+/**
+ * React Flow node renderer used to visualize installed plugins within dependency graphs.
+ */
 export function PluginNodeRenderer({
   data: { plugin },
   className,

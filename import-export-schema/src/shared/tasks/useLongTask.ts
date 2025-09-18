@@ -52,15 +52,14 @@ function mergeProgress(
   };
 }
 
-/**
- * Hook for managing long-running async tasks (imports, exports, etc.).
- * Provides declarative state for progress overlays and cancel handling.
- */
 export type UseLongTaskResult = {
   state: LongTaskState;
   controller: LongTaskController;
 };
 
+/**
+ * Manage long-running async tasks (imports, exports, etc.) with progress + cancel support.
+ */
 export function useLongTask(): UseLongTaskResult {
   const [state, setState] = useState<LongTaskState>(initialState);
   const cancelRequestedRef = useRef(false);

@@ -2,6 +2,7 @@ import type { SchemaTypes } from '@datocms/cma-client';
 import type { ProjectSchema } from '@/utils/ProjectSchema';
 import type { ISchemaSource } from './ISchemaSource';
 
+/** Adapts the live CMA-backed project schema to the generic graph interface. */
 export class ProjectSchemaSource implements ISchemaSource {
   private schema: ProjectSchema;
 

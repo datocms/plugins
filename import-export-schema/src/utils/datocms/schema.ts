@@ -1,6 +1,9 @@
 import type { SchemaTypes } from '@datocms/cma-client';
 import type { FieldAttributes } from '@datocms/cma-client/dist/types/generated/SchemaTypes';
 import { get } from 'lodash-es';
+/**
+ * Shared lookups and helper utilities for interpreting DatoCMS field metadata.
+ */
 import boolean from '@/icons/fieldgroup-boolean.svg?react';
 import color from '@/icons/fieldgroup-color.svg?react';
 import datetime from '@/icons/fieldgroup-datetime.svg?react';
@@ -195,6 +198,7 @@ export const validatorsContainingBlocks: Array<{
   },
 ];
 
+// Collect all item type IDs referenced by validators for the given field.
 export function findLinkedItemTypeIds(field: SchemaTypes.Field) {
   const fieldLinkedItemTypeIds = new Set<string>();
 
@@ -220,6 +224,7 @@ export function findLinkedItemTypeIds(field: SchemaTypes.Field) {
   return fieldLinkedItemTypeIds;
 }
 
+// Collect plugin IDs referenced via appearance editors/addons, filtering by installed list when available.
 export function findLinkedPluginIds(
   field: SchemaTypes.Field,
   installedPluginIds?: Set<string>,

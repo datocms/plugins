@@ -1,5 +1,8 @@
 import type { Client, SchemaTypes } from '@datocms/cma-client';
 
+/**
+ * Thin caching layer around the CMA client that smooths out rate limits and provides lookups.
+ */
 export class ProjectSchema {
   public client: Client;
   private itemTypesPromise: Promise<SchemaTypes.ItemType[]> | null = null;

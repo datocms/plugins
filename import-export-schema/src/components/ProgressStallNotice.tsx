@@ -9,6 +9,10 @@ type Props = {
   message?: string;
 };
 
+/**
+ * Surface a gentle warning when long-running tasks appear stuck, while avoiding
+ * false positives during the initial idle period.
+ */
 export default function ProgressStallNotice({
   current,
   thresholdMs = 8000,

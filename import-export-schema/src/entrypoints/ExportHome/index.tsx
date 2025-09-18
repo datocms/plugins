@@ -3,19 +3,22 @@ import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import { Canvas } from 'datocms-react-ui';
 import { useId, useState } from 'react';
 import { ExportStartPanel } from '@/components/ExportStartPanel';
-import { TaskProgressOverlay } from '@/components/TaskProgressOverlay';
+import { TaskOverlayStack } from '@/components/TaskOverlayStack';
+import { useExportAllHandler } from '@/shared/hooks/useExportAllHandler';
 import { useExportSelection } from '@/shared/hooks/useExportSelection';
 import { useProjectSchema } from '@/shared/hooks/useProjectSchema';
-import { useExportAllHandler } from '@/shared/hooks/useExportAllHandler';
+import { useSchemaExportTask } from '@/shared/hooks/useSchemaExportTask';
 import { useLongTask } from '@/shared/tasks/useLongTask';
-import { downloadJSON } from '@/utils/downloadJson';
-import buildExportDoc from '../ExportPage/buildExportDoc';
 import ExportInner from '../ExportPage/Inner';
 
 type Props = {
   ctx: RenderPageCtx;
 };
 
+/**
+ * Landing page for the export workflow. Guides the user from the initial selection
+ * state into the detailed graph view while coordinating the long-running tasks.
+ */
 export default function ExportHome({ ctx }: Props) {
   const exportInitialSelectId = useId();
   const projectSchema = useProjectSchema(ctx);
@@ -35,7 +38,11 @@ export default function ExportHome({ ctx }: Props) {
 
   const exportAllTask = useLongTask();
   const exportPreparingTask = useLongTask();
-  const exportSelectionTask = useLongTask();
+  const { task: exportSelectionTask, runExport: runSelectionExport } =
+    useSchemaExportTask({
+      schema: projectSchema,
+      ctx,
+    });
 
   // Smoothed percent for preparing overlay to avoid jitter and changing max
   const [exportPreparingPercent, setExportPreparingPercent] = useState(0.1);
@@ -53,7 +60,6 @@ export default function ExportHome({ ctx }: Props) {
     setExportPreparingPercent(0.1);
     setExportStarted(true);
   };
-
 
   return (
     <Canvas ctx={ctx}>
@@ -111,69 +117,13 @@ export default function ExportHome({ ctx }: Props) {
                     setExportStarted(false);
                     exportPreparingTask.controller.reset();
                   }}
-                  onExport={async (itemTypeIds, pluginIds) => {
-                    try {
-                      const total = pluginIds.length + itemTypeIds.length * 2;
-                      exportSelectionTask.controller.start({
-                        done: 0,
-                        total,
-                        label: 'Preparing export…',
-                      });
-                      let done = 0;
-
-                      const exportDoc = await buildExportDoc(
-                        projectSchema,
-                        exportInitialItemTypeIds[0],
-                        itemTypeIds,
-                        pluginIds,
-                        {
-                          onProgress: (label: string) => {
-                            done += 1;
-                            exportSelectionTask.controller.setProgress({
-                              done,
-                              total,
-                              label,
-                            });
-                          },
-                          shouldCancel: () =>
-                            exportSelectionTask.controller.isCancelRequested(),
-                        },
-                      );
-
-                      if (exportSelectionTask.controller.isCancelRequested()) {
-                        throw new Error('Export cancelled');
-                      }
-
-                      downloadJSON(exportDoc, {
-                        fileName: 'export.json',
-                        prettify: true,
-                      });
-                      exportSelectionTask.controller.complete({
-                        done: total,
-                        total,
-                        label: 'Export completed',
-                      });
-                      ctx.notice('Export completed successfully.');
-                    } catch (e) {
-                      console.error('Selection export failed', e);
-                      if (
-                        e instanceof Error &&
-                        e.message === 'Export cancelled'
-                      ) {
-                        exportSelectionTask.controller.complete({
-                          label: 'Export cancelled',
-                        });
-                        ctx.notice('Export canceled');
-                      } else {
-                        exportSelectionTask.controller.fail(e);
-                        ctx.alert(
-                          'Could not complete the export. Please try again.',
-                        );
-                      }
-                    } finally {
-                      exportSelectionTask.controller.reset();
-                    }
-                  }}
+                  onExport={(itemTypeIds, pluginIds) =>
+                    runSelectionExport({
+                      rootItemTypeId: exportInitialItemTypeIds[0],
+                      itemTypeIds,
+                      pluginIds,
+                    })
+                  }
                 />
               )}
             </div>
@@ -182,43 +132,52 @@ export default function ExportHome({ ctx }: Props) {
       </ReactFlowProvider>
 
       {/* Blocking overlay while exporting all */}
-      <TaskProgressOverlay
-        task={exportAllTask}
-        title="Exporting entire schema"
-        subtitle="Sit tight, we’re gathering models, blocks, and plugins…"
-        ariaLabel="Export in progress"
-        progressLabel={(progress) =>
-          progress.label ?? 'Loading project schema…'
-        }
-        cancel={() => ({
-          label: 'Cancel export',
-          intent: exportAllTask.state.cancelRequested ? 'muted' : 'negative',
-          disabled: exportAllTask.state.cancelRequested,
-          onCancel: () => exportAllTask.controller.requestCancel(),
-        })}
-      />
-
-      <TaskProgressOverlay
-        task={exportPreparingTask}
-        title="Preparing export"
-        subtitle="Sit tight, we’re setting up your models, blocks, and plugins…"
-        ariaLabel="Preparing export"
-        progressLabel={(progress) => progress.label ?? 'Preparing export…'}
-        percentOverride={exportPreparingPercent}
-      />
-
-      <TaskProgressOverlay
-        task={exportSelectionTask}
-        title="Exporting selection"
-        subtitle="Sit tight, we’re gathering models, blocks, and plugins…"
-        ariaLabel="Export in progress"
-        progressLabel={(progress) => progress.label ?? 'Preparing export…'}
-        cancel={() => ({
-          label: 'Cancel export',
-          intent: exportSelectionTask.state.cancelRequested ? 'muted' : 'negative',
-          disabled: exportSelectionTask.state.cancelRequested,
-          onCancel: () => exportSelectionTask.controller.requestCancel(),
-        })}
+      <TaskOverlayStack
+        items={[
+          {
+            id: 'export-all',
+            task: exportAllTask,
+            title: 'Exporting entire schema',
+            subtitle: 'Sit tight, we’re gathering models, blocks, and plugins…',
+            ariaLabel: 'Export in progress',
+            progressLabel: (progress) =>
+              progress.label ?? 'Loading project schema…',
+            cancel: () => ({
+              label: 'Cancel export',
+              intent: exportAllTask.state.cancelRequested
+                ? 'muted'
+                : 'negative',
+              disabled: exportAllTask.state.cancelRequested,
+              onCancel: () => exportAllTask.controller.requestCancel(),
+            }),
+          },
+          {
+            id: 'export-preparing',
+            task: exportPreparingTask,
+            title: 'Preparing export',
+            subtitle:
+              'Sit tight, we’re setting up your models, blocks, and plugins…',
+            ariaLabel: 'Preparing export',
+            progressLabel: (progress) => progress.label ?? 'Preparing export…',
+            percentOverride: exportPreparingPercent,
+          },
+          {
+            id: 'export-selection',
+            task: exportSelectionTask,
+            title: 'Exporting selection',
+            subtitle: 'Sit tight, we’re gathering models, blocks, and plugins…',
+            ariaLabel: 'Export in progress',
+            progressLabel: (progress) => progress.label ?? 'Preparing export…',
+            cancel: () => ({
+              label: 'Cancel export',
+              intent: exportSelectionTask.state.cancelRequested
+                ? 'muted'
+                : 'negative',
+              disabled: exportSelectionTask.state.cancelRequested,
+              onCancel: () => exportSelectionTask.controller.requestCancel(),
+            }),
+          },
+        ]}
       />
     </Canvas>
   );

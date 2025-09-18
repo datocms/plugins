@@ -5,11 +5,15 @@ import {
   fieldTypeGroups,
 } from '@/utils/datocms/schema';
 
+/**
+ * Displays a field summary with consistent iconography and type information.
+ */
 export function Field({ field }: { field: SchemaTypes.Field }) {
   const group = fieldTypeGroups.find((g) =>
     g.types.includes(field.attributes.field_type),
   );
 
+  // Fallback to the generic JSON icon/color when the field type has no group match.
   const { IconComponent, bgColor, fgColor } =
     fieldGroupColors[group ? group.name : 'json'];
 

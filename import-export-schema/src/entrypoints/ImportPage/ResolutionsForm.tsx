@@ -39,6 +39,7 @@ type Props = {
   onSubmit: (values: Resolutions) => void;
 };
 
+// Mirrors the platform validation rules plus common reserved identifiers.
 function isValidApiKey(apiKey: string) {
   if (!apiKey.match(/^[a-z](([a-z0-9]|_(?![_0-9]))*[a-z0-9])$/)) {
     return false;
@@ -64,6 +65,9 @@ function isValidApiKey(apiKey: string) {
   return true;
 }
 
+/**
+ * Hosts the conflict resolution form and exposes helpers for components to read state.
+ */
 export default function ResolutionsForm({ schema, children, onSubmit }: Props) {
   const conflicts = useContext(ConflictsContext);
 
@@ -89,6 +93,7 @@ export default function ResolutionsForm({ schema, children, onSubmit }: Props) {
                   `itemType-${id}`,
                   {
                     strategy: null,
+                    // Suggest sensible rename defaults to speed up resolution.
                     name: `${projectItemType.attributes.name} (Import)`,
                     apiKey: `${projectItemType.attributes.api_key}_import`,
                   },
@@ -209,6 +214,9 @@ export default function ResolutionsForm({ schema, children, onSubmit }: Props) {
   );
 }
 
+/**
+ * Convenience hook for grabbing validity + values for a specific item type row.
+ */
 export function useResolutionStatusForItemType(itemTypeId: string) {
   const state = useFormState<FormValues>();
 
@@ -227,6 +235,7 @@ export function useResolutionStatusForItemType(itemTypeId: string) {
   };
 }
 
+/** Same as above but for plugin conflicts. */
 export function useResolutionStatusForPlugin(pluginId: string) {
   const state = useFormState<FormValues>();
 
@@ -245,6 +254,9 @@ export function useResolutionStatusForPlugin(pluginId: string) {
   };
 }
 
+/**
+ * Derive which entities are being reused so the graph/list views can hide them.
+ */
 export function useSkippedItemsAndPluginIds() {
   const conflicts = useContext(ConflictsContext);
   const formState = useFormState<FormValues>();

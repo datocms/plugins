@@ -1,9 +1,9 @@
-import { useCallback } from 'react';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
-import { downloadJSON } from '@/utils/downloadJson';
-import type { ProjectSchema } from '@/utils/ProjectSchema';
+import { useCallback } from 'react';
 import buildExportDoc from '@/entrypoints/ExportPage/buildExportDoc';
 import type { LongTaskController } from '@/shared/tasks/useLongTask';
+import { downloadJSON } from '@/utils/downloadJson';
+import type { ProjectSchema } from '@/utils/ProjectSchema';
 
 type Options = {
   ctx: RenderPageCtx;
@@ -11,6 +11,9 @@ type Options = {
   task: LongTaskController;
 };
 
+/**
+ * Returns a memoized handler that exports the entire schema with confirmation + progress.
+ */
 export function useExportAllHandler({ ctx, schema, task }: Options) {
   return useCallback(async () => {
     try {
@@ -39,6 +42,7 @@ export function useExportAllHandler({ ctx, schema, task }: Options) {
         ctx.alert('No item types found in this environment.');
         return;
       }
+      // Use the first regular model as root to match older exports; fall back to any.
       const preferredRoot =
         allTypes.find((t) => !t.attributes.modular_block) || allTypes[0];
       const total = allPlugins.length + allTypes.length * 2;

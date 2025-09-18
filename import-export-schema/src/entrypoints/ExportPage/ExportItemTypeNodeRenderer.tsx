@@ -6,6 +6,9 @@ import {
 } from '@/components/ItemTypeNodeRenderer';
 import { EntitiesToExportContext } from '@/entrypoints/ExportPage/EntitiesToExportContext';
 
+/**
+ * Highlights item-type nodes that fall outside the export selection.
+ */
 export function ExportItemTypeNodeRenderer(props: NodeProps<ItemTypeNode>) {
   const { itemType } = props.data;
   const entitiesToExport = useContext(EntitiesToExportContext);

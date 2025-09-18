@@ -7,6 +7,7 @@ export async function buildGraphFromExportDoc(
   exportSchema: ExportSchema,
   itemTypeIdsToSkip: string[],
 ): Promise<Graph> {
+  // Convert the static export document into the graph format expected by React Flow.
   const source = new ExportSchemaSource(exportSchema);
   return buildGraph({
     source,

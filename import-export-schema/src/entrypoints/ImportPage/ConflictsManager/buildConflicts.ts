@@ -8,6 +8,10 @@ export type Conflicts = {
   itemTypes: Record<string, SchemaTypes.ItemType>;
 };
 
+/**
+ * Compare the export snapshot against the project and identify models/plugins that collide
+ * by name, API key, or URL.
+ */
 export default async function buildConflicts(
   exportSchema: ExportSchema,
   projectSchema: ProjectSchema,

@@ -5,9 +5,9 @@ import { Canvas, Spinner } from 'datocms-react-ui';
 import { useEffect, useState } from 'react';
 import { ProgressOverlay } from '@/components/ProgressOverlay';
 import { useProjectSchema } from '@/shared/hooks/useProjectSchema';
+import { useSchemaExportTask } from '@/shared/hooks/useSchemaExportTask';
 import { useLongTask } from '@/shared/tasks/useLongTask';
-import { downloadJSON } from '@/utils/downloadJson';
-import buildExportDoc from './buildExportDoc';
+import { debugLog } from '@/utils/debug';
 import Inner from './Inner';
 
 type Props = {
@@ -15,6 +15,10 @@ type Props = {
   initialItemTypeId: string;
 };
 
+/**
+ * Export entry loaded from the DatoCMS sidebar when a single model kicks off the flow.
+ * Fetches schema resources, shows progress overlays, and renders the main graph view.
+ */
 export default function ExportPage({ ctx, initialItemTypeId }: Props) {
   const schema = useProjectSchema(ctx);
 
@@ -23,16 +27,20 @@ export default function ExportPage({ ctx, initialItemTypeId }: Props) {
   >();
   const [suppressPreparingOverlay, setSuppressPreparingOverlay] =
     useState(false);
-  const [preparingPhase, setPreparingPhase] = useState<'scan' | 'build'>('scan');
+  const [preparingPhase, setPreparingPhase] = useState<'scan' | 'build'>(
+    'scan',
+  );
   const preparingTask = useLongTask();
-  const exportTask = useLongTask();
+  const { task: exportTask, runExport } = useSchemaExportTask({
+    schema,
+    ctx,
+  });
 
   const preparingProgress = preparingTask.state.progress;
   const exportProgress = exportTask.state.progress;
 
   const preparingHasTotals =
-    typeof preparingProgress.total === 'number' &&
-    preparingProgress.total > 0;
+    typeof preparingProgress.total === 'number' && preparingProgress.total > 0;
   // Smoothed visual progress percentage for the preparing overlay.
   // We map the initial scanning phase to 0–25%, then determinate build to 25–100%.
   const [preparingPercent, setPreparingPercent] = useState(0.1);
@@ -85,16 +93,7 @@ export default function ExportPage({ ctx, initialItemTypeId }: Props) {
       const itemType = await schema.getItemTypeById(initialItemTypeId);
       setInitialItemType(itemType);
       if (lastPreparedForId !== initialItemTypeId) {
-        try {
-          if (
-            typeof window !== 'undefined' &&
-            window.localStorage?.getItem('schemaDebug') === '1'
-          ) {
-            console.log(
-              `[ExportPage] preparingBusy -> true (init); initialItemTypeId=${initialItemTypeId}`,
-            );
-          }
-        } catch {}
+        debugLog('ExportPage preparing start', { initialItemTypeId });
         preparingTask.controller.start({
           label: 'Preparing export…',
         });
@@ -106,56 +105,6 @@ export default function ExportPage({ ctx, initialItemTypeId }: Props) {
 
     run();
   }, [schema, initialItemTypeId, lastPreparedForId, preparingTask]);
-
-  async function handleExport(itemTypeIds: string[], pluginIds: string[]) {
-    try {
-      // Initialize progress bar
-      const total = pluginIds.length + itemTypeIds.length * 2;
-      exportTask.controller.start({
-        done: 0,
-        total,
-        label: 'Preparing export…',
-      });
-      let done = 0;
-
-      const exportDoc = await buildExportDoc(
-        schema,
-        initialItemTypeId,
-        itemTypeIds,
-        pluginIds,
-        {
-          onProgress: (label: string) => {
-            done += 1;
-            exportTask.controller.setProgress({ done, total, label });
-          },
-          shouldCancel: () => exportTask.controller.isCancelRequested(),
-        },
-      );
-
-      if (exportTask.controller.isCancelRequested()) {
-        throw new Error('Export cancelled');
-      }
-
-      downloadJSON(exportDoc, { fileName: 'export.json', prettify: true });
-      exportTask.controller.complete({
-        done: total,
-        total,
-        label: 'Export completed',
-      });
-      ctx.notice('Export completed successfully.');
-    } catch (e) {
-      console.error('Export failed', e);
-      if (e instanceof Error && e.message === 'Export cancelled') {
-        exportTask.controller.complete({ label: 'Export cancelled' });
-        ctx.notice('Export canceled');
-      } else {
-        exportTask.controller.fail(e);
-        ctx.alert('Could not complete the export. Please try again.');
-      }
-    } finally {
-      exportTask.controller.reset();
-    }
-  }
 
   if (!initialItemType) {
     return (
@@ -171,81 +120,79 @@ export default function ExportPage({ ctx, initialItemTypeId }: Props) {
     <Canvas ctx={ctx} noAutoResizer>
       <ReactFlowProvider>
         <Inner
-            key={initialItemTypeId}
-            initialItemTypes={[initialItemType]}
-            schema={schema}
-            onExport={handleExport}
-            onPrepareProgress={(p) => {
-              if (preparingTask.state.status !== 'running') {
-                preparingTask.controller.start(p);
-              } else {
-                preparingTask.controller.setProgress(p);
+          key={initialItemTypeId}
+          initialItemTypes={[initialItemType]}
+          schema={schema}
+          onExport={(itemTypeIds, pluginIds) =>
+            runExport({
+              rootItemTypeId: initialItemTypeId,
+              itemTypeIds,
+              pluginIds,
+            })
+          }
+          onPrepareProgress={(p) => {
+            if (preparingTask.state.status !== 'running') {
+              preparingTask.controller.start(p);
+            } else {
+              preparingTask.controller.setProgress(p);
+            }
+            setPreparingPhase(p.phase ?? 'scan');
+            const phase = p.phase ?? 'scan';
+            const hasTotals = (p.total ?? 0) > 0;
+            if (phase === 'scan') {
+              if (hasTotals) {
+                const raw = Math.max(0, Math.min(1, p.done / p.total));
+                // Map scan to [0.05, 0.85]; keep monotonic
+                const mapped = 0.05 + raw * 0.8;
+                setPreparingPercent((prev) =>
+                  Math.max(prev, Math.min(0.88, mapped)),
+                );
               }
-              setPreparingPhase(p.phase ?? 'scan');
-              const phase = p.phase ?? 'scan';
-              const hasTotals = (p.total ?? 0) > 0;
-              if (phase === 'scan') {
-                if (hasTotals) {
-                  const raw = Math.max(0, Math.min(1, p.done / p.total));
-                  // Map scan to [0.05, 0.85]; keep monotonic
-                  const mapped = 0.05 + raw * 0.8;
-                  setPreparingPercent((prev) =>
-                    Math.max(prev, Math.min(0.88, mapped)),
-                  );
-                }
-                // else: heartbeat drives percent
-              } else {
-                if (hasTotals) {
-                  const raw = Math.max(0, Math.min(1, p.done / p.total));
-                  // Map build to [0.85, 1.00]; keep monotonic
-                  const mapped = 0.85 + raw * 0.15;
-                  setPreparingPercent((prev) =>
-                    Math.max(prev, Math.min(1, mapped)),
-                  );
-                }
+              // else: heartbeat drives percent
+            } else {
+              if (hasTotals) {
+                const raw = Math.max(0, Math.min(1, p.done / p.total));
+                // Map build to [0.85, 1.00]; keep monotonic
+                const mapped = 0.85 + raw * 0.15;
+                setPreparingPercent((prev) =>
+                  Math.max(prev, Math.min(1, mapped)),
+                );
               }
-            }}
-            onGraphPrepared={() => {
-              try {
-                if (
-                  typeof window !== 'undefined' &&
-                  window.localStorage?.getItem('schemaDebug') === '1'
-                ) {
-                  console.log(
-                    '[ExportPage] onGraphPrepared -> preparingBusy false',
-                  );
-                }
-              } catch {}
-              setPreparingPercent(1);
-              preparingTask.controller.complete({
-                label: 'Graph prepared',
-              });
-              setSuppressPreparingOverlay(false);
-              setPreparingPhase('build');
-            }}
-            installedPluginIds={installedPluginIds}
-            onSelectingDependenciesChange={(busy) => {
-              // Hide overlay during dependency expansion; release when graph is prepared
-              if (busy) {
-                setSuppressPreparingOverlay(true);
-              }
-            }}
-          />
-      </ReactFlowProvider>
-      {preparingTask.state.status === 'running' && !suppressPreparingOverlay && (
-        <ProgressOverlay
-          title="Preparing export"
-          subtitle="Sit tight, we’re setting up your models, blocks, and plugins…"
-          ariaLabel="Preparing export"
-          progress={{
-            label: preparingProgress.label ?? 'Preparing export…',
-            done: preparingProgress.done,
-            total: preparingProgress.total,
-            percentOverride: preparingPercent,
+            }
           }}
-          stallCurrent={preparingProgress.done}
+          onGraphPrepared={() => {
+            debugLog('ExportPage graph prepared');
+            setPreparingPercent(1);
+            preparingTask.controller.complete({
+              label: 'Graph prepared',
+            });
+            setSuppressPreparingOverlay(false);
+            setPreparingPhase('build');
+          }}
+          installedPluginIds={installedPluginIds}
+          onSelectingDependenciesChange={(busy) => {
+            // Hide overlay during dependency expansion; release when graph is prepared
+            if (busy) {
+              setSuppressPreparingOverlay(true);
+            }
+          }}
         />
-      )}
+      </ReactFlowProvider>
+      {preparingTask.state.status === 'running' &&
+        !suppressPreparingOverlay && (
+          <ProgressOverlay
+            title="Preparing export"
+            subtitle="Sit tight, we’re setting up your models, blocks, and plugins…"
+            ariaLabel="Preparing export"
+            progress={{
+              label: preparingProgress.label ?? 'Preparing export…',
+              done: preparingProgress.done,
+              total: preparingProgress.total,
+              percentOverride: preparingPercent,
+            }}
+            stallCurrent={preparingProgress.done}
+          />
+        )}
       {exportTask.state.status === 'running' && (
         <ProgressOverlay
           title="Exporting selection"

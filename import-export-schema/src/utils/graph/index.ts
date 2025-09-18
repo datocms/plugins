@@ -1,3 +1,4 @@
+// Re-export graph helpers for convenient multi-file imports.
 export * from './analysis';
 export * from './buildGraph';
 export * from './buildHierarchyNodes';
