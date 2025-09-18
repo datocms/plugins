@@ -1,6 +1,7 @@
 import type { ComponentProps } from 'react';
 import type { SchemaTypes } from '@datocms/cma-client';
-import { ExportStartPanel } from '@/components/ExportStartPanel';
+import { ExportLandingPanel } from '@/components/ExportLandingPanel';
+import { ExportSelectionPanel } from '@/components/ExportSelectionPanel';
 import ExportInner from '../ExportPage/Inner';
 import type { ProjectSchema } from '@/utils/ProjectSchema';
 
@@ -8,15 +9,19 @@ export type ExportWorkflowPrepareProgress = Parameters<
   NonNullable<ComponentProps<typeof ExportInner>['onPrepareProgress']>
 >[0];
 
+export type ExportWorkflowView = 'landing' | 'selection' | 'graph';
+
 type Props = {
   projectSchema: ProjectSchema;
-  exportStarted: boolean;
+  view: ExportWorkflowView;
   exportInitialSelectId: string;
   allItemTypes?: SchemaTypes.ItemType[];
   exportInitialItemTypeIds: string[];
   exportInitialItemTypes: SchemaTypes.ItemType[];
   setSelectedIds: (ids: string[]) => void;
-  onStart: () => void;
+  onShowSelection: () => void;
+  onBackToLanding: () => void;
+  onStartSelection: () => void;
   onExportAll: () => void;
   exportAllDisabled: boolean;
   onGraphPrepared: () => void;
@@ -30,13 +35,15 @@ type Props = {
  */
 export function ExportWorkflow({
   projectSchema,
-  exportStarted,
+  view,
   exportInitialSelectId,
   allItemTypes,
   exportInitialItemTypeIds,
   exportInitialItemTypes,
   setSelectedIds,
-  onStart,
+  onShowSelection,
+  onBackToLanding,
+  onStartSelection,
   onExportAll,
   exportAllDisabled,
   onGraphPrepared,
@@ -44,18 +51,32 @@ export function ExportWorkflow({
   onClose,
   onExportSelection,
 }: Props) {
-  if (!exportStarted) {
+  if (view === 'graph') {
     return (
       <div className="blank-slate">
-        <ExportStartPanel
+        <ExportInner
+          initialItemTypes={exportInitialItemTypes}
+          schema={projectSchema}
+          onGraphPrepared={onGraphPrepared}
+          onPrepareProgress={onPrepareProgress}
+          onClose={onClose}
+          onExport={onExportSelection}
+        />
+      </div>
+    );
+  }
+
+  if (view === 'selection') {
+    return (
+      <div className="blank-slate">
+        <ExportSelectionPanel
           selectId={exportInitialSelectId}
           itemTypes={allItemTypes}
           selectedIds={exportInitialItemTypeIds}
           onSelectedIdsChange={setSelectedIds}
-          onStart={onStart}
+          onStart={onStartSelection}
+          onBack={onBackToLanding}
           startDisabled={exportInitialItemTypeIds.length === 0}
-          onExportAll={onExportAll}
-          exportAllDisabled={exportAllDisabled}
         />
       </div>
     );
@@ -63,13 +84,10 @@ export function ExportWorkflow({
 
   return (
     <div className="blank-slate">
-      <ExportInner
-        initialItemTypes={exportInitialItemTypes}
-        schema={projectSchema}
-        onGraphPrepared={onGraphPrepared}
-        onPrepareProgress={onPrepareProgress}
-        onClose={onClose}
-        onExport={onExportSelection}
+      <ExportLandingPanel
+        onSelectModels={onShowSelection}
+        onExportAll={onExportAll}
+        exportAllDisabled={exportAllDisabled}
       />
     </div>
   );

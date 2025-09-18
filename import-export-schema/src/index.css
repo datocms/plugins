@@ -948,6 +948,15 @@ button.chip:focus-visible {
   width: 100%;
 }
 
+.export-landing__actions {
+  display: grid;
+  gap: var(--spacing-m);
+}
+
+.export-landing__actions button {
+  width: 100%;
+}
+
 .export-selector__actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -958,9 +967,6 @@ button.chip:focus-visible {
   width: 100%;
 }
 
-.export-selector__cta button {
-  width: 100%;
-}
 
 .import__graph,
 .import__details {

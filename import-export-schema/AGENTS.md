@@ -13,7 +13,7 @@
 ## Coding Style & Naming Conventions
 - Language stack: TypeScript + React 18 with Vite.
 - Follow Biome defaults (2-space indent, single quotes, sorted imports). Run `npm run format` prior to commits.
-- Use PascalCase for components (`ExportStartPanel.tsx`), camelCase for functions/variables, and PascalCase for types/interfaces.
+- Use PascalCase for components (`ExportLandingPanel.tsx`), camelCase for functions/variables, and PascalCase for types/interfaces.
 - Prefer CSS modules; reference class names via `styles.<name>` and reuse design tokens from `datocms-react-ui`.
 
 ## Security & Configuration Tips

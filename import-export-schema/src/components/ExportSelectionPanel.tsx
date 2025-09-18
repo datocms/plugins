@@ -14,41 +14,40 @@ type Props = {
   selectedIds: string[];
   onSelectedIdsChange: (ids: string[]) => void;
   onStart: () => void;
+  onBack: () => void;
   startDisabled: boolean;
-  onExportAll: () => void | Promise<void>;
-  exportAllDisabled: boolean;
   title?: string;
   description?: string;
   selectLabel?: string;
   startLabel?: string;
-  exportAllLabel?: string;
+  backLabel?: string;
 };
 
 /**
- * Blank-slate panel that lets editors pick the starting set of models/blocks and kick
- * off either a targeted or full-schema export.
+ * Secondary step of the export flow that lets editors pick targeted models/blocks
+ * before jumping into the dependency graph.
  */
-export function ExportStartPanel({
+export function ExportSelectionPanel({
   selectId,
   itemTypes,
   selectedIds,
   onSelectedIdsChange,
   onStart,
+  onBack,
   startDisabled,
-  onExportAll,
-  exportAllDisabled,
-  title = 'Start a new export',
-  description = 'Select one or more models/blocks to start selecting what to export.',
+  title = 'Select models to export',
+  description =
+    'Choose the models and blocks you want to inspect. You can refine the selection on the next screen.',
   selectLabel = 'Starting models/blocks',
-  startLabel = 'Export Selected',
-  exportAllLabel = 'Export entire schema',
+  startLabel = 'Export selection',
+  backLabel = 'Back',
 }: Props) {
   const options = useMemo<MultiOption[]>(
     () =>
-      (itemTypes ?? []).map((it) => ({
-        value: it.id,
-        label: `${it.attributes.name}${
-          it.attributes.modular_block ? ' (Block)' : ''
+      (itemTypes ?? []).map((itemType) => ({
+        value: itemType.id,
+        label: `${itemType.attributes.name}${
+          itemType.attributes.modular_block ? ' (Block)' : ''
         }`,
       })),
     [itemTypes],
@@ -56,7 +55,7 @@ export function ExportStartPanel({
 
   // React-Select expects objects; keep them memoized so the control stays controlled.
   const value = useMemo(
-    () => options.filter((opt) => selectedIds.includes(opt.value)),
+    () => options.filter((option) => selectedIds.includes(option.value)),
     [options, selectedIds],
   );
 
@@ -81,31 +80,17 @@ export function ExportStartPanel({
               value={value}
               onChange={(multi) =>
                 onSelectedIdsChange(
-                  Array.isArray(multi) ? multi.map((o) => o.value) : [],
+                  Array.isArray(multi) ? multi.map((option) => option.value) : [],
                 )
               }
             />
           </div>
-          <div className="export-selector__cta">
-            <Button
-              buttonType="primary"
-              disabled={startDisabled}
-              onClick={onStart}
-            >
-              {startLabel}
+          <div className="export-selector__actions">
+            <Button buttonType="muted" buttonSize="s" onClick={onBack}>
+              {backLabel}
             </Button>
-          </div>
-          <div className="export-selector__cta">
-            <Button
-              buttonSize="s"
-              buttonType="muted"
-              fullWidth
-              disabled={exportAllDisabled}
-              onClick={() => {
-                void onExportAll();
-              }}
-            >
-              {exportAllLabel}
+            <Button buttonType="primary" disabled={startDisabled} onClick={onStart}>
+              {startLabel}
             </Button>
           </div>
         </div>

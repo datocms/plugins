@@ -2,7 +2,8 @@ import { ReactFlowProvider } from '@xyflow/react';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import { Canvas } from 'datocms-react-ui';
 import { useId, useState } from 'react';
-import { ExportStartPanel } from '@/components/ExportStartPanel';
+import { ExportLandingPanel } from '@/components/ExportLandingPanel';
+import { ExportSelectionPanel } from '@/components/ExportSelectionPanel';
 import { TaskOverlayStack } from '@/components/TaskOverlayStack';
 import { useExportAllHandler } from '@/shared/hooks/useExportAllHandler';
 import { useExportSelection } from '@/shared/hooks/useExportSelection';
@@ -15,15 +16,15 @@ type Props = {
   ctx: RenderPageCtx;
 };
 
+type ExportView = 'landing' | 'selection' | 'graph';
+
 /**
- * Landing page for the export workflow. Guides the user from the initial selection
- * state into the detailed graph view while coordinating the long-running tasks.
+ * Landing page for the export workflow. Guides the user from the initial action
+ * choice into the detailed graph view while coordinating the long-running tasks.
  */
 export default function ExportHome({ ctx }: Props) {
   const exportInitialSelectId = useId();
   const projectSchema = useProjectSchema(ctx);
-
-  // adminDomain and post-export overview removed; we download and toast only
 
   const {
     allItemTypes,
@@ -32,7 +33,7 @@ export default function ExportHome({ ctx }: Props) {
     setSelectedIds: setExportInitialItemTypeIds,
   } = useExportSelection({ schema: projectSchema });
 
-  const [exportStarted, setExportStarted] = useState(false);
+  const [view, setView] = useState<ExportView>('landing');
 
   const exportAllTask = useLongTask();
   const exportPreparingTask = useLongTask();
@@ -51,78 +52,93 @@ export default function ExportHome({ ctx }: Props) {
     task: exportAllTask.controller,
   });
 
-  const handleStartExport = () => {
+  const handleStartSelection = () => {
+    if (exportInitialItemTypeIds.length === 0) {
+      return;
+    }
     exportPreparingTask.controller.start({
       label: 'Preparing export…',
     });
     setExportPreparingPercent(0.1);
-    setExportStarted(true);
+    setView('graph');
   };
+
+  let body: JSX.Element;
+
+  if (view === 'graph') {
+    body = (
+      <ExportInner
+        initialItemTypes={exportInitialItemTypes}
+        schema={projectSchema}
+        onGraphPrepared={() => {
+          setExportPreparingPercent(1);
+          exportPreparingTask.controller.complete({
+            label: 'Graph prepared',
+          });
+        }}
+        onPrepareProgress={(progress) => {
+          if (exportPreparingTask.state.status !== 'running') {
+            exportPreparingTask.controller.start(progress);
+          } else {
+            exportPreparingTask.controller.setProgress(progress);
+          }
+
+          const hasFixedTotal = (progress.total ?? 0) > 0;
+          const raw = hasFixedTotal ? progress.done / progress.total : 0;
+
+          if (!hasFixedTotal) {
+            setExportPreparingPercent((prev) =>
+              Math.min(0.25, Math.max(prev, prev + 0.02)),
+            );
+          } else {
+            const mapped = 0.25 + raw * 0.75;
+            setExportPreparingPercent((prev) =>
+              Math.max(prev, Math.min(1, mapped)),
+            );
+          }
+        }}
+        onClose={() => {
+          setView('selection');
+          setExportPreparingPercent(0.1);
+          exportPreparingTask.controller.reset();
+        }}
+        onExport={(itemTypeIds, pluginIds) =>
+          runSelectionExport({
+            rootItemTypeId: exportInitialItemTypeIds[0],
+            itemTypeIds,
+            pluginIds,
+          })
+        }
+      />
+    );
+  } else if (view === 'selection') {
+    body = (
+      <ExportSelectionPanel
+        selectId={exportInitialSelectId}
+        itemTypes={allItemTypes}
+        selectedIds={exportInitialItemTypeIds}
+        onSelectedIdsChange={setExportInitialItemTypeIds}
+        onStart={handleStartSelection}
+        onBack={() => setView('landing')}
+        startDisabled={exportInitialItemTypeIds.length === 0}
+      />
+    );
+  } else {
+    body = (
+      <ExportLandingPanel
+        onSelectModels={() => setView('selection')}
+        onExportAll={runExportAll}
+        exportAllDisabled={exportAllTask.state.status === 'running'}
+      />
+    );
+  }
 
   return (
     <Canvas ctx={ctx}>
       <ReactFlowProvider>
         <div className="page">
           <div className="page__content">
-            <div className="blank-slate">
-              {!exportStarted ? (
-                <ExportStartPanel
-                  selectId={exportInitialSelectId}
-                  itemTypes={allItemTypes}
-                  selectedIds={exportInitialItemTypeIds}
-                  onSelectedIdsChange={setExportInitialItemTypeIds}
-                  onStart={handleStartExport}
-                  startDisabled={exportInitialItemTypeIds.length === 0}
-                  onExportAll={runExportAll}
-                  exportAllDisabled={exportAllTask.state.status === 'running'}
-                />
-              ) : (
-                <ExportInner
-                  initialItemTypes={exportInitialItemTypes}
-                  schema={projectSchema}
-                  onGraphPrepared={() => {
-                    setExportPreparingPercent(1);
-                    exportPreparingTask.controller.complete({
-                      label: 'Graph prepared',
-                    });
-                  }}
-                  onPrepareProgress={(p) => {
-                    // ensure overlay shows determinate progress
-                    if (exportPreparingTask.state.status !== 'running') {
-                      exportPreparingTask.controller.start(p);
-                    } else {
-                      exportPreparingTask.controller.setProgress(p);
-                    }
-                    const hasFixedTotal = (p.total ?? 0) > 0;
-                    const raw = hasFixedTotal ? p.done / p.total : 0;
-                    if (!hasFixedTotal) {
-                      // Indeterminate scanning: gently advance up to 25%
-                      setExportPreparingPercent((prev) =>
-                        Math.min(0.25, Math.max(prev, prev + 0.02)),
-                      );
-                    } else {
-                      // Determinate build: map to [0.25, 1]
-                      const mapped = 0.25 + raw * 0.75;
-                      setExportPreparingPercent((prev) =>
-                        Math.max(prev, Math.min(1, mapped)),
-                      );
-                    }
-                  }}
-                  onClose={() => {
-                    // Return to selection screen with current picks preserved
-                    setExportStarted(false);
-                    exportPreparingTask.controller.reset();
-                  }}
-                  onExport={(itemTypeIds, pluginIds) =>
-                    runSelectionExport({
-                      rootItemTypeId: exportInitialItemTypeIds[0],
-                      itemTypeIds,
-                      pluginIds,
-                    })
-                  }
-                />
-              )}
-            </div>
+            <div className="blank-slate">{body}</div>
           </div>
         </div>
       </ReactFlowProvider>

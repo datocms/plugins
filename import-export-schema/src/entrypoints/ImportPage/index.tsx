@@ -11,7 +11,7 @@ import { useSchemaExportTask } from '@/shared/hooks/useSchemaExportTask';
 import { useLongTask, type UseLongTaskResult } from '@/shared/tasks/useLongTask';
 import type { ExportDoc } from '@/utils/types';
 import { ExportSchema } from '../ExportPage/ExportSchema';
-import { ExportWorkflow, type ExportWorkflowPrepareProgress } from './ExportWorkflow';
+import { ExportWorkflow, type ExportWorkflowPrepareProgress, type ExportWorkflowView } from './ExportWorkflow';
 import { ImportWorkflow } from './ImportWorkflow';
 import { buildImportDoc } from './buildImportDoc';
 import type { Resolutions } from './ResolutionsForm';
@@ -83,7 +83,7 @@ export function ImportPage({
   const [exportSchema, setExportSchema] = useState<
     [string, ExportSchema] | undefined
   >();
-  const [exportStarted, setExportStarted] = useState(false);
+  const [exportView, setExportView] = useState<ExportWorkflowView>('landing');
 
   const projectSchema = useProjectSchema(ctx);
   const client = projectSchema.client;
@@ -97,6 +97,11 @@ export function ImportPage({
       ctx,
     });
   const conflictsTask = useLongTask();
+
+  useEffect(() => {
+    setExportView('landing');
+    exportPreparingTask.controller.reset();
+  }, [mode, exportPreparingTask.controller]);
 
   const {
     allItemTypes,
@@ -153,12 +158,19 @@ export function ImportPage({
     task: exportAllTask.controller,
   });
 
+  const handleShowExportSelection = useCallback(() => {
+    setExportView('selection');
+  }, []);
+
   const handleStartExportSelection = useCallback(() => {
+    if (exportInitialItemTypeIds.length === 0) {
+      return;
+    }
     exportPreparingTask.controller.start({
       label: 'Preparing export…',
     });
-    setExportStarted(true);
-  }, [exportPreparingTask.controller]);
+    setExportView('graph');
+  }, [exportInitialItemTypeIds, exportPreparingTask.controller]);
 
   const handleExportGraphPrepared = useCallback(() => {
     exportPreparingTask.controller.complete({
@@ -178,7 +190,12 @@ export function ImportPage({
   );
 
   const handleExportClose = useCallback(() => {
-    setExportStarted(false);
+    setExportView('selection');
+    exportPreparingTask.controller.reset();
+  }, [exportPreparingTask.controller]);
+
+  const handleBackToLanding = useCallback(() => {
+    setExportView('landing');
     exportPreparingTask.controller.reset();
   }, [exportPreparingTask.controller]);
 
@@ -337,13 +354,15 @@ export function ImportPage({
             ) : (
               <ExportWorkflow
                 projectSchema={projectSchema}
-                exportStarted={exportStarted}
+                view={exportView}
                 exportInitialSelectId={exportInitialSelectId}
                 allItemTypes={allItemTypes}
                 exportInitialItemTypeIds={exportInitialItemTypeIds}
                 exportInitialItemTypes={exportInitialItemTypes}
                 setSelectedIds={setExportInitialItemTypeIds}
-                onStart={handleStartExportSelection}
+                onShowSelection={handleShowExportSelection}
+                onBackToLanding={handleBackToLanding}
+                onStartSelection={handleStartExportSelection}
                 onExportAll={runExportAll}
                 exportAllDisabled={exportAllTask.state.status === 'running'}
                 onGraphPrepared={handleExportGraphPrepared}

@@ -77,7 +77,7 @@ Powerful, safe schema migration for DatoCMS. Export models/blocks and plugins as
   - `useExportGraph`, `useExportAllHandler`, and `useConflictsBuilder` encapsulate schema loading logic.
 - Shared UI:
   - `ProgressOverlay` renders the full-screen overlay with accessible ARIA props and cancel handling.
-  - `ExportStartPanel` powers the initial export selector in both ExportHome and ImportPage.
+  - `ExportLandingPanel` and `ExportSelectionPanel` handle the two-step export start flow in both ExportHome and ImportPage.
 - Graph utilities expose a single entry point (`@/utils/graph`) with `SchemaProgressUpdate` progress typing.
 
 ## Export File Format
