@@ -5,9 +5,14 @@ import type { ISchemaSource } from './ISchemaSource';
 /** Adapts the live CMA-backed project schema to the generic graph interface. */
 export class ProjectSchemaSource implements ISchemaSource {
   private schema: ProjectSchema;
+  private cachedPluginIds?: Set<string>;
 
-  constructor(schema: ProjectSchema) {
+  constructor(
+    schema: ProjectSchema,
+    options: { installedPluginIds?: Set<string> } = {},
+  ) {
     this.schema = schema;
+    this.cachedPluginIds = options.installedPluginIds;
   }
 
   async getItemTypeById(id: string): Promise<SchemaTypes.ItemType> {
@@ -25,7 +30,11 @@ export class ProjectSchemaSource implements ISchemaSource {
   }
 
   async getKnownPluginIds(): Promise<Set<string>> {
+    if (this.cachedPluginIds) {
+      return this.cachedPluginIds;
+    }
     const plugins = await this.schema.getAllPlugins();
-    return new Set(plugins.map((p) => p.id));
+    this.cachedPluginIds = new Set(plugins.map((p) => p.id));
+    return this.cachedPluginIds;
   }
 }

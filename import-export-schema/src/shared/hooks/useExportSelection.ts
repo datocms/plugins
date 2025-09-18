@@ -1,5 +1,5 @@
 import type { SchemaTypes } from '@datocms/cma-client';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { isDefined } from '@/utils/isDefined';
 import type { ProjectSchema } from '@/utils/ProjectSchema';
 
@@ -13,8 +13,6 @@ type UseExportSelectionResult = {
   selectedIds: string[];
   selectedItemTypes: SchemaTypes.ItemType[];
   setSelectedIds: (ids: string[]) => void;
-  selectAllModels: () => void;
-  selectAllBlocks: () => void;
 };
 
 /**
@@ -71,36 +69,10 @@ export function useExportSelection({
     );
   }, [enabled, itemTypesById, selectedIds.join('-')]);
 
-  const selectAllModels = useCallback(() => {
-    if (!allItemTypes) {
-      return;
-    }
-
-    setSelectedIds(
-      allItemTypes
-        .filter((it) => !it.attributes.modular_block)
-        .map((it) => it.id),
-    );
-  }, [allItemTypes]);
-
-  const selectAllBlocks = useCallback(() => {
-    if (!allItemTypes) {
-      return;
-    }
-
-    setSelectedIds(
-      allItemTypes
-        .filter((it) => it.attributes.modular_block)
-        .map((it) => it.id),
-    );
-  }, [allItemTypes]);
-
   return {
     allItemTypes,
     selectedIds,
     selectedItemTypes,
     setSelectedIds,
-    selectAllModels,
-    selectAllBlocks,
   };
 }

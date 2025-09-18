@@ -23,8 +23,11 @@ export async function buildGraphFromSchema({
   selectedItemTypeIds,
   schema,
   onProgress,
+  installedPluginIds,
 }: Options): Promise<Graph> {
-  const source = new ProjectSchemaSource(schema);
+  const source = new ProjectSchemaSource(schema, {
+    installedPluginIds,
+  });
   return buildGraph({
     source,
     initialItemTypes,

@@ -30,8 +30,6 @@ export default function ExportHome({ ctx }: Props) {
     selectedIds: exportInitialItemTypeIds,
     selectedItemTypes: exportInitialItemTypes,
     setSelectedIds: setExportInitialItemTypeIds,
-    selectAllModels: handleSelectAllModels,
-    selectAllBlocks: handleSelectAllBlocks,
   } = useExportSelection({ schema: projectSchema });
 
   const [exportStarted, setExportStarted] = useState(false);
@@ -73,8 +71,6 @@ export default function ExportHome({ ctx }: Props) {
                   itemTypes={allItemTypes}
                   selectedIds={exportInitialItemTypeIds}
                   onSelectedIdsChange={setExportInitialItemTypeIds}
-                  onSelectAllModels={handleSelectAllModels}
-                  onSelectAllBlocks={handleSelectAllBlocks}
                   onStart={handleStartExport}
                   startDisabled={exportInitialItemTypeIds.length === 0}
                   onExportAll={runExportAll}

@@ -916,7 +916,7 @@ button.chip:focus-visible {
   border: 1px solid var(--border-color);
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
   border-radius: 4px;
-  max-width: 600px;
+  width: 750px;
   padding: var(--spacing-xxl);
   /* Ensure some breathing room from toolbar/top */
   margin-top: var(--spacing-xl);

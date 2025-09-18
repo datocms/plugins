@@ -5,7 +5,7 @@
 ### Export: Start From Selection
 - Launch Export page with no preselected item type.
 - Select one or more models/blocks via multiselect.
-- Press `Start export` and wait for graph to render.
+- Press `Export Selected` and wait for graph to render.
 - Toggle dependency selection; confirm auto-selection adds linked models/plugins.
 - Export selection; expect download named `export.json` and success toast.
 

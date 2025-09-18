@@ -13,15 +13,12 @@ type Props = {
   itemTypes?: SchemaTypes.ItemType[];
   selectedIds: string[];
   onSelectedIdsChange: (ids: string[]) => void;
-  onSelectAllModels: () => void;
-  onSelectAllBlocks: () => void;
   onStart: () => void;
   startDisabled: boolean;
   onExportAll: () => void | Promise<void>;
   exportAllDisabled: boolean;
   title?: string;
   description?: string;
-  footerHint?: string;
   selectLabel?: string;
   startLabel?: string;
   exportAllLabel?: string;
@@ -36,17 +33,14 @@ export function ExportStartPanel({
   itemTypes,
   selectedIds,
   onSelectedIdsChange,
-  onSelectAllModels,
-  onSelectAllBlocks,
   onStart,
   startDisabled,
   onExportAll,
   exportAllDisabled,
   title = 'Start a new export',
   description = 'Select one or more models/blocks to start selecting what to export.',
-  footerHint,
   selectLabel = 'Starting models/blocks',
-  startLabel = 'Start export',
+  startLabel = 'Export Selected',
   exportAllLabel = 'Export entire schema',
 }: Props) {
   const options = useMemo<MultiOption[]>(
@@ -92,14 +86,6 @@ export function ExportStartPanel({
               }
             />
           </div>
-          <div className="export-selector__actions">
-            <Button buttonSize="s" onClick={onSelectAllModels}>
-              Select all models
-            </Button>
-            <Button buttonSize="s" onClick={onSelectAllBlocks}>
-              Select all blocks
-            </Button>
-          </div>
           <div className="export-selector__cta">
             <Button
               buttonType="primary"
@@ -124,9 +110,6 @@ export function ExportStartPanel({
           </div>
         </div>
       </div>
-      {footerHint ? (
-        <div className="blank-slate__body__outside">{footerHint}</div>
-      ) : null}
     </div>
   );
 }
