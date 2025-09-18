@@ -18,7 +18,7 @@ export function useExportAllHandler({ ctx, schema, task }: Options) {
   return useCallback(async () => {
     try {
       const confirmation = await ctx.openConfirm({
-        title: 'Export entire current schema?',
+        title: 'Export entire schema?',
         content:
           'This will export all models, block models, and plugins in the current environment as a single JSON file.',
         choices: [

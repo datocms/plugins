@@ -37,7 +37,7 @@ Powerful, safe schema migration for DatoCMS. Export models/blocks and plugins as
 - For large projects the graph is replaced with a fast list view.
 
 - Export the entire schema (one click)
-  - From Schema > Export, choose “Export entire current schema” to include all models/blocks and plugins.
+  - From Schema > Export, choose “Export entire schema” to include all models/blocks and plugins.
   - A progress overlay appears with a cancel button and a stall notice if rate limited; the JSON is downloaded when done.
 
 - After export

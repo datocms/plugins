@@ -16,7 +16,7 @@
 - Trigger cancel during export; verify notice and overlay update.
 
 ### Export: Entire Schema
-- On Export landing, choose `Export entire current schema`.
+- On Export landing, choose `Export entire schema`.
 - Confirm confirmation dialog text.
 - Ensure overlay tracks progress and cancel immediately hides overlay while still cancelling.
 - Validate success toast when done, or graceful alert if schema empty.

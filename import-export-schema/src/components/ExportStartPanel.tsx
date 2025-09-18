@@ -47,7 +47,7 @@ export function ExportStartPanel({
   footerHint,
   selectLabel = 'Starting models/blocks',
   startLabel = 'Start export',
-  exportAllLabel = 'Export entire current schema',
+  exportAllLabel = 'Export entire schema',
 }: Props) {
   const options = useMemo<MultiOption[]>(
     () =>
