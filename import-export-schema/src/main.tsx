@@ -6,7 +6,8 @@ import { Spinner } from 'datocms-react-ui';
 import { lazy, Suspense } from 'react';
 import { render } from '@/utils/render';
 
-// Lazy-load entrypoints to reduce initial bundle size
+// Lazy-load entrypoints so the iframe boots with only the shared shell.
+// Each page chunk loads on demand, keeping initial bundles lighter and first render quicker.
 const LazyConfig = lazy(() =>
   import('./entrypoints/Config').then((m) => ({ default: m.Config })),
 );
@@ -27,9 +28,11 @@ connect({
     ];
   },
   async executeSchemaItemTypeDropdownAction(_id, itemType, ctx) {
-    ctx.navigateTo(
-      `${ctx.isEnvironmentPrimary ? '' : `/environments/${ctx.environment}`}/configuration/p/${ctx.plugin.id}/pages/export?itemTypeId=${itemType.id}`,
-    );
+    const environmentPrefix = ctx.isEnvironmentPrimary ? '' : `/environments/${ctx.environment}`;
+    const exportPagePath = `/configuration/p/${ctx.plugin.id}/pages/export`;
+    const navigateUrl = `${environmentPrefix}${exportPagePath}?itemTypeId=${itemType.id}`;
+
+    ctx.navigateTo(navigateUrl);
   },
   settingsAreaSidebarItemGroups() {
     return [
@@ -51,10 +54,12 @@ connect({
     ];
   },
   renderPage(pageId, ctx) {
+    // All page renders may include an itemTypeId query param when navigating from a schema dropdown.
     const params = new URLSearchParams(ctx.location.search);
     const itemTypeId = params.get('itemTypeId');
 
     if (pageId === 'import') {
+      // Direct navigation to the import page always boots the import screen in import-only mode.
       return render(
         <Suspense fallback={<Spinner size={60} placement="centered" />}>
           <LazyImportPage ctx={ctx} initialMode="import" hideModeToggle />
@@ -64,13 +69,14 @@ connect({
 
     if (pageId === 'export') {
       if (itemTypeId) {
+        // Export triggered from a specific item type skips the landing step and hydrates the export page.
         return render(
           <Suspense fallback={<Spinner size={60} placement="centered" />}>
             <LazyExportPage ctx={ctx} initialItemTypeId={itemTypeId} />
           </Suspense>,
         );
       }
-      // Export landing with selection flow
+      // Bare export navigation shows the landing page so the user can choose what to export.
       return render(
         <Suspense fallback={<Spinner size={60} placement="centered" />}>
           <LazyExportHome ctx={ctx} />
@@ -78,7 +84,7 @@ connect({
       );
     }
 
-    // Fallback for legacy pageId
+    // Unknown page IDs fall back to the import screen to preserve legacy deep links.
     return render(
       <Suspense fallback={<Spinner size={60} placement="centered" />}>
         <LazyImportPage ctx={ctx} initialMode="import" hideModeToggle />

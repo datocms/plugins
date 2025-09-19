@@ -25,9 +25,10 @@ function Link({ href, children }: { href: string; children: ReactNode }) {
 
 /** Configuration screen shown in Settings → Plugins. */
 export function Config({ ctx }: Props) {
-  const schemaUrl = `${ctx.isEnvironmentPrimary ? '' : `/environments/${ctx.environment}`}/schema`;
-  const importUrl = `${ctx.isEnvironmentPrimary ? '' : `/environments/${ctx.environment}`}/configuration/p/${ctx.plugin.id}/pages/import`;
-  const exportUrl = `${ctx.isEnvironmentPrimary ? '' : `/environments/${ctx.environment}`}/configuration/p/${ctx.plugin.id}/pages/export`;
+  const environmentPath = ctx.isEnvironmentPrimary ? '' : `/environments/${ctx.environment}`;
+  const schemaUrl = `${environmentPath}/schema`;
+  const importUrl = `${environmentPath}/configuration/p/${ctx.plugin.id}/pages/import`;
+  const exportUrl = `${environmentPath}/configuration/p/${ctx.plugin.id}/pages/export`;
 
   return (
     <Canvas ctx={ctx}>
