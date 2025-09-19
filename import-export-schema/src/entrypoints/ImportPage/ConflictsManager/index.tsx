@@ -1,8 +1,8 @@
 import type { SchemaTypes } from '@datocms/cma-client';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
-import { Button } from 'datocms-react-ui';
-import { defaults, groupBy, map, mapValues, sortBy } from 'lodash-es';
-import { useContext, useMemo } from 'react';
+import { Button, SwitchInput } from 'datocms-react-ui';
+import { get } from 'lodash-es';
+import { useContext, useMemo, useState } from 'react';
 import { useFormState } from 'react-final-form';
 import type { ExportSchema } from '@/entrypoints/ExportPage/ExportSchema';
 import { getTextWithoutRepresentativeEmojiAndPadding } from '@/utils/emojiAgnosticSorter';
@@ -10,6 +10,18 @@ import type { ProjectSchema } from '@/utils/ProjectSchema';
 import { ConflictsContext } from './ConflictsContext';
 import { ItemTypeConflict } from './ItemTypeConflict';
 import { PluginConflict } from './PluginConflict';
+
+const localeAwareCollator = new Intl.Collator(undefined, {
+  sensitivity: 'base',
+  numeric: true,
+});
+
+function sortEntriesByDisplayName<T>(
+  items: T[],
+  getName: (item: T) => string,
+) {
+  return [...items].sort((a, b) => localeAwareCollator.compare(getName(a), getName(b)));
+}
 
 type Props = {
   exportSchema: ExportSchema;
@@ -26,180 +38,304 @@ export default function ConflictsManager({
   schema: _schema,
 }: Props) {
   const conflicts = useContext(ConflictsContext);
-  const { submitting, valid, validating } = useFormState({
+  const [showOnlyConflicts, setShowOnlyConflicts] = useState(false);
+  const formState = useFormState({
     subscription: {
       submitting: true,
       valid: true,
       validating: true,
+      values: true,
+      errors: true,
     },
   });
+  const {
+    submitting,
+    valid,
+    validating,
+    values: formValues = {},
+    errors: formErrors = {},
+  } = formState as {
+    submitting: boolean;
+    valid: boolean;
+    validating: boolean;
+    values: Record<string, unknown>;
+    errors: Record<string, unknown>;
+  };
+
+  type ItemTypeEntry = {
+    exportItemType: SchemaTypes.ItemType;
+    projectItemType?: SchemaTypes.ItemType;
+  };
+
+  type PluginEntry = {
+    exportPlugin: SchemaTypes.Plugin;
+    projectPlugin?: SchemaTypes.Plugin;
+  };
 
   const groupedItemTypes = useMemo(() => {
+    const empty: Record<'blocks' | 'models', ItemTypeEntry[]> = {
+      blocks: [],
+      models: [],
+    };
+
     if (!conflicts) {
-      return { blocks: [], models: [] };
+      return empty;
     }
 
-    return defaults(
-      mapValues(
-        groupBy(
-          map(
-            conflicts.itemTypes,
-            (
-              projectItemType: SchemaTypes.ItemType,
-              exportItemTypeId: string,
-            ) => {
-              const exportItemType =
-                exportSchema.getItemTypeById(exportItemTypeId);
-              return { exportItemTypeId, exportItemType, projectItemType };
-            },
-          ),
-          ({ exportItemType }: { exportItemType: SchemaTypes.ItemType }) =>
-            exportItemType?.attributes.modular_block ? 'blocks' : 'models',
-        ),
-        (group: Array<{ exportItemType: SchemaTypes.ItemType }>) =>
-          sortBy(
-            group,
-            ({ exportItemType }: { exportItemType: SchemaTypes.ItemType }) =>
-              getTextWithoutRepresentativeEmojiAndPadding(
-                exportItemType.attributes.name,
-              ),
-          ),
-      ),
+    const entries: ItemTypeEntry[] = exportSchema.itemTypes.map(
+      (exportItemType) => ({
+        exportItemType,
+        projectItemType: conflicts.itemTypes[String(exportItemType.id)] ?? undefined,
+      }),
+    );
+
+    const grouped = entries.reduce<Record<'blocks' | 'models', ItemTypeEntry[]>>(
+      (accumulator, entry) => {
+        const key: 'blocks' | 'models' = entry.exportItemType.attributes
+          .modular_block
+          ? 'blocks'
+          : 'models';
+        accumulator[key].push(entry);
+        return accumulator;
+      },
       { blocks: [], models: [] },
     );
+
+    const sortByStatusThenName = (items: ItemTypeEntry[]) =>
+      sortEntriesByDisplayName(
+        [...items].sort((a, b) => {
+          const aHasConflict = Boolean(a.projectItemType);
+          const bHasConflict = Boolean(b.projectItemType);
+          if (aHasConflict === bHasConflict) {
+            return 0;
+          }
+          return aHasConflict ? -1 : 1;
+        }),
+        (entry) =>
+          getTextWithoutRepresentativeEmojiAndPadding(
+            entry.exportItemType.attributes.name,
+          ),
+      );
+
+    return {
+      blocks: sortByStatusThenName(grouped.blocks),
+      models: sortByStatusThenName(grouped.models),
+    };
   }, [conflicts, exportSchema]);
 
-  // Deterministic sorting keeps plugin conflicts stable between renders.
-  const sortedPlugins = useMemo(() => {
+  // Deterministic sorting keeps plugin ordering stable between renders.
+  const pluginEntries = useMemo<PluginEntry[]>(() => {
     if (!conflicts) {
-      return [] as Array<{
-        exportPluginId: string;
-        exportPlugin: SchemaTypes.Plugin;
-        projectPlugin: SchemaTypes.Plugin;
-      }>;
+      return [];
     }
 
-    return sortBy(
-      map(
-        conflicts.plugins,
-        (projectPlugin: SchemaTypes.Plugin, exportPluginId: string) => {
-          const exportPlugin = exportSchema.getPluginById(exportPluginId);
-          return { exportPluginId, exportPlugin, projectPlugin };
-        },
-      ),
-      ({ exportPlugin }: { exportPlugin: SchemaTypes.Plugin }) =>
-        exportPlugin.attributes.name,
+    const entries: PluginEntry[] = exportSchema.plugins.map((exportPlugin) => ({
+      exportPlugin,
+      projectPlugin: conflicts.plugins[String(exportPlugin.id)] ?? undefined,
+    }));
+
+    const conflictFirst = [...entries].sort((a, b) => {
+      const aHasConflict = Boolean(a.projectPlugin);
+      const bHasConflict = Boolean(b.projectPlugin);
+      if (aHasConflict === bHasConflict) {
+        return 0;
+      }
+      return aHasConflict ? -1 : 1;
+    });
+
+    return sortEntriesByDisplayName(
+      conflictFirst,
+      (entry) =>
+        getTextWithoutRepresentativeEmojiAndPadding(
+          entry.exportPlugin.attributes.name,
+        ),
     );
   }, [conflicts, exportSchema]);
+
+  function isItemTypeConflictUnresolved(
+    exportItemType: SchemaTypes.ItemType,
+    projectItemType?: SchemaTypes.ItemType,
+  ) {
+    if (!projectItemType) {
+      return false;
+    }
+
+    const fieldPrefix = `itemType-${exportItemType.id}`;
+    const strategy = get(formValues, [fieldPrefix, 'strategy']);
+    const hasErrors = Boolean(get(formErrors, [fieldPrefix]));
+
+    if (!strategy) {
+      return true;
+    }
+
+    if (hasErrors) {
+      return true;
+    }
+
+    if (strategy === 'rename') {
+      const name = get(formValues, [fieldPrefix, 'name']);
+      const apiKey = get(formValues, [fieldPrefix, 'apiKey']);
+      return !(name && apiKey);
+    }
+
+    if (strategy === 'reuseExisting') {
+      return false;
+    }
+
+    return true;
+  }
+
+  function isPluginConflictUnresolved(
+    exportPlugin: SchemaTypes.Plugin,
+    projectPlugin?: SchemaTypes.Plugin,
+  ) {
+    if (!projectPlugin) {
+      return false;
+    }
+
+    const fieldPrefix = `plugin-${exportPlugin.id}`;
+    const strategy = get(formValues, [fieldPrefix, 'strategy']);
+    const hasErrors = Boolean(get(formErrors, [fieldPrefix]));
+
+    if (!strategy) {
+      return true;
+    }
+
+    if (hasErrors) {
+      return true;
+    }
+
+    return false;
+  }
+
+  const visibleModels = groupedItemTypes.models.filter(({
+    exportItemType,
+    projectItemType,
+  }) =>
+    showOnlyConflicts
+      ? isItemTypeConflictUnresolved(exportItemType, projectItemType)
+      : true,
+  );
+
+  const visibleBlocks = groupedItemTypes.blocks.filter(({
+    exportItemType,
+    projectItemType,
+  }) =>
+    showOnlyConflicts
+      ? isItemTypeConflictUnresolved(exportItemType, projectItemType)
+      : true,
+  );
+
+  const visiblePlugins = pluginEntries.filter(({ exportPlugin, projectPlugin }) =>
+    showOnlyConflicts
+      ? isPluginConflictUnresolved(exportPlugin, projectPlugin)
+      : true,
+  );
 
   if (!conflicts) {
     return null;
   }
 
   const itemTypeConflictCount =
-    groupedItemTypes.blocks.length + groupedItemTypes.models.length;
-  const pluginConflictCount = sortedPlugins.length;
+    groupedItemTypes.blocks.filter(({ projectItemType }) => projectItemType)
+      .length +
+    groupedItemTypes.models.filter(({ projectItemType }) => projectItemType)
+      .length;
+  const pluginConflictCount = pluginEntries.filter(
+    ({ projectPlugin }) => projectPlugin,
+  ).length;
 
-  const noPotentialConflicts =
-    itemTypeConflictCount === 0 && pluginConflictCount === 0;
+  const hasConflicts =
+    itemTypeConflictCount > 0 || pluginConflictCount > 0;
 
   return (
     <div className="page">
       <div className="conflicts-manager__actions">
-        <div style={{ fontWeight: 700, fontSize: '16px' }}>
-          Import conflicts
-        </div>
+        <div style={{ fontWeight: 700, fontSize: '16px' }}>Schema overview</div>
+        <label
+          htmlFor="schema-overview-only-conflicts"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px',
+            marginTop: '10px',
+            fontSize: '12px',
+            color: 'var(--light-body-color)',
+            cursor: 'pointer',
+          }}
+        >
+          <SwitchInput
+            id="schema-overview-only-conflicts"
+            name="schema-overview-only-conflicts"
+            value={showOnlyConflicts}
+            onChange={(nextValue) => setShowOnlyConflicts(nextValue)}
+            aria-label="Show only unresolved conflicts"
+          />
+          <span>Show only unresolved conflicts</span>
+        </label>
       </div>
       <div className="page__content">
-        {noPotentialConflicts ? (
+        {!hasConflicts && (
           <div className="surface" style={{ padding: '24px' }}>
             <p style={{ margin: 0 }}>
               All set — no conflicting models, blocks, or plugins were found in
               this import.
             </p>
           </div>
-        ) : (
-          <div>
-            {groupedItemTypes.models.length > 0 && (
-              <div className="conflicts-manager__group">
-                <div className="conflicts-manager__group__title">
-                  Models ({groupedItemTypes.models.length})
-                </div>
-                <div className="conflicts-manager__group__content">
-                  {groupedItemTypes.models.map(
-                    ({
-                      exportItemTypeId,
-                      exportItemType,
-                      projectItemType,
-                    }: {
-                      exportItemTypeId: string;
-                      exportItemType: SchemaTypes.ItemType;
-                      projectItemType: SchemaTypes.ItemType;
-                    }) => (
-                      <ItemTypeConflict
-                        key={exportItemTypeId}
-                        exportItemType={exportItemType}
-                        projectItemType={projectItemType}
-                      />
-                    ),
-                  )}
-                </div>
-              </div>
-            )}
+        )}
 
-            {groupedItemTypes.blocks.length > 0 && (
-              <div className="conflicts-manager__group">
-                <div className="conflicts-manager__group__title">
-                  Block models ({groupedItemTypes.blocks.length})
-                </div>
-                <div className="conflicts-manager__group__content">
-                  {groupedItemTypes.blocks.map(
-                    ({
-                      exportItemTypeId,
-                      exportItemType,
-                      projectItemType,
-                    }: {
-                      exportItemTypeId: string;
-                      exportItemType: SchemaTypes.ItemType;
-                      projectItemType: SchemaTypes.ItemType;
-                    }) => (
-                      <ItemTypeConflict
-                        key={exportItemTypeId}
-                        exportItemType={exportItemType}
-                        projectItemType={projectItemType}
-                      />
-                    ),
-                  )}
-                </div>
-              </div>
-            )}
+        {visibleModels.length > 0 && (
+          <div className="conflicts-manager__group">
+            <div className="conflicts-manager__group__title">
+              Models ({visibleModels.length})
+            </div>
+            <div className="conflicts-manager__group__content">
+              {visibleModels.map(
+                ({ exportItemType, projectItemType }) => (
+                  <ItemTypeConflict
+                    key={exportItemType.id}
+                    exportItemType={exportItemType}
+                    projectItemType={projectItemType}
+                  />
+                ),
+              )}
+            </div>
+          </div>
+        )}
 
-            {sortedPlugins.length > 0 && (
-              <div className="conflicts-manager__group">
-                <div className="conflicts-manager__group__title">
-                  Plugins ({sortedPlugins.length})
-                </div>
-                <div className="conflicts-manager__group__content">
-                  {sortedPlugins.map(
-                    ({
-                      exportPluginId,
-                      exportPlugin,
-                      projectPlugin,
-                    }: {
-                      exportPluginId: string;
-                      exportPlugin: SchemaTypes.Plugin;
-                      projectPlugin: SchemaTypes.Plugin;
-                    }) => (
-                      <PluginConflict
-                        key={exportPluginId}
-                        exportPlugin={exportPlugin}
-                        projectPlugin={projectPlugin}
-                      />
-                    ),
-                  )}
-                </div>
-              </div>
-            )}
+        {visibleBlocks.length > 0 && (
+          <div className="conflicts-manager__group">
+            <div className="conflicts-manager__group__title">
+              Block models ({visibleBlocks.length})
+            </div>
+            <div className="conflicts-manager__group__content">
+              {visibleBlocks.map(
+                ({ exportItemType, projectItemType }) => (
+                  <ItemTypeConflict
+                    key={exportItemType.id}
+                    exportItemType={exportItemType}
+                    projectItemType={projectItemType}
+                  />
+                ),
+              )}
+            </div>
+          </div>
+        )}
+
+        {visiblePlugins.length > 0 && (
+          <div className="conflicts-manager__group">
+            <div className="conflicts-manager__group__title">
+              Plugins ({visiblePlugins.length})
+            </div>
+            <div className="conflicts-manager__group__content">
+              {visiblePlugins.map(({ exportPlugin, projectPlugin }) => (
+                <PluginConflict
+                  key={exportPlugin.id}
+                  exportPlugin={exportPlugin}
+                  projectPlugin={projectPlugin}
+                />
+              ))}
+            </div>
           </div>
         )}
       </div>

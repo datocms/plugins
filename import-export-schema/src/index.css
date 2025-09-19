@@ -985,17 +985,39 @@ button.chip:focus-visible {
   /* Slightly tighter padding for redesigned conflicts UI */
 }
 
+
 .conflict {
   border-bottom: 1px solid var(--border-color);
 
   &.conflict--selected {
-    border-top: 8px solid var(--border-color);
-    border-bottom: 8px solid var(--border-color);
+    border-top: 4px solid var(--border-color);
+    border-bottom: 4px solid var(--border-color);
   }
 
   &:first-child {
     border-top: 1px solid var(--border-color);
   }
+}
+
+.conflict--has-conflict {
+  border: 1px solid rgba(217, 48, 37, 0.22);
+  border-radius: 8px;
+  background: rgba(217, 48, 37, 0.04);
+  margin: 2px 0;
+}
+
+.conflict--has-conflict.conflict--selected {
+  border-top: 1px solid rgba(217, 48, 37, 0.22);
+  border-bottom: 1px solid rgba(217, 48, 37, 0.22);
+  background: rgba(217, 48, 37, 0.06);
+}
+
+.conflict--has-conflict:first-child {
+  border-top: 1px solid rgba(217, 48, 37, 0.22);
+}
+
+.conflict--has-conflict + .conflict {
+  border-top: 1px solid var(--border-color);
 }
 
 .conflict__title {
@@ -1011,6 +1033,36 @@ button.chip:focus-visible {
   align-items: center;
   color: var(--base-body-color);
   padding: 10px 12px;
+}
+
+.conflict--has-conflict .conflict__title {
+  color: color-mix(in srgb, var(--base-body-color), #6d1f16 35%);
+}
+
+.conflict__title__text {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: inherit;
+}
+
+.conflict__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #a0312a;
+  background-color: rgba(217, 48, 37, 0.12);
+}
+
+.conflict__badge svg {
+  width: 12px;
+  height: 12px;
 }
 
 .conflict__content {
