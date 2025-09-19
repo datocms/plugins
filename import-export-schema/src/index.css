@@ -1124,6 +1124,13 @@ button.chip:focus-visible {
 
 .schema-overview__category {
   margin: 24px 0;
+  padding-top: 12px;
+}
+
+.schema-overview__category--selected {
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 16px;
+  margin-bottom: 24px;
 }
 
 .schema-overview__category__title {

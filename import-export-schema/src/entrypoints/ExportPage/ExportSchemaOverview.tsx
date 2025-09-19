@@ -1,6 +1,7 @@
 import type { SchemaTypes } from '@datocms/cma-client';
-import { Spinner } from 'datocms-react-ui';
-import { useMemo } from 'react';
+import { Spinner, SwitchInput } from 'datocms-react-ui';
+import { useMemo, useState } from 'react';
+import classNames from 'classnames';
 import Collapsible from '@/components/SchemaOverview/Collapsible';
 import type { ItemTypeNode } from '@/components/ItemTypeNodeRenderer';
 import type { PluginNode } from '@/components/PluginNodeRenderer';
@@ -165,9 +166,11 @@ function renderPluginGroup(
 function SchemaOverviewCategory({
   title,
   groups,
+  className,
 }: {
   title: string;
   groups: Array<JSX.Element | null>;
+  className?: string;
 }) {
   const filteredGroups = groups.filter(
     (group): group is JSX.Element => Boolean(group),
@@ -177,7 +180,7 @@ function SchemaOverviewCategory({
   }
 
   return (
-    <div className="schema-overview__category">
+    <div className={classNames('schema-overview__category', className)}>
       <div className="schema-overview__category__title">{title}</div>
       {filteredGroups}
     </div>
@@ -189,6 +192,7 @@ export function ExportSchemaOverview({
   selectedItemTypeIds,
   selectedPluginIds,
 }: Props) {
+  const [showOnlySelected, setShowOnlySelected] = useState(false);
   const groupedItemTypes = useMemo<GroupedItemTypes>(() => {
     const empty: GroupedItemTypes = {
       models: { selected: [], unselected: [] },
@@ -303,19 +307,21 @@ export function ExportSchemaOverview({
     renderPluginGroup('Plugins', pluginBuckets.selected, 'selected-plugins'),
   ];
 
-  const unselectedGroups = [
-    renderItemTypeGroup(
-      'Models',
-      groupedItemTypes.models.unselected,
-      'unselected-models',
-    ),
-    renderItemTypeGroup(
-      'Block models',
-      groupedItemTypes.blocks.unselected,
-      'unselected-blocks',
-    ),
-    renderPluginGroup('Plugins', pluginBuckets.unselected, 'unselected-plugins'),
-  ];
+  const unselectedGroups = showOnlySelected
+    ? []
+    : [
+        renderItemTypeGroup(
+          'Models',
+          groupedItemTypes.models.unselected,
+          'unselected-models',
+        ),
+        renderItemTypeGroup(
+          'Block models',
+          groupedItemTypes.blocks.unselected,
+          'unselected-blocks',
+        ),
+        renderPluginGroup('Plugins', pluginBuckets.unselected, 'unselected-plugins'),
+      ];
 
   return (
     <div className="page">
@@ -327,6 +333,29 @@ export function ExportSchemaOverview({
           <span>{unselectedCount} not selected</span>
         </div>
       </div>
+      <div className="conflicts-manager__actions" style={{ paddingTop: 0 }}>
+        <label
+          htmlFor="schema-overview-only-selected"
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px',
+            marginTop: '10px',
+            fontSize: '12px',
+            color: 'var(--light-body-color)',
+            cursor: 'pointer',
+          }}
+        >
+          <SwitchInput
+            id="schema-overview-only-selected"
+            name="schema-overview-only-selected"
+            value={showOnlySelected}
+            onChange={(nextValue) => setShowOnlySelected(nextValue)}
+            aria-label="Show only selected exports"
+          />
+          <span>Show only selected exports</span>
+        </label>
+      </div>
       <div className="page__content">
         {selectedCount === 0 && unselectedCount === 0 ? (
           <div className="surface" style={{ padding: '24px' }}>
@@ -337,8 +366,15 @@ export function ExportSchemaOverview({
           </div>
         ) : null}
 
-        <SchemaOverviewCategory title="Selected exports" groups={selectedGroups} />
-        <SchemaOverviewCategory title="Unselected exports" groups={unselectedGroups} />
+        <SchemaOverviewCategory
+          title="Selected exports"
+          className="schema-overview__category--selected"
+          groups={selectedGroups}
+        />
+        <SchemaOverviewCategory
+          title="Unselected exports"
+          groups={unselectedGroups}
+        />
       </div>
     </div>
   );
