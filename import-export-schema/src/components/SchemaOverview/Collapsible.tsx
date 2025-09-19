@@ -7,7 +7,7 @@ import {
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import classNames from 'classnames';
 import { type ReactNode, useContext, useEffect, useRef } from 'react';
-import { SelectedEntityContext } from '../SelectedEntityContext';
+import { SelectedEntityContext } from './SelectedEntityContext';
 
 type Props = {
   entity: SchemaTypes.ItemType | SchemaTypes.Plugin;
@@ -15,6 +15,7 @@ type Props = {
   hasConflict?: boolean;
   title: ReactNode;
   children: ReactNode;
+  className?: string;
 };
 
 /**
@@ -26,6 +27,7 @@ export default function Collapsible({
   hasConflict = false,
   title,
   children,
+  className,
 }: Props) {
   const elRef = useRef<HTMLDivElement>(null);
 
@@ -53,6 +55,7 @@ export default function Collapsible({
         isSelected && 'conflict--selected',
         invalid && 'conflict--invalid',
         hasConflict && 'conflict--has-conflict',
+        className,
       )}
       ref={elRef}
     >

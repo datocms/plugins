@@ -969,7 +969,9 @@ button.chip:focus-visible {
 
 
 .import__graph,
-.import__details {
+.import__details,
+.export__graph,
+.export__details {
   position: absolute;
   top: 0;
   left: 0;
@@ -978,11 +980,19 @@ button.chip:focus-visible {
   overflow: auto;
 }
 
-.import__details {
+.import__details,
+.export__details {
   border-left: 1px solid var(--border-color);
   box-sizing: border-box;
   background: #fff;
   /* Slightly tighter padding for redesigned conflicts UI */
+}
+
+.export__graph-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 5;
 }
 
 
@@ -1067,6 +1077,103 @@ button.chip:focus-visible {
 
 .conflict__content {
   padding: 12px 16px; /* reduce inner padding for a tighter look */
+}
+
+.schema-overview__summary {
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--light-body-color);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.schema-overview__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.schema-overview__title__name {
+  font-weight: inherit;
+}
+
+.schema-overview__title__meta {
+  color: var(--light-body-color);
+  font-size: 12px;
+}
+
+.schema-overview__status {
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 2px 8px;
+  text-transform: none;
+  letter-spacing: 0.01em;
+}
+
+.schema-overview__status--selected {
+  color: #0f5132;
+  background-color: rgba(25, 135, 84, 0.18);
+}
+
+.schema-overview__status--unselected {
+  color: #4f4f4f;
+  background-color: rgba(79, 79, 79, 0.12);
+}
+
+.schema-overview__category {
+  margin: 24px 0;
+}
+
+.schema-overview__category__title {
+  font-weight: 700;
+  font-size: var(--font-size-m);
+  padding: 0 var(--spacing-l);
+  color: var(--base-body-color);
+  margin-bottom: 6px;
+}
+
+.schema-overview__item {
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  margin: 6px var(--spacing-l);
+  background: #fff;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.schema-overview__item.conflict {
+  border-bottom: none;
+  border-top: none;
+}
+
+.schema-overview__item.conflict:first-child {
+  border-top: none;
+}
+
+.schema-overview__item.conflict + .conflict {
+  border-top: none;
+}
+
+.schema-overview__item .conflict__title {
+  padding: 12px 14px;
+}
+
+.schema-overview__item .conflict__content {
+  padding: 12px 18px 16px;
+}
+
+.schema-overview__item--selected {
+  background: rgba(25, 135, 84, 0.08);
+  border-color: rgba(25, 135, 84, 0.35);
+}
+
+.schema-overview__item--unselected {
+  background: #fff;
+}
+
+.schema-overview__item--unselected .conflict__title {
+  color: var(--base-body-color);
 }
 
 /* Pretty export overlay styles */

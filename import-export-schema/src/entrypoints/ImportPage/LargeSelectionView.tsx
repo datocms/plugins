@@ -4,7 +4,7 @@ import { useContext } from 'react';
 import { findInboundEdges, findOutboundEdges } from '@/utils/graph/analysis';
 import { LargeSelectionLayout } from '@/components/LargeSelectionLayout';
 import type { Graph } from '@/utils/graph/types';
-import { SelectedEntityContext } from './SelectedEntityContext';
+import { SelectedEntityContext } from '@/components/SchemaOverview/SelectedEntityContext';
 import styles from './LargeSelectionView.module.css';
 
 type Props = {

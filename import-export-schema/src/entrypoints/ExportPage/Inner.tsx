@@ -1,5 +1,7 @@
 import type { SchemaTypes } from '@datocms/cma-client';
-import type { NodeMouseHandler, NodeTypes } from '@xyflow/react';
+import { useReactFlow, type NodeMouseHandler, type NodeTypes } from '@xyflow/react';
+import { faXmark } from '@fortawesome/free-solid-svg-icons';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import type { ProjectSchema } from '@/utils/ProjectSchema';
 import '@xyflow/react/dist/style.css';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
@@ -11,10 +13,12 @@ import { GRAPH_NODE_THRESHOLD } from '@/shared/constants/graph';
 import { debugLog } from '@/utils/debug';
 import { expandSelectionWithDependencies } from '@/utils/graph/dependencies';
 import { type AppNode, edgeTypes, type Graph } from '@/utils/graph/types';
+import { SelectedEntityContext } from '@/components/SchemaOverview/SelectedEntityContext';
 import { DependencyActionsPanel } from './DependencyActionsPanel';
 import { EntitiesToExportContext } from './EntitiesToExportContext';
 import { ExportItemTypeNodeRenderer } from './ExportItemTypeNodeRenderer';
 import { ExportPluginNodeRenderer } from './ExportPluginNodeRenderer';
+import { ExportSchemaOverview } from './ExportSchemaOverview';
 import { ExportToolbar } from './ExportToolbar';
 import LargeSelectionView from './LargeSelectionView';
 import { useAnimatedNodes } from './useAnimatedNodes';
@@ -57,6 +61,7 @@ export default function Inner({
   onSelectingDependenciesChange,
 }: Props) {
   const ctx = useCtx<RenderPageCtx>();
+  const { fitBounds, fitView } = useReactFlow();
 
   // Track the current selection while ensuring initial models stay checked.
   const [selectedItemTypeIds, setSelectedItemTypeIds] = useState<string[]>(
@@ -69,6 +74,9 @@ export default function Inner({
     itemTypeIds: Set<string>;
     pluginIds: Set<string>;
   }>({ itemTypeIds: new Set(), pluginIds: new Set() });
+  const [focusedEntity, setFocusedEntity] = useState<
+    SchemaTypes.ItemType | SchemaTypes.Plugin | undefined
+  >(undefined);
 
   const { graph, error, refresh } = useExportGraph({
     initialItemTypes,
@@ -91,6 +99,54 @@ export default function Inner({
     );
     return discovered.size > 0 ? discovered : undefined;
   }, [installedPluginIds, graph]);
+
+  const handleClose = useCallback(() => {
+    if (onClose) {
+      onClose();
+      return;
+    }
+    ctx.navigateTo(
+      `${ctx.isEnvironmentPrimary ? '' : `/environments/${ctx.environment}`}/configuration/p/${ctx.plugin.id}/pages/export`,
+    );
+  }, [ctx, onClose]);
+
+  const handleSelectEntity = useCallback(
+    (
+      newEntity: SchemaTypes.ItemType | SchemaTypes.Plugin | undefined,
+      zoomIn = false,
+    ) => {
+      setFocusedEntity(newEntity);
+
+      if (!zoomIn) {
+        return;
+      }
+
+      if (!graph) {
+        return;
+      }
+
+      if (!newEntity) {
+        fitView({ duration: 800 });
+        return;
+      }
+
+      const node = graph.nodes.find((node) =>
+        newEntity.type === 'plugin'
+          ? node.type === 'plugin' && node.data.plugin.id === newEntity.id
+          : node.type === 'itemType' && node.data.itemType.id === newEntity.id,
+      );
+
+      if (!node) {
+        return;
+      }
+
+      fitBounds(
+        { x: node.position.x, y: node.position.y, width: 200, height: 200 },
+        { duration: 800, padding: 1 },
+      );
+    },
+    [fitBounds, fitView, graph],
+  );
 
   // Overlay is controlled by parent; we signal prepared after each build
 
@@ -117,6 +173,7 @@ export default function Inner({
   const onNodeClick: NodeMouseHandler<AppNode> = useCallback(
     (_, node) => {
       if (node.type === 'itemType') {
+        setFocusedEntity(node.data.itemType);
         if (initialItemTypes.some((it) => `itemType--${it.id}` === node.id)) {
           return;
         }
@@ -129,6 +186,7 @@ export default function Inner({
       }
 
       if (node.type === 'plugin') {
+        setFocusedEntity(node.data.plugin);
         setSelectedPluginIds((old) =>
           old.includes(node.data.plugin.id)
             ? without(old, node.data.plugin.id)
@@ -270,102 +328,150 @@ export default function Inner({
 
   return (
     <div className="page page--export">
-      <ExportToolbar
-        ctx={ctx}
-        initialItemTypes={initialItemTypes}
-        onClose={onClose}
-      />
+      <ExportToolbar initialItemTypes={initialItemTypes} />
       <div className="page__content">
-        <div className="export-wrapper">
-          {!graph && !error ? (
-            <Spinner size={60} placement="centered" />
-          ) : error ? (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                height: '100%',
-                flexDirection: 'column',
-                gap: 12,
-              }}
-            >
-              <div style={{ fontWeight: 600 }}>Could not load export graph</div>
+        <SelectedEntityContext.Provider
+          value={{ entity: focusedEntity, set: handleSelectEntity }}
+        >
+          <div className="export-wrapper">
+            {!graph && !error ? (
+              <Spinner size={60} placement="centered" />
+            ) : error ? (
               <div
-                style={{ color: '#666', maxWidth: 540, textAlign: 'center' }}
-              >
-                {(() => {
-                  const anyErr = error as unknown as {
-                    response?: { status?: number };
-                  };
-                  const status = anyErr?.response?.status;
-                  if (status === 429) {
-                    return "You're being rate-limited by the API (429). Please wait a few seconds and try again.";
-                  }
-                  if (status === 401 || status === 403) {
-                    return 'You do not have permission to load the project schema. Please check your credentials and try again.';
-                  }
-                  if (status && status >= 500) {
-                    return 'The API is temporarily unavailable. Please try again shortly.';
-                  }
-                  return 'An unexpected error occurred while preparing the export. Please try again.';
-                })()}
-              </div>
-              <Button
-                buttonSize="m"
-                onClick={() => {
-                  refresh();
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  height: '100%',
+                  flexDirection: 'column',
+                  gap: 12,
                 }}
               >
-                Retry
-              </Button>
-            </div>
-          ) : (
-            <EntitiesToExportContext.Provider
-              value={{
-                itemTypeIds: selectedItemTypeIds,
-                pluginIds: selectedPluginIds,
-              }}
-            >
-              {showGraph ? (
-                <>
-                  <GraphCanvas
-                    graph={{ nodes: animatedNodes, edges: graph.edges }}
-                    nodeTypes={nodeTypes}
-                    edgeTypes={edgeTypes}
-                    onNodeClick={onNodeClick as unknown as NodeMouseHandler}
-                    style={{ position: 'absolute' }}
-                    fitView
-                  />
-                  <DependencyActionsPanel
-                    selectingDependencies={selectingDependencies}
-                    areAllDependenciesSelected={areAllDependenciesSelected}
-                    selectedItemCount={selectedItemTypeIds.length}
-                    onSelectAllDependencies={handleSelectAllDependencies}
-                    onUnselectAllDependencies={handleUnselectAllDependencies}
-                    onExport={() =>
-                      onExport(selectedItemTypeIds, selectedPluginIds)
+                <div style={{ fontWeight: 600 }}>Could not load export graph</div>
+                <div
+                  style={{ color: '#666', maxWidth: 540, textAlign: 'center' }}
+                >
+                  {(() => {
+                    const anyErr = error as unknown as {
+                      response?: { status?: number };
+                    };
+                    const status = anyErr?.response?.status;
+                    if (status === 429) {
+                      return "You're being rate-limited by the API (429). Please wait a few seconds and try again.";
                     }
-                  />
-                </>
-              ) : (
-                <LargeSelectionView
-                  initialItemTypes={initialItemTypes}
-                  graph={graph as Graph}
-                  selectedItemTypeIds={selectedItemTypeIds}
-                  setSelectedItemTypeIds={setSelectedItemTypeIds}
-                  selectedPluginIds={selectedPluginIds}
-                  setSelectedPluginIds={setSelectedPluginIds}
-                  onExport={onExport}
-                  onSelectAllDependencies={handleSelectAllDependencies}
-                  onUnselectAllDependencies={handleUnselectAllDependencies}
-                  areAllDependenciesSelected={areAllDependenciesSelected}
-                  selectingDependencies={selectingDependencies}
-                />
-              )}
-            </EntitiesToExportContext.Provider>
-          )}
-        </div>
+                    if (status === 401 || status === 403) {
+                      return 'You do not have permission to load the project schema. Please check your credentials and try again.';
+                    }
+                    if (status && status >= 500) {
+                      return 'The API is temporarily unavailable. Please try again shortly.';
+                    }
+                    return 'An unexpected error occurred while preparing the export. Please try again.';
+                  })()}
+                </div>
+                <Button
+                  buttonSize="m"
+                  onClick={() => {
+                    refresh();
+                  }}
+                >
+                  Retry
+                </Button>
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: 'flex',
+                  width: '100%',
+                  height: '100%',
+                }}
+              >
+                <section
+                  style={{
+                    flex: '2 1 0%',
+                    minWidth: 480,
+                    position: 'relative',
+                  }}
+                  aria-label="Export graph panel"
+                >
+                  <div className="export__graph" style={{ position: 'relative', height: '100%' }}>
+                    <div className="export__graph-close">
+                      <Button
+                        type="button"
+                        buttonSize="s"
+                        buttonType="muted"
+                        leftIcon={<FontAwesomeIcon icon={faXmark} />}
+                        onClick={handleClose}
+                      >
+                        Close
+                      </Button>
+                    </div>
+                    <EntitiesToExportContext.Provider
+                      value={{
+                        itemTypeIds: selectedItemTypeIds,
+                        pluginIds: selectedPluginIds,
+                      }}
+                    >
+                      {showGraph ? (
+                        <>
+                          <GraphCanvas
+                            graph={{ nodes: animatedNodes, edges: graph.edges }}
+                            nodeTypes={nodeTypes}
+                            edgeTypes={edgeTypes}
+                            onNodeClick={
+                              onNodeClick as unknown as NodeMouseHandler
+                            }
+                            style={{ width: '100%', height: '100%' }}
+                            fitView
+                          />
+                          <DependencyActionsPanel
+                            selectingDependencies={selectingDependencies}
+                            areAllDependenciesSelected={areAllDependenciesSelected}
+                            selectedItemCount={selectedItemTypeIds.length}
+                            onSelectAllDependencies={handleSelectAllDependencies}
+                            onUnselectAllDependencies={handleUnselectAllDependencies}
+                            onExport={() =>
+                              onExport(selectedItemTypeIds, selectedPluginIds)
+                            }
+                          />
+                        </>
+                      ) : (
+                        <LargeSelectionView
+                          initialItemTypes={initialItemTypes}
+                          graph={graph as Graph}
+                          selectedItemTypeIds={selectedItemTypeIds}
+                          setSelectedItemTypeIds={setSelectedItemTypeIds}
+                          selectedPluginIds={selectedPluginIds}
+                          setSelectedPluginIds={setSelectedPluginIds}
+                          onExport={onExport}
+                          onSelectAllDependencies={handleSelectAllDependencies}
+                          onUnselectAllDependencies={handleUnselectAllDependencies}
+                          areAllDependenciesSelected={areAllDependenciesSelected}
+                          selectingDependencies={selectingDependencies}
+                        />
+                      )}
+                    </EntitiesToExportContext.Provider>
+                  </div>
+                </section>
+                <section
+                  style={{
+                    flex: '1 1 0%',
+                    minWidth: 340,
+                    position: 'relative',
+                  }}
+                  aria-label="Schema overview panel"
+                >
+                  <div className="export__details">
+                    <ExportSchemaOverview
+                      graph={graph}
+                      selectedItemTypeIds={selectedItemTypeIds}
+                      selectedPluginIds={selectedPluginIds}
+                    />
+                  </div>
+                </section>
+              </div>
+            )}
+          </div>
+        </SelectedEntityContext.Provider>
       </div>
     </div>
   );

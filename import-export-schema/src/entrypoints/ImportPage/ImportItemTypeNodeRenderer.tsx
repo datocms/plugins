@@ -7,7 +7,7 @@ import {
 } from '@/components/ItemTypeNodeRenderer';
 import { ConflictsContext } from '@/entrypoints/ImportPage/ConflictsManager/ConflictsContext';
 import { useResolutionStatusForItemType } from '@/entrypoints/ImportPage/ResolutionsForm';
-import { SelectedEntityContext } from '@/entrypoints/ImportPage/SelectedEntityContext';
+import { SelectedEntityContext } from '@/components/SchemaOverview/SelectedEntityContext';
 
 /**
  * Renders import graph item-type nodes, overlaying conflict and resolution state styling.

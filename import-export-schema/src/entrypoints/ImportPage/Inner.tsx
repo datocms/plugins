@@ -17,7 +17,7 @@ import { ImportItemTypeNodeRenderer } from './ImportItemTypeNodeRenderer';
 import { ImportPluginNodeRenderer } from './ImportPluginNodeRenderer';
 import LargeSelectionView from './LargeSelectionView';
 import { useSkippedItemsAndPluginIds } from './ResolutionsForm';
-import { SelectedEntityContext } from './SelectedEntityContext';
+import { SelectedEntityContext } from '@/components/SchemaOverview/SelectedEntityContext';
 
 // Map React Flow node types to the dedicated renderers for import graphs.
 const nodeTypes: NodeTypes = {

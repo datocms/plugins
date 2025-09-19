@@ -5,6 +5,7 @@ import {
   type PluginNode,
   PluginNodeRenderer,
 } from '@/components/PluginNodeRenderer';
+import { SelectedEntityContext } from '@/components/SchemaOverview/SelectedEntityContext';
 import { EntitiesToExportContext } from '@/entrypoints/ExportPage/EntitiesToExportContext';
 
 /**
@@ -14,6 +15,7 @@ export function ExportPluginNodeRenderer(props: NodeProps<PluginNode>) {
   const { plugin } = props.data;
 
   const entitiesToExport = useContext(EntitiesToExportContext);
+  const selectedEntityContext = useContext(SelectedEntityContext);
 
   return (
     <PluginNodeRenderer
@@ -22,6 +24,7 @@ export function ExportPluginNodeRenderer(props: NodeProps<PluginNode>) {
         entitiesToExport &&
           !entitiesToExport.pluginIds.includes(plugin.id) &&
           'app-node--excluded',
+        selectedEntityContext.entity === plugin && 'app-node--focused',
       )}
     />
   );

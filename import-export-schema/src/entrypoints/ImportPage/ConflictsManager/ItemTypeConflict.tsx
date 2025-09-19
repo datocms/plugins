@@ -4,7 +4,7 @@ import { SelectField, TextField } from 'datocms-react-ui';
 import { useId } from 'react';
 import { Field } from 'react-final-form';
 import { useResolutionStatusForItemType } from '../ResolutionsForm';
-import Collapsible from './Collapsible';
+import Collapsible from '@/components/SchemaOverview/Collapsible';
 
 type Option = { label: string; value: string };
 type SelectGroup<OptionType> = {

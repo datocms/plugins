@@ -6,7 +6,7 @@ import {
   PluginNodeRenderer,
 } from '@/components/PluginNodeRenderer';
 import { ConflictsContext } from '@/entrypoints/ImportPage/ConflictsManager/ConflictsContext';
-import { SelectedEntityContext } from '@/entrypoints/ImportPage/SelectedEntityContext';
+import { SelectedEntityContext } from '@/components/SchemaOverview/SelectedEntityContext';
 import { useResolutionStatusForPlugin } from './ResolutionsForm';
 
 export function ImportPluginNodeRenderer(props: NodeProps<PluginNode>) {
