@@ -1,29 +1,22 @@
 import { ReactFlowProvider } from '@xyflow/react';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import { Canvas } from 'datocms-react-ui';
-import { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { TaskOverlayStack } from '@/components/TaskOverlayStack';
 import { useConflictsBuilder } from '@/shared/hooks/useConflictsBuilder';
-import { useExportAllHandler } from '@/shared/hooks/useExportAllHandler';
-import { useExportSelection } from '@/shared/hooks/useExportSelection';
 import { useProjectSchema } from '@/shared/hooks/useProjectSchema';
-import { useSchemaExportTask } from '@/shared/hooks/useSchemaExportTask';
 import { useLongTask, type UseLongTaskResult } from '@/shared/tasks/useLongTask';
 import type { ProjectSchema } from '@/utils/ProjectSchema';
 import type { ExportDoc } from '@/utils/types';
 import { ExportSchema } from '../ExportPage/ExportSchema';
-import { ExportWorkflow, type ExportWorkflowPrepareProgress, type ExportWorkflowView } from './ExportWorkflow';
 import { ImportWorkflow } from './ImportWorkflow';
 import { buildImportDoc } from './buildImportDoc';
 import type { Resolutions } from './ResolutionsForm';
 import { useRecipeLoader } from './useRecipeLoader';
 import importSchema from './importSchema';
 
-type Mode = 'import' | 'export';
-
 type Props = {
   ctx: RenderPageCtx;
-  initialMode?: Mode;
 };
 
 type ImportModeState = {
@@ -43,11 +36,9 @@ type ImportModeState = {
 function useImportMode({
   ctx,
   projectSchema,
-  setMode,
 }: {
   ctx: RenderPageCtx;
   projectSchema: ProjectSchema;
-  setMode: (mode: Mode) => void;
 }): ImportModeState {
   const importTask = useLongTask();
   const conflictsTask = useLongTask();
@@ -66,9 +57,8 @@ function useImportMode({
   const handleRecipeLoaded = useCallback(
     ({ label, schema }: { label: string; schema: ExportSchema }) => {
       setExportSchema([label, schema]);
-      setMode('import');
     },
-    [setMode],
+    [],
   );
 
   const handleRecipeError = useCallback(
@@ -90,13 +80,12 @@ function useImportMode({
       try {
         const schema = new ExportSchema(doc);
         setExportSchema([filename, schema]);
-        setMode('import');
       } catch (error) {
         console.error(error);
         ctx.alert(error instanceof Error ? error.message : 'Invalid export file!');
       }
     },
-    [ctx, setMode],
+    [ctx],
   );
 
   const handleImport = useCallback(
@@ -211,153 +200,11 @@ function useImportMode({
   };
 }
 
-type ExportModeState = {
-  exportInitialSelectId: string;
-  exportView: ExportWorkflowView;
-  allItemTypes: ReturnType<typeof useExportSelection>['allItemTypes'];
-  exportInitialItemTypeIds: string[];
-  exportInitialItemTypes: ReturnType<typeof useExportSelection>['selectedItemTypes'];
-  setSelectedIds: (ids: string[]) => void;
-  runExportAll: () => void;
-  exportAllTask: UseLongTaskResult;
-  exportPreparingTask: UseLongTaskResult;
-  exportSelectionTask: UseLongTaskResult;
-  handleShowExportSelection: () => void;
-  handleBackToLanding: () => void;
-  handleStartExportSelection: () => void;
-  handleExportGraphPrepared: () => void;
-  handleExportPrepareProgress: (progress: ExportWorkflowPrepareProgress) => void;
-  handleExportClose: () => void;
-  handleExportSelection: (itemTypeIds: string[], pluginIds: string[]) => void;
-};
-
-/**
- * Bundles export-specific state so the main component only forwards data to `ExportWorkflow`.
- * This hook manages the selection flow, long tasks, and status transitions required to render
- * landing/selection/graph screens.
- */
-function useExportMode({
-  ctx,
-  projectSchema,
-  mode,
-}: {
-  ctx: RenderPageCtx;
-  projectSchema: ProjectSchema;
-  mode: Mode;
-}): ExportModeState {
-  const exportInitialSelectId = useId();
-  const [exportView, setExportView] = useState<ExportWorkflowView>('landing');
-
-  const exportAllTask = useLongTask();
-  const exportPreparingTask = useLongTask();
-  const { task: exportSelectionTask, runExport: runSelectionExport } =
-    useSchemaExportTask({
-      schema: projectSchema,
-      ctx,
-    });
-
-  const {
-    allItemTypes,
-    selectedIds: exportInitialItemTypeIds,
-    selectedItemTypes: exportInitialItemTypes,
-    setSelectedIds,
-  } = useExportSelection({ schema: projectSchema, enabled: mode === 'export' });
-
-  const runExportAll = useExportAllHandler({
-    ctx,
-    schema: projectSchema,
-    task: exportAllTask.controller,
-  });
-
-  useEffect(() => {
-    setExportView('landing');
-    exportPreparingTask.controller.reset();
-  }, [mode, exportPreparingTask.controller]);
-
-  const handleShowExportSelection = useCallback(() => {
-    setExportView('selection');
-  }, []);
-
-  const handleStartExportSelection = useCallback(() => {
-    if (exportInitialItemTypeIds.length === 0) {
-      return;
-    }
-    exportPreparingTask.controller.start({
-      label: 'Preparing export…',
-    });
-    setExportView('graph');
-  }, [exportInitialItemTypeIds, exportPreparingTask.controller]);
-
-  const handleExportGraphPrepared = useCallback(() => {
-    exportPreparingTask.controller.complete({
-      label: 'Graph prepared',
-    });
-  }, [exportPreparingTask.controller]);
-
-  const handleExportPrepareProgress = useCallback(
-    (progress: ExportWorkflowPrepareProgress) => {
-      if (exportPreparingTask.state.status !== 'running') {
-        exportPreparingTask.controller.start(progress);
-      } else {
-        exportPreparingTask.controller.setProgress(progress);
-      }
-    },
-    [exportPreparingTask.controller, exportPreparingTask.state.status],
-  );
-
-  const handleExportClose = useCallback(() => {
-    setExportView('selection');
-    exportPreparingTask.controller.reset();
-  }, [exportPreparingTask.controller]);
-
-  const handleBackToLanding = useCallback(() => {
-    setExportView('landing');
-    exportPreparingTask.controller.reset();
-  }, [exportPreparingTask.controller]);
-
-  const handleExportSelection = useCallback(
-    (itemTypeIds: string[], pluginIds: string[]) => {
-      if (exportInitialItemTypeIds.length === 0) {
-        return;
-      }
-      runSelectionExport({
-        rootItemTypeId: exportInitialItemTypeIds[0],
-        itemTypeIds,
-        pluginIds,
-      });
-    },
-    [exportInitialItemTypeIds, runSelectionExport],
-  );
-
-  return {
-    exportInitialSelectId,
-    exportView,
-    allItemTypes,
-    exportInitialItemTypeIds,
-    exportInitialItemTypes,
-    setSelectedIds,
-    runExportAll,
-    exportAllTask,
-    exportPreparingTask,
-    exportSelectionTask,
-    handleShowExportSelection,
-    handleBackToLanding,
-    handleStartExportSelection,
-    handleExportGraphPrepared,
-    handleExportPrepareProgress,
-    handleExportClose,
-    handleExportSelection,
-  };
-}
-
 type OverlayItemsArgs = {
   ctx: RenderPageCtx;
   exportSchema: [string, ExportSchema] | undefined;
   importTask: UseLongTaskResult;
-  exportAllTask: UseLongTaskResult;
   conflictsTask: UseLongTaskResult;
-  exportPreparingTask: UseLongTaskResult;
-  exportSelectionTask: UseLongTaskResult;
 };
 
 /**
@@ -368,54 +215,30 @@ function useOverlayItems({
   ctx,
   exportSchema,
   importTask,
-  exportAllTask,
   conflictsTask,
-  exportPreparingTask,
-  exportSelectionTask,
 }: OverlayItemsArgs) {
   return useMemo(
     () => [
       buildImportOverlay(ctx, importTask, exportSchema),
-      buildExportAllOverlay(exportAllTask),
       buildConflictsOverlay(conflictsTask),
-      buildExportPrepOverlay(exportPreparingTask),
-      buildExportSelectionOverlay(exportSelectionTask),
     ],
-    [
-      ctx,
-      exportSchema,
-      importTask,
-      exportAllTask,
-      conflictsTask,
-      exportPreparingTask,
-      exportSelectionTask,
-    ],
+    [ctx, exportSchema, importTask, conflictsTask],
   );
 }
 
 /**
- * Unified Import/Export entrypoint rendered inside the Schema sidebar page. Handles
- * file drops, conflict resolution, and still supports the legacy export view when
- * the page is instantiated in export mode.
+ * Unified import entrypoint rendered inside the Schema sidebar page. Handles file drops
+ * and conflict resolution for schema imports.
  */
-export function ImportPage({
-  ctx,
-  initialMode = 'import',
-}: Props) {
+export function ImportPage({ ctx }: Props) {
   const projectSchema = useProjectSchema(ctx);
-  const [mode, setMode] = useState<Mode>(initialMode);
-
-  const importMode = useImportMode({ ctx, projectSchema, setMode });
-  const exportMode = useExportMode({ ctx, projectSchema, mode });
+  const importMode = useImportMode({ ctx, projectSchema });
 
   const overlayItems = useOverlayItems({
     ctx,
     exportSchema: importMode.exportSchema,
     importTask: importMode.importTask,
-    exportAllTask: exportMode.exportAllTask,
     conflictsTask: importMode.conflictsTask,
-    exportPreparingTask: exportMode.exportPreparingTask,
-    exportSelectionTask: exportMode.exportSelectionTask,
   });
 
   return (
@@ -423,38 +246,15 @@ export function ImportPage({
       <ReactFlowProvider>
         <div className="page">
           <div className="page__content">
-            {mode === 'import' ? (
-              <ImportWorkflow
-                ctx={ctx}
-                projectSchema={projectSchema}
-                exportSchema={importMode.exportSchema}
-                loadingRecipe={importMode.loadingRecipe}
-                conflicts={importMode.conflicts}
-                onDrop={importMode.handleDrop}
-                onImport={importMode.handleImport}
-              />
-            ) : (
-              <ExportWorkflow
-                projectSchema={projectSchema}
-                view={exportMode.exportView}
-                exportInitialSelectId={exportMode.exportInitialSelectId}
-                allItemTypes={exportMode.allItemTypes}
-                exportInitialItemTypeIds={exportMode.exportInitialItemTypeIds}
-                exportInitialItemTypes={exportMode.exportInitialItemTypes}
-                setSelectedIds={exportMode.setSelectedIds}
-                onShowSelection={exportMode.handleShowExportSelection}
-                onBackToLanding={exportMode.handleBackToLanding}
-                onStartSelection={exportMode.handleStartExportSelection}
-                onExportAll={exportMode.runExportAll}
-                exportAllDisabled={
-                  exportMode.exportAllTask.state.status === 'running'
-                }
-                onGraphPrepared={exportMode.handleExportGraphPrepared}
-                onPrepareProgress={exportMode.handleExportPrepareProgress}
-                onClose={exportMode.handleExportClose}
-                onExportSelection={exportMode.handleExportSelection}
-              />
-            )}
+            <ImportWorkflow
+              ctx={ctx}
+              projectSchema={projectSchema}
+              exportSchema={importMode.exportSchema}
+              loadingRecipe={importMode.loadingRecipe}
+              conflicts={importMode.conflicts}
+              onDrop={importMode.handleDrop}
+              onImport={importMode.handleImport}
+            />
           </div>
         </div>
       </ReactFlowProvider>
@@ -519,26 +319,6 @@ function buildImportOverlay(
 }
 
 /**
- * Overlay displayed when the "export everything" action is running.
- */
-function buildExportAllOverlay(exportAllTask: UseLongTaskResult): OverlayConfig {
-  return {
-    id: 'export-all',
-    task: exportAllTask,
-    title: 'Exporting entire schema',
-    subtitle: 'Sit tight, we’re gathering models, blocks, and plugins…',
-    ariaLabel: 'Export in progress',
-    progressLabel: (progress) => progress.label ?? 'Loading project schema…',
-    cancel: () => ({
-      label: 'Cancel export',
-      intent: exportAllTask.state.cancelRequested ? 'muted' : 'negative',
-      disabled: exportAllTask.state.cancelRequested,
-      onCancel: () => exportAllTask.controller.requestCancel(),
-    }),
-  };
-}
-
-/**
  * Overlay used while conflicts between project and recipe are resolved.
  */
 function buildConflictsOverlay(conflictsTask: UseLongTaskResult): OverlayConfig {
@@ -550,41 +330,5 @@ function buildConflictsOverlay(conflictsTask: UseLongTaskResult): OverlayConfig 
     ariaLabel: 'Preparing import',
     progressLabel: (progress) => progress.label ?? 'Preparing import…',
     overlayZIndex: 9998,
-  };
-}
-
-/**
- * Overlay surfaced as the graph view prepares the export content for preview.
- */
-function buildExportPrepOverlay(exportPreparingTask: UseLongTaskResult): OverlayConfig {
-  return {
-    id: 'export-prep',
-    task: exportPreparingTask,
-    title: 'Preparing export',
-    subtitle: 'Sit tight, we’re setting up your models, blocks, and plugins…',
-    ariaLabel: 'Preparing export',
-    progressLabel: (progress) => progress.label ?? 'Preparing export…',
-  };
-}
-
-/**
- * Overlay tied to the selection-based export task started from the graph view.
- */
-function buildExportSelectionOverlay(
-  exportSelectionTask: UseLongTaskResult,
-): OverlayConfig {
-  return {
-    id: 'export-selection',
-    task: exportSelectionTask,
-    title: 'Exporting selection',
-    subtitle: 'Sit tight, we’re gathering models, blocks, and plugins…',
-    ariaLabel: 'Export in progress',
-    progressLabel: (progress) => progress.label ?? 'Preparing export…',
-    cancel: () => ({
-      label: 'Cancel export',
-      intent: exportSelectionTask.state.cancelRequested ? 'muted' : 'negative',
-      disabled: exportSelectionTask.state.cancelRequested,
-      onCancel: () => exportSelectionTask.controller.requestCancel(),
-    }),
   };
 }

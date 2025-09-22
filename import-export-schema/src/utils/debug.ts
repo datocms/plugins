@@ -11,10 +11,6 @@ function readFlag(flag: string): boolean {
   }
 }
 
-export function isDebugFlagEnabled(flag: string = DEFAULT_FLAG): boolean {
-  return readFlag(flag);
-}
-
 export function debugLog(
   message: string,
   payload?: unknown,

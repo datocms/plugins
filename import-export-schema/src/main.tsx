@@ -62,7 +62,7 @@ connect({
       // Direct navigation to the import page always boots the import screen in import-only mode.
       return render(
         <Suspense fallback={<Spinner size={60} placement="centered" />}>
-          <LazyImportPage ctx={ctx} initialMode="import" />
+          <LazyImportPage ctx={ctx} />
         </Suspense>,
       );
     }
@@ -87,7 +87,7 @@ connect({
     // Unknown page IDs fall back to the import screen to preserve legacy deep links.
     return render(
       <Suspense fallback={<Spinner size={60} placement="centered" />}>
-        <LazyImportPage ctx={ctx} initialMode="import" />
+        <LazyImportPage ctx={ctx} />
       </Suspense>,
     );
   },
