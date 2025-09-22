@@ -1,9 +1,11 @@
 import type { SchemaTypes } from '@datocms/cma-client';
 import { Button, Spinner } from 'datocms-react-ui';
 import { useMemo, useState } from 'react';
-import { findInboundEdges, findOutboundEdges } from '@/utils/graph/analysis';
+import { findInboundEdges } from '@/utils/graph/analysis';
 import { LargeSelectionLayout } from '@/components/LargeSelectionLayout';
 import type { Graph } from '@/utils/graph/types';
+import { LargeSelectionColumns } from '@/components/LargeSelectionColumns';
+import sharedStyles from '@/components/LargeSelectionColumns.module.css';
 import styles from './LargeSelectionView.module.css';
 
 type Props = {
@@ -83,164 +85,137 @@ export default function LargeSelectionView({
       searchLabel="Search"
       searchPlaceholder="Filter models and plugins"
       renderContent={({ filteredItemTypeNodes, filteredPluginNodes }) => (
-        <>
-          <section className={`${styles.column} ${styles.modelsColumn}`}>
-            <SectionTitle>Models</SectionTitle>
-            <ul className={styles.list}>
-              {filteredItemTypeNodes.map((node) => {
-                const itemType = node.data.itemType;
-                const locked = initialItemTypeIdSet.has(itemType.id);
-                const checked = selectedItemTypeIds.includes(itemType.id);
-                const inbound = findInboundEdges(
-                  graph,
-                  `itemType--${itemType.id}`,
-                );
-                const outbound = findOutboundEdges(
-                  graph,
-                  `itemType--${itemType.id}`,
-                );
-                const isExpanded = expandedWhy.has(itemType.id);
-                const reasons = findInboundEdges(
-                  graph,
-                  `itemType--${itemType.id}`,
-                  selectedSourceSet,
-                );
+        <LargeSelectionColumns
+          graph={graph}
+          filteredItemTypeNodes={filteredItemTypeNodes}
+          filteredPluginNodes={filteredPluginNodes}
+          renderItemTypeRow={({ node, inboundEdges, outboundEdges }) => {
+            const itemType = node.data.itemType;
+            const locked = initialItemTypeIdSet.has(itemType.id);
+            const checked = selectedItemTypeIds.includes(itemType.id);
+            const isExpanded = expandedWhy.has(itemType.id);
+            const reasons = findInboundEdges(
+              graph,
+              `itemType--${itemType.id}`,
+              selectedSourceSet,
+            );
 
-                return (
-                  <li key={itemType.id} className={styles.listItem}>
-                    <div className={styles.modelRow}>
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        disabled={locked}
-                        aria-label={`Select ${itemType.attributes.name}`}
-                        onChange={() => toggleItemType(itemType.id)}
-                        className={styles.checkbox}
-                      />
-                      <div className={styles.modelInfo}>
-                        <div className={styles.modelTitle}>
-                          {itemType.attributes.name}{' '}
-                          <span className={styles.apikey}>
-                            (<code>{itemType.attributes.api_key}</code>)
-                          </span>{' '}
-                          <span className={styles.badge}>
-                            {itemType.attributes.modular_block
-                              ? 'Block'
-                              : 'Model'}
-                          </span>
-                        </div>
-                        <div className={styles.relationships}>
-                          <span title="Incoming relations">
-                            ← {inbound.length} inbound
-                          </span>{' '}
-                          •{' '}
-                          <span title="Outgoing relations">
-                            → {outbound.length} outbound
-                          </span>
-                        </div>
-                      </div>
-                      <div className={styles.actions}>
-                        {reasons.length > 0 ? (
-                          <Button
-                            type="button"
-                            buttonType="muted"
-                            buttonSize="s"
-                            onClick={() => toggleWhy(itemType.id)}
-                          >
-                            {isExpanded
-                              ? 'Hide why included'
-                              : 'Why included?'}
-                          </Button>
-                        ) : null}
-                      </div>
+            return (
+              <li key={itemType.id} className={sharedStyles.listItem}>
+                <div className={styles.modelRow}>
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={locked}
+                    aria-label={`Select ${itemType.attributes.name}`}
+                    onChange={() => toggleItemType(itemType.id)}
+                    className={styles.checkbox}
+                  />
+                  <div className={styles.modelInfo}>
+                    <div className={styles.modelTitle}>
+                      {itemType.attributes.name}{' '}
+                      <span className={sharedStyles.apikey}>
+                        (<code>{itemType.attributes.api_key}</code>)
+                      </span>{' '}
+                      <span className={sharedStyles.badge}>
+                        {itemType.attributes.modular_block ? 'Block' : 'Model'}
+                      </span>
                     </div>
-                    {isExpanded && reasons.length > 0 ? (
-                      <div className={styles.whyPanel}>
-                        <div className={styles.whyTitle}>Included because:</div>
-                        <ul className={styles.whyList}>
-                          {reasons.map((edge) => {
-                            const sourceNode = graph.nodes.find(
-                              (nd) => nd.id === edge.source,
-                            );
-                            if (!sourceNode) return null;
-                            const sourceItemType =
-                              sourceNode.type === 'itemType'
-                                ? sourceNode.data.itemType
-                                : undefined;
-                            return (
-                              <li key={edge.id} className={styles.whyListItem}>
-                                {sourceItemType ? (
-                                  <>
-                                    Selected model{' '}
-                                    <strong>
-                                      {sourceItemType.attributes.name}
-                                    </strong>{' '}
-                                    references it via fields:{' '}
-                                    <FieldsList
-                                      fields={
-                                        (edge.data?.fields ??
-                                          []) as SchemaTypes.Field[]
-                                      }
-                                    />
-                                  </>
-                                ) : (
-                                  <>
-                                    Referenced in fields:{' '}
-                                    <FieldsList
-                                      fields={
-                                        (edge.data?.fields ??
-                                          []) as SchemaTypes.Field[]
-                                      }
-                                    />
-                                  </>
-                                )}
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      </div>
+                    <div className={sharedStyles.relationships}>
+                      <span title="Incoming relations">
+                        ← {inboundEdges.length} inbound
+                      </span>{' '}
+                      •{' '}
+                      <span title="Outgoing relations">
+                        → {outboundEdges.length} outbound
+                      </span>
+                    </div>
+                  </div>
+                  <div className={styles.actions}>
+                    {reasons.length > 0 ? (
+                      <Button
+                        type="button"
+                        buttonType="muted"
+                        buttonSize="s"
+                        onClick={() => toggleWhy(itemType.id)}
+                      >
+                        {isExpanded ? 'Hide why included' : 'Why included?'}
+                      </Button>
                     ) : null}
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-          <section className={`${styles.column} ${styles.pluginsColumn}`}>
-            <SectionTitle>Plugins</SectionTitle>
-            <ul className={styles.list}>
-              {filteredPluginNodes.map((node) => {
-                const plugin = node.data.plugin;
-                const checked = selectedPluginIds.includes(plugin.id);
-                const inbound = findInboundEdges(
-                  graph,
-                  `plugin--${plugin.id}`,
-                );
+                  </div>
+                </div>
+                {isExpanded && reasons.length > 0 ? (
+                  <div className={styles.whyPanel}>
+                    <div className={styles.whyTitle}>Included because:</div>
+                    <ul className={styles.whyList}>
+                      {reasons.map((edge) => {
+                        const sourceNode = graph.nodes.find(
+                          (nd) => nd.id === edge.source,
+                        );
+                        if (!sourceNode) return null;
+                        const sourceItemType =
+                          sourceNode.type === 'itemType'
+                            ? sourceNode.data.itemType
+                            : undefined;
+                        return (
+                          <li key={edge.id} className={styles.whyListItem}>
+                            {sourceItemType ? (
+                              <>
+                                Selected model{' '}
+                                <strong>
+                                  {sourceItemType.attributes.name}
+                                </strong>{' '}
+                                references it via fields:{' '}
+                                <FieldsList
+                                  fields={
+                                    (edge.data?.fields ?? []) as SchemaTypes.Field[]
+                                  }
+                                />
+                              </>
+                            ) : (
+                              <>
+                                Referenced in fields:{' '}
+                                <FieldsList
+                                  fields={
+                                    (edge.data?.fields ?? []) as SchemaTypes.Field[]
+                                  }
+                                />
+                              </>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                ) : null}
+              </li>
+            );
+          }}
+          renderPluginRow={({ node, inboundEdges }) => {
+            const plugin = node.data.plugin;
+            const checked = selectedPluginIds.includes(plugin.id);
 
-                return (
-                  <li key={plugin.id} className={styles.listItem}>
-                    <div className={styles.pluginRow}>
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        aria-label={`Select ${plugin.attributes.name}`}
-                        onChange={() => togglePlugin(plugin.id)}
-                        className={styles.checkbox}
-                      />
-                      <div className={styles.pluginInfo}>
-                        <div className={styles.modelTitle}>
-                          {plugin.attributes.name}
-                        </div>
-                        <div className={styles.relationships}>
-                          ← {inbound.length} inbound from models
-                        </div>
-                      </div>
+            return (
+              <li key={plugin.id} className={sharedStyles.listItem}>
+                <div className={styles.pluginRow}>
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    aria-label={`Select ${plugin.attributes.name}`}
+                    onChange={() => togglePlugin(plugin.id)}
+                    className={styles.checkbox}
+                  />
+                  <div className={styles.pluginInfo}>
+                    <div className={styles.modelTitle}>{plugin.attributes.name}</div>
+                    <div className={sharedStyles.relationships}>
+                      ← {inboundEdges.length} inbound from models
                     </div>
-                  </li>
-                );
-              })}
-            </ul>
-          </section>
-        </>
+                  </div>
+                </div>
+              </li>
+            );
+          }}
+        />
       )}
       renderFooter={() => (
         <div className={styles.footerRow}>
@@ -274,10 +249,6 @@ export default function LargeSelectionView({
       )}
     />
   );
-}
-
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return <div className={styles.sectionTitle}>{children}</div>;
 }
 
 function FieldsList({ fields }: { fields: SchemaTypes.Field[] }) {
