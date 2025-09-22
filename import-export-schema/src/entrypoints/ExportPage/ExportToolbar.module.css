@@ -1,9 +1,0 @@
-.toolbar {
-  padding: 8px var(--spacing-l);
-  display: flex;
-  align-items: center;
-}
-
-.spacer {
-  flex: 1;
-}

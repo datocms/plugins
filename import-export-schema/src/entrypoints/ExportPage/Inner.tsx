@@ -19,7 +19,6 @@ import { EntitiesToExportContext } from './EntitiesToExportContext';
 import { ExportItemTypeNodeRenderer } from './ExportItemTypeNodeRenderer';
 import { ExportPluginNodeRenderer } from './ExportPluginNodeRenderer';
 import { ExportSchemaOverview } from './ExportSchemaOverview';
-import { ExportToolbar } from './ExportToolbar';
 import LargeSelectionView from './LargeSelectionView';
 import { useAnimatedNodes } from './useAnimatedNodes';
 import { useExportGraph } from './useExportGraph';
@@ -328,7 +327,6 @@ export default function Inner({
 
   return (
     <div className="page page--export">
-      <ExportToolbar initialItemTypes={initialItemTypes} />
       <div className="page__content">
         <SelectedEntityContext.Provider
           value={{ entity: focusedEntity, set: handleSelectEntity }}
