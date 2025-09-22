@@ -6,6 +6,9 @@ import {
   ReactFlow,
   useReactFlow,
 } from '@xyflow/react';
+import { Button } from 'datocms-react-ui';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faXmark } from '@fortawesome/free-solid-svg-icons';
 import { useCallback, useEffect, useState } from 'react';
 import { GRAPH_NODE_THRESHOLD } from '@/shared/constants/graph';
 import { type AppNode, edgeTypes, type Graph } from '@/utils/graph/types';
@@ -99,6 +102,10 @@ export function Inner({ exportSchema, schema, ctx: _ctx }: Props) {
     }
   }
 
+  const requestCancel = useCallback(() => {
+    window.dispatchEvent(new CustomEvent('import:request-cancel'));
+  }, []);
+
   const totalPotentialNodes =
     exportSchema.itemTypes.length + exportSchema.plugins.length;
 
@@ -125,6 +132,17 @@ export function Inner({ exportSchema, schema, ctx: _ctx }: Props) {
             className="import__graph"
             style={{ position: 'relative', height: '100%' }}
           >
+            <div className="import__graph-close">
+              <Button
+                type="button"
+                buttonSize="s"
+                buttonType="muted"
+                leftIcon={<FontAwesomeIcon icon={faXmark} />}
+                onClick={requestCancel}
+              >
+                Close
+              </Button>
+            </div>
             {graph && showGraph && (
               <ReactFlow
                 fitView={true}

@@ -916,6 +916,7 @@ button.chip:focus-visible {
   /* Slightly tighter padding for redesigned conflicts UI */
 }
 
+.import__graph-close,
 .export__graph-close {
   position: absolute;
   top: 16px;

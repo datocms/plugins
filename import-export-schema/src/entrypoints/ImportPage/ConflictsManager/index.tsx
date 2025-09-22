@@ -344,18 +344,6 @@ export default function ConflictsManager({
         {(() => {
           return null;
         })()}
-        <Button
-          type="button"
-          fullWidth
-          buttonSize="l"
-          buttonType="negative"
-          onClick={() => {
-            // Let parent handle confirmation and state reset
-            window.dispatchEvent(new CustomEvent('import:request-cancel'));
-          }}
-        >
-          Cancel
-        </Button>
         {(() => {
           const proceedDisabled = submitting || !valid || validating;
           return (
