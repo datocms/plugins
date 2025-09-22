@@ -797,7 +797,7 @@ button.chip:focus-visible {
 }
 
 /* Export page: prevent outer content scrolling; only inner panes scroll */
-.page--export .page__content {
+.page--export > .page__content {
   overflow: hidden;
   overflow-y: hidden;
   min-height: 0;
@@ -1083,16 +1083,16 @@ button.chip:focus-visible {
   transition: border-color 0.2s ease, background-color 0.2s ease;
 }
 
-.schema-overview__item.conflict {
+.import__details .schema-overview__item.conflict {
   border-bottom: none;
   border-top: none;
 }
 
-.schema-overview__item.conflict:first-child {
+.import__details .schema-overview__item.conflict:first-child {
   border-top: none;
 }
 
-.schema-overview__item.conflict + .conflict {
+.import__details .schema-overview__item.conflict + .conflict {
   border-top: none;
 }
 
@@ -1115,6 +1115,18 @@ button.chip:focus-visible {
 
 .schema-overview__item--unselected .conflict__title {
   color: var(--base-body-color);
+}
+
+.export__details .schema-overview__item {
+  border: 1px solid var(--border-color);
+}
+
+.export__details .schema-overview__item.schema-overview__item--selected {
+  border-color: rgba(25, 135, 84, 0.35);
+}
+
+.export__details .schema-overview__item.schema-overview__item--unselected {
+  border-color: var(--border-color);
 }
 
 /* Pretty export overlay styles */
