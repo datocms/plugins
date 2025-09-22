@@ -916,6 +916,16 @@ button.chip:focus-visible {
   /* Slightly tighter padding for redesigned conflicts UI */
 }
 
+.import__details .page__content {
+  padding: 0 var(--spacing-l) var(--spacing-xl);
+  box-sizing: border-box;
+}
+
+.import__details .conflicts-manager__group__content {
+  display: grid;
+  gap: var(--spacing-m);
+}
+
 .import__graph-close,
 .export__graph-close {
   position: absolute;
@@ -942,7 +952,6 @@ button.chip:focus-visible {
   border: 1px solid rgba(217, 48, 37, 0.22);
   border-radius: 8px;
   background: rgba(217, 48, 37, 0.04);
-  margin: 2px 0;
 }
 
 .conflict--has-conflict.conflict--selected {
@@ -953,10 +962,6 @@ button.chip:focus-visible {
 
 .conflict--has-conflict:first-child {
   border-top: 1px solid rgba(217, 48, 37, 0.22);
-}
-
-.conflict--has-conflict + .conflict {
-  border-top: 1px solid var(--border-color);
 }
 
 .conflict__title {

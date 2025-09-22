@@ -1,5 +1,4 @@
 import type { SchemaTypes } from '@datocms/cma-client';
-import { useReactFlow } from '@xyflow/react';
 import { SelectField } from 'datocms-react-ui';
 import { useId } from 'react';
 import { Field } from 'react-final-form';
@@ -30,11 +29,6 @@ export function PluginConflict({ exportPlugin, projectPlugin }: Props) {
   const selectId = useId();
   const fieldPrefix = `plugin-${exportPlugin.id}`;
   const resolution = useResolutionStatusForPlugin(exportPlugin.id);
-  const node = useReactFlow().getNode(`plugin--${exportPlugin.id}`);
-
-  if (!node) {
-    return null;
-  }
 
   const strategy = resolution?.values?.strategy;
   const hasValidResolution = Boolean(
