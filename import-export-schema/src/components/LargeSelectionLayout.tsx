@@ -10,6 +10,9 @@ import type { PluginNode } from '@/components/PluginNodeRenderer';
 import type { Graph } from '@/utils/graph/types';
 import styles from './LargeSelectionLayout.module.css';
 
+// Centralized UI shell for the "large selection" experiences so both import and export
+// pages can share the same graph overview, search affordances, and layout framing.
+
 export type LargeSelectionLayoutRenderArgs = {
   itemTypeNodes: ItemTypeNode[];
   pluginNodes: PluginNode[];
@@ -35,7 +38,7 @@ type Props = {
 
 /**
  * Shared scaffold for the large-selection fallback used by both import and export flows.
- * Handles metrics, search filtering, and layout so the variants only worry about row UI.
+ * Packages graph analytics, filtering, and chrome so each flow only supplies row renderers.
  */
 export function LargeSelectionLayout({
   graph,
@@ -48,11 +51,15 @@ export function LargeSelectionLayout({
   const searchInputId = useId();
   const [query, setQuery] = useState('');
 
+  // Split the graph into the node buckets each flow expects to render while keeping the
+  // original graph intact for metrics and dependency calculations.
   const { itemTypeNodes, pluginNodes } = useMemo(
     () => splitNodesByType(graph),
     [graph],
   );
 
+  // Precompute graph-wide metrics so both import/export screens surface the same context
+  // about model/plugin counts, connectivity, and potential cycle issues.
   const metrics = useMemo(() => {
     const components = getConnectedComponents(graph).length;
     const cycles = countCycles(graph);
