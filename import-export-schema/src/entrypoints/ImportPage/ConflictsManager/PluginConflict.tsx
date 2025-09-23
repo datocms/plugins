@@ -2,9 +2,9 @@ import type { SchemaTypes } from '@datocms/cma-client';
 import { SelectField } from 'datocms-react-ui';
 import { useContext, useId } from 'react';
 import { Field } from 'react-final-form';
-import { useResolutionStatusForPlugin } from '../ResolutionsForm';
 import Collapsible from '@/components/SchemaOverview/Collapsible';
 import { GraphEntitiesContext } from '../GraphEntitiesContext';
+import { useResolutionStatusForPlugin } from '../ResolutionsForm';
 
 type Option = { label: string; value: string };
 type SelectGroup<OptionType> = {

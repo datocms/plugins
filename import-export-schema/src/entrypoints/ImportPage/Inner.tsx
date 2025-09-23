@@ -1,4 +1,6 @@
 import type { SchemaTypes } from '@datocms/cma-client';
+import { faXmark } from '@fortawesome/free-solid-svg-icons';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   Background,
   type NodeMouseHandler,
@@ -7,20 +9,18 @@ import {
   useReactFlow,
 } from '@xyflow/react';
 import { Button } from 'datocms-react-ui';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faXmark } from '@fortawesome/free-solid-svg-icons';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { SelectedEntityContext } from '@/components/SchemaOverview/SelectedEntityContext';
 import { GRAPH_NODE_THRESHOLD } from '@/shared/constants/graph';
 import { type AppNode, edgeTypes, type Graph } from '@/utils/graph/types';
 import type { ProjectSchema } from '@/utils/ProjectSchema';
 import type { ExportSchema } from '../ExportPage/ExportSchema';
 import { buildGraphFromExportDoc } from './buildGraphFromExportDoc';
 import ConflictsManager from './ConflictsManager';
+import { GraphEntitiesContext } from './GraphEntitiesContext';
 import { ImportItemTypeNodeRenderer } from './ImportItemTypeNodeRenderer';
 import { ImportPluginNodeRenderer } from './ImportPluginNodeRenderer';
 import { useSkippedItemsAndPluginIds } from './ResolutionsForm';
-import { SelectedEntityContext } from '@/components/SchemaOverview/SelectedEntityContext';
-import { GraphEntitiesContext } from './GraphEntitiesContext';
 
 // Map React Flow node types to the dedicated renderers for import graphs.
 const nodeTypes: NodeTypes = {
@@ -191,90 +191,90 @@ export function Inner({ exportSchema, schema, ctx: _ctx }: Props) {
       <SelectedEntityContext.Provider
         value={{ entity: selectedEntity, set: handleSelectEntity }}
       >
-      <div style={{ display: 'flex', width: '100%', height: '100%' }}>
-        <section
-          style={{
-            width: '66%',
-            minWidth: 480,
-            position: 'relative',
-          }}
-          aria-label="Import graph panel"
-        >
-          <div
-            className="import__graph"
-            style={{ position: 'relative', height: '100%' }}
+        <div style={{ display: 'flex', width: '100%', height: '100%' }}>
+          <section
+            style={{
+              width: '66%',
+              minWidth: 480,
+              position: 'relative',
+            }}
+            aria-label="Import graph panel"
           >
-            <div className="import__graph-close">
-              <Button
-                type="button"
-                buttonSize="s"
-                buttonType="muted"
-                leftIcon={<FontAwesomeIcon icon={faXmark} />}
-                onClick={requestCancel}
-              >
-                Close
-              </Button>
-            </div>
-            {graph && showGraph && (
-              <ReactFlow
-                fitView={true}
-                nodes={graph.nodes}
-                edges={graph.edges}
-                nodesDraggable={false}
-                nodesConnectable={false}
-                zoomOnDoubleClick={false}
-                elementsSelectable={false}
-                nodeTypes={nodeTypes}
-                edgeTypes={edgeTypes}
-                proOptions={{ hideAttribution: true }}
-                onClick={() => setSelectedEntity(undefined)}
-                onNodeClick={onNodeClick}
-              >
-                <Background />
-              </ReactFlow>
-            )}
-            {graph && !showGraph && (
-              <div
-                style={{
-                  position: 'absolute',
-                  inset: 0,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  textAlign: 'center',
-                  padding: '0 24px',
-                  gap: 16,
-                }}
-              >
-                <div style={{ fontWeight: 600 }}>
-                  This graph has {graph.nodes.length} nodes. Trying to render it may slow
-                  down your browser.
-                </div>
+            <div
+              className="import__graph"
+              style={{ position: 'relative', height: '100%' }}
+            >
+              <div className="import__graph-close">
                 <Button
                   type="button"
                   buttonSize="s"
-                  onClick={() => setForceRenderGraph(true)}
+                  buttonType="muted"
+                  leftIcon={<FontAwesomeIcon icon={faXmark} />}
+                  onClick={requestCancel}
                 >
-                  Render it anyway
+                  Close
                 </Button>
               </div>
-            )}
-          </div>
-        </section>
-        <section
-          style={{
-            width: '33%',
-            minWidth: 340,
-            position: 'relative',
-          }}
-          aria-label="Import details panel"
-        >
-          <div className="import__details">
-            <ConflictsManager exportSchema={exportSchema} schema={schema} />
-          </div>
-        </section>
-      </div>
+              {graph && showGraph && (
+                <ReactFlow
+                  fitView={true}
+                  nodes={graph.nodes}
+                  edges={graph.edges}
+                  nodesDraggable={false}
+                  nodesConnectable={false}
+                  zoomOnDoubleClick={false}
+                  elementsSelectable={false}
+                  nodeTypes={nodeTypes}
+                  edgeTypes={edgeTypes}
+                  proOptions={{ hideAttribution: true }}
+                  onClick={() => setSelectedEntity(undefined)}
+                  onNodeClick={onNodeClick}
+                >
+                  <Background />
+                </ReactFlow>
+              )}
+              {graph && !showGraph && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    textAlign: 'center',
+                    padding: '0 24px',
+                    gap: 16,
+                  }}
+                >
+                  <div style={{ fontWeight: 600 }}>
+                    This graph has {graph.nodes.length} nodes. Trying to render
+                    it may slow down your browser.
+                  </div>
+                  <Button
+                    type="button"
+                    buttonSize="s"
+                    onClick={() => setForceRenderGraph(true)}
+                  >
+                    Render it anyway
+                  </Button>
+                </div>
+              )}
+            </div>
+          </section>
+          <section
+            style={{
+              width: '33%',
+              minWidth: 340,
+              position: 'relative',
+            }}
+            aria-label="Import details panel"
+          >
+            <div className="import__details">
+              <ConflictsManager exportSchema={exportSchema} schema={schema} />
+            </div>
+          </section>
+        </div>
       </SelectedEntityContext.Provider>
     </GraphEntitiesContext.Provider>
   );

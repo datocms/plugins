@@ -1,4 +1,3 @@
-import { Schema } from '@/utils/icons';
 import type { SchemaTypes } from '@datocms/cma-client';
 import {
   Handle,
@@ -9,6 +8,7 @@ import {
   useStore,
 } from '@xyflow/react';
 import classNames from 'classnames';
+import { Schema } from '@/utils/icons';
 
 export type PluginNode = Node<
   {

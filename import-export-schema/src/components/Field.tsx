@@ -1,9 +1,9 @@
+import type { SchemaTypes } from '@datocms/cma-client';
 import {
   fieldGroupColors,
   fieldTypeDescriptions,
   fieldTypeGroups,
 } from '@/utils/datocms/schema';
-import type { SchemaTypes } from '@datocms/cma-client';
 
 export function Field({ field }: { field: SchemaTypes.Field }) {
   const group = fieldTypeGroups.find((g) =>

@@ -1,3 +1,9 @@
+/**
+ * 'bulk exports' widened this helper so importer/graph code could reuse
+ * the same normalized view of a schema export. v2 exports optionally declare multiple root
+ * item types, but v1 files assumed a single implicit root; the coalescing logic keeps
+ * both behaviours working so older exports still import cleanly.
+ */
 import type { SchemaTypes } from '@datocms/cma-client';
 import { get } from 'lodash-es';
 import { findLinkedItemTypeIds } from '@/utils/datocms/schema';

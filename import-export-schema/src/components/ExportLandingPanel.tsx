@@ -29,11 +29,7 @@ export function ExportLandingPanel({
       <div className="blank-slate__body__content">
         <p>{description}</p>
         <div className="export-landing__actions">
-          <Button
-            buttonType="muted"
-            buttonSize="l"
-            onClick={onSelectModels}
-          >
+          <Button buttonType="muted" buttonSize="l" onClick={onSelectModels}>
             {selectLabel}
           </Button>
           <Button

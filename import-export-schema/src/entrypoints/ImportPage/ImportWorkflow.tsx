@@ -4,10 +4,10 @@ import { BlankSlate } from '@/components/BlankSlate';
 import type { ProjectSchema } from '@/utils/ProjectSchema';
 import type { ExportDoc } from '@/utils/types';
 import type { ExportSchema } from '../ExportPage/ExportSchema';
-import { Inner } from './Inner';
 import type { Conflicts } from './ConflictsManager/buildConflicts';
 import { ConflictsContext } from './ConflictsManager/ConflictsContext';
 import FileDropZone from './FileDropZone';
+import { Inner } from './Inner';
 import ResolutionsForm, { type Resolutions } from './ResolutionsForm';
 
 type Props = {

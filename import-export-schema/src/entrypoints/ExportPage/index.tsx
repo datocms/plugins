@@ -2,7 +2,7 @@ import type { SchemaTypes } from '@datocms/cma-client';
 import { ReactFlowProvider } from '@xyflow/react';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import { Canvas, Spinner } from 'datocms-react-ui';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ProgressOverlay } from '@/components/ProgressOverlay';
 import { useProjectSchema } from '@/shared/hooks/useProjectSchema';
 import { useSchemaExportTask } from '@/shared/hooks/useSchemaExportTask';
@@ -14,6 +14,60 @@ type Props = {
   ctx: RenderPageCtx;
   initialItemTypeId: string;
 };
+
+type PreparingPhase = 'scan' | 'build';
+
+type PrepareProgressUpdate = {
+  done: number;
+  total: number;
+  label: string;
+  phase?: PreparingPhase;
+};
+
+const INITIAL_PREPARING_PERCENT = 0.1;
+const PREPARING_HEARTBEAT_CAP = 0.88;
+const PREPARING_HEARTBEAT_INCREMENT = 0.015;
+const PREPARING_HEARTBEAT_INTERVAL_MS = 250;
+
+const PREPARING_PHASE_CONFIG: Record<
+  PreparingPhase,
+  {
+    range: { min: number; max: number };
+    cap: number;
+  }
+> = {
+  scan: { range: { min: 0.05, max: 0.85 }, cap: PREPARING_HEARTBEAT_CAP },
+  build: { range: { min: 0.85, max: 1 }, cap: 1 },
+};
+
+// Clamp helper keeps derived percentages inside their designated bounds.
+function clamp(value: number, min: number, max: number) {
+  if (value < min) return min;
+  if (value > max) return max;
+  return value;
+}
+
+/**
+ * Map a phase-specific progress update into the smoothed overlay percentage.
+ */
+function mapPreparingProgressPercent(
+  phase: PreparingPhase,
+  done: number | undefined,
+  total: number | undefined,
+  previous: number,
+) {
+  if (typeof done !== 'number' || typeof total !== 'number' || total <= 0) {
+    return previous;
+  }
+
+  const config = PREPARING_PHASE_CONFIG[phase];
+  const safeDone = clamp(done, 0, total);
+  const normalized = clamp(safeDone / total, 0, 1);
+  const { range, cap } = config;
+  const mapped = range.min + normalized * (range.max - range.min);
+
+  return Math.max(previous, clamp(mapped, range.min, cap));
+}
 
 /**
  * Export entry loaded from the DatoCMS sidebar when a single model kicks off the flow.
@@ -27,9 +81,7 @@ export default function ExportPage({ ctx, initialItemTypeId }: Props) {
   >();
   const [suppressPreparingOverlay, setSuppressPreparingOverlay] =
     useState(false);
-  const [preparingPhase, setPreparingPhase] = useState<'scan' | 'build'>(
-    'scan',
-  );
+  const [preparingPhase, setPreparingPhase] = useState<PreparingPhase>('scan');
   const preparingTask = useLongTask();
   const { task: exportTask, runExport } = useSchemaExportTask({
     schema,
@@ -41,35 +93,39 @@ export default function ExportPage({ ctx, initialItemTypeId }: Props) {
 
   const preparingHasTotals =
     typeof preparingProgress.total === 'number' && preparingProgress.total > 0;
+  const isPreparingRunning = preparingTask.state.status === 'running';
+  const shouldShowPreparingOverlay =
+    isPreparingRunning && !suppressPreparingOverlay;
   // Smoothed visual progress percentage for the preparing overlay.
   // We map the initial scanning phase to 0–25%, then determinate build to 25–100%.
-  const [preparingPercent, setPreparingPercent] = useState(0.1);
+  const [preparingPercent, setPreparingPercent] = useState(
+    INITIAL_PREPARING_PERCENT,
+  );
 
   // Heartbeat fallback: gently move during scan if no numeric totals arrive
   useEffect(() => {
-    if (preparingTask.state.status !== 'running' || suppressPreparingOverlay) {
+    const heartbeatActive =
+      shouldShowPreparingOverlay &&
+      preparingPhase === 'scan' &&
+      !preparingHasTotals;
+    if (!heartbeatActive) {
       return;
     }
-    if (preparingPhase !== 'scan') return;
-    const id = window.setInterval(() => {
-      if (!preparingHasTotals) {
-        setPreparingPercent((prev) => Math.min(0.88, prev + 0.015));
-      }
-    }, 250);
-    return () => window.clearInterval(id);
-  }, [
-    preparingTask.state.status,
-    preparingPhase,
-    preparingHasTotals,
-    suppressPreparingOverlay,
-  ]);
 
-  // Removed adminDomain lookup; we no longer show a post-export overview
+    const id = window.setInterval(() => {
+      setPreparingPercent((prev) =>
+        Math.min(PREPARING_HEARTBEAT_CAP, prev + PREPARING_HEARTBEAT_INCREMENT),
+      );
+    }, PREPARING_HEARTBEAT_INTERVAL_MS);
+
+    return () => window.clearInterval(id);
+  }, [preparingPhase, preparingHasTotals, shouldShowPreparingOverlay]);
 
   // Preload installed plugin IDs once to avoid network calls during selection
   const [installedPluginIds, setInstalledPluginIds] = useState<
     Set<string> | undefined
   >();
+  // Pre-fetch plugin IDs so dependency expansion can quickly filter installed extensions.
   useEffect(() => {
     let active = true;
     (async () => {
@@ -88,23 +144,81 @@ export default function ExportPage({ ctx, initialItemTypeId }: Props) {
   const [lastPreparedForId, setLastPreparedForId] = useState<
     string | undefined
   >(undefined);
+  // Kick off the initial graph build the first time we enter for a content model.
   useEffect(() => {
-    async function run() {
-      const itemType = await schema.getItemTypeById(initialItemTypeId);
-      setInitialItemType(itemType);
-      if (lastPreparedForId !== initialItemTypeId) {
+    let active = true;
+
+    async function ensureInitialItemType() {
+      try {
+        const itemType = await schema.getItemTypeById(initialItemTypeId);
+        if (!active) return;
+
+        setInitialItemType(itemType);
+
+        if (lastPreparedForId === initialItemTypeId) {
+          return;
+        }
+
         debugLog('ExportPage preparing start', { initialItemTypeId });
-        preparingTask.controller.start({
-          label: 'Preparing export…',
-        });
+        preparingTask.controller.start({ label: 'Preparing export…' });
         setPreparingPhase('scan');
-        setPreparingPercent(0.1);
+        setPreparingPercent(INITIAL_PREPARING_PERCENT);
         setLastPreparedForId(initialItemTypeId);
+      } catch (error) {
+        if (active) {
+          debugLog('ExportPage failed to load initial item type', error);
+        }
       }
     }
 
-    run();
-  }, [schema, initialItemTypeId, lastPreparedForId, preparingTask]);
+    ensureInitialItemType();
+
+    return () => {
+      active = false;
+    };
+  }, [schema, initialItemTypeId, lastPreparedForId, preparingTask.controller]);
+
+  const handlePrepareProgress = useCallback(
+    (progress: PrepareProgressUpdate) => {
+      if (preparingTask.state.status !== 'running') {
+        preparingTask.controller.start(progress);
+      } else {
+        preparingTask.controller.setProgress(progress);
+      }
+
+      const phase = progress.phase ?? 'scan';
+      setPreparingPhase(phase);
+      setPreparingPercent((prev) =>
+        mapPreparingProgressPercent(phase, progress.done, progress.total, prev),
+      );
+    },
+    [preparingTask.controller, preparingTask.state.status],
+  );
+
+  const handleGraphPrepared = useCallback(() => {
+    debugLog('ExportPage graph prepared');
+    setPreparingPercent(1);
+    preparingTask.controller.complete({ label: 'Graph prepared' });
+    setSuppressPreparingOverlay(false);
+    setPreparingPhase('build');
+  }, [preparingTask.controller]);
+
+  const handleExport = useCallback(
+    (itemTypeIds: string[], pluginIds: string[]) =>
+      runExport({
+        rootItemTypeId: initialItemTypeId,
+        itemTypeIds,
+        pluginIds,
+      }),
+    [initialItemTypeId, runExport],
+  );
+
+  // Hide the preparing overlay while dependency batches recompute to avoid flicker.
+  const handleSelectingDependenciesChange = useCallback((busy: boolean) => {
+    if (busy) {
+      setSuppressPreparingOverlay(true);
+    }
+  }, []);
 
   if (!initialItemType) {
     return (
@@ -123,76 +237,27 @@ export default function ExportPage({ ctx, initialItemTypeId }: Props) {
           key={initialItemTypeId}
           initialItemTypes={[initialItemType]}
           schema={schema}
-          onExport={(itemTypeIds, pluginIds) =>
-            runExport({
-              rootItemTypeId: initialItemTypeId,
-              itemTypeIds,
-              pluginIds,
-            })
-          }
-          onPrepareProgress={(p) => {
-            if (preparingTask.state.status !== 'running') {
-              preparingTask.controller.start(p);
-            } else {
-              preparingTask.controller.setProgress(p);
-            }
-            setPreparingPhase(p.phase ?? 'scan');
-            const phase = p.phase ?? 'scan';
-            const hasTotals = (p.total ?? 0) > 0;
-            if (phase === 'scan') {
-              if (hasTotals) {
-                const raw = Math.max(0, Math.min(1, p.done / p.total));
-                // Map scan to [0.05, 0.85]; keep monotonic
-                const mapped = 0.05 + raw * 0.8;
-                setPreparingPercent((prev) =>
-                  Math.max(prev, Math.min(0.88, mapped)),
-                );
-              }
-              // else: heartbeat drives percent
-            } else {
-              if (hasTotals) {
-                const raw = Math.max(0, Math.min(1, p.done / p.total));
-                // Map build to [0.85, 1.00]; keep monotonic
-                const mapped = 0.85 + raw * 0.15;
-                setPreparingPercent((prev) =>
-                  Math.max(prev, Math.min(1, mapped)),
-                );
-              }
-            }
-          }}
-          onGraphPrepared={() => {
-            debugLog('ExportPage graph prepared');
-            setPreparingPercent(1);
-            preparingTask.controller.complete({
-              label: 'Graph prepared',
-            });
-            setSuppressPreparingOverlay(false);
-            setPreparingPhase('build');
-          }}
+          onExport={handleExport}
+          onPrepareProgress={handlePrepareProgress}
+          onGraphPrepared={handleGraphPrepared}
           installedPluginIds={installedPluginIds}
-          onSelectingDependenciesChange={(busy) => {
-            // Hide overlay during dependency expansion; release when graph is prepared
-            if (busy) {
-              setSuppressPreparingOverlay(true);
-            }
-          }}
+          onSelectingDependenciesChange={handleSelectingDependenciesChange}
         />
       </ReactFlowProvider>
-      {preparingTask.state.status === 'running' &&
-        !suppressPreparingOverlay && (
-          <ProgressOverlay
-            title="Preparing export"
-            subtitle="Sit tight, we’re setting up your models, blocks, and plugins…"
-            ariaLabel="Preparing export"
-            progress={{
-              label: preparingProgress.label ?? 'Preparing export…',
-              done: preparingProgress.done,
-              total: preparingProgress.total,
-              percentOverride: preparingPercent,
-            }}
-            stallCurrent={preparingProgress.done}
-          />
-        )}
+      {shouldShowPreparingOverlay && (
+        <ProgressOverlay
+          title="Preparing export"
+          subtitle="Sit tight, we’re setting up your models, blocks, and plugins…"
+          ariaLabel="Preparing export"
+          progress={{
+            label: preparingProgress.label ?? 'Preparing export…',
+            done: preparingProgress.done,
+            total: preparingProgress.total,
+            percentOverride: preparingPercent,
+          }}
+          stallCurrent={preparingProgress.done}
+        />
+      )}
       {exportTask.state.status === 'running' && (
         <ProgressOverlay
           title="Exporting selection"

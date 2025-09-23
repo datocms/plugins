@@ -5,15 +5,18 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { TaskOverlayStack } from '@/components/TaskOverlayStack';
 import { useConflictsBuilder } from '@/shared/hooks/useConflictsBuilder';
 import { useProjectSchema } from '@/shared/hooks/useProjectSchema';
-import { useLongTask, type UseLongTaskResult } from '@/shared/tasks/useLongTask';
+import {
+  type UseLongTaskResult,
+  useLongTask,
+} from '@/shared/tasks/useLongTask';
 import type { ProjectSchema } from '@/utils/ProjectSchema';
 import type { ExportDoc } from '@/utils/types';
 import { ExportSchema } from '../ExportPage/ExportSchema';
-import { ImportWorkflow } from './ImportWorkflow';
 import { buildImportDoc } from './buildImportDoc';
+import { ImportWorkflow } from './ImportWorkflow';
+import importSchema from './importSchema';
 import type { Resolutions } from './ResolutionsForm';
 import { useRecipeLoader } from './useRecipeLoader';
-import importSchema from './importSchema';
 
 type Props = {
   ctx: RenderPageCtx;
@@ -69,11 +72,9 @@ function useImportMode({
     [ctx],
   );
 
-  const { loading: loadingRecipe } = useRecipeLoader(
-    ctx,
-    handleRecipeLoaded,
-    { onError: handleRecipeError },
-  );
+  const { loading: loadingRecipe } = useRecipeLoader(ctx, handleRecipeLoaded, {
+    onError: handleRecipeError,
+  });
 
   const handleDrop = useCallback(
     async (filename: string, doc: ExportDoc) => {
@@ -82,7 +83,9 @@ function useImportMode({
         setExportSchema([filename, schema]);
       } catch (error) {
         console.error(error);
-        ctx.alert(error instanceof Error ? error.message : 'Invalid export file!');
+        ctx.alert(
+          error instanceof Error ? error.message : 'Invalid export file!',
+        );
       }
     },
     [ctx],
@@ -149,7 +152,15 @@ function useImportMode({
         importTask.controller.reset();
       }
     },
-    [client, conflicts, ctx, exportSchema, importTask, setConflicts, setExportSchema],
+    [
+      client,
+      conflicts,
+      ctx,
+      exportSchema,
+      importTask,
+      setConflicts,
+      setExportSchema,
+    ],
   );
 
   useEffect(() => {
@@ -285,7 +296,9 @@ function buildImportOverlay(
         : 'Sit tight, we’re applying models, fields, and plugins…',
     ariaLabel: 'Import in progress',
     progressLabel: (progress, state) =>
-      state.cancelRequested ? 'Stopping at next safe point…' : progress.label ?? '',
+      state.cancelRequested
+        ? 'Stopping at next safe point…'
+        : (progress.label ?? ''),
     cancel: () => ({
       label: 'Cancel import',
       intent: importTask.state.cancelRequested ? 'muted' : 'negative',
@@ -321,7 +334,9 @@ function buildImportOverlay(
 /**
  * Overlay used while conflicts between project and recipe are resolved.
  */
-function buildConflictsOverlay(conflictsTask: UseLongTaskResult): OverlayConfig {
+function buildConflictsOverlay(
+  conflictsTask: UseLongTaskResult,
+): OverlayConfig {
   return {
     id: 'conflicts',
     task: conflictsTask,

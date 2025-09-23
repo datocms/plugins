@@ -1,6 +1,5 @@
 import type { SchemaTypes } from '@datocms/cma-client';
 
-/** Canonical export document shapes handled by the importer/exporter. */
 export type ExportDocV1 = {
   version: '1';
   entities: Array<

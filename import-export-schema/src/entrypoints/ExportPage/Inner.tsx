@@ -1,7 +1,11 @@
 import type { SchemaTypes } from '@datocms/cma-client';
-import { useReactFlow, type NodeMouseHandler, type NodeTypes } from '@xyflow/react';
 import { faXmark } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import {
+  type NodeMouseHandler,
+  type NodeTypes,
+  useReactFlow,
+} from '@xyflow/react';
 import type { ProjectSchema } from '@/utils/ProjectSchema';
 import '@xyflow/react/dist/style.css';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
@@ -9,17 +13,16 @@ import { Button, Spinner, useCtx } from 'datocms-react-ui';
 import { without } from 'lodash-es';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { GraphCanvas } from '@/components/GraphCanvas';
+import { SelectedEntityContext } from '@/components/SchemaOverview/SelectedEntityContext';
 import { GRAPH_NODE_THRESHOLD } from '@/shared/constants/graph';
 import { debugLog } from '@/utils/debug';
 import { expandSelectionWithDependencies } from '@/utils/graph/dependencies';
 import { type AppNode, edgeTypes } from '@/utils/graph/types';
-import { SelectedEntityContext } from '@/components/SchemaOverview/SelectedEntityContext';
 import { DependencyActionsPanel } from './DependencyActionsPanel';
 import { EntitiesToExportContext } from './EntitiesToExportContext';
 import { ExportItemTypeNodeRenderer } from './ExportItemTypeNodeRenderer';
 import { ExportPluginNodeRenderer } from './ExportPluginNodeRenderer';
 import { ExportSchemaOverview } from './ExportSchemaOverview';
-import { useAnimatedNodes } from './useAnimatedNodes';
 import { useExportGraph } from './useExportGraph';
 
 // Map React Flow node types to their respective renderer components.
@@ -47,7 +50,7 @@ type Props = {
 /**
  * Presents the export graph, wiring selection state, dependency resolution, and
  * export call-outs. For large selections it warns before rendering the full canvas.
-*/
+ */
 export default function Inner({
   initialItemTypes,
   schema,
@@ -168,7 +171,12 @@ export default function Inner({
     setPendingZoomEntity(undefined);
   }, [fitBounds, fitView, graph, pendingZoomEntity, showGraph]);
 
-  const animatedNodes = useAnimatedNodes(showGraph && graph ? graph.nodes : []);
+  const graphNodes = useMemo<AppNode[]>(() => {
+    if (!showGraph || !graph) {
+      return [];
+    }
+    return graph.nodes;
+  }, [graph, showGraph]);
 
   const handleSelectEntity = useCallback(
     (
@@ -362,7 +370,9 @@ export default function Inner({
                   gap: 12,
                 }}
               >
-                <div style={{ fontWeight: 600 }}>Could not load export graph</div>
+                <div style={{ fontWeight: 600 }}>
+                  Could not load export graph
+                </div>
                 <div
                   style={{ color: '#666', maxWidth: 540, textAlign: 'center' }}
                 >
@@ -408,7 +418,10 @@ export default function Inner({
                   }}
                   aria-label="Export graph panel"
                 >
-                  <div className="export__graph" style={{ position: 'relative', height: '100%' }}>
+                  <div
+                    className="export__graph"
+                    style={{ position: 'relative', height: '100%' }}
+                  >
                     <div className="export__graph-close">
                       <Button
                         type="button"
@@ -429,7 +442,7 @@ export default function Inner({
                       {showGraph ? (
                         <>
                           <GraphCanvas
-                            graph={{ nodes: animatedNodes, edges: graph.edges }}
+                            graph={{ nodes: graphNodes, edges: graph.edges }}
                             nodeTypes={nodeTypes}
                             edgeTypes={edgeTypes}
                             onNodeClick={
@@ -440,10 +453,16 @@ export default function Inner({
                           />
                           <DependencyActionsPanel
                             selectingDependencies={selectingDependencies}
-                            areAllDependenciesSelected={areAllDependenciesSelected}
+                            areAllDependenciesSelected={
+                              areAllDependenciesSelected
+                            }
                             selectedItemCount={selectedItemTypeIds.length}
-                            onSelectAllDependencies={handleSelectAllDependencies}
-                            onUnselectAllDependencies={handleUnselectAllDependencies}
+                            onSelectAllDependencies={
+                              handleSelectAllDependencies
+                            }
+                            onUnselectAllDependencies={
+                              handleUnselectAllDependencies
+                            }
                             onExport={() =>
                               onExport(selectedItemTypeIds, selectedPluginIds)
                             }
@@ -463,8 +482,8 @@ export default function Inner({
                           }}
                         >
                           <div style={{ fontWeight: 600 }}>
-                            This graph has {graph.nodes.length} nodes. Trying to render
-                            it may slow down your browser.
+                            This graph has {graph.nodes.length} nodes. Trying to
+                            render it may slow down your browser.
                           </div>
                           <Button
                             type="button"

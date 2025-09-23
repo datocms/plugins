@@ -1,11 +1,7 @@
 import emojiRegexText from 'emoji-regex';
 
-/**
- * Helpers for ordering text labels that may start with representative emojis.
- */
 const emojiRegexp = emojiRegexText();
 
-// Capture an optional leading emoji and strip padding spaces.
 const formatRegexp = new RegExp(
   `^(${emojiRegexp.source})\\s*(.*)$`,
   emojiRegexp.flags.replace('g', ''),

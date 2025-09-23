@@ -1,8 +1,8 @@
 import type { SchemaTypes } from '@datocms/cma-client';
 import {
+  faCircleExclamation,
   faCaretRight as faCollapsed,
   faCaretDown as faExpanded,
-  faCircleExclamation,
 } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import classNames from 'classnames';

@@ -274,7 +274,9 @@ async function createItemTypesPhase(
 
           try {
             debugLog('Creating item type', data);
-            const { data: created } = await client.itemTypes.rawCreate({ data });
+            const { data: created } = await client.itemTypes.rawCreate({
+              data,
+            });
             debugLog('Created item type', created);
             return created;
           } catch (error) {
@@ -291,9 +293,7 @@ async function createItemTypesPhase(
 /**
  * Create fieldsets and fields for each item type, respecting dependencies and validators.
  */
-async function createFieldsetsAndFieldsPhase(
-  context: ImportContext,
-) {
+async function createFieldsetsAndFieldsPhase(context: ImportContext) {
   const {
     client,
     tracker,
@@ -494,10 +494,8 @@ async function finalizeItemTypesPhase(
               )
             ) {
               debugLog('Finalizing item type', data);
-              const { data: updatedItemType } = await client.itemTypes.rawUpdate(
-                id,
-                { data },
-              );
+              const { data: updatedItemType } =
+                await client.itemTypes.rawUpdate(id, { data });
               debugLog('Finalized item type', updatedItemType);
             }
           } catch (error) {

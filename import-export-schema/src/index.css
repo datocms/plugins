@@ -895,7 +895,6 @@ button.chip:focus-visible {
   width: 100%;
 }
 
-
 .import__graph,
 .import__details,
 .export__graph,
@@ -933,7 +932,6 @@ button.chip:focus-visible {
   right: 16px;
   z-index: 5;
 }
-
 
 .conflict {
   border-bottom: 1px solid var(--border-color);
@@ -1080,7 +1078,9 @@ button.chip:focus-visible {
   border-radius: 10px;
   margin: 6px var(--spacing-l);
   background: #fff;
-  transition: border-color 0.2s ease, background-color 0.2s ease;
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease;
 }
 
 .import__details .schema-overview__item.conflict {

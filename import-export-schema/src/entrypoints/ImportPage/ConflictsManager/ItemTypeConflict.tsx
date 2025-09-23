@@ -2,9 +2,9 @@ import type { SchemaTypes } from '@datocms/cma-client';
 import { SelectField, TextField } from 'datocms-react-ui';
 import { useContext, useId } from 'react';
 import { Field } from 'react-final-form';
-import { useResolutionStatusForItemType } from '../ResolutionsForm';
 import Collapsible from '@/components/SchemaOverview/Collapsible';
 import { GraphEntitiesContext } from '../GraphEntitiesContext';
+import { useResolutionStatusForItemType } from '../ResolutionsForm';
 
 type Option = { label: string; value: string };
 type SelectGroup<OptionType> = {
@@ -40,7 +40,8 @@ export function ItemTypeConflict({ exportItemType, projectItemType }: Props) {
   const resolutionStrategy = resolutionValues?.strategy;
 
   const resolutionStrategyIsRename = resolutionStrategy === 'rename';
-  const resolutionStrategyIsReuseExisting = resolutionStrategy === 'reuseExisting';
+  const resolutionStrategyIsReuseExisting =
+    resolutionStrategy === 'reuseExisting';
 
   const renameReady =
     resolutionStrategyIsRename &&
@@ -50,7 +51,8 @@ export function ItemTypeConflict({ exportItemType, projectItemType }: Props) {
 
   const reuseReady = resolutionStrategyIsReuseExisting && !resolution?.invalid;
 
-  const conflictResolved = Boolean(projectItemType) && (renameReady || reuseReady);
+  const conflictResolved =
+    Boolean(projectItemType) && (renameReady || reuseReady);
 
   const hasConflict = Boolean(projectItemType) && !conflictResolved;
 

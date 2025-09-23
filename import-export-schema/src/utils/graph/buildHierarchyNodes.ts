@@ -66,7 +66,9 @@ export function buildHierarchyNodes(
         : [];
 
       const candidates =
-        edgesPointingToNode.length > 0 ? edgesPointingToNode : fallbackCandidates;
+        edgesPointingToNode.length > 0
+          ? edgesPointingToNode
+          : fallbackCandidates;
 
       if (candidates.length === 0) {
         return candidates[0]?.source;

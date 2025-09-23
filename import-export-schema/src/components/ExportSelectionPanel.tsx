@@ -36,8 +36,7 @@ export function ExportSelectionPanel({
   onBack,
   startDisabled,
   title = 'Select models to export',
-  description =
-    'Choose the models and blocks you want to inspect. You can refine the selection on the next screen.',
+  description = 'Choose the models and blocks you want to inspect. You can refine the selection on the next screen.',
   selectLabel = 'Starting models/blocks',
   startLabel = 'Export selection',
   backLabel = 'Back',
@@ -80,7 +79,9 @@ export function ExportSelectionPanel({
               value={value}
               onChange={(multi) =>
                 onSelectedIdsChange(
-                  Array.isArray(multi) ? multi.map((option) => option.value) : [],
+                  Array.isArray(multi)
+                    ? multi.map((option) => option.value)
+                    : [],
                 )
               }
             />
@@ -89,7 +90,11 @@ export function ExportSelectionPanel({
             <Button buttonType="muted" buttonSize="s" onClick={onBack}>
               {backLabel}
             </Button>
-            <Button buttonType="primary" disabled={startDisabled} onClick={onStart}>
+            <Button
+              buttonType="primary"
+              disabled={startDisabled}
+              onClick={onStart}
+            >
               {startLabel}
             </Button>
           </div>

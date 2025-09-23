@@ -17,8 +17,8 @@ import { useExportSelection } from '@/shared/hooks/useExportSelection';
 import { useProjectSchema } from '@/shared/hooks/useProjectSchema';
 import { useSchemaExportTask } from '@/shared/hooks/useSchemaExportTask';
 import {
-  useLongTask,
   type UseLongTaskResult,
+  useLongTask,
 } from '@/shared/tasks/useLongTask';
 import ExportInner from '../ExportPage/Inner';
 
@@ -52,8 +52,7 @@ function buildOverlayItems({
       title: 'Exporting entire schema',
       subtitle: 'Sit tight, we’re gathering models, blocks, and plugins…',
       ariaLabel: 'Export in progress',
-      progressLabel: (progress) =>
-        progress.label ?? 'Loading project schema…',
+      progressLabel: (progress) => progress.label ?? 'Loading project schema…',
       cancel: () => ({
         label: 'Cancel export',
         intent: exportAllTask.state.cancelRequested ? 'muted' : 'negative',
@@ -79,7 +78,9 @@ function buildOverlayItems({
       progressLabel: (progress) => progress.label ?? 'Preparing export…',
       cancel: () => ({
         label: 'Cancel export',
-        intent: exportSelectionTask.state.cancelRequested ? 'muted' : 'negative',
+        intent: exportSelectionTask.state.cancelRequested
+          ? 'muted'
+          : 'negative',
         disabled: exportSelectionTask.state.cancelRequested,
         onCancel: () => exportSelectionTask.controller.requestCancel(),
       }),
@@ -109,7 +110,7 @@ export default function ExportHome({ ctx }: Props) {
 
   // ----- Long-running tasks -----
   // The export flow manipulates three distinct tasks (export all, prepare graph,
-  // targeted export). 
+  // targeted export).
   const exportAllTask = useLongTask();
   const exportPreparingTask = useLongTask();
   const { task: exportSelectionTask, runExport: runSelectionExport } =
@@ -184,9 +185,7 @@ export default function ExportHome({ ctx }: Props) {
       );
     } else {
       const mapped = 0.25 + raw * 0.75;
-      setExportPreparingPercent((prev) =>
-        Math.max(prev, Math.min(1, mapped)),
-      );
+      setExportPreparingPercent((prev) => Math.max(prev, Math.min(1, mapped)));
     }
   };
 
@@ -196,7 +195,10 @@ export default function ExportHome({ ctx }: Props) {
     exportPreparingTask.controller.reset();
   };
 
-  const handleSelectionExport = (itemTypeIds: string[], pluginIds: string[]) => {
+  const handleSelectionExport = (
+    itemTypeIds: string[],
+    pluginIds: string[],
+  ) => {
     if (!rootItemTypeId) {
       return;
     }

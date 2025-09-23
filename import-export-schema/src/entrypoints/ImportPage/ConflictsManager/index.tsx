@@ -2,7 +2,7 @@ import type { SchemaTypes } from '@datocms/cma-client';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import { Button, SwitchInput } from 'datocms-react-ui';
 import { get } from 'lodash-es';
-import { useContext, useMemo, useState } from 'react';
+import { useContext, useId, useMemo, useState } from 'react';
 import { useFormState } from 'react-final-form';
 import type { ExportSchema } from '@/entrypoints/ExportPage/ExportSchema';
 import { getTextWithoutRepresentativeEmojiAndPadding } from '@/utils/emojiAgnosticSorter';
@@ -11,16 +11,17 @@ import { ConflictsContext } from './ConflictsContext';
 import { ItemTypeConflict } from './ItemTypeConflict';
 import { PluginConflict } from './PluginConflict';
 
+// Collator keeps alphabetical/numeric ordering stable regardless of locale accents.
 const localeAwareCollator = new Intl.Collator(undefined, {
   sensitivity: 'base',
   numeric: true,
 });
 
-function sortEntriesByDisplayName<T>(
-  items: T[],
-  getName: (item: T) => string,
-) {
-  return [...items].sort((a, b) => localeAwareCollator.compare(getName(a), getName(b)));
+function sortEntriesByDisplayName<T>(items: T[], getName: (item: T) => string) {
+  // Clone to avoid mutating callers and sort using the locale-aware collator.
+  return [...items].sort((a, b) =>
+    localeAwareCollator.compare(getName(a), getName(b)),
+  );
 }
 
 type Props = {
@@ -39,6 +40,8 @@ export default function ConflictsManager({
 }: Props) {
   const conflicts = useContext(ConflictsContext);
   const [showOnlyConflicts, setShowOnlyConflicts] = useState(false);
+  const toggleId = useId();
+  // Track submission state for enabling/disabling the final CTA.
   const formState = useFormState({
     subscription: {
       submitting: true,
@@ -72,7 +75,7 @@ export default function ConflictsManager({
     projectPlugin?: SchemaTypes.Plugin;
   };
 
-  const groupedItemTypes = useMemo(() => {
+  const itemTypesByCategory = useMemo(() => {
     const empty: Record<'blocks' | 'models', ItemTypeEntry[]> = {
       blocks: [],
       models: [],
@@ -85,11 +88,14 @@ export default function ConflictsManager({
     const entries: ItemTypeEntry[] = exportSchema.itemTypes.map(
       (exportItemType) => ({
         exportItemType,
-        projectItemType: conflicts.itemTypes[String(exportItemType.id)] ?? undefined,
+        projectItemType:
+          conflicts.itemTypes[String(exportItemType.id)] ?? undefined,
       }),
     );
 
-    const grouped = entries.reduce<Record<'blocks' | 'models', ItemTypeEntry[]>>(
+    const grouped = entries.reduce<
+      Record<'blocks' | 'models', ItemTypeEntry[]>
+    >(
       (accumulator, entry) => {
         const key: 'blocks' | 'models' = entry.exportItemType.attributes
           .modular_block
@@ -101,7 +107,7 @@ export default function ConflictsManager({
       { blocks: [], models: [] },
     );
 
-    const sortByStatusThenName = (items: ItemTypeEntry[]) =>
+    const sortByConflictStateThenName = (items: ItemTypeEntry[]) =>
       sortEntriesByDisplayName(
         [...items].sort((a, b) => {
           const aHasConflict = Boolean(a.projectItemType);
@@ -118,8 +124,8 @@ export default function ConflictsManager({
       );
 
     return {
-      blocks: sortByStatusThenName(grouped.blocks),
-      models: sortByStatusThenName(grouped.models),
+      blocks: sortByConflictStateThenName(grouped.blocks),
+      models: sortByConflictStateThenName(grouped.models),
     };
   }, [conflicts, exportSchema]);
 
@@ -143,15 +149,14 @@ export default function ConflictsManager({
       return aHasConflict ? -1 : 1;
     });
 
-    return sortEntriesByDisplayName(
-      conflictFirst,
-      (entry) =>
-        getTextWithoutRepresentativeEmojiAndPadding(
-          entry.exportPlugin.attributes.name,
-        ),
+    return sortEntriesByDisplayName(conflictFirst, (entry) =>
+      getTextWithoutRepresentativeEmojiAndPadding(
+        entry.exportPlugin.attributes.name,
+      ),
     );
   }, [conflicts, exportSchema]);
 
+  // Returns true while an item-type conflict still needs user input.
   function isItemTypeConflictUnresolved(
     exportItemType: SchemaTypes.ItemType,
     projectItemType?: SchemaTypes.ItemType,
@@ -185,6 +190,7 @@ export default function ConflictsManager({
     return true;
   }
 
+  // Plugins require no extra inputs beyond strategy selection.
   function isPluginConflictUnresolved(
     exportPlugin: SchemaTypes.Plugin,
     projectPlugin?: SchemaTypes.Plugin,
@@ -208,52 +214,55 @@ export default function ConflictsManager({
     return false;
   }
 
-  const visibleModels = groupedItemTypes.models.filter(({
-    exportItemType,
-    projectItemType,
-  }) =>
-    showOnlyConflicts
-      ? isItemTypeConflictUnresolved(exportItemType, projectItemType)
-      : true,
+  // Toggle in place filters the list down to unresolved conflicts when requested.
+  const visibleModels = itemTypesByCategory.models.filter(
+    ({ exportItemType, projectItemType }) =>
+      showOnlyConflicts
+        ? isItemTypeConflictUnresolved(exportItemType, projectItemType)
+        : true,
   );
 
-  const visibleBlocks = groupedItemTypes.blocks.filter(({
-    exportItemType,
-    projectItemType,
-  }) =>
-    showOnlyConflicts
-      ? isItemTypeConflictUnresolved(exportItemType, projectItemType)
-      : true,
+  const visibleBlocks = itemTypesByCategory.blocks.filter(
+    ({ exportItemType, projectItemType }) =>
+      showOnlyConflicts
+        ? isItemTypeConflictUnresolved(exportItemType, projectItemType)
+        : true,
   );
 
-  const visiblePlugins = pluginEntries.filter(({ exportPlugin, projectPlugin }) =>
-    showOnlyConflicts
-      ? isPluginConflictUnresolved(exportPlugin, projectPlugin)
-      : true,
+  const visiblePlugins = pluginEntries.filter(
+    ({ exportPlugin, projectPlugin }) =>
+      showOnlyConflicts
+        ? isPluginConflictUnresolved(exportPlugin, projectPlugin)
+        : true,
   );
 
   if (!conflicts) {
     return null;
   }
 
+  // Always count every conflict to show accurate totals even when filtered.
   const itemTypeConflictCount =
-    groupedItemTypes.blocks.filter(({ projectItemType }) => projectItemType)
+    itemTypesByCategory.blocks.filter(({ projectItemType }) => projectItemType)
       .length +
-    groupedItemTypes.models.filter(({ projectItemType }) => projectItemType)
+    itemTypesByCategory.models.filter(({ projectItemType }) => projectItemType)
       .length;
   const pluginConflictCount = pluginEntries.filter(
     ({ projectPlugin }) => projectPlugin,
   ).length;
 
-  const hasConflicts =
-    itemTypeConflictCount > 0 || pluginConflictCount > 0;
+  const hasConflicts = itemTypeConflictCount > 0 || pluginConflictCount > 0;
+
+  const proceedDisabled = submitting || !valid || validating;
+  const proceedTooltip = proceedDisabled
+    ? 'Select how to resolve the conflicts before proceeding'
+    : undefined;
 
   return (
     <div className="page">
       <div className="conflicts-manager__actions">
         <div style={{ fontWeight: 700, fontSize: '16px' }}>Schema overview</div>
         <label
-          htmlFor="schema-overview-only-conflicts"
+          htmlFor={toggleId}
           style={{
             display: 'inline-flex',
             alignItems: 'center',
@@ -265,7 +274,7 @@ export default function ConflictsManager({
           }}
         >
           <SwitchInput
-            id="schema-overview-only-conflicts"
+            id={toggleId}
             name="schema-overview-only-conflicts"
             value={showOnlyConflicts}
             onChange={(nextValue) => setShowOnlyConflicts(nextValue)}
@@ -290,15 +299,13 @@ export default function ConflictsManager({
               Models ({visibleModels.length})
             </div>
             <div className="conflicts-manager__group__content">
-              {visibleModels.map(
-                ({ exportItemType, projectItemType }) => (
-                  <ItemTypeConflict
-                    key={exportItemType.id}
-                    exportItemType={exportItemType}
-                    projectItemType={projectItemType}
-                  />
-                ),
-              )}
+              {visibleModels.map(({ exportItemType, projectItemType }) => (
+                <ItemTypeConflict
+                  key={exportItemType.id}
+                  exportItemType={exportItemType}
+                  projectItemType={projectItemType}
+                />
+              ))}
             </div>
           </div>
         )}
@@ -309,15 +316,13 @@ export default function ConflictsManager({
               Block models ({visibleBlocks.length})
             </div>
             <div className="conflicts-manager__group__content">
-              {visibleBlocks.map(
-                ({ exportItemType, projectItemType }) => (
-                  <ItemTypeConflict
-                    key={exportItemType.id}
-                    exportItemType={exportItemType}
-                    projectItemType={projectItemType}
-                  />
-                ),
-              )}
+              {visibleBlocks.map(({ exportItemType, projectItemType }) => (
+                <ItemTypeConflict
+                  key={exportItemType.id}
+                  exportItemType={exportItemType}
+                  projectItemType={projectItemType}
+                />
+              ))}
             </div>
           </div>
         )}
@@ -340,34 +345,20 @@ export default function ConflictsManager({
         )}
       </div>
       <div className="page__actions">
-        {/** Precompute disabled state to attach tooltip when needed */}
-        {(() => {
-          return null;
-        })()}
-        {(() => {
-          const proceedDisabled = submitting || !valid || validating;
-          return (
-            <div
-              title={
-                proceedDisabled
-                  ? 'Select how to resolve the conflicts before proceeding'
-                  : undefined
-              }
-              style={{ width: '100%' }}
-            >
-              <Button
-                type="submit"
-                fullWidth
-                buttonSize="l"
-                buttonType="primary"
-                disabled={proceedDisabled}
-                style={proceedDisabled ? { pointerEvents: 'none' } : undefined}
-              >
-                Proceed with the import
-              </Button>
-            </div>
-          );
-        })()}
+        {/* Left slot intentionally empty for layout parity with Export flow */}
+        <div aria-hidden />
+        <div title={proceedTooltip} style={{ width: '100%' }}>
+          <Button
+            type="submit"
+            fullWidth
+            buttonSize="l"
+            buttonType="primary"
+            disabled={proceedDisabled}
+            style={proceedDisabled ? { pointerEvents: 'none' } : undefined}
+          >
+            Proceed with the import
+          </Button>
+        </div>
         <p className="conflicts-manager__actions__reassurance">
           The import will never alter any existing elements in the schema.
         </p>

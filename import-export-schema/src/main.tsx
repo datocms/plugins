@@ -28,7 +28,9 @@ connect({
     ];
   },
   async executeSchemaItemTypeDropdownAction(_id, itemType, ctx) {
-    const environmentPrefix = ctx.isEnvironmentPrimary ? '' : `/environments/${ctx.environment}`;
+    const environmentPrefix = ctx.isEnvironmentPrimary
+      ? ''
+      : `/environments/${ctx.environment}`;
     const exportPagePath = `/configuration/p/${ctx.plugin.id}/pages/export`;
     const navigateUrl = `${environmentPrefix}${exportPagePath}?itemTypeId=${itemType.id}`;
 

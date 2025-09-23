@@ -1,10 +1,16 @@
+/**
+ * Renders the export-side right sidebar schema overview, grouping selected/unselected
+ * models and plugins from the dependency graph so editors can confirm what the
+ * bulk export will include. Also drives the "only selected" toggle and per-entity
+ * summaries reused across import/export review flows.
+ */
 import type { SchemaTypes } from '@datocms/cma-client';
+import classNames from 'classnames';
 import { Spinner, SwitchInput } from 'datocms-react-ui';
 import { useMemo, useState } from 'react';
-import classNames from 'classnames';
-import Collapsible from '@/components/SchemaOverview/Collapsible';
 import type { ItemTypeNode } from '@/components/ItemTypeNodeRenderer';
 import type { PluginNode } from '@/components/PluginNodeRenderer';
+import Collapsible from '@/components/SchemaOverview/Collapsible';
 import { getTextWithoutRepresentativeEmojiAndPadding } from '@/utils/emojiAgnosticSorter';
 import type { Graph } from '@/utils/graph/types';
 
@@ -44,7 +50,10 @@ type Props = {
   selectedPluginIds: string[];
 };
 
-function sortEntriesByDisplayName<T>(entries: T[], getName: (entry: T) => string) {
+function sortEntriesByDisplayName<T>(
+  entries: T[],
+  getName: (entry: T) => string,
+) {
   return [...entries].sort((a, b) =>
     localeAwareCollator.compare(getName(a), getName(b)),
   );
@@ -83,7 +92,7 @@ function renderItemTypeEntry(entry: ItemTypeEntry) {
       <p style={{ margin: '8px 0 0' }}>
         {entry.selected
           ? 'The exported schema JSON will include this '
-          : 'Select it '} 
+          : 'Select it '}
         {entry.selected ? '.' : ' from the graph to include it.'}
       </p>
     </Collapsible>
@@ -109,8 +118,8 @@ function renderPluginEntry(entry: PluginEntry) {
       className={className}
     >
       <p style={{ margin: 0 }}>
-        <strong>{name}</strong>{' '}
-        is {entry.selected ? 'selected for export.' : 'not selected yet.'}
+        <strong>{name}</strong> is{' '}
+        {entry.selected ? 'selected for export.' : 'not selected yet.'}
       </p>
       <p style={{ margin: '8px 0 0' }}>
         {entry.selected
@@ -172,8 +181,8 @@ function SchemaOverviewCategory({
   groups: Array<JSX.Element | null>;
   className?: string;
 }) {
-  const filteredGroups = groups.filter(
-    (group): group is JSX.Element => Boolean(group),
+  const filteredGroups = groups.filter((group): group is JSX.Element =>
+    Boolean(group),
   );
   if (filteredGroups.length === 0) {
     return null;
@@ -286,10 +295,19 @@ export function ExportSchemaOverview({
     return (
       <div className="page">
         <div className="conflicts-manager__actions">
-          <div style={{ fontWeight: 700, fontSize: '16px' }}>Schema overview</div>
+          <div style={{ fontWeight: 700, fontSize: '16px' }}>
+            Schema overview
+          </div>
         </div>
         <div className="page__content">
-          <div className="surface" style={{ padding: '24px', display: 'flex', justifyContent: 'center' }}>
+          <div
+            className="surface"
+            style={{
+              padding: '24px',
+              display: 'flex',
+              justifyContent: 'center',
+            }}
+          >
             <Spinner size={24} />
           </div>
         </div>
@@ -298,7 +316,11 @@ export function ExportSchemaOverview({
   }
 
   const selectedGroups = [
-    renderItemTypeGroup('Models', groupedItemTypes.models.selected, 'selected-models'),
+    renderItemTypeGroup(
+      'Models',
+      groupedItemTypes.models.selected,
+      'selected-models',
+    ),
     renderItemTypeGroup(
       'Block models',
       groupedItemTypes.blocks.selected,
@@ -320,7 +342,11 @@ export function ExportSchemaOverview({
           groupedItemTypes.blocks.unselected,
           'unselected-blocks',
         ),
-        renderPluginGroup('Plugins', pluginBuckets.unselected, 'unselected-plugins'),
+        renderPluginGroup(
+          'Plugins',
+          pluginBuckets.unselected,
+          'unselected-plugins',
+        ),
       ];
 
   return (
