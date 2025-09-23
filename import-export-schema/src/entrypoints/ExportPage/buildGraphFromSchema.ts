@@ -12,8 +12,6 @@ type Options = {
   installedPluginIds?: Set<string>;
 };
 
-// Note: queue type was unused; removed for strict build
-
 /**
  * Lightweight wrapper that adapts the current project schema into the shared
  * `buildGraph` helper so the export view can render a dependency graph.
@@ -36,5 +34,4 @@ export async function buildGraphFromSchema({
   });
 }
 
-// The helper exports moved to utils/graph; kept named export for compatibility if imported elsewhere
 export type { SchemaTypes };
