@@ -1,9 +1,10 @@
 import type { SchemaTypes } from '@datocms/cma-client';
 import { SelectField } from 'datocms-react-ui';
-import { useId } from 'react';
+import { useContext, useId } from 'react';
 import { Field } from 'react-final-form';
 import { useResolutionStatusForPlugin } from '../ResolutionsForm';
 import Collapsible from '@/components/SchemaOverview/Collapsible';
+import { GraphEntitiesContext } from '../GraphEntitiesContext';
 
 type Option = { label: string; value: string };
 type SelectGroup<OptionType> = {
@@ -29,6 +30,8 @@ export function PluginConflict({ exportPlugin, projectPlugin }: Props) {
   const selectId = useId();
   const fieldPrefix = `plugin-${exportPlugin.id}`;
   const resolution = useResolutionStatusForPlugin(exportPlugin.id);
+  const { hasPluginNode } = useContext(GraphEntitiesContext);
+  const nodeExists = hasPluginNode(exportPlugin.id);
 
   const strategy = resolution?.values?.strategy;
   const hasValidResolution = Boolean(
@@ -37,6 +40,10 @@ export function PluginConflict({ exportPlugin, projectPlugin }: Props) {
   );
 
   const hasConflict = Boolean(projectPlugin) && !hasValidResolution;
+
+  if (!nodeExists) {
+    return null;
+  }
 
   return (
     <Collapsible

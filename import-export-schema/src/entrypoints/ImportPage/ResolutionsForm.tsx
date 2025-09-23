@@ -1,9 +1,9 @@
-import { useNodes, useReactFlow } from '@xyflow/react';
 import { get, keyBy, set } from 'lodash-es';
 import { type ReactNode, useContext, useMemo } from 'react';
 import { Form as FormHandler, useFormState } from 'react-final-form';
 import type { ProjectSchema } from '@/utils/ProjectSchema';
 import { ConflictsContext } from './ConflictsManager/ConflictsContext';
+import { GraphEntitiesContext } from './GraphEntitiesContext';
 
 export type ItemTypeConflictResolutionRename = {
   strategy: 'rename';
@@ -70,12 +70,7 @@ function isValidApiKey(apiKey: string) {
  */
 export default function ResolutionsForm({ schema, children, onSubmit }: Props) {
   const conflicts = useContext(ConflictsContext);
-
-  const { getNode } = useReactFlow();
-
-  // we need this to re-render this component everytime the nodes change, and
-  // revalidate the form!
-  useNodes();
+  const graphEntities = useContext(GraphEntitiesContext);
 
   const initialValues = useMemo<FormValues>(
     () =>
@@ -113,7 +108,7 @@ export default function ResolutionsForm({ schema, children, onSubmit }: Props) {
     }
 
     for (const pluginId of Object.keys(conflicts.plugins)) {
-      if (!getNode(`plugin--${pluginId}`)) {
+      if (!graphEntities.hasPluginNode(pluginId)) {
         continue;
       }
 
@@ -126,8 +121,7 @@ export default function ResolutionsForm({ schema, children, onSubmit }: Props) {
     }
 
     for (const itemTypeId of Object.keys(conflicts.itemTypes)) {
-      const node = getNode(`itemType--${itemTypeId}`);
-      if (!node) {
+      if (!graphEntities.hasItemTypeNode(itemTypeId)) {
         continue;
       }
 
@@ -167,7 +161,7 @@ export default function ResolutionsForm({ schema, children, onSubmit }: Props) {
         const itemTypesByApiKey = keyBy(projectItemTypes, 'attributes.api_key');
 
         for (const pluginId of Object.keys(conflicts.plugins)) {
-          if (!getNode(`plugin--${pluginId}`)) {
+          if (!graphEntities.hasPluginNode(pluginId)) {
             continue;
           }
 
@@ -178,7 +172,7 @@ export default function ResolutionsForm({ schema, children, onSubmit }: Props) {
         }
 
         for (const itemTypeId of Object.keys(conflicts.itemTypes)) {
-          if (!getNode(`itemType--${itemTypeId}`)) {
+          if (!graphEntities.hasItemTypeNode(itemTypeId)) {
             continue;
           }
 

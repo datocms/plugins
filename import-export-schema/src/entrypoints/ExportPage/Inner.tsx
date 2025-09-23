@@ -12,14 +12,13 @@ import { GraphCanvas } from '@/components/GraphCanvas';
 import { GRAPH_NODE_THRESHOLD } from '@/shared/constants/graph';
 import { debugLog } from '@/utils/debug';
 import { expandSelectionWithDependencies } from '@/utils/graph/dependencies';
-import { type AppNode, edgeTypes, type Graph } from '@/utils/graph/types';
+import { type AppNode, edgeTypes } from '@/utils/graph/types';
 import { SelectedEntityContext } from '@/components/SchemaOverview/SelectedEntityContext';
 import { DependencyActionsPanel } from './DependencyActionsPanel';
 import { EntitiesToExportContext } from './EntitiesToExportContext';
 import { ExportItemTypeNodeRenderer } from './ExportItemTypeNodeRenderer';
 import { ExportPluginNodeRenderer } from './ExportPluginNodeRenderer';
 import { ExportSchemaOverview } from './ExportSchemaOverview';
-import LargeSelectionView from './LargeSelectionView';
 import { useAnimatedNodes } from './useAnimatedNodes';
 import { useExportGraph } from './useExportGraph';
 
@@ -47,8 +46,8 @@ type Props = {
 
 /**
  * Presents the export graph, wiring selection state, dependency resolution, and
- * export call-outs for both graph and list views.
- */
+ * export call-outs. For large selections it warns before rendering the full canvas.
+*/
 export default function Inner({
   initialItemTypes,
   schema,
@@ -75,6 +74,10 @@ export default function Inner({
   }>({ itemTypeIds: new Set(), pluginIds: new Set() });
   const [focusedEntity, setFocusedEntity] = useState<
     SchemaTypes.ItemType | SchemaTypes.Plugin | undefined
+  >(undefined);
+  const [forceRenderGraph, setForceRenderGraph] = useState(false);
+  const [pendingZoomEntity, setPendingZoomEntity] = useState<
+    SchemaTypes.ItemType | SchemaTypes.Plugin | null | undefined
   >(undefined);
 
   const { graph, error, refresh } = useExportGraph({
@@ -109,44 +112,6 @@ export default function Inner({
     );
   }, [ctx, onClose]);
 
-  const handleSelectEntity = useCallback(
-    (
-      newEntity: SchemaTypes.ItemType | SchemaTypes.Plugin | undefined,
-      zoomIn = false,
-    ) => {
-      setFocusedEntity(newEntity);
-
-      if (!zoomIn) {
-        return;
-      }
-
-      if (!graph) {
-        return;
-      }
-
-      if (!newEntity) {
-        fitView({ duration: 800 });
-        return;
-      }
-
-      const node = graph.nodes.find((node) =>
-        newEntity.type === 'plugin'
-          ? node.type === 'plugin' && node.data.plugin.id === newEntity.id
-          : node.type === 'itemType' && node.data.itemType.id === newEntity.id,
-      );
-
-      if (!node) {
-        return;
-      }
-
-      fitBounds(
-        { x: node.position.x, y: node.position.y, width: 200, height: 200 },
-        { duration: 800, padding: 1 },
-      );
-    },
-    [fitBounds, fitView, graph],
-  );
-
   // Overlay is controlled by parent; we signal prepared after each build
 
   // Keep selection in sync if the parent changes the initial set of item types
@@ -164,10 +129,62 @@ export default function Inner({
       .join('-'),
   ]);
 
-  // React Flow becomes cluttered past this many nodes, so we fall back to a list.
-  const showGraph = !!graph && graph.nodes.length <= GRAPH_NODE_THRESHOLD;
+  const graphTooLarge = !!graph && graph.nodes.length > GRAPH_NODE_THRESHOLD;
+  useEffect(() => {
+    if (!graphTooLarge && forceRenderGraph) {
+      setForceRenderGraph(false);
+    }
+  }, [graphTooLarge, forceRenderGraph]);
+
+  const showGraph = !!graph && (!graphTooLarge || forceRenderGraph);
+
+  useEffect(() => {
+    if (!showGraph || pendingZoomEntity === undefined || !graph) {
+      return;
+    }
+
+    if (pendingZoomEntity === null) {
+      fitView({ duration: 800 });
+      setPendingZoomEntity(undefined);
+      return;
+    }
+
+    const node = graph.nodes.find((node) =>
+      pendingZoomEntity.type === 'plugin'
+        ? node.type === 'plugin' && node.data.plugin.id === pendingZoomEntity.id
+        : node.type === 'itemType' &&
+          node.data.itemType.id === pendingZoomEntity.id,
+    );
+
+    if (!node) {
+      setPendingZoomEntity(undefined);
+      return;
+    }
+
+    fitBounds(
+      { x: node.position.x, y: node.position.y, width: 200, height: 200 },
+      { duration: 800, padding: 1 },
+    );
+    setPendingZoomEntity(undefined);
+  }, [fitBounds, fitView, graph, pendingZoomEntity, showGraph]);
 
   const animatedNodes = useAnimatedNodes(showGraph && graph ? graph.nodes : []);
+
+  const handleSelectEntity = useCallback(
+    (
+      newEntity: SchemaTypes.ItemType | SchemaTypes.Plugin | undefined,
+      zoomIn = false,
+    ) => {
+      setFocusedEntity(newEntity);
+
+      if (!zoomIn) {
+        return;
+      }
+
+      setPendingZoomEntity(newEntity ?? null);
+    },
+    [graphTooLarge],
+  );
 
   const onNodeClick: NodeMouseHandler<AppNode> = useCallback(
     (_, node) => {
@@ -432,21 +449,32 @@ export default function Inner({
                             }
                           />
                         </>
-                      ) : (
-                        <LargeSelectionView
-                          initialItemTypes={initialItemTypes}
-                          graph={graph as Graph}
-                          selectedItemTypeIds={selectedItemTypeIds}
-                          setSelectedItemTypeIds={setSelectedItemTypeIds}
-                          selectedPluginIds={selectedPluginIds}
-                          setSelectedPluginIds={setSelectedPluginIds}
-                          onExport={onExport}
-                          onSelectAllDependencies={handleSelectAllDependencies}
-                          onUnselectAllDependencies={handleUnselectAllDependencies}
-                          areAllDependenciesSelected={areAllDependenciesSelected}
-                          selectingDependencies={selectingDependencies}
-                        />
-                      )}
+                      ) : graph ? (
+                        <div
+                          style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            textAlign: 'center',
+                            height: '100%',
+                            gap: 16,
+                            padding: '0 24px',
+                          }}
+                        >
+                          <div style={{ fontWeight: 600 }}>
+                            This graph has {graph.nodes.length} nodes. Trying to render
+                            it may slow down your browser.
+                          </div>
+                          <Button
+                            type="button"
+                            buttonSize="s"
+                            onClick={() => setForceRenderGraph(true)}
+                          >
+                            Render it anyway
+                          </Button>
+                        </div>
+                      ) : null}
                     </EntitiesToExportContext.Provider>
                   </div>
                 </section>

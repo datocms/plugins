@@ -9,7 +9,7 @@ import {
 import { Button } from 'datocms-react-ui';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faXmark } from '@fortawesome/free-solid-svg-icons';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { GRAPH_NODE_THRESHOLD } from '@/shared/constants/graph';
 import { type AppNode, edgeTypes, type Graph } from '@/utils/graph/types';
 import type { ProjectSchema } from '@/utils/ProjectSchema';
@@ -18,9 +18,9 @@ import { buildGraphFromExportDoc } from './buildGraphFromExportDoc';
 import ConflictsManager from './ConflictsManager';
 import { ImportItemTypeNodeRenderer } from './ImportItemTypeNodeRenderer';
 import { ImportPluginNodeRenderer } from './ImportPluginNodeRenderer';
-import LargeSelectionView from './LargeSelectionView';
 import { useSkippedItemsAndPluginIds } from './ResolutionsForm';
 import { SelectedEntityContext } from '@/components/SchemaOverview/SelectedEntityContext';
+import { GraphEntitiesContext } from './GraphEntitiesContext';
 
 // Map React Flow node types to the dedicated renderers for import graphs.
 const nodeTypes: NodeTypes = {
@@ -39,16 +39,15 @@ type Props = {
  * the selection in sync with the conflict resolution form.
  */
 export function Inner({ exportSchema, schema, ctx: _ctx }: Props) {
-  const { fitBounds, fitView } = useReactFlow();
+  const { fitBounds, fitView, setNodes, setEdges } = useReactFlow();
   const { skippedItemTypeIds, skippedPluginIds } =
     useSkippedItemsAndPluginIds();
 
-  // Zoom the viewport to the full graph once React Flow has mounted.
-  useEffect(() => {
-    setTimeout(() => fitView(), 100);
-  }, []);
-
   const [graph, setGraph] = useState<Graph | undefined>();
+  const [forceRenderGraph, setForceRenderGraph] = useState(false);
+  const [pendingZoomEntity, setPendingZoomEntity] = useState<
+    SchemaTypes.ItemType | SchemaTypes.Plugin | null | undefined
+  >(undefined);
 
   // Rebuild the graph when the export document or skip lists change.
   useEffect(() => {
@@ -75,33 +74,6 @@ export function Inner({ exportSchema, schema, ctx: _ctx }: Props) {
     );
   }, []);
 
-  // Allow external panels to highlight a specific entity while animating the view.
-  function handleSelectEntity(
-    newEntity: undefined | SchemaTypes.ItemType | SchemaTypes.Plugin,
-    zoomIn?: boolean,
-  ) {
-    setSelectedEntity(newEntity);
-
-    if (zoomIn && graph) {
-      if (newEntity) {
-        const node = graph.nodes.find((node) =>
-          newEntity.type === 'plugin'
-            ? node.type === 'plugin' && node.data.plugin.id === newEntity.id
-            : node.type === 'itemType' &&
-              node.data.itemType.id === newEntity.id,
-        );
-        if (!node) return;
-
-        fitBounds(
-          { x: node.position.x, y: node.position.y, width: 200, height: 200 },
-          { duration: 800, padding: 1 },
-        );
-      } else {
-        fitView({ duration: 800 });
-      }
-    }
-  }
-
   const requestCancel = useCallback(() => {
     window.dispatchEvent(new CustomEvent('import:request-cancel'));
   }, []);
@@ -109,16 +81,116 @@ export function Inner({ exportSchema, schema, ctx: _ctx }: Props) {
   const totalPotentialNodes =
     exportSchema.itemTypes.length + exportSchema.plugins.length;
 
-  // Prefer the interactive graph for small/medium selections; fall back otherwise.
-  const showGraph =
+  const graphTooLarge =
     !!graph &&
-    graph.nodes.length <= GRAPH_NODE_THRESHOLD &&
-    totalPotentialNodes <= GRAPH_NODE_THRESHOLD;
+    (graph.nodes.length > GRAPH_NODE_THRESHOLD ||
+      totalPotentialNodes > GRAPH_NODE_THRESHOLD);
+
+  useEffect(() => {
+    if (!graphTooLarge && forceRenderGraph) {
+      setForceRenderGraph(false);
+    }
+  }, [graphTooLarge, forceRenderGraph]);
+
+  // Prefer the interactive graph for small/medium selections; allow manual override otherwise.
+  const showGraph = !!graph && (!graphTooLarge || forceRenderGraph);
+
+  useEffect(() => {
+    if (!graph) {
+      setNodes([]);
+      setEdges([]);
+      return;
+    }
+
+    if (!showGraph) {
+      setNodes(graph.nodes);
+      setEdges(graph.edges);
+    }
+  }, [graph, showGraph, setNodes, setEdges]);
+
+  const graphEntitySets = useMemo(() => {
+    const itemTypeIds = new Set<string>();
+    const pluginIds = new Set<string>();
+
+    if (graph) {
+      for (const node of graph.nodes) {
+        if (node.type === 'itemType') {
+          itemTypeIds.add(node.data.itemType.id);
+        }
+        if (node.type === 'plugin') {
+          pluginIds.add(node.data.plugin.id);
+        }
+      }
+    }
+
+    return { itemTypeIds, pluginIds };
+  }, [graph]);
+
+  useEffect(() => {
+    if (!showGraph || pendingZoomEntity === undefined || !graph) {
+      return;
+    }
+
+    if (pendingZoomEntity === null) {
+      fitView({ duration: 800 });
+      setPendingZoomEntity(undefined);
+      return;
+    }
+
+    const node = graph.nodes.find((node) =>
+      pendingZoomEntity.type === 'plugin'
+        ? node.type === 'plugin' && node.data.plugin.id === pendingZoomEntity.id
+        : node.type === 'itemType' &&
+          node.data.itemType.id === pendingZoomEntity.id,
+    );
+
+    if (!node) {
+      setPendingZoomEntity(undefined);
+      return;
+    }
+
+    fitBounds(
+      { x: node.position.x, y: node.position.y, width: 200, height: 200 },
+      { duration: 800, padding: 1 },
+    );
+    setPendingZoomEntity(undefined);
+  }, [fitBounds, fitView, graph, pendingZoomEntity, showGraph]);
+
+  // Zoom the viewport to the full graph once React Flow has mounted and the graph is visible.
+  useEffect(() => {
+    if (!showGraph) {
+      return;
+    }
+    const timeout = window.setTimeout(() => fitView(), 100);
+    return () => window.clearTimeout(timeout);
+  }, [fitView, showGraph, graph?.nodes.length]);
+
+  const handleSelectEntity = useCallback(
+    (
+      newEntity: undefined | SchemaTypes.ItemType | SchemaTypes.Plugin,
+      zoomIn?: boolean,
+    ) => {
+      setSelectedEntity(newEntity);
+
+      if (!zoomIn) {
+        return;
+      }
+
+      setPendingZoomEntity(newEntity ?? null);
+    },
+    [graphTooLarge],
+  );
 
   return (
-    <SelectedEntityContext.Provider
-      value={{ entity: selectedEntity, set: handleSelectEntity }}
+    <GraphEntitiesContext.Provider
+      value={{
+        hasItemTypeNode: (id) => graphEntitySets.itemTypeIds.has(id),
+        hasPluginNode: (id) => graphEntitySets.pluginIds.has(id),
+      }}
     >
+      <SelectedEntityContext.Provider
+        value={{ entity: selectedEntity, set: handleSelectEntity }}
+      >
       <div style={{ display: 'flex', width: '100%', height: '100%' }}>
         <section
           style={{
@@ -162,37 +234,31 @@ export function Inner({ exportSchema, schema, ctx: _ctx }: Props) {
               </ReactFlow>
             )}
             {graph && !showGraph && (
-              <>
-                {/* List view for large selections */}
-                <LargeSelectionView
-                  graph={graph}
-                  onSelect={(entity) => handleSelectEntity(entity, true)}
-                />
-                {/* Hidden ReactFlow to keep nodes available for Conflicts UI */}
-                <div
-                  style={{
-                    position: 'absolute',
-                    width: 1,
-                    height: 1,
-                    overflow: 'hidden',
-                    opacity: 0,
-                    pointerEvents: 'none',
-                  }}
-                  aria-hidden
-                >
-                  <ReactFlow
-                    fitView={false}
-                    nodes={graph.nodes}
-                    edges={graph.edges}
-                    nodesDraggable={false}
-                    nodesConnectable={false}
-                    elementsSelectable={false}
-                    nodeTypes={nodeTypes}
-                    edgeTypes={edgeTypes}
-                    proOptions={{ hideAttribution: true }}
-                  />
+              <div
+                style={{
+                  position: 'absolute',
+                  inset: 0,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  textAlign: 'center',
+                  padding: '0 24px',
+                  gap: 16,
+                }}
+              >
+                <div style={{ fontWeight: 600 }}>
+                  This graph has {graph.nodes.length} nodes. Trying to render it may slow
+                  down your browser.
                 </div>
-              </>
+                <Button
+                  type="button"
+                  buttonSize="s"
+                  onClick={() => setForceRenderGraph(true)}
+                >
+                  Render it anyway
+                </Button>
+              </div>
             )}
           </div>
         </section>
@@ -209,6 +275,7 @@ export function Inner({ exportSchema, schema, ctx: _ctx }: Props) {
           </div>
         </section>
       </div>
-    </SelectedEntityContext.Provider>
+      </SelectedEntityContext.Provider>
+    </GraphEntitiesContext.Provider>
   );
 }

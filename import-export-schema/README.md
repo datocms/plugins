@@ -85,7 +85,7 @@ Powerful, safe schema migration for DatoCMS. Export models/blocks and plugins as
   - `useConflictsBuilder` drives conflict analysis with `useLongTask`; `useRecipeLoader` watches `recipe_url` query params for shared exports.
 - Shared UI:
   - `TaskOverlayStack` + `TaskProgressOverlay` render cancellable overlays with `ProgressOverlay` stall detection.
-  - `GraphCanvas`, `LargeSelectionLayout`, and the Schema Overview components keep the export/import visualizations consistent.
+  - `GraphCanvas` and the Schema Overview components keep the export/import visualizations consistent, with large graph warnings gating heavy renders.
 - Schema utilities:
   - `ProjectSchema` provides cached lookups plus concurrency-limited `getItemTypeFieldsAndFieldsets` calls.
   - `buildExportDoc` trims validators/appearances so exports stay self-contained; `buildImportDoc` + `importSchema` orchestrate plugin installs, item type creation, field migrations, and reorder passes.
@@ -104,7 +104,7 @@ Powerful, safe schema migration for DatoCMS. Export models/blocks and plugins as
 
 ## Troubleshooting
 
-- “Why did the graph disappear?” For very large selections, the UI switches to a faster list view.
+- “Why did the graph disappear?” Large selections now show a warning instead of auto-rendering; click “Render it anyway” to view the full graph.
 - “Fields lost their editor?” If you don’t include a custom editor plugin in the export/import, the plugin selects a safe, built‑in editor so the field remains valid in the target project.
 - “Plugin dependencies were skipped?” Check for the banner warning about incomplete plugin detection and rerun “Select all dependencies” after reopening the page once the CMA call succeeds.
 - “Cancel didn’t stop immediately?” The import/export pipeline stops at the next safe checkpoint; keep the overlay open until it confirms cancellation.

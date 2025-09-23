@@ -1,10 +1,10 @@
 import type { SchemaTypes } from '@datocms/cma-client';
-import { useReactFlow } from '@xyflow/react';
 import { SelectField, TextField } from 'datocms-react-ui';
-import { useId } from 'react';
+import { useContext, useId } from 'react';
 import { Field } from 'react-final-form';
 import { useResolutionStatusForItemType } from '../ResolutionsForm';
 import Collapsible from '@/components/SchemaOverview/Collapsible';
+import { GraphEntitiesContext } from '../GraphEntitiesContext';
 
 type Option = { label: string; value: string };
 type SelectGroup<OptionType> = {
@@ -26,7 +26,8 @@ export function ItemTypeConflict({ exportItemType, projectItemType }: Props) {
   const apiKeyId = useId();
   const fieldPrefix = `itemType-${exportItemType.id}`;
   const resolution = useResolutionStatusForItemType(exportItemType.id);
-  const node = useReactFlow().getNode(`itemType--${exportItemType.id}`);
+  const { hasItemTypeNode } = useContext(GraphEntitiesContext);
+  const nodeExists = hasItemTypeNode(exportItemType.id);
 
   const exportType = exportItemType.attributes.modular_block
     ? 'block'
@@ -73,7 +74,7 @@ export function ItemTypeConflict({ exportItemType, projectItemType }: Props) {
     }
   }
 
-  if (!node) {
+  if (!nodeExists) {
     return null;
   }
 
