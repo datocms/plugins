@@ -252,10 +252,32 @@ export default function ConflictsManager({
 
   const hasConflicts = itemTypeConflictCount > 0 || pluginConflictCount > 0;
 
-  const proceedDisabled = submitting || !valid || validating;
-  const proceedTooltip = proceedDisabled
-    ? 'Select how to resolve the conflicts before proceeding'
-    : undefined;
+  const unresolvedModelConflicts = itemTypesByCategory.models.some(
+    ({ exportItemType, projectItemType }) =>
+      isItemTypeConflictUnresolved(exportItemType, projectItemType),
+  );
+
+  const unresolvedBlockConflicts = itemTypesByCategory.blocks.some(
+    ({ exportItemType, projectItemType }) =>
+      isItemTypeConflictUnresolved(exportItemType, projectItemType),
+  );
+
+  const unresolvedPluginConflicts = pluginEntries.some(
+    ({ exportPlugin, projectPlugin }) =>
+      isPluginConflictUnresolved(exportPlugin, projectPlugin),
+  );
+
+  const hasUnresolvedConflicts =
+    unresolvedModelConflicts ||
+    unresolvedBlockConflicts ||
+    unresolvedPluginConflicts;
+
+  const proceedDisabled =
+    submitting || validating || !valid || hasUnresolvedConflicts;
+  const proceedTooltip =
+    hasUnresolvedConflicts || !valid
+      ? 'Select how to resolve the conflicts before proceeding'
+      : undefined;
 
   return (
     <div className="page">

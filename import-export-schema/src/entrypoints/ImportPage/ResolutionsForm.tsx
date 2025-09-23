@@ -3,7 +3,6 @@ import { type ReactNode, useContext, useMemo } from 'react';
 import { Form as FormHandler, useFormState } from 'react-final-form';
 import type { ProjectSchema } from '@/utils/ProjectSchema';
 import { ConflictsContext } from './ConflictsManager/ConflictsContext';
-import { GraphEntitiesContext } from './GraphEntitiesContext';
 
 export type ItemTypeConflictResolutionRename = {
   strategy: 'rename';
@@ -70,7 +69,6 @@ function isValidApiKey(apiKey: string) {
  */
 export default function ResolutionsForm({ schema, children, onSubmit }: Props) {
   const conflicts = useContext(ConflictsContext);
-  const graphEntities = useContext(GraphEntitiesContext);
 
   const initialValues = useMemo<FormValues>(
     () =>
@@ -108,10 +106,6 @@ export default function ResolutionsForm({ schema, children, onSubmit }: Props) {
     }
 
     for (const pluginId of Object.keys(conflicts.plugins)) {
-      if (!graphEntities.hasPluginNode(pluginId)) {
-        continue;
-      }
-
       const result = get(values, [`plugin-${pluginId}`]) as PluginValues;
       if (result?.strategy) {
         resolutions.plugins[pluginId] = {
@@ -121,10 +115,6 @@ export default function ResolutionsForm({ schema, children, onSubmit }: Props) {
     }
 
     for (const itemTypeId of Object.keys(conflicts.itemTypes)) {
-      if (!graphEntities.hasItemTypeNode(itemTypeId)) {
-        continue;
-      }
-
       const fieldPrefix = `itemType-${itemTypeId}`;
       const result = get(values, fieldPrefix) as ItemTypeValues;
 
@@ -139,7 +129,7 @@ export default function ResolutionsForm({ schema, children, onSubmit }: Props) {
       }
     }
 
-    onSubmit(resolutions);
+    await onSubmit(resolutions);
   }
 
   if (!conflicts) {
@@ -161,10 +151,6 @@ export default function ResolutionsForm({ schema, children, onSubmit }: Props) {
         const itemTypesByApiKey = keyBy(projectItemTypes, 'attributes.api_key');
 
         for (const pluginId of Object.keys(conflicts.plugins)) {
-          if (!graphEntities.hasPluginNode(pluginId)) {
-            continue;
-          }
-
           const fieldPrefix = `plugin-${pluginId}`;
           if (!get(values, [fieldPrefix, 'strategy'])) {
             set(errors, [fieldPrefix, 'strategy'], 'Required!');
@@ -172,10 +158,6 @@ export default function ResolutionsForm({ schema, children, onSubmit }: Props) {
         }
 
         for (const itemTypeId of Object.keys(conflicts.itemTypes)) {
-          if (!graphEntities.hasItemTypeNode(itemTypeId)) {
-            continue;
-          }
-
           const fieldPrefix = `itemType-${itemTypeId}`;
           const strategy = get(values, [fieldPrefix, 'strategy']);
           if (!strategy) {
