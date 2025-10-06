@@ -36,6 +36,10 @@ type FieldValue = {
   relatedKeywords: Array<{ keyword: string; synonyms: string }>;
 };
 
+type LocalizedFieldValue = {
+  [locale: string]: FieldValue;
+};
+
 type Page = {
   content: string;
   locale: string;
@@ -48,14 +52,26 @@ type PropTypes = {
   ctx: RenderFieldExtensionCtx;
 };
 
+const getLocaleFieldValue = (
+  rawValue: string | null,
+  locale: string,
+  hasLocales: boolean,
+): FieldValue | null => {
+  if (!rawValue) return null;
+
+  const parsed = JSON.parse(rawValue);
+
+  if (hasLocales) {
+    return parsed[locale] || null;
+  }
+
+  return parsed as FieldValue;
+};
+
 const Main = ({ ctx }: PropTypes) => {
   const { htmlGeneratorUrl } = ctx.plugin.attributes
     .parameters as ValidParameters;
 
-  const rawFieldValue = get(ctx.formValues, ctx.fieldPath) as string | null;
-  const fieldValue = rawFieldValue
-    ? (JSON.parse(rawFieldValue) as FieldValue)
-    : null;
   const {
     item,
     locale,
@@ -63,6 +79,10 @@ const Main = ({ ctx }: PropTypes) => {
     environment: environmentId,
     isSubmitting,
   } = ctx;
+
+  const hasLocales = ctx.site.attributes.locales.length > 1;
+  const rawFieldValue = get(ctx.formValues, ctx.fieldPath) as string | null;
+  const fieldValue = getLocaleFieldValue(rawFieldValue, ctx.locale, hasLocales);
 
   const [isWorkerReady, setIsWorkerReady] = useState(false);
   const [page, setPage] = useState<Page | null>(null);
@@ -77,6 +97,15 @@ const Main = ({ ctx }: PropTypes) => {
   const [relatedKeywords, setRelatedKeywords] = useState(
     fieldValue?.relatedKeywords || [],
   );
+
+  useEffect(() => {
+    const currentRawValue = get(ctx.formValues, ctx.fieldPath) as string | null;
+    const currentFieldValue = getLocaleFieldValue(currentRawValue, locale, hasLocales);
+    setKeyword(currentFieldValue?.keyword || '');
+    setSynonyms(currentFieldValue?.synonyms || '');
+    setRelatedKeywords(currentFieldValue?.relatedKeywords || []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locale]);
 
   useEffect(() => {
     const run = async () => {
@@ -247,14 +276,27 @@ const Main = ({ ctx }: PropTypes) => {
 
   useDebouncyEffect(
     () => {
-      ctx.setFieldValue(
-        ctx.fieldPath,
-        JSON.stringify({
-          keyword,
-          synonyms,
-          relatedKeywords,
-        }),
-      );
+      const fieldData = {
+        keyword,
+        synonyms,
+        relatedKeywords,
+      };
+
+      let valueToStore: FieldValue | LocalizedFieldValue;
+
+      if (hasLocales) {
+        const currentRawValue = get(ctx.formValues, ctx.fieldPath) as string | null;
+        const existingData = currentRawValue ? JSON.parse(currentRawValue) : {};
+        valueToStore = {
+          ...existingData,
+          [locale]: fieldData,
+        };
+      } else {
+        valueToStore = fieldData;
+      }
+
+      const formattedValue = JSON.stringify(valueToStore, null, 2);
+      ctx.setFieldValue(ctx.fieldPath, formattedValue);
     },
     200,
     [keyword, synonyms, relatedKeywords],

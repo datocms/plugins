@@ -14,7 +14,35 @@ Once the plugin is installed, please configure your Frontend metadata endpoint U
 
 This plugin is meant to be used on JSON fields, so please assign it to some JSON fields in in your project.
 
-The plugin will store information inside the JSON field using this structure:
+### Storage format
+
+The plugin adapts its storage format based on whether your DatoCMS project uses multiple locales.
+
+**For projects with multiple locales**, the plugin will store information inside the JSON field using this structure:
+
+```json
+{
+  "en": {
+    "keyword": "food shows",
+    "synonyms": "cooking shows, culinary demonstrations",
+    "relatedKeywords": [
+      {
+        "keyword": "food",
+        "synonyms": ""
+      }
+    ]
+  },
+  "it": {
+    "keyword": "programmi di cucina",
+    "synonyms": "spettacoli di cucina",
+    "relatedKeywords": []
+  }
+}
+```
+
+This allows you to set different SEO keywords for each locale in your project.
+
+**For projects with a single locale**, the plugin will store information inside the JSON field using this structure:
 
 ```json
 {
