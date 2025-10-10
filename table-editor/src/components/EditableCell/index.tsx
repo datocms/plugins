@@ -57,7 +57,24 @@ export default function EditableCell({
       onPaste={(e) => {
         e.preventDefault();
         const table = toTable(e.clipboardData);
-        onMultipleCellUpdate(index, id!, table);
+        const isMultiCell = table.length > 1 || (table[0]?.length || 0) > 1;
+        const target = e.target as HTMLTextAreaElement;
+        const start = target.selectionStart ?? 0;
+        const end = target.selectionEnd ?? 0;
+
+        if (isMultiCell) {
+          onMultipleCellUpdate(index, id!, table);
+        } else {
+          const text = table[0]?.[0] ?? "";
+          const newValue = value.slice(0, start) + text + value.slice(end);
+          onCellUpdate(index, id as string, newValue);
+
+          setTimeout(() => {
+            const nextCursor = start + text.length;
+            target.selectionStart = nextCursor;
+            target.selectionEnd = nextCursor;
+          });
+        }
       }}
       onChange={(e) => {
         onCellUpdate(index, id as string, e.target.value);
