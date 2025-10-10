@@ -1,8 +1,4 @@
-import {
-  type RenderItemFormSidebarCtx,
-  type RenderItemFormSidebarPanelCtx,
-  connect,
-} from 'datocms-plugin-sdk';
+import { connect } from 'datocms-plugin-sdk';
 import ConfigScreen from './entrypoints/ConfigScreen';
 import SidebarFrame from './entrypoints/SidebarFrame';
 import SidebarPanel from './entrypoints/SidebarPanel';
@@ -10,14 +6,34 @@ import { render } from './utils/render';
 import 'datocms-react-ui/styles.css';
 import { library } from '@fortawesome/fontawesome-svg-core';
 import { fas } from '@fortawesome/free-solid-svg-icons';
+import Inspector from './entrypoints/Inspector';
+import InspectorLoading from './entrypoints/InspectorLoading';
 import { type Parameters, normalizeParameters } from './types';
 import { readSidebarWidth } from './utils/persistedWidth';
 
 library.add(fas);
 
 connect({
+  mainNavigationTabs(ctx) {
+    const { visualEditing } = normalizeParameters(
+      ctx.plugin.attributes.parameters as Parameters,
+    );
+
+    return visualEditing?.enableDraftModeUrl
+      ? [
+          {
+            label: 'Visual',
+            icon: 'eye',
+            pointsTo: {
+              inspectorId: 'visual',
+            },
+            placement: ['before', 'content'],
+          },
+        ]
+      : [];
+  },
   renderConfigScreen(ctx) {
-    return render(<ConfigScreen ctx={ctx} />);
+    render(<ConfigScreen ctx={ctx} />);
   },
   itemFormSidebarPanels(_itemType, ctx) {
     const { startOpen } = normalizeParameters(
@@ -27,16 +43,13 @@ connect({
     return [
       {
         id: 'webPreviews',
-        label: 'Web previews',
+        label: 'Related website pages',
         startOpen,
         placement: ['before', 'links'],
       },
     ];
   },
-  renderItemFormSidebarPanel(
-    _sidebarPanelId,
-    ctx: RenderItemFormSidebarPanelCtx,
-  ) {
+  renderItemFormSidebarPanel(_sidebarPanelId, ctx) {
     render(<SidebarPanel ctx={ctx} />);
   },
   itemFormSidebars(_itemType, ctx) {
@@ -47,12 +60,19 @@ connect({
     return [
       {
         id: 'webPreviews',
-        label: 'Side-by-side web previews',
+        label: 'Website preview',
         preferredWidth: readSidebarWidth(ctx.site) || defaultSidebarWidth,
       },
     ];
   },
-  renderItemFormSidebar(_sidebarId, ctx: RenderItemFormSidebarCtx) {
+  renderItemFormSidebar(_sidebarId, ctx) {
     render(<SidebarFrame ctx={ctx} />);
+  },
+  renderInspector(_inspectorId, ctx) {
+    render(<Inspector ctx={ctx} />);
+  },
+  renderInspectorPanel(_panelId, ctx) {
+    // currently not used
+    render(<InspectorLoading ctx={ctx} />);
   },
 });

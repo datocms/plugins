@@ -71,7 +71,7 @@ export function useStatusByFrontend(
   ctx: RenderItemFormSidebarCtx | RenderItemFormSidebarPanelCtx,
 ) {
   const [statusByFrontend, setStatusByFrontend] = useState<
-    Record<string, FrontendStatus> | undefined
+    Record<string, FrontendStatus | undefined> | undefined
   >();
 
   const { frontends: rawFrontends } = normalizeParameters(

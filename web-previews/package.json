@@ -24,18 +24,22 @@
     "entryPoint": "dist/index.html"
   },
   "dependencies": {
+    "@floating-ui/react": "^0.27.16",
     "@fortawesome/free-solid-svg-icons": "^6.7.2",
     "@fortawesome/react-fontawesome": "^0.2.0",
     "@types/lodash-es": "^4.17.12",
-    "datocms-plugin-sdk": "^0.7.11",
-    "datocms-react-ui": "^0.7.11",
+    "cuid": "^3.0.0",
+    "datocms-plugin-sdk": "^2.0.18",
+    "datocms-react-ui": "^2.0.19",
     "final-form": "^4.20.9",
     "final-form-arrays": "^3.1.0",
     "lodash-es": "^4.17.21",
+    "penpal": "^4.1.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-final-form": "^6.5.9",
     "react-final-form-arrays": "^3.1.4",
+    "react-merge-refs": "^3.0.2",
     "use-deep-compare": "1.1.0",
     "usehooks-ts": "^2.9.1"
   },
@@ -44,7 +48,8 @@
     "prepublishOnly": "npm run build",
     "dev": "vite --port 3000",
     "preview": "vite preview",
-    "format": "biome check --write --unsafe"
+    "format": "biome check --write --unsafe",
+    "typecheck": "tsc -b"
   },
   "devDependencies": {
     "@biomejs/biome": "1.9.4",

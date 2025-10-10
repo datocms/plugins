@@ -1,0 +1,24 @@
+.toolbarButton {
+  border: 0;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  cursor: pointer;
+  color: var(--light-body-color);
+  border-left: 1px solid var(--border-color);
+  aspect-ratio: 1;
+  font-size: 15px;
+  height: 100%;
+}
+
+.toolbarButton:hover {
+  color: var(--base-body-color);
+  background-color: var(--light-bg-color);
+}
+
+.toolbarButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}

@@ -14,6 +14,11 @@ export type RawFrontend = {
   disabled?: boolean;
 };
 
+export type RawVisualEditingSettings = {
+  enableDraftModeUrl: string;
+  initialPath?: string;
+};
+
 export type RawViewport = {
   name: string;
   width: string | number;
@@ -27,6 +32,7 @@ export type Parameters = {
   defaultSidebarWidth?: string;
   iframeAllowAttribute?: string;
   defaultViewports?: RawViewport[];
+  visualEditing?: RawVisualEditingSettings;
 };
 
 export type Viewport = {
@@ -43,12 +49,18 @@ export type Frontend = {
   disabled: boolean;
 };
 
+export type VisualEditingSettings = {
+  enableDraftModeUrl: string;
+  initialPath?: string;
+};
+
 export type NormalizedParameters = {
   frontends: Frontend[];
   startOpen: boolean;
   defaultSidebarWidth: number;
   iframeAllowAttribute: string | undefined;
   defaultViewports: Viewport[];
+  visualEditing?: VisualEditingSettings;
 };
 
 const DEFAULT_VIEWPORTS: readonly Viewport[] = [
@@ -66,6 +78,7 @@ export function normalizeParameters({
   defaultSidebarWidth,
   iframeAllowAttribute,
   defaultViewports,
+  visualEditing,
 }: Parameters): NormalizedParameters {
   return {
     frontends:
@@ -91,6 +104,12 @@ export function normalizeParameters({
           : Number.parseInt(viewport.height),
       icon: viewport.icon as IconName,
     })) || [...DEFAULT_VIEWPORTS],
+    visualEditing: visualEditing
+      ? {
+          ...visualEditing,
+          initialPath: visualEditing.initialPath || undefined,
+        }
+      : undefined,
   };
 }
 
