@@ -3,7 +3,7 @@
   "description": "Export one or multiple models/block models as JSON files for reimport into another DatoCMS project.",
   "homepage": "https://github.com/datocms/plugins",
   "private": false,
-  "version": "0.1.16",
+  "version": "0.1.17",
   "author": "Stefano Verna <s.verna@datocms.com>",
   "type": "module",
   "keywords": [
