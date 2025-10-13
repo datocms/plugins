@@ -659,9 +659,17 @@ async function importField(
   field: SchemaTypes.Field,
   { client, locales, mappings }: ImportFieldOptions,
 ) {
+  const nextAppearance = await mapAppearanceToProject(
+    field,
+    mappings.pluginIds,
+  );
+
   const data: SchemaTypes.FieldCreateSchema['data'] = {
     ...field,
     id: mappings.fieldIds.get(field.id),
+    attributes: {
+      ...field.attributes,
+    },
     relationships: {
       fieldset: {
         data: field.relationships.fieldset.data
@@ -723,12 +731,8 @@ async function importField(
     };
   }
 
-  (data.attributes as { appearance?: unknown }).appearance = undefined;
-  (data.attributes as { appeareance?: unknown }).appeareance = undefined;
-  const nextAppearance = await mapAppearanceToProject(
-    field,
-    mappings.pluginIds,
-  );
+  delete (data.attributes as { appearance?: unknown }).appearance;
+  delete (data.attributes as { appeareance?: unknown }).appeareance;
 
   if (field.attributes.localized) {
     const oldDefaultValues = field.attributes.default_value as Record<

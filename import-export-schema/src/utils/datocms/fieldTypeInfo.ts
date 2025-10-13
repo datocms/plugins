@@ -60,7 +60,8 @@ async function fetchFieldTypeInfo() {
     try {
       const response = await fetch('https://internal.datocms.com/field-types');
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      return (await response.json()) as FieldTypeInfo;
+      const data = (await response.json()) as FieldTypeInfo;
+      return data;
     } catch {
       // Fall back to a local static map to keep flows working safely
       return fallbackFieldTypeInfo();
