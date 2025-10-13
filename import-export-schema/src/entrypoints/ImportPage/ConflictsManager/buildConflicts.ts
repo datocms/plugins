@@ -1,5 +1,5 @@
 import type { SchemaTypes } from '@datocms/cma-client';
-import { keyBy } from 'lodash-es';
+import keyBy from 'lodash-es/keyBy';
 import type { ExportSchema } from '@/entrypoints/ExportPage/ExportSchema';
 import type { ProjectSchema } from '@/utils/ProjectSchema';
 

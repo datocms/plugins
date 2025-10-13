@@ -1,5 +1,4 @@
 declare module 'lodash-es' {
   export * from 'lodash';
-  import _ from 'lodash';
-  export default _;
+  export { default } from 'lodash';
 }

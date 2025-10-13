@@ -5,7 +5,7 @@
  * both behaviours working so older exports still import cleanly.
  */
 import type { SchemaTypes } from '@datocms/cma-client';
-import { get } from 'lodash-es';
+import get from 'lodash-es/get';
 import { findLinkedItemTypeIds } from '@/utils/datocms/schema';
 import { isDefined } from '@/utils/isDefined';
 import type { ExportDoc } from '@/utils/types';

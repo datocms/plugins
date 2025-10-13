@@ -10,7 +10,7 @@ import type { ProjectSchema } from '@/utils/ProjectSchema';
 import '@xyflow/react/dist/style.css';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import { Button, Spinner, useCtx } from 'datocms-react-ui';
-import { without } from 'lodash-es';
+import without from 'lodash-es/without';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { GraphCanvas } from '@/components/GraphCanvas';
 import { SelectedEntityContext } from '@/components/SchemaOverview/SelectedEntityContext';

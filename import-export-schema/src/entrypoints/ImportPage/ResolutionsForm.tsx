@@ -1,4 +1,6 @@
-import { get, keyBy, set } from 'lodash-es';
+import get from 'lodash-es/get';
+import keyBy from 'lodash-es/keyBy';
+import set from 'lodash-es/set';
 import { type ReactNode, useContext, useMemo } from 'react';
 import { Form as FormHandler, useFormState } from 'react-final-form';
 import type { ProjectSchema } from '@/utils/ProjectSchema';

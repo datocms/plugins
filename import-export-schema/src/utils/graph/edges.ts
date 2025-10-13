@@ -1,6 +1,6 @@
 import type { SchemaTypes } from '@datocms/cma-client';
 import { MarkerType } from '@xyflow/react';
-import { find } from 'lodash-es';
+import find from 'lodash-es/find';
 import {
   findLinkedItemTypeIds,
   findLinkedPluginIds,

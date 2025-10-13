@@ -1,7 +1,7 @@
 import type { SchemaTypes } from '@datocms/cma-client';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import { Button, SwitchInput } from 'datocms-react-ui';
-import { get } from 'lodash-es';
+import get from 'lodash-es/get';
 import { useContext, useId, useMemo, useState } from 'react';
 import { useFormState } from 'react-final-form';
 import type { ExportSchema } from '@/entrypoints/ExportPage/ExportSchema';

@@ -1,4 +1,7 @@
-import { cloneDeep, get, intersection, set } from 'lodash-es';
+import cloneDeep from 'lodash-es/cloneDeep';
+import get from 'lodash-es/get';
+import intersection from 'lodash-es/intersection';
+import set from 'lodash-es/set';
 import { ensureExportableAppearance } from '@/utils/datocms/appearance';
 import {
   validatorsContainingBlocks,

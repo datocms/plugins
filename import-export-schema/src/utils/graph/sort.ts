@@ -1,4 +1,4 @@
-import { sortBy } from 'lodash-es';
+import sortBy from 'lodash-es/sortBy';
 import type { AppNode, Graph } from '@/utils/graph/types';
 
 /** Stable ordering so layout + list views don't flicker across renders. */

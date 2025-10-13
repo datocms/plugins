@@ -1,5 +1,11 @@
 import { type Client, generateId, type SchemaTypes } from '@datocms/cma-client';
-import { find, get, isEqual, omit, pick, set, sortBy } from 'lodash-es';
+import find from 'lodash-es/find';
+import get from 'lodash-es/get';
+import isEqual from 'lodash-es/isEqual';
+import omit from 'lodash-es/omit';
+import pick from 'lodash-es/pick';
+import set from 'lodash-es/set';
+import sortBy from 'lodash-es/sortBy';
 import { mapAppearanceToProject } from '@/utils/datocms/appearance';
 import {
   validatorsContainingBlocks,

@@ -9,7 +9,7 @@ import {
   useStore,
 } from '@xyflow/react';
 import classNames from 'classnames';
-import { sortBy } from 'lodash-es';
+import sortBy from 'lodash-es/sortBy';
 import { useState } from 'react';
 import { Schema } from '@/utils/icons';
 import { Field } from '../components/Field';

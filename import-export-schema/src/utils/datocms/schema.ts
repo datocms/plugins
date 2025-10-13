@@ -1,6 +1,6 @@
 import type { SchemaTypes } from '@datocms/cma-client';
 import type { FieldAttributes } from '@datocms/cma-client/dist/types/generated/SchemaTypes';
-import { get } from 'lodash-es';
+import get from 'lodash-es/get';
 /**
  * Shared lookups and helper utilities for interpreting DatoCMS field metadata.
  */
