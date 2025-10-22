@@ -107,15 +107,28 @@ export default function ConflictsManager({
       { blocks: [], models: [] },
     );
 
-    const sortByConflictStateThenName = (items: ItemTypeEntry[]) =>
+    const sortByUnresolvedThenName = (items: ItemTypeEntry[]) =>
       sortEntriesByDisplayName(
         [...items].sort((a, b) => {
+          // Unresolved first
+          const aUnresolved = isItemTypeConflictUnresolved(
+            a.exportItemType,
+            a.projectItemType,
+          );
+          const bUnresolved = isItemTypeConflictUnresolved(
+            b.exportItemType,
+            b.projectItemType,
+          );
+          if (aUnresolved !== bUnresolved) {
+            return aUnresolved ? -1 : 1;
+          }
+          // Then any remaining conflicts (already resolved) before non-conflicts
           const aHasConflict = Boolean(a.projectItemType);
           const bHasConflict = Boolean(b.projectItemType);
-          if (aHasConflict === bHasConflict) {
-            return 0;
+          if (aHasConflict !== bHasConflict) {
+            return aHasConflict ? -1 : 1;
           }
-          return aHasConflict ? -1 : 1;
+          return 0;
         }),
         (entry) =>
           getTextWithoutRepresentativeEmojiAndPadding(
@@ -124,10 +137,10 @@ export default function ConflictsManager({
       );
 
     return {
-      blocks: sortByConflictStateThenName(grouped.blocks),
-      models: sortByConflictStateThenName(grouped.models),
+      blocks: sortByUnresolvedThenName(grouped.blocks),
+      models: sortByUnresolvedThenName(grouped.models),
     };
-  }, [conflicts, exportSchema]);
+  }, [conflicts, exportSchema, formValues, formErrors]);
 
   // Deterministic sorting keeps plugin ordering stable between renders.
   const pluginEntries = useMemo<PluginEntry[]>(() => {
@@ -140,21 +153,32 @@ export default function ConflictsManager({
       projectPlugin: conflicts.plugins[String(exportPlugin.id)] ?? undefined,
     }));
 
-    const conflictFirst = [...entries].sort((a, b) => {
+    const unresolvedFirst = [...entries].sort((a, b) => {
+      const aUnresolved = isPluginConflictUnresolved(
+        a.exportPlugin,
+        a.projectPlugin,
+      );
+      const bUnresolved = isPluginConflictUnresolved(
+        b.exportPlugin,
+        b.projectPlugin,
+      );
+      if (aUnresolved !== bUnresolved) {
+        return aUnresolved ? -1 : 1;
+      }
       const aHasConflict = Boolean(a.projectPlugin);
       const bHasConflict = Boolean(b.projectPlugin);
-      if (aHasConflict === bHasConflict) {
-        return 0;
+      if (aHasConflict !== bHasConflict) {
+        return aHasConflict ? -1 : 1;
       }
-      return aHasConflict ? -1 : 1;
+      return 0;
     });
 
-    return sortEntriesByDisplayName(conflictFirst, (entry) =>
+    return sortEntriesByDisplayName(unresolvedFirst, (entry) =>
       getTextWithoutRepresentativeEmojiAndPadding(
         entry.exportPlugin.attributes.name,
       ),
     );
-  }, [conflicts, exportSchema]);
+  }, [conflicts, exportSchema, formValues, formErrors]);
 
   // Returns true while an item-type conflict still needs user input.
   function isItemTypeConflictUnresolved(
@@ -315,56 +339,81 @@ export default function ConflictsManager({
           </div>
         )}
 
-        {visibleModels.length > 0 && (
-          <div className="conflicts-manager__group">
-            <div className="conflicts-manager__group__title">
-              Models ({visibleModels.length})
-            </div>
-            <div className="conflicts-manager__group__content">
-              {visibleModels.map(({ exportItemType, projectItemType }) => (
-                <ItemTypeConflict
-                  key={exportItemType.id}
-                  exportItemType={exportItemType}
-                  projectItemType={projectItemType}
-                />
-              ))}
-            </div>
-          </div>
-        )}
+        {(() => {
+          type SectionKey = 'models' | 'blocks' | 'plugins';
+          const baseOrder: SectionKey[] = ['models', 'blocks', 'plugins'];
+          const unresolvedByKey: Record<SectionKey, boolean> = {
+            models: unresolvedModelConflicts,
+            blocks: unresolvedBlockConflicts,
+            plugins: unresolvedPluginConflicts,
+          };
+          const sectionOrder = [...baseOrder].sort((a, b) => {
+            if (unresolvedByKey[a] !== unresolvedByKey[b]) {
+              return unresolvedByKey[a] ? -1 : 1;
+            }
+            return baseOrder.indexOf(a) - baseOrder.indexOf(b);
+          });
 
-        {visibleBlocks.length > 0 && (
-          <div className="conflicts-manager__group">
-            <div className="conflicts-manager__group__title">
-              Block models ({visibleBlocks.length})
-            </div>
-            <div className="conflicts-manager__group__content">
-              {visibleBlocks.map(({ exportItemType, projectItemType }) => (
-                <ItemTypeConflict
-                  key={exportItemType.id}
-                  exportItemType={exportItemType}
-                  projectItemType={projectItemType}
-                />
-              ))}
-            </div>
-          </div>
-        )}
+          return sectionOrder.map((section) => {
+            if (section === 'models' && visibleModels.length > 0) {
+              return (
+                <div className="conflicts-manager__group" key="models">
+                  <div className="conflicts-manager__group__title">
+                    Models ({visibleModels.length})
+                  </div>
+                  <div className="conflicts-manager__group__content">
+                    {visibleModels.map(({ exportItemType, projectItemType }) => (
+                      <ItemTypeConflict
+                        key={exportItemType.id}
+                        exportItemType={exportItemType}
+                        projectItemType={projectItemType}
+                      />
+                    ))}
+                  </div>
+                </div>
+              );
+            }
 
-        {visiblePlugins.length > 0 && (
-          <div className="conflicts-manager__group">
-            <div className="conflicts-manager__group__title">
-              Plugins ({visiblePlugins.length})
-            </div>
-            <div className="conflicts-manager__group__content">
-              {visiblePlugins.map(({ exportPlugin, projectPlugin }) => (
-                <PluginConflict
-                  key={exportPlugin.id}
-                  exportPlugin={exportPlugin}
-                  projectPlugin={projectPlugin}
-                />
-              ))}
-            </div>
-          </div>
-        )}
+            if (section === 'blocks' && visibleBlocks.length > 0) {
+              return (
+                <div className="conflicts-manager__group" key="blocks">
+                  <div className="conflicts-manager__group__title">
+                    Block models ({visibleBlocks.length})
+                  </div>
+                  <div className="conflicts-manager__group__content">
+                    {visibleBlocks.map(({ exportItemType, projectItemType }) => (
+                      <ItemTypeConflict
+                        key={exportItemType.id}
+                        exportItemType={exportItemType}
+                        projectItemType={projectItemType}
+                      />
+                    ))}
+                  </div>
+                </div>
+              );
+            }
+
+            if (section === 'plugins' && visiblePlugins.length > 0) {
+              return (
+                <div className="conflicts-manager__group" key="plugins">
+                  <div className="conflicts-manager__group__title">
+                    Plugins ({visiblePlugins.length})
+                  </div>
+                  <div className="conflicts-manager__group__content">
+                    {visiblePlugins.map(({ exportPlugin, projectPlugin }) => (
+                      <PluginConflict
+                        key={exportPlugin.id}
+                        exportPlugin={exportPlugin}
+                        projectPlugin={projectPlugin}
+                      />
+                    ))}
+                  </div>
+                </div>
+              );
+            }
+            return null;
+          });
+        })()}
       </div>
       <div className="page__actions">
         {/* Left slot intentionally empty for layout parity with Export flow */}
