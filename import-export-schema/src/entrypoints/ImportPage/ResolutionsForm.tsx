@@ -141,49 +141,87 @@ export default function ResolutionsForm({ schema, children, onSubmit }: Props) {
   return (
     <FormHandler<FormValues>
       initialValues={initialValues}
-      validate={async (values) => {
+      validate={(values) => {
         const errors: Record<string, string> = {};
 
         if (!conflicts) {
           return {};
         }
 
-        const projectItemTypes = await schema.getAllItemTypes();
-        const itemTypesByName = keyBy(projectItemTypes, 'attributes.name');
-        const itemTypesByApiKey = keyBy(projectItemTypes, 'attributes.api_key');
+        const pluginIds = Object.keys(conflicts.plugins);
+        const itemTypeIds = Object.keys(conflicts.itemTypes);
 
-        for (const pluginId of Object.keys(conflicts.plugins)) {
+        // No conflicts at all → nothing to validate; return synchronously.
+        if (pluginIds.length === 0 && itemTypeIds.length === 0) {
+          return {};
+        }
+
+        // Synchronous required checks for strategies across plugins/item types.
+        for (const pluginId of pluginIds) {
           const fieldPrefix = `plugin-${pluginId}`;
           if (!get(values, [fieldPrefix, 'strategy'])) {
             set(errors, [fieldPrefix, 'strategy'], 'Required!');
           }
         }
 
-        for (const itemTypeId of Object.keys(conflicts.itemTypes)) {
+        let hasRename = false;
+        for (const itemTypeId of itemTypeIds) {
           const fieldPrefix = `itemType-${itemTypeId}`;
           const strategy = get(values, [fieldPrefix, 'strategy']);
           if (!strategy) {
             set(errors, [fieldPrefix, 'strategy'], 'Required!');
           }
           if (strategy === 'rename') {
+            hasRename = true;
             const name = get(values, [fieldPrefix, 'name']);
             if (!name) {
               set(errors, [fieldPrefix, 'name'], 'Required!');
-            } else if (name in itemTypesByName) {
-              set(errors, [fieldPrefix, 'name'], 'Already used in project!');
             }
             const apiKey = get(values, [fieldPrefix, 'apiKey']);
             if (!apiKey) {
               set(errors, [fieldPrefix, 'apiKey'], 'Required!');
             } else if (!isValidApiKey(apiKey)) {
               set(errors, [fieldPrefix, 'apiKey'], 'Invalid format');
-            } else if (apiKey in itemTypesByApiKey) {
-              set(errors, [fieldPrefix, 'apiKey'], 'Already used in project!');
             }
           }
         }
 
-        return errors;
+        // If there are no rename validations to check against the project
+        // (or there were only required/format errors), return synchronously to
+        // avoid toggling Final Form's `validating` flag.
+        if (!hasRename) {
+          return errors;
+        }
+
+        // Only now perform the async lookup needed to check for collisions
+        // against existing project item types.
+        return (async () => {
+          const projectItemTypes = await schema.getAllItemTypes();
+          const itemTypesByName = keyBy(projectItemTypes, 'attributes.name');
+          const itemTypesByApiKey = keyBy(
+            projectItemTypes,
+            'attributes.api_key',
+          );
+
+          for (const itemTypeId of itemTypeIds) {
+            const fieldPrefix = `itemType-${itemTypeId}`;
+            const strategy = get(values, [fieldPrefix, 'strategy']);
+            if (strategy !== 'rename') continue;
+
+            const name = get(values, [fieldPrefix, 'name']);
+            if (name && name in itemTypesByName) {
+              set(errors, [fieldPrefix, 'name'], 'Already used in project!');
+            }
+            const apiKey = get(values, [fieldPrefix, 'apiKey']);
+            if (apiKey) {
+              if (apiKey in itemTypesByApiKey) {
+                set(errors, [fieldPrefix, 'apiKey'], 'Already used in project!');
+              }
+            }
+          }
+
+          return errors;
+        })();
       }}
       onSubmit={handleSubmit}
     >

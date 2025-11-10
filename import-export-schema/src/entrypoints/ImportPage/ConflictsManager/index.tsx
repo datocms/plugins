@@ -296,10 +296,15 @@ export default function ConflictsManager({
     unresolvedBlockConflicts ||
     unresolvedPluginConflicts;
 
+  // When there are no conflicts at all, do not block the CTA on form
+  // validation state — there is nothing to validate and the button should
+  // be immediately clickable. Only gate on form validity/validation when
+  // actual conflicts exist.
   const proceedDisabled =
-    submitting || validating || !valid || hasUnresolvedConflicts;
+    submitting ||
+    (hasConflicts && (validating || !valid || hasUnresolvedConflicts));
   const proceedTooltip =
-    hasUnresolvedConflicts || !valid
+    hasConflicts && (hasUnresolvedConflicts || !valid)
       ? 'Select how to resolve the conflicts before proceeding'
       : undefined;
 
