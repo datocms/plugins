@@ -32,6 +32,9 @@ importers:
       d3-hierarchy:
         specifier: ^3.1.2
         version: 3.1.2
+      d3-timer:
+        specifier: ^3.0.1
+        version: 3.0.1
       datocms-plugin-sdk:
         specifier: ^2.0.13
         version: 2.0.15
