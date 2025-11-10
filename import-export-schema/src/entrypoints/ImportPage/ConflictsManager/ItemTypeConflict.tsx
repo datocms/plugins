@@ -1,9 +1,8 @@
 import type { SchemaTypes } from '@datocms/cma-client';
 import { SelectField, TextField } from 'datocms-react-ui';
-import { useContext, useId } from 'react';
+import { useId } from 'react';
 import { Field } from 'react-final-form';
 import Collapsible from '@/components/SchemaOverview/Collapsible';
-import { GraphEntitiesContext } from '../GraphEntitiesContext';
 import { useResolutionStatusForItemType } from '../ResolutionsForm';
 
 type Option = { label: string; value: string };
@@ -26,8 +25,6 @@ export function ItemTypeConflict({ exportItemType, projectItemType }: Props) {
   const apiKeyId = useId();
   const fieldPrefix = `itemType-${exportItemType.id}`;
   const resolution = useResolutionStatusForItemType(exportItemType.id);
-  const { hasItemTypeNode } = useContext(GraphEntitiesContext);
-  const nodeExists = hasItemTypeNode(exportItemType.id);
 
   const exportType = exportItemType.attributes.modular_block
     ? 'block'
@@ -74,10 +71,6 @@ export function ItemTypeConflict({ exportItemType, projectItemType }: Props) {
         value: 'reuseExisting',
       });
     }
-  }
-
-  if (!nodeExists) {
-    return null;
   }
 
   const isInvalid = hasConflict && Boolean(resolution?.invalid);

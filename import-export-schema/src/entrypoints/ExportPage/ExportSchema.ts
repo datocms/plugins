@@ -98,6 +98,11 @@ export class ExportSchema {
         this.rootItemTypes = [any];
       }
     }
+
+    this.rootItemTypes = this.ensureRootCoverage(this.rootItemTypes);
+    if (!this.rootItemType && this.rootItemTypes.length > 0) {
+      this.rootItemType = this.rootItemTypes[0];
+    }
   }
 
   get fields() {
@@ -154,5 +159,95 @@ export class ExportSchema {
       .map((fs) => String(fs.id))
       .map((fsid) => this.fieldsetsById.get(String(fsid)))
       .filter(isDefined);
+  }
+
+  private ensureRootCoverage(
+    initialRoots: SchemaTypes.ItemType[],
+  ): SchemaTypes.ItemType[] {
+    if (this.itemTypes.length === 0) {
+      return [];
+    }
+
+    const adjacency = new Map<string, Set<string>>();
+
+    const ensureNeighbors = (id: string) => {
+      const key = String(id);
+      if (!adjacency.has(key)) {
+        adjacency.set(key, new Set());
+      }
+      return adjacency.get(key)!;
+    };
+
+    for (const itemType of this.itemTypes) {
+      const currentId = String(itemType.id);
+      const neighbors = ensureNeighbors(currentId);
+      const fields = this.getItemTypeFields(itemType);
+
+      for (const field of fields) {
+        for (const rawLinkedId of findLinkedItemTypeIds(field)) {
+          const linkedId = String(rawLinkedId);
+          if (!this.itemTypesById.has(linkedId) || linkedId === currentId) {
+            continue;
+          }
+          neighbors.add(linkedId);
+          ensureNeighbors(linkedId).add(currentId);
+        }
+      }
+    }
+
+    const visited = new Set<string>();
+    const result: SchemaTypes.ItemType[] = [];
+    const resultIds = new Set<string>();
+
+    const visitFrom = (startId: string) => {
+      const queue: string[] = [startId];
+      while (queue.length > 0) {
+        const current = String(queue.shift()!);
+        if (visited.has(current)) {
+          continue;
+        }
+        visited.add(current);
+        const neighbors = adjacency.get(current);
+        if (!neighbors) {
+          continue;
+        }
+        for (const neighbor of neighbors) {
+          if (!visited.has(neighbor)) {
+            queue.push(neighbor);
+          }
+        }
+      }
+    };
+
+    const addSeed = (itemType: SchemaTypes.ItemType | undefined) => {
+      if (!itemType) return;
+      const id = String(itemType.id);
+      if (!resultIds.has(id)) {
+        resultIds.add(id);
+        result.push(itemType);
+      }
+      visitFrom(id);
+    };
+
+    for (const root of initialRoots) {
+      addSeed(root);
+    }
+
+    if (result.length === 0) {
+      const fallbackRoot =
+        this.rootItemType ??
+        this.itemTypesById.values().next().value ??
+        undefined;
+      addSeed(fallbackRoot);
+    }
+
+    for (const itemType of this.itemTypes) {
+      const id = String(itemType.id);
+      if (!visited.has(id)) {
+        addSeed(itemType);
+      }
+    }
+
+    return result;
   }
 }
