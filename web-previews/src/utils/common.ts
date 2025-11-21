@@ -22,7 +22,6 @@ export async function makeRequest(
   { previewWebhook, name, customHeaders }: Frontend,
   payload: string,
 ): Promise<[string, FrontendStatus]> {
-  console.log({customHeaders})
   try {
     if (!previewWebhook) {
       throw new Error(`Missing "Preview Webhook URL" option!`);
