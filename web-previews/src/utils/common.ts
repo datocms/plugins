@@ -22,6 +22,7 @@ export async function makeRequest(
   { previewWebhook, name, customHeaders }: Frontend,
   payload: string,
 ): Promise<[string, FrontendStatus]> {
+  console.log({customHeaders})
   try {
     if (!previewWebhook) {
       throw new Error(`Missing "Preview Webhook URL" option!`);
@@ -79,6 +80,8 @@ export function useStatusByFrontend(
     itemType,
     environment: environmentId,
     currentUser,
+    site: { attributes: siteAttributes },
+
   } = ctx;
 
   const payloadBody = useDeepCompareMemo(
@@ -91,6 +94,7 @@ export function useStatusByFrontend(
               environmentId,
               locale,
               currentUser,
+              siteAttributes, 
             },
             null,
             2,
