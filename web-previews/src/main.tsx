@@ -1,8 +1,4 @@
-import {
-  type RenderItemFormSidebarCtx,
-  type RenderItemFormSidebarPanelCtx,
-  connect,
-} from 'datocms-plugin-sdk';
+import { connect } from 'datocms-plugin-sdk';
 import ConfigScreen from './entrypoints/ConfigScreen';
 import SidebarFrame from './entrypoints/SidebarFrame';
 import SidebarPanel from './entrypoints/SidebarPanel';
@@ -12,16 +8,29 @@ import { library } from '@fortawesome/fontawesome-svg-core';
 import { fas } from '@fortawesome/free-solid-svg-icons';
 import { type Parameters, normalizeParameters } from './types';
 import { readSidebarWidth } from './utils/persistedWidth';
+import Inspector from './entrypoints/Inspector';
 
 library.add(fas);
 
 connect({
+  mainNavigationTabs() {
+    return [
+      {
+        label: 'Visual Editing',
+        icon: 'binoculars',
+        pointsTo: {
+          inspectorId: 'visual_editing',
+        },
+        placement: ['before', 'content'],
+      },
+    ];
+  },
   renderConfigScreen(ctx) {
-    return render(<ConfigScreen ctx={ctx} />);
+    render(<ConfigScreen ctx={ctx} />);
   },
   itemFormSidebarPanels(_itemType, ctx) {
     const { startOpen } = normalizeParameters(
-      ctx.plugin.attributes.parameters as Parameters,
+      ctx.plugin.attributes.parameters as Parameters
     );
 
     return [
@@ -33,15 +42,12 @@ connect({
       },
     ];
   },
-  renderItemFormSidebarPanel(
-    _sidebarPanelId,
-    ctx: RenderItemFormSidebarPanelCtx,
-  ) {
+  renderItemFormSidebarPanel(_sidebarPanelId, ctx) {
     render(<SidebarPanel ctx={ctx} />);
   },
   itemFormSidebars(_itemType, ctx) {
     const { defaultSidebarWidth } = normalizeParameters(
-      ctx.plugin.attributes.parameters as Parameters,
+      ctx.plugin.attributes.parameters as Parameters
     );
 
     return [
@@ -52,7 +58,10 @@ connect({
       },
     ];
   },
-  renderItemFormSidebar(_sidebarId, ctx: RenderItemFormSidebarCtx) {
+  renderItemFormSidebar(_sidebarId, ctx) {
     render(<SidebarFrame ctx={ctx} />);
+  },
+  renderInspector(_inspectorId, ctx) {
+    render(<Inspector ctx={ctx} />);
   },
 });
