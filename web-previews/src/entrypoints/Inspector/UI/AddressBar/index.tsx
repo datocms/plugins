@@ -39,7 +39,7 @@ function AddressBar({ onRefresh }: AddressBarProps) {
   const ctx = useCtx<RenderInspectorCtx>();
 
   const { visualEditing } = normalizeParameters(
-    ctx.plugin.attributes.parameters as Parameters
+    ctx.plugin.attributes.parameters as Parameters,
   );
 
   if (!visualEditing) {
@@ -54,8 +54,8 @@ function AddressBar({ onRefresh }: AddressBarProps) {
     contentLink.type === 'connecting'
       ? iframeState.path
       : contentLink.type === 'connected'
-      ? toCompletePath(contentLink.state.path)
-      : '/';
+        ? toCompletePath(contentLink.state.path)
+        : '/';
 
   const [inputValue, setInputValue] = useState(currentPath);
   const [hasError, setHasError] = useState(false);

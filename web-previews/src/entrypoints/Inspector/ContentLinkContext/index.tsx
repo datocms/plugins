@@ -110,6 +110,16 @@ export function ContentLinkContextProvider({ children }: Props) {
     },
   });
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional
+  useEffect(() => {
+    if (ctx.highlightedItemId && connection.type === 'connected') {
+      connection.methods.flashItem({
+        itemId: ctx.highlightedItemId,
+        scrollToNearestTarget: true,
+      });
+    }
+  }, [ctx.highlightedItemId]);
+
   useEffect(() => {
     if (connection.type !== 'connected') {
       firstWebsiteStateChangeRef.current = true;
@@ -127,7 +137,7 @@ export function ContentLinkContextProvider({ children }: Props) {
       connection.type === 'connected' &&
       contentLinkState?.clickToEditEnabled
     ) {
-      connection.methods.flash({ scrollToNearestTarget: false });
+      connection.methods.flashAll({ scrollToNearestTarget: false });
     }
   }, [
     contentLinkState?.path,
