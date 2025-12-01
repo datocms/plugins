@@ -39,7 +39,7 @@ function AddressBar({ onRefresh }: AddressBarProps) {
   const ctx = useCtx<RenderInspectorCtx>();
 
   const { visualEditing } = normalizeParameters(
-    ctx.plugin.attributes.parameters as Parameters,
+    ctx.plugin.attributes.parameters as Parameters
   );
 
   if (!visualEditing) {
@@ -54,8 +54,8 @@ function AddressBar({ onRefresh }: AddressBarProps) {
     contentLink.type === 'connecting'
       ? iframeState.path
       : contentLink.type === 'connected'
-        ? toCompletePath(contentLink.state.path)
-        : '/';
+      ? toCompletePath(contentLink.state.path)
+      : '/';
 
   const [inputValue, setInputValue] = useState(currentPath);
   const [hasError, setHasError] = useState(false);
@@ -108,7 +108,10 @@ function AddressBar({ onRefresh }: AddressBarProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className={styles.root}>
+    <form
+      onSubmit={handleSubmit}
+      className={classNames(styles.root, hasError && styles.error)}
+    >
       <button
         type="button"
         onClick={onRefresh}
@@ -125,7 +128,7 @@ function AddressBar({ onRefresh }: AddressBarProps) {
         }}
         onKeyDown={handleKeyDown}
         placeholder="/"
-        className={classNames(styles.input, hasError && styles.inputError)}
+        className={styles.input}
       />
     </form>
   );

@@ -15,6 +15,19 @@
   box-shadow: 0 0 0 3px var(--semi-transparent-accent-color);
 }
 
+.root.error {
+  border-color: var(--alert-color);
+}
+
+.root.error:hover {
+  border-color: var(--alert-color);
+}
+
+.root.error:focus-within {
+  border-color: var(--alert-color);
+  box-shadow: 0 0 0 3px rgba(var(--alert-color-rgb-components), 0.2);
+}
+
 .refreshButton {
   position: absolute;
   left: 0;
@@ -63,17 +76,4 @@
 
 .input:focus {
   outline: 0;
-}
-
-.inputError {
-  border-color: var(--alert-color);
-}
-
-.inputError:hover {
-  border-color: var(--alert-color);
-}
-
-.inputError:focus {
-  border-color: var(--alert-color);
-  box-shadow: 0 0 0 3px rgba(var(--alert-color-rgb-components), 0.2);
 }
