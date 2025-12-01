@@ -1,0 +1,14 @@
+.label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 20px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.text {
+  font: inherit;
+  color: var(--base-body-color);
+  white-space: nowrap;
+}

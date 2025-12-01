@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import type { SizingStrategy } from '../Iframe';
+import type { SizingStrategy } from './index';
 
 interface ContainerSize {
   width: number;

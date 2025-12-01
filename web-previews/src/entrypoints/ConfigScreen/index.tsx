@@ -18,6 +18,7 @@ import {
   TextField,
 } from 'datocms-react-ui';
 import arrayMutators from 'final-form-arrays';
+import { useState } from 'react';
 import { Field, Form as FormHandler } from 'react-final-form';
 import { FieldArray } from 'react-final-form-arrays';
 import {
@@ -45,6 +46,9 @@ function isValidUrl(string: string) {
 }
 
 export default function ConfigScreen({ ctx }: PropTypes) {
+  const [isCustomViewportsOpen, setIsCustomViewportsOpen] = useState(false);
+  const [isAdvancedSettingsOpen, setIsAdvancedSettingsOpen] = useState(false);
+
   return (
     <Canvas ctx={ctx}>
       <FormHandler<NormalizedParameters>
@@ -126,6 +130,20 @@ export default function ConfigScreen({ ctx }: PropTypes) {
 
             return ruleErrors;
           });
+
+          if (values.visualEditing) {
+            const visualEditingErrors: Record<string, any> = {};
+
+            if (
+              values.visualEditing.enableDraftModeUrl &&
+              !isValidUrl(values.visualEditing.enableDraftModeUrl)
+            ) {
+              visualEditingErrors.enableDraftModeUrl =
+                'Please specify a valid URL!';
+            }
+
+            errors.visualEditing = visualEditingErrors;
+          }
 
           return errors;
         }}
@@ -321,29 +339,44 @@ export default function ConfigScreen({ ctx }: PropTypes) {
                     />
                   )}
                 </Field>
-                <Field name="iframeAllowAttribute">
+              </FieldGroup>
+            </Section>
+            <Section title="Web Previews panel">
+              <FieldGroup>
+                <Field name="startOpen">
+                  {({ input, meta: { error } }) => (
+                    <SwitchField
+                      id="startOpen"
+                      label="Start with the sidebar panel open?"
+                      error={error}
+                      {...input}
+                    />
+                  )}
+                </Field>
+              </FieldGroup>
+            </Section>
+            <Section title="Visual Editing">
+              <FieldGroup>
+                <Field name="visualEditing.enableDraftModeUrl">
                   {({ input, meta: { error } }) => (
                     <TextField
-                      id="iframeAllowAttribute"
-                      label={
-                        <>
-                          Iframe <code>allow</code> attribute
-                        </>
-                      }
-                      hint={
-                        <>
-                          Defines what features will be available to the{' '}
-                          <code>&lt;iframe&gt;</code> pointing to the frontend
-                          (ie. access to the microphone, camera).{' '}
-                          <a
-                            href="https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe#allow"
-                            rel="noreferrer"
-                            target="_blank"
-                          >
-                            Read more
-                          </a>
-                        </>
-                      }
+                      id="visualEditing.enableDraftModeUrl"
+                      label="Enable Draft Mode URL"
+                      placeholder="https://yourwebsite.com/api/draft"
+                      hint="URL endpoint to enable draft/preview mode in your frontend application"
+                      error={error}
+                      {...input}
+                    />
+                  )}
+                </Field>
+
+                <Field name="visualEditing.initialPath">
+                  {({ input, meta: { error } }) => (
+                    <TextField
+                      id="visualEditing.initialPath"
+                      label="Initial path"
+                      placeholder="/"
+                      hint="The initial path to load when Visual Editing is opened"
                       error={error}
                       {...input}
                     />
@@ -354,6 +387,10 @@ export default function ConfigScreen({ ctx }: PropTypes) {
             <Section
               title="Custom viewports"
               headerStyle={{ marginBottom: 'var(--spacing-m)' }}
+              collapsible={{
+                isOpen: isCustomViewportsOpen,
+                onToggle: () => setIsCustomViewportsOpen((v) => !v),
+              }}
             >
               <p>
                 Please configure the predefined list of viewports that will be
@@ -456,13 +493,37 @@ export default function ConfigScreen({ ctx }: PropTypes) {
                 )}
               </FieldArray>
             </Section>
-            <Section title="Web Previews panel">
+            <Section
+              title="Advanced settings"
+              collapsible={{
+                isOpen: isAdvancedSettingsOpen,
+                onToggle: () => setIsAdvancedSettingsOpen((v) => !v),
+              }}
+            >
               <FieldGroup>
-                <Field name="startOpen">
+                <Field name="iframeAllowAttribute">
                   {({ input, meta: { error } }) => (
-                    <SwitchField
-                      id="startOpen"
-                      label="Start with the sidebar panel open?"
+                    <TextField
+                      id="iframeAllowAttribute"
+                      label={
+                        <>
+                          Iframe <code>allow</code> attribute
+                        </>
+                      }
+                      hint={
+                        <>
+                          Defines what features will be available to the{' '}
+                          <code>&lt;iframe&gt;</code> pointing to the frontend
+                          (ie. access to the microphone, camera).{' '}
+                          <a
+                            href="https://developer.mozilla.org/en-US/docs/Web/HTML/Element/iframe#allow"
+                            rel="noreferrer"
+                            target="_blank"
+                          >
+                            Read more
+                          </a>
+                        </>
+                      }
                       error={error}
                       {...input}
                     />

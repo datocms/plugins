@@ -1,38 +1,92 @@
-import React, { useCallback } from 'react';
-import AddressBar from './AddressBar';
+import type { RenderInspectorCtx } from 'datocms-plugin-sdk';
+import { useCtx } from 'datocms-react-ui';
+import type React from 'react';
+import { useCallback, useMemo, useState } from 'react';
+import { BrowserWrapper } from '../../../components/Browser/BrowserWrapper';
+import { IframeContainer } from '../../../components/Browser/IframeContainer';
+import { Toolbar } from '../../../components/Browser/Toolbar';
+import { ToolbarSlot } from '../../../components/Browser/Toolbar/ToolbarSlot';
+import { ViewportCustomizer } from '../../../components/Browser/ViewportCustomizer';
+import type { ViewportSize } from '../../../components/Browser/ViewportCustomizer';
+import { ViewportSelector } from '../../../components/Browser/ViewportSelector';
+import {
+  type Parameters,
+  type Viewport,
+  normalizeParameters,
+} from '../../../types';
 import { useContentLink } from '../ContentLinkContext';
-import { faArrowsRotate } from '@fortawesome/free-solid-svg-icons';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { Spinner, SwitchInput } from 'datocms-react-ui';
+import AddressBar from './AddressBar';
+import { EditModeToggle } from './EditModeToggle';
 
-interface BrowserProps {
-  domain: string;
-}
+const UI: React.FC = () => {
+  const ctx = useCtx<RenderInspectorCtx>();
 
-const UI: React.FC<BrowserProps> = ({ domain }) => {
+  const { visualEditing, iframeAllowAttribute } = normalizeParameters(
+    ctx.plugin.attributes.parameters as Parameters,
+  );
+
+  if (!visualEditing) {
+    return null;
+  }
+
   const { iframeRef, iframeState, reloadIframe, contentLink } =
     useContentLink();
 
+  const iframeSrc = useMemo(() => {
+    const url = new URL(visualEditing.enableDraftModeUrl);
+    url.searchParams.set('redirect', iframeState.path);
+    return url.toString();
+  }, [visualEditing.enableDraftModeUrl, iframeState.path]);
+
+  const [customViewportSize, setCustomViewportSize] = useState<ViewportSize>({
+    width: 800,
+    height: 600,
+  });
+
+  const [currentViewport, setCurrentViewport] = useState<
+    Viewport | 'responsive' | 'custom'
+  >('responsive');
+
+  const handleViewportChange = useCallback(
+    (viewport: Viewport | 'responsive' | 'custom') => {
+      setCurrentViewport(viewport);
+    },
+    [],
+  );
+
   const handleRefresh = useCallback(() => {
     reloadIframe();
-  }, []);
+  }, [reloadIframe]);
 
   const handleToggleClickToEdit = async () => {
     if (contentLink.type !== 'connected') {
       return;
     }
 
-    contentLink.methods.setClickToEditEnabled({
-      enabled: !contentLink.state.clickToEditEnabled,
-    });
+    contentLink.methods.setClickToEditEnabled(
+      contentLink.state.clickToEditEnabled
+        ? {
+            enabled: false,
+          }
+        : { enabled: true, flash: { scrollToNearestTarget: true } },
+    );
   };
 
   return (
-    <div className="VisualEditing_browser">
-      <div className="PreviewToolbar">
-        <label>
-          <SwitchInput
-            name="clickToEditEnabled"
+    <BrowserWrapper>
+      <Toolbar>
+        <ToolbarSlot withLeftBorder>
+          <ViewportSelector
+            menuAlignment="left"
+            currentViewport={currentViewport}
+            onChange={handleViewportChange}
+          />
+        </ToolbarSlot>
+        <ToolbarSlot flex withLeftBorder withPadding={9}>
+          <AddressBar onRefresh={handleRefresh} />
+        </ToolbarSlot>
+        <ToolbarSlot withLeftBorder>
+          <EditModeToggle
             value={
               contentLink.type !== 'connected'
                 ? false
@@ -41,46 +95,36 @@ const UI: React.FC<BrowserProps> = ({ domain }) => {
             disabled={contentLink.type !== 'connected'}
             onChange={handleToggleClickToEdit}
           />
-          Edit mode
-        </label>
-        <button
-          onClick={handleRefresh}
-          className="PreviewToolbar__button"
-          type="button"
-          title="Refresh preview"
-        >
-          <FontAwesomeIcon icon={faArrowsRotate} />
-        </button>
-        <AddressBar domain={domain} />
-      </div>
-      <div className="PreviewIFrame">
-        {contentLink.type === 'connecting' && (
-          <div className="PreviewIFrame__loading">
-            <Spinner size={80} placement="centered" />
-          </div>
-        )}
+        </ToolbarSlot>
+      </Toolbar>
 
-        {contentLink.type === 'error' && (
-          <div className="PreviewIFrame__error">
-            <p>Unable to connect to preview.</p>
-            <p>
-              Please ensure @datocms/content-link is installed and configured
-              correctly on your website.
-            </p>
-          </div>
-        )}
+      {currentViewport === 'custom' && (
+        <ViewportCustomizer
+          size={customViewportSize}
+          onChange={setCustomViewportSize}
+        />
+      )}
 
-        {contentLink.type !== 'error' && (
-          <iframe
-            key={iframeState.key}
-            ref={iframeRef}
-            src={`${domain}${iframeState.path}`}
-            className="PreviewIFrame__frame"
-            title="Preview"
-          />
-        )}
-      </div>
-    </div>
+      <IframeContainer
+        key={iframeState.key}
+        src={iframeSrc}
+        iframeRef={iframeRef}
+        loading={contentLink.type === 'connecting'}
+        allow={iframeAllowAttribute}
+        error={
+          contentLink.type === 'error'
+            ? 'Unable to connect to preview. Please ensure @datocms/content-link is installed and configured correctly on your website.'
+            : undefined
+        }
+        sizing={
+          currentViewport === 'responsive'
+            ? 'responsive'
+            : currentViewport === 'custom'
+              ? customViewportSize
+              : currentViewport
+        }
+      />
+    </BrowserWrapper>
   );
 };
 

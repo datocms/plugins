@@ -1,0 +1,79 @@
+.root {
+  flex: 1;
+  position: relative;
+  border: 1px solid var(--border-color);
+  transition: border 0.2s var(--material-ease);
+}
+
+.root:hover {
+  border-color: var(--darker-border-color);
+}
+
+.root:focus-within {
+  outline: 0;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 3px var(--semi-transparent-accent-color);
+}
+
+.refreshButton {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  margin: 0;
+  padding: 0 12px;
+  background: var(--light-bg-color);
+  color: var(--base-body-color);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+  font-size: inherit;
+  border-right: 1px solid var(--border-color);
+}
+
+.refreshButton:hover {
+  background: var(--medium-bg-color);
+}
+
+.refreshButton:active {
+  background: var(--dark-bg-color);
+}
+
+.input {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  padding: 10px;
+  padding-left: 48px;
+  border: 0;
+  appearance: none;
+  border-radius: 0;
+  background-image: none;
+  font-size: var(--font-size-m);
+  resize: none;
+  font-family: inherit;
+}
+
+.input::placeholder {
+  color: var(--placeholder-body-color);
+}
+
+.input:focus {
+  outline: 0;
+}
+
+.inputError {
+  border-color: var(--alert-color);
+}
+
+.inputError:hover {
+  border-color: var(--alert-color);
+}
+
+.inputError:focus {
+  border-color: var(--alert-color);
+  box-shadow: 0 0 0 3px rgba(var(--alert-color-rgb-components), 0.2);
+}

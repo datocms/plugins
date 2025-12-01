@@ -6,31 +6,36 @@ import { render } from './utils/render';
 import 'datocms-react-ui/styles.css';
 import { library } from '@fortawesome/fontawesome-svg-core';
 import { fas } from '@fortawesome/free-solid-svg-icons';
+import Inspector from './entrypoints/Inspector';
 import { type Parameters, normalizeParameters } from './types';
 import { readSidebarWidth } from './utils/persistedWidth';
-import Inspector from './entrypoints/Inspector';
 
 library.add(fas);
 
 connect({
-  mainNavigationTabs() {
-    return [
-      {
-        label: 'Visual Editing',
-        icon: 'binoculars',
-        pointsTo: {
-          inspectorId: 'visual_editing',
-        },
-        placement: ['before', 'content'],
-      },
-    ];
+  mainNavigationTabs(ctx) {
+    const { visualEditing } = normalizeParameters(
+      ctx.plugin.attributes.parameters as Parameters,
+    );
+    return visualEditing
+      ? [
+          {
+            label: 'Visual Editing',
+            icon: 'eye',
+            pointsTo: {
+              inspectorId: 'visual_editing',
+            },
+            placement: ['before', 'content'],
+          },
+        ]
+      : [];
   },
   renderConfigScreen(ctx) {
     render(<ConfigScreen ctx={ctx} />);
   },
   itemFormSidebarPanels(_itemType, ctx) {
     const { startOpen } = normalizeParameters(
-      ctx.plugin.attributes.parameters as Parameters
+      ctx.plugin.attributes.parameters as Parameters,
     );
 
     return [
@@ -47,7 +52,7 @@ connect({
   },
   itemFormSidebars(_itemType, ctx) {
     const { defaultSidebarWidth } = normalizeParameters(
-      ctx.plugin.attributes.parameters as Parameters
+      ctx.plugin.attributes.parameters as Parameters,
     );
 
     return [

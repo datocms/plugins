@@ -1,0 +1,20 @@
+.slot {
+  display: flex;
+  align-items: stretch;
+}
+
+.slotWithBorder {
+  border-left: 1px solid var(--border-color);
+}
+
+.slotFlex {
+  flex: 1;
+  overflow: hidden;
+}
+
+.slotFlex > * {
+  flex: 1;
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+}

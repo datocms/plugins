@@ -12,7 +12,7 @@ const Inspector = ({ ctx }: PropTypes) => {
     <div>
       <Canvas ctx={ctx}>
         <ContentLinkContextProvider>
-          <UI domain="http://localhost:4321" />
+          <UI />
         </ContentLinkContextProvider>
       </Canvas>
     </div>

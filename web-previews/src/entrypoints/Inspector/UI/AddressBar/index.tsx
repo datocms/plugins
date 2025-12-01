@@ -1,6 +1,13 @@
+import { faArrowsRotate } from '@fortawesome/free-solid-svg-icons';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import classNames from 'classnames';
-import React, { useEffect, useState } from 'react';
-import { useContentLink } from '../ContentLinkContext';
+import type { RenderInspectorCtx } from 'datocms-plugin-sdk';
+import { useCtx } from 'datocms-react-ui';
+import type React from 'react';
+import { useEffect, useState } from 'react';
+import { type Parameters, normalizeParameters } from '../../../../types';
+import { useContentLink } from '../../ContentLinkContext';
+import styles from './styles.module.css';
 
 export function toCompletePath(urlOrPath: string) {
   const url = new URL(urlOrPath, 'https://example.com');
@@ -24,27 +31,39 @@ function isRelativeUrl(str: string) {
   }
 }
 
-type Props = {
-  domain: string;
-};
+interface AddressBarProps {
+  onRefresh: () => void;
+}
 
-function AddressBar({ domain }: Props) {
+function AddressBar({ onRefresh }: AddressBarProps) {
+  const ctx = useCtx<RenderInspectorCtx>();
+
+  const { visualEditing } = normalizeParameters(
+    ctx.plugin.attributes.parameters as Parameters,
+  );
+
+  if (!visualEditing) {
+    return null;
+  }
+
+  const visualEditingOrigin = new URL(visualEditing.enableDraftModeUrl).origin;
+
   const { contentLink, iframeState } = useContentLink();
 
   const currentPath =
     contentLink.type === 'connecting'
       ? iframeState.path
       : contentLink.type === 'connected'
-      ? toCompletePath(contentLink.state.path)
-      : '/';
+        ? toCompletePath(contentLink.state.path)
+        : '/';
 
   const [inputValue, setInputValue] = useState(currentPath);
   const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
-    setInputValue(new URL(currentPath, domain).toString());
+    setInputValue(new URL(currentPath, visualEditingOrigin).toString());
     setHasError(false);
-  }, [currentPath]);
+  }, [visualEditingOrigin, currentPath]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,7 +76,7 @@ function AddressBar({ domain }: Props) {
     if (!isRelativeUrl(inputValue)) {
       try {
         const inputUrl = new URL(inputValue);
-        const domainUrl = new URL(domain);
+        const domainUrl = new URL(visualEditingOrigin);
 
         // Check if the domain matches
         if (inputUrl.origin === domainUrl.origin) {
@@ -80,19 +99,33 @@ function AddressBar({ domain }: Props) {
     }
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      setInputValue(new URL(currentPath, visualEditingOrigin).toString());
+      setHasError(false);
+      (e.target as HTMLInputElement).blur();
+    }
+  };
+
   return (
-    <form onSubmit={handleSubmit} className="AddressBar">
+    <form onSubmit={handleSubmit} className={styles.root}>
+      <button
+        type="button"
+        onClick={onRefresh}
+        className={styles.refreshButton}
+        title="Reload page"
+      >
+        <FontAwesomeIcon icon={faArrowsRotate} />
+      </button>
       <input
         type="text"
         value={inputValue}
         onChange={(e) => {
           setInputValue(e.target.value);
         }}
+        onKeyDown={handleKeyDown}
         placeholder="/"
-        className={classNames(
-          'AddressBar__input',
-          hasError && 'AddressBar__input--error'
-        )}
+        className={classNames(styles.input, hasError && styles.inputError)}
       />
     </form>
   );

@@ -11,10 +11,6 @@
   box-sizing: border-box;
 }
 
-.frameFitToSidebar {
-  padding: 0;
-}
-
 .frame iframe {
   display: block;
   border: none;
@@ -28,6 +24,14 @@
   transition: width 0.3s ease, height 0.3s ease, transform 0.3s ease;
   transform-origin: center center;
   background: white;
+}
+
+.frameFitToSidebar {
+  padding: 0;
+}
+
+.frameFitToSidebar iframe {
+  box-shadow: none;
 }
 
 .progressBar {
@@ -59,4 +63,9 @@
   100% {
     transform: translateX(100%) scaleX(0.5);
   }
+}
+
+.error {
+  text-align: center;
+  color: var(--light-body-color);
 }

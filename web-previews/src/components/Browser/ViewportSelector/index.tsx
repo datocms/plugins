@@ -16,11 +16,13 @@ import {
 import styles from './styles.module.css';
 
 interface ViewportSelectorProps {
+  menuAlignment: 'left' | 'right';
   currentViewport: Viewport | 'responsive' | 'custom';
   onChange: (viewport: Viewport | 'responsive' | 'custom') => void;
 }
 
 export function ViewportSelector({
+  menuAlignment,
   currentViewport,
   onChange,
 }: ViewportSelectorProps) {
@@ -55,7 +57,7 @@ export function ViewportSelector({
           </button>
         )}
       >
-        <DropdownMenu>
+        <DropdownMenu alignment={menuAlignment}>
           <DropdownOption
             onClick={() => onChange('responsive')}
             active={currentViewport === 'responsive'}

@@ -1,21 +1,22 @@
 import cuid from 'cuid';
+import type { RenderInspectorCtx } from 'datocms-plugin-sdk';
+import { useCtx } from 'datocms-react-ui';
 import {
+  type ReactNode,
   createContext,
-  ReactNode,
   useCallback,
   useContext,
   useEffect,
   useRef,
   useState,
 } from 'react';
+import { type Parameters, normalizeParameters } from '../../../types';
 import {
-  ContentLinkMethods,
-  ContentLinkState,
+  type ContentLinkMethods,
+  type ContentLinkState,
   SYMBOL_FOR_PRIMARY_ENVIRONMENT,
 } from './types';
 import useContentLinkConnection from './useContentLinkConnection';
-import { useCtx } from 'datocms-react-ui';
-import { RenderInspectorCtx } from 'datocms-plugin-sdk';
 
 type IframeState = { path: string; key: string };
 
@@ -37,14 +38,14 @@ interface ContextValue {
 }
 
 export const VisualEditingContext = createContext<ContextValue | undefined>(
-  undefined
+  undefined,
 );
 
 export const useContentLink = () => {
   const context = useContext(VisualEditingContext);
   if (!context) {
     throw new Error(
-      'useVisualEditing must be used within VisualEditingProvider'
+      'useVisualEditing must be used within VisualEditingProvider',
     );
   }
   return context;
@@ -57,6 +58,10 @@ type Props = {
 export function ContentLinkContextProvider({ children }: Props) {
   const ctx = useCtx<RenderInspectorCtx>();
 
+  const { visualEditing } = normalizeParameters(
+    ctx.plugin.attributes.parameters as Parameters,
+  );
+
   const firstWebsiteStateChangeRef = useRef(true);
   const [contentLinkState, setContentLinkState] = useState<
     CleanContentLinkState | undefined
@@ -67,7 +72,7 @@ export function ContentLinkContextProvider({ children }: Props) {
     : ctx.environment;
 
   const [iframeState, setIframeState] = useState<IframeState>({
-    path: '/blog',
+    path: visualEditing?.initialPath || '/',
     key: cuid(),
   });
   const lastVisitedPathRef = useRef(iframeState.path);
@@ -90,7 +95,10 @@ export function ContentLinkContextProvider({ children }: Props) {
           return;
         }
 
-        connection.methods.setClickToEditEnabled({ enabled: true });
+        connection.methods.setClickToEditEnabled({
+          enabled: true,
+          flash: { scrollToNearestTarget: false },
+        });
       }
     },
     openItem: (info) => {
@@ -108,9 +116,24 @@ export function ContentLinkContextProvider({ children }: Props) {
     }
   }, [connection.type]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional
   useEffect(() => {
-    ctx.setInspectorMode({ type: 'itemList' });
-  }, [contentLinkState?.path]);
+    ctx.setInspectorMode(
+      { type: 'itemList' },
+      { ignoreIfUnsavedChanges: true },
+    );
+
+    if (
+      connection.type === 'connected' &&
+      contentLinkState?.clickToEditEnabled
+    ) {
+      connection.methods.flash({ scrollToNearestTarget: false });
+    }
+  }, [
+    contentLinkState?.path,
+    contentLinkState?.clickToEditEnabled,
+    connection,
+  ]);
 
   const reloadIframe = useCallback(() => {
     setIframeState({ path: lastVisitedPathRef.current, key: cuid() });
@@ -126,12 +149,12 @@ export function ContentLinkContextProvider({ children }: Props) {
       connection.type === 'error'
         ? { type: 'error' }
         : connection.type === 'connecting' || !contentLinkState
-        ? { type: 'connecting' }
-        : {
-            type: 'connected',
-            state: contentLinkState,
-            methods: connection.methods,
-          },
+          ? { type: 'connecting' }
+          : {
+              type: 'connected',
+              state: contentLinkState,
+              methods: connection.methods,
+            },
   };
 
   return (

@@ -1,0 +1,21 @@
+.root,
+.root > * {
+  display: flex;
+  align-items: stretch;
+}
+
+.button {
+  border: 0;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  cursor: pointer;
+  color: #666;
+  aspect-ratio: 1;
+}
+
+.button:hover {
+  background-color: var(--light-bg-color);
+}

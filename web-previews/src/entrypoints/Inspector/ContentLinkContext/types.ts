@@ -21,6 +21,11 @@ export interface WebPreviewsMethods {
 
 // Methods that @datocms/content-link exposes
 export interface ContentLinkMethods {
-  navigateTo: (payload: { path: string }) => Promise<void>;
-  setClickToEditEnabled: (payload: { enabled: boolean }) => Promise<void>;
+  navigateTo: (payload: { path: string }) => void;
+  flash: (payload: { scrollToNearestTarget: boolean }) => void;
+  setClickToEditEnabled: (
+    payload:
+      | { enabled: true; flash: { scrollToNearestTarget: boolean } }
+      | { enabled: false },
+  ) => void;
 }
