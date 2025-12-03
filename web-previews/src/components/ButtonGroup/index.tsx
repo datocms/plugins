@@ -1,6 +1,10 @@
-import { FloatingDelayGroup } from '@floating-ui/react';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipDelayGroup,
+  TooltipTrigger,
+} from 'datocms-react-ui';
 import type { ComponentPropsWithoutRef, ReactNode } from 'react';
-import { Tooltip, TooltipContent, TooltipTrigger } from '../Tooltip';
 import styles from './styles.module.css';
 
 interface ButtonGroupProps {
@@ -9,9 +13,9 @@ interface ButtonGroupProps {
 
 export function ButtonGroup({ children }: ButtonGroupProps) {
   return (
-    <FloatingDelayGroup delay={200}>
+    <TooltipDelayGroup delay={200}>
       <div className={styles.buttonGroup}>{children}</div>
-    </FloatingDelayGroup>
+    </TooltipDelayGroup>
   );
 }
 

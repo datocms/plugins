@@ -1,10 +1,10 @@
-import { SwitchInput } from 'datocms-react-ui';
-import { HotKey } from '../../../../components/HotKey';
 import {
+  HotKey,
+  SwitchInput,
   Tooltip,
   TooltipContent,
   TooltipTrigger,
-} from '../../../../components/Tooltip';
+} from 'datocms-react-ui';
 import styles from './styles.module.css';
 
 interface EditModeToggleProps {

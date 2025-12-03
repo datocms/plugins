@@ -1,7 +1,7 @@
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { Tooltip, TooltipContent, TooltipTrigger } from 'datocms-react-ui';
 import type { ReactNode } from 'react';
-import { Tooltip, TooltipContent, TooltipTrigger } from '../../../Tooltip';
 import styles from './styles.module.css';
 
 interface ToolbarButtonProps {

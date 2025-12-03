@@ -1,4 +1,4 @@
-import { FloatingDelayGroup } from '@floating-ui/react';
+import { TooltipDelayGroup } from 'datocms-react-ui';
 import type { ReactNode } from 'react';
 import styles from './styles.module.css';
 
@@ -8,8 +8,8 @@ interface ToolbarProps {
 
 export function Toolbar({ children }: ToolbarProps) {
   return (
-    <FloatingDelayGroup delay={200}>
+    <TooltipDelayGroup delay={200}>
       <div className={styles.toolbar}>{children}</div>
-    </FloatingDelayGroup>
+    </TooltipDelayGroup>
   );
 }

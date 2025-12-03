@@ -3,13 +3,9 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import classNames from 'classnames';
 import type { RenderInspectorCtx } from 'datocms-plugin-sdk';
 import { useCtx } from 'datocms-react-ui';
+import { Tooltip, TooltipContent, TooltipTrigger } from 'datocms-react-ui';
 import type React from 'react';
 import { useEffect, useState } from 'react';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from '../../../../components/Tooltip';
 import { type Parameters, normalizeParameters } from '../../../../types';
 import { useContentLink } from '../../ContentLinkContext';
 import styles from './styles.module.css';
