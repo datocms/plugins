@@ -72,7 +72,10 @@ export function ContentLinkContextProvider({ children }: Props) {
     : ctx.environment;
 
   const [iframeState, setIframeState] = useState<IframeState>({
-    path: visualEditing?.initialPath || '/',
+    path:
+      new URLSearchParams(ctx.location.search).get('path') ||
+      visualEditing?.initialPath ||
+      '/',
     key: cuid(),
   });
   const lastVisitedPathRef = useRef(iframeState.path);
@@ -128,14 +131,23 @@ export function ContentLinkContextProvider({ children }: Props) {
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentional
   useEffect(() => {
+    if (!contentLinkState?.path) {
+      return;
+    }
     ctx.setInspectorMode(
       { type: 'itemList' },
       { ignoreIfUnsavedChanges: true },
     );
 
+    ctx.navigateTo(
+      `/p/${ctx.plugin.id}/inspectors/visual?${new URLSearchParams({
+        path: contentLinkState.path,
+      }).toString()}`,
+    );
+
     if (
       connection.type === 'connected' &&
-      contentLinkState?.clickToEditEnabled
+      contentLinkState.clickToEditEnabled
     ) {
       connection.methods.flashAll({ scrollToNearestTarget: false });
     }

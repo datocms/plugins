@@ -1,5 +1,9 @@
 import { findIconDefinition } from '@fortawesome/fontawesome-svg-core';
-import { faExpand, faRuler } from '@fortawesome/free-solid-svg-icons';
+import {
+  faExpand,
+  faMobileAlt,
+  faRuler,
+} from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
 import {
@@ -13,6 +17,7 @@ import {
   type Viewport,
   normalizeParameters,
 } from '../../../types';
+import { ToolbarButton } from '../Toolbar/ToolbarButton';
 import styles from './styles.module.css';
 
 interface ViewportSelectorProps {
@@ -36,25 +41,11 @@ export function ViewportSelector({
     <div className={styles.root}>
       <Dropdown
         renderTrigger={({ onClick }) => (
-          <button
-            type="button"
-            className={styles.button}
+          <ToolbarButton
+            icon={faMobileAlt}
+            tooltip="Change viewport size"
             onClick={onClick}
-            title="Change viewport size"
-          >
-            <FontAwesomeIcon
-              icon={
-                currentViewport === 'responsive'
-                  ? faExpand
-                  : currentViewport === 'custom'
-                    ? faRuler
-                    : findIconDefinition({
-                        prefix: 'fas',
-                        iconName: currentViewport.icon,
-                      })
-              }
-            />
-          </button>
+          />
         )}
       >
         <DropdownMenu alignment={menuAlignment}>

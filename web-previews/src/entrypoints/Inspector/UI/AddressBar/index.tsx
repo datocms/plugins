@@ -5,6 +5,11 @@ import type { RenderInspectorCtx } from 'datocms-plugin-sdk';
 import { useCtx } from 'datocms-react-ui';
 import type React from 'react';
 import { useEffect, useState } from 'react';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from '../../../../components/Tooltip';
 import { type Parameters, normalizeParameters } from '../../../../types';
 import { useContentLink } from '../../ContentLinkContext';
 import styles from './styles.module.css';
@@ -112,14 +117,18 @@ function AddressBar({ onRefresh }: AddressBarProps) {
       onSubmit={handleSubmit}
       className={classNames(styles.root, hasError && styles.error)}
     >
-      <button
-        type="button"
-        onClick={onRefresh}
-        className={styles.refreshButton}
-        title="Reload page"
-      >
-        <FontAwesomeIcon icon={faArrowsRotate} />
-      </button>
+      <Tooltip>
+        <TooltipTrigger>
+          <button
+            type="button"
+            onClick={onRefresh}
+            className={styles.refreshButton}
+          >
+            <FontAwesomeIcon icon={faArrowsRotate} />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent>Reload page</TooltipContent>
+      </Tooltip>
       <input
         type="text"
         value={inputValue}

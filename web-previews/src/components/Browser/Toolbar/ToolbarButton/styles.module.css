@@ -6,13 +6,14 @@
   justify-content: center;
   background: transparent;
   cursor: pointer;
-  color: #666;
+  color: var(--light-body-color);
   border-left: 1px solid var(--border-color);
-  width: 45px;
+  aspect-ratio: 1;
+  font-size: 15px;
 }
 
 .toolbarButton:hover {
-  color: #444;
+  color: var(--base-body-color);
   background-color: var(--light-bg-color);
 }
 

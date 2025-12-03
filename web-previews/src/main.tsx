@@ -17,13 +17,14 @@ connect({
     const { visualEditing } = normalizeParameters(
       ctx.plugin.attributes.parameters as Parameters,
     );
-    return visualEditing
+
+    return visualEditing?.enableDraftModeUrl
       ? [
           {
-            label: 'Visual Editing',
+            label: 'Visual',
             icon: 'eye',
             pointsTo: {
-              inspectorId: 'visual_editing',
+              inspectorId: 'visual',
             },
             placement: ['before', 'content'],
           },
@@ -41,7 +42,7 @@ connect({
     return [
       {
         id: 'webPreviews',
-        label: 'Web previews',
+        label: 'Related website pages',
         startOpen,
         placement: ['before', 'links'],
       },
@@ -58,7 +59,7 @@ connect({
     return [
       {
         id: 'webPreviews',
-        label: 'Side-by-side web previews',
+        label: 'Website preview',
         preferredWidth: readSidebarWidth(ctx.site) || defaultSidebarWidth,
       },
     ];

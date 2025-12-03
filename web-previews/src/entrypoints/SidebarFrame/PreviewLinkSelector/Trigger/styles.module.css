@@ -38,4 +38,5 @@
 
 .title {
   color: var(--base-body-color);
+  font-weight: bold;
 }

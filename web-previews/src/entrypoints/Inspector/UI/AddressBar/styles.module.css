@@ -3,6 +3,7 @@
   position: relative;
   border: 1px solid var(--border-color);
   transition: border 0.2s var(--material-ease);
+  border-radius: 4px;
 }
 
 .root:hover {
@@ -40,19 +41,15 @@
   margin: 0;
   padding: 0 12px;
   background: var(--light-bg-color);
-  color: var(--base-body-color);
+  color: var(--light-body-color);
   cursor: pointer;
   transition: background-color 0.15s ease;
   font-size: inherit;
-  border-right: 1px solid var(--border-color);
 }
 
 .refreshButton:hover {
-  background: var(--medium-bg-color);
-}
-
-.refreshButton:active {
-  background: var(--dark-bg-color);
+  background: var(--light-color);
+  color: var(--base-body-color);
 }
 
 .input {

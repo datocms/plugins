@@ -1,29 +1,35 @@
 import type { IconDefinition } from '@fortawesome/fontawesome-svg-core';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import type { ReactNode } from 'react';
+import { Tooltip, TooltipContent, TooltipTrigger } from '../../../Tooltip';
 import styles from './styles.module.css';
 
 interface ToolbarButtonProps {
   icon: IconDefinition;
-  title: string;
   onClick: () => void;
   disabled?: boolean;
+  tooltip: NonNullable<ReactNode>;
 }
 
 export function ToolbarButton({
   icon,
-  title,
   onClick,
   disabled,
+  tooltip,
 }: ToolbarButtonProps) {
   return (
-    <button
-      type="button"
-      className={styles.toolbarButton}
-      title={title}
-      onClick={onClick}
-      disabled={disabled}
-    >
-      <FontAwesomeIcon icon={icon} />
-    </button>
+    <Tooltip>
+      <TooltipTrigger>
+        <button
+          type="button"
+          className={styles.toolbarButton}
+          onClick={onClick}
+          disabled={disabled}
+        >
+          <FontAwesomeIcon icon={icon} />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent>{tooltip}</TooltipContent>
+    </Tooltip>
   );
 }

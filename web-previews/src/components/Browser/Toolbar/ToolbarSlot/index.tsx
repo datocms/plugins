@@ -23,7 +23,9 @@ export function ToolbarSlot({
         flex && styles.slotFlex,
       )}
       style={{
-        padding: withPadding,
+        padding: withPadding
+          ? `${withPadding}px ${withPadding * 1.2}px`
+          : undefined,
       }}
     >
       {children}

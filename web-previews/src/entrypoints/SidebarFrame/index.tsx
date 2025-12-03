@@ -1,4 +1,10 @@
-import { faArrowsRotate, faCopy } from '@fortawesome/free-solid-svg-icons';
+import {
+  faArrowsRotate,
+  faCopy,
+  faExternalLinkAlt,
+  faEye,
+} from '@fortawesome/free-solid-svg-icons';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
 import { Canvas, Spinner } from 'datocms-react-ui';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -12,6 +18,7 @@ import { ToolbarSlot } from '../../components/Browser/Toolbar/ToolbarSlot';
 import { ViewportCustomizer } from '../../components/Browser/ViewportCustomizer';
 import type { ViewportSize } from '../../components/Browser/ViewportCustomizer';
 import { ViewportSelector } from '../../components/Browser/ViewportSelector';
+import { ButtonGroup, ButtonGroupButton } from '../../components/ButtonGroup';
 import {
   type Parameters,
   type PreviewLink,
@@ -27,9 +34,13 @@ type PropTypes = {
 };
 
 const SidebarFrame = ({ ctx }: PropTypes) => {
-  const { iframeAllowAttribute } = normalizeParameters(
+  const { iframeAllowAttribute, visualEditing } = normalizeParameters(
     ctx.plugin.attributes.parameters as Parameters,
   );
+
+  const visualEditingOrigin = visualEditing?.enableDraftModeUrl
+    ? new URL(visualEditing.enableDraftModeUrl).origin
+    : undefined;
 
   const [reloadCounter, setReloadCounter] = useState(0);
   const [iframeLoading, setIframeLoading] = useState(true);
@@ -127,17 +138,49 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
               <>
                 <ToolbarButton
                   icon={faArrowsRotate}
-                  title="Refresh the preview"
+                  tooltip="Refresh the preview"
                   onClick={forceReload}
                 />
-                <ToolbarButton
-                  icon={faCopy}
-                  title="Copy URL to clipboard"
-                  onClick={() => {
-                    navigator.clipboard.writeText(currentPreviewLink.url);
-                    ctx.notice('URL saved in clipboard!');
-                  }}
-                />
+                <ToolbarSlot withLeftBorder withPadding={8}>
+                  <ButtonGroup>
+                    {visualEditing?.enableDraftModeUrl &&
+                      visualEditingOrigin ===
+                        new URL(currentPreviewLink.url).origin && (
+                        <ButtonGroupButton
+                          tooltip="Open in Visual"
+                          onClick={() => {
+                            const url = new URL(currentPreviewLink.url);
+                            ctx.navigateTo(
+                              `/p/${
+                                ctx.plugin.id
+                              }/inspectors/visual?${new URLSearchParams({
+                                path: url.pathname + url.search,
+                              }).toString()}`,
+                            );
+                          }}
+                        >
+                          <FontAwesomeIcon icon={faEye} />
+                        </ButtonGroupButton>
+                      )}
+                    <ButtonGroupButton
+                      tooltip="Copy URL to clipboard"
+                      onClick={() => {
+                        navigator.clipboard.writeText(currentPreviewLink.url);
+                        ctx.notice('URL saved in clipboard!');
+                      }}
+                    >
+                      <FontAwesomeIcon icon={faCopy} />
+                    </ButtonGroupButton>
+                    <ButtonGroupButton
+                      tooltip="Visit URL"
+                      onClick={() => {
+                        window.open(currentPreviewLink.url, '_blank');
+                      }}
+                    >
+                      <FontAwesomeIcon icon={faExternalLinkAlt} />
+                    </ButtonGroupButton>
+                  </ButtonGroup>
+                </ToolbarSlot>
               </>
             )}
           </Toolbar>
