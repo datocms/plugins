@@ -10,6 +10,7 @@
   border-left: 1px solid var(--border-color);
   aspect-ratio: 1;
   font-size: 15px;
+  height: 100%;
 }
 
 .toolbarButton:hover {
