@@ -29,6 +29,7 @@ function getSharedPortalRoot(): HTMLDivElement {
     sharedPortalRoot = document.createElement('div');
     sharedPortalRoot.style.position = 'relative';
     sharedPortalRoot.style.zIndex = '100000';
+    sharedPortalRoot.style.height = '0px';
 
     // Insert as the first child of body
     if (document.body.firstChild) {
