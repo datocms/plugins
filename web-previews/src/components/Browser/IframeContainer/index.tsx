@@ -13,7 +13,6 @@ interface IframeContainerProps {
   title?: string;
   allow?: string;
   loading?: boolean;
-  error?: string;
   sizing?: SizingStrategy;
   onLoad?: () => void;
   iframeRef?: React.Ref<HTMLIFrameElement>;
@@ -25,7 +24,6 @@ export function IframeContainer({
   title = 'Preview',
   allow,
   loading = false,
-  error,
   sizing = 'responsive',
   onLoad,
   iframeRef: externalIframeRef,
@@ -79,21 +77,14 @@ export function IframeContainer({
           <div className={styles.progressBarValue} />
         </div>
       )}
-      {error && (
-        <div className={styles.error}>
-          <p>{error}</p>
-        </div>
-      )}
-      {!error && (
-        <iframe
-          ref={mergedRef}
-          src={src}
-          title={title}
-          allow={allow}
-          style={iframeStyle}
-          onLoad={onLoad}
-        />
-      )}
+      <iframe
+        ref={mergedRef}
+        src={src}
+        title={title}
+        allow={allow}
+        style={iframeStyle}
+        onLoad={onLoad}
+      />
     </div>
   );
 }

@@ -134,6 +134,7 @@ function AddressBar({ onRefresh }: AddressBarProps) {
         onKeyDown={handleKeyDown}
         placeholder="/"
         className={styles.input}
+        disabled={contentLink.type !== 'connected'}
       />
     </form>
   );

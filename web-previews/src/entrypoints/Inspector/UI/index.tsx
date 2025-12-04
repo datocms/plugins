@@ -1,7 +1,7 @@
 import type { RenderInspectorCtx } from 'datocms-plugin-sdk';
 import { useCtx } from 'datocms-react-ui';
 import type React from 'react';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { BrowserWrapper } from '../../../components/Browser/BrowserWrapper';
 import { IframeContainer } from '../../../components/Browser/IframeContainer';
 import { Toolbar } from '../../../components/Browser/Toolbar';
@@ -72,6 +72,28 @@ const UI: React.FC = () => {
     );
   };
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional
+  useEffect(() => {
+    if (contentLink.type !== 'error') {
+      return;
+    }
+
+    if (contentLink.reason === 'failed-connection') {
+      ctx.alert(
+        'Could not establish communication with the website. Please make sure the @datocms/content-link library is properly installed and active on your site.',
+      );
+    }
+
+    if (contentLink.reason === 'no-ping') {
+      ctx.alert(
+        'Connection to the website has been lost. You may have navigated away from the original site by clicking an external link. Please reload to reconnect.',
+      );
+    }
+  }, [
+    contentLink.type,
+    contentLink.type === 'error' ? contentLink.reason : undefined,
+  ]);
+
   return (
     <BrowserWrapper>
       <Toolbar>
@@ -111,11 +133,6 @@ const UI: React.FC = () => {
         iframeRef={iframeRef}
         loading={contentLink.type === 'connecting'}
         allow={iframeAllowAttribute}
-        error={
-          contentLink.type === 'error'
-            ? 'Unable to connect to preview. Please ensure @datocms/content-link is installed and configured correctly on your website.'
-            : undefined
-        }
         sizing={
           currentViewport === 'responsive'
             ? 'responsive'

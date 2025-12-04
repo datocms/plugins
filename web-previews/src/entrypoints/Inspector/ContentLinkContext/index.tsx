@@ -30,7 +30,7 @@ interface ContextValue {
         state: CleanContentLinkState;
         methods: ContentLinkMethods;
       }
-    | { type: 'error' };
+    | { type: 'error'; reason: 'no-ping' | 'failed-connection' };
 
   iframeRef: (element: HTMLIFrameElement | null) => void;
   iframeState: IframeState;
@@ -62,10 +62,12 @@ export function ContentLinkContextProvider({ children }: Props) {
     ctx.plugin.attributes.parameters as Parameters,
   );
 
-  const firstWebsiteStateChangeRef = useRef(true);
   const [contentLinkState, setContentLinkState] = useState<
     CleanContentLinkState | undefined
   >(undefined);
+
+  const [isPingActive, setIsPingActive] = useState<boolean>(true);
+  const lastPingTimeRef = useRef<number>(Date.now());
 
   const currentEnvironmentId = ctx.isEnvironmentPrimary
     ? SYMBOL_FOR_PRIMARY_ENVIRONMENT
@@ -81,6 +83,16 @@ export function ContentLinkContextProvider({ children }: Props) {
   const lastVisitedPathRef = useRef(iframeState.path);
 
   const { iframeRef, connection } = useContentLinkConnection({
+    onInit: () => {
+      if (connection.type !== 'connected') {
+        return;
+      }
+
+      connection.methods.setClickToEditEnabled({
+        enabled: true,
+        flash: { scrollToNearestTarget: false },
+      });
+    },
     onStateChange: ({ itemIdsPerEnvironment, ...rest }) => {
       setContentLinkState(rest);
 
@@ -90,19 +102,6 @@ export function ContentLinkContextProvider({ children }: Props) {
       });
 
       lastVisitedPathRef.current = rest.path;
-
-      if (firstWebsiteStateChangeRef.current) {
-        firstWebsiteStateChangeRef.current = false;
-
-        if (connection.type !== 'connected') {
-          return;
-        }
-
-        connection.methods.setClickToEditEnabled({
-          enabled: true,
-          flash: { scrollToNearestTarget: false },
-        });
-      }
     },
     openItem: (info) => {
       if (info.environment !== currentEnvironmentId) {
@@ -111,7 +110,22 @@ export function ContentLinkContextProvider({ children }: Props) {
 
       ctx.setInspectorMode({ type: 'itemEditor', ...info });
     },
+    onPing: () => {
+      lastPingTimeRef.current = Date.now();
+      setIsPingActive(true);
+    },
   });
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const timeSinceLastPing = Date.now() - lastPingTimeRef.current;
+      if (timeSinceLastPing >= 5000) {
+        setIsPingActive(false);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentional
   useEffect(() => {
@@ -123,17 +137,12 @@ export function ContentLinkContextProvider({ children }: Props) {
     }
   }, [ctx.highlightedItemId]);
 
-  useEffect(() => {
-    if (connection.type !== 'connected') {
-      firstWebsiteStateChangeRef.current = true;
-    }
-  }, [connection.type]);
-
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentional
   useEffect(() => {
     if (!contentLinkState?.path) {
       return;
     }
+
     ctx.setInspectorMode(
       { type: 'itemList' },
       { ignoreIfUnsavedChanges: true },
@@ -158,6 +167,8 @@ export function ContentLinkContextProvider({ children }: Props) {
   ]);
 
   const reloadIframe = useCallback(() => {
+    lastPingTimeRef.current = Date.now();
+    setIsPingActive(true);
     setIframeState({ path: lastVisitedPathRef.current, key: cuid() });
   }, []);
 
@@ -168,15 +179,17 @@ export function ContentLinkContextProvider({ children }: Props) {
     reloadIframe,
 
     contentLink:
-      connection.type === 'error'
-        ? { type: 'error' }
+      connection.type === 'failed'
+        ? { type: 'error', reason: 'failed-connection' }
         : connection.type === 'connecting' || !contentLinkState
           ? { type: 'connecting' }
-          : {
-              type: 'connected',
-              state: contentLinkState,
-              methods: connection.methods,
-            },
+          : !isPingActive
+            ? { type: 'error', reason: 'no-ping' }
+            : {
+                type: 'connected',
+                state: contentLinkState,
+                methods: connection.methods,
+              },
   };
 
   return (

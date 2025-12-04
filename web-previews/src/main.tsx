@@ -7,6 +7,7 @@ import 'datocms-react-ui/styles.css';
 import { library } from '@fortawesome/fontawesome-svg-core';
 import { fas } from '@fortawesome/free-solid-svg-icons';
 import Inspector from './entrypoints/Inspector';
+import InspectorLoading from './entrypoints/InspectorLoading';
 import { type Parameters, normalizeParameters } from './types';
 import { readSidebarWidth } from './utils/persistedWidth';
 
@@ -69,5 +70,9 @@ connect({
   },
   renderInspector(_inspectorId, ctx) {
     render(<Inspector ctx={ctx} />);
+  },
+  renderInspectorPanel(_panelId, ctx) {
+    // currently not used
+    render(<InspectorLoading ctx={ctx} />);
   },
 });

@@ -15,6 +15,8 @@ export type ContentLinkState = {
 
 // Methods that we expose
 export interface WebPreviewsMethods {
+  onInit: () => void;
+  onPing: () => void;
   onStateChange: (payload: ContentLinkState) => void;
   openItem: (payload: EditUrlInfo) => void;
 }

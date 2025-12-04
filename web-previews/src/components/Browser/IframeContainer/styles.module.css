@@ -64,8 +64,3 @@
     transform: translateX(100%) scaleX(0.5);
   }
 }
-
-.error {
-  text-align: center;
-  color: var(--light-body-color);
-}

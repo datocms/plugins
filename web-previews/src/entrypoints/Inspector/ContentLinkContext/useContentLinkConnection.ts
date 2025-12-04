@@ -12,7 +12,7 @@ import useMethodProxy from './useMethodProxy';
 export type ContentLinkConnectionState =
   | { type: 'connecting' }
   | { type: 'connected'; methods: ContentLinkMethods }
-  | { type: 'error' };
+  | { type: 'failed' };
 
 export type UseContentLinkConnectionReturn = {
   iframeRef: (element: HTMLIFrameElement | null) => void;
@@ -24,6 +24,8 @@ export type UseContentLinkConnectionReturn = {
  * Establishes bidirectional communication between Studio and Website
  */
 export default function useContentLinkConnection({
+  onInit,
+  onPing,
   onStateChange,
   openItem,
 }: WebPreviewsMethods): UseContentLinkConnectionReturn {
@@ -35,6 +37,14 @@ export default function useContentLinkConnection({
     destroy?: () => void;
     element: HTMLIFrameElement;
   } | null>(null);
+
+  const handleOnInit = useMethodProxy(() => {
+    onInit();
+  }, [onInit]);
+
+  const handleOnPing = useMethodProxy(() => {
+    onPing();
+  }, [onPing]);
 
   const handleOpenItem = useMethodProxy(
     (info: EditUrlInfo) => {
@@ -80,6 +90,8 @@ export default function useContentLinkConnection({
               methods: {
                 openItem: handleOpenItem,
                 onStateChange: handleStateChange,
+                onInit: handleOnInit,
+                onPing: handleOnPing,
               },
               timeout: 20000,
             },
@@ -97,11 +109,11 @@ export default function useContentLinkConnection({
           setConnection({ type: 'connected', methods: child });
         } catch (error) {
           console.error('Penpal connection failed:', error);
-          setConnection({ type: 'error' });
+          setConnection({ type: 'failed' });
         }
       })();
     },
-    [handleOpenItem, handleStateChange],
+    [handleOnInit, handleOnPing, handleOpenItem, handleStateChange],
   );
 
   return useMemo<UseContentLinkConnectionReturn>(
