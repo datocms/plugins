@@ -39,7 +39,7 @@ export default function useContentLinkConnection({
   } | null>(null);
 
   const handleOnInit = useMethodProxy(() => {
-    onInit();
+    return onInit();
   }, [onInit]);
 
   const handleOnPing = useMethodProxy(() => {
