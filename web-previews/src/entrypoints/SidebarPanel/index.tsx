@@ -24,14 +24,15 @@ const FrontendGroup = ({
   frontend,
   hideIfNoLinks,
 }: {
-  status: FrontendStatus;
+  status: FrontendStatus | undefined;
   frontend: Frontend;
   hideIfNoLinks?: boolean;
 }) => {
   if (
-    'previewLinks' in status &&
-    status.previewLinks.length === 0 &&
-    hideIfNoLinks
+    !status ||
+    ('previewLinks' in status &&
+      status.previewLinks.length === 0 &&
+      hideIfNoLinks)
   ) {
     return null;
   }
@@ -122,6 +123,7 @@ const FrontendResult = ({ status }: { status: FrontendStatus }) => {
 
 const PreviewUrl = ({ ctx }: PropTypes) => {
   const [frontends, statusByFrontend] = useStatusByFrontend(ctx);
+  const firstStatus = statusByFrontend && Object.values(statusByFrontend)[0];
 
   return (
     <Canvas ctx={ctx}>
@@ -129,11 +131,12 @@ const PreviewUrl = ({ ctx }: PropTypes) => {
         <>
           {frontends.length === 0 ? (
             <div>No frontends configured!</div>
-          ) : frontends.length === 1 ? (
-            <FrontendResult status={Object.values(statusByFrontend)[0]} />
+          ) : frontends.length === 1 && firstStatus ? (
+            <FrontendResult status={firstStatus} />
           ) : Object.values(statusByFrontend).every(
               (status) =>
-                'previewLinks' in status && status.previewLinks.length === 0,
+                !status ||
+                ('previewLinks' in status && status.previewLinks.length === 0),
             ) ? (
             <div>No preview links available.</div>
           ) : (

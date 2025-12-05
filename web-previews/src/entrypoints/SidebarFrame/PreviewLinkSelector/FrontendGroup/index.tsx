@@ -10,15 +10,15 @@ export const FrontendGroup = ({
   onSelectPreviewLink,
   currentPreviewLink,
 }: {
-  status: FrontendStatus;
+  status: FrontendStatus | undefined;
   frontend: Frontend;
   hideIfNoLinks?: boolean;
   currentPreviewLink: PreviewLink | undefined;
   onSelectPreviewLink: (previewLink: PreviewLink) => void;
 }) => {
   if (
-    'previewLinks' in status &&
-    status.previewLinks.length === 0 &&
+    (!status ||
+      ('previewLinks' in status && status.previewLinks.length === 0)) &&
     hideIfNoLinks
   ) {
     return null;

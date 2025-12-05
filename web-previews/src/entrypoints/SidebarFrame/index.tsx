@@ -80,7 +80,7 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
 
     return Object.entries(statusByFrontend).flatMap((result) => {
       const status = result[1];
-      if ('previewLinks' in status) {
+      if (status && 'previewLinks' in status) {
         return status.previewLinks;
       }
 

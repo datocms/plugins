@@ -7,17 +7,17 @@ export const FrontendPreviewLinks = ({
   onSelectPreviewLink,
   currentPreviewLink,
 }: {
-  status: FrontendStatus;
+  status: FrontendStatus | undefined;
   onSelectPreviewLink: (previewLink: PreviewLink) => void;
   currentPreviewLink: PreviewLink | undefined;
 }) => {
-  if ('error' in status) {
+  if (status && 'error' in status) {
     return <div>Webhook error: check the console for more info!</div>;
   }
 
   return (
     <>
-      {status.previewLinks.length === 0 ? (
+      {!status || status.previewLinks.length === 0 ? (
         <DropdownOption>
           No preview links available for this record.
         </DropdownOption>

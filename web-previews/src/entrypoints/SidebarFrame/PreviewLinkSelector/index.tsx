@@ -8,7 +8,7 @@ import { Trigger } from './Trigger';
 type Props = {
   currentPreviewLink: PreviewLink | undefined;
   frontends: Frontend[];
-  statusByFrontend: Record<string, FrontendStatus>;
+  statusByFrontend: Record<string, FrontendStatus | undefined>;
   onChange: (previewLink: PreviewLink) => void;
 };
 
@@ -18,6 +18,8 @@ export function PreviewLinkSelector({
   currentPreviewLink,
   onChange,
 }: Props) {
+  const firstStatus = Object.values(statusByFrontend)[0];
+
   return (
     <Dropdown
       renderTrigger={(props) => (
@@ -27,15 +29,16 @@ export function PreviewLinkSelector({
       <DropdownMenu>
         {frontends.length === 0 ? (
           <div>No frontends configured!</div>
-        ) : frontends.length === 1 ? (
+        ) : frontends.length === 1 && firstStatus ? (
           <FrontendPreviewLinks
-            status={Object.values(statusByFrontend)[0]}
+            status={firstStatus}
             currentPreviewLink={currentPreviewLink}
             onSelectPreviewLink={onChange}
           />
         ) : Object.values(statusByFrontend).every(
             (status) =>
-              'previewLinks' in status && status.previewLinks.length === 0,
+              !status ||
+              ('previewLinks' in status && status.previewLinks.length === 0),
           ) ? (
           <DropdownOption>
             No preview links available for this record.
