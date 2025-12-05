@@ -55,6 +55,9 @@ type Props = {
   children: ReactNode;
 };
 
+const editUrlRegExp =
+  /^(?<base_url>.+?)(?:\/environments\/(?<environment>[^\/]+))?\/editor\/item_types\/(?<item_type_id>[^\/]+)\/items\/(?<item_id>[^\/]+)\/edit#fieldPath=(?<field_path>.+)$/;
+
 export function ContentLinkContextProvider({ children }: Props) {
   const ctx = useCtx<RenderInspectorCtx>();
 
@@ -84,14 +87,19 @@ export function ContentLinkContextProvider({ children }: Props) {
 
   const { iframeRef, connection } = useContentLinkConnection({
     onInit: () => {
-      if (connection.type !== 'connected') {
-        return;
+      if (connection.type === 'connected') {
+        connection.methods.setClickToEditEnabled({
+          enabled: true,
+          flash: { scrollToNearestTarget: false },
+        });
       }
 
-      connection.methods.setClickToEditEnabled({
-        enabled: true,
-        flash: { scrollToNearestTarget: false },
-      });
+      return {
+        editUrlRegExp: {
+          source: editUrlRegExp.source,
+          flags: editUrlRegExp.flags,
+        },
+      };
     },
     onStateChange: ({ itemIdsPerEnvironment, ...rest }) => {
       setContentLinkState(rest);

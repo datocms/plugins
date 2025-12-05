@@ -13,9 +13,13 @@ export type ContentLinkState = {
   itemIdsPerEnvironment: Record<string, string[]>;
 };
 
+export type OnInitData = {
+  editUrlRegExp: { source: string; flags: string };
+};
+
 // Methods that we expose
 export interface WebPreviewsMethods {
-  onInit: () => void;
+  onInit: () => OnInitData;
   onPing: () => void;
   onStateChange: (payload: ContentLinkState) => void;
   openItem: (payload: EditUrlInfo) => void;

@@ -2,7 +2,7 @@
   "name": "datocms-plugin-web-previews",
   "homepage": "https://github.com/datocms/plugins/tree/master/web-previews#readme",
   "description": "Offer your editors side-by-side previews of unpublished/draft content, directly within DatoCMS",
-  "version": "1.0.27-next.8",
+  "version": "1.0.27-next.9",
   "author": "DatoCMS <support@datocms.com>",
   "license": "GPLv3",
   "files": [
