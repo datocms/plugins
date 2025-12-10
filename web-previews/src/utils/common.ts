@@ -79,8 +79,7 @@ export function useStatusByFrontend(
     itemType,
     environment: environmentId,
     currentUser,
-    site: { attributes: siteAttributes },
-
+    site: { id: siteId },
   } = ctx;
 
   const payloadBody = useDeepCompareMemo(
@@ -93,7 +92,7 @@ export function useStatusByFrontend(
               environmentId,
               locale,
               currentUser,
-              siteAttributes, 
+              siteId,
             },
             null,
             2,
