@@ -28,6 +28,7 @@ The plugin performs a POST request to the Previews webhook URL, passing a payloa
   "item": {…},
   "itemType": {…},
   "currentUser": {…},
+  "siteId": "123",
   "environmentId": "main",
   "locale": "en",
 }
@@ -36,6 +37,7 @@ The plugin performs a POST request to the Previews webhook URL, passing a payloa
 - `item`: [CMA entity](https://www.datocms.com/docs/content-management-api/resources/item) of the current record
 - `itemType`: [CMA entity](https://www.datocms.com/docs/content-management-api/resources/item-type) of the model of the current record
 - `currentUser`: CMA entity of the [collaborator](https://www.datocms.com/docs/content-management-api/resources/user), [SSO user](https://www.datocms.com/docs/content-management-api/resources/sso-user) or [account owner](https://www.datocms.com/docs/content-management-api/resources/account) currently logged in
+- `siteId`: the ID of the current DatoCMS project
 - `environmentId`: the current environment ID
 - `locale`: the locale currently active on the form
 
