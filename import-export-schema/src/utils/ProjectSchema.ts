@@ -1,6 +1,8 @@
 import type { Client, SchemaTypes } from '@datocms/cma-client';
-import { groupBy } from 'lodash-es';
 
+/**
+ * Thin caching layer around the CMA client that smooths out rate limits and provides lookups.
+ */
 export class ProjectSchema {
   public client: Client;
   private itemTypesPromise: Promise<SchemaTypes.ItemType[]> | null = null;
@@ -12,9 +14,50 @@ export class ProjectSchema {
   private fieldsByItemType: Map<string, SchemaTypes.Field[]> = new Map();
   private fieldsetsByItemType: Map<string, SchemaTypes.Fieldset[]> = new Map();
   private alreadyFetchedRelatedFields: Map<string, true> = new Map();
+  // In-flight promises to prevent duplicate requests per item type
+  private fieldsPromisesByItemType: Map<string, Promise<SchemaTypes.Field[]>> =
+    new Map();
+  private fieldsetsPromisesByItemType: Map<
+    string,
+    Promise<SchemaTypes.Fieldset[]>
+  > = new Map();
+
+  // Simple throttle to avoid hitting 429 when many models are selected
+  // Keep concurrency conservative: DatoCMS rate-limits bursty calls
+  // If needed, make this configurable later via constructor param
+  private throttleMax = 2;
+  private throttleActive = 0;
+  private throttleQueue: Array<() => void> = [];
 
   constructor(client: Client) {
     this.client = client;
+    try {
+      // Allow overriding throttle via localStorage for large schemas
+      const raw =
+        typeof window !== 'undefined'
+          ? window.localStorage?.getItem?.('schemaThrottleMax')
+          : undefined;
+      const parsed = raw ? parseInt(raw, 10) : NaN;
+      if (!Number.isNaN(parsed) && parsed > 0 && parsed < 16) {
+        this.throttleMax = parsed;
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  private async withThrottle<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.throttleActive >= this.throttleMax) {
+      await new Promise<void>((resolve) => this.throttleQueue.push(resolve));
+    }
+    this.throttleActive += 1;
+    try {
+      return await fn();
+    } finally {
+      this.throttleActive -= 1;
+      const next = this.throttleQueue.shift();
+      if (next) next();
+    }
   }
 
   private async loadItemTypes(): Promise<SchemaTypes.ItemType[]> {
@@ -89,7 +132,7 @@ export class ProjectSchema {
 
     const itemType = this.itemTypesByName.get(name);
     if (!itemType) {
-      throw new Error(`Item type with API key '${name}' not found`);
+      throw new Error(`Item type with name '${name}' not found`);
     }
 
     return itemType;
@@ -120,14 +163,20 @@ export class ProjectSchema {
   async getItemTypeFieldsAndFieldsets(
     itemType: SchemaTypes.ItemType,
   ): Promise<[SchemaTypes.Field[], SchemaTypes.Fieldset[]]> {
-    if (
-      !itemType.attributes.modular_block &&
-      !this.fieldsetsByItemType.get(itemType.id)
-    ) {
-      const { data: fieldsets } = await this.client.fieldsets.rawList(
-        itemType.id,
-      );
-      this.fieldsetsByItemType.set(itemType.id, fieldsets);
+    if (!itemType.attributes.modular_block) {
+      if (!this.fieldsetsByItemType.get(itemType.id)) {
+        let promise = this.fieldsetsPromisesByItemType.get(itemType.id);
+        if (!promise) {
+          promise = this.withThrottle(async () => {
+            const { data } = await this.client.fieldsets.rawList(itemType.id);
+            return data;
+          });
+          this.fieldsetsPromisesByItemType.set(itemType.id, promise);
+        }
+        const fieldsets = await promise;
+        this.fieldsetsByItemType.set(itemType.id, fieldsets);
+        this.fieldsetsPromisesByItemType.delete(itemType.id);
+      }
     }
 
     // Check if we already have the fields cached
@@ -140,25 +189,22 @@ export class ProjectSchema {
       return [cachedFields, this.fieldsetsByItemType.get(itemType.id) || []];
     }
 
-    // Fetch and cache the fields
-    const { data: fields } = await this.client.fields.rawRelated(itemType.id);
-
-    this.alreadyFetchedRelatedFields.set(itemType.id, true);
-
-    const fieldsByItemTypeId = groupBy(
-      fields,
-      'relationships.item_type.data.id',
-    );
-
-    this.fieldsByItemType.set(
-      itemType.id,
-      fieldsByItemTypeId[itemType.id] || [],
-    );
-
-    for (const [itemTypeId, fields] of Object.entries(fieldsByItemTypeId)) {
-      this.fieldsByItemType.set(itemTypeId, fields);
+    let fields = this.fieldsByItemType.get(itemType.id);
+    if (!fields || !this.alreadyFetchedRelatedFields.get(itemType.id)) {
+      let promise = this.fieldsPromisesByItemType.get(itemType.id);
+      if (!promise) {
+        promise = this.withThrottle(async () => {
+          const { data } = await this.client.fields.rawList(itemType.id);
+          return data;
+        });
+        this.fieldsPromisesByItemType.set(itemType.id, promise);
+      }
+      fields = await promise;
+      this.fieldsByItemType.set(itemType.id, fields);
+      this.alreadyFetchedRelatedFields.set(itemType.id, true);
+      this.fieldsPromisesByItemType.delete(itemType.id);
     }
 
-    return this.getItemTypeFieldsAndFieldsets(itemType);
+    return [fields, this.fieldsetsByItemType.get(itemType.id) || []];
   }
 }

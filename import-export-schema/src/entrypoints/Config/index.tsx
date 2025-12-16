@@ -6,6 +6,7 @@ type Props = {
   ctx: RenderConfigScreenCtx;
 };
 
+/** Lightweight anchor that uses the plugin navigation API instead of full page loads. */
 function Link({ href, children }: { href: string; children: ReactNode }) {
   const ctx = useCtx<RenderConfigScreenCtx>();
 
@@ -22,9 +23,14 @@ function Link({ href, children }: { href: string; children: ReactNode }) {
   );
 }
 
+/** Configuration screen shown in Settings → Plugins. */
 export function Config({ ctx }: Props) {
-  const schemaUrl = `${ctx.isEnvironmentPrimary ? '' : `/environments/${ctx.environment}`}/schema`;
-  const pageUrl = `${ctx.isEnvironmentPrimary ? '' : `/environments/${ctx.environment}`}/configuration/p/${ctx.plugin.id}/pages/import-export`;
+  const environmentPath = ctx.isEnvironmentPrimary
+    ? ''
+    : `/environments/${ctx.environment}`;
+  const schemaUrl = `${environmentPath}/schema`;
+  const importUrl = `${environmentPath}/configuration/p/${ctx.plugin.id}/pages/import`;
+  const exportUrl = `${environmentPath}/configuration/p/${ctx.plugin.id}/pages/export`;
 
   return (
     <Canvas ctx={ctx}>
@@ -41,12 +47,18 @@ export function Config({ ctx }: Props) {
           </li>
 
           <li>
-            Need to import some models/blocks from an already generated export?
-            Go to the{' '}
-            <Link href={pageUrl}>
-              <strong>Schema &gt; Import/Export</strong> section
+            To import models/blocks from an exported JSON, go to the{' '}
+            <Link href={importUrl}>
+              <strong>Schema &gt; Import</strong>
             </Link>{' '}
-            on the sidebar.
+            page in the sidebar.
+          </li>
+          <li>
+            To export a selection or the entire schema, go to the{' '}
+            <Link href={exportUrl}>
+              <strong>Schema &gt; Export</strong>
+            </Link>{' '}
+            page.
           </li>
         </ul>
       </div>

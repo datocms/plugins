@@ -1,25 +1,33 @@
 import type { SchemaTypes } from '@datocms/cma-client';
 import {
+  faCircleExclamation,
   faCaretRight as faCollapsed,
   faCaretDown as faExpanded,
 } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import classNames from 'classnames';
 import { type ReactNode, useContext, useEffect, useRef } from 'react';
-import { SelectedEntityContext } from '../SelectedEntityContext';
+import { SelectedEntityContext } from './SelectedEntityContext';
 
 type Props = {
   entity: SchemaTypes.ItemType | SchemaTypes.Plugin;
   invalid?: boolean;
+  hasConflict?: boolean;
   title: ReactNode;
   children: ReactNode;
+  className?: string;
 };
 
+/**
+ * Accordion-style wrapper that also syncs with the graph selection context.
+ */
 export default function Collapsible({
   entity,
   invalid,
+  hasConflict = false,
   title,
   children,
+  className,
 }: Props) {
   const elRef = useRef<HTMLDivElement>(null);
 
@@ -46,18 +54,36 @@ export default function Collapsible({
         'conflict',
         isSelected && 'conflict--selected',
         invalid && 'conflict--invalid',
+        hasConflict && 'conflict--has-conflict',
+        className,
       )}
       ref={elRef}
     >
-      <div className="conflict__title" onClick={handleSelect}>
-        <FontAwesomeIcon icon={isSelected ? faExpanded : faCollapsed} /> {title}
-      </div>
-      <div
+      <button
+        type="button"
+        className="conflict__title"
+        onClick={handleSelect}
+        aria-expanded={isSelected}
+        aria-controls={`conflict-panel-${entity.id}`}
+        id={`conflict-button-${entity.id}`}
+      >
+        <FontAwesomeIcon icon={isSelected ? faExpanded : faCollapsed} />
+        <span className="conflict__title__text">{title}</span>
+        {hasConflict ? (
+          <span className="conflict__badge" title="Conflicts detected">
+            <FontAwesomeIcon icon={faCircleExclamation} />
+            <span>Conflict</span>
+          </span>
+        ) : null}
+      </button>
+      <section
+        id={`conflict-panel-${entity.id}`}
         className="conflict__content"
         style={{ display: isSelected ? 'block' : 'none' }}
+        aria-labelledby={`conflict-button-${entity.id}`}
       >
         {children}
-      </div>
+      </section>
     </div>
   );
 }
