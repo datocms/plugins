@@ -1,0 +1,65 @@
+{
+  "name": "datocms-plugin-alt-text-ai",
+  "homepage": "https://github.com/datocms/plugins/tree/master/alt-text-ai#readme",
+  "version": "0.5.0",
+  "author": "DatoCMS <support@datocms.com>",
+  "description": "Generate alt texts for your assets in a single click",
+  "keywords": [
+    "datocms",
+    "datocms-plugin",
+    "ai",
+    "alt",
+    "media",
+    "assets"
+  ],
+  "datoCmsPlugin": {
+    "title": "Alt Text AI",
+    "previewImage": "docs/demo.mp4",
+    "coverImage": "docs/cover.png",
+    "entryPoint": "build/index.html",
+    "permissions": [
+      "currentUserAccessToken"
+    ]
+  },
+  "dependencies": {
+    "@datocms/cma-client-browser": "^2.2.6",
+    "@types/node": "^18.18.6",
+    "@types/react": "^18.2.31",
+    "@types/react-dom": "^18.2.14",
+    "datocms-plugin-sdk": "^1.0.0",
+    "datocms-react-ui": "^1.0.0",
+    "lodash": "^4.17.21",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-scripts": "5.0.1",
+    "typescript": "^4.9.5"
+  },
+  "scripts": {
+    "start": "cross-env BROWSER='none' PUBLIC_URL='/' react-scripts start",
+    "build": "cross-env PUBLIC_URL='.' react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject",
+    "prepublishOnly": "npm run build"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "devDependencies": {
+    "@types/lodash": "^4.14.200",
+    "cross-env": "^7.0.3"
+  }
+}

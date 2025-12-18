@@ -1,0 +1,70 @@
+{
+  "name": "datocms-plugin-ai-translations",
+  "homepage": "https://github.com/datocms/plugins/tree/master/ai-translations#readme",
+  "version": "3.0.0",
+  "author": "DatoCMS <support@datocms.com>",
+  "description": "Translate fields and records directly on DatoCMS using AI",
+  "keywords": [
+    "datocms",
+    "datocms-plugin"
+  ],
+  "type": "module",
+  "datoCmsPlugin": {
+    "title": "AI Translations",
+    "coverImage": "docs/cover-1200x800.png",
+    "previewImage": "docs/preview.mp4",
+    "entryPoint": "dist/index.html",
+    "permissions": [
+      "currentUserAccessToken"
+    ]
+  },
+  "files": [
+    "dist",
+    "docs"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "prepublishOnly": "npm run build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "coverage": "vitest run --coverage",
+    "lint": "eslint . --ext .ts,.tsx",
+    "lint:fix": "eslint . --ext .ts,.tsx --fix"
+  },
+  "dependencies": {
+    "@datocms/cma-client-browser": "^3.4.0",
+    "@google/generative-ai": "^0.21.0",
+    "datocms-plugin-sdk": "^2.0.9",
+    "datocms-react-ui": "^2.0.9",
+    "framer-motion": "^11.15.0",
+    "locale-codes": "^1.3.1",
+    "openai": "^4.77.0",
+    "@anthropic-ai/sdk": "^0.21.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-icons": "^5.4.0",
+    "react-textarea-autosize": "^8.5.6",
+    "react-type-animation": "^3.2.0"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.0.0",
+    "@types/node": "^22.8.6",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "globals": "^15.9.0",
+    "jsdom": "^25.0.1",
+    "eslint": "^9.14.0",
+    "@typescript-eslint/parser": "^8.12.2",
+    "@typescript-eslint/eslint-plugin": "^8.12.2",
+    "eslint-plugin-jsdoc": "^48.11.0",
+    "eslint-plugin-tsdoc": "^0.2.17",
+    "typescript": "^5.5.3",
+    "vite": "^5.4.1",
+    "vitest": "^2.1.3",
+    "@vitest/coverage-v8": "^2.1.3"
+  }
+}

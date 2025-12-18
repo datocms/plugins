@@ -1,0 +1,66 @@
+{
+  "name": "datocms-plugin-project-exporter",
+  "homepage": "https://github.com/datocms/plugins/tree/master/project-exporter#readme",
+  "version": "1.0.0",
+  "author": "DatoCMS <support@datocms.com>",
+  "description": "A plugin that allows you to export records and assets from your project directly from your browser",
+  "keywords": [
+    "datocms",
+    "datocms-plugin"
+  ],
+  "datoCmsPlugin": {
+    "title": "Project Exporter",
+    "coverImage": "docs/cover.png",
+    "previewImage": "docs/preview.mp4",
+    "entryPoint": "build/index.html",
+    "permissions": [
+      "currentUserAccessToken"
+    ]
+  },
+  "dependencies": {
+    "@datocms/cma-client-browser": "^1.2.9",
+    "@types/node": "^18.15.11",
+    "@types/react": "^18.0.32",
+    "@types/react-dom": "^18.0.11",
+    "datocms-plugin-sdk": "^0.7.4",
+    "datocms-react-ui": "^0.7.4",
+    "flat": "^6.0.1",
+    "json-2-csv": "^5.5.4",
+    "jsontoxml": "^1.0.1",
+    "jszip": "^3.10.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-scripts": "5.0.1",
+    "typescript": "^4.9.5",
+    "xlsx": "^0.18.5"
+  },
+  "scripts": {
+    "start": "cross-env BROWSER='none' PUBLIC_URL='/' react-scripts start",
+    "build": "cross-env PUBLIC_URL='.' react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject",
+    "prepublishOnly": "npm run build"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "devDependencies": {
+    "@types/jsontoxml": "^1.0.6",
+    "cross-env": "^7.0.3"
+  },
+  "packageManager": "pnpm@10.22.0+sha512.bf049efe995b28f527fd2b41ae0474ce29186f7edcb3bf545087bd61fbbebb2bf75362d1307fda09c2d288e1e499787ac12d4fcb617a974718a6051f2eee741c"
+}

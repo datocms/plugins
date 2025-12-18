@@ -1,0 +1,19 @@
+name: Lint (ESLint)
+
+on:
+  pull_request:
+  push:
+
+jobs:
+  eslint:
+    name: ESLint (non-blocking)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run lint

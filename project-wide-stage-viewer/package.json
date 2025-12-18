@@ -1,0 +1,47 @@
+{
+  "name": "datocms-plugin-project-wide-stage-viewer",
+  "homepage": "https://github.com/datocms/plugins/tree/master/project-wide-stage-viewer#readme",
+  "version": "0.1.0",
+  "author": "DatoCMS <support@datocms.com>",
+  "description": "A plugin that allows you to view all records (across multiple models) belonging to a workflow stage.",
+  "keywords": [
+    "datocms",
+    "datocms-plugin"
+  ],
+  "type": "module",
+  "datoCmsPlugin": {
+    "title": "Project Wide Stage Viewer",
+    "coverImage": "docs/cover-1200x800.png",
+    "previewImage": "docs/preview.mp4",
+    "entryPoint": "dist/index.html",
+    "permissions": [
+      "currentUserAccessToken"
+    ]
+  },
+  "files": [
+    "dist",
+    "docs"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@datocms/cma-client-browser": "^5.1.20",
+    "datocms-plugin-sdk": "*",
+    "datocms-react-ui": "*",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "globals": "^15.9.0",
+    "typescript": "^5.5.3",
+    "vite": "^5.4.1"
+  },
+  "packageManager": "pnpm@10.17.1+sha512.17c560fca4867ae9473a3899ad84a88334914f379be46d455cbf92e5cf4b39d34985d452d2583baf19967fa76cb5c17bc9e245529d0b98745721aa7200ecaf7a"
+}

@@ -1,0 +1,301 @@
+/* styles.module.css
+   -----------------
+   This file holds various CSS classes for styling components
+   throughout the plugin, including custom classes for the
+   hover-based tooltip on the info icon in ConfigScreen.tsx. */
+
+/* Existing styles for layout and visuals */
+.modelSelect {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.dropdownLabel {
+  margin-bottom: 8px;
+  margin-top: 16px;
+}
+
+.optionContainer {
+  display: flex;
+  gap: 8px;
+  font-size: var(--font-size-xxs);
+  justify-content: right;
+  align-items: center;
+  margin-top: -8px;
+  margin-bottom: -24px;
+  height: 50px;
+  overflow: hidden;
+}
+
+.buttonsContainer {
+  display: flex;
+  user-select: none;
+  gap: 4px;
+}
+
+.promptBar {
+  width: 100%;
+  gap: 4px;
+  display: flex;
+  margin-bottom: 24px;
+}
+
+.dropdown {
+  height: 100%;
+  font-size: medium;
+}
+
+.promptButton {
+  height: 100%;
+}
+
+.imageGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 10px;
+}
+
+.tooltipConfig {
+  background-color: #e6f7ff;
+  border: 1px solid #91d5ff;
+  border-radius: 4px;
+  padding: 8px 12px;
+  font-size: 14px;
+  color: #1890ff;
+  display: inline-block;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.tooltipConfig:hover {
+  transform: scale(1.025);
+}
+
+.tooltipConfig:active {
+  transform: scale(0.98);
+  transition: transform 0.1s ease;
+}
+
+.buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.inlineStatus {
+  margin-top: 8px;
+  font-size: 12px;
+}
+
+.fieldSpacing {
+  margin-bottom: 16px;
+}
+
+/* Indeterminate progress bar used in sidebar global wait banner */
+.ai-indeterminateBar {
+  position: relative;
+  width: 100%;
+  height: 4px;
+  border-radius: 4px;
+  background: rgba(0,0,0,0.08);
+  overflow: hidden;
+}
+
+.ai-indeterminateBarInner {
+  position: absolute;
+  height: 100%;
+  width: 40%;
+  left: -40%;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.6), transparent);
+  animation: ai-indet 1.2s infinite ease-in-out;
+}
+
+@keyframes ai-indet {
+  0% { left: -40%; }
+  50% { left: 60%; }
+  100% { left: 140%; }
+}
+
+.configContainer {
+  max-width: 650px;
+  margin: 0 auto;
+  padding: var(--spacing-l) var(--spacing-xxxl);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.textarea {
+  width: 96%;
+  border: 1px solid #d0cece5d;
+  padding: 12px;
+  resize: none;
+  outline: none;
+  font-family: inherit;
+  font-size: inherit;
+}
+
+.label {
+  color: var(--light-body-color);
+}
+
+.hint {
+  font-size: var(--font-size-xs);
+  color: var(--light-body-color);
+}
+
+.fieldLabelTitle {
+  font-size: var(--font-size-xl);
+  font-weight: 600;
+  color: var(--base-body-color);
+  margin-top: 16px;
+}
+
+.fieldLabelHint {
+  margin-top: -16px;
+  font-size: var(--font-size-m);
+  color: var(--light-body-color);
+  margin-bottom: 16px;
+}
+
+.switchField {
+  margin-top: 16px;
+  margin-bottom: 16px;
+}
+
+.buttonRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.exclusionRules {
+  border-left: 2px solid #e6f7ff;
+  padding-left: 16px;
+  margin-left: 4px;
+}
+
+.promptContainer {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Tooltip classes for the info icon hover */
+.tooltipContainer {
+  position: relative;
+  display: inline-block;
+  cursor: help;
+  margin-left: 8px;
+}
+
+.warningTooltip {
+  position: relative;
+  display: inline-block;
+  cursor: help;
+  margin-left: 8px;
+  color: #faad14;
+}
+
+/* Standard tooltip that appears below the info icon */
+.tooltipText {
+  visibility: hidden;
+  width: 250px;
+  background-color: rgba(0, 0, 0, 0.85);
+  color: #fff;
+  text-align: center;
+  border-radius: 6px;
+  padding: 12px;
+  /* Position below the icon */
+  position: absolute;
+  z-index: 9999;
+  top: 100%; /* Position at the bottom of the icon */
+  left: 50%; /* Center horizontally */
+  transform: translateX(-50%); /* Ensure perfect horizontal centering */
+  margin-top: 10px; /* Gap between icon and tooltip */
+  opacity: 0;
+  transition: opacity 0.3s;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  /* Prevent overflow issues in iframe */
+  max-width: 90vw;
+  overflow: hidden;
+}
+
+/* Special tooltip for image tooltips - wider, centered */
+.tooltipText img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0 auto;
+  border: 1px solid #fff;
+  border-radius: 4px;
+}
+
+/* Wider image tooltip class */
+.imageTooltip {
+  width: 450px !important;
+}
+
+/* Left-anchored tooltip (for right edge of screen) */
+.leftAnchorTooltip {
+  left: 0 !important;
+  transform: none !important;
+}
+
+/* Right-anchored tooltip (for left edge of screen) */
+.rightAnchorTooltip {
+  left: auto !important;
+  right: 0 !important;
+  transform: none !important;
+}
+
+/* Arrow on top of tooltip pointing to the icon */
+.tooltipText::before {
+  content: '';
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  margin-left: -8px;
+  border-width: 8px;
+  border-style: solid;
+  border-color: transparent transparent rgba(0, 0, 0, 0.85) transparent;
+}
+
+/* Adjust arrow position for left/right anchored tooltips */
+.leftAnchorTooltip::before {
+  left: 20px;
+  margin-left: 0;
+}
+
+.rightAnchorTooltip::before {
+  left: auto;
+  right: 20px;
+  margin-left: 0;
+}
+
+/* Show tooltip on hover */
+.tooltipContainer:hover .tooltipText {
+  visibility: visible;
+  opacity: 1;
+}
+
+/* Show tooltip for warning icon */
+.warningTooltip:hover .tooltipText {
+  visibility: visible;
+  opacity: 1;
+}
+
+/* Inspector margin fix */
+.inspector {
+  margin-top: var(--spacing-l);
+}
+/*
+ * styles.module.css (entrypoints)
+ * Scoped CSS module for entrypoint UI elements (tooltips, layout hints).
+ * Prefer CSS modules to avoid global leakage in the DatoCMS iframe.
+ */

@@ -1,0 +1,145 @@
+.buttonItem {
+  margin-top: var(--spacing-l);
+}
+.hidden {
+  display: none;
+}
+.buttonList {
+  display: flex;
+  flex-direction: column;
+}
+
+.tooltipSpan {
+  visibility: hidden;
+  width: 100%;
+  background-color: #f8f8f8;
+  color: #333;
+  text-align: center;
+  border-radius: 6px;
+  padding: 10px;
+  position: absolute;
+  z-index: 1;
+  top: 125%;
+  left: 50%;
+  transform: translateX(-50%);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  transition: opacity 0.3s ease, transform 0.3s ease, visibility 0s linear 4s;
+  opacity: 0;
+  transform: translateX(-50%) translateY(-10px);
+  z-index: 10;
+}
+
+.tooltipBox {
+  position: relative;
+  display: inline-block;
+  margin-top: 10px;
+  font-size: 14px;
+  color: #666;
+  z-index: 10;
+}
+
+.assetItem:hover + .tooltipBox .tooltipSpan,
+.tooltipBox:hover .tooltipSpan,
+.tooltipSpan:hover {
+  visibility: visible;
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  transition-delay: 0s;
+}
+
+.assetItem {
+  position: relative;
+}
+
+.modelSelectorContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-top: var(--spacing-l);
+  width: 100%;
+  gap: var(--spacing-l);
+  text-align: center;
+}
+
+.textQueryContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  gap: var(--spacing-m);
+  margin-bottom: var(--spacing-l);
+  margin-top: var(--spacing-l);
+  text-align: center;
+}
+
+.modelSelector {
+  display: block;
+  text-align: center;
+  font-size: var(--font-size-l);
+  width: 100%;
+}
+
+.overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(255, 255, 255, 0.95);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 100;
+}
+
+.overlayContent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  min-width: 350px;
+}
+
+.spinnerContainer {
+  margin-bottom: 30px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 60px;
+}
+
+.overlayText {
+  margin-top: 10px;
+  margin-bottom: 10px;
+  font-size: 16px;
+  color: #333;
+  font-weight: 500;
+  text-align: center;
+  max-width: 80%;
+}
+
+.progressBarContainer {
+  width: 300px;
+  height: 8px;
+  background-color: #e0e0e0;
+  border-radius: 4px;
+  margin-top: 20px;
+  overflow: hidden;
+}
+
+.progressBarFill {
+  height: 100%;
+  background-color: var(--primary-color, #00b3b3);
+  transition: width 0.3s ease;
+}
+
+.progressText {
+  margin-top: 12px;
+  font-size: 14px;
+  color: #666;
+  font-weight: 500;
+}

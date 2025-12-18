@@ -1,0 +1,56 @@
+{
+  "name": "datocms-plugin-record-comments",
+  "homepage": "https://github.com/datocms/plugins/tree/master/record-comments#readme",
+  "version": "1.0.0",
+  "author": "DatoCMS <support@datocms.com>",
+  "description": "A plugin that allows you and your project collaborators to leave comments under a record",
+  "keywords": [
+    "datocms",
+    "datocms-plugin",
+    "sidebar-panel",
+    "comments",
+    "collaboration"
+  ],
+  "type": "module",
+  "datoCmsPlugin": {
+    "title": "Record comments",
+    "previewImage": "docs/demo.mp4",
+    "coverImage": "docs/cover.png",
+    "entryPoint": "dist/index.html",
+    "permissions": ["currentUserAccessToken"]
+  },
+  "files": [
+    "dist",
+    "docs"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@datocms/cma-client-browser": "^3.0.0",
+    "@fortawesome/fontawesome-svg-core": "^6.6.0",
+    "react-datocms": "^7.0.0",
+    "@fortawesome/free-solid-svg-icons": "^6.6.0",
+    "@fortawesome/react-fontawesome": "^0.2.2",
+    "datocms-plugin-sdk": "*",
+    "datocms-react-ui": "*",
+    "javascript-time-ago": "^2.5.11",
+    "md5": "^2.3.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-textarea-autosize": "^8.5.6",
+    "react-time-ago": "^7.3.3"
+  },
+  "devDependencies": {
+    "@types/md5": "^2.3.5",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "globals": "^15.9.0",
+    "typescript": "^5.5.3",
+    "vite": "^5.4.1"
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "name": "datocms-plugin-record-bin",
+  "homepage": "https://github.com/datocms/plugins/tree/master/record-bin#readme",
+  "version": "2.0.0",
+  "author": "DatoCMS <support@datocms.com>",
+  "description": "A plugin to manage and create a backup of deleted records in DatoCMS",
+  "keywords": [
+    "datocms",
+    "datocms-plugin",
+    "backup",
+    "record",
+    "bin"
+  ],
+  "datoCmsPlugin": {
+    "title": "Record bin",
+    "previewImage": "docs/demo.mp4",
+    "coverImage": "docs/cover.png",
+    "entryPoint": "build/index.html",
+    "permissions": []
+  },
+  "dependencies": {
+    "@types/node": "^16.11.52",
+    "@types/react": "^17.0.48",
+    "@types/react-dom": "^17.0.17",
+    "datocms-plugin-sdk": "^0.6.1",
+    "datocms-react-ui": "^0.6.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-scripts": "5.0.1",
+    "typescript": "^4.7.4"
+  },
+  "scripts": {
+    "start": "cross-env BROWSER='none' PUBLIC_URL='/' react-scripts start",
+    "build": "cross-env PUBLIC_URL='.' react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject",
+    "prepublishOnly": "npm run build"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3"
+  }
+}

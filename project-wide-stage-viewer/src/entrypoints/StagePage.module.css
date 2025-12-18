@@ -1,0 +1,357 @@
+.contentCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-l);
+  padding: var(--spacing-l) var(--spacing-xl);
+  border: 1px solid var(--border-color);
+  border-radius: 0;
+  background: var(--base-background-color);
+}
+
+
+.controlsRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--spacing-l);
+  justify-content: space-between;
+}
+
+.summaryBlock {
+  flex: 1 1 260px;
+  min-width: 220px;
+}
+
+.summaryText {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--base-body-color);
+}
+
+.summaryText strong {
+  color: var(--accent-color);
+}
+
+.filtersGroup {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--spacing-m);
+}
+
+.filterField {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+  min-width: 200px;
+}
+
+.filterLabel {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--light-body-color);
+}
+
+.select {
+  height: 36px;
+  padding: 0 var(--spacing-m);
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background: var(--base-background-color);
+  color: var(--base-body-color);
+}
+
+.select:focus {
+  outline: none;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.15);
+}
+
+.searchWrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.searchInput {
+  width: 260px;
+  height: 36px;
+  padding: 0 calc(var(--spacing-l)) 0 var(--spacing-m);
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  background: var(--base-background-color);
+  color: var(--base-body-color);
+}
+
+.searchInput::placeholder {
+  color: var(--light-body-color);
+}
+
+.searchInput:focus {
+  outline: none;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.15);
+}
+
+.clearButton {
+  position: absolute;
+  right: calc(var(--spacing-m) * 0.6);
+  top: 50%;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--accent-color);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transform: translateY(-50%) translateY(-2px);
+}
+
+.clearButton:hover {
+  background: rgba(79, 70, 229, 0.12);
+}
+
+.loading {
+  position: relative;
+  min-height: 200px;
+}
+
+.tableWrapper {
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  overflow: hidden;
+}
+
+.table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.table thead th {
+  padding: var(--spacing-m) var(--spacing-l);
+  background: var(--light-bg-color);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--light-body-color);
+  border-bottom: 1px solid var(--border-color);
+  text-align: left;
+}
+
+.table tbody td {
+  padding: calc(var(--spacing-m) * 0.9) var(--spacing-l);
+  border-bottom: 1px solid var(--border-color);
+  color: var(--base-body-color);
+  vertical-align: middle;
+  text-align: left;
+}
+
+.table thead th:not(:last-child),
+.table tbody td:not(:last-child) {
+  border-right: 1px solid var(--border-color);
+}
+
+.table tbody tr:nth-child(even) {
+  background: rgba(15, 23, 42, 0.02);
+}
+
+.table tbody tr:hover {
+  background: rgba(79, 70, 229, 0.08);
+}
+
+.paginationBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-m);
+  padding: var(--spacing-m) var(--spacing-l);
+  border-top: 1px solid var(--border-color);
+}
+
+.paginationInfo {
+  font-size: 0.85rem;
+  color: var(--light-body-color);
+}
+
+.paginationActions {
+  display: inline-flex;
+  gap: var(--spacing-s);
+}
+
+.pageButton {
+  border: 1px solid var(--border-color);
+  background: rgba(248, 250, 252, 0.8);
+  color: var(--base-body-color);
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 6px var(--spacing-m);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.pageButton:hover {
+  background: rgba(79, 70, 229, 0.1);
+  border-color: rgba(79, 70, 229, 0.35);
+}
+
+.pageButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  background: rgba(248, 250, 252, 0.5);
+  border-color: rgba(148, 163, 184, 0.3);
+}
+
+.sortButton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.sortButton:focus-visible {
+  outline: 2px solid rgba(79, 70, 229, 0.4);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.sortIndicator {
+  display: inline-block;
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  margin-left: var(--spacing-xs);
+}
+
+.sortAsc {
+  border-bottom: 6px solid currentColor;
+}
+
+.sortDesc {
+  border-top: 6px solid currentColor;
+}
+
+.bodyRow {
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.bodyRow:focus-visible {
+  outline: 2px solid rgba(79, 70, 229, 0.4);
+  outline-offset: -2px;
+}
+
+.titleCell {
+  font-weight: 600;
+  font-size: 1rem;
+  line-height: 1.4;
+}
+
+.recordId {
+  font-family: var(--monospace-font-family, Menlo, Consolas, 'Liberation Mono', monospace);
+  font-size: 0.95rem;
+  color: var(--light-body-color);
+}
+
+.modelCell {
+  white-space: nowrap;
+}
+
+.timestampCell {
+  font-variant-numeric: tabular-nums;
+  color: var(--light-body-color);
+}
+
+.empty {
+  margin: 0;
+  padding: calc(var(--spacing-xl) * 0.9);
+  text-align: center;
+  border-radius: 8px;
+  border: 1px dashed var(--border-color);
+  background: var(--light-bg-color);
+  color: var(--light-body-color);
+  font-weight: 500;
+}
+
+.error {
+  margin: 0;
+  padding: var(--spacing-m);
+  border-radius: 6px;
+  background: rgba(239, 68, 68, 0.12);
+  color: rgba(220, 38, 38, 0.9);
+  font-weight: 600;
+}
+
+@media (max-width: 960px) {
+  .contentCard {
+    padding: var(--spacing-l);
+  }
+
+  .controlsRow {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--spacing-m);
+  }
+
+  .summaryBlock,
+  .filtersGroup {
+    width: 100%;
+  }
+
+  .searchInput {
+    width: 220px;
+  }
+
+  .modelCell {
+    display: none;
+  }
+
+  .paginationBar {
+    padding: var(--spacing-m);
+  }
+}
+
+@media (max-width: 640px) {
+  .contentCard {
+    padding: var(--spacing-m);
+    gap: var(--spacing-l);
+  }
+
+  .summaryBlock {
+    width: 100%;
+  }
+
+  .filterField,
+  .searchInput,
+  .select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .searchInput {
+    width: 100%;
+  }
+
+  .paginationBar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

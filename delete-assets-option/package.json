@@ -1,0 +1,63 @@
+{
+  "name": "datocms-plugin-delete-assets-option",
+  "homepage": "https://github.com/datocms/plugins/tree/master/delete-assets-option#readme",
+  "version": "0.2.0",
+  "author": "DatoCMS <support@datocms.com>",
+  "description": "Prompts the users to delete assets only referenced in the records they are deleting",
+  "keywords": [
+    "datocms",
+    "datocms-plugin",
+    "assets",
+    "asset",
+    "media",
+    "delete"
+  ],
+  "datoCmsPlugin": {
+    "title": "Delete Assets Option",
+    "previewImage": "docs/demo.mp4",
+    "coverImage": "docs/cover.png",
+    "entryPoint": "build/index.html",
+    "permissions": [
+      "currentUserAccessToken"
+    ]
+  },
+  "dependencies": {
+    "@datocms/cma-client-browser": "^3.3.5",
+    "@types/node": "^18.19.42",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "datocms-plugin-sdk": "^1.1.0",
+    "datocms-react-ui": "^1.1.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-scripts": "5.0.1",
+    "typescript": "^4.9.5"
+  },
+  "scripts": {
+    "start": "cross-env BROWSER='none' PUBLIC_URL='/' react-scripts start",
+    "build": "cross-env PUBLIC_URL='.' react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject",
+    "prepublishOnly": "npm run build"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3"
+  }
+}

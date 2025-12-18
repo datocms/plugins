@@ -1,0 +1,398 @@
+.container {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 2rem 0;
+}
+
+.intro {
+  color: var(--light-body-color);
+  line-height: 1.6;
+  margin: 0 0 2rem 0;
+  font-size: 1rem;
+}
+
+.successBox {
+  display: flex;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
+  border: 1px solid #86efac;
+  border-radius: 10px;
+  color: var(--base-body-color);
+  line-height: 1.5;
+  font-size: 0.95rem;
+  margin-bottom: 2rem;
+}
+
+.successIcon {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  background: #22c55e;
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+
+.warningBox {
+  display: flex;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
+  border: 1px solid #fcd34d;
+  border-radius: 10px;
+  color: var(--base-body-color);
+  line-height: 1.5;
+  font-size: 0.95rem;
+  margin-bottom: 2rem;
+}
+
+.warningIcon {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  background: #f59e0b;
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.9rem;
+}
+
+.formField {
+  margin-bottom: 1rem;
+}
+
+.buttonRow {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.section {
+  margin-bottom: 2rem;
+}
+
+.sectionTitle {
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: var(--base-body-color);
+  margin: 0 0 0.75rem 0;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.description {
+  color: var(--light-body-color);
+  line-height: 1.6;
+  margin: 0 0 1rem 0;
+}
+
+.code {
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Mono', 'Droid Sans Mono',
+    'Source Code Pro', monospace;
+  font-size: 0.875em;
+  background: var(--light-bg-color);
+  padding: 0.2em 0.5em;
+  border-radius: 4px;
+  color: #e35131;
+  border: 1px solid var(--border-color);
+}
+
+/* Migration Section Styles */
+
+.migrationActions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1rem;
+}
+
+.migrationModels {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: var(--light-bg-color);
+  border-radius: 8px;
+}
+
+.migrationSubtitle {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--base-body-color);
+  margin: 0 0 0.75rem 0;
+}
+
+.modelList {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem 0;
+}
+
+.modelItem {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.modelItem:last-child {
+  border-bottom: none;
+}
+
+.modelName {
+  font-weight: 500;
+  color: var(--base-body-color);
+}
+
+.modelApiKey {
+  font-size: 0.85rem;
+  color: var(--light-body-color);
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Mono', monospace;
+}
+
+/* Progress Bar */
+
+.progressContainer {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: var(--light-bg-color);
+  border-radius: 8px;
+}
+
+.progressHeader {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.9rem;
+  color: var(--base-body-color);
+  margin-bottom: 0.75rem;
+}
+
+.progressBar {
+  height: 8px;
+  background: var(--border-color);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  background: linear-gradient(135deg, var(--accent-color) 0%, var(--primary-color) 100%);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+/* Results */
+
+.resultsContainer {
+  margin-top: 1.5rem;
+  padding: 1rem;
+  background: var(--light-bg-color);
+  border-radius: 8px;
+}
+
+.resultsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin-top: 0.75rem;
+}
+
+.resultItem {
+  text-align: center;
+  padding: 1rem;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.resultNumber {
+  display: block;
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--base-body-color);
+}
+
+.resultLabel {
+  display: block;
+  font-size: 0.8rem;
+  color: var(--light-body-color);
+  margin-top: 0.25rem;
+}
+
+.errorList {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.errorList h4 {
+  margin: 0 0 0.5rem 0;
+  color: #dc2626;
+  font-size: 0.9rem;
+}
+
+.errorList ul {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: #7f1d1d;
+}
+
+.errorList li {
+  margin-bottom: 0.25rem;
+}
+
+/* Error Box */
+
+.errorBox {
+  display: flex;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+  border: 1px solid #fca5a5;
+  border-radius: 10px;
+  color: var(--base-body-color);
+  line-height: 1.5;
+  font-size: 0.95rem;
+  margin-top: 1rem;
+}
+
+.errorIcon {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  background: #dc2626;
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+
+/* Danger Box */
+
+.dangerBox {
+  display: flex;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+  border: 1px solid #fca5a5;
+  border-radius: 10px;
+  color: var(--base-body-color);
+  line-height: 1.5;
+  font-size: 0.95rem;
+  margin: 1rem 0;
+}
+
+.dangerIcon {
+  flex-shrink: 0;
+  font-size: 1.1rem;
+}
+
+/* Cleanup Section */
+
+.cleanupSection {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.confirmDialog {
+  padding: 1rem;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  margin-top: 1rem;
+}
+
+.confirmDialog p {
+  margin: 0 0 1rem 0;
+  font-weight: 500;
+  color: #7f1d1d;
+}
+
+.confirmActions {
+  display: flex;
+  gap: 0.75rem;
+}
+
+/* Scan Progress Styles */
+
+.scanProgressContainer {
+  margin-top: 1.5rem;
+  padding: 1.25rem;
+  background: var(--light-bg-color);
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+}
+
+.scanProgressHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.75rem;
+}
+
+.scanPhaseLabel {
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--base-body-color);
+}
+
+.scanProgressCount {
+  font-size: 0.9rem;
+  color: var(--light-body-color);
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Mono', monospace;
+}
+
+.scanDetails {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 0.75rem;
+  font-size: 0.875rem;
+  color: var(--light-body-color);
+}
+
+.scanCurrentModel {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 60%;
+}
+
+.scanCurrentModel strong {
+  color: var(--base-body-color);
+}
+
+.scanFoundCounter {
+  flex-shrink: 0;
+  padding: 0.25rem 0.625rem;
+  background: var(--accent-color);
+  color: var(--light-color);
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  animation: pulseFoundCounter 0.3s ease-out;
+}
+
+@keyframes pulseFoundCounter {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+  }
+}

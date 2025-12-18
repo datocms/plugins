@@ -1,0 +1,19 @@
+.errorContainer {
+  padding: var(--spacing-xl);
+  text-align: center;
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.errorTitle {
+  color: var(--alert-color);
+  margin-bottom: var(--spacing-m);
+}
+
+.errorMessage {
+  color: var(--light-body-color);
+  margin-bottom: var(--spacing-l);
+}

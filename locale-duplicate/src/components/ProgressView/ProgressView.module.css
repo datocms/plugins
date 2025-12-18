@@ -1,0 +1,186 @@
+/* Container styles */
+.progressWrapper {
+  display: flex;
+  justify-content: center;
+  padding: var(--spacing-l);
+  margin-top: var(--spacing-xxl);
+}
+
+.progressContainer {
+  max-width: 800px;
+  width: 100%;
+  animation: fadeIn 0.3s ease-in-out;
+}
+
+.progressHeading {
+  font-size: var(--font-size-xl);
+  font-weight: bold;
+  margin-bottom: var(--spacing-l);
+  color: var(--accent-color, #6c5ce7);
+  text-align: center;
+  position: relative;
+  padding-bottom: var(--spacing-xs);
+}
+
+.progressHeading::after {
+  content: '';
+  display: block;
+  width: 60px;
+  height: 2px;
+  background-color: var(--accent-color, #6c5ce7);
+  margin: 12px auto 0;
+  border-radius: 2px;
+}
+
+/* Progress status box */
+.progressStatusBox {
+  margin-bottom: var(--spacing-l);
+  padding: var(--spacing-m);
+  background-color: var(--light-bg-color, #f5f5f5);
+  border-radius: var(--border-radius);
+  box-shadow: var(--box-shadow-light);
+}
+
+.progressHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-s);
+}
+
+.progressPercentage {
+  font-size: var(--font-size-l);
+  font-weight: bold;
+  color: var(--accent-color);
+}
+
+/* Progress bar */
+.progressBarContainer {
+  width: 100%;
+  height: 10px;
+  background-color: var(--light-color);
+  border-radius: var(--border-radius);
+  overflow: hidden;
+}
+
+.progressBar {
+  height: 100%;
+  background: linear-gradient(to right, var(--accent-color), var(--accent-color-light, var(--accent-color)));
+  border-radius: var(--border-radius);
+  transition: width 0.3s ease-in-out;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+
+.currentOperation {
+  margin-top: var(--spacing-s);
+  font-size: var(--font-size-s);
+  color: var(--base-body-color);
+}
+
+/* Loading state */
+.loadingContainer {
+  text-align: center;
+  padding: var(--spacing-l);
+  background-color: var(--light-bg-color, #f5f5f5);
+  border-radius: var(--border-radius);
+  box-shadow: var(--box-shadow-light);
+}
+
+.loadingText {
+  margin-top: var(--spacing-m);
+  font-size: var(--font-size-m);
+  font-weight: bold;
+}
+
+/* Console header */
+.consoleHeader {
+  margin: 0 0 var(--spacing-m) 0;
+  font-size: var(--font-size-m);
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.consoleCount {
+  font-size: var(--font-size-xs);
+  font-weight: normal;
+  opacity: 0.7;
+}
+
+/* Abort button */
+.abortButtonContainer {
+  margin-top: var(--spacing-l);
+  text-align: center;
+}
+
+.progressLog {
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: var(--spacing-m);
+  background-color: var(--lighter-bg-color);
+  font-family: var(--font-family-mono);
+  font-size: var(--font-size-xs);
+}
+
+.progressItem {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-xs) 0;
+  border-bottom: 1px solid var(--lighter-border-color);
+  animation: slideIn 0.2s ease-out;
+}
+
+.progressItem:last-child {
+  border-bottom: none;
+}
+
+.progressIcon {
+  width: 20px;
+  text-align: center;
+  font-weight: bold;
+}
+
+.progressItem.success .progressIcon {
+  color: var(--notice-color);
+}
+
+.progressItem.error .progressIcon {
+  color: var(--alert-color);
+}
+
+.progressItem.info .progressIcon {
+  color: var(--primary-color);
+}
+
+.progressMessage {
+  flex: 1;
+  color: var(--base-body-color);
+}
+
+.progressItem.error .progressMessage {
+  color: var(--alert-color);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(-10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}

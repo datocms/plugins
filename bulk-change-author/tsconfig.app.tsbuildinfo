@@ -1,0 +1,1 @@
+{"root":["./src/main.tsx","./src/vite-env.d.ts","./src/actions/bulkchangecreator.ts","./src/entrypoints/configscreen.tsx","./src/entrypoints/selectcreatormodal.tsx","./src/services/cmaclient.ts","./src/utils/render.tsx"],"version":"5.9.3"}

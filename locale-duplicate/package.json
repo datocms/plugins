@@ -1,0 +1,64 @@
+{
+  "name": "datocms-plugin-locale-duplicate",
+  "homepage": "https://github.com/datocms/plugins/tree/master/locale-duplicate#readme",
+  "version": "0.9.0",
+  "author": "DatoCMS <support@datocms.com>",
+  "description": "Duplicate the content from one locale to another",
+  "keywords": [
+    "datocms",
+    "datocms-plugin"
+  ],
+  "type": "module",
+  "datoCmsPlugin": {
+    "title": "Locale Duplicate",
+    "coverImage": "docs/cover-1200x800.png",
+    "previewImage": "docs/preview.mp4",
+    "entryPoint": "dist/index.html",
+    "permissions": [
+      "currentUserAccessToken"
+    ],
+    "fieldExtensions": [
+      {
+        "id": "localeCopyButton",
+        "name": "Locale Copy Button",
+        "type": "addon",
+        "fieldTypes": [
+          "string",
+          "text",
+          "structured_text",
+          "json",
+          "seo",
+          "slug"
+        ]
+      }
+    ]
+  },
+  "files": [
+    "dist",
+    "docs"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@datocms/cma-client-browser": "^3.4.2",
+    "country-list": "^2.3.0",
+    "datocms-plugin-sdk": "^2.0.9",
+    "datocms-react-ui": "^2.0.9",
+    "iso-639-1": "^3.1.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "globals": "^15.9.0",
+    "typescript": "^5.5.3",
+    "vite": "^5.4.1"
+  },
+  "packageManager": "pnpm@10.20.0+sha512.cf9998222162dd85864d0a8102e7892e7ba4ceadebbf5a31f9c2fce48dfce317a9c53b9f6464d1ef9042cba2e02ae02a9f7c143a2b438cd93c91840f0192b9dd"
+}

@@ -1,0 +1,59 @@
+{
+  "name": "datocms-plugin-automatic-environment-backups",
+  "homepage": "https://github.com/datocms/plugins/tree/master/automatic-environment-backups#readme",
+  "version": "0.6.0",
+  "author": "DatoCMS <support@datocms.com>",
+  "description": "A plugin that creates daily and weekly backups of your main environment on DatoCMS automatically.",
+  "keywords": [
+    "datocms",
+    "datocms-plugin",
+    "backup",
+    "environment",
+    "automatic"
+  ],
+  "datoCmsPlugin": {
+    "title": "Automatic environment backups",
+    "previewImage": "docs/demo.mp4",
+    "coverImage": "docs/cover.png",
+    "entryPoint": "build/index.html",
+    "permissions": []
+  },
+  "dependencies": {
+    "@types/node": "^16.11.58",
+    "@types/react": "^18.0.19",
+    "@types/react-dom": "^18.0.6",
+    "datocms-plugin-sdk": "^0.6.4",
+    "datocms-react-ui": "^0.6.4",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-scripts": "5.0.1",
+    "typescript": "^4.8.3"
+  },
+  "scripts": {
+    "start": "cross-env BROWSER='none' PUBLIC_URL='/' react-scripts start",
+    "build": "cross-env PUBLIC_URL='.' react-scripts build",
+    "test": "react-scripts test",
+    "eject": "react-scripts eject",
+    "prepublishOnly": "npm run build"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3"
+  }
+}

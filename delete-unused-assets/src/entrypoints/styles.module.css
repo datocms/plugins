@@ -1,0 +1,26 @@
+.inspector {
+  margin-top: var(--spacing-l);
+}
+
+.assetList {
+  list-style: none;
+}
+
+.cancelationModal {
+  text-align: center;
+  margin-top: -2em;
+}
+
+.cancelationModal > * {
+  padding-top: 2em;
+}
+
+.buttonContainer {
+  display: flex;
+  width: 100%;
+  justify-content: space-around;
+}
+
+.modalButton {
+  width: 30%;
+}

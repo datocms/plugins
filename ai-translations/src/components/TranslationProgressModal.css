@@ -1,0 +1,150 @@
+/* TranslationProgressModal.css */
+
+.TranslationProgressModal {
+  /* Render as plain content inside the host modal */
+  padding: 16px 0 0 0;
+  max-width: 760px;
+  margin: 0 auto;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  font-family: var(--font-family);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.TranslationProgressModal__intro { width: 100%; margin-bottom: 16px; }
+
+.TranslationProgressModal__languages {
+  margin-bottom: 16px;
+}
+
+.TranslationProgressModal__languages p {
+  margin: 0 0 6px 0;
+  font-size: var(--font-size-s);
+}
+
+.TranslationProgressModal__progress-text {
+  font-weight: 600;
+  margin-bottom: 2px !important;
+}
+
+.TranslationProgressModal__stats {
+  margin: 4px 0 0 0 !important;
+  font-size: 14px;
+  color: var(--light-body-color);
+}
+
+.TranslationProgressModal__progress-bar {
+  height: 8px;
+  width: 100%;
+  background-color: var(--light-bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  margin: 8px 0 16px 0;
+  overflow: hidden;
+}
+
+.TranslationProgressModal__progress-bar-fill {
+  height: 100%;
+  background-color: var(--accent-color);
+  box-shadow: inset 0 0 1px rgba(0,0,0,0.1);
+  transition: width 0.3s ease-in-out;
+}
+
+.TranslationProgressModal__updates {
+  max-height: 260px;
+  overflow-y: auto;
+  margin-bottom: 16px;
+  width: 100%;
+  scrollbar-gutter: stable both-edges;
+}
+
+.TranslationProgressModal__update-list {
+  margin: 0;
+  padding: 0;
+  list-style-type: none;
+}
+
+.TranslationProgressModal__update-item {
+  padding: 8px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--font-size-s);
+  color: var(--base-body-color);
+  text-align: left;
+  border-top: 1px solid var(--border-color);
+}
+
+.TranslationProgressModal__update-item:first-child { border-top: 0; }
+
+.TranslationProgressModal__update-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+}
+
+.TranslationProgressModal__update-item--completed .TranslationProgressModal__update-status {
+  color: var(--success-color);
+  font-weight: 700;
+}
+
+.TranslationProgressModal__update-item--error .TranslationProgressModal__update-status {
+  color: var(--alert-color);
+  font-weight: 700;
+}
+
+.TranslationProgressModal__update-item--processing .TranslationProgressModal__update-status {
+  color: var(--accent-color);
+}
+
+.TranslationProgressModal__update-message {
+  flex: 1;
+}
+
+.TranslationProgressModal__initializing {
+  padding: 20px;
+  text-align: center;
+  color: var(--light-body-color);
+}
+
+.TranslationProgressModal__spinner-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.TranslationProgressModal__errors {
+  padding: 12px;
+  background-color: var(--alert-light-bg-color);
+  color: var(--alert-color);
+  border-radius: 4px;
+  margin-bottom: 20px;
+  font-size: 14px;
+  width: 100%;
+  text-align: left;
+}
+
+.TranslationProgressModal__errors p {
+  margin: 8px 0;
+}
+
+.TranslationProgressModal__footer {
+  display: flex;
+  justify-content: flex-end;
+  width: 100%;
+  gap: var(--spacing-m);
+  padding-top: var(--spacing-m);
+  border-top: 1px solid var(--border-color);
+}
+/*
+ * TranslationProgressModal.css
+ * Styles for the bulk translation progress modal UI.
+ * Keep selectors scoped to .TranslationProgressModal to avoid leaking styles.
+ */
