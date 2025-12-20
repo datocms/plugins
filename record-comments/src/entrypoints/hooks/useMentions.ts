@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import type { Mention, MentionMapKey } from '../types/mentions';
 import { createMentionKey } from '../types/mentions';
 import {
@@ -27,6 +27,8 @@ export type FieldInfo = {
   depth: number;               // Nesting level for indentation
   availableLocales?: string[]; // Locales with values (only for localized fields with multiple locales)
   fieldType?: string;          // Editor type from appearance.editor (e.g., "single_line", "structured_text")
+  isBlockContainer?: boolean;  // true for modular_content, structured_text, single_block
+  blockFieldType?: 'modular_content' | 'structured_text' | 'single_block' | 'rich_text'; // The actual field_type for block containers
 };
 
 export type ModelInfo = {
@@ -64,6 +66,8 @@ type UseMentionsReturn = {
   // For keyboard-driven locale selection
   pendingFieldForLocale: FieldInfo | null;
   clearPendingFieldForLocale: () => void;
+  // For dropdown keyboard handling delegation
+  registerDropdownKeyHandler: (handler: (key: string) => boolean) => void;
 };
 
 export function useMentions({
@@ -80,6 +84,14 @@ export function useMentions({
   
   // State for locale selection via keyboard - when set, dropdown shows locale picker
   const [pendingFieldForLocale, setPendingFieldForLocale] = useState<FieldInfo | null>(null);
+
+  // Ref to store the dropdown's keyboard handler for drill-down navigation
+  const dropdownKeyHandlerRef = useRef<((key: string) => boolean) | null>(null);
+  
+  // Function to register the dropdown's keyboard handler
+  const registerDropdownKeyHandler = useCallback((handler: (key: string) => boolean) => {
+    dropdownKeyHandlerRef.current = handler;
+  }, []);
 
   // Detect if we're in a mention trigger
   const triggerInfo = useMemo(
@@ -228,6 +240,15 @@ export function useMentions({
         return false;
       }
 
+      // First, check if the dropdown wants to handle this key (for drill-down navigation)
+      if (dropdownKeyHandlerRef.current) {
+        const handled = dropdownKeyHandlerRef.current(e.key);
+        if (handled) {
+          e.preventDefault();
+          return true;
+        }
+      }
+
       switch (e.key) {
         case 'ArrowDown':
           e.preventDefault();
@@ -257,8 +278,19 @@ export function useMentions({
               handleSelectUser(filteredUsers[selectedIndex]);
             } else if (activeDropdown === 'field') {
               const field = filteredFields[selectedIndex];
-              // For localized fields with multiple locales, show locale picker
-              if (field.localized && field.availableLocales && field.availableLocales.length > 1) {
+              // For block container fields or localized fields with multiple locales, show picker
+              if (field.isBlockContainer) {
+                // Block container - show locale picker (if localized) or block picker
+                if (field.localized && field.availableLocales && field.availableLocales.length > 1) {
+                  setPendingFieldForLocale(field);
+                  setSelectedIndex(0);
+                } else {
+                  // Non-localized block container - still need to drill down
+                  // Use pendingFieldForLocale to trigger the drill-down UI
+                  setPendingFieldForLocale(field);
+                  setSelectedIndex(0);
+                }
+              } else if (field.localized && field.availableLocales && field.availableLocales.length > 1) {
                 setPendingFieldForLocale(field);
                 setSelectedIndex(0); // Reset selection for locale list
               } else if (field.localized && field.availableLocales && field.availableLocales.length === 1) {
@@ -291,8 +323,18 @@ export function useMentions({
               handleSelectUser(filteredUsers[selectedIndex]);
             } else if (activeDropdown === 'field') {
               const field = filteredFields[selectedIndex];
-              // For localized fields with multiple locales, show locale picker
-              if (field.localized && field.availableLocales && field.availableLocales.length > 1) {
+              // For block container fields or localized fields with multiple locales, show picker
+              if (field.isBlockContainer) {
+                // Block container - show locale picker (if localized) or block picker
+                if (field.localized && field.availableLocales && field.availableLocales.length > 1) {
+                  setPendingFieldForLocale(field);
+                  setSelectedIndex(0);
+                } else {
+                  // Non-localized block container - still need to drill down
+                  setPendingFieldForLocale(field);
+                  setSelectedIndex(0);
+                }
+              } else if (field.localized && field.availableLocales && field.availableLocales.length > 1) {
                 setPendingFieldForLocale(field);
                 setSelectedIndex(0); // Reset selection for locale list
               } else if (field.localized && field.availableLocales && field.availableLocales.length === 1) {
@@ -363,6 +405,7 @@ export function useMentions({
     setCursorPosition,
     pendingFieldForLocale,
     clearPendingFieldForLocale,
+    registerDropdownKeyHandler,
   };
 }
 

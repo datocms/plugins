@@ -78,12 +78,6 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
 
   // Scan for models with comment_log field
   const handleScan = useCallback(async () => {
-    const client = getClient();
-    if (!client) {
-      ctx.alert('Unable to access API. Please ensure you have proper permissions.');
-      return;
-    }
-
     setMigrationStatus('scanning');
     setMigrationError(null);
     setModelsWithComments([]);
@@ -95,11 +89,14 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
     });
 
     try {
-      const models = await client.itemTypes.list();
+      // Use ctx.itemTypes instead of API call (already available, no network request needed)
+      const models = Object.values(ctx.itemTypes).filter(
+        (model): model is NonNullable<typeof model> => model !== undefined
+      );
       const foundModels: ModelWithCommentLog[] = [];
 
       // Filter out the project_comment model upfront
-      const modelsToScan = models.filter((m) => m.api_key !== COMMENTS_MODEL_API_KEY);
+      const modelsToScan = models.filter((m) => m.attributes.api_key !== COMMENTS_MODEL_API_KEY);
 
       setScanProgress({
         phase: 'scanning-fields',
@@ -113,20 +110,21 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
       for (const model of modelsToScan) {
         setScanProgress({
           phase: 'scanning-fields',
-          currentModel: model.name,
+          currentModel: model.attributes.name,
           scannedModels: scannedCount,
           totalModels: modelsToScan.length,
           foundCount: foundModels.length,
         });
 
-        const fields = await client.fields.list(model.id);
-        const commentLogField = fields.find((f) => f.api_key === 'comment_log');
+        // Use ctx.loadItemTypeFields instead of client.fields.list (SDK method with caching)
+        const fields = await ctx.loadItemTypeFields(model.id);
+        const commentLogField = fields.find((f) => f.attributes.api_key === 'comment_log');
 
         if (commentLogField) {
           foundModels.push({
             modelId: model.id,
-            modelName: model.name,
-            modelApiKey: model.api_key,
+            modelName: model.attributes.name,
+            modelApiKey: model.attributes.api_key,
             fieldId: commentLogField.id,
           });
         }
@@ -136,7 +134,7 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
         // Update progress after scanning each model
         setScanProgress({
           phase: 'scanning-fields',
-          currentModel: model.name,
+          currentModel: model.attributes.name,
           scannedModels: scannedCount,
           totalModels: modelsToScan.length,
           foundCount: foundModels.length,
@@ -158,7 +156,7 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
       setScanProgress(null);
       setMigrationError(error instanceof Error ? error.message : 'Unknown error during scan');
     }
-  }, [ctx, getClient]);
+  }, [ctx]);
 
   // Run migration
   const handleMigrate = useCallback(async () => {
@@ -185,9 +183,10 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
     };
 
     try {
-      // Find the project_comment model
-      const models = await client.itemTypes.list();
-      const commentsModel = models.find((m) => m.api_key === COMMENTS_MODEL_API_KEY);
+      // Find the project_comment model from ctx.itemTypes (already available, no API call needed)
+      const commentsModel = Object.values(ctx.itemTypes).find(
+        (model) => model?.attributes.api_key === COMMENTS_MODEL_API_KEY
+      );
 
       if (!commentsModel) {
         throw new Error(

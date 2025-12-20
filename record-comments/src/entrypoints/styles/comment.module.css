@@ -879,6 +879,67 @@
 }
 
 /* ============================================
+   Asset Mention Block (Slack-style for images/videos)
+   Large preview with filename caption
+   ============================================ */
+
+.assetMentionBlockWrapper {
+  display: block;
+  width: 100%;
+}
+
+.assetMentionBlock {
+  display: inline-flex;
+  flex-direction: column;
+  width: fit-content;
+  max-width: 220px;
+  margin: 8px 0;
+  padding: 0;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid #b8e6f0;
+  background: #f8fdfe;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.assetMentionBlock:hover {
+  border-color: #7dd3e1;
+  box-shadow: 0 2px 8px rgba(8, 145, 178, 0.12);
+}
+
+.assetMentionBlock:focus {
+  outline: none;
+  border-color: #0891b2;
+  box-shadow: 0 0 0 2px rgba(8, 145, 178, 0.2);
+}
+
+.assetMentionBlockThumb {
+  display: block;
+  max-height: 300px;
+  width: auto;
+  height: auto;
+}
+
+.assetMentionBlockName {
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #0891b2;
+  background: #ecfeff;
+  border-top: 1px solid #cff5fa;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.assetMentionBlock:hover .assetMentionBlockName {
+  color: #0e7490;
+}
+
+/* ============================================
    Record Mention Inline (in comment text)
    Green color scheme with model sublabel
    ============================================ */
@@ -1198,4 +1259,68 @@
   letter-spacing: 0.2px;
   margin-left: 3px;
   vertical-align: baseline;
+}
+
+/* ============================================
+   Block Picker in Field Mention Dropdown
+   ============================================ */
+
+.mentionOptionEntireField {
+  border-bottom: 1px solid var(--border-color);
+  background-color: #fafafa;
+}
+
+.mentionOptionEntireField:hover {
+  background-color: #f0f0f0;
+}
+
+.mentionOptionEntireField.mentionOptionSelected {
+  background-color: var(--accent-color-a10);
+}
+
+.mentionBlockCount {
+  font-size: 11px;
+  color: var(--light-body-color);
+  font-weight: 500;
+}
+
+.mentionOptionSelected .mentionBlockCount {
+  color: var(--accent-color);
+  opacity: 0.8;
+}
+
+.mentionBlockBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #6366f1;
+  background-color: rgba(99, 102, 241, 0.1);
+  border-radius: 3px;
+  max-width: 100px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mentionOptionSelected .mentionBlockBadge {
+  color: #4f46e5;
+  background-color: rgba(99, 102, 241, 0.15);
+}
+
+.mentionBlockIndicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  font-size: 8px;
+  color: var(--light-body-color);
+  opacity: 0.6;
+}
+
+.mentionOptionSelected .mentionBlockIndicator {
+  color: var(--accent-color);
+  opacity: 0.8;
 }

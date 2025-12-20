@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
 import styles from "../styles/comment.module.css";
 import Textarea from "react-textarea-autosize";
 import ReactTimeAgo from "react-time-ago";
@@ -39,6 +40,7 @@ type CommentProps = {
   onNavigateToModel: (modelId: string, isBlockModel: boolean) => void;
   onOpenAsset?: (assetId: string) => void;
   onOpenRecord?: (recordId: string, modelId: string) => void;
+  ctx?: RenderItemFormSidebarCtx;
 };
 
 // Component to render comment content from structured segments
@@ -133,6 +135,31 @@ const CommentContentRenderer = ({
             const key = `asset-${mention.id}-${index}`;
             const hasThumbnail = !!mention.thumbnailUrl;
             
+            // Assets with thumbnails (images/videos) render as Slack-style blocks
+            if (hasThumbnail && mention.thumbnailUrl) {
+              return (
+                <span key={key} className={styles.assetMentionBlockWrapper}>
+                  <button
+                    type="button"
+                    className={styles.assetMentionBlock}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      onOpenAsset?.(mention.id);
+                    }}
+                  >
+                    <img
+                      src={mention.thumbnailUrl}
+                      alt={mention.filename}
+                      className={styles.assetMentionBlockThumb}
+                    />
+                    <span className={styles.assetMentionBlockName}>{mention.filename}</span>
+                  </button>
+                </span>
+              );
+            }
+            
+            // Non-image assets remain inline
             // Truncate filename: keep first 6 chars + extension
             const getTruncatedFilename = (filename: string) => {
               const lastDot = filename.lastIndexOf('.');
@@ -147,20 +174,13 @@ const CommentContentRenderer = ({
               <span key={key} className={styles.assetMentionWrapper}>
                 <button
                   type="button"
-                  className={`${styles.assetMention} ${!hasThumbnail ? styles.assetMentionNoThumb : ''}`}
+                  className={`${styles.assetMention} ${styles.assetMentionNoThumb}`}
                   onClick={(e) => {
                     e.preventDefault();
                     e.stopPropagation();
                     onOpenAsset?.(mention.id);
                   }}
                 >
-                  {hasThumbnail && mention.thumbnailUrl && (
-                    <img
-                      src={mention.thumbnailUrl}
-                      alt=""
-                      className={styles.assetMentionThumb}
-                    />
-                  )}
                   <span className={styles.assetMentionName}>{getTruncatedFilename(mention.filename)}</span>
                 </button>
                 <span className={styles.assetMentionTooltip}>
@@ -181,6 +201,8 @@ const CommentContentRenderer = ({
               : mention.modelName;
             // Use modelEmoji if available, otherwise use emoji from model name
             const displayEmoji = mention.modelEmoji ?? modelNameEmoji;
+            // For singletons, show "Singleton" in tooltip; otherwise show model name
+            const tooltipText = mention.isSingleton ? 'Singleton' : cleanModelName;
             
             return (
               <span key={key} className={styles.recordMentionWrapper}>
@@ -206,7 +228,7 @@ const CommentContentRenderer = ({
                   <span className={styles.recordMentionTitle}>{mention.title}</span>
                 </button>
                 <span className={styles.recordMentionTooltip}>
-                  {cleanModelName}
+                  {tooltipText}
                   <span className={styles.recordMentionTooltipArrow} />
                 </span>
               </span>
@@ -295,6 +317,7 @@ const Comment = ({
   onNavigateToModel,
   onOpenAsset,
   onOpenRecord,
+  ctx,
 }: CommentProps) => {
   // Handle both old format (string) and new format ({ name, email })
   const userUpvotedThisComment = commentObject.usersWhoUpvoted.some(u => 
@@ -587,6 +610,7 @@ const Comment = ({
                   selectedIndex={selectedIndex}
                   onSelect={handleSelectField}
                   onClose={closeDropdown}
+                  ctx={ctx}
                 />
               )}
               {activeDropdown === 'user' && (
@@ -709,6 +733,7 @@ const Comment = ({
               onNavigateToModel={onNavigateToModel}
               onOpenAsset={onOpenAsset}
               onOpenRecord={onOpenRecord}
+              ctx={ctx}
             />
           ))}
         </div>

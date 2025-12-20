@@ -17,28 +17,31 @@ export function getGravatarUrl(email: string, size = 64): string {
  * @param mimeType - The MIME type of the asset
  * @param url - The asset URL (for images)
  * @param muxPlaybackId - The Mux playback ID (for videos)
- * @param width - Thumbnail width (default: 100)
- * @param height - Thumbnail height (default: 100)
+ * @param width - Thumbnail width (default: 300 for good quality previews)
  * @returns The thumbnail URL, or null if not applicable
  */
 export function getThumbnailUrl(
   mimeType: string,
   url: string | null,
   muxPlaybackId?: string | null,
-  width = 100,
-  height = 100
+  width = 300
 ): string | null {
   const isImage = mimeType.startsWith('image/');
   const isVideo = mimeType.startsWith('video/');
 
   if (isImage && url) {
-    return `${url}?w=${width}&h=${height}&fit=crop`;
+    // Use fit=max to preserve aspect ratio and show full image
+    return `${url}?w=${width}&fit=max&auto=format`;
   }
   
   if (isVideo && muxPlaybackId) {
-    return `https://image.mux.com/${muxPlaybackId}/thumbnail.jpg?width=${width}&height=${height}&fit_mode=crop`;
+    // Use fit_mode=preserve for videos to maintain aspect ratio
+    return `https://image.mux.com/${muxPlaybackId}/thumbnail.jpg?width=${width}&fit_mode=preserve`;
   }
   
   return null;
 }
+
+
+
 

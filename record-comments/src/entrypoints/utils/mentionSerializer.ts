@@ -34,12 +34,13 @@ function findFieldMention(
   encodedPath: string,
   mentionsMap: Map<MentionMapKey, Mention>
 ): Mention | undefined {
-  // Strategy 1: Try exact match (for simple fields without locale)
+  // Strategy 1: Try exact match with encoded path (primary strategy since keys are now encoded)
   let key: MentionMapKey = `field:${encodedPath}`;
   let mention = mentionsMap.get(key);
   if (mention) return mention;
 
-  // Strategy 2: Try decoding path (underscores to dots for nested paths)
+  // Strategy 2: For backwards compatibility, try decoding path (underscores to dots for nested paths)
+  // This handles old mentions that may have been stored with dot notation
   const decodedPath = decodeFieldPath(encodedPath);
   key = `field:${decodedPath}`;
   mention = mentionsMap.get(key);
@@ -55,12 +56,12 @@ function findFieldMention(
     if (/^[a-z]{2}(-[a-z]{2})?$/i.test(possibleLocale) || COMMON_LOCALES.includes(possibleLocale.toLowerCase())) {
       const pathWithoutLocale = encodedPath.slice(0, lastUnderscoreIdx);
       
-      // Try with locale suffix in the key
-      key = `field:${pathWithoutLocale}.${possibleLocale}`;
+      // Try with encoded path and locale suffix (current format)
+      key = `field:${pathWithoutLocale}_${possibleLocale}`;
       mention = mentionsMap.get(key);
       if (mention) return mention;
 
-      // Try decoded path with locale
+      // Try with decoded path and locale suffix (backwards compatibility)
       const decodedPathWithoutLocale = decodeFieldPath(pathWithoutLocale);
       key = `field:${decodedPathWithoutLocale}.${possibleLocale}`;
       mention = mentionsMap.get(key);
@@ -324,9 +325,14 @@ export function insertFieldMention(
   const after = text.slice(cursorPosition);
 
   // Encode fieldPath: replace dots with underscores for text format
-  // If locale is specified, append it to the path
   const encodedPath = field.fieldPath.replace(/\./g, '_');
-  const localeSuffix = locale ? `_${locale}` : '';
+  
+  // Only add locale suffix if:
+  // 1. locale is specified AND
+  // 2. locale is not already embedded in the path (for nested fields in localized containers)
+  // Check if the path already contains the locale (e.g., sections_it_0_hero_title already has "it")
+  const localeAlreadyInPath = locale && encodedPath.includes(`_${locale}_`);
+  const localeSuffix = (locale && !localeAlreadyInPath) ? `_${locale}` : '';
   const mentionText = `#${encodedPath}${localeSuffix} `;
   const newText = before + mentionText + after;
   const newCursorPosition = triggerStartIndex + mentionText.length;

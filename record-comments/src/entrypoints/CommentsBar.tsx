@@ -9,6 +9,7 @@ import FieldMentionDropdown from './components/FieldMentionDropdown';
 import UserMentionDropdown from './components/UserMentionDropdown';
 import ModelMentionDropdown from './components/ModelMentionDropdown';
 import { useMentions, type UserInfo, type FieldInfo, type ModelInfo } from './hooks/useMentions';
+import { useOperationQueue } from './hooks/useOperationQueue';
 import type { AssetMention, CommentSegment, Mention, MentionMapKey, RecordMention } from './types/mentions';
 import { editableTextToSegments, insertToolbarMention } from './utils/mentionSerializer';
 import { loadAllFields } from './utils/fieldLoader';
@@ -85,7 +86,8 @@ const CommentsBar = ({ ctx }: Props) => {
   const [projectModels, setProjectModels] = useState<ModelInfo[]>([]);
   const [isRecordModelSelectorOpen, setIsRecordModelSelectorOpen] = useState(false);
 
-  const isSaving = useRef(false);
+  // Track pending new replies (not yet saved to server) by their dateISO
+  const pendingNewReplies = useRef(new Set<string>());
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const cmaToken = ctx.currentUserAccessToken;
@@ -96,6 +98,17 @@ const CommentsBar = ({ ctx }: Props) => {
     () => (cmaToken ? buildClient({ apiToken: cmaToken }) : null),
     [cmaToken]
   );
+
+  // Operation queue for handling concurrent updates with infinite retry
+  const { enqueue, isSyncAllowed } = useOperationQueue({
+    client,
+    commentRecordId,
+    commentsModelId,
+    modelId: ctx.itemType.id,
+    recordId: ctx.item?.id,
+    ctx,
+    onRecordCreated: setCommentRecordId,
+  });
 
   // Unified mentions hook for composer
   const {
@@ -115,6 +128,7 @@ const CommentsBar = ({ ctx }: Props) => {
     setCursorPosition,
     pendingFieldForLocale,
     clearPendingFieldForLocale,
+    registerDropdownKeyHandler,
   } = useMentions({
     users: projectUsers,
     fields: modelFields,
@@ -218,13 +232,13 @@ const CommentsBar = ({ ctx }: Props) => {
     includeDrafts: true,
   });
 
-  // Initialize model ID
+  // Initialize model ID from ctx.itemTypes (already available, no API call needed)
   useEffect(() => {
-    client?.itemTypes.list().then((models) => {
-      const model = models.find((m) => m.api_key === COMMENTS_MODEL_API_KEY);
-      if (model) setCommentsModelId(model.id);
-    });
-  }, [client]);
+    const commentsModel = Object.values(ctx.itemTypes).find(
+      (model) => model?.attributes.api_key === COMMENTS_MODEL_API_KEY
+    );
+    if (commentsModel) setCommentsModelId(commentsModel.id);
+  }, [ctx.itemTypes]);
 
   // Load fields for the current model (for field mentions)
   // This loads top-level fields and recursively loads nested fields from modular content/structured text
@@ -284,54 +298,19 @@ const CommentsBar = ({ ctx }: Props) => {
   }, [ctx.itemTypes]);
 
   // Sync subscription data to local state
+  // Only sync when allowed (no pending ops AND cooldown period has passed)
+  // This prevents stale subscription data from overwriting optimistic updates
   useEffect(() => {
     const record = data?.allProjectComments[0];
-    if (!record || isSaving.current) return;
+    if (!record) return;
+
+    // Don't sync while operations are pending or during cooldown period
+    // The real-time API can be 5-10 seconds delayed, so we wait before syncing
+    if (!isSyncAllowed) return;
 
     setCommentRecordId(record.id);
     setComments(parseComments(record.content));
-  }, [data]);
-
-  // Save comments to CMA
-  const saveComments = useCallback(
-    async (commentsToSave: CommentType[]) => {
-      if (!client || !ctx.item?.id || !commentsModelId) return;
-
-      isSaving.current = true;
-      const content = JSON.stringify(commentsToSave);
-
-      try {
-        if (commentRecordId) {
-          await client.items.update(commentRecordId, { content });
-        } else if (commentsToSave.length > 0) {
-          const newRecord = await client.items.create({
-            item_type: { type: 'item_type', id: commentsModelId },
-            model_id: ctx.itemType.id,
-            record_id: ctx.item.id,
-            content,
-          });
-          setCommentRecordId(newRecord.id);
-        }
-      } finally {
-        setTimeout(() => {
-          isSaving.current = false;
-        }, 1000);
-      }
-    },
-    [client, ctx.item?.id, ctx.itemType.id, commentsModelId, commentRecordId]
-  );
-
-  // Update and immediately save
-  const updateAndSave = useCallback(
-    (updater: (prev: CommentType[]) => CommentType[]) => {
-      setComments((prev) => {
-        const newComments = updater(prev);
-        saveComments(newComments);
-        return newComments;
-      });
-    },
-    [saveComments]
-  );
+  }, [data, isSyncAllowed]);
 
   const submitNewComment = () => {
     if (!composerValue.trim()) return;
@@ -352,7 +331,11 @@ const CommentsBar = ({ ctx }: Props) => {
       replies: [],
     };
 
-    updateAndSave((prev) => [newComment, ...prev]);
+    // Optimistic UI update
+    setComments((prev) => [newComment, ...prev]);
+    // Queue operation for persistent save with retry
+    enqueue({ type: 'ADD_COMMENT', comment: newComment });
+    
     setComposerValue('');
     setComposerMentionsMap(new Map());
   };
@@ -371,7 +354,11 @@ const CommentsBar = ({ ctx }: Props) => {
   };
 
   const deleteComment = (dateISO: string, parentCommentISO = '') => {
-    updateAndSave((prev) => {
+    // Check if this is a pending new reply that was never saved
+    const isUnsavedNewReply = pendingNewReplies.current.has(dateISO);
+    
+    // Optimistic UI update
+    setComments((prev) => {
       if (parentCommentISO) {
         return prev.map((c) =>
           c.dateISO === parentCommentISO
@@ -381,11 +368,27 @@ const CommentsBar = ({ ctx }: Props) => {
       }
       return prev.filter((c) => c.dateISO !== dateISO);
     });
+    
+    if (isUnsavedNewReply) {
+      // This was a new reply that was never saved - just clean up tracking
+      pendingNewReplies.current.delete(dateISO);
+    } else {
+      // Queue operation for persistent delete with retry
+      enqueue({
+        type: 'DELETE_COMMENT',
+        dateISO,
+        parentCommentISO: parentCommentISO || undefined,
+      });
+    }
   };
 
   // Edit and save comment (called when user presses Enter)
   const editComment = (dateISO: string, newContent: CommentSegment[], parentCommentISO = '') => {
-    updateAndSave((prev) => {
+    // Check if this is a pending new reply (first save, not an edit)
+    const isNewReply = pendingNewReplies.current.has(dateISO);
+    
+    // Optimistic UI update
+    setComments((prev) => {
       if (parentCommentISO) {
         return prev.map((c) =>
           c.dateISO === parentCommentISO
@@ -402,6 +405,32 @@ const CommentsBar = ({ ctx }: Props) => {
         c.dateISO === dateISO ? { ...c, content: newContent } : c
       );
     });
+    
+    // Queue operation for persistent save with retry
+    if (isNewReply && parentCommentISO) {
+      // This is a new reply being saved for the first time
+      pendingNewReplies.current.delete(dateISO);
+      
+      // Get the full reply object from local state
+      const parentComment = comments.find((c) => c.dateISO === parentCommentISO);
+      const replyTemplate = parentComment?.replies?.find((r) => r.dateISO === dateISO);
+      
+      if (replyTemplate) {
+        enqueue({
+          type: 'ADD_REPLY',
+          parentCommentISO,
+          reply: { ...replyTemplate, content: newContent },
+        });
+      }
+    } else {
+      // This is an edit of an existing comment
+      enqueue({
+        type: 'EDIT_COMMENT',
+        dateISO,
+        newContent,
+        parentCommentISO: parentCommentISO || undefined,
+      });
+    }
   };
 
   const upvoteComment = (
@@ -421,7 +450,8 @@ const CommentsBar = ({ ctx }: Props) => {
       return [...normalized, { name: userName, email: userEmail }];
     };
 
-    updateAndSave((prev) => {
+    // Optimistic UI update
+    setComments((prev) => {
       if (parentCommentISO) {
         return prev.map((c) =>
           c.dateISO === parentCommentISO
@@ -442,10 +472,26 @@ const CommentsBar = ({ ctx }: Props) => {
           : c
       );
     });
+    
+    // Queue operation for persistent save with retry
+    // Use explicit 'add' or 'remove' for idempotency
+    enqueue({
+      type: 'UPVOTE_COMMENT',
+      dateISO,
+      action: userUpvoted ? 'remove' : 'add',
+      user: { name: userName, email: userEmail },
+      parentCommentISO: parentCommentISO || undefined,
+    });
   };
 
   const replyComment = (parentCommentISO: string) => {
-    // Add empty reply - user will save when they press Enter
+    const newReplyDateISO = new Date().toISOString();
+    
+    // Track this as a pending new reply (not yet saved to server)
+    pendingNewReplies.current.add(newReplyDateISO);
+    
+    // Add empty reply to local state - user will save when they press Enter
+    // This is optimistic UI only, no server operation until they save
     setComments((prev) =>
       prev.map((c) =>
         c.dateISO === parentCommentISO
@@ -453,7 +499,7 @@ const CommentsBar = ({ ctx }: Props) => {
               ...c,
               replies: [
                 {
-                  dateISO: new Date().toISOString(),
+                  dateISO: newReplyDateISO,
                   content: [], // Empty content for new reply
                   author: { name: userName, email: userEmail },
                   usersWhoUpvoted: [],
@@ -485,7 +531,10 @@ const CommentsBar = ({ ctx }: Props) => {
           await ctx.scrollToField(fieldPath, effectiveLocale);
           
           // 2. Then navigate with the hash to highlight/expand the field
-          const fullPath = `${fieldPath}.${effectiveLocale}`;
+          // Check if locale is already embedded in the path (for nested fields in localized containers)
+          // e.g., sections.it.0.hero_title already has "it" in the path
+          const localeAlreadyInPath = effectiveLocale && fieldPath.includes(`.${effectiveLocale}.`);
+          const fullPath = localeAlreadyInPath ? fieldPath : `${fieldPath}.${effectiveLocale}`;
           const path = `/editor/item_types/${modelId}/items/${recordId}/edit#fieldPath=${fullPath}`;
           await ctx.navigateTo(path);
         } else {
@@ -554,33 +603,42 @@ const CommentsBar = ({ ctx }: Props) => {
 
       // Get the full model data to find the presentation fields
       const itemType = ctx.itemTypes[model.id];
+      
+      // Check if model is a singleton
+      const isSingleton = itemType?.attributes.singleton ?? false;
+      
       if (itemType) {
         // Load the model's fields once for both title and image
         const fields = await ctx.loadItemTypeFields(model.id);
         const mainLocale = ctx.site.attributes.locales[0];
 
-        // Get presentation title (fallback to title_field if not available)
-        const presentationTitleFieldId = itemType.relationships.presentation_title_field.data?.id;
-        const titleFieldId = itemType.relationships.title_field.data?.id;
-        const selectedTitleFieldId = presentationTitleFieldId ?? titleFieldId;
+        // For singletons, use the model name as the title
+        if (isSingleton) {
+          recordTitle = model.name;
+        } else {
+          // Get presentation title (fallback to title_field if not available)
+          const presentationTitleFieldId = itemType.relationships.presentation_title_field.data?.id;
+          const titleFieldId = itemType.relationships.title_field.data?.id;
+          const selectedTitleFieldId = presentationTitleFieldId ?? titleFieldId;
 
-        if (selectedTitleFieldId) {
-          const titleField = fields.find((f) => f.id === selectedTitleFieldId);
+          if (selectedTitleFieldId) {
+            const titleField = fields.find((f) => f.id === selectedTitleFieldId);
 
-          if (titleField) {
-            const fieldApiKey = titleField.attributes.api_key;
-            const fieldValue = record.attributes[fieldApiKey];
+            if (titleField) {
+              const fieldApiKey = titleField.attributes.api_key;
+              const fieldValue = record.attributes[fieldApiKey];
 
-            // Handle localized fields (value is an object with locale keys)
-            if (fieldValue !== null && fieldValue !== undefined) {
-              if (typeof fieldValue === 'object' && !Array.isArray(fieldValue)) {
-                // Localized field - get the main locale value
-                const localizedValue = (fieldValue as Record<string, unknown>)[mainLocale];
-                if (localizedValue) {
-                  recordTitle = String(localizedValue);
+              // Handle localized fields (value is an object with locale keys)
+              if (fieldValue !== null && fieldValue !== undefined) {
+                if (typeof fieldValue === 'object' && !Array.isArray(fieldValue)) {
+                  // Localized field - get the main locale value
+                  const localizedValue = (fieldValue as Record<string, unknown>)[mainLocale];
+                  if (localizedValue) {
+                    recordTitle = String(localizedValue);
+                  }
+                } else {
+                  recordTitle = String(fieldValue);
                 }
-              } else {
-                recordTitle = String(fieldValue);
               }
             }
           }
@@ -672,6 +730,7 @@ const CommentsBar = ({ ctx }: Props) => {
         modelName: model.name,
         modelEmoji,
         thumbnailUrl: recordThumbnailUrl,
+        isSingleton,
       };
 
       // Insert the mention - handle both toolbar click and & trigger
@@ -857,6 +916,8 @@ const CommentsBar = ({ ctx }: Props) => {
               onClose={closeDropdown}
               pendingFieldForLocale={pendingFieldForLocale}
               onClearPendingField={clearPendingFieldForLocale}
+              ctx={ctx}
+              registerKeyHandler={registerDropdownKeyHandler}
             />
           )}
           {activeDropdown === 'user' && (
@@ -1023,6 +1084,7 @@ const CommentsBar = ({ ctx }: Props) => {
               onNavigateToModel={handleNavigateToModel}
               onOpenAsset={handleOpenAsset}
               onOpenRecord={handleOpenRecord}
+              ctx={ctx}
             />
           ))}
         </div>

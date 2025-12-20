@@ -38,6 +38,7 @@ export type RecordMention = {
   modelName: string;
   modelEmoji: string | null;
   thumbnailUrl: string | null;
+  isSingleton?: boolean;
 };
 
 // Model mention - stores model/content type info
@@ -48,6 +49,16 @@ export type ModelMention = {
   name: string;
   isBlockModel: boolean;
 };
+
+// Block info for drill-down navigation in modular content fields
+export type BlockInfo = {
+  index: number;
+  modelId: string;
+  modelName: string;
+};
+
+// Block container field types
+export type BlockFieldType = 'modular_content' | 'structured_text' | 'single_block' | 'rich_text';
 
 // Union of all mention types
 export type Mention =
@@ -93,12 +104,19 @@ export function createMentionKey(mention: Mention): MentionMapKey {
     case 'user':
       return `user:${mention.id}`;
     case 'field': {
-      // Use fieldPath as key since it uniquely identifies nested fields
+      // Use fieldPath encoded with underscores as key to match the text representation
+      // This ensures lookup works even for field names containing underscores (e.g., hero_title)
       // Fallback to apiKey for backwards compatibility with old mentions
       // Include locale for localized fields to allow mentioning same field in different locales
       const fieldPath = mention.fieldPath ?? mention.apiKey;
-      const localeKey = mention.locale ? `.${mention.locale}` : '';
-      return `field:${fieldPath}${localeKey}`;
+      // Encode dots as underscores to match text format (e.g., sections.0.hero_title -> sections_0_hero_title)
+      const encodedPath = fieldPath.replace(/\./g, '_');
+      // Only add locale suffix if locale is not already embedded in the path
+      // (for nested fields in localized containers like sections.it.0.hero_title)
+      const localeAlreadyInPath = mention.locale && encodedPath.includes(`_${mention.locale}_`);
+      const localeKey = (mention.locale && !localeAlreadyInPath) ? `_${mention.locale}` : '';
+      const key = `field:${encodedPath}${localeKey}`;
+      return key as MentionMapKey;
     }
     case 'asset':
       return `asset:${mention.id}`;
