@@ -1,7 +1,7 @@
-import { useRef } from 'react';
-import type { ModelInfo } from '../hooks/useMentions';
-import { useScrollSelectedIntoView, useClickOutside } from '../hooks/useDropdown';
-import styles from '../styles/comment.module.css';
+import type { ModelInfo } from '@hooks/useMentions';
+import { MentionDropdownBase } from './shared/MentionDropdownBase';
+import { cn } from '@/utils/cn';
+import styles from '@styles/comment.module.css';
 
 type ModelMentionDropdownProps = {
   models: ModelInfo[];
@@ -9,6 +9,7 @@ type ModelMentionDropdownProps = {
   selectedIndex: number;
   onSelect: (model: ModelInfo) => void;
   onClose: () => void;
+  position?: 'above' | 'below';
 };
 
 const ModelMentionDropdown = ({
@@ -17,53 +18,41 @@ const ModelMentionDropdown = ({
   selectedIndex,
   onSelect,
   onClose,
+  position = 'below',
 }: ModelMentionDropdownProps) => {
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const selectedRef = useRef<HTMLButtonElement>(null);
-
-  useScrollSelectedIntoView(selectedRef, selectedIndex);
-  useClickOutside(dropdownRef, onClose);
-
-  if (models.length === 0) {
-    return (
-      <div ref={dropdownRef} className={styles.mentionDropdown}>
-        <div className={styles.mentionEmpty}>
-          {query ? `No models matching "${query}"` : 'No models available'}
-        </div>
-      </div>
-    );
-  }
+  const emptyMessage = query ? `No models matching "${query}"` : 'No models available';
 
   return (
-    <div ref={dropdownRef} className={styles.mentionDropdown}>
-      <div className={styles.mentionHeader}>Models</div>
-      <div className={styles.mentionList}>
-        {models.map((model, index) => (
-          <button
-            key={model.id}
-            ref={index === selectedIndex ? selectedRef : null}
-            type="button"
-            className={`${styles.mentionOption} ${index === selectedIndex ? styles.mentionOptionSelected : ''}`}
-            onMouseDown={(e) => {
-              // Prevent blur on textarea
-              e.preventDefault();
-              onSelect(model);
-            }}
-          >
-            <span className={styles.mentionModelInfo}>
-              <span className={styles.mentionModelName}>{model.name}</span>
-              {model.isBlockModel && (
-                <span className={styles.mentionModelBadge}>Block</span>
-              )}
-            </span>
-            <span className={styles.mentionFieldApiKey}>${model.apiKey}</span>
-          </button>
-        ))}
-      </div>
-    </div>
+    <MentionDropdownBase
+      items={models}
+      emptyMessage={emptyMessage}
+      headerText="Models"
+      selectedIndex={selectedIndex}
+      onClose={onClose}
+      position={position}
+      keyExtractor={(model) => model.id}
+      renderItem={(model, _index, isSelected, selectedRef) => (
+        <button
+          ref={isSelected ? selectedRef : null}
+          type="button"
+          className={cn(styles.mentionOption, isSelected && styles.mentionOptionSelected)}
+          onMouseDown={(e) => {
+            // Prevent blur on textarea
+            e.preventDefault();
+            onSelect(model);
+          }}
+        >
+          <span className={styles.mentionModelInfo}>
+            <span className={styles.mentionModelName}>{model.name}</span>
+            {model.isBlockModel && (
+              <span className={styles.mentionModelBadge}>Block</span>
+            )}
+          </span>
+          <span className={styles.mentionFieldApiKey}>${model.apiKey}</span>
+        </button>
+      )}
+    />
   );
 };
 
 export default ModelMentionDropdown;
-
-

@@ -1,3 +1,25 @@
+/**
+ * ================================================================================
+ * CONFIG SCREEN STYLES - HARDCODED VALUES RATIONALE
+ * ================================================================================
+ *
+ * This file uses hardcoded rem/em values instead of --space-* and --font-size-*
+ * tokens. This is intentional for this standalone configuration page:
+ *
+ * 1. This page is outside the main comments UI flow
+ * 2. The layout is simpler and doesn't need to match the comments styling precisely
+ * 3. rem-based values scale naturally with browser font settings
+ * 4. Migration would add risk of visual regression for minimal benefit
+ *
+ * FOR NEW CODE: Consider using tokens from tokens.css for consistency with the
+ * main comments UI. Available tokens:
+ *   - Spacing: --space-1 through --space-12 (6px increments)
+ *   - Font sizes: --font-size-xxs, --font-size-xs, --font-size-s
+ *   - Colors: --text-primary, --text-secondary, --bg-primary, etc.
+ *
+ * ================================================================================
+ */
+
 .container {
   max-width: 640px;
   margin: 0 auto;
@@ -15,8 +37,8 @@
   display: flex;
   gap: 0.75rem;
   padding: 1rem 1.25rem;
-  background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%);
-  border: 1px solid #86efac;
+  background: linear-gradient(135deg, var(--color-success-bg-gradient-start) 0%, var(--color-success-bg-gradient-end) 100%);
+  border: 1px solid var(--color-success-border);
   border-radius: 10px;
   color: var(--base-body-color);
   line-height: 1.5;
@@ -28,7 +50,7 @@
   flex-shrink: 0;
   width: 22px;
   height: 22px;
-  background: #22c55e;
+  background: var(--color-success);
   color: white;
   border-radius: 50%;
   display: flex;
@@ -42,8 +64,8 @@
   display: flex;
   gap: 0.75rem;
   padding: 1rem 1.25rem;
-  background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%);
-  border: 1px solid #fcd34d;
+  background: linear-gradient(135deg, var(--color-warning-bg-gradient-start) 0%, var(--color-warning-bg-gradient-end) 100%);
+  border: 1px solid var(--color-warning-border);
   border-radius: 10px;
   color: var(--base-body-color);
   line-height: 1.5;
@@ -55,7 +77,7 @@
   flex-shrink: 0;
   width: 22px;
   height: 22px;
-  background: #f59e0b;
+  background: var(--color-warning-icon);
   color: white;
   border-radius: 50%;
   display: flex;
@@ -100,7 +122,7 @@
   background: var(--light-bg-color);
   padding: 0.2em 0.5em;
   border-radius: 4px;
-  color: #e35131;
+  color: var(--alert-color);
   border: 1px solid var(--border-color);
 }
 
@@ -227,22 +249,22 @@
 .errorList {
   margin-top: 1rem;
   padding: 1rem;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border-light);
   border-radius: 8px;
   font-size: 0.9rem;
 }
 
 .errorList h4 {
   margin: 0 0 0.5rem 0;
-  color: #dc2626;
+  color: var(--color-error-heading);
   font-size: 0.9rem;
 }
 
 .errorList ul {
   margin: 0;
   padding-left: 1.25rem;
-  color: #7f1d1d;
+  color: var(--color-error-text);
 }
 
 .errorList li {
@@ -255,8 +277,8 @@
   display: flex;
   gap: 0.75rem;
   padding: 1rem 1.25rem;
-  background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
-  border: 1px solid #fca5a5;
+  background: linear-gradient(135deg, var(--color-error-bg-gradient-start) 0%, var(--color-error-bg-gradient-end) 100%);
+  border: 1px solid var(--color-error-border);
   border-radius: 10px;
   color: var(--base-body-color);
   line-height: 1.5;
@@ -268,7 +290,7 @@
   flex-shrink: 0;
   width: 22px;
   height: 22px;
-  background: #dc2626;
+  background: var(--color-error);
   color: white;
   border-radius: 50%;
   display: flex;
@@ -284,8 +306,8 @@
   display: flex;
   gap: 0.75rem;
   padding: 1rem 1.25rem;
-  background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
-  border: 1px solid #fca5a5;
+  background: linear-gradient(135deg, var(--color-error-bg-gradient-start) 0%, var(--color-error-bg-gradient-end) 100%);
+  border: 1px solid var(--color-error-border);
   border-radius: 10px;
   color: var(--base-body-color);
   line-height: 1.5;
@@ -308,8 +330,8 @@
 
 .confirmDialog {
   padding: 1rem;
-  background: #fef2f2;
-  border: 1px solid #fecaca;
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border-light);
   border-radius: 8px;
   margin-top: 1rem;
 }
@@ -317,7 +339,7 @@
 .confirmDialog p {
   margin: 0 0 1rem 0;
   font-weight: 500;
-  color: #7f1d1d;
+  color: var(--color-error-text);
 }
 
 .confirmActions {

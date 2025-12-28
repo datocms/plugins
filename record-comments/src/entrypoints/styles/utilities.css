@@ -1,0 +1,61 @@
+/**
+ * CSS Utility Classes for Record Comments Plugin
+ *
+ * Reusable base classes that can be composed with other styles.
+ * These utilities use CSS custom properties from tokens.css.
+ *
+ * Available utilities:
+ * - tooltipBase: Standard tooltip positioning and appearance
+ * - tooltipArrowDown: Arrow indicator pointing down (for tooltips above)
+ *
+ * Usage: Import this file and use with composes in CSS modules:
+ *   .myTooltip {
+ *     composes: tooltipBase from './utilities.css';
+ *   }
+ */
+
+/* ===========================================
+ * TOOLTIP BASE STYLES
+ * Standard tooltip positioning and appearance
+ * =========================================== */
+
+.tooltipBase {
+  position: absolute;
+  z-index: 9999;
+  padding: var(--space-1) var(--space-2);
+  background-color: var(--tooltip-bg);
+  color: var(--tooltip-text);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-medium);
+  white-space: nowrap;
+  pointer-events: none;
+  /* Positioning - centered above trigger */
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  /* Hidden by default, shown on hover */
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--transition-fast), visibility var(--transition-fast);
+}
+
+/* ===========================================
+ * TOOLTIP ARROW STYLES
+ * Arrow indicator for tooltips
+ * =========================================== */
+
+/* Arrow pointing down (for tooltip positioned above) */
+.tooltipArrowDown {
+  position: absolute;
+  bottom: -5px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 6px solid var(--tooltip-bg);
+}

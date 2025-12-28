@@ -1,36 +1,41 @@
-import { useEffect, useRef, useState } from 'react';
-import type { ModelInfo } from '../hooks/useMentions';
-import { useScrollSelectedIntoView, useClickOutside } from '../hooks/useDropdown';
-import styles from '../styles/comment.module.css';
+import { useEffect, useRef, useState, useMemo } from 'react';
+import type { ModelInfo } from '@hooks/useMentions';
+import { MentionDropdownBase } from './shared/MentionDropdownBase';
+import { cn } from '@/utils/cn';
+import styles from '@styles/comment.module.css';
 
 type RecordModelSelectorDropdownProps = {
   models: ModelInfo[];
   onSelect: (model: ModelInfo) => void;
   onClose: () => void;
+  position?: 'above' | 'below';
 };
 
 const RecordModelSelectorDropdown = ({
   models,
   onSelect,
   onClose,
+  position = 'below',
 }: RecordModelSelectorDropdownProps) => {
-  const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const selectedRef = useRef<HTMLButtonElement>(null);
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   // Filter out block models (they don't have standalone records)
-  const nonBlockModels = models.filter((m) => !m.isBlockModel);
+  const nonBlockModels = useMemo(
+    () => models.filter((m) => !m.isBlockModel),
+    [models]
+  );
 
   // Filter by search query
-  const filteredModels = nonBlockModels.filter((model) => {
+  const filteredModels = useMemo(() => {
     const lowerQuery = query.toLowerCase();
-    return (
-      model.name.toLowerCase().includes(lowerQuery) ||
-      model.apiKey.toLowerCase().includes(lowerQuery)
+    return nonBlockModels.filter(
+      (model) =>
+        model.name.toLowerCase().includes(lowerQuery) ||
+        model.apiKey.toLowerCase().includes(lowerQuery)
     );
-  });
+  }, [query, nonBlockModels]);
 
   // Reset selection when filtered results change
   useEffect(() => {
@@ -42,10 +47,33 @@ const RecordModelSelectorDropdown = ({
     inputRef.current?.focus();
   }, []);
 
-  useScrollSelectedIntoView(selectedRef, selectedIndex);
-  useClickOutside(dropdownRef, onClose);
+  // Compute empty message
+  const emptyMessage = query
+    ? `No models matching "${query}"`
+    : nonBlockModels.length === 0
+      ? 'No models available with read permission'
+      : 'No models available';
 
-  // Handle keyboard navigation
+  /**
+   * Handle keyboard navigation for the dropdown.
+   *
+   * ARCHITECTURE NOTE: KEYBOARD NAVIGATION NOT EXTRACTED TO SHARED HOOK
+   *
+   * This keyboard navigation logic is duplicated in FilterDropdown.tsx. While
+   * it could be extracted to a shared useKeyboardNavigation hook, this was
+   * intentionally NOT done for these reasons:
+   *
+   * 1. LOW DUPLICATION COST: Only ~30 lines duplicated across 2 components
+   * 2. COMPONENT-SPECIFIC BEHAVIOR: Each dropdown has slightly different behavior
+   *    - RecordModelSelectorDropdown: Tab selects item
+   *    - FilterDropdown: Has "Select All" handling, different indexing
+   * 3. READABILITY: Inline logic is easier to follow and modify per-component
+   * 4. MAINTENANCE OVERHEAD: A generic hook would need configuration options
+   *    that add complexity without proportional benefit
+   *
+   * If a third dropdown component is added with similar navigation, extraction
+   * should be reconsidered. For now, the small duplication is acceptable.
+   */
   const handleKeyDown = (e: React.KeyboardEvent) => {
     switch (e.key) {
       case 'ArrowDown':
@@ -81,53 +109,49 @@ const RecordModelSelectorDropdown = ({
     }
   };
 
-  return (
-    <div
-      ref={dropdownRef}
-      className={styles.mentionDropdown}
-      onKeyDown={handleKeyDown}
-    >
-      <div className={styles.mentionHeader}>Select a Model</div>
-      <div className={styles.recordModelSearchWrapper}>
-        <input
-          ref={inputRef}
-          type="text"
-          className={styles.recordModelSearchInput}
-          placeholder="Search models..."
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-      </div>
-      {filteredModels.length === 0 ? (
-        <div className={styles.mentionEmpty}>
-          {query ? `No models matching "${query}"` : 'No models available'}
-        </div>
-      ) : (
-        <div className={styles.mentionList}>
-          {filteredModels.map((model, index) => (
-            <button
-              key={model.id}
-              ref={index === selectedIndex ? selectedRef : null}
-              type="button"
-              className={`${styles.mentionOption} ${index === selectedIndex ? styles.mentionOptionSelected : ''}`}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                onSelect(model);
-              }}
-              onMouseEnter={() => setSelectedIndex(index)}
-            >
-              <span className={styles.mentionModelInfo}>
-                <span className={styles.mentionModelName}>{model.name}</span>
-              </span>
-              <span className={styles.mentionFieldApiKey}>${model.apiKey}</span>
-            </button>
-          ))}
-        </div>
-      )}
+  // Search input slot
+  const searchSlot = (
+    <div className={styles.recordModelSearchWrapper} onKeyDown={handleKeyDown}>
+      <input
+        ref={inputRef}
+        type="text"
+        className={styles.recordModelSearchInput}
+        placeholder="Search models..."
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+      />
     </div>
+  );
+
+  return (
+    <MentionDropdownBase
+      items={filteredModels}
+      emptyMessage={emptyMessage}
+      headerText="Select a Model"
+      selectedIndex={selectedIndex}
+      onClose={onClose}
+      position={position}
+      keyExtractor={(model) => model.id}
+      searchSlot={searchSlot}
+      renderItem={(model, index, isSelected, selectedRef) => (
+        <button
+          ref={isSelected ? selectedRef : null}
+          type="button"
+          className={cn(styles.mentionOption, isSelected && styles.mentionOptionSelected)}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            onSelect(model);
+          }}
+          onMouseEnter={() => setSelectedIndex(index)}
+        >
+          <span className={styles.mentionModelInfo}>
+            <span className={styles.mentionModelName}>{model.name}</span>
+          </span>
+          <span className={styles.mentionFieldApiKey}>${model.apiKey}</span>
+        </button>
+      )}
+    />
   );
 };
 
 export default RecordModelSelectorDropdown;
-
-

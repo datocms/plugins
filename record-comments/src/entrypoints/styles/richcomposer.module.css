@@ -1,0 +1,78 @@
+/* ============================================
+   Rich Composer - ContentEditable Input
+   ============================================ */
+
+.richComposer {
+  width: 100%;
+  padding: var(--space-2);
+  font-family: inherit;
+  font-size: var(--font-size-s);
+  line-height: 1.5;
+  color: var(--base-body-color);
+  background-color: transparent;
+  border: none;
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  resize: none;
+  box-sizing: border-box;
+
+  /* ContentEditable specific */
+  outline: none;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  min-height: var(--space-4);
+}
+
+.richComposer:focus {
+  outline: none;
+}
+
+/* Placeholder when empty */
+.richComposer:empty::before {
+  content: attr(data-placeholder);
+  color: var(--light-body-color);
+  pointer-events: none;
+  white-space: pre-wrap;
+}
+
+/* ============================================
+   Mention Chip in Composer
+   ============================================ */
+
+/* Wrapper for mention chips in contentEditable */
+.mentionChipWrapper {
+  display: inline;
+  user-select: all;
+}
+
+/* Ensure mention chips don't break across lines */
+.mentionChipWrapper > * {
+  display: inline;
+}
+
+/* Visual feedback when backspace will delete the chip */
+.mentionChipWrapper:focus-within,
+.mentionChipWrapper.selected {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 1px;
+  border-radius: var(--radius-sm);
+}
+
+/* Make buttons in composer non-focusable but still clickable */
+.richComposer button {
+  cursor: pointer;
+}
+
+/* Remove focus ring from buttons inside composer */
+.richComposer button:focus {
+  outline: none;
+}
+
+/* ============================================
+   Tooltip adjustments for composer
+   ============================================ */
+
+/* Tooltips in composer should appear above */
+.richComposer [class*="MentionTooltip"] {
+  bottom: calc(100% + 4px);
+}

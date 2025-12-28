@@ -1,106 +1,193 @@
 import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
-import { buildClient } from '@datocms/cma-client-browser';
-import { useQuerySubscription } from 'react-datocms';
 import { Canvas, Spinner } from 'datocms-react-ui';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import Textarea from 'react-textarea-autosize';
-import Comment from './components/Comment';
-import FieldMentionDropdown from './components/FieldMentionDropdown';
-import UserMentionDropdown from './components/UserMentionDropdown';
-import ModelMentionDropdown from './components/ModelMentionDropdown';
-import { useMentions, type UserInfo, type FieldInfo, type ModelInfo } from './hooks/useMentions';
-import { useOperationQueue } from './hooks/useOperationQueue';
-import type { AssetMention, CommentSegment, Mention, MentionMapKey, RecordMention } from './types/mentions';
-import { editableTextToSegments, insertToolbarMention } from './utils/mentionSerializer';
-import { loadAllFields } from './utils/fieldLoader';
-import RecordModelSelectorDropdown from './components/RecordModelSelectorDropdown';
-import styles from './styles/commentbar.module.css';
-import { COMMENTS_MODEL_API_KEY } from '../constants';
-import { getGravatarUrl, getThumbnailUrl } from '../utils/helpers';
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+
+// Components
+import RecordModelSelectorDropdown from '@components/RecordModelSelectorDropdown';
+import ComposerToolbar from '@components/ComposerToolbar';
+import CommentsList from '@components/CommentsList';
+import SyncStatusIndicator from '@components/shared/SyncStatusIndicator';
+import { CommentErrorBoundary } from '@components/shared/CommentErrorBoundary';
+import { TipTapComposer, type TipTapComposerRef } from '@components/tiptap/TipTapComposer';
+
+// Hooks
+import { useOperationQueue } from '@hooks/useOperationQueue';
+import { useProjectData } from '@hooks/useProjectData';
+import { useToolbarHandlers } from '@hooks/useToolbarHandlers';
+import { useCommentsData } from '@hooks/useCommentsData';
+import { useCommentActions } from '@hooks/useCommentActions';
+import { useMentionPermissions } from '@hooks/useMentionPermissions';
+
+// Contexts
+// SidebarNavigationProvider is already wrapped in main.tsx, no need to import here
+import { ProjectDataProvider } from './contexts/ProjectDataContext';
+import { MentionPermissionsProvider } from './contexts/MentionPermissionsContext';
+
+// Types and utilities
+import type { CommentSegment } from '@ctypes/mentions';
+import { getCurrentUserInfo } from '@utils/userTransformers';
+import { createApiClient } from '@utils/apiClient';
+import { createRecordMention } from '@utils/recordPickerHelpers';
+import { insertMentionWithRetry } from '@utils/textareaUtils';
+import { isComposerEmpty, createAssetMention } from '@utils/composerHelpers';
+import { parsePluginParams } from '@utils/pluginParams';
+import { findCommentsModel } from '@utils/itemTypeUtils';
+import { SUBSCRIPTION_STATUS } from '@hooks/useCommentsSubscription';
+import { COMMENTS_PAGE_SIZE, ERROR_MESSAGES } from '@/constants';
+import { logError, logWarn } from '@/utils/errorLogger';
+import { categorizeGeneralError } from '@utils/errorCategorization';
+import styles from '@styles/commentbar.module.css';
 
 // Re-export types for use by other components
-export type { UserInfo, FieldInfo, ModelInfo } from './hooks/useMentions';
-export type { CommentSegment, Mention } from './types/mentions';
+export type { UserInfo, FieldInfo, ModelInfo } from '@hooks/useMentions';
+export type { CommentSegment, Mention } from '@ctypes/mentions';
+export type { CommentType, Upvoter } from '@ctypes/comments';
 
+/**
+ * Props for the CommentsBar sidebar component.
+ *
+ * ARCHITECTURE NOTE: DATA FLOW PATTERN
+ *
+ * This component fetches project data (users, models, fields) using hooks and passes
+ * it down as props, while GlobalCommentsChannel wraps with context providers. This
+ * asymmetry is intentional and documented here:
+ *
+ * WHY COMMENTSBAR USES PROPS:
+ * 1. CommentsBar is a single-entry-point component that owns all state
+ * 2. The component tree is shallow (max 3-4 levels to Comment)
+ * 3. Props make data flow explicit and easier to trace
+ * 4. Matches the existing pattern in Comment.tsx (see its ARCHITECTURE NOTE)
+ *
+ * WHY GLOBALCOMMENTSCHANNEL USES CONTEXTS:
+ * 1. Dashboard has multiple sibling components that need the same data
+ * 2. Contexts avoid prop drilling across parallel component trees
+ * 3. Dashboard is a full page with more complex layout structure
+ *
+ * CONSOLIDATION NOT RECOMMENDED:
+ * - Forcing both to use contexts would hide data dependencies in CommentsBar
+ * - Forcing both to use props would require prop drilling in Dashboard's parallel trees
+ * - The current approach optimizes each entry point for its specific structure
+ *
+ * See Comment.tsx for the detailed rationale on props vs contexts for the Comment tree.
+ *
+ * ============================================================================
+ * ARCHITECTURAL INCONSISTENCY: PICKER LOGIC
+ * ============================================================================
+ * CommentsBar has inline picker logic for asset/record mentions (~150 lines),
+ * while GlobalCommentsChannel extracts this to hooks (usePageAssetMention,
+ * usePageRecordMention).
+ *
+ * WHY THIS INCONSISTENCY EXISTS:
+ * - GlobalCommentsChannel was implemented later with extracted hooks
+ * - CommentsBar's inline logic works correctly and is well-tested
+ * - The picker logic differs subtly between contexts (sidebar vs page)
+ *
+ * WHY NOT REFACTOR TO CONSOLIDATE:
+ * 1. HIGH RISK, LOW REWARD: The inline logic works; extracting it risks regressions
+ * 2. CONTEXT DIFFERENCES: CommentsBar uses ctx.loadItemTypeFields (sidebar context),
+ *    GlobalCommentsChannel uses preloaded context data - different APIs
+ * 3. TESTING BURDEN: Both paths would need extensive retesting after refactor
+ * 4. CODE SIZE: ~150 lines is manageable inline; not worth abstraction overhead
+ *
+ * FUTURE GUIDANCE:
+ * - If picker logic needs significant changes, consider extracting to shared hooks
+ * - For bug fixes, apply to both locations with careful testing
+ * - Do not attempt to unify without a strong functional reason
+ * ============================================================================
+ */
 type Props = {
   ctx: RenderItemFormSidebarCtx;
 };
 
-export type Upvoter = { name: string; email: string };
-
-export type CommentType = {
-  dateISO: string;
-  content: CommentSegment[];
-  author: { name: string; email: string };
-  usersWhoUpvoted: Upvoter[];
-  replies?: CommentType[];
-  parentCommentISO?: string;
-};
-
-const COMMENTS_QUERY = `
-  query CommentsQuery($modelId: String!, $recordId: String!) {
-    allProjectComments(filter: { modelId: { eq: $modelId }, recordId: { eq: $recordId } }, first: 1) {
-      id
-      content
-    }
-  }
-`;
-
-type QueryResult = {
-  allProjectComments: Array<{
-    id: string;
-    content: string | CommentType[] | null;
-  }>;
-};
-
-const getUserInfo = (user: RenderItemFormSidebarCtx['currentUser']) => {
-  const attrs = user.attributes as Record<string, unknown>;
-  const email = (attrs.email as string) ?? 'unknown@email.com';
-  const name =
-    (attrs.full_name as string) ?? (attrs.name as string) ?? email.split('@')[0];
-  return { email, name };
-};
-
-const parseComments = (content: string | CommentType[] | null): CommentType[] => {
-  if (!content) return [];
-  if (Array.isArray(content)) return content;
-  try {
-    return JSON.parse(content);
-  } catch {
-    return [];
-  }
-};
-
 const CommentsBar = ({ ctx }: Props) => {
-  const { email: userEmail, name: userName } = getUserInfo(ctx.currentUser);
+  const { email: userEmail, name: userName } = getCurrentUserInfo(ctx.currentUser);
 
-  const [comments, setComments] = useState<CommentType[]>([]);
-  const [commentsModelId, setCommentsModelId] = useState<string | null>(null);
-  const [commentRecordId, setCommentRecordId] = useState<string | null>(null);
-  const [composerValue, setComposerValue] = useState('');
-  const [composerMentionsMap, setComposerMentionsMap] = useState<Map<MentionMapKey, Mention>>(
-    () => new Map()
-  );
-  const [modelFields, setModelFields] = useState<FieldInfo[]>([]);
-  const [projectUsers, setProjectUsers] = useState<UserInfo[]>([]);
-  const [projectModels, setProjectModels] = useState<ModelInfo[]>([]);
+  // Composer state - now uses segments directly
+  const [composerSegments, setComposerSegments] = useState<CommentSegment[]>([]);
+  const composerRef = useRef<TipTapComposerRef>(null);
+  const pendingNewReplies = useRef(new Set<string>());
+
+  // Record model selector state (for & mentions)
   const [isRecordModelSelectorOpen, setIsRecordModelSelectorOpen] = useState(false);
 
-  // Track pending new replies (not yet saved to server) by their dateISO
-  const pendingNewReplies = useRef(new Set<string>());
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  // Track when any picker operation is in progress (prevents blur deletion of replies)
+  const [isPickerInProgress, setIsPickerInProgress] = useState(false);
 
+  // Pagination state - track how many old comments to hide
+  // This ensures new comments (prepended at index 0) are always visible
+  const [hiddenOldCount, setHiddenOldCount] = useState<number | null>(null);
+
+  // Plugin configuration
   const cmaToken = ctx.currentUserAccessToken;
-  const pluginParams = ctx.plugin.attributes.parameters as { cdaToken?: string };
+  const pluginParams = parsePluginParams(ctx.plugin.attributes.parameters);
+  const realTimeEnabled = pluginParams.realTimeUpdatesEnabled ?? true;
   const cdaToken = pluginParams.cdaToken;
 
-  const client = useMemo(
-    () => (cmaToken ? buildClient({ apiToken: cmaToken }) : null),
-    [cmaToken]
+  // API client
+  const client = useMemo(() => createApiClient(cmaToken), [cmaToken]);
+
+  // Load project data (users, models, fields)
+  // Pass client for avatar URL caching from user overrides
+  const { projectUsers, projectModels, modelFields, userOverrides, typedUsers } = useProjectData(ctx, { loadFields: true, client });
+
+  // Compute mention permissions based on user role
+  const { canMentionAssets, canMentionModels, readableModels } = useMentionPermissions(
+    ctx,
+    projectModels
   );
 
+  // Compute commentsModelId early so useOperationQueue can use it
+  const commentsModelId = useMemo(() => {
+    const model = findCommentsModel(ctx.itemTypes);
+    return model?.id ?? null;
+  }, [ctx.itemTypes]);
+
+  /**
+   * State for commentRecordId - managed here as single source of truth.
+   *
+   * ============================================================================
+   * RACE CONDITION ANALYSIS - MULTIPLE UPDATE SOURCES
+   * ============================================================================
+   *
+   * This state is updated from two async sources:
+   * 1. useCommentsData subscription - when it discovers an existing comment record
+   * 2. useOperationQueue - when it creates a new record for the first comment
+   *
+   * CONCERN: "Both callbacks could fire simultaneously, causing inconsistent state"
+   * ANALYSIS: This is protected by the cooldown mechanism in useOperationQueue:
+   *
+   *   1. When useOperationQueue creates a record, it calls setCommentRecordId AND
+   *      starts an 8-second cooldown
+   *   2. During cooldown, isSyncAllowed is false
+   *   3. useCommentsData's sync effect checks isSyncAllowed before updating state
+   *   4. Therefore, subscription updates are BLOCKED while the operation completes
+   *
+   * SCENARIO TRACE:
+   *   T=0: User adds first comment, useOperationQueue starts creating record
+   *   T=1: Record created, onRecordCreated(newId) called, cooldown starts
+   *   T=2: Subscription receives update, but isSyncAllowed=false, update blocked
+   *   T=9: Cooldown ends, isSyncAllowed=true
+   *   T=9+: Next subscription update (if any) can now sync
+   *
+   * The only way both could conflict is if:
+   *   - Subscription finds existing record BEFORE operation creates one
+   *   - This is actually correct behavior: operation will find the existing
+   *     record and update it instead of creating a duplicate (see executeWithRetry)
+   *
+   * DO NOT add additional synchronization mechanisms here. The cooldown already
+   * provides the necessary coordination between these two update sources.
+   * ============================================================================
+   */
+  const [commentRecordId, setCommentRecordId] = useState<string | null>(null);
+
   // Operation queue for handling concurrent updates with infinite retry
-  const { enqueue, isSyncAllowed } = useOperationQueue({
+  // Must be called BEFORE useCommentsData so isSyncAllowed is available
+  const {
+    enqueue,
+    pendingCount,
+    isSyncAllowed,
+    retryState,
+  } = useOperationQueue({
     client,
     commentRecordId,
     commentsModelId,
@@ -110,754 +197,279 @@ const CommentsBar = ({ ctx }: Props) => {
     onRecordCreated: setCommentRecordId,
   });
 
-  // Unified mentions hook for composer
+  // Comments data and subscription
   const {
-    activeDropdown,
-    filteredUsers,
-    filteredFields,
-    filteredModels,
-    selectedIndex,
-    triggerInfo,
-    handleKeyDown: handleMentionKeyDown,
-    handleChange: handleMentionChange,
-    handleSelectUser,
-    handleSelectField,
-    handleSelectModel,
-    closeDropdown,
-    cursorPosition,
-    setCursorPosition,
-    pendingFieldForLocale,
-    clearPendingFieldForLocale,
-    registerDropdownKeyHandler,
-  } = useMentions({
-    users: projectUsers,
-    fields: modelFields,
-    models: projectModels,
-    value: composerValue,
-    onChange: setComposerValue,
-    mentionsMap: composerMentionsMap,
-    onMentionsMapChange: setComposerMentionsMap,
+    comments,
+    setComments,
+    isLoading,
+    error,
+    errorInfo,
+    status,
+    retry: retrySubscription,
+  } = useCommentsData({
+    context: 'record',
+    ctx,
+    realTimeEnabled,
+    cdaToken,
+    client,
+    isSyncAllowed,
+    onCommentRecordIdChange: setCommentRecordId,
   });
 
-  // Refs for asset picker trigger handling
-  const isAssetPickerOpen = useRef(false);
-  const composerValueRef = useRef(composerValue);
-  const cursorPositionRef = useRef(cursorPosition);
-  
-  // Keep refs in sync
+  // Initialize hiddenOldCount when comments first load
+  // This only runs once - when comments become available for the first time
   useEffect(() => {
-    composerValueRef.current = composerValue;
-  }, [composerValue]);
-  
-  useEffect(() => {
-    cursorPositionRef.current = cursorPosition;
-  }, [cursorPosition]);
+    if (hiddenOldCount === null && comments.length > 0) {
+      setHiddenOldCount(Math.max(0, comments.length - COMMENTS_PAGE_SIZE));
+    }
+  }, [comments.length, hiddenOldCount]);
 
-  // Handle asset trigger (^) - opens the asset picker immediately
-  useEffect(() => {
-    if (activeDropdown !== 'asset' || !triggerInfo || isAssetPickerOpen.current) return;
+  // Calculate visible comments - hide the oldest N comments
+  // New comments (prepended at index 0) are automatically visible
+  const visibleComments = useMemo(() => {
+    const hideCount = hiddenOldCount ?? Math.max(0, comments.length - COMMENTS_PAGE_SIZE);
+    const showCount = comments.length - hideCount;
+    return comments.slice(0, showCount);
+  }, [comments, hiddenOldCount]);
 
-    isAssetPickerOpen.current = true;
+  const hasMoreComments = (hiddenOldCount ?? 0) > 0;
 
-    const openAssetPicker = async () => {
-      // Capture current values from refs
-      const currentValue = composerValueRef.current;
-      const currentCursorPos = cursorPositionRef.current;
-      const triggerStartIndex = triggerInfo.startIndex;
+  // Comment actions (submit, delete, edit, upvote, reply)
+  const {
+    submitNewComment,
+    deleteComment,
+    editComment,
+    upvoteComment,
+    replyComment,
+  } = useCommentActions({
+    ctx,
+    userEmail,
+    userName,
+    setComments,
+    enqueue,
+    composerSegments,
+    setComposerSegments,
+    pendingNewReplies,
+  });
 
-      // Remove the ^ trigger from text
-      const before = currentValue.slice(0, triggerStartIndex);
-      const after = currentValue.slice(currentCursorPos);
-      setComposerValue(before + after);
-      setCursorPosition(triggerStartIndex);
+  /**
+   * ============================================================================
+   * PICKER LOGIC - WHY THIS IS INLINE RATHER THAN EXTRACTED TO HOOKS
+   * ============================================================================
+   *
+   * GlobalCommentsChannel uses dedicated hooks (usePageAssetMention, usePageRecordMention)
+   * for picker logic, but CommentsBar keeps it inline. This asymmetry is intentional:
+   *
+   * 1. DIFFERENT CONTEXT TYPES:
+   *    - Sidebar uses RenderItemFormSidebarCtx (has ctx.item, ctx.scrollToField)
+   *    - Page uses RenderPageCtx (different capabilities)
+   *    - A unified hook would need union types and conditional logic everywhere
+   *
+   * 2. SIDEBAR-SPECIFIC STATE:
+   *    - `isPickerInProgress` prevents blur deletion of reply composers
+   *    - This state is tightly coupled to sidebar lifecycle and focus management
+   *    - Extracting would require passing this state back and forth
+   *
+   * 3. EXTRACTION COST vs BENEFIT:
+   *    - The code is ~100 lines of straightforward async handlers
+   *    - Extracting would add indirection without reducing complexity
+   *    - The page context hooks exist because that code was larger and more complex
+   *
+   * 4. MAINTENANCE CONSIDERATION:
+   *    - If you need to change picker behavior, update BOTH locations
+   *    - Asset creation logic is identical (can be extracted to a utility if needed)
+   *    - Record picker differs due to model selector positioning
+   *
+   * ============================================================================
+   * WHY PICKER OPERATIONS DON'T HAVE TIMEOUTS
+   * ============================================================================
+   *
+   * It was suggested to add timeouts to ctx.selectUpload() and ctx.selectItem() to
+   * handle cases where the modal "hangs" and never closes. However, this is NOT
+   * safe to implement for several reasons:
+   *
+   * 1. USER BROWSING TIME IS UNPREDICTABLE:
+   *    Users may take 30+ seconds to browse assets/records, especially in large
+   *    projects. A timeout would interrupt legitimate user activity.
+   *
+   * 2. MODAL IS CONTROLLED BY DATOCMS:
+   *    The picker modal is rendered and controlled by the DatoCMS application,
+   *    not by our plugin code. We cannot programmatically close it. If we reject
+   *    with a timeout while the modal is still open, we'd be in an inconsistent
+   *    state where the modal is visible but the promise has already resolved.
+   *
+   * 3. RECOVERY IS SIMPLE:
+   *    If a picker truly hangs (extremely rare), the user can:
+   *    - Press Escape to close the modal
+   *    - Click outside the modal to dismiss it
+   *    - Refresh the page as a last resort
+   *    The isPickerInProgress flag resets on component unmount.
+   *
+   * 4. ROOT CAUSE IS EXTERNAL:
+   *    A hanging picker would indicate a bug in DatoCMS's picker implementation,
+   *    not in our plugin. Adding a timeout would mask the symptom, not fix it.
+   *
+   * DO NOT ADD TIMEOUT WRAPPERS TO PICKER OPERATIONS.
+   * ============================================================================
+   */
 
-      // Open the asset picker
+  // Handle asset trigger from TipTap (opens asset picker)
+  const handleAssetTrigger = useCallback(async () => {
+    if (!canMentionAssets) return;
+
+    try {
       const upload = await ctx.selectUpload({ multiple: false });
+      if (!upload) return;
 
-      isAssetPickerOpen.current = false;
-
-      if (!upload) {
-        // User cancelled - just focus back on textarea
-        setTimeout(() => {
-          textareaRef.current?.focus();
-        }, 0);
-        return;
-      }
-
-      const mimeType = upload.attributes.mime_type ?? 'application/octet-stream';
-      const url = upload.attributes.url ?? '';
-      const thumbnailUrl = getThumbnailUrl(mimeType, url, upload.attributes.mux_playback_id);
-
-      const assetMention: AssetMention = {
-        type: 'asset',
-        id: upload.id,
-        filename: upload.attributes.filename,
-        url,
-        thumbnailUrl,
-        mimeType,
-      };
-
-      // Insert the mention at the trigger position
-      const mentionText = `^${upload.id} `;
-      const newText = before + mentionText + after;
-      const newCursorPosition = triggerStartIndex + mentionText.length;
-
-      // Update state
-      setComposerMentionsMap((prevMap) => {
-        const newMap = new Map(prevMap);
-        newMap.set(`asset:${upload.id}`, assetMention);
-        return newMap;
-      });
-      setComposerValue(newText);
-
-      // Focus textarea and update cursor
-      setTimeout(() => {
-        if (textareaRef.current) {
-          textareaRef.current.focus();
-          textareaRef.current.setSelectionRange(newCursorPosition, newCursorPosition);
-          setCursorPosition(newCursorPosition);
-        }
-      }, 0);
-    };
-
-    openAssetPicker();
-  }, [activeDropdown, triggerInfo, ctx, setCursorPosition]);
-
-  // Realtime subscription
-  const { data, status, error } = useQuerySubscription<QueryResult>({
-    query: COMMENTS_QUERY,
-    variables: { modelId: ctx.itemType.id, recordId: ctx.item?.id ?? '' },
-    token: cdaToken ?? '',
-    enabled: !!ctx.item?.id && !!cdaToken,
-    includeDrafts: true,
-  });
-
-  // Initialize model ID from ctx.itemTypes (already available, no API call needed)
-  useEffect(() => {
-    const commentsModel = Object.values(ctx.itemTypes).find(
-      (model) => model?.attributes.api_key === COMMENTS_MODEL_API_KEY
-    );
-    if (commentsModel) setCommentsModelId(commentsModel.id);
-  }, [ctx.itemTypes]);
-
-  // Load fields for the current model (for field mentions)
-  // This loads top-level fields and recursively loads nested fields from modular content/structured text
-  useEffect(() => {
-    loadAllFields(ctx).then((fieldInfos) => {
-      setModelFields(fieldInfos);
-    });
-  }, [ctx, ctx.itemType.id, ctx.formValues]);
-
-  // Load users for the project (for user mentions)
-  useEffect(() => {
-    const loadAllUsers = async () => {
-      const [regularUsers, ssoUsers] = await Promise.all([
-        ctx.loadUsers(),
-        ctx.loadSsoUsers(),
-      ]);
-
-      const allUsers: UserInfo[] = [
-        ...regularUsers.map((user) => ({
-          id: user.id,
-          email: user.attributes.email,
-          name: user.attributes.full_name ?? user.attributes.email.split('@')[0],
-          avatarUrl: getGravatarUrl(user.attributes.email, 48),
-        })),
-        ...ssoUsers.map((user) => {
-          const email = user.attributes.username;
-          const firstName = user.attributes.first_name ?? '';
-          const lastName = user.attributes.last_name ?? '';
-          const fullName = [firstName, lastName].filter(Boolean).join(' ') || email.split('@')[0];
-          return {
-            id: user.id,
-            email,
-            name: fullName,
-            avatarUrl: getGravatarUrl(email, 48),
-          };
-        }),
-      ];
-
-      setProjectUsers(allUsers);
-    };
-
-    loadAllUsers();
-  }, [ctx]);
-
-  // Load models for the project (for model mentions)
-  useEffect(() => {
-    const itemTypesMap = ctx.itemTypes;
-    const modelInfos: ModelInfo[] = Object.values(itemTypesMap)
-      .filter((itemType): itemType is NonNullable<typeof itemType> => itemType !== undefined)
-      .map((itemType) => ({
-        id: itemType.id,
-        apiKey: itemType.attributes.api_key,
-        name: itemType.attributes.name,
-        isBlockModel: itemType.attributes.modular_block,
-      }));
-    setProjectModels(modelInfos);
-  }, [ctx.itemTypes]);
-
-  // Sync subscription data to local state
-  // Only sync when allowed (no pending ops AND cooldown period has passed)
-  // This prevents stale subscription data from overwriting optimistic updates
-  useEffect(() => {
-    const record = data?.allProjectComments[0];
-    if (!record) return;
-
-    // Don't sync while operations are pending or during cooldown period
-    // The real-time API can be 5-10 seconds delayed, so we wait before syncing
-    if (!isSyncAllowed) return;
-
-    setCommentRecordId(record.id);
-    setComments(parseComments(record.content));
-  }, [data, isSyncAllowed]);
-
-  const submitNewComment = () => {
-    if (!composerValue.trim()) return;
-    
-    if (!ctx.item?.id) {
-      ctx.alert('Please save the record first before adding comments.');
-      return;
+      const assetMention = createAssetMention(upload);
+      composerRef.current?.insertMention(assetMention);
+    } catch (error) {
+      logError('Asset picker error:', error);
+      ctx.alert(ERROR_MESSAGES.ASSET_PICKER_FAILED);
     }
+  }, [ctx, canMentionAssets]);
 
-    // Convert editable text to structured segments
-    const content = editableTextToSegments(composerValue, composerMentionsMap);
-
-    const newComment: CommentType = {
-      dateISO: new Date().toISOString(),
-      content,
-      author: { name: userName, email: userEmail },
-      usersWhoUpvoted: [],
-      replies: [],
-    };
-
-    // Optimistic UI update
-    setComments((prev) => [newComment, ...prev]);
-    // Queue operation for persistent save with retry
-    enqueue({ type: 'ADD_COMMENT', comment: newComment });
-    
-    setComposerValue('');
-    setComposerMentionsMap(new Map());
-  };
-
-  const handleComposerKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    // Let mention system handle keys first if a dropdown is open
-    if (activeDropdown) {
-      const handled = handleMentionKeyDown(e);
-      if (handled) return;
-    }
-
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      submitNewComment();
-    }
-  };
-
-  const deleteComment = (dateISO: string, parentCommentISO = '') => {
-    // Check if this is a pending new reply that was never saved
-    const isUnsavedNewReply = pendingNewReplies.current.has(dateISO);
-    
-    // Optimistic UI update
-    setComments((prev) => {
-      if (parentCommentISO) {
-        return prev.map((c) =>
-          c.dateISO === parentCommentISO
-            ? { ...c, replies: c.replies?.filter((r) => r.dateISO !== dateISO) }
-            : c
-        );
-      }
-      return prev.filter((c) => c.dateISO !== dateISO);
-    });
-    
-    if (isUnsavedNewReply) {
-      // This was a new reply that was never saved - just clean up tracking
-      pendingNewReplies.current.delete(dateISO);
-    } else {
-      // Queue operation for persistent delete with retry
-      enqueue({
-        type: 'DELETE_COMMENT',
-        dateISO,
-        parentCommentISO: parentCommentISO || undefined,
-      });
-    }
-  };
-
-  // Edit and save comment (called when user presses Enter)
-  const editComment = (dateISO: string, newContent: CommentSegment[], parentCommentISO = '') => {
-    // Check if this is a pending new reply (first save, not an edit)
-    const isNewReply = pendingNewReplies.current.has(dateISO);
-    
-    // Optimistic UI update
-    setComments((prev) => {
-      if (parentCommentISO) {
-        return prev.map((c) =>
-          c.dateISO === parentCommentISO
-            ? {
-                ...c,
-                replies: c.replies?.map((r) =>
-                  r.dateISO === dateISO ? { ...r, content: newContent } : r
-                ),
-              }
-            : c
-        );
-      }
-      return prev.map((c) =>
-        c.dateISO === dateISO ? { ...c, content: newContent } : c
-      );
-    });
-    
-    // Queue operation for persistent save with retry
-    if (isNewReply && parentCommentISO) {
-      // This is a new reply being saved for the first time
-      pendingNewReplies.current.delete(dateISO);
-      
-      // Get the full reply object from local state
-      const parentComment = comments.find((c) => c.dateISO === parentCommentISO);
-      const replyTemplate = parentComment?.replies?.find((r) => r.dateISO === dateISO);
-      
-      if (replyTemplate) {
-        enqueue({
-          type: 'ADD_REPLY',
-          parentCommentISO,
-          reply: { ...replyTemplate, content: newContent },
-        });
-      }
-    } else {
-      // This is an edit of an existing comment
-      enqueue({
-        type: 'EDIT_COMMENT',
-        dateISO,
-        newContent,
-        parentCommentISO: parentCommentISO || undefined,
-      });
-    }
-  };
-
-  const upvoteComment = (
-    dateISO: string,
-    userUpvoted: boolean,
-    parentCommentISO = ''
-  ) => {
-    const toggleUpvote = (voters: (string | Upvoter)[]) => {
-      if (userUpvoted) {
-        return voters.filter((u) => 
-          typeof u === 'string' ? u !== userEmail : u.email !== userEmail
-        ) as Upvoter[];
-      }
-      const normalized = voters.map(u => 
-        typeof u === 'string' ? { name: u.split('@')[0], email: u } : u
-      );
-      return [...normalized, { name: userName, email: userEmail }];
-    };
-
-    // Optimistic UI update
-    setComments((prev) => {
-      if (parentCommentISO) {
-        return prev.map((c) =>
-          c.dateISO === parentCommentISO
-            ? {
-                ...c,
-                replies: c.replies?.map((r) =>
-                  r.dateISO === dateISO
-                    ? { ...r, usersWhoUpvoted: toggleUpvote(r.usersWhoUpvoted) }
-                    : r
-                ),
-              }
-            : c
-        );
-      }
-      return prev.map((c) =>
-        c.dateISO === dateISO
-          ? { ...c, usersWhoUpvoted: toggleUpvote(c.usersWhoUpvoted) }
-          : c
-      );
-    });
-    
-    // Queue operation for persistent save with retry
-    // Use explicit 'add' or 'remove' for idempotency
-    enqueue({
-      type: 'UPVOTE_COMMENT',
-      dateISO,
-      action: userUpvoted ? 'remove' : 'add',
-      user: { name: userName, email: userEmail },
-      parentCommentISO: parentCommentISO || undefined,
-    });
-  };
-
-  const replyComment = (parentCommentISO: string) => {
-    const newReplyDateISO = new Date().toISOString();
-    
-    // Track this as a pending new reply (not yet saved to server)
-    pendingNewReplies.current.add(newReplyDateISO);
-    
-    // Add empty reply to local state - user will save when they press Enter
-    // This is optimistic UI only, no server operation until they save
-    setComments((prev) =>
-      prev.map((c) =>
-        c.dateISO === parentCommentISO
-          ? {
-              ...c,
-              replies: [
-                {
-                  dateISO: newReplyDateISO,
-                  content: [], // Empty content for new reply
-                  author: { name: userName, email: userEmail },
-                  usersWhoUpvoted: [],
-                  parentCommentISO,
-                },
-                ...(c.replies ?? []),
-              ],
-            }
-          : c
-      )
-    );
-  };
-
-  const handleScrollToField = useCallback(
-    async (fieldPath: string, localized: boolean, locale?: string) => {
-      try {
-        const modelId = ctx.itemType.id;
-        const recordId = ctx.item?.id;
-        
-        if (!recordId) {
-          // Record not saved yet
-          return;
-        }
-        
-        if (localized) {
-          // For localized fields:
-          // 1. First use scrollToField to switch to the correct locale
-          const effectiveLocale = locale ?? ctx.locale;
-          await ctx.scrollToField(fieldPath, effectiveLocale);
-          
-          // 2. Then navigate with the hash to highlight/expand the field
-          // Check if locale is already embedded in the path (for nested fields in localized containers)
-          // e.g., sections.it.0.hero_title already has "it" in the path
-          const localeAlreadyInPath = effectiveLocale && fieldPath.includes(`.${effectiveLocale}.`);
-          const fullPath = localeAlreadyInPath ? fieldPath : `${fieldPath}.${effectiveLocale}`;
-          const path = `/editor/item_types/${modelId}/items/${recordId}/edit#fieldPath=${fullPath}`;
-          await ctx.navigateTo(path);
-        } else {
-          // For non-localized fields, just use the hash navigation
-          const path = `/editor/item_types/${modelId}/items/${recordId}/edit#fieldPath=${fieldPath}`;
-          await ctx.navigateTo(path);
-        }
-      } catch {
-        // Silently fail - field might not exist or be hidden
-      }
-    },
-    [ctx]
-  );
-
-  const handleNavigateToUsers = useCallback(async () => {
-    await ctx.navigateTo('/project_settings/users');
-  }, [ctx]);
-
-  // Factory for toolbar trigger handlers (@ for user, # for field, $ for model)
-  const createToolbarTriggerHandler = useCallback(
-    (triggerChar: string) => () => {
-      const newValue = `${composerValue}${triggerChar}`;
-      setComposerValue(newValue);
-      setTimeout(() => {
-        if (textareaRef.current) {
-          textareaRef.current.focus();
-          const pos = newValue.length;
-          textareaRef.current.setSelectionRange(pos, pos);
-          setCursorPosition(pos);
-        }
-      }, 0);
-    },
-    [composerValue, setCursorPosition]
-  );
-
-  const handleUserToolbarClick = createToolbarTriggerHandler('@');
-  const handleFieldToolbarClick = createToolbarTriggerHandler('#');
-
-  // Open the model selector dropdown for record mentions
-  const handleRecordClick = useCallback(() => {
+  // Handle record trigger from TipTap (opens model selector, then record picker)
+  const handleRecordTrigger = useCallback(() => {
     setIsRecordModelSelectorOpen(true);
   }, []);
 
-  // Handle model selection for record mentions - then open the record picker
-  const handleRecordModelSelect = useCallback(
-    async (model: ModelInfo) => {
+  const handleRecordModelSelectorClose = useCallback(() => {
+    setIsRecordModelSelectorOpen(false);
+    setIsPickerInProgress(false);
+    // Focus the correct composer (reply if active, otherwise main)
+    const targetComposer = activeReplyComposerRef.current || composerRef.current;
+    targetComposer?.focus();
+    activeReplyComposerRef.current = null;
+  }, []);
+
+  // Reply picker handling - for asset/record mentions in reply editors
+  const activeReplyComposerRef = useRef<TipTapComposerRef | null>(null);
+
+  const handleReplyPickerRequest = useCallback(
+    async (type: 'asset' | 'record', replyComposerRef: RefObject<TipTapComposerRef | null>) => {
+      activeReplyComposerRef.current = replyComposerRef.current;
+
+      // Mark picker as in progress to prevent blur deletion
+      setIsPickerInProgress(true);
+
+      if (type === 'asset') {
+        if (!canMentionAssets) {
+          setIsPickerInProgress(false);
+          return;
+        }
+        try {
+          const upload = await ctx.selectUpload({ multiple: false });
+          if (!upload) {
+            activeReplyComposerRef.current?.focus();
+            setIsPickerInProgress(false);
+            return;
+          }
+
+          const assetMention = createAssetMention(upload);
+
+          // Wait for editor to be ready after modal closes, then insert mention
+          await insertMentionWithRetry(activeReplyComposerRef, assetMention);
+        } catch (error) {
+          logError('Asset picker error:', error);
+          ctx.alert(ERROR_MESSAGES.ASSET_PICKER_FAILED);
+        } finally {
+          setIsPickerInProgress(false);
+          activeReplyComposerRef.current = null;
+        }
+      } else if (type === 'record') {
+        // For records, we need to open the model selector first
+        // isPickerInProgress stays true until record selection is complete
+        setIsRecordModelSelectorOpen(true);
+      }
+    },
+    [ctx, canMentionAssets]
+  );
+
+  // Modified record model selection to support both main composer and replies
+  const handleRecordModelSelectForReply = useCallback(
+    async (model: { id: string; apiKey: string; name: string; isBlockModel: boolean }) => {
       setIsRecordModelSelectorOpen(false);
-      
-      // Capture trigger info before opening record picker (it may change)
-      const currentTriggerInfo = triggerInfo;
 
-      // Open DatoCMS record picker for the selected model
-      const record = await ctx.selectItem(model.id, { multiple: false });
+      // Determine target composer - reply (if active) or main
+      const targetComposer = activeReplyComposerRef.current || composerRef.current;
 
-      if (!record) {
-        // User cancelled - focus back on textarea
-        setTimeout(() => {
-          textareaRef.current?.focus();
-        }, 0);
+      // Guard: if this was a reply context but the ref is now null, the reply may have been
+      // deleted (e.g., by blur handler). In this case, abort.
+      if (!targetComposer) {
+        logWarn('No valid composer target for record mention, aborting');
+        setIsPickerInProgress(false);
+        activeReplyComposerRef.current = null;
         return;
       }
 
-      // Get the record title from the presentation_title_field
-      let recordTitle = `Record #${record.id}`;
-      let recordThumbnailUrl: string | null = null;
+      try {
+        const record = await ctx.selectItem(model.id, { multiple: false });
+        if (!record) {
+          targetComposer?.focus();
+          return;
+        }
 
-      // Get the full model data to find the presentation fields
-      const itemType = ctx.itemTypes[model.id];
-      
-      // Check if model is a singleton
-      const isSingleton = itemType?.attributes.singleton ?? false;
-      
-      if (itemType) {
-        // Load the model's fields once for both title and image
-        const fields = await ctx.loadItemTypeFields(model.id);
+        const itemType = ctx.itemTypes[model.id];
+
+        // Load fields with error handling - if it fails, continue with empty fields
+        // This allows record mentions to work even if field loading fails
+        let fields: Awaited<ReturnType<typeof ctx.loadItemTypeFields>> = [];
+        if (itemType) {
+          try {
+            fields = await ctx.loadItemTypeFields(model.id);
+          } catch (fieldError) {
+            logError('Failed to load item type fields for record mention', fieldError, { modelId: model.id });
+            // Continue with empty fields - the mention will still work, just without field-based title
+          }
+        }
+
         const mainLocale = ctx.site.attributes.locales[0];
 
-        // For singletons, use the model name as the title
-        if (isSingleton) {
-          recordTitle = model.name;
-        } else {
-          // Get presentation title (fallback to title_field if not available)
-          const presentationTitleFieldId = itemType.relationships.presentation_title_field.data?.id;
-          const titleFieldId = itemType.relationships.title_field.data?.id;
-          const selectedTitleFieldId = presentationTitleFieldId ?? titleFieldId;
-
-          if (selectedTitleFieldId) {
-            const titleField = fields.find((f) => f.id === selectedTitleFieldId);
-
-            if (titleField) {
-              const fieldApiKey = titleField.attributes.api_key;
-              const fieldValue = record.attributes[fieldApiKey];
-
-              // Handle localized fields (value is an object with locale keys)
-              if (fieldValue !== null && fieldValue !== undefined) {
-                if (typeof fieldValue === 'object' && !Array.isArray(fieldValue)) {
-                  // Localized field - get the main locale value
-                  const localizedValue = (fieldValue as Record<string, unknown>)[mainLocale];
-                  if (localizedValue) {
-                    recordTitle = String(localizedValue);
-                  }
-                } else {
-                  recordTitle = String(fieldValue);
-                }
-              }
-            }
-          }
-        }
-
-        // Get presentation image thumbnail (fallback to image_preview_field if not available)
-        const presentationImageFieldId = itemType.relationships.presentation_image_field.data?.id;
-        const imagePreviewFieldId = itemType.relationships.image_preview_field.data?.id;
-        const imageFieldId = presentationImageFieldId ?? imagePreviewFieldId;
-
-        // Helper to extract thumbnail URL from a field
-        const extractThumbnailFromField = async (field: typeof fields[0]) => {
-          const fieldApiKey = field.attributes.api_key;
-          let fieldValue = record.attributes[fieldApiKey];
-
-          // Handle localized fields
-          if (fieldValue !== null && fieldValue !== undefined) {
-            if (typeof fieldValue === 'object' && !Array.isArray(fieldValue) && !('upload_id' in fieldValue)) {
-              // Localized field - get the main locale value
-              fieldValue = (fieldValue as Record<string, unknown>)[mainLocale];
-            }
-          }
-
-          // Extract upload ID from field value
-          let uploadId: string | null = null;
-
-          if (fieldValue) {
-            if (Array.isArray(fieldValue)) {
-              // Asset gallery - use first item
-              const firstAsset = fieldValue[0];
-              if (firstAsset && typeof firstAsset === 'object' && 'upload_id' in firstAsset) {
-                uploadId = (firstAsset as { upload_id: string }).upload_id;
-              }
-            } else if (typeof fieldValue === 'object' && 'upload_id' in fieldValue) {
-              // Single asset field
-              uploadId = (fieldValue as { upload_id: string }).upload_id;
-            }
-          }
-
-          // Fetch upload details to get URL
-          if (uploadId && client) {
-            try {
-              const upload = await client.uploads.find(uploadId);
-              const mimeType = upload.mime_type ?? '';
-              const url = upload.url ?? '';
-              return getThumbnailUrl(mimeType, url, upload.mux_playback_id);
-            } catch {
-              // Silently fail - thumbnail is optional
-            }
-          }
-          return null;
-        };
-
-        // Try configured image fields first
-        if (imageFieldId) {
-          const imageField = fields.find((f) => f.id === imageFieldId);
-          if (imageField) {
-            recordThumbnailUrl = await extractThumbnailFromField(imageField);
-          }
-        }
-
-        // Fallback: find first file or gallery field if no thumbnail found
-        if (!recordThumbnailUrl) {
-          // Sort fields by position and find first file/gallery field
-          const sortedFields = [...fields].sort(
-            (a, b) => (a.attributes.position ?? 0) - (b.attributes.position ?? 0)
-          );
-          const firstImageField = sortedFields.find((f) => {
-            const fieldType = f.attributes.field_type;
-            return fieldType === 'file' || fieldType === 'gallery';
-          });
-
-          if (firstImageField) {
-            recordThumbnailUrl = await extractThumbnailFromField(firstImageField);
-          }
-        }
-      }
-
-      // Get model emoji if available (icon is not in TypeScript types but exists in API)
-      const modelEmoji = (itemType?.attributes as Record<string, unknown>)?.icon as string | null ?? null;
-
-      // Create record mention with actual title and thumbnail
-      const recordMention: RecordMention = {
-        type: 'record',
-        id: record.id,
-        title: recordTitle,
-        modelId: model.id,
-        modelApiKey: model.apiKey,
-        modelName: model.name,
-        modelEmoji,
-        thumbnailUrl: recordThumbnailUrl,
-        isSingleton,
-      };
-
-      // Insert the mention - handle both toolbar click and & trigger
-      let newText: string;
-      let newCursorPosition: number;
-      
-      if (currentTriggerInfo?.type === 'record') {
-        // Triggered by typing & - replace the trigger text with the mention
-        const before = composerValue.slice(0, currentTriggerInfo.startIndex);
-        const after = composerValue.slice(cursorPosition);
-        const mentionText = `&${record.id} `;
-        newText = before + mentionText + after;
-        newCursorPosition = currentTriggerInfo.startIndex + mentionText.length;
-      } else {
-        // Triggered by toolbar click - insert at cursor position
-        const result = insertToolbarMention(
-          composerValue,
-          cursorPosition,
-          recordMention
+        const recordMention = await createRecordMention(
+          { id: record.id, attributes: record.attributes },
+          { id: model.id, apiKey: model.apiKey, name: model.name, isBlockModel: model.isBlockModel },
+          itemType,
+          fields,
+          mainLocale,
+          client
         );
-        newText = result.newText;
-        newCursorPosition = result.newCursorPosition;
+
+        // Wait for editor to be ready after modal closes, then insert mention
+        await insertMentionWithRetry(targetComposer, recordMention);
+      } catch (error) {
+        logError('Record picker error:', error);
+        ctx.alert(ERROR_MESSAGES.RECORD_PICKER_FAILED);
+      } finally {
+        setIsPickerInProgress(false);
+        activeReplyComposerRef.current = null;
       }
-
-      // Update state
-      const newMap = new Map(composerMentionsMap);
-      newMap.set(`record:${record.id}`, recordMention);
-      setComposerMentionsMap(newMap);
-      setComposerValue(newText);
-
-      // Focus textarea and update cursor
-      setTimeout(() => {
-        if (textareaRef.current) {
-          textareaRef.current.focus();
-          textareaRef.current.setSelectionRange(newCursorPosition, newCursorPosition);
-          setCursorPosition(newCursorPosition);
-        }
-      }, 0);
     },
-    [ctx, client, composerValue, cursorPosition, composerMentionsMap, setCursorPosition, triggerInfo]
+    [ctx, client]
   );
 
-  // Close record model selector
-  const handleRecordModelSelectorClose = useCallback(() => {
-    setIsRecordModelSelectorOpen(false);
-    
-    // If triggered by typing &, close the dropdown properly
-    if (triggerInfo?.type === 'record') {
-      closeDropdown();
-    }
-    
-    setTimeout(() => {
-      textareaRef.current?.focus();
-    }, 0);
-  }, [triggerInfo, closeDropdown]);
+  // Toolbar button handlers
+  const {
+    handleUserToolbarClick,
+    handleFieldToolbarClick,
+    handleModelToolbarClick,
+    handleAssetToolbarClick,
+    handleRecordToolbarClick,
+  } = useToolbarHandlers({
+    composerRef,
+    canMentionModels,
+    handleAssetTrigger,
+    handleRecordTrigger,
+  });
 
-  const handleAssetClick = useCallback(async () => {
-    const upload = await ctx.selectUpload({ multiple: false });
-
-    if (!upload) {
-      // User cancelled - do nothing
-      return;
-    }
-
-    const mimeType = upload.attributes.mime_type ?? 'application/octet-stream';
-    const url = upload.attributes.url ?? '';
-    const thumbnailUrl = getThumbnailUrl(mimeType, url, upload.attributes.mux_playback_id);
-
-    const assetMention: AssetMention = {
-      type: 'asset',
-      id: upload.id,
-      filename: upload.attributes.filename,
-      url,
-      thumbnailUrl,
-      mimeType,
-    };
-
-    // Insert the mention at cursor position
-    const { newText, newCursorPosition } = insertToolbarMention(
-      composerValue,
-      cursorPosition,
-      assetMention
-    );
-
-    // Update state
-    const newMap = new Map(composerMentionsMap);
-    newMap.set(`asset:${upload.id}`, assetMention);
-    setComposerMentionsMap(newMap);
-    setComposerValue(newText);
-
-    // Focus textarea and update cursor
-    setTimeout(() => {
-      if (textareaRef.current) {
-        textareaRef.current.focus();
-        textareaRef.current.setSelectionRange(newCursorPosition, newCursorPosition);
-        setCursorPosition(newCursorPosition);
-      }
-    }, 0);
-  }, [ctx, composerValue, cursorPosition, composerMentionsMap, setCursorPosition]);
-
-  const handleModelToolbarClick = createToolbarTriggerHandler('$');
-
-  const handleNavigateToModel = useCallback(
-    async (modelId: string, isBlockModel: boolean) => {
-      const path = isBlockModel
-        ? `/schema/blocks_library/${modelId}`
-        : `/schema/item_types/${modelId}`;
-      await ctx.navigateTo(path);
-    },
-    [ctx]
+  // Check if composer has content (memoized to prevent recalculation on unrelated state changes)
+  const isComposerEmptyValue = useMemo(
+    () => isComposerEmpty(composerSegments),
+    [composerSegments]
   );
 
-  const handleOpenAsset = useCallback(
-    async (assetId: string) => {
-      await ctx.editUpload(assetId);
-    },
-    [ctx]
-  );
-
-  const handleOpenRecord = useCallback(
-    async (recordId: string, _modelId: string) => {
-      await ctx.editItem(recordId);
-    },
-    [ctx]
-  );
-
-  if (status === 'connecting') {
+  // Loading state
+  if ((realTimeEnabled && status === SUBSCRIPTION_STATUS.CONNECTING) || (!realTimeEnabled && isLoading)) {
     return (
       <Canvas ctx={ctx}>
         <div className={styles.loading}>
@@ -867,234 +479,128 @@ const CommentsBar = ({ ctx }: Props) => {
     );
   }
 
+  // Error state - use categorized error messages for user-friendly display
   if (error) {
+    const categorizedError = categorizeGeneralError(error);
     return (
       <Canvas ctx={ctx}>
-        <div className={styles.error}>
+        <div className={styles.error} role="alert">
           <p>Error loading comments</p>
-          <span>{error.message}</span>
+          <span>{categorizedError.message}</span>
         </div>
       </Canvas>
     );
   }
 
-  const hasComments = comments.length > 0;
-
   return (
     <Canvas ctx={ctx}>
-      <div className={styles.container}>
-      {!cdaToken && (
-        <div className={styles.warning}>
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" role="img" aria-labelledby="warningIconTitle">
-            <title id="warningIconTitle">Warning</title>
-            <path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/>
-          </svg>
-          <span>Realtime updates disabled. Configure a CDA token in plugin settings.</span>
-        </div>
-      )}
-      
-      {/* Composer - type directly to add a comment */}
-      <div className={styles.composer}>
-        <div className={styles.composerInputWrapper}>
-          <Textarea
-            ref={textareaRef}
-            className={styles.composerInput}
-            value={composerValue}
-            onChange={handleMentionChange}
-            onKeyDown={handleComposerKeyDown}
-            onClick={(e) => setCursorPosition(e.currentTarget.selectionStart)}
-            onSelect={(e) => setCursorPosition(e.currentTarget.selectionStart)}
-            placeholder={"Add a comment...\n@ user, # field, & record, ^ asset, $ model"}
-            minRows={1}
-          />
-          {activeDropdown === 'field' && (
-            <FieldMentionDropdown
-              fields={filteredFields}
-              query=""
-              selectedIndex={selectedIndex}
-              onSelect={handleSelectField}
-              onClose={closeDropdown}
-              pendingFieldForLocale={pendingFieldForLocale}
-              onClearPendingField={clearPendingFieldForLocale}
-              ctx={ctx}
-              registerKeyHandler={registerDropdownKeyHandler}
+      <ProjectDataProvider
+        projectUsers={projectUsers}
+        projectModels={projectModels}
+        modelFields={modelFields}
+        currentUserEmail={userEmail}
+        userOverrides={userOverrides}
+        typedUsers={typedUsers}
+      >
+        <MentionPermissionsProvider
+          canMentionFields={true}
+          canMentionAssets={canMentionAssets}
+          canMentionModels={canMentionModels}
+        >
+        <div className={styles.container}>
+          {/* Header with status indicators */}
+          <div className={styles.header}>
+            <SyncStatusIndicator
+              subscriptionStatus={status}
+              subscriptionError={errorInfo?.message ?? null}
+              pendingCount={pendingCount}
+              retryState={retryState}
+              onRetry={retrySubscription}
             />
-          )}
-          {activeDropdown === 'user' && (
-            <UserMentionDropdown
-              users={filteredUsers}
-              query=""
-              selectedIndex={selectedIndex}
-              onSelect={handleSelectUser}
-              onClose={closeDropdown}
-            />
-          )}
-          {activeDropdown === 'model' && (
-            <ModelMentionDropdown
-              models={filteredModels}
-              query=""
-              selectedIndex={selectedIndex}
-              onSelect={handleSelectModel}
-              onClose={closeDropdown}
-            />
-          )}
-          {(isRecordModelSelectorOpen || activeDropdown === 'record') && (
-            <RecordModelSelectorDropdown
-              models={projectModels}
-              onSelect={handleRecordModelSelect}
-              onClose={handleRecordModelSelectorClose}
-            />
-          )}
-          
-          {/* Slack-style Toolbar */}
-          <div className={styles.composerToolbar}>
-            <div className={styles.toolbarMentions}>
-              {/* User mention */}
-              <span className={styles.toolbarButtonWrapper}>
-                <button
-                  type="button"
-                  className={`${styles.toolbarButton} ${styles.toolbarButtonUser}`}
-                  onClick={handleUserToolbarClick}
-                  aria-label="Mention user"
-                >
-                  <svg viewBox="0 0 16 16" fill="currentColor">
-                    <title>User</title>
-                    <path d="M8 8a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm2-3a2 2 0 1 1-4 0 2 2 0 0 1 4 0Zm4 8c0 1-1 1-1 1H3s-1 0-1-1 1-4 6-4 6 3 6 4Zm-1-.004c-.001-.246-.154-.986-.832-1.664C11.516 10.68 10.289 10 8 10c-2.29 0-3.516.68-4.168 1.332-.678.678-.83 1.418-.832 1.664h10Z"/>
-                  </svg>
-                </button>
-                <span className={styles.toolbarTooltip}>
-                  User
-                  <span className={styles.toolbarTooltipArrow} />
-                </span>
-              </span>
-              {/* Field mention */}
-              <span className={styles.toolbarButtonWrapper}>
-                <button
-                  type="button"
-                  className={`${styles.toolbarButton} ${styles.toolbarButtonField}`}
-                  onClick={handleFieldToolbarClick}
-                  aria-label="Mention field"
-                >
-                  <svg viewBox="0 0 16 16" fill="currentColor">
-                    <title>Field</title>
-                    <path d="M8.39 12.648a1.32 1.32 0 0 0-.015.18c0 .305.21.508.5.508.266 0 .492-.172.555-.477l.554-2.703h1.204c.421 0 .617-.234.617-.547 0-.312-.188-.53-.617-.53h-.985l.516-2.524h1.265c.43 0 .618-.227.618-.547 0-.313-.188-.524-.618-.524h-1.046l.476-2.304a1.06 1.06 0 0 0 .016-.164.51.51 0 0 0-.516-.516.54.54 0 0 0-.539.43l-.523 2.554H7.617l.477-2.304c.008-.04.015-.118.015-.164a.512.512 0 0 0-.523-.516.539.539 0 0 0-.531.43L6.53 5.484H5.414c-.43 0-.617.22-.617.532 0 .312.187.539.617.539h.906l-.515 2.523H4.609c-.421 0-.609.219-.609.531 0 .313.188.547.61.547h.976l-.516 2.492c-.008.04-.015.125-.015.18 0 .305.21.508.5.508.265 0 .492-.172.554-.477l.555-2.703h2.242l-.515 2.492Zm-1-6.109h2.266l-.515 2.563H6.859l.532-2.563Z"/>
-                  </svg>
-                </button>
-                <span className={styles.toolbarTooltip}>
-                  Field
-                  <span className={styles.toolbarTooltipArrow} />
-                </span>
-              </span>
-              {/* Record mention */}
-              <span className={styles.toolbarButtonWrapper}>
-                <button
-                  type="button"
-                  className={`${styles.toolbarButton} ${styles.toolbarButtonRecord}`}
-                  onClick={handleRecordClick}
-                  aria-label="Mention record"
-                >
-                  <svg viewBox="0 0 16 16" fill="currentColor">
-                    <title>Record</title>
-                    <path d="M14 1a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1h12zM2 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V2a2 2 0 0 0-2-2H2z"/>
-                    <path d="M3 4h10v1H3V4zm0 3h10v1H3V7zm0 3h6v1H3v-1z"/>
-                  </svg>
-                </button>
-                <span className={styles.toolbarTooltip}>
-                  Record
-                  <span className={styles.toolbarTooltipArrow} />
-                </span>
-              </span>
-              {/* Asset mention */}
-              <span className={styles.toolbarButtonWrapper}>
-                <button
-                  type="button"
-                  className={`${styles.toolbarButton} ${styles.toolbarButtonAsset}`}
-                  onClick={handleAssetClick}
-                  aria-label="Mention asset"
-                >
-                  <svg viewBox="0 0 16 16" fill="currentColor">
-                    <title>Asset</title>
-                    <path d="M6.002 5.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z"/>
-                    <path d="M2.002 1a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V3a2 2 0 0 0-2-2h-12zm12 1a1 1 0 0 1 1 1v6.5l-3.777-1.947a.5.5 0 0 0-.577.093l-3.71 3.71-2.66-1.772a.5.5 0 0 0-.63.062L1.002 12V3a1 1 0 0 1 1-1h12z"/>
-                  </svg>
-                </button>
-                <span className={styles.toolbarTooltip}>
-                  Asset
-                  <span className={styles.toolbarTooltipArrow} />
-                </span>
-              </span>
-              {/* Model mention */}
-              <span className={styles.toolbarButtonWrapper}>
-                <button
-                  type="button"
-                  className={`${styles.toolbarButton} ${styles.toolbarButtonModel}`}
-                  onClick={handleModelToolbarClick}
-                  aria-label="Mention model"
-                >
-                  <svg viewBox="0 0 16 16" fill="currentColor">
-                    <title>Model</title>
-                    <path d="M1 2.5A1.5 1.5 0 0 1 2.5 1h3A1.5 1.5 0 0 1 7 2.5v3A1.5 1.5 0 0 1 5.5 7h-3A1.5 1.5 0 0 1 1 5.5v-3zm8 0A1.5 1.5 0 0 1 10.5 1h3A1.5 1.5 0 0 1 15 2.5v3A1.5 1.5 0 0 1 13.5 7h-3A1.5 1.5 0 0 1 9 5.5v-3zm-8 8A1.5 1.5 0 0 1 2.5 9h3A1.5 1.5 0 0 1 7 10.5v3A1.5 1.5 0 0 1 5.5 15h-3A1.5 1.5 0 0 1 1 13.5v-3zm8 0A1.5 1.5 0 0 1 10.5 9h3a1.5 1.5 0 0 1 1.5 1.5v3a1.5 1.5 0 0 1-1.5 1.5h-3A1.5 1.5 0 0 1 9 13.5v-3z"/>
-                  </svg>
-                </button>
-                <span className={styles.toolbarTooltip}>
-                  Model
-                  <span className={styles.toolbarTooltipArrow} />
-                </span>
-              </span>
-            </div>
-            <span className={styles.toolbarButtonWrapper}>
-              <button
-                type="button"
-                className={styles.sendButton}
-                onClick={submitNewComment}
-                disabled={!composerValue.trim()}
-                aria-label="Send comment"
-              >
-                <svg viewBox="0 0 16 16" fill="currentColor">
-                  <title>Send</title>
-                  <path d="M15.964.686a.5.5 0 0 0-.65-.65L.767 5.855H.766l-.452.18a.5.5 0 0 0-.082.887l.41.26.001.002 4.995 3.178 3.178 4.995.002.002.26.41a.5.5 0 0 0 .886-.083l6-15Zm-1.833 1.89L6.637 10.07l-.215-.338a.5.5 0 0 0-.154-.154l-.338-.215 7.494-7.494 1.178-.471-.47 1.178Z"/>
-                </svg>
-              </button>
-              <span className={styles.toolbarTooltip}>
-                Send
-                <span className={styles.toolbarTooltipArrow} />
-              </span>
-            </span>
           </div>
-        </div>
-      </div>
 
-      {/* Comments list */}
-      {hasComments ? (
-        <div className={styles.commentsList}>
-          {comments.map((comment) => (
-            <Comment
-              key={comment.dateISO}
-              deleteComment={deleteComment}
-              editComment={editComment}
-              upvoteComment={upvoteComment}
-              replyComment={replyComment}
-              commentObject={comment}
-              currentUserEmail={userEmail}
-              modelFields={modelFields}
-              projectUsers={projectUsers}
-              projectModels={projectModels}
-              onScrollToField={handleScrollToField}
-              onNavigateToUsers={handleNavigateToUsers}
-              onNavigateToModel={handleNavigateToModel}
-              onOpenAsset={handleOpenAsset}
-              onOpenRecord={handleOpenRecord}
-              ctx={ctx}
-            />
-          ))}
+          {/* Warning when real-time is enabled but no CDA token */}
+          {realTimeEnabled && !cdaToken && (
+            <div className={styles.warning}>
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" role="img" aria-labelledby="warningIconTitle">
+                <title id="warningIconTitle">Warning</title>
+                <path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/>
+              </svg>
+              <span>Realtime updates disabled. Configure a CDA token in plugin settings.</span>
+            </div>
+          )}
+
+          {/* Composer - wrapped in error boundary to prevent editor crashes from breaking the sidebar */}
+          <div className={styles.composer}>
+            <CommentErrorBoundary fallbackMessage="Unable to load editor. Please refresh.">
+              <div className={styles.composerInputWrapper}>
+                <TipTapComposer
+                  ref={composerRef}
+                  segments={composerSegments}
+                  onSegmentsChange={setComposerSegments}
+                  onSubmit={submitNewComment}
+                  placeholder="Add a comment...&#10;@ user, # field, & record, ^ asset, $ model"
+                  projectUsers={projectUsers}
+                  modelFields={modelFields}
+                  projectModels={projectModels}
+                  canMentionAssets={canMentionAssets}
+                  canMentionModels={canMentionModels}
+                  canMentionFields={true}
+                  onAssetTrigger={handleAssetTrigger}
+                  onRecordTrigger={handleRecordTrigger}
+                  autoFocus={false}
+                  ctx={ctx}
+                />
+
+                {/* Record model selector dropdown (for & mentions) */}
+                {isRecordModelSelectorOpen && (
+                  <RecordModelSelectorDropdown
+                    models={readableModels}
+                    onSelect={handleRecordModelSelectForReply}
+                    onClose={handleRecordModelSelectorClose}
+                  />
+                )}
+
+                {/* Toolbar */}
+                <ComposerToolbar
+                  onUserClick={handleUserToolbarClick}
+                  onFieldClick={handleFieldToolbarClick}
+                  onRecordClick={handleRecordToolbarClick}
+                  onAssetClick={handleAssetToolbarClick}
+                  onModelClick={handleModelToolbarClick}
+                  onSendClick={submitNewComment}
+                  isSendDisabled={isComposerEmptyValue || pendingCount > 0}
+                  canMentionAssets={canMentionAssets}
+                  canMentionModels={canMentionModels}
+                />
+              </div>
+            </CommentErrorBoundary>
+          </div>
+
+          {/* Comments list */}
+          <CommentsList
+            comments={visibleComments}
+            hasMoreComments={hasMoreComments}
+            onLoadMore={() => setHiddenOldCount((prev) => Math.max(0, (prev ?? 0) - COMMENTS_PAGE_SIZE))}
+            currentUserEmail={userEmail}
+            modelFields={modelFields}
+            projectUsers={projectUsers}
+            projectModels={projectModels}
+            deleteComment={deleteComment}
+            editComment={editComment}
+            upvoteComment={upvoteComment}
+            replyComment={replyComment}
+            onPickerRequest={handleReplyPickerRequest}
+            canMentionAssets={canMentionAssets}
+            canMentionModels={canMentionModels}
+            ctx={ctx}
+            isPickerActive={isPickerInProgress}
+            userOverrides={userOverrides}
+            typedUsers={typedUsers}
+          />
         </div>
-      ) : (
-        <div className={styles.empty}>
-          <p>No comments yet</p>
-          <span>Be the first to leave a comment on this record.</span>
-        </div>
-      )}
-      </div>
+        </MentionPermissionsProvider>
+      </ProjectDataProvider>
     </Canvas>
   );
 };

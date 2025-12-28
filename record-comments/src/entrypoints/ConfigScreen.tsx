@@ -1,17 +1,15 @@
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import { buildClient } from '@datocms/cma-client-browser';
-import { Button, Canvas, TextField, Spinner } from 'datocms-react-ui';
+import { Button, Canvas, TextField, Spinner, SwitchField } from 'datocms-react-ui';
 import { useState, useCallback } from 'react';
-import styles from './styles/configscreen.module.css';
-import { COMMENTS_MODEL_API_KEY } from '../constants';
+import styles from '@styles/configscreen.module.css';
+import { COMMENTS_MODEL_API_KEY } from '@/constants';
+import { parsePluginParams } from '@utils/pluginParams';
+import { logWarn } from '@/utils/errorLogger';
+import { normalizeComment, type LegacyComment } from '@utils/migrations';
 
 type PropTypes = {
   ctx: RenderConfigScreenCtx;
-};
-
-type PluginParameters = {
-  cdaToken?: string;
-  migrationCompleted?: boolean;
 };
 
 type MigrationStatus = 'idle' | 'scanning' | 'migrating' | 'completed' | 'error';
@@ -47,8 +45,9 @@ type ScanProgress = {
 };
 
 const ConfigScreen = ({ ctx }: PropTypes) => {
-  const pluginParams = ctx.plugin.attributes.parameters as PluginParameters;
+  const pluginParams = parsePluginParams(ctx.plugin.attributes.parameters);
   const [cdaToken, setCdaToken] = useState(pluginParams.cdaToken ?? '');
+  const [realTimeEnabled, setRealTimeEnabled] = useState(pluginParams.realTimeUpdatesEnabled ?? true);
   const [isSaving, setIsSaving] = useState(false);
 
   // Migration state
@@ -65,7 +64,11 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
 
   const handleSave = async () => {
     setIsSaving(true);
-    await ctx.updatePluginParameters({ ...pluginParams, cdaToken });
+    await ctx.updatePluginParameters({
+      ...pluginParams,
+      cdaToken,
+      realTimeUpdatesEnabled: realTimeEnabled,
+    });
     await ctx.notice('Settings saved successfully!');
     setIsSaving(false);
   };
@@ -117,16 +120,23 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
         });
 
         // Use ctx.loadItemTypeFields instead of client.fields.list (SDK method with caching)
-        const fields = await ctx.loadItemTypeFields(model.id);
-        const commentLogField = fields.find((f) => f.attributes.api_key === 'comment_log');
+        // Wrap in try-catch to handle individual model failures gracefully
+        try {
+          const fields = await ctx.loadItemTypeFields(model.id);
+          const commentLogField = fields.find((f) => f.attributes.api_key === 'comment_log');
 
-        if (commentLogField) {
-          foundModels.push({
-            modelId: model.id,
-            modelName: model.attributes.name,
-            modelApiKey: model.attributes.api_key,
-            fieldId: commentLogField.id,
-          });
+          if (commentLogField) {
+            foundModels.push({
+              modelId: model.id,
+              modelName: model.attributes.name,
+              modelApiKey: model.attributes.api_key,
+              fieldId: commentLogField.id,
+            });
+          }
+        } catch (fieldLoadError) {
+          // Log warning but continue scanning other models
+          // This prevents a single model failure from breaking the entire scan
+          logWarn(`Failed to load fields for model ${model.attributes.name}`, { modelId: model.id, error: fieldLoadError });
         }
 
         scannedCount++;
@@ -242,8 +252,9 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
               const parsed = JSON.parse(commentLog);
               if (!Array.isArray(parsed)) continue;
               commentsArray = parsed;
-            } catch {
-              continue; // Skip invalid JSON
+            } catch (parseError) {
+              logWarn('Skipping record with invalid JSON comment_log', { recordId: record.id, error: parseError });
+              continue;
             }
           } else if (Array.isArray(commentLog)) {
             commentsArray = commentLog;
@@ -254,11 +265,18 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
           // Skip empty arrays
           if (commentsArray.length === 0) continue;
 
+          // Normalize legacy upvoter format (strings → { name, email } objects)
+          const normalizedComments = (commentsArray as LegacyComment[]).map(normalizeComment);
+
           // Check if already migrated
+          // IMPORTANT: Filter by BOTH model_id AND record_id because they form a composite key.
+          // Different models can have records with the same ID, so filtering only by record_id
+          // would incorrectly skip migrations if record IDs overlap across models.
           const existing = await client.items.list({
             filter: {
               type: COMMENTS_MODEL_API_KEY,
               fields: {
+                model_id: { eq: modelInfo.modelId },
                 record_id: { eq: record.id },
               },
             },
@@ -275,7 +293,7 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
               item_type: { type: 'item_type', id: commentsModel.id },
               model_id: modelInfo.modelId,
               record_id: record.id,
-              content: JSON.stringify(commentsArray),
+              content: JSON.stringify(normalizedComments),
             });
             results.success++;
           } catch (err) {
@@ -601,36 +619,51 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
     <Canvas ctx={ctx}>
       <div className={styles.container}>
         <p className={styles.intro}>
-          This plugin adds a Comments sidebar panel to every record, allowing your team to
-          discuss and collaborate directly on content. Simply open any record and expand the
-          Comments panel in the right sidebar to start adding comments, replies, and reactions.
+          This plugin enables team collaboration through comments in two ways: a{' '}
+          <strong>sidebar panel</strong> on every record for record-specific discussions, and a{' '}
+          <strong>project-wide Comments Dashboard</strong> for general team conversations. Use rich
+          mentions to reference users (@), fields (#), records (&amp;), assets (^), and models ($)
+          directly in your comments. The dashboard also shows your mentions and recent activity
+          across the project.
         </p>
 
         <div className={styles.section}>
           <h2 className={styles.sectionTitle}>Configuration</h2>
           <p className={styles.description}>
-            To enable realtime updates for comments, you need to provide a{' '}
-            <strong>Content Delivery API (CDA)</strong> token. This allows the plugin to
-            subscribe to changes and show updates instantly.
+            Configure how comments are synchronized across users. Real-time updates are
+            recommended for the best collaborative experience.
           </p>
 
           <div className={styles.formField}>
-            <TextField
-              id="cda-token"
-              name="cda-token"
-              label="Content Delivery API Token"
-              hint="You can find this in Project Settings → API Tokens. Use a token with read access."
-              value={cdaToken}
-              onChange={(newValue) => setCdaToken(newValue)}
-              textInputProps={{ monospaced: true }}
+            <SwitchField
+              id="realtime-toggle"
+              name="realtime-toggle"
+              label="Enable Real-Time Updates (Recommended)"
+              hint="When enabled, comments update instantly across all users. Requires a Content Delivery API token."
+              value={realTimeEnabled}
+              onChange={(newValue) => setRealTimeEnabled(newValue)}
             />
           </div>
+
+          {realTimeEnabled && (
+            <div className={styles.formField}>
+              <TextField
+                id="cda-token"
+                name="cda-token"
+                label="Content Delivery API Token"
+                hint="You can find this in Project Settings → API Tokens. Use a token with read access."
+                value={cdaToken}
+                onChange={(newValue) => setCdaToken(newValue)}
+                textInputProps={{ monospaced: true }}
+              />
+            </div>
+          )}
 
           <div className={styles.buttonRow}>
             <Button
               buttonType="primary"
               onClick={handleSave}
-              disabled={isSaving || !cdaToken}
+              disabled={isSaving || (realTimeEnabled && !cdaToken)}
             >
               {isSaving ? 'Saving...' : 'Save Settings'}
             </Button>

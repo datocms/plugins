@@ -1,5 +1,51 @@
 import md5 from 'md5';
 
+// ============================================================================
+// IMAGE URL SECURITY DOCUMENTATION
+// ============================================================================
+//
+// WHY IMAGE URL VALIDATION IS NOT IMPLEMENTED:
+// -------------------------------------------
+// All image URLs used in this plugin come from trusted, controlled sources:
+//
+// 1. GRAVATAR URLs (getGravatarUrl):
+//    - Generated programmatically: https://www.gravatar.com/avatar/{hash}
+//    - We construct the URL, always pointing to gravatar.com
+//    - No user input can modify the domain
+//
+// 2. DATOCMS ASSET URLs (getThumbnailUrl for images):
+//    - Base URL comes from DatoCMS API response (upload.attributes.url)
+//    - We append imgix query parameters to existing DatoCMS CDN URLs
+//    - These are trusted backend responses, not user input
+//
+// 3. MUX VIDEO THUMBNAILS (getThumbnailUrl for videos):
+//    - Generated programmatically: https://image.mux.com/{playbackId}/...
+//    - PlaybackId comes from DatoCMS API response
+//    - We construct the URL, always pointing to mux.com
+//
+// THEORETICAL ATTACK VECTOR (and why it's not a concern):
+// -------------------------------------------------------
+// An attacker with direct DatoCMS API/UI access could theoretically edit
+// the comment record's JSON to inject malicious URLs into mention data.
+// However:
+//
+// 1. This requires write access to the project_comment model, meaning the
+//    attacker already has significant CMS privileges
+// 2. The impact is limited: <img> tags can only display images, they cannot
+//    execute JavaScript and browsers sandbox cross-origin requests
+// 3. At worst, an attacker could display arbitrary images or tracking pixels
+// 4. Anyone with this level of access can cause more damage directly
+//
+// RISKS OF ADDING URL VALIDATION:
+// -------------------------------
+// 1. DatoCMS CDN domains may change, breaking legitimate asset URLs
+// 2. Added complexity with no meaningful security benefit
+// 3. False positives could break normal plugin functionality
+//
+// CONCLUSION: URL validation is intentionally not implemented.
+// DO NOT add URL validation without reconsidering the above points.
+// ============================================================================
+
 /**
  * Generates a Gravatar URL for a given email address.
  * @param email - The user's email address

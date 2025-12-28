@@ -10,12 +10,12 @@
   grid-template-columns: 32px 1fr;
   gap: 0 10px;
   padding: 8px 4px;
-  border-radius: 4px;
-  transition: background-color 0.15s ease;
+  border-radius: var(--radius-md);
+  transition: background-color var(--transition-fast);
 }
 
 .commentBody:hover {
-  background-color: #f5f5f5;
+  background-color: var(--bg-secondary);
 }
 
 /* Reply styling - minimal, no indentation needed since collapsed */
@@ -31,7 +31,7 @@
 .avatar {
   width: 32px;
   height: 32px;
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   object-fit: cover;
 }
 
@@ -77,7 +77,6 @@
 .editContainer {
   display: flex;
   flex-direction: column;
-  gap: 4px;
   min-width: 0;
   max-width: 100%;
   position: relative;
@@ -92,11 +91,11 @@
   color: var(--base-body-color);
   background-color: var(--lighter-bg-color);
   border: 1px solid var(--border-color);
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   resize: none;
   outline: none;
   box-sizing: border-box;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .textarea:focus {
@@ -105,11 +104,6 @@
 }
 
 .textarea::placeholder {
-  color: var(--light-body-color);
-}
-
-.editHint {
-  font-size: var(--font-size-xxs);
   color: var(--light-body-color);
 }
 
@@ -134,7 +128,7 @@
   border: 1px solid var(--border-color);
   border-radius: 12px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--transition-fast);
 }
 
 .reaction:hover {
@@ -160,35 +154,11 @@
 
 /* Custom tooltip */
 .tooltip {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 6px 10px;
-  background-color: #1d1c1d;
-  color: #fff;
-  font-size: 12px;
-  font-weight: 500;
-  white-space: nowrap;
-  border-radius: 6px;
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 0.15s ease, visibility 0.15s ease;
-  pointer-events: none;
-  z-index: 9999;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  composes: tooltipBase from './utilities.css';
 }
 
 .tooltipArrow {
-  position: absolute;
-  bottom: -5px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 0;
-  height: 0;
-  border-left: 6px solid transparent;
-  border-right: 6px solid transparent;
-  border-top: 6px solid #1d1c1d;
+  composes: tooltipArrowDown from './utilities.css';
 }
 
 .reactionWrapper:hover .tooltip {
@@ -207,9 +177,9 @@
   color: var(--accent-color);
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: var(--radius-lg);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--transition-fast);
   margin-left: -4px;
 }
 
@@ -234,7 +204,7 @@
 .replyAvatar {
   width: 20px;
   height: 20px;
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   border: 2px solid var(--base-body-bg-color);
   margin-right: -6px;
   object-fit: cover;
@@ -261,7 +231,7 @@
   height: 10px;
   color: var(--accent-color);
   opacity: 0.7;
-  transition: transform 0.2s ease, opacity 0.15s ease;
+  transition: transform var(--transition-normal), opacity var(--transition-fast);
   flex-shrink: 0;
 }
 
@@ -286,11 +256,12 @@
   justify-content: flex-end;
   opacity: 0;
   visibility: hidden;
-  z-index: 10;
+  z-index: var(--z-above);
 }
 
-/* Show actionsWrapper only when THIS comment is hovered */
-.comment:hover > .actionsWrapper {
+/* Show actionsWrapper only when THIS comment is hovered or focused within */
+.comment:hover > .actionsWrapper,
+.comment:focus-within > .actionsWrapper {
   opacity: 1;
   visibility: visible;
 }
@@ -304,10 +275,10 @@
   align-items: center;
   gap: 2px;
   padding: 4px;
-  background-color: #e8e8e8;
-  border: 1px solid #d0d0d0;
-  border-radius: 6px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  background-color: var(--action-bg-hover);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-subtle);
   opacity: 0;
   visibility: hidden;
 }
@@ -319,31 +290,33 @@
   justify-content: center;
   width: 28px;
   height: 28px;
-  background-color: #e8e8e8;
-  border: 1px solid #d0d0d0;
-  border-radius: 6px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  background-color: var(--action-bg-hover);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-subtle);
   cursor: pointer;
 }
 
 .actionsTrigger svg {
-  color: #666;
+  color: var(--text-secondary);
 }
 
 .actionsTrigger:hover {
-  background-color: #ddd;
+  background-color: var(--border-default);
 }
 
 .actionsTrigger:hover svg {
-  color: #333;
+  color: var(--text-primary);
 }
 
-/* Hide trigger and show full actions on wrapper hover */
-.actionsWrapper:hover .actionsTrigger {
+/* Hide trigger and show full actions on wrapper hover or focus-within */
+.actionsWrapper:hover .actionsTrigger,
+.actionsWrapper:focus-within .actionsTrigger {
   display: none;
 }
 
-.actionsWrapper:hover .actions {
+.actionsWrapper:hover .actions,
+.actionsWrapper:focus-within .actions {
   opacity: 1;
   visibility: visible;
 }
@@ -355,16 +328,16 @@
   width: 28px;
   height: 28px;
   padding: 0;
-  color: #666;
+  color: var(--text-secondary);
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   cursor: pointer;
 }
 
 .actionBtn:hover {
-  color: #333;
-  background-color: #d0d0d0;
+  color: var(--text-primary);
+  background-color: var(--border-strong);
 }
 
 .actionBtnActive {
@@ -373,12 +346,12 @@
 
 .actionBtnActive:hover {
   color: var(--accent-color);
-  background-color: #d0d0d0;
+  background-color: var(--border-strong);
 }
 
 .actionBtnDanger:hover {
-  color: #e01e5a;
-  background-color: rgba(224, 30, 90, 0.1);
+  color: var(--color-danger);
+  background-color: var(--color-danger-bg);
 }
 
 /* Replies container */
@@ -405,7 +378,7 @@
   height: 14px;
   border-left: 2px solid var(--border-color);
   border-bottom: 2px solid var(--border-color);
-  border-bottom-left-radius: 10px;
+  border-bottom-left-radius: var(--radius-xl);
 }
 
 /* Vertical line going DOWN to next reply (not on last child) */
@@ -440,6 +413,7 @@
 }
 
 .reply .timestamp {
+  /* 10px is intentional for compact reply display - no matching token exists */
   font-size: 10px;
 }
 
@@ -453,19 +427,27 @@
   left: 0;
   right: 0;
   margin-top: 4px;
-  background-color: #ffffff;
+  background-color: var(--bg-primary);
   border: 1px solid var(--border-color);
-  border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.08);
-  z-index: 1000;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-elevated);
+  z-index: var(--z-dropdown);
   overflow: hidden;
   max-height: 200px;
   display: flex;
   flex-direction: column;
 }
 
+/* Dropdown positioned above the input (for bottom-positioned composers) */
+.mentionDropdownAbove {
+  top: auto;
+  bottom: 100%;
+  margin-top: 0;
+  margin-bottom: 4px;
+}
+
 .mentionHeader {
-  padding: 8px 12px 6px;
+  padding: var(--space-1) var(--space-2) var(--space-1);
   font-size: 11px;
   font-weight: 600;
   color: var(--light-body-color);
@@ -481,11 +463,11 @@
   overflow-y: auto;
   flex: 1;
   /* Scroll shadows to indicate more content */
-  background: 
+  background:
     /* Top shadow when scrolled */
-    linear-gradient(to bottom, #ffffff 30%, transparent) center top,
+    linear-gradient(to bottom, var(--bg-primary) 30%, transparent) center top,
     /* Bottom shadow when more content below */
-    linear-gradient(to top, #ffffff 30%, transparent) center bottom,
+    linear-gradient(to top, var(--bg-primary) 30%, transparent) center bottom,
     /* Top shadow overlay */
     linear-gradient(to bottom, rgba(0, 0, 0, 0.06), transparent) center top,
     /* Bottom shadow overlay */
@@ -519,18 +501,18 @@
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  padding: 8px 12px;
+  padding: var(--space-1) var(--space-2);
   font-size: var(--font-size-s);
   color: var(--base-body-color);
   background: transparent;
   border: none;
   cursor: pointer;
-  transition: background-color 0.1s ease;
+  transition: background-color var(--transition-fast);
   text-align: left;
 }
 
 .mentionOption:hover {
-  background-color: #f5f5f5;
+  background-color: var(--bg-secondary);
 }
 
 .mentionOptionSelected {
@@ -559,7 +541,7 @@
 }
 
 .mentionEmpty {
-  padding: 16px 12px;
+  padding: var(--space-3) var(--space-2);
   font-size: var(--font-size-s);
   color: var(--light-body-color);
   text-align: center;
@@ -579,60 +561,47 @@
   font-weight: 400;
   font-family: inherit;
   line-height: inherit;
-  color: #1264a3;
-  background-color: #e8f5fa;
+  color: var(--mention-field);
+  background-color: var(--mention-field-bg);
   border: none;
   border-radius: 3px;
   cursor: pointer;
-  transition: all 0.1s ease;
+  transition: all var(--transition-fast);
   vertical-align: baseline;
 }
 
 .fieldMention:hover {
-  background-color: #cce8f4;
-  color: #0b4c8c;
+  background-color: var(--mention-field-hover);
+  color: var(--mention-field-dark);
 }
 
 .fieldMention:focus {
   outline: none;
-  background-color: #cce8f4;
+  background-color: var(--mention-field-hover);
+}
+
+.fieldMentionDisabled {
+  cursor: default;
+  opacity: 0.7;
+}
+
+.fieldMentionDisabled:hover {
+  background-color: var(--mention-field-bg);
+  color: var(--mention-field);
 }
 
 .fieldMentionWrapper {
   position: relative;
   display: inline;
+  user-select: none;
 }
 
 .fieldMentionTooltip {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 6px 10px;
-  background-color: #1d1c1d;
-  color: #fff;
-  font-size: 12px;
-  font-weight: 500;
-  white-space: nowrap;
-  border-radius: 6px;
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 0.15s ease, visibility 0.15s ease;
-  pointer-events: none;
-  z-index: 9999;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  composes: tooltipBase from './utilities.css';
 }
 
 .fieldMentionTooltipArrow {
-  position: absolute;
-  bottom: -5px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 0;
-  height: 0;
-  border-left: 6px solid transparent;
-  border-right: 6px solid transparent;
-  border-top: 6px solid #1d1c1d;
+  composes: tooltipArrowDown from './utilities.css';
 }
 
 .fieldMentionWrapper:hover .fieldMentionTooltip {
@@ -647,7 +616,7 @@
 .mentionUserAvatar {
   width: 24px;
   height: 24px;
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   object-fit: cover;
   flex-shrink: 0;
   margin-right: 8px;
@@ -697,7 +666,7 @@
 .mentionModelBadge {
   font-size: 9px;
   font-weight: 600;
-  color: #d97706;
+  color: var(--mention-model);
   background-color: rgba(217, 119, 6, 0.15);
   padding: 2px 6px;
   border-radius: 3px;
@@ -707,7 +676,7 @@
 }
 
 .mentionOptionSelected .mentionModelBadge {
-  color: #b45309;
+  color: var(--mention-model-dark);
   background-color: rgba(217, 119, 6, 0.2);
 }
 
@@ -719,6 +688,7 @@
 .userMentionWrapper {
   position: relative;
   display: inline;
+  user-select: none;
 }
 
 .userMention {
@@ -729,55 +699,31 @@
   font-weight: 500;
   font-family: inherit;
   line-height: inherit;
-  color: #7c3aed;
-  background-color: #f3e8ff;
+  color: var(--mention-user);
+  background-color: var(--mention-user-bg);
   border: none;
   border-radius: 3px;
   cursor: pointer;
   vertical-align: baseline;
-  transition: all 0.1s ease;
+  transition: all var(--transition-fast);
 }
 
 .userMention:hover {
-  background-color: #e9d5ff;
-  color: #6d28d9;
+  background-color: var(--mention-user-hover);
+  color: var(--mention-user-dark);
 }
 
 .userMention:focus {
   outline: none;
-  background-color: #e9d5ff;
+  background-color: var(--mention-user-hover);
 }
 
 .userMentionTooltip {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 6px 10px;
-  background-color: #1d1c1d;
-  color: #fff;
-  font-size: 12px;
-  font-weight: 500;
-  white-space: nowrap;
-  border-radius: 6px;
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 0.15s ease, visibility 0.15s ease;
-  pointer-events: none;
-  z-index: 9999;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  composes: tooltipBase from './utilities.css';
 }
 
 .userMentionTooltipArrow {
-  position: absolute;
-  bottom: -5px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 0;
-  height: 0;
-  border-left: 6px solid transparent;
-  border-right: 6px solid transparent;
-  border-top: 6px solid #1d1c1d;
+  composes: tooltipArrowDown from './utilities.css';
 }
 
 .userMentionWrapper:hover .userMentionTooltip {
@@ -793,6 +739,7 @@
 .assetMentionWrapper {
   position: relative;
   display: inline;
+  user-select: none;
 }
 
 .assetMention {
@@ -805,29 +752,29 @@
   font-weight: 500;
   font-family: inherit;
   line-height: 1.2;
-  color: #0891b2;
-  background-color: #ecfeff;
+  color: var(--mention-asset);
+  background-color: var(--mention-asset-bg);
   border: none;
   border-radius: 3px;
   cursor: pointer;
   vertical-align: middle;
-  transition: all 0.1s ease;
+  transition: all var(--transition-fast);
 }
 
 .assetMention:hover {
-  background-color: #cffafe;
-  color: #0e7490;
+  background-color: var(--mention-asset-hover);
+  color: var(--mention-asset-dark);
 }
 
 .assetMention:focus {
   outline: none;
-  background-color: #cffafe;
+  background-color: var(--mention-asset-hover);
 }
 
 .assetMentionThumb {
   width: 20px;
   height: 20px;
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   object-fit: cover;
   flex-shrink: 0;
 }
@@ -842,35 +789,11 @@
 }
 
 .assetMentionTooltip {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 6px 10px;
-  background-color: #1d1c1d;
-  color: #fff;
-  font-size: 12px;
-  font-weight: 500;
-  white-space: nowrap;
-  border-radius: 6px;
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 0.15s ease, visibility 0.15s ease;
-  pointer-events: none;
-  z-index: 9999;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  composes: tooltipBase from './utilities.css';
 }
 
 .assetMentionTooltipArrow {
-  position: absolute;
-  bottom: -5px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 0;
-  height: 0;
-  border-left: 6px solid transparent;
-  border-right: 6px solid transparent;
-  border-top: 6px solid #1d1c1d;
+  composes: tooltipArrowDown from './utilities.css';
 }
 
 .assetMentionWrapper:hover .assetMentionTooltip {
@@ -886,6 +809,7 @@
 .assetMentionBlockWrapper {
   display: block;
   width: 100%;
+  user-select: none;
 }
 
 .assetMentionBlock {
@@ -895,23 +819,23 @@
   max-width: 220px;
   margin: 8px 0;
   padding: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-xl);
   overflow: hidden;
-  border: 1px solid #b8e6f0;
-  background: #f8fdfe;
+  border: 1px solid var(--mention-asset-border);
+  background: var(--mention-asset-bg);
   cursor: pointer;
   font-family: inherit;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .assetMentionBlock:hover {
-  border-color: #7dd3e1;
+  border-color: var(--mention-asset-border-hover);
   box-shadow: 0 2px 8px rgba(8, 145, 178, 0.12);
 }
 
 .assetMentionBlock:focus {
   outline: none;
-  border-color: #0891b2;
+  border-color: var(--mention-asset);
   box-shadow: 0 0 0 2px rgba(8, 145, 178, 0.2);
 }
 
@@ -923,12 +847,12 @@
 }
 
 .assetMentionBlockName {
-  padding: 8px 10px;
+  padding: var(--space-1) var(--space-2);
   font-size: 12px;
   font-weight: 500;
-  color: #0891b2;
-  background: #ecfeff;
-  border-top: 1px solid #cff5fa;
+  color: var(--mention-asset);
+  background: var(--mention-asset-bg);
+  border-top: 1px solid var(--mention-asset-border);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -936,46 +860,71 @@
 }
 
 .assetMentionBlock:hover .assetMentionBlockName {
-  color: #0e7490;
+  color: var(--mention-asset-dark);
+}
+
+/* Fallback for broken image thumbnails - shows ^ character when image fails to load.
+ * Hidden by default, shown via CSS when parent button has data-img-error="true".
+ * This approach is more robust than DOM traversal (nextElementSibling) because:
+ * 1. CSS handles the visibility toggle, not JavaScript DOM manipulation
+ * 2. Works regardless of DOM structure changes or React re-renders
+ * 3. Fallback is always guaranteed to show if image fails */
+.assetMentionBlockFallback {
+  display: none; /* Hidden by default */
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 80px;
+  font-size: 24px;
+  font-weight: 500;
+  color: var(--mention-asset);
+  background-color: var(--mention-asset-bg);
+}
+
+/* Show fallback when image fails to load (parent button gets data-img-error attribute) */
+.assetMentionBlock[data-img-error="true"] .assetMentionBlockFallback {
+  display: flex;
 }
 
 /* ============================================
    Record Mention Inline (in comment text)
-   Green color scheme with model sublabel
+   Green color scheme - consistent with other mentions
    ============================================ */
 
 .recordMentionWrapper {
   position: relative;
   display: inline;
+  user-select: none;
 }
 
 .recordMention {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 5px;
+  padding: 0 5px;
   margin: 0 1px;
-  font-size: 11px;
-  font-weight: 500;
+  max-width: 160px;
   font-family: inherit;
-  line-height: 1.2;
-  color: #059669;
-  background-color: #ecfdf5;
+  font-size: inherit;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--mention-record);
+  background-color: var(--mention-record-bg);
   border: none;
   border-radius: 3px;
   cursor: pointer;
   vertical-align: middle;
-  transition: all 0.1s ease;
+  transition: all var(--transition-fast);
 }
 
 .recordMention:hover {
-  background-color: #d1fae5;
-  color: #047857;
+  background-color: var(--mention-record-hover);
+  color: var(--mention-record-dark);
 }
 
 .recordMention:focus {
   outline: none;
-  background-color: #d1fae5;
+  background-color: var(--mention-record-hover);
 }
 
 .recordMentionIcon {
@@ -986,61 +935,47 @@
 }
 
 .recordMentionEmoji {
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1;
   flex-shrink: 0;
 }
 
-.recordMentionTitle {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 150px;
-}
-
 .recordMentionThumb {
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   border-radius: 2px;
   object-fit: cover;
   flex-shrink: 0;
 }
 
-/* Records without thumbnails: more vertical padding to match thumbnail height */
-.recordMentionNoThumb {
-  padding: 6px 5px;
+.recordMentionTitle {
+  font-weight: 500;
+  color: inherit;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Fallback container for broken record thumbnail - shows document icon when image fails.
+ * Hidden by default, shown via CSS when parent button has data-img-error="true".
+ * See assetMentionBlockFallback comment for rationale on this approach. */
+.recordMentionFallback {
+  display: none; /* Hidden by default */
+  align-items: center;
+  justify-content: center;
+}
+
+/* Show fallback when image fails to load (parent button gets data-img-error attribute) */
+.recordMention[data-img-error="true"] .recordMentionFallback {
+  display: inline-flex;
 }
 
 .recordMentionTooltip {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 6px 10px;
-  background-color: #1d1c1d;
-  color: #fff;
-  font-size: 12px;
-  font-weight: 500;
-  white-space: nowrap;
-  border-radius: 6px;
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 0.15s ease, visibility 0.15s ease;
-  pointer-events: none;
-  z-index: 9999;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  composes: tooltipBase from './utilities.css';
 }
 
 .recordMentionTooltipArrow {
-  position: absolute;
-  bottom: -5px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 0;
-  height: 0;
-  border-left: 6px solid transparent;
-  border-right: 6px solid transparent;
-  border-top: 6px solid #1d1c1d;
+  composes: tooltipArrowDown from './utilities.css';
 }
 
 .recordMentionWrapper:hover .recordMentionTooltip {
@@ -1056,6 +991,7 @@
 .modelMentionWrapper {
   position: relative;
   display: inline;
+  user-select: none;
 }
 
 .modelMention {
@@ -1068,23 +1004,23 @@
   font-weight: 500;
   font-family: inherit;
   line-height: 1.4;
-  color: #d97706;
-  background-color: #fffbeb;
+  color: var(--mention-model);
+  background-color: var(--mention-model-bg);
   border: none;
   border-radius: 3px;
   cursor: pointer;
   vertical-align: baseline;
-  transition: all 0.1s ease;
+  transition: all var(--transition-fast);
 }
 
 .modelMention:hover {
-  background-color: #fef3c7;
-  color: #b45309;
+  background-color: var(--mention-model-hover);
+  color: var(--mention-model-dark);
 }
 
 .modelMention:focus {
   outline: none;
-  background-color: #fef3c7;
+  background-color: var(--mention-model-hover);
 }
 
 .modelMentionIcon {
@@ -1101,35 +1037,11 @@
 }
 
 .modelMentionTooltip {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 50%;
-  transform: translateX(-50%);
-  padding: 6px 10px;
-  background-color: #1d1c1d;
-  color: #fff;
-  font-size: 12px;
-  font-weight: 500;
-  white-space: nowrap;
-  border-radius: 6px;
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 0.15s ease, visibility 0.15s ease;
-  pointer-events: none;
-  z-index: 9999;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  composes: tooltipBase from './utilities.css';
 }
 
 .modelMentionTooltipArrow {
-  position: absolute;
-  bottom: -5px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 0;
-  height: 0;
-  border-left: 6px solid transparent;
-  border-right: 6px solid transparent;
-  border-top: 6px solid #1d1c1d;
+  composes: tooltipArrowDown from './utilities.css';
 }
 
 .modelMentionWrapper:hover .modelMentionTooltip {
@@ -1142,7 +1054,7 @@
    ============================================ */
 
 .recordModelSearchWrapper {
-  padding: 8px 12px;
+  padding: var(--space-1) var(--space-2);
   border-bottom: 1px solid var(--border-color);
 }
 
@@ -1153,10 +1065,10 @@
   color: var(--base-body-color);
   background-color: var(--lighter-bg-color);
   border: 1px solid var(--border-color);
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   outline: none;
   box-sizing: border-box;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
 .recordModelSearchInput:focus {
@@ -1183,14 +1095,19 @@
   color: var(--light-body-color);
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all 0.1s ease;
+  transition: all var(--transition-fast);
 }
 
 .mentionBackButton:hover {
   color: var(--base-body-color);
-  background-color: #f5f5f5;
+  background-color: var(--bg-secondary);
+}
+
+.mentionBackButton:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-color-a30);
 }
 
 .mentionLocaleBadge {
@@ -1201,7 +1118,7 @@
   padding: 2px 6px;
   font-size: 10px;
   font-weight: 700;
-  color: #fff;
+  color: var(--text-inverse);
   background-color: var(--accent-color);
   border-radius: 3px;
   text-transform: uppercase;
@@ -1224,8 +1141,8 @@
   font-size: 10px;
   font-weight: 600;
   color: var(--light-body-color);
-  background-color: #f0f0f0;
-  border-radius: 8px;
+  background-color: var(--border-light);
+  border-radius: var(--radius-xl);
   margin-right: 6px;
 }
 
@@ -1252,9 +1169,9 @@
   padding: 1px 4px;
   font-size: 9px;
   font-weight: 700;
-  color: #1264a3;
+  color: var(--mention-field);
   background-color: rgba(18, 100, 163, 0.15);
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   text-transform: uppercase;
   letter-spacing: 0.2px;
   margin-left: 3px;
@@ -1267,11 +1184,11 @@
 
 .mentionOptionEntireField {
   border-bottom: 1px solid var(--border-color);
-  background-color: #fafafa;
+  background-color: var(--bg-tertiary);
 }
 
 .mentionOptionEntireField:hover {
-  background-color: #f0f0f0;
+  background-color: var(--border-light);
 }
 
 .mentionOptionEntireField.mentionOptionSelected {
@@ -1295,8 +1212,8 @@
   padding: 2px 6px;
   font-size: 10px;
   font-weight: 600;
-  color: #6366f1;
-  background-color: rgba(99, 102, 241, 0.1);
+  color: var(--mention-block);
+  background-color: var(--mention-block-bg);
   border-radius: 3px;
   max-width: 100px;
   overflow: hidden;
@@ -1305,7 +1222,7 @@
 }
 
 .mentionOptionSelected .mentionBlockBadge {
-  color: #4f46e5;
+  color: var(--mention-block);
   background-color: rgba(99, 102, 241, 0.15);
 }
 
@@ -1323,4 +1240,18 @@
 .mentionOptionSelected .mentionBlockIndicator {
   color: var(--accent-color);
   opacity: 0.8;
+}
+
+/* ============================================
+   Error Boundary Fallback
+   ============================================ */
+
+.errorFallback {
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-s);
+  color: var(--light-body-color);
+  background-color: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  border-radius: var(--radius-md);
+  text-align: center;
 }

@@ -6,7 +6,7 @@
   max-width: 100%;
   box-sizing: border-box;
   overflow: visible;
-  padding: 16px;
+  padding: var(--space-3);
 }
 
 /* Loading state */
@@ -14,12 +14,12 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 32px;
+  padding: var(--space-5);
 }
 
 /* Error state */
 .error {
-  padding: 16px;
+  padding: var(--space-3);
   text-align: center;
   color: var(--alert-color);
 }
@@ -35,18 +35,30 @@
   opacity: 0.8;
 }
 
+/* Header with sync status */
+.header {
+  display: flex;
+  justify-content: flex-end;
+  min-height: 0;
+  margin-bottom: var(--space-1);
+}
+
+.header:empty {
+  display: none;
+}
+
 /* Warning banner */
 .warning {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  margin-bottom: 16px;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  margin-bottom: var(--space-3);
   font-size: var(--font-size-xs);
-  color: #92400e;
-  background-color: #fef3c7;
-  border: 1px solid #fcd34d;
-  border-radius: 6px;
+  color: var(--color-warning);
+  background-color: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
+  border-radius: var(--radius-lg);
 }
 
 .warning svg {
@@ -57,18 +69,18 @@
 .composer {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding-bottom: 12px;
-  margin-bottom: 8px;
+  gap: var(--space-2);
+  padding-bottom: var(--space-2);
+  margin-bottom: var(--space-1);
   border-bottom: 1px solid var(--border-color);
   width: 100%;
   box-sizing: border-box;
 }
 
 .composerAvatar {
-  width: 32px;
-  height: 32px;
-  border-radius: 4px;
+  width: var(--avatar-lg);
+  height: var(--avatar-lg);
+  border-radius: var(--radius-md);
   object-fit: cover;
   flex-shrink: 0;
   margin-top: 2px;
@@ -84,8 +96,8 @@
   position: relative;
   background-color: var(--lighter-bg-color);
   border: 1px solid var(--border-color);
-  border-radius: 8px;
-  transition: all 0.15s ease;
+  border-radius: var(--radius-xl);
+  transition: all var(--transition-fast);
   overflow: visible;
   box-sizing: border-box;
 }
@@ -103,14 +115,14 @@
 
 .composerInput {
   width: 100%;
-  padding: 10px 12px;
+  padding: var(--space-2);
   font-family: inherit;
   font-size: var(--font-size-s);
   line-height: 1.5;
   color: var(--base-body-color);
   background-color: transparent;
   border: none;
-  border-radius: 8px 8px 0 0;
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
   resize: none;
   box-sizing: border-box;
 }
@@ -126,7 +138,7 @@
 .composerHint {
   font-size: var(--font-size-xxs);
   color: var(--light-body-color);
-  padding: 0 12px 8px;
+  padding: 0 var(--space-2) var(--space-1);
 }
 
 /* Comments list */
@@ -141,7 +153,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 32px 16px;
+  padding: var(--space-5) var(--space-3);
   text-align: center;
 }
 
@@ -165,7 +177,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 8px;
+  padding: var(--space-1);
   border-top: 1px solid var(--border-color);
   background-color: transparent;
   width: 100%;
@@ -196,9 +208,9 @@
   color: var(--light-body-color);
   background: transparent;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--transition-fast);
 }
 
 .toolbarButton:hover {
@@ -210,6 +222,11 @@
   background-color: var(--border-color);
 }
 
+.toolbarButton:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-color-a30);
+}
+
 .toolbarButton svg {
   width: 16px;
   height: 16px;
@@ -218,48 +235,59 @@
 
 /* Specific toolbar button colors on hover */
 .toolbarButtonUser:hover {
-  color: #7c3aed;
-  background-color: #f3e8ff;
+  color: var(--mention-user);
+  background-color: var(--mention-user-bg);
 }
 
 .toolbarButtonField:hover {
-  color: #1264a3;
-  background-color: #e8f5fa;
+  color: var(--mention-field);
+  background-color: var(--mention-field-bg);
 }
 
 .toolbarButtonRecord:hover {
-  color: #059669;
-  background-color: #ecfdf5;
+  color: var(--mention-record);
+  background-color: var(--mention-record-bg);
 }
 
 .toolbarButtonAsset:hover {
-  color: #0891b2;
-  background-color: #ecfeff;
+  color: var(--mention-asset);
+  background-color: var(--mention-asset-bg);
 }
 
 .toolbarButtonModel:hover {
-  color: #d97706;
-  background-color: #fffbeb;
+  color: var(--mention-model);
+  background-color: var(--mention-model-bg);
+}
+
+/* Disabled toolbar button */
+.toolbarButtonDisabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.toolbarButtonDisabled:hover {
+  color: var(--light-body-color);
+  background-color: transparent;
 }
 
 /* Toolbar tooltip styles */
 .toolbarTooltip {
   position: absolute;
-  bottom: calc(100% + 6px);
+  bottom: calc(100% + var(--space-1));
   left: 50%;
   transform: translateX(-50%);
-  padding: 4px 8px;
+  padding: var(--radius-md) var(--space-1);
   font-size: var(--font-size-xxs);
   font-weight: 500;
-  color: #fff;
-  background-color: #1f2937;
-  border-radius: 4px;
+  color: var(--tooltip-text);
+  background-color: var(--tooltip-bg);
+  border-radius: var(--radius-md);
   white-space: nowrap;
   opacity: 0;
   visibility: hidden;
-  transition: opacity 0.15s ease, visibility 0.15s ease;
+  transition: opacity var(--transition-fast), visibility var(--transition-fast);
   pointer-events: none;
-  z-index: 100;
+  z-index: var(--z-sticky);
 }
 
 .toolbarTooltipArrow {
@@ -267,8 +295,8 @@
   top: 100%;
   left: 50%;
   transform: translateX(-50%);
-  border: 4px solid transparent;
-  border-top-color: #1f2937;
+  border: var(--radius-md) solid transparent;
+  border-top-color: var(--tooltip-bg);
 }
 
 .toolbarButtonWrapper:hover .toolbarTooltip {
@@ -284,20 +312,20 @@
   width: 28px;
   height: 28px;
   padding: 0;
-  color: #fff;
+  color: var(--text-inverse);
   background-color: var(--accent-color);
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all var(--transition-fast);
 }
 
 .sendButton:hover {
-  filter: brightness(0.9);
+  background-color: var(--accent-color-hover);
 }
 
 .sendButton:active {
-  filter: brightness(0.8);
+  background-color: var(--accent-color-active);
 }
 
 .sendButton:disabled {
@@ -305,7 +333,47 @@
   cursor: not-allowed;
 }
 
+.sendButton:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-color-a30);
+}
+
 .sendButton svg {
   width: 14px;
   height: 14px;
+}
+
+/* ============================================
+   Load More Button - Pagination
+   ============================================ */
+
+.loadMoreButton {
+  display: block;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  margin-top: var(--space-1);
+  font-family: inherit;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  color: var(--accent-color);
+  background-color: var(--lighter-bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.loadMoreButton:hover {
+  background-color: var(--light-bg-color);
+  border-color: var(--accent-color);
+}
+
+.loadMoreButton:active {
+  background-color: var(--border-color);
+}
+
+.loadMoreButton:focus-visible {
+  outline: none;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px var(--accent-color-a30);
 }

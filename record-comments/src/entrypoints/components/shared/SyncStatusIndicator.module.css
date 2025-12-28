@@ -1,0 +1,84 @@
+.indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.indicator[data-status="retrying"],
+.indicator[data-status="saving"],
+.indicator[data-status="connecting"] {
+  background-color: var(--status-neutral-bg);
+  color: var(--status-neutral-text);
+}
+
+.indicator[data-status="error"] {
+  background-color: var(--status-error-bg);
+  color: var(--status-error-text);
+}
+
+.indicator[data-status="disconnected"] {
+  background-color: var(--status-neutral-bg);
+  color: var(--status-neutral-text);
+}
+
+.spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+/* Spinner animation keyframe.
+ * NOTE: This keyframe is also defined in dashboard.module.css.
+ * This duplication is INTENTIONAL and correct for CSS Modules:
+ * - CSS Modules scope keyframe names locally (spin → SyncStatusIndicator_spin_xyz789)
+ * - Each module needs its own copy to reference the locally-scoped name
+ * - The `composes` feature only works for class names, not keyframes
+ * If modifying this animation, update dashboard.module.css to match. */
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.text {
+  color: inherit;
+}
+
+.count {
+  opacity: 0.7;
+}
+
+.retryButton {
+  margin-left: 4px;
+  padding: 2px 6px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+
+.retryButton:hover {
+  background-color: var(--status-error-bg-hover);
+}

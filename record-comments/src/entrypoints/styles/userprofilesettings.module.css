@@ -1,0 +1,296 @@
+/**
+ * User Profile Settings Page Styles
+ * Minimal DatoCMS-style design
+ *
+ * ================================================================================
+ * HARDCODED VALUES RATIONALE
+ * ================================================================================
+ *
+ * This file uses hardcoded px values instead of --space-* tokens. This is
+ * intentional for this standalone settings page:
+ *
+ * 1. This page is a separate settings UI, not part of the main comments flow
+ * 2. The design follows DatoCMS dashboard patterns which use absolute sizing
+ * 3. Migration would risk visual regression for minimal benefit
+ *
+ * FOR NEW CODE: Consider using tokens from tokens.css for consistency.
+ *
+ * ================================================================================
+ */
+
+/* Main Container */
+.container {
+  max-width: 700px;
+  margin: 0 auto;
+  padding: 32px;
+}
+
+/* Header */
+.header {
+  margin-bottom: 32px;
+}
+
+.title {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--base-body-color);
+  margin: 0 0 8px 0;
+}
+
+.description {
+  color: var(--light-body-color);
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+/* Loading State */
+.loadingContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  color: var(--light-body-color);
+  gap: 12px;
+}
+
+/* Error State */
+.errorContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  gap: 12px;
+}
+
+.errorMessage {
+  color: var(--alert-color, #ff5e49);
+  font-size: 14px;
+  margin: 0;
+}
+
+/* Unsaved Changes Banner */
+.unsavedBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  background: var(--color-warning-bg-gradient-start);
+  border: 1px solid var(--color-warning-border);
+  border-radius: 4px;
+  margin-top: 32px;
+  font-size: 15px;
+}
+
+.unsavedActions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Sections */
+.section {
+  margin-bottom: 32px;
+}
+
+.sectionTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--light-body-color);
+  margin: 0 0 16px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* User List */
+.userGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--border-color);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+/* User Row */
+.userCard {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+  background: var(--base-body-bg-color);
+}
+
+/* Avatar */
+.avatarSection {
+  flex-shrink: 0;
+}
+
+.avatarWrapper {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  cursor: pointer;
+  /* Reset button styles for accessibility */
+  border: none;
+  background: transparent;
+  padding: 0;
+  border-radius: 50%;
+}
+
+.avatarWrapper:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+}
+
+.avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  object-fit: cover;
+  transition: opacity 0.15s;
+}
+
+.avatarWrapper:hover .avatar {
+  opacity: 0.8;
+}
+
+.customBadge {
+  position: absolute;
+  bottom: -2px;
+  right: -2px;
+  width: 14px;
+  height: 14px;
+  background: var(--accent-color);
+  color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 8px;
+  border: 2px solid var(--base-body-bg-color);
+}
+
+/* Info */
+.infoSection {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.originalName {
+  font-size: 16px;
+  color: var(--base-body-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.aliasArrow {
+  color: var(--light-body-color);
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.aliasName {
+  font-size: 16px;
+  color: var(--accent-color);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  /* Reset button styles for accessibility */
+  border: none;
+  background: transparent;
+  padding: 0;
+  font-family: inherit;
+  text-align: left;
+}
+
+.aliasName:hover {
+  text-decoration: underline;
+}
+
+.aliasName:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+.setAlias {
+  font-size: 15px;
+  color: var(--light-body-color);
+  cursor: pointer;
+  /* Reset button styles for accessibility */
+  border: none;
+  background: transparent;
+  padding: 0;
+  font-family: inherit;
+}
+
+.setAlias:hover {
+  color: var(--accent-color);
+}
+
+.setAlias:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Name Input */
+.nameInput {
+  padding: 6px 10px;
+  font-size: 15px;
+  border: 1px solid var(--accent-color);
+  border-radius: 4px;
+  background: var(--base-body-bg-color);
+  color: var(--base-body-color);
+  outline: none;
+  width: 160px;
+}
+
+/* Actions */
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.iconBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: none;
+  background: transparent;
+  color: var(--light-body-color);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.iconBtn:hover {
+  background: var(--light-bg-color);
+  color: var(--base-body-color);
+}
+
+.iconBtn svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* Empty State */
+.emptyState {
+  padding: 32px;
+  text-align: center;
+  color: var(--light-body-color);
+  font-size: 13px;
+}

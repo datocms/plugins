@@ -1,0 +1,97 @@
+/* TipTap Composer - Rich text editor styling */
+
+.editor {
+  width: 100%;
+  min-height: 24px;
+  padding: 10px 12px;
+  font-family: inherit;
+  font-size: var(--font-size-s, 13px);
+  line-height: 1.5;
+  color: var(--base-body-color, #34363a);
+  background-color: transparent;
+  border: none;
+  border-radius: 8px 8px 0 0;
+  resize: none;
+  box-sizing: border-box;
+  overflow: visible;
+}
+
+/* Dashboard variant - larger padding and font */
+.editorLarge {
+  padding: 14px 16px;
+  font-size: var(--text-base, 15px);
+}
+
+/* ProseMirror specific styles */
+.editor :global(.ProseMirror) {
+  outline: none;
+  min-height: 20px;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* Placeholder styling */
+.editor :global(.ProseMirror p.is-editor-empty:first-child::before) {
+  content: attr(data-placeholder);
+  color: var(--light-body-color, #848484);
+  pointer-events: none;
+  height: 0;
+  float: left;
+}
+
+/* Ensure paragraphs don't have extra margins */
+.editor :global(.ProseMirror p) {
+  margin: 0;
+}
+
+/* Multiple paragraphs have spacing */
+.editor :global(.ProseMirror p + p) {
+  margin-top: 0.5em;
+}
+
+/* Focus styles are handled by the parent wrapper */
+.editor :global(.ProseMirror:focus) {
+  outline: none;
+}
+
+/* Mention chips should be inline with text */
+.editor :global(.ProseMirror) span[contenteditable="false"] {
+  user-select: all;
+}
+
+/* Fix for mention chip vertical alignment */
+.editor :global(.ProseMirror) > p {
+  display: inline;
+}
+
+/* Ensure mention wrappers display inline */
+.editor :global(.ProseMirror) [class*="MentionWrapper"] {
+  display: inline;
+}
+
+/* Remove top margin from asset block when in composer to prevent empty line above */
+.editor :global(.ProseMirror) [class*="assetMentionBlock"] {
+  margin-top: 0;
+}
+
+/* ============================================
+   Mention Dropdown Positioning
+   ============================================ */
+
+.suggestionContainer {
+  position: absolute;
+  z-index: 1000;
+}
+
+/* Position dropdowns above cursor when composer is at bottom */
+.suggestionContainerAbove {
+  bottom: 100%;
+  margin-bottom: 8px;
+}
+
+/* Position dropdowns below cursor for sidebar composer */
+.suggestionContainerBelow {
+  top: 100%;
+  margin-top: 8px;
+}
