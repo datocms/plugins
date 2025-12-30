@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-record-comments",
   "homepage": "https://github.com/datocms/plugins/tree/master/record-comments#readme",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "DatoCMS <support@datocms.com>",
   "description": "A plugin that allows you and your project collaborators to leave comments under a record",
   "keywords": [

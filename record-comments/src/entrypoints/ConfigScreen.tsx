@@ -64,14 +64,21 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
 
   const handleSave = async () => {
     setIsSaving(true);
-    await ctx.updatePluginParameters({
-      ...pluginParams,
-      cdaToken,
-      realTimeUpdatesEnabled: realTimeEnabled,
-      dashboardEnabled,
-    });
-    await ctx.notice('Settings saved successfully!');
-    setIsSaving(false);
+    try {
+      await ctx.updatePluginParameters({
+        ...pluginParams,
+        cdaToken,
+        realTimeUpdatesEnabled: realTimeEnabled,
+        dashboardEnabled,
+      });
+      ctx.notice('Settings saved successfully!');
+    } catch (error) {
+      ctx.alert(
+        `Failed to save settings: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const getClient = useCallback(() => {

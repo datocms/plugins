@@ -8,6 +8,7 @@ type SyncStatusIndicatorProps = {
   subscriptionError: string | null;
   retryState: RetryState;
   onRetry?: () => void;
+  realTimeEnabled: boolean;
 };
 
 function SyncStatusIndicatorComponent({
@@ -15,6 +16,7 @@ function SyncStatusIndicatorComponent({
   subscriptionError,
   retryState,
   onRetry,
+  realTimeEnabled,
 }: SyncStatusIndicatorProps) {
   if (retryState.isRetrying) {
     return (
@@ -69,16 +71,21 @@ function SyncStatusIndicatorComponent({
     );
   }
 
-  if (subscriptionStatus === SUBSCRIPTION_STATUS.CLOSED) {
+  if (realTimeEnabled && subscriptionStatus === SUBSCRIPTION_STATUS.CLOSED) {
     return (
       <div
         className={styles.indicator}
-        data-status="disconnected"
-        role="status"
-        aria-live="polite"
+        data-status="error"
+        role="alert"
+        aria-live="assertive"
       >
-        <span className={styles.icon} aria-hidden="true">&#x25CF;</span>
-        <span className={styles.text}>Offline</span>
+        <span className={styles.icon} aria-hidden="true">!</span>
+        <span className={styles.text}>Connection lost</span>
+        {onRetry && (
+          <button type="button" className={styles.retryButton} onClick={onRetry}>
+            Retry
+          </button>
+        )}
       </div>
     );
   }

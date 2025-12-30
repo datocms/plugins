@@ -310,6 +310,7 @@ const CommentsBar = ({ ctx }: Props) => {
               subscriptionError={errorInfo?.message ?? null}
               retryState={retryState}
               onRetry={retrySubscription}
+              realTimeEnabled={realTimeEnabled}
             />
           </div>
 
