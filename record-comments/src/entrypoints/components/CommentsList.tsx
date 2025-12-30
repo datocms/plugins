@@ -22,6 +22,13 @@ type CommentsListProps = {
   upvoteComment: (id: string, userUpvoted: boolean, parentCommentId?: string) => void;
   replyComment: (parentCommentId: string) => void;
   onPickerRequest?: (type: 'asset' | 'record', composerRef: RefObject<TipTapComposerRef | null>) => void;
+  /** Callback when a model is selected for record mention - opens record picker */
+  onRecordModelSelect?: (
+    model: ModelInfo,
+    composerRef: RefObject<TipTapComposerRef | null>
+  ) => void;
+  /** Models available for record mentions */
+  readableModels?: ModelInfo[];
   canMentionAssets?: boolean;
   canMentionModels?: boolean;
   ctx: RenderItemFormSidebarCtx;
@@ -44,6 +51,8 @@ const CommentsListComponent = ({
   upvoteComment,
   replyComment,
   onPickerRequest,
+  onRecordModelSelect,
+  readableModels,
   canMentionAssets,
   canMentionModels,
   ctx,
@@ -74,6 +83,8 @@ const CommentsListComponent = ({
             projectUsers={projectUsers}
             projectModels={projectModels}
             onPickerRequest={onPickerRequest}
+            onRecordModelSelect={onRecordModelSelect}
+            readableModels={readableModels}
             canMentionAssets={canMentionAssets}
             canMentionModels={canMentionModels}
             ctx={ctx}

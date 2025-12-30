@@ -170,33 +170,29 @@ const CommentsBar = ({ ctx }: Props) => {
 
   const handleReplyPickerRequest = useCallback(
     async (type: 'asset' | 'record', replyComposerRef: RefObject<TipTapComposerRef | null>) => {
+      // Record mentions are now handled by the Comment component's own dropdown
+      if (type !== 'asset') return;
+      if (!canMentionAssets) return;
+
       activeReplyComposerRef.current = replyComposerRef.current;
       setIsPickerInProgress(true);
 
-      if (type === 'asset') {
-        if (!canMentionAssets) {
+      try {
+        const upload = await ctx.selectUpload({ multiple: false });
+        if (!upload) {
+          activeReplyComposerRef.current?.focus();
           setIsPickerInProgress(false);
           return;
         }
-        try {
-          const upload = await ctx.selectUpload({ multiple: false });
-          if (!upload) {
-            activeReplyComposerRef.current?.focus();
-            setIsPickerInProgress(false);
-            return;
-          }
 
-          const assetMention = createAssetMention(upload);
-          await insertMentionWithRetry(activeReplyComposerRef, assetMention);
-        } catch (error) {
-          logError('Asset picker error:', error);
-          ctx.alert(ERROR_MESSAGES.ASSET_PICKER_FAILED);
-        } finally {
-          setIsPickerInProgress(false);
-          activeReplyComposerRef.current = null;
-        }
-      } else if (type === 'record') {
-        setIsRecordModelSelectorOpen(true);
+        const assetMention = createAssetMention(upload);
+        await insertMentionWithRetry(activeReplyComposerRef, assetMention);
+      } catch (error) {
+        logError('Asset picker error:', error);
+        ctx.alert(ERROR_MESSAGES.ASSET_PICKER_FAILED);
+      } finally {
+        setIsPickerInProgress(false);
+        activeReplyComposerRef.current = null;
       }
     },
     [ctx, canMentionAssets]
@@ -250,6 +246,60 @@ const CommentsBar = ({ ctx }: Props) => {
       } finally {
         setIsPickerInProgress(false);
         activeReplyComposerRef.current = null;
+      }
+    },
+    [ctx, client]
+  );
+
+  // Callback for Comment component's record model selection (renders dropdown inside comment)
+  const handleRecordModelSelectFromComment = useCallback(
+    async (
+      model: { id: string; apiKey: string; name: string; isBlockModel: boolean },
+      targetComposerRef: RefObject<TipTapComposerRef | null>
+    ) => {
+      const targetComposer = targetComposerRef.current;
+      if (!targetComposer) {
+        logWarn('No valid composer target for record mention from comment, aborting');
+        return;
+      }
+
+      setIsPickerInProgress(true);
+
+      try {
+        const record = await ctx.selectItem(model.id, { multiple: false });
+        if (!record) {
+          targetComposer.focus();
+          return;
+        }
+
+        const itemType = ctx.itemTypes[model.id];
+
+        let fields: Awaited<ReturnType<typeof ctx.loadItemTypeFields>> = [];
+        if (itemType) {
+          try {
+            fields = await ctx.loadItemTypeFields(model.id);
+          } catch (fieldError) {
+            logError('Failed to load item type fields for record mention', fieldError, { modelId: model.id });
+          }
+        }
+
+        const mainLocale = ctx.site.attributes.locales[0];
+
+        const recordMention = await createRecordMention(
+          { id: record.id, attributes: record.attributes },
+          { id: model.id, apiKey: model.apiKey, name: model.name, isBlockModel: model.isBlockModel },
+          itemType,
+          fields,
+          mainLocale,
+          client
+        );
+
+        await insertMentionWithRetry(targetComposerRef, recordMention);
+      } catch (error) {
+        logError('Record picker error:', error);
+        ctx.alert(ERROR_MESSAGES.RECORD_PICKER_FAILED);
+      } finally {
+        setIsPickerInProgress(false);
       }
     },
     [ctx, client]
@@ -387,6 +437,8 @@ const CommentsBar = ({ ctx }: Props) => {
             upvoteComment={upvoteComment}
             replyComment={replyComment}
             onPickerRequest={handleReplyPickerRequest}
+            onRecordModelSelect={handleRecordModelSelectFromComment}
+            readableModels={readableModels}
             canMentionAssets={canMentionAssets}
             canMentionModels={canMentionModels}
             ctx={ctx}

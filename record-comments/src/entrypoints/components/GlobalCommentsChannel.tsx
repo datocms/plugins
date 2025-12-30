@@ -145,54 +145,55 @@ const GlobalCommentsChannel = ({
   });
 
   const activeReplyComposerRef = useRef<TipTapComposerRef | null>(null);
-  const [isReplyRecordSelectorOpen, setIsReplyRecordSelectorOpen] = useState(false);
   const [isReplyPickerLoading, setIsReplyPickerLoading] = useState(false);
 
   const handleReplyPickerRequest = useCallback(
     async (type: 'asset' | 'record', replyComposerRef: RefObject<TipTapComposerRef | null>) => {
+      // Record mentions are now handled by the Comment component's own dropdown
+      if (type !== 'asset') return;
       if (isReplyPickerLoading) return;
+      if (!canMentionAssets) return;
+
       activeReplyComposerRef.current = replyComposerRef.current;
+      setIsReplyPickerLoading(true);
 
-      if (type === 'asset') {
-        if (!canMentionAssets) return;
-        setIsReplyPickerLoading(true);
-        try {
-          const upload = await ctx.selectUpload({ multiple: false });
-          if (!upload) {
-            activeReplyComposerRef.current?.focus();
-            return;
-          }
-
-          const assetMention = createAssetMention(upload);
-          activeReplyComposerRef.current?.insertMention(assetMention);
-        } catch (error) {
-          logError('Reply asset picker error:', error);
-          ctx.alert(ERROR_MESSAGES.ASSET_PICKER_FAILED);
+      try {
+        const upload = await ctx.selectUpload({ multiple: false });
+        if (!upload) {
           activeReplyComposerRef.current?.focus();
-        } finally {
-          setIsReplyPickerLoading(false);
+          return;
         }
-      } else if (type === 'record') {
-        setIsReplyRecordSelectorOpen(true);
+
+        const assetMention = createAssetMention(upload);
+        activeReplyComposerRef.current?.insertMention(assetMention);
+      } catch (error) {
+        logError('Reply asset picker error:', error);
+        ctx.alert(ERROR_MESSAGES.ASSET_PICKER_FAILED);
+        activeReplyComposerRef.current?.focus();
+      } finally {
+        setIsReplyPickerLoading(false);
       }
     },
     [ctx, canMentionAssets, isReplyPickerLoading]
   );
 
-  const handleReplyRecordModelSelect = useCallback(
-    async (model: ModelInfo) => {
-      setIsReplyRecordSelectorOpen(false);
-
-      if (!activeReplyComposerRef.current) {
+  // Callback for Comment component's record model selection (renders dropdown inside comment)
+  const handleRecordModelSelectFromComment = useCallback(
+    async (
+      model: ModelInfo,
+      targetComposerRef: RefObject<TipTapComposerRef | null>
+    ) => {
+      const targetComposer = targetComposerRef.current;
+      if (!targetComposer) {
         return;
       }
 
       setIsReplyPickerLoading(true);
+
       try {
         const record = await ctx.selectItem(model.id, { multiple: false });
-
         if (!record) {
-          activeReplyComposerRef.current?.focus();
+          targetComposer.focus();
           return;
         }
 
@@ -211,22 +212,16 @@ const GlobalCommentsChannel = ({
           modelEmoji
         );
 
-        activeReplyComposerRef.current?.insertMention(recordMention);
+        targetComposer.insertMention(recordMention);
       } catch (error) {
         logError('Reply record picker error:', error);
         ctx.alert(ERROR_MESSAGES.RECORD_PICKER_FAILED);
-        activeReplyComposerRef.current?.focus();
       } finally {
         setIsReplyPickerLoading(false);
       }
     },
     [ctx, client]
   );
-
-  const handleReplyRecordSelectorClose = useCallback(() => {
-    setIsReplyRecordSelectorOpen(false);
-    activeReplyComposerRef.current?.focus();
-  }, []);
 
   const sortedComments = useMemo(
     () =>
@@ -324,6 +319,8 @@ const GlobalCommentsChannel = ({
                   ctx={ctx}
                   canMentionFields={false}
                   onPickerRequest={handleReplyPickerRequest}
+                  onRecordModelSelect={handleRecordModelSelectFromComment}
+                  readableModels={readableModels}
                   canMentionAssets={canMentionAssets}
                   canMentionModels={canMentionModels}
                   isPickerActive={isReplyPickerLoading}
@@ -385,15 +382,6 @@ const GlobalCommentsChannel = ({
                 models={readableModels}
                 onSelect={handleRecordModelSelect}
                 onClose={handleRecordModelSelectorClose}
-                position="above"
-              />
-            )}
-
-            {isReplyRecordSelectorOpen && (
-              <RecordModelSelectorDropdown
-                models={readableModels}
-                onSelect={handleReplyRecordModelSelect}
-                onClose={handleReplyRecordSelectorClose}
                 position="above"
               />
             )}

@@ -7,6 +7,7 @@ import CommentContentRenderer from './CommentContentRenderer';
 import CommentActions from './CommentActions';
 import ComposerBox from './ComposerBox';
 import ComposerToolbar from './ComposerToolbar';
+import RecordModelSelectorDropdown from './RecordModelSelectorDropdown';
 import { TipTapComposer, type TipTapComposerRef } from './tiptap/TipTapComposer';
 import { UpvoteIcon, ChevronDownIcon } from './Icons';
 
@@ -53,11 +54,18 @@ type CommentProps = {
   projectModels: ModelInfo[];
   ctx?: RenderItemFormSidebarCtx | RenderPageCtx;
   canMentionFields?: boolean;
-  // Picker request callback for asset/record mentions in edit mode
+  // Picker request callback for asset mentions in edit mode
   onPickerRequest?: (
     type: 'asset' | 'record',
     composerRef: RefObject<TipTapComposerRef | null>
   ) => void;
+  /** Callback when a model is selected for record mention - opens record picker */
+  onRecordModelSelect?: (
+    model: ModelInfo,
+    composerRef: RefObject<TipTapComposerRef | null>
+  ) => void;
+  /** Models available for record mentions */
+  readableModels?: ModelInfo[];
   canMentionAssets?: boolean;
   canMentionModels?: boolean;
   /** When true, prevents empty comments from being auto-deleted on blur */
@@ -97,11 +105,13 @@ function compareRemainingProps(prev: CommentProps, next: CommentProps): boolean 
     prev.modelFields === next.modelFields &&
     prev.projectUsers === next.projectUsers &&
     prev.projectModels === next.projectModels &&
+    prev.readableModels === next.readableModels &&
     prev.deleteComment === next.deleteComment &&
     prev.editComment === next.editComment &&
     prev.upvoteComment === next.upvoteComment &&
     prev.replyComment === next.replyComment &&
-    prev.onPickerRequest === next.onPickerRequest
+    prev.onPickerRequest === next.onPickerRequest &&
+    prev.onRecordModelSelect === next.onRecordModelSelect
   );
 }
 
@@ -119,12 +129,15 @@ const Comment = memo(function Comment({
   ctx,
   canMentionFields = true,
   onPickerRequest,
+  onRecordModelSelect,
+  readableModels = [],
   canMentionAssets = false,
   canMentionModels = true,
   isPickerActive = false,
   typedUsers = [],
   dropdownPosition = 'below',
 }: CommentProps) {
+  const [isRecordSelectorOpen, setIsRecordSelectorOpen] = useState(false);
   const userUpvotedThisComment = commentObject.usersWhoUpvoted.some(
     (upvoter) => upvoter.email === currentUserEmail
   );
@@ -354,10 +367,20 @@ const Comment = memo(function Comment({
   }, [onPickerRequest, composerRef]);
 
   const handleRecordToolbarClick = useCallback(() => {
-    if (onPickerRequest) {
-      onPickerRequest('record', composerRef);
+    setIsRecordSelectorOpen(true);
+  }, []);
+
+  const handleRecordModelSelected = useCallback((model: ModelInfo) => {
+    setIsRecordSelectorOpen(false);
+    if (onRecordModelSelect) {
+      onRecordModelSelect(model, composerRef);
     }
-  }, [onPickerRequest, composerRef]);
+  }, [onRecordModelSelect, composerRef]);
+
+  const handleRecordSelectorClose = useCallback(() => {
+    setIsRecordSelectorOpen(false);
+    composerRef.current?.focus();
+  }, [composerRef]);
 
   return (
     <div ref={commentRef} className={cn(styles.comment, isReply && styles.reply, userIsAuthor && styles.ownComment)}>
@@ -423,6 +446,14 @@ const Comment = memo(function Comment({
                   dropdownPosition={dropdownPosition}
                   ctx={ctx?.mode === 'renderItemFormSidebar' ? ctx : undefined}
                 />
+                {isRecordSelectorOpen && readableModels.length > 0 && (
+                  <RecordModelSelectorDropdown
+                    models={readableModels}
+                    onSelect={handleRecordModelSelected}
+                    onClose={handleRecordSelectorClose}
+                    position={dropdownPosition}
+                  />
+                )}
                 <ComposerToolbar
                   onUserClick={handleUserToolbarClick}
                   onFieldClick={handleFieldToolbarClick}
@@ -558,6 +589,8 @@ const Comment = memo(function Comment({
               ctx={ctx}
               canMentionFields={canMentionFields}
               onPickerRequest={onPickerRequest}
+              onRecordModelSelect={onRecordModelSelect}
+              readableModels={readableModels}
               canMentionAssets={canMentionAssets}
               canMentionModels={canMentionModels}
               isPickerActive={isPickerActive}
