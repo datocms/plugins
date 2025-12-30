@@ -84,6 +84,10 @@ const CommentsBar = ({ ctx }: Props) => {
     onRecordCreated: setCommentRecordId,
   });
 
+  const handleOrphanedDraft = useCallback(() => {
+    ctx.alert('The comment you were replying to was deleted by another user.');
+  }, [ctx]);
+
   const {
     comments,
     setComments,
@@ -100,6 +104,8 @@ const CommentsBar = ({ ctx }: Props) => {
     client,
     isSyncAllowed,
     onCommentRecordIdChange: setCommentRecordId,
+    currentUserEmail: userEmail,
+    onOrphanedDraft: handleOrphanedDraft,
   });
 
   useEffect(() => {

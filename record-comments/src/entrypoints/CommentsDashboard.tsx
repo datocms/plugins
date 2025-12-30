@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useState } from 'react';
+import { useMemo, useCallback, useState, useRef } from 'react';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import { buildClient } from '@datocms/cma-client-browser';
 import { Canvas } from 'datocms-react-ui';
@@ -20,6 +20,7 @@ import {
 } from '@hooks/useAllCommentsData';
 import { useCommentsData } from '@hooks/useCommentsData';
 import { useCommentFilters } from '@hooks/useCommentFilters';
+import { useScrollCompensation } from '@hooks/useScrollCompensation';
 
 import { getCurrentUserInfo } from '@utils/userTransformers';
 import { parsePluginParams, hasCdaToken } from '@utils/pluginParams';
@@ -51,6 +52,14 @@ const CommentsDashboard = ({ ctx }: CommentsDashboardProps) => {
 
   const [isSyncAllowed, setIsSyncAllowed] = useState(true);
 
+  const handleOrphanedDraft = useCallback(() => {
+    ctx.alert('The comment you were replying to was deleted by another user.');
+  }, [ctx]);
+
+  // Scroll container ref (passed to GlobalCommentsChannel)
+  const commentsListRef = useRef<HTMLDivElement>(null);
+  const { onBeforeSync, onAfterSync } = useScrollCompensation(commentsListRef);
+
   const {
     comments,
     setComments,
@@ -65,6 +74,10 @@ const CommentsDashboard = ({ ctx }: CommentsDashboardProps) => {
     cdaToken,
     client,
     isSyncAllowed,
+    currentUserEmail: userEmail,
+    onOrphanedDraft: handleOrphanedDraft,
+    onBeforeSync,
+    onAfterSync,
   });
 
   const {
@@ -155,6 +168,7 @@ const CommentsDashboard = ({ ctx }: CommentsDashboardProps) => {
                 status={status}
                 isFiltering={isFiltering}
                 onSyncAllowedChange={setIsSyncAllowed}
+                commentsListRef={commentsListRef}
               />
             </MentionPermissionsProvider>
           </ProjectDataProvider>

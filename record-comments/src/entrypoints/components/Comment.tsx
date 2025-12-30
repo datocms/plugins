@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
+import type { RenderItemFormSidebarCtx, RenderPageCtx } from 'datocms-plugin-sdk';
 import ReactTimeAgo from 'react-time-ago';
 
 // Components
@@ -51,7 +51,7 @@ type CommentProps = {
   modelFields?: FieldInfo[];
   projectUsers: UserInfo[];
   projectModels: ModelInfo[];
-  ctx?: RenderItemFormSidebarCtx;
+  ctx?: RenderItemFormSidebarCtx | RenderPageCtx;
   canMentionFields?: boolean;
   // Picker request callback for asset/record mentions in edit mode
   onPickerRequest?: (
@@ -64,6 +64,8 @@ type CommentProps = {
   isPickerActive?: boolean;
   /** Users with type information for upvoter name resolution */
   typedUsers?: TypedUserInfo[];
+  /** Position of mention dropdowns: 'above' or 'below' the input */
+  dropdownPosition?: 'above' | 'below';
 };
 
 function arePropsEqual(prev: CommentProps, next: CommentProps): boolean {
@@ -91,6 +93,7 @@ function compareRemainingProps(prev: CommentProps, next: CommentProps): boolean 
     prev.canMentionAssets === next.canMentionAssets &&
     prev.canMentionModels === next.canMentionModels &&
     prev.isPickerActive === next.isPickerActive &&
+    prev.dropdownPosition === next.dropdownPosition &&
     prev.modelFields === next.modelFields &&
     prev.projectUsers === next.projectUsers &&
     prev.projectModels === next.projectModels &&
@@ -120,6 +123,7 @@ const Comment = memo(function Comment({
   canMentionModels = true,
   isPickerActive = false,
   typedUsers = [],
+  dropdownPosition = 'below',
 }: CommentProps) {
   const userUpvotedThisComment = commentObject.usersWhoUpvoted.some(
     (upvoter) => upvoter.email === currentUserEmail
@@ -190,6 +194,10 @@ const Comment = memo(function Comment({
   const isPickerActiveRef = useRef(isPickerActive);
   isPickerActiveRef.current = isPickerActive;
 
+  // Refs to track current values for blur handler (avoids stale closure issues)
+  const isSegmentsEmptyRef = useRef(true);
+  const isNewCommentRef = useRef(isNewComment);
+
   const {
     isEditing,
     setIsEditing,
@@ -222,6 +230,10 @@ const Comment = memo(function Comment({
     [segments]
   );
 
+  // Keep refs updated synchronously to avoid stale closures in blur handler
+  isSegmentsEmptyRef.current = isSegmentsEmpty;
+  isNewCommentRef.current = isNewComment;
+
   const handleSave = () => {
     if (isSegmentsEmpty) {
       if (isTopLevel) {
@@ -240,7 +252,16 @@ const Comment = memo(function Comment({
     }
   };
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
+    const confirmed = await ctx?.openConfirm({
+      title: 'Delete comment',
+      content: 'Are you sure you want to delete this comment?',
+      choices: [{ label: 'Delete', value: true, intent: 'negative' }],
+      cancel: { label: 'Cancel', value: false },
+    });
+
+    if (!confirmed) return;
+
     if (isTopLevel) {
       deleteComment(commentObject.id);
     } else {
@@ -256,24 +277,56 @@ const Comment = memo(function Comment({
     }
   };
 
+  const commentRef = useRef<HTMLDivElement>(null);
+
   const handleReply = () => {
     setRepliesExpanded(true);
     replyComment(commentObject.id);
+
+    // Scroll to ensure the new reply composer is visible
+    // Uses setTimeout to wait for React to render the new reply
+    setTimeout(() => {
+      if (commentRef.current) {
+        // Find the last reply element (the newly created one)
+        const repliesContainer = commentRef.current.querySelector('[class*="replies"]');
+        if (repliesContainer) {
+          const lastReply = repliesContainer.lastElementChild;
+          if (lastReply) {
+            lastReply.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            return;
+          }
+        }
+        // Fallback: scroll the whole comment into view
+        commentRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      }
+    }, 100);
   };
 
   const handleEscape = () => {
     if (isNewComment) {
-      handleDelete();
+      // For new comments, just delete without confirmation
+      if (isTopLevel) {
+        deleteComment(commentObject.id);
+      } else {
+        deleteComment(commentObject.id, commentObject.parentCommentId);
+      }
     } else {
       resetToOriginal();
     }
   };
 
   // 150ms delay allows button clicks to register before blur
+  // Uses refs to check current values, avoiding stale closure issues when
+  // the user types quickly after blur fires
   const handleBlur = () => {
     setTimeout(() => {
-      if (isSegmentsEmpty && isNewComment && !isPickerActiveRef.current) {
-        handleDelete();
+      if (isSegmentsEmptyRef.current && isNewCommentRef.current && !isPickerActiveRef.current) {
+        // For empty new comments, just delete without confirmation
+        if (isTopLevel) {
+          deleteComment(commentObject.id);
+        } else {
+          deleteComment(commentObject.id, commentObject.parentCommentId);
+        }
       }
     }, 150);
   };
@@ -307,7 +360,7 @@ const Comment = memo(function Comment({
   }, [onPickerRequest, composerRef]);
 
   return (
-    <div className={cn(styles.comment, isReply && styles.reply, userIsAuthor && styles.ownComment)}>
+    <div ref={commentRef} className={cn(styles.comment, isReply && styles.reply, userIsAuthor && styles.ownComment)}>
       {!isEditing && (
         <CommentActions
           onUpvote={handleUpvote}
@@ -347,6 +400,9 @@ const Comment = memo(function Comment({
           {isEditing ? (
             <div className={styles.editContainer}>
               <ComposerBox compact>
+{/* ctx is only passed for sidebar context because TipTapComposer uses it
+    for field mention navigation, which requires sidebar-specific APIs like
+    formValues. The dashboard (RenderPageCtx) doesn't support field mentions. */}
                 <TipTapComposer
                   ref={composerRef}
                   segments={segments}
@@ -364,7 +420,8 @@ const Comment = memo(function Comment({
                   onAssetTrigger={handleAssetToolbarClick}
                   onRecordTrigger={handleRecordToolbarClick}
                   autoFocus
-                  ctx={ctx}
+                  dropdownPosition={dropdownPosition}
+                  ctx={ctx?.mode === 'renderItemFormSidebar' ? ctx : undefined}
                 />
                 <ComposerToolbar
                   onUserClick={handleUserToolbarClick}
@@ -505,6 +562,7 @@ const Comment = memo(function Comment({
               canMentionModels={canMentionModels}
               isPickerActive={isPickerActive}
               typedUsers={typedUsers}
+              dropdownPosition={dropdownPosition}
             />
           ))}
         </div>

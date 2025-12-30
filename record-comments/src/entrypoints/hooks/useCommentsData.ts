@@ -32,6 +32,14 @@ type BaseParams = {
   cdaToken: string | undefined;
   client: Client | null;
   isSyncAllowed: boolean;
+  /** Current user's email for identifying their drafts */
+  currentUserEmail: string;
+  /** Callback when a draft reply's parent comment was deleted */
+  onOrphanedDraft?: () => void;
+  /** Called before sync updates are applied - use to save scroll position */
+  onBeforeSync?: () => void;
+  /** Called after sync updates are applied - use to restore scroll position */
+  onAfterSync?: () => void;
 };
 
 type RecordCommentsParams = BaseParams & {
@@ -63,7 +71,7 @@ function isRecordParams(params: UseCommentsDataParams): params is RecordComments
 }
 
 export function useCommentsData(params: UseCommentsDataParams): UseCommentsDataReturn {
-  const { realTimeEnabled, cdaToken, client, isSyncAllowed } = params;
+  const { realTimeEnabled, cdaToken, client, isSyncAllowed, currentUserEmail, onOrphanedDraft, onBeforeSync, onAfterSync } = params;
   const isRecordContext = isRecordParams(params);
 
   let modelId: string;
@@ -97,6 +105,10 @@ export function useCommentsData(params: UseCommentsDataParams): UseCommentsDataR
     filterParams: { modelId, recordId },
     subscriptionEnabled,
     onCommentRecordIdChange,
+    currentUserEmail,
+    onOrphanedDraft,
+    onBeforeSync,
+    onAfterSync,
   });
 
   return {

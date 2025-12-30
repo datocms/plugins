@@ -56,6 +56,8 @@ type GlobalCommentsChannelProps = {
   status: string;
   isFiltering: boolean;
   onSyncAllowedChange: (isSyncAllowed: boolean) => void;
+  /** Ref for the comments list scroll container (for scroll compensation during sync) */
+  commentsListRef: RefObject<HTMLDivElement>;
 };
 
 const GlobalCommentsChannel = ({
@@ -75,6 +77,7 @@ const GlobalCommentsChannel = ({
   status,
   isFiltering,
   onSyncAllowedChange,
+  commentsListRef,
 }: GlobalCommentsChannelProps) => {
   const { projectUsers, projectModels, currentUserEmail: userEmail, typedUsers } = useProjectDataContext();
   const { canMentionAssets, canMentionModels } = useMentionPermissionsContext();
@@ -82,7 +85,6 @@ const GlobalCommentsChannel = ({
   const [composerSegments, setComposerSegments] = useState<CommentSegment[]>([]);
   const composerRef = useRef<TipTapComposerRef>(null);
   const pendingNewReplies = useRef(new Set<string>());
-  const commentsListRef = useRef<HTMLDivElement>(null);
 
   const operationQueue = useOperationQueue({
     client,
@@ -319,12 +321,14 @@ const GlobalCommentsChannel = ({
                   modelFields={[]}
                   projectUsers={projectUsers}
                   projectModels={projectModels}
+                  ctx={ctx}
                   canMentionFields={false}
                   onPickerRequest={handleReplyPickerRequest}
                   canMentionAssets={canMentionAssets}
                   canMentionModels={canMentionModels}
                   isPickerActive={isReplyPickerLoading}
                   typedUsers={typedUsers}
+                  dropdownPosition="above"
                 />
               </CommentErrorBoundary>
             </div>

@@ -245,18 +245,24 @@
 
 /* ============================================
    Slack-style Collapsible Hover Actions
+   More forgiving hover with larger hit area and delay
    ============================================ */
 
 /* Wrapper - absolute positioned at top-right of .comment, hidden by default */
 .actionsWrapper {
   position: absolute;
-  top: 8px;
-  right: 4px;
+  top: 0;
+  right: 0;
   display: flex;
   justify-content: flex-end;
+  align-items: flex-start;
+  /* Larger invisible hit area for easier hovering */
+  padding: 8px 4px 12px 24px;
   opacity: 0;
   visibility: hidden;
   z-index: var(--z-above);
+  /* Delay before hiding - gives users time to reach the menu */
+  transition: opacity 0.15s ease 0.2s, visibility 0s linear 0.35s;
 }
 
 /* Show actionsWrapper only when THIS comment is hovered or focused within */
@@ -264,13 +270,22 @@
 .comment:focus-within > .actionsWrapper {
   opacity: 1;
   visibility: visible;
+  /* Remove delay when showing */
+  transition: opacity 0.1s ease, visibility 0s linear;
+}
+
+/* Keep wrapper visible when hovering over it (for the expanded menu) */
+.actionsWrapper:hover {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity 0.1s ease, visibility 0s linear;
 }
 
 /* Full action bar - light gray theme */
 .actions {
   position: absolute;
-  top: 0;
-  right: 0;
+  top: 8px;
+  right: 4px;
   display: flex;
   align-items: center;
   gap: 2px;
@@ -281,6 +296,8 @@
   box-shadow: var(--shadow-subtle);
   opacity: 0;
   visibility: hidden;
+  /* Smooth transition with delay before collapsing */
+  transition: opacity 0.15s ease 0.15s, visibility 0s linear 0.3s;
 }
 
 /* Collapsed trigger - three-dot icon button */
@@ -295,14 +312,17 @@
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-subtle);
   cursor: pointer;
+  transition: background-color 0.15s ease, transform 0.1s ease;
 }
 
 .actionsTrigger svg {
   color: var(--text-secondary);
+  transition: color 0.15s ease;
 }
 
 .actionsTrigger:hover {
   background-color: var(--border-default);
+  transform: scale(1.05);
 }
 
 .actionsTrigger:hover svg {
@@ -312,13 +332,17 @@
 /* Hide trigger and show full actions on wrapper hover or focus-within */
 .actionsWrapper:hover .actionsTrigger,
 .actionsWrapper:focus-within .actionsTrigger {
-  display: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.1s ease, visibility 0s linear 0.1s;
 }
 
 .actionsWrapper:hover .actions,
 .actionsWrapper:focus-within .actions {
   opacity: 1;
   visibility: visible;
+  /* Show immediately without delay */
+  transition: opacity 0.1s ease, visibility 0s linear;
 }
 
 .actionBtn {

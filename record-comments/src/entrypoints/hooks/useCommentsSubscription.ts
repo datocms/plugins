@@ -4,13 +4,88 @@ import { useQuerySubscription } from 'react-datocms';
 import type { Client } from '@datocms/cma-client-browser';
 import { COMMENTS_MODEL_API_KEY } from '@/constants';
 import { findCommentsModel } from '@utils/itemTypeUtils';
-import { type CommentType, type QueryResult, parseComments } from '@ctypes/comments';
+import { type CommentType, type QueryResult, parseComments, isContentEmpty } from '@ctypes/comments';
 import { logError } from '@/utils/errorLogger';
 import {
   type SubscriptionErrorType,
   categorizeSubscriptionError,
   normalizeError,
 } from '@utils/errorCategorization';
+
+type Draft = {
+  comment: CommentType;
+  parentId?: string; // undefined for top-level drafts
+};
+
+/**
+ * Extracts draft comments (empty content by current user) from comments list.
+ * Returns both top-level drafts and reply drafts with their parent IDs.
+ */
+function extractDrafts(comments: CommentType[], currentUserEmail: string): Draft[] {
+  const drafts: Draft[] = [];
+
+  for (const comment of comments) {
+    // Check if this is a top-level draft
+    if (isContentEmpty(comment.content) && comment.author.email === currentUserEmail) {
+      drafts.push({ comment });
+    }
+
+    // Check replies for drafts
+    if (comment.replies) {
+      for (const reply of comment.replies) {
+        if (isContentEmpty(reply.content) && reply.author.email === currentUserEmail) {
+          drafts.push({ comment: reply, parentId: comment.id });
+        }
+      }
+    }
+  }
+
+  return drafts;
+}
+
+type MergeResult = {
+  comments: CommentType[];
+  orphanedDrafts: Draft[];
+};
+
+/**
+ * Merges server comments with preserved drafts.
+ * Returns the merged comments and any orphaned drafts (replies whose parent was deleted).
+ */
+function mergeWithDrafts(serverComments: CommentType[], drafts: Draft[]): MergeResult {
+  const orphanedDrafts: Draft[] = [];
+  const mergedComments = [...serverComments];
+
+  for (const draft of drafts) {
+    if (!draft.parentId) {
+      // Top-level draft - add to end if not already present
+      const exists = mergedComments.some((c) => c.id === draft.comment.id);
+      if (!exists) {
+        mergedComments.push(draft.comment);
+      }
+    } else {
+      // Reply draft - find parent and add reply
+      const parentIndex = mergedComments.findIndex((c) => c.id === draft.parentId);
+      if (parentIndex === -1) {
+        // Parent was deleted - this is an orphaned draft
+        orphanedDrafts.push(draft);
+      } else {
+        // Add reply to parent if not already present
+        const parent = mergedComments[parentIndex];
+        const replies = parent.replies ?? [];
+        const replyExists = replies.some((r) => r.id === draft.comment.id);
+        if (!replyExists) {
+          mergedComments[parentIndex] = {
+            ...parent,
+            replies: [...replies, draft.comment],
+          };
+        }
+      }
+    }
+  }
+
+  return { comments: mergedComments, orphanedDrafts };
+}
 
 export type { SubscriptionErrorType };
 
@@ -34,6 +109,14 @@ type UseCommentsSubscriptionParams = {
   filterParams: { modelId: string; recordId: string };
   subscriptionEnabled: boolean;
   onCommentRecordIdChange?: (id: string | null) => void;
+  /** Current user's email for identifying their drafts */
+  currentUserEmail: string;
+  /** Callback when a draft reply's parent comment was deleted */
+  onOrphanedDraft?: () => void;
+  /** Called before sync updates are applied - use to save scroll position */
+  onBeforeSync?: () => void;
+  /** Called after sync updates are applied - use to restore scroll position */
+  onAfterSync?: () => void;
 };
 
 export const SUBSCRIPTION_STATUS = {
@@ -68,6 +151,10 @@ export function useCommentsSubscription({
   filterParams,
   subscriptionEnabled,
   onCommentRecordIdChange,
+  currentUserEmail,
+  onOrphanedDraft,
+  onBeforeSync,
+  onAfterSync,
 }: UseCommentsSubscriptionParams): UseCommentsSubscriptionReturn {
   const [comments, setComments] = useState<CommentType[]>([]);
   const [commentsModelId, setCommentsModelId] = useState<string | null>(null);
@@ -144,8 +231,29 @@ export function useCommentsSubscription({
     if (!record || !isSyncAllowed) return;
 
     setCommentRecordId(record.id);
-    setComments(parseComments(record.content));
-  }, [data, isSyncAllowed, realTimeEnabled, setCommentRecordId, setComments]);
+
+    // Notify before sync so component can save scroll position
+    onBeforeSync?.();
+
+    // Preserve drafts during sync
+    setComments((prevComments) => {
+      const drafts = extractDrafts(prevComments, currentUserEmail);
+      const serverComments = parseComments(record.content);
+      const { comments: mergedComments, orphanedDrafts } = mergeWithDrafts(serverComments, drafts);
+
+      // Notify about orphaned drafts (parent comment was deleted)
+      if (orphanedDrafts.length > 0 && onOrphanedDraft) {
+        onOrphanedDraft();
+      }
+
+      return mergedComments;
+    });
+
+    // Schedule after-sync callback for next frame (after React re-render)
+    if (onAfterSync) {
+      requestAnimationFrame(onAfterSync);
+    }
+  }, [data, isSyncAllowed, realTimeEnabled, setCommentRecordId, currentUserEmail, onOrphanedDraft, onBeforeSync, onAfterSync]);
 
   const [cmaFetchError, setCmaFetchError] = useState<Error | null>(null);
   const [cmaRetryKey, setCmaRetryKey] = useState(0);
@@ -204,7 +312,28 @@ export function useCommentsSubscription({
           if (typeof firstRecord.id === 'string') {
             setCommentRecordId(firstRecord.id);
           }
-          setComments(parseComments(firstRecord.content));
+
+          // Notify before sync so component can save scroll position
+          onBeforeSync?.();
+
+          // Preserve drafts during sync
+          setComments((prevComments) => {
+            const drafts = extractDrafts(prevComments, currentUserEmail);
+            const serverComments = parseComments(firstRecord.content);
+            const { comments: mergedComments, orphanedDrafts } = mergeWithDrafts(serverComments, drafts);
+
+            // Notify about orphaned drafts (parent comment was deleted)
+            if (orphanedDrafts.length > 0 && onOrphanedDraft) {
+              onOrphanedDraft();
+            }
+
+            return mergedComments;
+          });
+
+          // Schedule after-sync callback for next frame (after React re-render)
+          if (onAfterSync) {
+            requestAnimationFrame(onAfterSync);
+          }
         }
         setIsLoading(false);
       } catch (error) {
