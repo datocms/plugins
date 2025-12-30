@@ -3,26 +3,22 @@ import type { RenderItemFormSidebarCtx, RenderPageCtx } from 'datocms-plugin-sdk
 import { useNavigationCallbacks } from '@hooks/useNavigationCallbacks';
 import { usePageNavigationCallbacks } from '@hooks/usePageNavigationCallbacks';
 
-/**
- * Navigation callbacks available in both sidebar and page contexts.
- * handleScrollToField is only available in sidebar context.
- * handleNavigateToRecordComments is only available in page context.
- */
+import type { NavigableUserType } from '@utils/navigationHelpers';
+
+// handleScrollToField: sidebar only. handleNavigateToRecordComments: page only.
 export type NavigationCallbacks = {
   handleScrollToField?: (fieldPath: string, localized: boolean, locale?: string) => Promise<void>;
-  handleNavigateToUsers: () => void;
+  handleNavigateToUsers: (userType?: NavigableUserType) => void;
   handleNavigateToModel: (modelId: string, isBlockModel: boolean) => void;
   handleOpenAsset: (assetId: string) => Promise<void>;
   handleOpenRecord: (recordId: string, modelId: string) => Promise<void>;
   handleNavigateToRecordComments?: (modelId: string, recordId: string) => Promise<void>;
 };
 
+export type { NavigableUserType };
+
 const NavigationCallbacksContext = createContext<NavigationCallbacks | null>(null);
 
-/**
- * Hook to access navigation callbacks from context.
- * Throws if used outside of a NavigationCallbacksProvider.
- */
 export function useNavigationContext(): NavigationCallbacks {
   const context = useContext(NavigationCallbacksContext);
   if (!context) {
@@ -36,10 +32,6 @@ type SidebarProviderProps = {
   children: ReactNode;
 };
 
-/**
- * Provider for sidebar context (record editing view).
- * Includes handleScrollToField for field navigation.
- */
 export function SidebarNavigationProvider({ ctx, children }: SidebarProviderProps) {
   const callbacks = useNavigationCallbacks(ctx);
 
@@ -55,15 +47,9 @@ type PageProviderProps = {
   children: ReactNode;
 };
 
-/**
- * Provider for page context (dashboard/global comments view).
- * Includes handleNavigateToRecordComments for navigating to records.
- * Does NOT include handleScrollToField since there's no record context.
- */
 export function PageNavigationProvider({ ctx, children }: PageProviderProps) {
   const callbacks = usePageNavigationCallbacks(ctx);
 
-  // Wrap page callbacks to match the NavigationCallbacks type
   const value: NavigationCallbacks = {
     handleNavigateToUsers: callbacks.handleNavigateToUsers,
     handleNavigateToModel: callbacks.handleNavigateToModel,

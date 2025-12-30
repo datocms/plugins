@@ -21,13 +21,11 @@ const RecordModelSelectorDropdown = ({
   const [query, setQuery] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
 
-  // Filter out block models (they don't have standalone records)
   const nonBlockModels = useMemo(
     () => models.filter((m) => !m.isBlockModel),
     [models]
   );
 
-  // Filter by search query
   const filteredModels = useMemo(() => {
     const lowerQuery = query.toLowerCase();
     return nonBlockModels.filter(
@@ -37,43 +35,20 @@ const RecordModelSelectorDropdown = ({
     );
   }, [query, nonBlockModels]);
 
-  // Reset selection when filtered results change
   useEffect(() => {
     setSelectedIndex(0);
   }, [query]);
 
-  // Focus input on mount
   useEffect(() => {
     inputRef.current?.focus();
   }, []);
 
-  // Compute empty message
   const emptyMessage = query
     ? `No models matching "${query}"`
     : nonBlockModels.length === 0
       ? 'No models available with read permission'
       : 'No models available';
 
-  /**
-   * Handle keyboard navigation for the dropdown.
-   *
-   * ARCHITECTURE NOTE: KEYBOARD NAVIGATION NOT EXTRACTED TO SHARED HOOK
-   *
-   * This keyboard navigation logic is duplicated in FilterDropdown.tsx. While
-   * it could be extracted to a shared useKeyboardNavigation hook, this was
-   * intentionally NOT done for these reasons:
-   *
-   * 1. LOW DUPLICATION COST: Only ~30 lines duplicated across 2 components
-   * 2. COMPONENT-SPECIFIC BEHAVIOR: Each dropdown has slightly different behavior
-   *    - RecordModelSelectorDropdown: Tab selects item
-   *    - FilterDropdown: Has "Select All" handling, different indexing
-   * 3. READABILITY: Inline logic is easier to follow and modify per-component
-   * 4. MAINTENANCE OVERHEAD: A generic hook would need configuration options
-   *    that add complexity without proportional benefit
-   *
-   * If a third dropdown component is added with similar navigation, extraction
-   * should be reconsidered. For now, the small duplication is acceptable.
-   */
   const handleKeyDown = (e: React.KeyboardEvent) => {
     switch (e.key) {
       case 'ArrowDown':
@@ -109,7 +84,6 @@ const RecordModelSelectorDropdown = ({
     }
   };
 
-  // Search input slot
   const searchSlot = (
     <div className={styles.recordModelSearchWrapper} onKeyDown={handleKeyDown}>
       <input

@@ -6,7 +6,6 @@ import type { CommentType } from '@ctypes/comments';
 import type { CommentSegment } from '@ctypes/mentions';
 import type { FieldInfo, UserInfo, ModelInfo } from '@hooks/useMentions';
 import type { TipTapComposerRef } from './tiptap/TipTapComposer';
-import type { UserOverrides } from '@utils/pluginParams';
 import type { TypedUserInfo } from '@utils/userDisplayResolver';
 import styles from '@styles/commentbar.module.css';
 
@@ -28,23 +27,10 @@ type CommentsListProps = {
   ctx: RenderItemFormSidebarCtx;
   /** When true, prevents empty replies from being auto-deleted on blur */
   isPickerActive?: boolean;
-  /** User overrides for custom names/avatars */
-  userOverrides?: UserOverrides;
-  /** Users with type information for override resolution */
+  /** Users with type information for upvoter name resolution */
   typedUsers?: TypedUserInfo[];
 };
 
-/**
- * Component to render the list of comments with pagination.
- * Extracted from CommentsBar for better maintainability.
- *
- * NOTE: No virtualization is currently implemented. This is acceptable because:
- * - Sidebar pagination limits display to ~30 items at a time
- * - Dashboard filtering typically shows fewer than 100 comments
- *
- * If performance issues arise with large comment counts (>100 visible),
- * consider adding react-window or similar virtualization library.
- */
 const CommentsListComponent = ({
   comments,
   hasMoreComments,
@@ -62,7 +48,6 @@ const CommentsListComponent = ({
   canMentionModels,
   ctx,
   isPickerActive,
-  userOverrides,
   typedUsers,
 }: CommentsListProps) => {
   if (comments.length === 0) {
@@ -93,7 +78,6 @@ const CommentsListComponent = ({
             canMentionModels={canMentionModels}
             ctx={ctx}
             isPickerActive={isPickerActive}
-            userOverrides={userOverrides}
             typedUsers={typedUsers}
           />
         </CommentErrorBoundary>
@@ -111,10 +95,6 @@ const CommentsListComponent = ({
   );
 };
 
-/**
- * Memoized CommentsList to prevent unnecessary re-renders when parent updates
- * but comments/callbacks haven't changed.
- */
 const CommentsList = memo(CommentsListComponent);
 
 export default CommentsList;

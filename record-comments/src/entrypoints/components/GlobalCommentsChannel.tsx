@@ -55,14 +55,9 @@ type GlobalCommentsChannelProps = {
   error: Error | null;
   status: string;
   isFiltering: boolean;
-  // Callback to sync operationQueue.isSyncAllowed to parent
   onSyncAllowedChange: (isSyncAllowed: boolean) => void;
 };
 
-/**
- * Slack-style global comments channel for project-wide discussions.
- * This is the main content area of the Comments Dashboard.
- */
 const GlobalCommentsChannel = ({
   ctx,
   client,
@@ -81,19 +76,14 @@ const GlobalCommentsChannel = ({
   isFiltering,
   onSyncAllowedChange,
 }: GlobalCommentsChannelProps) => {
-  // Get data from contexts
-  const { projectUsers, projectModels, currentUserEmail: userEmail, userOverrides, typedUsers } = useProjectDataContext();
+  const { projectUsers, projectModels, currentUserEmail: userEmail, typedUsers } = useProjectDataContext();
   const { canMentionAssets, canMentionModels } = useMentionPermissionsContext();
 
-  // Composer state - now uses segments directly
   const [composerSegments, setComposerSegments] = useState<CommentSegment[]>([]);
   const composerRef = useRef<TipTapComposerRef>(null);
   const pendingNewReplies = useRef(new Set<string>());
-
-  // Ref for scrollable comments list
   const commentsListRef = useRef<HTMLDivElement>(null);
 
-  // Operation queue for handling concurrent updates
   const operationQueue = useOperationQueue({
     client,
     commentRecordId,
@@ -104,21 +94,10 @@ const GlobalCommentsChannel = ({
     onRecordCreated: setCommentRecordId,
   });
 
-  // Sync operationQueue.isSyncAllowed to parent for subscription control.
-  //
-  // NOTE ON CALLBACK STABILITY:
-  // ---------------------------
-  // The `onSyncAllowedChange` callback is `setIsSyncAllowed` from React's useState,
-  // which is guaranteed to be stable (same reference across renders). This means:
-  // - This effect only re-runs when `operationQueue.isSyncAllowed` changes
-  // - There's no need to wrap the parent's setter in useCallback
-  // - The dependency on `onSyncAllowedChange` is required by exhaustive-deps but
-  //   will never trigger a re-run on its own
   useEffect(() => {
     onSyncAllowedChange(operationQueue.isSyncAllowed);
   }, [operationQueue.isSyncAllowed, onSyncAllowedChange]);
 
-  // Comment actions
   const {
     submitNewComment,
     deleteComment,
@@ -136,7 +115,6 @@ const GlobalCommentsChannel = ({
     insertPosition: 'append',
   });
 
-  // Composer toolbar handlers
   const {
     handleUserToolbarClick,
     handleFieldToolbarClick,
@@ -146,14 +124,12 @@ const GlobalCommentsChannel = ({
     canMentionModels,
   });
 
-  // Asset mention handling
   const { handleAssetTrigger, handleAssetClick } = usePageAssetMention({
     ctx,
     composerRef,
     canMentionAssets,
   });
 
-  // Record mention handling
   const {
     isRecordModelSelectorOpen,
     handleRecordTrigger,
@@ -166,19 +142,13 @@ const GlobalCommentsChannel = ({
     projectModels,
   });
 
-  // Reply picker handling - stores ref to the active reply's composer
   const activeReplyComposerRef = useRef<TipTapComposerRef | null>(null);
   const [isReplyRecordSelectorOpen, setIsReplyRecordSelectorOpen] = useState(false);
-  // Loading state for picker operations - prevents double-clicks and provides feedback
   const [isReplyPickerLoading, setIsReplyPickerLoading] = useState(false);
 
-  // Handler for picker requests from reply toolbars
   const handleReplyPickerRequest = useCallback(
     async (type: 'asset' | 'record', replyComposerRef: RefObject<TipTapComposerRef | null>) => {
-      // Prevent multiple picker operations at once
       if (isReplyPickerLoading) return;
-
-      // Store the reply's composer ref for inserting the mention
       activeReplyComposerRef.current = replyComposerRef.current;
 
       if (type === 'asset') {
@@ -201,14 +171,12 @@ const GlobalCommentsChannel = ({
           setIsReplyPickerLoading(false);
         }
       } else if (type === 'record') {
-        // Open record model selector for reply
         setIsReplyRecordSelectorOpen(true);
       }
     },
     [ctx, canMentionAssets, isReplyPickerLoading]
   );
 
-  // Handler for record model selection in reply context
   const handleReplyRecordModelSelect = useCallback(
     async (model: ModelInfo) => {
       setIsReplyRecordSelectorOpen(false);
@@ -258,17 +226,12 @@ const GlobalCommentsChannel = ({
     activeReplyComposerRef.current?.focus();
   }, []);
 
-  // Sort filtered comments chronologically (oldest first, newest at bottom) for chat-style display.
-  // PERFORMANCE: Use ISO string comparison instead of creating Date objects.
-  // ISO 8601 strings (e.g., "2024-01-15T10:30:00.000Z") are lexicographically sortable,
-  // so localeCompare is both faster and produces the same result as Date comparison.
   const sortedComments = useMemo(
     () =>
       [...filteredComments].sort((a, b) => a.dateISO.localeCompare(b.dateISO)),
     [filteredComments]
   );
 
-  // Auto-scroll behavior
   const {
     newItemsCount: newCommentsCount,
     handleScroll,
@@ -278,7 +241,6 @@ const GlobalCommentsChannel = ({
     itemsCount: comments.length,
   });
 
-  // Pagination for loading earlier comments
   const {
     paginatedItems: paginatedComments,
     hasMore: hasMoreComments,
@@ -288,7 +250,6 @@ const GlobalCommentsChannel = ({
     containerRef: commentsListRef,
   });
 
-  // Check if composer has content (memoized to prevent recalculation on unrelated state changes)
   const isComposerEmptyValue = useMemo(
     () => isComposerEmpty(composerSegments),
     [composerSegments]
@@ -300,7 +261,6 @@ const GlobalCommentsChannel = ({
         <div className={styles.channelHeaderMinimal}>
           <span className={styles.channelTitleMinimal}>Project Comments</span>
         </div>
-        {/* ACCESSIBILITY: aria-live="polite" announces loading state to screen readers */}
         <div className={styles.commentsListEmpty} role="status" aria-live="polite" aria-label="Loading comments">
           <div className={styles.loadingSpinner} />
         </div>
@@ -308,7 +268,6 @@ const GlobalCommentsChannel = ({
     );
   }
 
-  // Error state - use categorized error messages for user-friendly display
   if (error) {
     const categorizedError = categorizeGeneralError(error);
     return (
@@ -334,10 +293,8 @@ const GlobalCommentsChannel = ({
         <span className={styles.channelTitleMinimal}>Project Comments</span>
       </div>
 
-      {/* Comments list */}
       {hasFilteredComments ? (
         <div ref={commentsListRef} className={styles.commentsList} onScroll={handleScroll}>
-          {/* Load earlier messages button */}
           {hasMoreComments && (
             <div style={{ padding: '12px 24px', textAlign: 'center' }}>
               <button
@@ -367,7 +324,6 @@ const GlobalCommentsChannel = ({
                   canMentionAssets={canMentionAssets}
                   canMentionModels={canMentionModels}
                   isPickerActive={isReplyPickerLoading}
-                  userOverrides={userOverrides}
                   typedUsers={typedUsers}
                 />
               </CommentErrorBoundary>
@@ -392,14 +348,12 @@ const GlobalCommentsChannel = ({
         </div>
       )}
 
-      {/* New comments indicator */}
       <NewCommentsIndicator
         count={newCommentsCount}
         onClick={handleNewCommentsClick}
         accentColor={accentColor}
       />
 
-      {/* Composer - wrapped in error boundary to prevent editor crashes from breaking the whole channel */}
       <div className={styles.composer}>
         <CommentErrorBoundary fallbackMessage="Unable to load editor. Please refresh the page.">
           <ComposerBox accentColor={accentColor}>
@@ -422,7 +376,6 @@ const GlobalCommentsChannel = ({
               dropdownPosition="above"
             />
 
-            {/* Record model selector dropdown for main composer */}
             {isRecordModelSelectorOpen && (
               <RecordModelSelectorDropdown
                 models={readableModels}
@@ -432,7 +385,6 @@ const GlobalCommentsChannel = ({
               />
             )}
 
-            {/* Record model selector dropdown for reply editors */}
             {isReplyRecordSelectorOpen && (
               <RecordModelSelectorDropdown
                 models={readableModels}
@@ -442,7 +394,6 @@ const GlobalCommentsChannel = ({
               />
             )}
 
-            {/* Toolbar */}
             <ComposerToolbar
               onUserClick={handleUserToolbarClick}
               onFieldClick={handleFieldToolbarClick}

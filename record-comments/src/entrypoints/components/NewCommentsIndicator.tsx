@@ -3,26 +3,12 @@ import { ArrowDownIcon } from './Icons';
 import styles from '@styles/dashboard.module.css';
 
 type NewCommentsIndicatorProps = {
-  /**
-   * Number of new comments to display.
-   */
   count: number;
-  /**
-   * Handler called when the indicator is clicked.
-   */
   onClick: () => void;
-  /**
-   * Accent color for the indicator button.
-   */
   accentColor: string;
 };
 
-/**
- * Floating indicator button that appears when new comments arrive
- * while the user is scrolled up in the comments list.
- *
- * Clicking scrolls to the bottom and dismisses the indicator.
- */
+/** Floating indicator that appears when new comments arrive while scrolled up. */
 export function NewCommentsIndicator({ count, onClick, accentColor }: NewCommentsIndicatorProps) {
   if (count === 0) return null;
 

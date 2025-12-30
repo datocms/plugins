@@ -11,9 +11,6 @@ type CommentPreviewProps = {
   showMentionBadge?: boolean;
 };
 
-/**
- * Extracts plain text preview from comment content segments.
- */
 function getPreviewText(comment: CommentWithContext['comment'], maxLength = 80): string {
   const textParts: string[] = [];
 
@@ -21,7 +18,6 @@ function getPreviewText(comment: CommentWithContext['comment'], maxLength = 80):
     if (segment.type === 'text') {
       textParts.push(segment.content);
     } else if (segment.type === 'mention') {
-      // Represent mentions as their display text
       switch (segment.mention.type) {
         case 'user':
           textParts.push(`@${segment.mention.name}`);
@@ -49,13 +45,6 @@ function getPreviewText(comment: CommentWithContext['comment'], maxLength = 80):
   return `${fullText.slice(0, maxLength)}…`;
 }
 
-/**
- * Compact comment preview for sidebar sections (My Mentions, Recent Comments).
- * Clicking navigates to the record where the comment was made.
- *
- * Memoized to prevent unnecessary re-renders in list contexts.
- * Compares comment.id for fast equality check since comments are immutable once created.
- */
 const CommentPreviewComponent = ({
   commentWithContext,
   onClick,
@@ -118,18 +107,15 @@ const CommentPreviewComponent = ({
 };
 
 const CommentPreview = memo(CommentPreviewComponent, (prevProps, nextProps) => {
-  // Fast check: if comment ID is the same and other props are equal, skip re-render
   if (prevProps.commentWithContext.comment.id !== nextProps.commentWithContext.comment.id) {
     return false;
   }
   if (prevProps.showMentionBadge !== nextProps.showMentionBadge) {
     return false;
   }
-  // onClick should be stable (wrapped in useCallback by parent)
   if (prevProps.onClick !== nextProps.onClick) {
     return false;
   }
-  // Same comment ID means same content (comments are immutable once created)
   return true;
 });
 

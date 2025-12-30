@@ -1,70 +1,74 @@
-import { memo, useCallback } from 'react';
-import type { CommentSegment, Mention } from '@ctypes/mentions';
+import { memo, useCallback, useMemo } from 'react';
+import type { CommentSegment, Mention, UserMention } from '@ctypes/mentions';
 import { areSegmentsEqual } from '@utils/comparisonHelpers';
 import { useNavigationContext } from '@/entrypoints/contexts/NavigationCallbacksContext';
 import { useProjectDataContext } from '@/entrypoints/contexts/ProjectDataContext';
 import { MentionDisplay } from './shared/MentionDisplay';
+import type { NavigableUserType } from '@utils/navigationHelpers';
 
 type CommentContentRendererProps = {
   segments: CommentSegment[];
 };
 
-/**
- * Custom comparator for CommentContentRenderer.
- * Uses efficient segment comparison instead of JSON serialization.
- */
 function arePropsEqual(
   prev: CommentContentRendererProps,
   next: CommentContentRendererProps
 ): boolean {
-  // Compare segments using efficient helper
   return areSegmentsEqual(prev.segments, next.segments);
 }
 
-/**
- * Component to render comment content from structured segments
- */
 const CommentContentRenderer = memo(function CommentContentRenderer({
   segments,
 }: CommentContentRendererProps) {
-  // Get navigation callbacks from context
   const nav = useNavigationContext();
+  const { projectUsers, typedUsers } = useProjectDataContext();
 
-  // Get project users (with overrides applied) from context for user mention name resolution
-  const { projectUsers } = useProjectDataContext();
+  // Returns 'owner' as fallback for org/account users (non-clickable)
+  const getUserType = useCallback(
+    (mention: UserMention): NavigableUserType => {
+      let match = typedUsers.find((tu) => tu.user.id === mention.id);
 
-  /**
-   * CLICK HANDLER FACTORY - Performance Analysis:
-   * ----------------------------------------------
-   * This factory creates a new handler function for each mention on every render.
-   * The useCallback around the factory only prevents recreating the factory itself,
-   * not the handlers it produces.
-   *
-   * WHY THIS IS ACCEPTABLE:
-   * 1. Component is memoized with arePropsEqual - only re-renders when segments change
-   * 2. When segments DO change, we need new handlers for new/changed mentions anyway
-   * 3. Handler creation is cheap (just closure allocation, no complex computation)
-   * 4. MentionDisplay is also memoized, so unchanged mentions skip re-render
-   *
-   * ALTERNATIVES CONSIDERED:
-   * - useMemo per mention: Would require stable mention identity, adds complexity
-   * - Handler map: Would need cache invalidation logic, overkill for this use case
-   * - Event delegation: Would complicate navigation logic and accessibility
-   *
-   * The `nav` dependency changes when NavigationContext updates, but this context
-   * is stable (uses refs internally) so changes are rare. The useCallback still
-   * provides value by preventing unnecessary factory recreation on unrelated renders.
-   *
-   * DO NOT refactor to complex memoization without profiling evidence of a problem.
-   */
+      if (!match && mention.email) {
+        match = typedUsers.find((tu) => tu.user.email === mention.email);
+      }
+
+      if (!match) {
+        return 'owner';
+      }
+
+      switch (match.userType) {
+        case 'user':
+          return 'user';
+        case 'sso':
+          return 'sso';
+        case 'org':
+        case 'account':
+        default:
+          return 'owner';
+      }
+    },
+    [typedUsers]
+  );
+
+  const userMentionTypes = useMemo(() => {
+    const result = new Map<string, NavigableUserType>();
+    for (const segment of segments) {
+      if (segment.type === 'mention' && segment.mention.type === 'user') {
+        result.set(segment.mention.id, getUserType(segment.mention));
+      }
+    }
+    return result;
+  }, [segments, getUserType]);
+
   const createMentionClickHandler = useCallback(
     (mention: Mention) => {
       switch (mention.type) {
-        case 'user':
-          return () => nav.handleNavigateToUsers();
+        case 'user': {
+          const userType = userMentionTypes.get(mention.id) ?? 'owner';
+          if (userType === 'owner') return undefined;
+          return () => nav.handleNavigateToUsers(userType);
+        }
         case 'field': {
-          // When handleScrollToField is not available (e.g., global comments page),
-          // field mentions are not clickable
           if (!nav.handleScrollToField) return undefined;
           const fieldPath = mention.fieldPath ?? mention.apiKey;
           return () => nav.handleScrollToField?.(fieldPath, mention.localized, mention.locale);
@@ -79,20 +83,10 @@ const CommentContentRenderer = memo(function CommentContentRenderer({
           return undefined;
       }
     },
-    [nav]
+    [nav, userMentionTypes]
   );
 
-  /**
-   * KEY PATTERN JUSTIFICATION:
-   * Using index in keys is generally discouraged, but is acceptable here because:
-   * 1. The segments array has a stable, fixed order for a given comment
-   * 2. Segments are never reordered, added, or removed during the component's lifecycle
-   * 3. When the comment content changes, the entire segments array is replaced
-   * 4. The segments are derived from immutable comment data, not user-editable state
-   *
-   * The content slice is added to make keys more specific, but the index alone
-   * would be sufficient given the above constraints.
-   */
+  // Index keys acceptable: segments are immutable and never reordered
   return (
     <>
       {segments.map((segment, index) => {
@@ -106,8 +100,16 @@ const CommentContentRenderer = memo(function CommentContentRenderer({
         const tooltipId = getTooltipId(mention, index);
         const clickHandler = createMentionClickHandler(mention);
 
-        // Field mentions are not clickable when handleScrollToField is unavailable
-        const isClickable = mention.type === 'field' ? !!nav.handleScrollToField : true;
+        let isClickable = true;
+        let isProjectOwner = false;
+
+        if (mention.type === 'field') {
+          isClickable = !!nav.handleScrollToField;
+        } else if (mention.type === 'user') {
+          const userType = userMentionTypes.get(mention.id) ?? 'owner';
+          isProjectOwner = userType === 'owner';
+          isClickable = !isProjectOwner;
+        }
 
         return (
           <MentionDisplay
@@ -115,6 +117,7 @@ const CommentContentRenderer = memo(function CommentContentRenderer({
             mention={mention}
             onClick={clickHandler}
             isClickable={isClickable}
+            isProjectOwner={isProjectOwner}
             tooltipId={tooltipId}
             projectUsers={projectUsers}
           />
@@ -124,9 +127,6 @@ const CommentContentRenderer = memo(function CommentContentRenderer({
   );
 }, arePropsEqual);
 
-/**
- * Generate a unique key for a mention based on its type and identifying properties
- */
 function getMentionKey(mention: Mention, index: number): string {
   switch (mention.type) {
     case 'user':
@@ -146,9 +146,6 @@ function getMentionKey(mention: Mention, index: number): string {
   }
 }
 
-/**
- * Generate a unique tooltip ID for a mention
- */
 function getTooltipId(mention: Mention, index: number): string {
   switch (mention.type) {
     case 'user':

@@ -15,10 +15,7 @@ type SearchFilterSidebarProps = {
   accentColor: string;
 };
 
-/**
- * Vertical filter sidebar for the Comments Dashboard.
- * Displays all filter options in a stacked layout.
- */
+/** Vertical filter sidebar for the Comments Dashboard. */
 const SearchFilterSidebar = ({
   filters,
   filterOptions,

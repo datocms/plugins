@@ -10,17 +10,6 @@ import {
   type NormalizedField,
 } from './recordTitleUtils';
 
-// ============================================================================
-// Type Guards
-// ============================================================================
-
-/**
- * Type guard to check if a value is an object with an upload_id property.
- * Uses proper property checking without unsafe type assertions.
- *
- * NOTE: After the 'upload_id' in value check, TypeScript knows value is an object
- * with the upload_id property, allowing safe property access.
- */
 function hasUploadId(value: unknown): value is { upload_id: string } {
   return (
     typeof value === 'object' &&
@@ -30,9 +19,6 @@ function hasUploadId(value: unknown): value is { upload_id: string } {
   );
 }
 
-/**
- * Item type with relationships for title and image fields
- */
 type ItemTypeWithRelationships = {
   attributes: {
     singleton?: boolean;
@@ -46,9 +32,6 @@ type ItemTypeWithRelationships = {
   };
 };
 
-/**
- * Field type for record field operations
- */
 type RecordField = {
   id: string;
   attributes: {
@@ -58,17 +41,11 @@ type RecordField = {
   };
 };
 
-/**
- * Record with attributes
- */
 type RecordWithAttributes = {
   id: string;
   attributes: Record<string, unknown>;
 };
 
-/**
- * Model info for record picker
- */
 export type RecordPickerModelInfo = {
   id: string;
   apiKey: string;
@@ -76,10 +53,6 @@ export type RecordPickerModelInfo = {
   isBlockModel: boolean;
 };
 
-/**
- * Extracts a title from a record based on its item type configuration.
- * Uses the shared extractTitleFromRecordData function to avoid duplication.
- */
 export function extractRecordTitle(
   record: RecordWithAttributes,
   itemType: ItemTypeWithRelationships | undefined,
@@ -91,13 +64,11 @@ export function extractRecordTitle(
     return `Record #${record.id}`;
   }
 
-  // Normalize the title field config from relationships structure
   const titleFieldConfig: TitleFieldConfig = {
     presentationTitleFieldId: itemType.relationships.presentation_title_field.data?.id ?? null,
     titleFieldId: itemType.relationships.title_field.data?.id ?? null,
   };
 
-  // Normalize fields from attributes structure
   const normalizedFields: NormalizedField[] = fields.map((f) => ({
     id: f.id,
     apiKey: f.attributes.api_key,
@@ -116,16 +87,11 @@ export function extractRecordTitle(
   );
 }
 
-/**
- * Gets the upload ID from a field value (handles both localized and non-localized).
- */
 function getUploadIdFromFieldValue(fieldValue: unknown, mainLocale: string): string | null {
   if (fieldValue === null || fieldValue === undefined) {
     return null;
   }
 
-  // Use the shared utility to extract localized value
-  // Only extract locale if the value is not already a file value (has upload_id)
   const isFileValue = !Array.isArray(fieldValue) && hasUploadId(fieldValue);
 
   const resolvedValue = isFileValue ? fieldValue : extractLocalizedValue(fieldValue, mainLocale);
@@ -134,7 +100,6 @@ function getUploadIdFromFieldValue(fieldValue: unknown, mainLocale: string): str
     return null;
   }
 
-  // Handle gallery (array of assets)
   if (Array.isArray(resolvedValue)) {
     const firstAsset = resolvedValue[0];
     if (hasUploadId(firstAsset)) {
@@ -143,7 +108,6 @@ function getUploadIdFromFieldValue(fieldValue: unknown, mainLocale: string): str
     return null;
   }
 
-  // Handle single file
   if (hasUploadId(resolvedValue)) {
     return resolvedValue.upload_id;
   }
@@ -151,9 +115,6 @@ function getUploadIdFromFieldValue(fieldValue: unknown, mainLocale: string): str
   return null;
 }
 
-/**
- * Fetches thumbnail URL from an upload ID.
- */
 async function fetchThumbnailFromUpload(client: Client, uploadId: string): Promise<string | null> {
   try {
     const upload = await client.uploads.find(uploadId);
@@ -166,9 +127,6 @@ async function fetchThumbnailFromUpload(client: Client, uploadId: string): Promi
   }
 }
 
-/**
- * Extracts a thumbnail URL from a record based on its item type configuration.
- */
 export async function extractRecordThumbnail(
   record: RecordWithAttributes,
   itemType: ItemTypeWithRelationships | undefined,
@@ -180,13 +138,11 @@ export async function extractRecordThumbnail(
     return null;
   }
 
-  // Skip thumbnail extraction for compact view models
   const isCompactView = itemType.attributes.collection_appearance === 'compact';
   if (isCompactView) {
     return null;
   }
 
-  // Try presentation image field first
   const presentationImageFieldId = itemType.relationships.presentation_image_field.data?.id;
   const imagePreviewFieldId = itemType.relationships.image_preview_field.data?.id;
   const imageFieldId = presentationImageFieldId ?? imagePreviewFieldId;
@@ -205,7 +161,6 @@ export async function extractRecordThumbnail(
     }
   }
 
-  // Fallback: find first file/gallery field
   const sortedFields = [...fields].sort(
     (a, b) => (a.attributes.position ?? 0) - (b.attributes.position ?? 0)
   );
@@ -225,9 +180,6 @@ export async function extractRecordThumbnail(
   return null;
 }
 
-/**
- * Creates a record mention from a selected record.
- */
 export async function createRecordMention(
   record: RecordWithAttributes,
   model: RecordPickerModelInfo,
@@ -242,11 +194,8 @@ export async function createRecordMention(
   const recordTitle = extractRecordTitle(record, itemType, fields, model.name, mainLocale);
   const recordThumbnailUrl = await extractRecordThumbnail(record, itemType, fields, mainLocale, client);
 
-  // Use override emoji if explicitly provided (including null to suppress emoji),
-  // otherwise extract from model name. The explicit null case allows callers to
-  // intentionally suppress the emoji display.
   const modelEmoji: string | null = modelEmojiOverride !== undefined
-    ? modelEmojiOverride  // Handles both string and null cases explicitly
+    ? modelEmojiOverride
     : extractLeadingEmoji(model.name).emoji;
 
   return {

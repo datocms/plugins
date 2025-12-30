@@ -8,17 +8,11 @@ import {
   getBlockAttributesAtPath,
 } from '@utils/fieldLoader';
 
-// Navigation step types for the drill-down stack
 export type NavigationStep =
   | { type: 'field'; field: FieldInfo }
   | { type: 'locale'; locale: string }
   | { type: 'block'; blockIndex: number; blockModelId: string; blockModelName: string };
 
-// ============================================
-// Pure helper functions (extracted for performance)
-// ============================================
-
-/** Get the current field from navigation stack (the last field step) */
 function getCurrentField(stack: NavigationStep[]): FieldInfo | null {
   for (let i = stack.length - 1; i >= 0; i--) {
     const step = stack[i];
@@ -29,7 +23,6 @@ function getCurrentField(stack: NavigationStep[]): FieldInfo | null {
   return null;
 }
 
-/** Get the selected locale from navigation stack */
 function getSelectedLocale(stack: NavigationStep[]): string | undefined {
   for (const step of stack) {
     if (step.type === 'locale') {
@@ -39,7 +32,6 @@ function getSelectedLocale(stack: NavigationStep[]): string | undefined {
   return undefined;
 }
 
-/** Build the current field path from the navigation stack */
 function buildFieldPath(stack: NavigationStep[]): string {
   let path = '';
   let lastField: FieldInfo | null = null;
@@ -59,7 +51,6 @@ function buildFieldPath(stack: NavigationStep[]): string {
   return path;
 }
 
-/** Determine current view mode based on navigation stack */
 function getCurrentViewMode(stack: NavigationStep[]): ViewMode {
   if (stack.length === 0) {
     return 'fields';
@@ -93,7 +84,6 @@ function getCurrentViewMode(stack: NavigationStep[]): ViewMode {
   return 'fields';
 }
 
-/** Build breadcrumb for header */
 function buildBreadcrumb(stack: NavigationStep[]): string {
   const parts: string[] = [];
   for (const step of stack) {
@@ -108,20 +98,23 @@ function buildBreadcrumb(stack: NavigationStep[]): string {
   return parts.join(' > ');
 }
 
-/** Helper for keyboard navigation in list views */
 function handleListKeyNav(
   key: string,
   setIndex: Dispatch<SetStateAction<number>>,
-  maxIndex: number,
+  listLength: number,
   onSelect: () => void,
   onBack: () => void
 ): boolean {
   switch (key) {
     case 'ArrowDown':
-      setIndex((prev) => (prev < maxIndex ? prev + 1 : prev));
+      if (listLength > 0) {
+        setIndex((prev) => (prev + 1) % listLength);
+      }
       return true;
     case 'ArrowUp':
-      setIndex((prev) => (prev > 0 ? prev - 1 : prev));
+      if (listLength > 0) {
+        setIndex((prev) => (prev - 1 + listLength) % listLength);
+      }
       return true;
     case 'Enter':
     case 'Tab':
@@ -143,7 +136,7 @@ type UseFieldNavigationParams = {
   onSelect: (field: FieldInfo, locale?: string) => void;
   pendingFieldForLocale?: FieldInfo | null;
   onClearPendingField?: () => void;
-  selectedIndex: number; // From parent for keyboard-driven locale picker
+  selectedIndex: number;
 };
 
 type UseFieldNavigationReturn = {
@@ -179,25 +172,20 @@ export function useFieldNavigation({
   onClearPendingField,
   selectedIndex,
 }: UseFieldNavigationParams): UseFieldNavigationReturn {
-  // Navigation stack for drill-down
   const [navigationStack, setNavigationStack] = useState<NavigationStep[]>([]);
   const [localSelectedIndex, setLocalSelectedIndex] = useState(0);
 
-  // Current view state derived from navigation stack
   const [currentBlocks, setCurrentBlocks] = useState<BlockInfo[]>([]);
   const [currentNestedFields, setCurrentNestedFields] = useState<FieldInfo[]>([]);
   const [isLoadingBlocks, setIsLoadingBlocks] = useState(false);
 
-  // Sequence number to prevent stale async updates
   const loadOperationRef = useRef(0);
 
-  // Derive values from navigation stack using pure functions (memoized for performance)
   const viewMode = useMemo(() => getCurrentViewMode(navigationStack), [navigationStack]);
   const currentField = useMemo(() => getCurrentField(navigationStack), [navigationStack]);
   const selectedLocale = useMemo(() => getSelectedLocale(navigationStack), [navigationStack]);
   const breadcrumb = useMemo(() => buildBreadcrumb(navigationStack), [navigationStack]);
 
-  // Auto-navigate for single_block fields
   useEffect(() => {
     if (viewMode !== 'blocks') return;
     if (currentField?.blockFieldType !== 'single_block') return;
@@ -216,7 +204,6 @@ export function useFieldNavigation({
     }
   }, [currentBlocks, currentField, viewMode]);
 
-  // Load blocks when we reach the blocks view
   useEffect(() => {
     if (viewMode !== 'blocks' || !ctx) {
       setCurrentBlocks([]);
@@ -235,27 +222,15 @@ export function useFieldNavigation({
     setIsLoadingBlocks(false);
   }, [navigationStack, ctx, currentField, viewMode, selectedLocale]);
 
-  // Load nested fields when inside a block
-  //
-  // ASYNC CLEANUP NOTE:
-  // We use an isMounted flag + operation counter pattern instead of AbortController because:
-  // 1. The DatoCMS Plugin SDK methods don't accept AbortSignals
-  // 2. The underlying fetch requests can't be cancelled
-  // 3. The isMounted + operation counter pattern effectively prevents:
-  //    - State updates after unmount (memory safety)
-  //    - Stale async results from overwriting newer data (race condition safety)
-  // This is the recommended pattern when AbortController isn't supported by the underlying API.
   useEffect(() => {
     if (viewMode !== 'nestedFields' || !ctx) {
       setCurrentNestedFields([]);
       return;
     }
 
-    // Track if component is mounted to prevent state updates after unmount
     let isMounted = true;
 
     const loadNestedFields = async () => {
-      // Capture current operation sequence to detect stale updates
       const currentOperation = ++loadOperationRef.current;
 
       setIsLoadingBlocks(true);
@@ -269,7 +244,6 @@ export function useFieldNavigation({
       }
 
       if (!lastBlockStep || lastBlockStep.type !== 'block') {
-        // Don't update state if component unmounted or operation is stale
         if (!isMounted || loadOperationRef.current !== currentOperation) return;
         setCurrentNestedFields([]);
         setIsLoadingBlocks(false);
@@ -277,7 +251,6 @@ export function useFieldNavigation({
       }
 
       if (!currentField?.blockFieldType) {
-        // Don't update state if component unmounted or operation is stale
         if (!isMounted || loadOperationRef.current !== currentOperation) return;
         setCurrentNestedFields([]);
         setIsLoadingBlocks(false);
@@ -304,7 +277,6 @@ export function useFieldNavigation({
         basePath
       );
 
-      // Don't update state if component unmounted or operation is stale
       if (!isMounted || loadOperationRef.current !== currentOperation) return;
 
       setCurrentNestedFields(nestedFields);
@@ -314,13 +286,11 @@ export function useFieldNavigation({
 
     loadNestedFields();
 
-    // Cleanup function to prevent state updates after unmount
     return () => {
       isMounted = false;
     };
   }, [navigationStack, ctx, currentField, viewMode, selectedLocale]);
 
-  // Handle non-localized block container from keyboard navigation
   useEffect(() => {
     if (pendingFieldForLocale?.isBlockContainer && !pendingFieldForLocale.localized && navigationStack.length === 0) {
       setNavigationStack([{ type: 'field', field: pendingFieldForLocale }]);
@@ -329,7 +299,6 @@ export function useFieldNavigation({
     }
   }, [pendingFieldForLocale, navigationStack.length, onClearPendingField]);
 
-  // Actions
   const handleBack = useCallback(() => {
     if (navigationStack.length > 0) {
       setNavigationStack((prev) => prev.slice(0, -1));
@@ -411,20 +380,35 @@ export function useFieldNavigation({
   }, [pendingFieldForLocale, onSelect, onClearPendingField]);
 
   const resetNavigation = useCallback(() => {
-    loadOperationRef.current++; // Invalidate in-flight operations
+    loadOperationRef.current++;
     setNavigationStack([]);
     setLocalSelectedIndex(0);
   }, []);
 
-  // Keyboard navigation handler
-  const handleKeyboardNavigation = useCallback((key: string): boolean => {
-    // Handle keyboard-driven locale picker (pendingFieldForLocale mode)
+  useEffect(() => {
     if (pendingFieldForLocale?.availableLocales && navigationStack.length === 0) {
-      if (key === 'ArrowDown' || key === 'ArrowUp') {
-        return false; // Let parent handle arrow navigation
+      setLocalSelectedIndex(0);
+    }
+  }, [pendingFieldForLocale, navigationStack.length]);
+
+  const handleKeyboardNavigation = useCallback((key: string): boolean => {
+    if (pendingFieldForLocale?.availableLocales && navigationStack.length === 0) {
+      const localesLength = pendingFieldForLocale.availableLocales.length;
+
+      if (key === 'ArrowDown') {
+        if (localesLength > 0) {
+          setLocalSelectedIndex((prev) => (prev + 1) % localesLength);
+        }
+        return true;
+      }
+      if (key === 'ArrowUp') {
+        if (localesLength > 0) {
+          setLocalSelectedIndex((prev) => (prev - 1 + localesLength) % localesLength);
+        }
+        return true;
       }
       if (key === 'Enter' || key === 'Tab') {
-        const locale = pendingFieldForLocale.availableLocales[selectedIndex];
+        const locale = pendingFieldForLocale.availableLocales[localSelectedIndex];
         if (locale) {
           handlePendingLocaleSelection(locale);
         }
@@ -437,29 +421,31 @@ export function useFieldNavigation({
       return false;
     }
 
-    // Handle keyboard navigation for blocks view
     if (viewMode === 'blocks') {
+      const totalItems = currentBlocks.length + 1;
       return handleListKeyNav(
         key,
         setLocalSelectedIndex,
-        currentBlocks.length, // +1 for "entire field" option at index 0
+        totalItems,
         () => {
           if (localSelectedIndex === 0) {
             handleSelectEntireField();
-          } else if (localSelectedIndex - 1 < currentBlocks.length) {
-            handleBlockClick(currentBlocks[localSelectedIndex - 1]);
+          } else {
+            const blockIndex = localSelectedIndex - 1;
+            if (blockIndex < currentBlocks.length) {
+              handleBlockClick(currentBlocks[blockIndex]);
+            }
           }
         },
         handleBack
       );
     }
 
-    // Handle keyboard navigation for nested fields view
     if (viewMode === 'nestedFields') {
       return handleListKeyNav(
         key,
         setLocalSelectedIndex,
-        currentNestedFields.length - 1,
+        currentNestedFields.length,
         () => {
           if (localSelectedIndex < currentNestedFields.length) {
             handleFieldClick(currentNestedFields[localSelectedIndex]);
@@ -469,12 +455,11 @@ export function useFieldNavigation({
       );
     }
 
-    // Handle keyboard navigation for locale picker (within drill-down)
     if (viewMode === 'locales' && currentField?.availableLocales) {
       return handleListKeyNav(
         key,
         setLocalSelectedIndex,
-        currentField.availableLocales.length - 1,
+        currentField.availableLocales.length,
         () => {
           if (localSelectedIndex < currentField.availableLocales!.length) {
             handleLocaleClick(currentField.availableLocales![localSelectedIndex]);

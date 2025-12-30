@@ -43,13 +43,6 @@ type UseMentionsReturn = {
   registerDropdownKeyHandler: (handler: (key: string) => boolean) => void;
 };
 
-/**
- * Main hook for managing mention functionality in a textarea.
- * Composes smaller hooks for trigger detection, filtering, selection, and keyboard navigation.
- *
- * @param options - Configuration options including users, fields, models, value, and callbacks
- * @returns Object containing dropdown state, filtered results, handlers, and cursor position
- */
 export function useMentions({
   users,
   fields,
@@ -62,7 +55,6 @@ export function useMentions({
   canMentionModels = true,
   canMentionFields = true,
 }: UseMentionsOptions): UseMentionsReturn {
-  // Hook for trigger detection and cursor position
   const {
     cursorPosition,
     setCursorPosition,
@@ -77,7 +69,6 @@ export function useMentions({
     },
   });
 
-  // Hook for filtering mention options
   const {
     filteredUsers,
     filteredFields,
@@ -89,7 +80,6 @@ export function useMentions({
     triggerInfo,
   });
 
-  // Hook for managing selection state and selection handlers
   const {
     selectedIndex,
     setSelectedIndex,
@@ -111,7 +101,6 @@ export function useMentions({
     onMentionsMapChange,
   });
 
-  // Hook for keyboard navigation
   const {
     handleKeyDown,
     registerDropdownKeyHandler,
@@ -131,7 +120,6 @@ export function useMentions({
     closeDropdown,
   });
 
-  // Handle text change
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLTextAreaElement>) => {
       onChange(e.target.value);

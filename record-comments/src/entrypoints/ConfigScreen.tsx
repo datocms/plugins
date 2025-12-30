@@ -6,7 +6,7 @@ import styles from '@styles/configscreen.module.css';
 import { COMMENTS_MODEL_API_KEY } from '@/constants';
 import { parsePluginParams } from '@utils/pluginParams';
 import { logWarn } from '@/utils/errorLogger';
-import { normalizeComment, type LegacyComment } from '@utils/migrations';
+import { normalizeComment, migrateCommentsToUuid, type LegacyComment } from '@utils/migrations';
 
 type PropTypes = {
   ctx: RenderConfigScreenCtx;
@@ -48,9 +48,9 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
   const pluginParams = parsePluginParams(ctx.plugin.attributes.parameters);
   const [cdaToken, setCdaToken] = useState(pluginParams.cdaToken ?? '');
   const [realTimeEnabled, setRealTimeEnabled] = useState(pluginParams.realTimeUpdatesEnabled ?? true);
+  const [dashboardEnabled, setDashboardEnabled] = useState(pluginParams.dashboardEnabled ?? true);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Migration state
   const [migrationStatus, setMigrationStatus] = useState<MigrationStatus>(
     pluginParams.migrationCompleted ? 'completed' : 'idle'
   );
@@ -68,18 +68,17 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
       ...pluginParams,
       cdaToken,
       realTimeUpdatesEnabled: realTimeEnabled,
+      dashboardEnabled,
     });
     await ctx.notice('Settings saved successfully!');
     setIsSaving(false);
   };
 
-  // Build CMA client
   const getClient = useCallback(() => {
     if (!ctx.currentUserAccessToken) return null;
     return buildClient({ apiToken: ctx.currentUserAccessToken });
   }, [ctx.currentUserAccessToken]);
 
-  // Scan for models with comment_log field
   const handleScan = useCallback(async () => {
     setMigrationStatus('scanning');
     setMigrationError(null);
@@ -92,13 +91,10 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
     });
 
     try {
-      // Use ctx.itemTypes instead of API call (already available, no network request needed)
       const models = Object.values(ctx.itemTypes).filter(
         (model): model is NonNullable<typeof model> => model !== undefined
       );
       const foundModels: ModelWithCommentLog[] = [];
-
-      // Filter out the project_comment model upfront
       const modelsToScan = models.filter((m) => m.attributes.api_key !== COMMENTS_MODEL_API_KEY);
 
       setScanProgress({
@@ -119,8 +115,6 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
           foundCount: foundModels.length,
         });
 
-        // Use ctx.loadItemTypeFields instead of client.fields.list (SDK method with caching)
-        // Wrap in try-catch to handle individual model failures gracefully
         try {
           const fields = await ctx.loadItemTypeFields(model.id);
           const commentLogField = fields.find((f) => f.attributes.api_key === 'comment_log');
@@ -134,14 +128,10 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
             });
           }
         } catch (fieldLoadError) {
-          // Log warning but continue scanning other models
-          // This prevents a single model failure from breaking the entire scan
           logWarn(`Failed to load fields for model ${model.attributes.name}`, { modelId: model.id, error: fieldLoadError });
         }
 
         scannedCount++;
-
-        // Update progress after scanning each model
         setScanProgress({
           phase: 'scanning-fields',
           currentModel: model.attributes.name,
@@ -168,7 +158,6 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
     }
   }, [ctx]);
 
-  // Run migration
   const handleMigrate = useCallback(async () => {
     const client = getClient();
     if (!client) {
@@ -193,7 +182,6 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
     };
 
     try {
-      // Find the project_comment model from ctx.itemTypes (already available, no API call needed)
       const commentsModel = Object.values(ctx.itemTypes).find(
         (model) => model?.attributes.api_key === COMMENTS_MODEL_API_KEY
       );
@@ -215,7 +203,6 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
           totalModels: modelsWithComments.length,
         });
 
-        // Get all records for this model with pagination
         const allRecords: Array<{ id: string; comment_log: unknown }> = [];
 
         for await (const record of client.items.listPagedIterator({
@@ -241,11 +228,8 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
           });
 
           const commentLog = record.comment_log;
-
-          // Skip empty comment_log
           if (!commentLog) continue;
 
-          // Parse if string, validate if array
           let commentsArray: unknown[];
           if (typeof commentLog === 'string') {
             try {
@@ -259,19 +243,14 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
           } else if (Array.isArray(commentLog)) {
             commentsArray = commentLog;
           } else {
-            continue; // Skip invalid format
+            continue;
           }
 
-          // Skip empty arrays
           if (commentsArray.length === 0) continue;
 
-          // Normalize legacy upvoter format (strings → { name, email } objects)
           const normalizedComments = (commentsArray as LegacyComment[]).map(normalizeComment);
+          const { comments: migratedComments } = migrateCommentsToUuid(normalizedComments);
 
-          // Check if already migrated
-          // IMPORTANT: Filter by BOTH model_id AND record_id because they form a composite key.
-          // Different models can have records with the same ID, so filtering only by record_id
-          // would incorrectly skip migrations if record IDs overlap across models.
           const existing = await client.items.list({
             filter: {
               type: COMMENTS_MODEL_API_KEY,
@@ -287,13 +266,12 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
             continue;
           }
 
-          // Create new project_comment record
           try {
             await client.items.create({
               item_type: { type: 'item_type', id: commentsModel.id },
               model_id: modelInfo.modelId,
               record_id: record.id,
-              content: JSON.stringify(normalizedComments),
+              content: JSON.stringify(migratedComments),
             });
             results.success++;
           } catch (err) {
@@ -305,7 +283,6 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
             );
           }
 
-          // Small delay to avoid rate limits
           if (currentRecord % 10 === 0) {
             await new Promise((resolve) => setTimeout(resolve, 100));
           }
@@ -334,7 +311,6 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
     }
   }, [ctx, getClient, modelsWithComments, pluginParams]);
 
-  // Cleanup old fields
   const handleCleanup = useCallback(async () => {
     const client = getClient();
     if (!client) {
@@ -658,6 +634,17 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
               />
             </div>
           )}
+
+          <div className={styles.formField}>
+            <SwitchField
+              id="dashboard-toggle"
+              name="dashboard-toggle"
+              label="Enable Comments Dashboard"
+              hint="When enabled, users can access the project-wide Comments Dashboard from the sidebar navigation. Disabling this hides the dashboard for all users."
+              value={dashboardEnabled}
+              onChange={(newValue) => setDashboardEnabled(newValue)}
+            />
+          </div>
 
           <div className={styles.buttonRow}>
             <Button

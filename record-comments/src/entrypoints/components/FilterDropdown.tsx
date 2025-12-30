@@ -19,9 +19,6 @@ type FilterDropdownProps = {
   emptyMessage?: string;
 };
 
-/**
- * Reusable dropdown component for filter selections
- */
 const FilterDropdown = ({
   label,
   options,
@@ -40,13 +37,6 @@ const FilterDropdown = ({
   const optionRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const menuId = useId();
 
-  // Close dropdown when clicking outside
-  // NOTE: This component uses a direct event listener rather than the useClickOutside hook
-  // from useDropdown.ts because closing the dropdown requires additional side effects:
-  // resetting the search query state. The useClickOutside hook only supports a simple
-  // callback and would require modification to handle this case. Since FilterDropdown
-  // is a self-contained component with its own state management, the inline implementation
-  // is clearer and avoids over-engineering the shared hook.
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -62,7 +52,6 @@ const FilterDropdown = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Focus search input when dropdown opens and reset highlighted index
   useEffect(() => {
     if (isOpen) {
       setHighlightedIndex(-1);
@@ -72,12 +61,10 @@ const FilterDropdown = ({
     }
   }, [isOpen, searchable]);
 
-  // Reset highlighted index when search changes
   useEffect(() => {
     setHighlightedIndex(-1);
   }, [searchQuery]);
 
-  // Scroll highlighted option into view
   useEffect(() => {
     if (highlightedIndex >= 0 && optionRefs.current[highlightedIndex]) {
       optionRefs.current[highlightedIndex]?.scrollIntoView({
@@ -87,7 +74,6 @@ const FilterDropdown = ({
     }
   }, [highlightedIndex]);
 
-  // Filter options based on search query
   const filteredOptions = useMemo(
     () =>
       searchQuery
@@ -100,7 +86,6 @@ const FilterDropdown = ({
     [searchQuery, options]
   );
 
-  // Get selected option label
   const selectedOption = options.find((opt) => opt.value === selectedValue);
 
   const handleToggle = () => {
@@ -119,8 +104,6 @@ const FilterDropdown = ({
   };
 
   const hasOptions = options.length > 0;
-
-  // Total options count: "All" option (index 0) + filtered options
   const totalOptions = hasOptions ? 1 + filteredOptions.length : 0;
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -151,10 +134,8 @@ const FilterDropdown = ({
         e.preventDefault();
         if (highlightedIndex >= 0 && hasOptions) {
           if (highlightedIndex === 0) {
-            // "All" option
             handleSelect(null);
           } else {
-            // Regular option (index - 1 because "All" is at index 0)
             const option = filteredOptions[highlightedIndex - 1];
             if (option) {
               handleSelect(option.value);
@@ -164,7 +145,6 @@ const FilterDropdown = ({
         break;
 
       case 'Tab':
-        // Close dropdown on Tab to let focus move naturally
         setIsOpen(false);
         setSearchQuery('');
         break;
@@ -212,10 +192,6 @@ const FilterDropdown = ({
           role="listbox"
           aria-label={`${label} options`}
         >
-          {/* ACCESSIBILITY: The search input uses aria-label instead of a visible <label>
-              because the placeholder "Search..." provides visual context, and a visible
-              label would be redundant. aria-label is the WCAG-compliant way to provide
-              an accessible name when a visible label isn't needed for sighted users. */}
           {searchable && options.length > 5 && (
             <div className={styles.filterDropdownSearch}>
               <input
@@ -233,7 +209,6 @@ const FilterDropdown = ({
           <div className={styles.filterDropdownOptions}>
             {hasOptions ? (
               <>
-                {/* "All" option to clear selection */}
                 <button
                   ref={(el) => { optionRefs.current[0] = el; }}
                   type="button"
@@ -253,7 +228,7 @@ const FilterDropdown = ({
                 </button>
 
                 {filteredOptions.map((option, index) => {
-                  const optionIndex = index + 1; // +1 because "All" is at index 0
+                  const optionIndex = index + 1;
                   return (
                     <button
                       key={option.value}

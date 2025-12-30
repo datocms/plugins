@@ -7,55 +7,6 @@ import type {
 } from '@ctypes/mentions';
 import { encodeFieldPath } from './fieldPathCodec';
 
-/**
- * ============================================================================
- * ARCHITECTURAL NOTE: WHY THERE ARE NO insertAssetMention / insertRecordMention
- * ============================================================================
- *
- * This file provides insertion functions for different mention types:
- * - insertUserMention(@)  - creates mention from UserInsertData
- * - insertFieldMention(#) - creates mention from FieldInsertData
- * - insertModelMention($) - creates mention from ModelInsertData
- * - insertToolbarMention  - inserts pre-created mention at cursor (asset/record/model)
- *
- * You might notice the asymmetry: there's no `insertAssetMention` or `insertRecordMention`
- * that follows the same pattern as the other three. This is INTENTIONAL.
- *
- * WHY ASSET/RECORD MENTIONS ARE DIFFERENT:
- *
- * 1. USER/FIELD/MODEL MENTIONS use text triggers (@, #, $):
- *    - User types trigger character in text
- *    - Dropdown shows matching options
- *    - Selection replaces the trigger text with mention placeholder
- *    - These functions handle the trigger-start-to-cursor replacement
- *
- * 2. ASSET/RECORD MENTIONS use DatoCMS pickers (^, &):
- *    - User types trigger OR clicks toolbar button
- *    - DatoCMS picker modal opens (selectUpload, selectItem)
- *    - Picker returns full asset/record data directly
- *    - No trigger text to replace - just insert at cursor
- *    - The mention object is created in the calling code (usePageAssetMention, etc.)
- *
- * 3. insertToolbarMention HANDLES THE INSERTION:
- *    - Takes a pre-created AssetMention | RecordMention | ModelMention
- *    - Inserts at cursor position (no trigger start to track)
- *    - Used by toolbar buttons and after picker selection
- *
- * WHY NOT ADD SYMMETRIC FUNCTIONS ANYWAY?
- *
- * - Asset/record data comes from pickers with different shapes than our InsertData types
- * - Creating fake InsertData types would add indirection without benefit
- * - The calling code already has the full asset/record data from the picker
- * - Symmetry for its own sake adds complexity, not value
- *
- * IF YOU NEED TO ADD ASSET/RECORD INSERTION:
- * - Use insertToolbarMention with a pre-created mention object
- * - Create the mention in your hook/component where you have the picker result
- * - See usePageAssetMention.ts and usePageRecordMention.ts for examples
- *
- * ============================================================================
- */
-
 export type UserInsertData = {
   id: string;
   name: string;
@@ -84,9 +35,6 @@ export type InsertResult<T> = {
   mention: T;
 };
 
-/**
- * Inserts a user mention at the trigger position.
- */
 export function insertUserMention(
   text: string,
   triggerStartIndex: number,
@@ -111,9 +59,6 @@ export function insertUserMention(
   return { newText, newCursorPosition, mention };
 }
 
-/**
- * Inserts a field mention at the trigger position.
- */
 export function insertFieldMention(
   text: string,
   triggerStartIndex: number,
@@ -124,13 +69,9 @@ export function insertFieldMention(
   const before = text.slice(0, triggerStartIndex);
   const after = text.slice(cursorPosition);
 
-  // Use centralized encoding (see fieldPathCodec.ts for format documentation)
   const encodedPath = encodeFieldPath(field.fieldPath);
 
-  // Only add locale suffix if:
-  // 1. locale is specified AND
-  // 2. locale is not already embedded in the path (for nested fields in localized containers)
-  // Check if the path already contains the locale (e.g., sections::it::0::hero_title already has "it")
+  // Skip locale suffix if already embedded in path (nested fields in localized containers)
   const localeAlreadyInPath = locale && encodedPath.includes(`::${locale}::`);
   const localeSuffix = locale && !localeAlreadyInPath ? `::${locale}` : '';
   const mentionText = `#${encodedPath}${localeSuffix} `;
@@ -150,9 +91,6 @@ export function insertFieldMention(
   return { newText, newCursorPosition, mention };
 }
 
-/**
- * Inserts a model mention at the trigger position.
- */
 export function insertModelMention(
   text: string,
   triggerStartIndex: number,
@@ -177,9 +115,6 @@ export function insertModelMention(
   return { newText, newCursorPosition, mention };
 }
 
-/**
- * Inserts a toolbar mention (asset, record, or model) at the cursor position.
- */
 export function insertToolbarMention(
   text: string,
   cursorPosition: number,

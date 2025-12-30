@@ -1,4 +1,3 @@
-// Field path encoding/decoding utilities
 export {
   BLOCK_INDEX_PATTERN,
   COMMON_LOCALES,
@@ -8,11 +7,9 @@ export {
   findFieldMention,
 } from './fieldPathCodec';
 
-// Trigger detection
 export { detectActiveTrigger } from './detection';
 export type { TriggerType, TriggerInfo } from './detection';
 
-// Mention insertion
 export {
   insertUserMention,
   insertFieldMention,
@@ -26,5 +23,4 @@ export type {
   InsertResult,
 } from './insertion';
 
-// Search/filtering
 export { filterUsers, filterFields, filterModels } from './filters';

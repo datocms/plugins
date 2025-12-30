@@ -16,10 +16,7 @@ type SearchFilterBarProps = {
   accentColor: string;
 };
 
-/**
- * Horizontal search and filter bar for comments.
- * Used for inline filtering in compact layouts.
- */
+/** Horizontal search and filter bar for comments. */
 const SearchFilterBar = ({
   filters,
   filterOptions,
@@ -31,8 +28,6 @@ const SearchFilterBar = ({
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const moreDropdownRef = useRef<HTMLDivElement>(null);
 
-  // Close "More" dropdown when clicking outside
-  // Uses the shared useClickOutside hook from useDropdown.ts
   const handleCloseMore = useCallback(() => {
     setIsMoreOpen(false);
   }, []);
@@ -45,7 +40,6 @@ const SearchFilterBar = ({
     onFiltersChange({ ...filters, [key]: value });
   };
 
-  // Count total active filters
   const activeFilterCount = [
     filters.searchQuery.trim(),
     filters.authorEmail,
@@ -57,7 +51,6 @@ const SearchFilterBar = ({
     filters.mentionedUserEmail,
   ].filter(Boolean).length;
 
-  // Count active secondary filters (in "More" dropdown)
   const secondaryFilterCount = [
     filters.mentionedModelId,
     filters.mentionedUserEmail,

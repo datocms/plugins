@@ -3,38 +3,20 @@ import { ReactNodeViewRenderer } from '@tiptap/react';
 import type { ReactNodeViewProps } from '@tiptap/react';
 import type { Mention as MentionType } from '@ctypes/mentions';
 
-/**
- * Type for TipTap NodeView components that render mention chips.
- * Uses ReactNodeViewProps which includes the ref prop expected by ReactNodeViewRenderer.
- */
 type MentionNodeViewComponent = React.ComponentType<ReactNodeViewProps>;
 
-/**
- * Configuration for creating a mention extension.
- */
 export type MentionExtensionConfig = {
-  /** Unique name for this mention type (e.g., 'userMention', 'fieldMention') */
   name: string;
-  /** Trigger character (e.g., '@', '#', '$', '^', '&') */
   trigger: string;
-  /** The mention type (e.g., 'user', 'field', 'model', 'asset', 'record') */
   mentionType: MentionType['type'];
-  /** Node view component for rendering the mention chip */
   nodeViewComponent: MentionNodeViewComponent;
-  /** Additional attributes to store (derived from Mention type) */
   extraAttrs?: Record<string, { default?: unknown }>;
 };
 
-/**
- * Base attributes that all mention types share.
- */
 const BASE_ATTRS = {
   type: { default: null },
 } as const;
 
-/**
- * Attributes specific to each mention type.
- */
 const MENTION_TYPE_ATTRS: Record<MentionType['type'], Record<string, { default?: unknown }>> = {
   user: {
     id: { default: null },
@@ -76,15 +58,8 @@ const MENTION_TYPE_ATTRS: Record<MentionType['type'], Record<string, { default?:
 };
 
 /**
- * Creates a TipTap mention extension for a specific mention type.
- *
- * This factory extends TipTap's Mention extension to:
- * - Store all mention metadata as node attributes
- * - Use a React component for custom rendering (MentionChip)
- * - Support the Suggestion plugin for dropdown autocomplete
- *
- * The caller MUST configure the suggestion via .configure({ suggestion: {...} })
- * including char, render, items, etc.
+ * Creates a TipTap mention extension. Caller must configure suggestion via
+ * .configure({ suggestion: {...} }).
  */
 export function createMentionExtension(config: MentionExtensionConfig) {
   const { name, mentionType, nodeViewComponent } = config;
@@ -94,7 +69,6 @@ export function createMentionExtension(config: MentionExtensionConfig) {
   return Mention.extend({
     name,
 
-    // Define all attributes for this mention type
     addAttributes() {
       return {
         ...BASE_ATTRS,
@@ -103,7 +77,6 @@ export function createMentionExtension(config: MentionExtensionConfig) {
       };
     },
 
-    // Parse from HTML (for clipboard paste)
     parseHTML() {
       return [
         {
@@ -112,19 +85,14 @@ export function createMentionExtension(config: MentionExtensionConfig) {
       ];
     },
 
-    // Render to HTML
     renderHTML({ HTMLAttributes }) {
       return ['span', { 'data-mention-type': mentionType, ...HTMLAttributes }];
     },
 
-    // Use React component for rendering in the editor
     addNodeView() {
       return ReactNodeViewRenderer(nodeViewComponent);
     },
   });
 }
 
-/**
- * Type helper to extract the insert command name from a mention extension.
- */
 export type MentionInsertCommand<T extends string> = `insert${Capitalize<T>}`;

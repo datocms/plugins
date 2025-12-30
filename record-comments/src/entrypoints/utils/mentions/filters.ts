@@ -1,12 +1,3 @@
-/**
- * Generic filter function that filters items based on multiple string properties.
- * Used to reduce code duplication across user, field, and model filtering.
- *
- * @param items - Array of items to filter
- * @param query - Search query string
- * @param getSearchableStrings - Function that extracts searchable strings from an item
- * @returns Filtered array of items where at least one property matches the query
- */
 function filterBySearchableStrings<T>(
   items: T[],
   query: string,
@@ -20,10 +11,7 @@ function filterBySearchableStrings<T>(
   );
 }
 
-/**
- * Filters users based on a search query.
- * Matches against name and email.
- */
+/** Filters by name and email. */
 export function filterUsers<T extends { name: string; email: string }>(
   users: T[],
   query: string
@@ -31,10 +19,7 @@ export function filterUsers<T extends { name: string; email: string }>(
   return filterBySearchableStrings(users, query, (user) => [user.name, user.email]);
 }
 
-/**
- * Filters fields based on a search query.
- * Matches against apiKey, label, and displayLabel (for nested fields).
- */
+/** Filters by apiKey, label, and displayLabel. */
 export function filterFields<
   T extends { apiKey: string; label: string; displayLabel?: string },
 >(fields: T[], query: string): T[] {
@@ -45,10 +30,7 @@ export function filterFields<
   ]);
 }
 
-/**
- * Filters models based on a search query.
- * Matches against apiKey and name.
- */
+/** Filters by apiKey and name. */
 export function filterModels<T extends { apiKey: string; name: string }>(
   models: T[],
   query: string

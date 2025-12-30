@@ -109,7 +109,7 @@ const FieldMentionDropdown = ({
         />
         <LocalePickerView
           locales={pendingFieldForLocale.availableLocales}
-          selectedIndex={selectedIndex}
+          selectedIndex={localSelectedIndex}
           onSelect={handlePendingLocaleSelection}
           onHover={setLocalSelectedIndex}
           selectedRef={selectedRef}

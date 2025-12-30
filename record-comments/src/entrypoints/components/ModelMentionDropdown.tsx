@@ -41,6 +41,7 @@ const ModelMentionDropdown = ({
             e.preventDefault();
             onSelect(model);
           }}
+          onClick={() => onSelect(model)}
         >
           <span className={styles.mentionModelInfo}>
             <span className={styles.mentionModelName}>{model.name}</span>

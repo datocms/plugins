@@ -6,24 +6,18 @@ export type TriggerInfo = {
   startIndex: number;
 };
 
-/**
- * Detects if the user is currently typing a mention trigger.
- * Returns the trigger type and query if found.
- */
 export function detectActiveTrigger(
   text: string,
   cursorPosition: number
 ): TriggerInfo | null {
   const textBeforeCursor = text.slice(0, cursorPosition);
 
-  // Find the last @, #, $, ^, or & before cursor
   const lastAtIndex = textBeforeCursor.lastIndexOf('@');
   const lastHashIndex = textBeforeCursor.lastIndexOf('#');
   const lastDollarIndex = textBeforeCursor.lastIndexOf('$');
   const lastCaretIndex = textBeforeCursor.lastIndexOf('^');
   const lastAmpersandIndex = textBeforeCursor.lastIndexOf('&');
 
-  // Determine which trigger is more recent
   const lastTriggerIndex = Math.max(
     lastAtIndex,
     lastHashIndex,
@@ -48,7 +42,6 @@ export function detectActiveTrigger(
 
   const textAfterTrigger = textBeforeCursor.slice(lastTriggerIndex + 1);
 
-  // If there's a space after the trigger, the mention is complete/cancelled
   if (/\s/.test(textAfterTrigger)) return null;
 
   return {

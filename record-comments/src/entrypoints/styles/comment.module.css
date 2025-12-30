@@ -176,7 +176,7 @@
   font-weight: 600;
   color: var(--accent-color);
   background: transparent;
-  border: 1px solid transparent;
+  border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -185,7 +185,7 @@
 
 .replyToggle:hover {
   background-color: var(--lighter-bg-color);
-  border-color: var(--border-color);
+  border-color: var(--darker-border-color);
 }
 
 /* Reply count text */
@@ -718,6 +718,16 @@
   background-color: var(--mention-user-hover);
 }
 
+.userMentionDisabled {
+  cursor: default;
+  opacity: 0.8;
+}
+
+.userMentionDisabled:hover {
+  background-color: var(--mention-user-bg);
+  color: var(--mention-user);
+}
+
 .userMentionTooltip {
   composes: tooltipBase from './utilities.css';
 }
@@ -809,6 +819,7 @@
 .assetMentionBlockWrapper {
   display: block;
   width: 100%;
+  max-width: 100%;
   user-select: none;
 }
 
@@ -816,7 +827,7 @@
   display: inline-flex;
   flex-direction: column;
   width: fit-content;
-  max-width: 220px;
+  max-width: min(220px, 100%);
   margin: 8px 0;
   padding: 0;
   border-radius: var(--radius-xl);
@@ -842,6 +853,7 @@
 .assetMentionBlockThumb {
   display: block;
   max-height: 300px;
+  max-width: 100%;
   width: auto;
   height: auto;
 }
@@ -898,12 +910,14 @@
 }
 
 .recordMention {
+  position: relative;
+  top: -1px;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 0 5px;
+  gap: 5px;
+  padding: 2px 6px;
   margin: 0 1px;
-  max-width: 160px;
+  max-width: 180px;
   font-family: inherit;
   font-size: inherit;
   font-weight: 500;
@@ -911,7 +925,7 @@
   color: var(--mention-record);
   background-color: var(--mention-record-bg);
   border: none;
-  border-radius: 3px;
+  border-radius: 4px;
   cursor: pointer;
   vertical-align: middle;
   transition: all var(--transition-fast);
@@ -928,22 +942,22 @@
 }
 
 .recordMentionIcon {
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   flex-shrink: 0;
   opacity: 0.8;
 }
 
 .recordMentionEmoji {
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1;
   flex-shrink: 0;
 }
 
 .recordMentionThumb {
-  width: 16px;
-  height: 16px;
-  border-radius: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 3px;
   object-fit: cover;
   flex-shrink: 0;
 }
@@ -1135,20 +1149,13 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
-  font-size: 10px;
-  font-weight: 600;
   color: var(--light-body-color);
-  background-color: var(--border-light);
-  border-radius: var(--radius-xl);
-  margin-right: 6px;
+  opacity: 0.7;
 }
 
 .mentionOptionSelected .mentionLocaleIndicator {
   color: var(--accent-color);
-  background-color: var(--accent-color-a10);
+  opacity: 1;
 }
 
 .mentionFieldMeta {

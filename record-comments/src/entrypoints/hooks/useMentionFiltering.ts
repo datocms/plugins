@@ -42,10 +42,6 @@ type UseMentionFilteringReturn = {
   filteredModels: ModelInfo[];
 };
 
-/**
- * Hook for filtering mention options based on the current trigger query.
- * Memoizes filtered results to avoid unnecessary recalculations.
- */
 export function useMentionFiltering({
   users,
   fields,

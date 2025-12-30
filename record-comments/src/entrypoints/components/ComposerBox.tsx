@@ -9,17 +9,6 @@ type ComposerBoxProps = {
   children: ReactNode;
 };
 
-/**
- * Reusable composer box wrapper component.
- * Used for both the main composer and reply/edit composers.
- *
- * Memoized because it's rendered frequently within Comment components
- * during edit mode and reply composition. The props are simple primitives
- * and ReactNode, making shallow comparison effective.
- *
- * @param compact - Use smaller sizing for inline editing (replies)
- * @param accentColor - Optional accent color for focus states
- */
 const ComposerBox = memo(function ComposerBox({
   compact = false,
   accentColor,

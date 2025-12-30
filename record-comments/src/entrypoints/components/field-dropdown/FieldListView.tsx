@@ -2,25 +2,6 @@ import type { MutableRefObject, ReactNode, Ref } from 'react';
 import type { FieldInfo } from '@hooks/useMentions';
 import styles from '@styles/comment.module.css';
 
-/**
- * ARCHITECTURE NOTE: FieldListView, NestedFieldsView, and BlockPickerView share similar
- * button rendering patterns but are intentionally kept as separate components rather than
- * extracting a shared DropdownOption component. The reasons:
- *
- * 1. **Different prop signatures**: FieldListView doesn't have onHover, NestedFieldsView
- *    and BlockPickerView do. Unifying would require optional props and conditionals.
- *
- * 2. **Different content structures**: FieldListView has a header ("Fields"), others don't.
- *    BlockPickerView has a special "Select entire field" option at the top.
- *
- * 3. **Different loading/empty states**: Each view handles these differently based on context.
- *
- * 4. **Readability over DRY**: The ~15 lines of duplicated button JSX across 3 files is
- *    acceptable duplication. Extracting would create an over-abstracted component with
- *    complex conditional rendering that's harder to understand than the current explicit code.
- *
- * If a fourth or fifth view is needed, consider extracting a FieldOptionButton component.
- */
 type FieldListViewProps = {
   fields: FieldInfo[];
   selectedIndex: number;
@@ -59,19 +40,22 @@ export function FieldListView({
                 justClickedInsideRef.current = true;
                 onSelect(field);
               }}
+              onClick={() => onSelect(field)}
             >
               <span className={styles.mentionFieldLabel}>
                 {isNested ? field.displayLabel : field.label}
               </span>
               <span className={styles.mentionFieldMeta}>
-                {isBlockContainer && (
+                {isBlockContainer && !hasMultipleLocales && (
                   <span className={styles.mentionBlockIndicator} title="Contains blocks">
                     ▶
                   </span>
                 )}
                 {hasMultipleLocales && (
-                  <span className={styles.mentionLocaleIndicator} title="Multiple locales available">
-                    {field.availableLocales?.length}
+                  <span className={styles.mentionLocaleIndicator} title="Localized field">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12.87 15.07l-2.54-2.51.03-.03A17.52 17.52 0 0014.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11.76-2.04zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2l-4.5-12zm-2.62 7l1.62-4.33L19.12 17h-3.24z"/>
+                    </svg>
                   </span>
                 )}
                 <span className={styles.mentionFieldApiKey}>#{field.apiKey}</span>

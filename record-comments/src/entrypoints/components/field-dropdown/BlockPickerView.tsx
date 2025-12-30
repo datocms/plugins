@@ -33,7 +33,6 @@ export function BlockPickerView({
 
   return (
     <div className={styles.mentionList} role="listbox" aria-label="Select block">
-      {/* Select entire field option */}
       <button
         ref={selectedIndex === 0 ? selectedRef : null}
         type="button"
@@ -45,6 +44,7 @@ export function BlockPickerView({
           justClickedInsideRef.current = true;
           onSelectEntireField();
         }}
+        onClick={onSelectEntireField}
         onMouseEnter={() => onHover(0)}
       >
         <span className={styles.mentionFieldLabel}>Select entire field</span>
@@ -55,7 +55,6 @@ export function BlockPickerView({
         </span>
       </button>
 
-      {/* Block list */}
       {blocks.length === 0 ? (
         <div className={styles.mentionEmpty}>No blocks in this field</div>
       ) : (
@@ -74,6 +73,7 @@ export function BlockPickerView({
                 justClickedInsideRef.current = true;
                 onSelectBlock(block);
               }}
+              onClick={() => onSelectBlock(block)}
               onMouseEnter={() => onHover(itemIndex)}
             >
               <span className={styles.mentionFieldLabel}>

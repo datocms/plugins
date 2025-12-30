@@ -2,9 +2,6 @@ import type { SVGProps } from 'react';
 
 type IconProps = SVGProps<SVGSVGElement>;
 
-/**
- * Three vertical dots menu icon
- */
 export function MoreVerticalIcon(props: IconProps) {
   return (
     <svg
@@ -20,10 +17,6 @@ export function MoreVerticalIcon(props: IconProps) {
   );
 }
 
-/**
- * Thumbs up / upvote icon
- * Note: Uses viewBox 0 0 24 24 (different from most other icons)
- */
 export function UpvoteIcon(props: IconProps) {
   return (
     <svg
@@ -38,9 +31,6 @@ export function UpvoteIcon(props: IconProps) {
   );
 }
 
-/**
- * Reply arrow icon
- */
 export function ReplyIcon(props: IconProps) {
   return (
     <svg
@@ -55,9 +45,6 @@ export function ReplyIcon(props: IconProps) {
   );
 }
 
-/**
- * Pencil / edit icon
- */
 export function EditIcon(props: IconProps) {
   return (
     <svg
@@ -72,9 +59,6 @@ export function EditIcon(props: IconProps) {
   );
 }
 
-/**
- * Trash can / delete icon
- */
 export function DeleteIcon(props: IconProps) {
   return (
     <svg
@@ -89,9 +73,6 @@ export function DeleteIcon(props: IconProps) {
   );
 }
 
-/**
- * User / person icon for user mentions
- */
 export function UserMentionIcon(props: IconProps) {
   return (
     <svg viewBox="0 0 16 16" fill="currentColor" {...props}>
@@ -100,9 +81,6 @@ export function UserMentionIcon(props: IconProps) {
   );
 }
 
-/**
- * Hash / field mention icon
- */
 export function FieldMentionIcon(props: IconProps) {
   return (
     <svg viewBox="0 0 16 16" fill="currentColor" {...props}>
@@ -111,9 +89,6 @@ export function FieldMentionIcon(props: IconProps) {
   );
 }
 
-/**
- * Document / record mention icon
- */
 export function RecordMentionIcon(props: IconProps) {
   return (
     <svg viewBox="0 0 16 16" fill="currentColor" {...props}>
@@ -123,9 +98,6 @@ export function RecordMentionIcon(props: IconProps) {
   );
 }
 
-/**
- * Document / record icon (alternative for mentions without thumbnail)
- */
 export function RecordDocumentIcon(props: IconProps) {
   return (
     <svg viewBox="0 0 16 16" fill="currentColor" {...props}>
@@ -134,9 +106,6 @@ export function RecordDocumentIcon(props: IconProps) {
   );
 }
 
-/**
- * Image / asset mention icon
- */
 export function AssetMentionIcon(props: IconProps) {
   return (
     <svg viewBox="0 0 16 16" fill="currentColor" {...props}>
@@ -146,9 +115,6 @@ export function AssetMentionIcon(props: IconProps) {
   );
 }
 
-/**
- * Grid / model mention icon
- */
 export function ModelMentionIcon(props: IconProps) {
   return (
     <svg viewBox="0 0 16 16" fill="currentColor" {...props}>
@@ -157,9 +123,6 @@ export function ModelMentionIcon(props: IconProps) {
   );
 }
 
-/**
- * Paper plane / send icon
- */
 export function SendIcon(props: IconProps) {
   return (
     <svg viewBox="0 0 16 16" fill="currentColor" {...props}>
@@ -168,9 +131,6 @@ export function SendIcon(props: IconProps) {
   );
 }
 
-/**
- * Chevron down icon (for expand/collapse)
- */
 export function ChevronDownIcon(props: IconProps) {
   return (
     <svg
@@ -185,9 +145,6 @@ export function ChevronDownIcon(props: IconProps) {
   );
 }
 
-/**
- * Magnifying glass / search icon
- */
 export function SearchIcon(props: IconProps) {
   return (
     <svg viewBox="0 0 16 16" fill="currentColor" {...props}>
@@ -196,9 +153,6 @@ export function SearchIcon(props: IconProps) {
   );
 }
 
-/**
- * Chat bubble / comments icon (empty state)
- */
 export function ChatBubbleIcon(props: IconProps) {
   return (
     <svg viewBox="0 0 16 16" fill="currentColor" {...props}>
@@ -207,9 +161,6 @@ export function ChatBubbleIcon(props: IconProps) {
   );
 }
 
-/**
- * Arrow down icon (for scroll to new comments)
- */
 export function ArrowDownIcon(props: IconProps) {
   return (
     <svg
@@ -224,9 +175,6 @@ export function ArrowDownIcon(props: IconProps) {
   );
 }
 
-/**
- * X / close icon
- */
 export function CloseIcon(props: IconProps) {
   return (
     <svg viewBox="0 0 16 16" fill="currentColor" {...props}>
@@ -235,9 +183,6 @@ export function CloseIcon(props: IconProps) {
   );
 }
 
-/**
- * At symbol in circle icon (for mention badges)
- */
 export function MentionBadgeIcon(props: IconProps) {
   return (
     <svg
@@ -253,9 +198,6 @@ export function MentionBadgeIcon(props: IconProps) {
   );
 }
 
-/**
- * Globe icon (for global/project discussions)
- */
 export function GlobeIcon(props: IconProps) {
   return (
     <svg viewBox="0 0 16 16" fill="currentColor" {...props}>
@@ -264,9 +206,6 @@ export function GlobeIcon(props: IconProps) {
   );
 }
 
-/**
- * Image/picture icon (for avatar selection)
- */
 export function ImageIcon(props: IconProps) {
   return (
     <svg viewBox="0 0 16 16" fill="currentColor" {...props}>

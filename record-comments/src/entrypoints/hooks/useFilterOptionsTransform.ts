@@ -1,9 +1,6 @@
 import { useMemo } from 'react';
 import type { FilterOptions } from '@hooks/useCommentFilters';
 
-/**
- * Transformed filter options ready for dropdown components
- */
 export type TransformedFilterOptions = {
   authorOptions: { value: string; label: string }[];
   recordOptions: { value: string; label: string; sublabel: string }[];
@@ -12,10 +9,6 @@ export type TransformedFilterOptions = {
   userOptions: { value: string; label: string }[];
 };
 
-/**
- * Transform raw filter options from useCommentFilters into dropdown-ready format.
- * Memoizes the transformation to avoid unnecessary recalculations.
- */
 export function useFilterOptionsTransform(filterOptions: FilterOptions): TransformedFilterOptions {
   return useMemo(
     () => ({

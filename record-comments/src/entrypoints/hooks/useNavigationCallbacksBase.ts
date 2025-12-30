@@ -1,39 +1,19 @@
 import { useCallback } from 'react';
 import type { RenderItemFormSidebarCtx, RenderPageCtx } from 'datocms-plugin-sdk';
-import { openUsersPage, openModelPage } from '@utils/navigationHelpers';
+import { openUsersPage, openModelPage, type NavigableUserType } from '@utils/navigationHelpers';
 
 type NavigationContext = RenderItemFormSidebarCtx | RenderPageCtx;
 
 export type BaseNavigationCallbacks = {
-  handleNavigateToUsers: () => void;
+  handleNavigateToUsers: (userType?: NavigableUserType) => void;
   handleNavigateToModel: (modelId: string, isBlockModel: boolean) => void;
   handleOpenAsset: (assetId: string) => Promise<void>;
 };
 
-/**
- * Base hook for shared navigation callbacks.
- *
- * Design note: This is deliberately separate from useNavigationCallbacks and
- * usePageNavigationCallbacks because:
- *
- * 1. Different SDK context types (RenderItemFormSidebarCtx vs RenderPageCtx)
- *    require separate hooks - they can't be easily unified with a discriminated union
- *    since the SDK types don't share a common base.
- *
- * 2. Context-specific callbacks exist:
- *    - Sidebar: handleScrollToField (requires ctx.item, ctx.scrollToField)
- *    - Page: handleNavigateToRecordComments (no record context to scroll to)
- *
- * 3. handleOpenRecord has different implementations:
- *    - Sidebar: ctx.editItem(recordId) - can use the richer sidebar API
- *    - Page: ctx.navigateTo(path) - must build full URL path
- *
- * This base hook extracts the truly shared callbacks that work identically
- * in both contexts (openUsersPage, openModelPage, editUpload).
- */
+/** Shared navigation callbacks for sidebar and page contexts. */
 export function useNavigationCallbacksBase(ctx: NavigationContext): BaseNavigationCallbacks {
-  const handleNavigateToUsers = useCallback(() => {
-    openUsersPage(ctx);
+  const handleNavigateToUsers = useCallback((userType: NavigableUserType = 'user') => {
+    openUsersPage(ctx, userType);
   }, [ctx]);
 
   const handleNavigateToModel = useCallback(

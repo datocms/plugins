@@ -20,17 +20,12 @@ type CommentActionsProps = {
   hasUpvotes: boolean;
 };
 
-/**
- * Custom comparator for CommentActions.
- * Only compares state-like props; callbacks are compared by reference.
- */
 function arePropsEqual(prev: CommentActionsProps, next: CommentActionsProps): boolean {
   return (
     prev.userUpvoted === next.userUpvoted &&
     prev.userIsAuthor === next.userIsAuthor &&
     prev.isTopLevel === next.isTopLevel &&
     prev.hasUpvotes === next.hasUpvotes &&
-    // Callbacks compared by reference (rely on useCallback stability)
     prev.onUpvote === next.onUpvote &&
     prev.onReply === next.onReply &&
     prev.onEdit === next.onEdit &&
@@ -38,16 +33,7 @@ function arePropsEqual(prev: CommentActionsProps, next: CommentActionsProps): bo
   );
 }
 
-/**
- * Hover action buttons for comments (upvote, reply, edit, delete)
- *
- * Accessibility notes:
- * - This menu is CSS-based (hover-triggered), not JavaScript state-driven.
- * - Full arrow-key navigation would require managing focus state and menu open/close state in React.
- * - For now, menu items are focusable via Tab key and have proper ARIA roles.
- * - aria-expanded is statically set since visibility is controlled by CSS :hover.
- * - A more complete implementation would require refactoring to use useState for menu visibility.
- */
+// CSS-based hover menu; aria-expanded static since visibility is CSS-controlled
 const CommentActions = memo(function CommentActions({
   onUpvote,
   onReply,
@@ -70,7 +56,6 @@ const CommentActions = memo(function CommentActions({
         <MoreVerticalIcon />
       </button>
       <div className={styles.actions} role="menu" aria-label="Comment actions">
-        {/* Only show upvote button in hover menu if there are no upvotes yet */}
         {!hasUpvotes && (
           <button
             type="button"

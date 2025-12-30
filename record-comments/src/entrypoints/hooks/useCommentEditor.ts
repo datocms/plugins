@@ -17,28 +17,20 @@ export type UseCommentEditorReturn = {
   resetToOriginal: () => void;
 };
 
-/**
- * Hook for managing comment editing state
- * Handles the segments and editing mode for TipTapComposer
- */
 export function useCommentEditor({
   commentContent,
   isNewComment,
 }: UseCommentEditorParams): UseCommentEditorReturn {
   const composerRef = useRef<TipTapComposerRef>(null);
-
-  // Use segments directly - no conversion needed
   const [isEditing, setIsEditing] = useState(isNewComment);
   const [segments, setSegments] = useState<CommentSegment[]>(commentContent);
 
-  // Sync local state when props change (from realtime updates)
   useEffect(() => {
     if (!isEditing) {
       setSegments(commentContent);
     }
   }, [commentContent, isEditing]);
 
-  // Auto-focus composer when editing starts
   useEffect(() => {
     if (isEditing && composerRef.current) {
       composerRef.current.focus();
@@ -46,7 +38,6 @@ export function useCommentEditor({
   }, [isEditing]);
 
   const handleStartEditing = () => {
-    // Re-initialize from current content when starting to edit
     setSegments(commentContent);
     setIsEditing(true);
   };

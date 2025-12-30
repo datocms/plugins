@@ -9,50 +9,6 @@ import {
 import type { TriggerInfo } from '@utils/mentions';
 import type { UserInfo, FieldInfo, ModelInfo } from './useMentionFiltering';
 
-/**
- * ============================================================================
- * ARCHITECTURAL NOTE: WHY SELECTION HANDLERS ARE NOT ABSTRACTED
- * ============================================================================
- *
- * The three selection handlers (handleSelectUser, handleSelectField, handleSelectModel)
- * follow a similar pattern:
- *   1. Validate trigger type matches
- *   2. Call the corresponding insert function
- *   3. Clone the mentions map and add the new mention
- *   4. Update text, cursor position, and reset selection index
- *
- * A code review might suggest creating a factory function to reduce this duplication.
- * However, abstraction here would be COUNTERPRODUCTIVE for these reasons:
- *
- * 1. TYPE SAFETY COMPLEXITY:
- *    - Each handler works with different item types (UserInfo, FieldInfo, ModelInfo)
- *    - Each calls a different insert function with different signatures
- *    - A generic factory would require complex type parameters and type guards
- *    - The type assertions needed would reduce type safety, not improve it
- *
- * 2. MINIMAL ACTUAL DUPLICATION:
- *    - The shared logic is only ~5 lines (clone map, update map, call callbacks)
- *    - Each handler has type-specific logic that can't be generalized
- *    - Total duplication: ~15 lines. Factory overhead: ~30 lines + complexity
- *
- * 3. READABILITY AND DEBUGGING:
- *    - Each handler is self-contained and easy to understand
- *    - When debugging mention insertion, you can trace one clear path
- *    - A factory pattern would add indirection that obscures the data flow
- *
- * 4. CHANGE ISOLATION:
- *    - If field mentions need special handling (e.g., locale selection), only
- *      handleSelectField needs modification
- *    - A shared factory would require conditional logic for each type
- *
- * IF YOU ARE CONSIDERING REFACTORING THIS:
- * - Only do so if a 4th+ mention type is added AND the pattern is truly identical
- * - Even then, consider if the abstraction cost outweighs the duplication cost
- * - Remember: "The Wrong Abstraction" is worse than duplicated code
- *
- * ============================================================================
- */
-
 type UseMentionSelectionOptions = {
   value: string;
   cursorPosition: number;
@@ -76,10 +32,6 @@ type UseMentionSelectionReturn = {
   closeDropdown: () => void;
 };
 
-/**
- * Hook for managing selection state and handling mention selections.
- * Handles user, field, and model selection with proper mention map updates.
- */
 export function useMentionSelection({
   value,
   cursorPosition,
@@ -100,7 +52,6 @@ export function useMentionSelection({
     setPendingFieldForLocale(null);
   }, []);
 
-  // Handle user selection
   const handleSelectUser = useCallback(
     (user: UserInfo) => {
       if (!triggerInfo || triggerInfo.type !== 'user') return;
@@ -112,7 +63,6 @@ export function useMentionSelection({
         user
       );
 
-      // Add mention to map
       const newMap = new Map(mentionsMap);
       newMap.set(createMentionKey(mention), mention);
       onMentionsMapChange(newMap);
@@ -124,7 +74,6 @@ export function useMentionSelection({
     [value, cursorPosition, triggerInfo, onChange, setCursorPosition, mentionsMap, onMentionsMapChange]
   );
 
-  // Handle field selection
   const handleSelectField = useCallback(
     (field: FieldInfo, locale?: string) => {
       if (!triggerInfo || triggerInfo.type !== 'field') return;
@@ -137,7 +86,6 @@ export function useMentionSelection({
         locale
       );
 
-      // Add mention to map
       const newMap = new Map(mentionsMap);
       newMap.set(createMentionKey(mention), mention);
       onMentionsMapChange(newMap);
@@ -149,7 +97,6 @@ export function useMentionSelection({
     [value, cursorPosition, triggerInfo, onChange, setCursorPosition, mentionsMap, onMentionsMapChange]
   );
 
-  // Handle model selection
   const handleSelectModel = useCallback(
     (model: ModelInfo) => {
       if (!triggerInfo || triggerInfo.type !== 'model') return;
@@ -161,7 +108,6 @@ export function useMentionSelection({
         model
       );
 
-      // Add mention to map
       const newMap = new Map(mentionsMap);
       newMap.set(createMentionKey(mention), mention);
       onMentionsMapChange(newMap);
@@ -173,7 +119,6 @@ export function useMentionSelection({
     [value, cursorPosition, triggerInfo, onChange, setCursorPosition, mentionsMap, onMentionsMapChange]
   );
 
-  // Close dropdown by inserting a space
   const closeDropdown = useCallback(() => {
     if (triggerInfo) {
       const before = value.slice(0, cursorPosition);

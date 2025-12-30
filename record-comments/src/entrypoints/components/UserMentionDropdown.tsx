@@ -41,6 +41,7 @@ const UserMentionDropdown = ({
             e.preventDefault();
             onSelect(user);
           }}
+          onClick={() => onSelect(user)}
         >
           {user.avatarUrl && (
             <img
