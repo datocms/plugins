@@ -4,7 +4,6 @@ import type { Client } from '@datocms/cma-client-browser';
 import type { TipTapComposerRef } from '@components/tiptap/TipTapComposer';
 import type { ModelInfo } from './useMentions';
 import { createRecordMention } from '@utils/recordPickerHelpers';
-import { getItemTypeEmoji } from '@utils/itemTypeUtils';
 import { ERROR_MESSAGES } from '@/constants';
 import { logError } from '@/utils/errorLogger';
 
@@ -58,7 +57,6 @@ export function usePageRecordMention({
         const itemType = ctx.itemTypes[model.id];
         const fields = itemType ? await ctx.loadItemTypeFields(model.id) : [];
         const mainLocale = ctx.site.attributes.locales[0];
-        const modelEmoji = getItemTypeEmoji(itemType);
 
         const recordMention = await createRecordMention(
           { id: record.id, attributes: record.attributes },
@@ -66,8 +64,7 @@ export function usePageRecordMention({
           itemType,
           fields,
           mainLocale,
-          client,
-          modelEmoji
+          client
         );
 
         if (currentOperationId !== operationIdRef.current) {

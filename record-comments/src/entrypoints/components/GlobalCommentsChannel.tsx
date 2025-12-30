@@ -33,7 +33,6 @@ import { SUBSCRIPTION_STATUS } from '@hooks/useCommentsSubscription';
 import { GLOBAL_MODEL_ID, GLOBAL_RECORD_ID, ERROR_MESSAGES } from '@/constants';
 import { categorizeGeneralError } from '@utils/errorCategorization';
 import { createRecordMention } from '@utils/recordPickerHelpers';
-import { getItemTypeEmoji } from '@utils/itemTypeUtils';
 import { isComposerEmpty, createAssetMention } from '@utils/composerHelpers';
 import { logError } from '@/utils/errorLogger';
 import styles from '@styles/dashboard.module.css';
@@ -200,7 +199,6 @@ const GlobalCommentsChannel = ({
         const itemType = ctx.itemTypes[model.id];
         const fields = itemType ? await ctx.loadItemTypeFields(model.id) : [];
         const mainLocale = ctx.site.attributes.locales[0];
-        const modelEmoji = getItemTypeEmoji(itemType);
 
         const recordMention = await createRecordMention(
           { id: record.id, attributes: record.attributes },
@@ -208,8 +206,7 @@ const GlobalCommentsChannel = ({
           itemType,
           fields,
           mainLocale,
-          client,
-          modelEmoji
+          client
         );
 
         targetComposer.insertMention(recordMention);
