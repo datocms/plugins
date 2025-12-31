@@ -1,10 +1,21 @@
 # CLAUDE.md
 
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 ## Build Commands
 
 - `npm run dev` - Start Vite dev server
 - `npm run build` - TypeScript check + production build
 - `npm run preview` - Preview built plugin
+
+## Test Commands
+
+- `npm run test` - Run tests in watch mode
+- `npm run test:unit` - Run all unit tests once
+- `npm run test:unit:watch` - Run tests in watch mode
+- `npm run test:unit:coverage` - Run tests with coverage report
+
+Tests are in `tests/unit/` and use Vitest with jsdom environment.
 
 ## Project Overview
 
@@ -17,6 +28,17 @@ DatoCMS plugin for collaborative commenting with threaded replies, upvoting, rea
 - **CommentsBar.tsx** - Sidebar for per-record comments
 - **CommentsDashboard.tsx** - Full page with global channel, "My Mentions", "Recent Comments"
 - **main.tsx** - Plugin lifecycle: auto-creates `project_comment` model, registers sidebar/dashboard
+
+### Path Aliases
+
+| Alias | Path |
+|-------|------|
+| `@/*` | `src/*` |
+| `@components/*` | `src/entrypoints/components/*` |
+| `@hooks/*` | `src/entrypoints/hooks/*` |
+| `@utils/*` | `src/entrypoints/utils/*` |
+| `@ctypes/*` | `src/entrypoints/types/*` |
+| `@styles/*` | `src/entrypoints/styles/*` |
 
 ### Key Patterns
 

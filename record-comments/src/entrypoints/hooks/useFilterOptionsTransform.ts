@@ -3,7 +3,7 @@ import type { FilterOptions } from '@hooks/useCommentFilters';
 
 export type TransformedFilterOptions = {
   authorOptions: { value: string; label: string }[];
-  recordOptions: { value: string; label: string; sublabel: string }[];
+  recordOptions: { value: string; label: string; sublabel?: string }[];
   assetOptions: { value: string; label: string }[];
   modelOptions: { value: string; label: string }[];
   userOptions: { value: string; label: string }[];
@@ -19,7 +19,7 @@ export function useFilterOptionsTransform(filterOptions: FilterOptions): Transfo
       recordOptions: filterOptions.mentionedRecords.map((r) => ({
         value: r.id,
         label: r.title,
-        sublabel: r.modelName,
+        sublabel: r.title === r.modelName ? undefined : r.modelName,
       })),
       assetOptions: filterOptions.mentionedAssets.map((a) => ({
         value: a.id,

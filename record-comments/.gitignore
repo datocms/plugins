@@ -25,3 +25,11 @@ dist-ssr
 *.sw?
 
 .tmplr-preview
+
+# Test artifacts
+tests/e2e/.auth/
+tests/e2e/.test-project.json
+test-results/
+playwright-report/
+playwright/.cache/
+coverage/
