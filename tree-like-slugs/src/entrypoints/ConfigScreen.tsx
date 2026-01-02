@@ -6,6 +6,7 @@ type Props = {
   ctx: RenderConfigScreenCtx;
 };
 
+/** Plugin configuration screen displaying usage instructions */
 export default function ConfigScreen({ ctx }: Props) {
   return (
     <Canvas ctx={ctx}>

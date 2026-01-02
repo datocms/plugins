@@ -1,23 +1,35 @@
-# Tree-like Slugs (for models with Hierarchical Sorting)
+# Tree-like Slugs
 
-A plugin that makes it so the slugs in models with Hierarchical Sorting (formerly "Tree-like Collections") are passed down to the child records upon the parent's update.
+Automatically propagate hierarchical slugs through parent-child records in DatoCMS.
 
-Add it to the slug field you want as a field addon. The model must be one that has its "Default ordering" set to "Hierarchical sorting" (formerly called "Tree-like collection").
+When you update a parent record's slug, all descendant records (children, grandchildren, etc.) automatically inherit the updated path prefix.
 
-IMPORTANT: The slug field must have the "Match a specific pattern" validation DISABLED! Otherwise the plugin won't be able to insert '/' in the slug.
+## Example
 
-From then on, whenever you update a parent record's slug, all of its descendents (children, grandchildren, etc.) will have their slugs updated as well.
+**Before updating the grandparent's slug:**
 
-Before:
-* Grandparent: /grandparent
-  * Parent: /parent
-    * Child: /child
+```
+Grandparent: /grandparent
+  └── Parent: /parent
+        └── Child: /child
+```
 
-With the plugin, after updating the Grandparent record:
-* Grandparent: /grandparent-new
-  * Parent: /grandparent-new/parent
-    *  Child: /grandparent-new/parent/child
+**After updating the grandparent's slug to `/grandparent-new`:**
 
-## Changelog
-- 0.3.1: Dependency updates and bug fixes. Migrated to newer plugin SDK version.
-- 0.3.0: Previous release
+```
+Grandparent: /grandparent-new
+  └── Parent: /grandparent-new/parent
+        └── Child: /grandparent-new/parent/child
+```
+
+## Setup
+
+1. Install the plugin from the DatoCMS marketplace
+2. Ensure your model uses **Hierarchical sorting** as its default ordering
+3. On your slug field, **disable** the "Match a specific pattern" validation (required to allow `/` characters)
+4. Add this plugin as a field addon to your slug field
+
+## Known Limitations
+
+- **Reset button**: Clicking the reset/refresh button on the slug field will reset it to the default value, losing the hierarchical path.
+- **Moving records**: Dragging a record to a new parent in the tree does not automatically update the slug. To fix this, manually edit and save the new parent record's slug.
