@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, type Easing } from 'framer-motion';
 import { AiOutlineOpenAI } from 'react-icons/ai';
 import { BsCheckCircleFill } from 'react-icons/bs';
 import type { Theme } from 'datocms-plugin-sdk';
@@ -99,11 +99,11 @@ export function ChatBubble({ bubble, theme }: Props) {
       transition: {
         opacity: {
           duration: 0.2,
-          ease: 'easeOut',
+          ease: 'easeOut' as Easing,
         },
         scale: {
           duration: 0.2,
-          ease: 'easeOut',
+          ease: 'easeOut' as Easing,
         },
       },
     },
@@ -113,11 +113,11 @@ export function ChatBubble({ bubble, theme }: Props) {
       transition: {
         opacity: {
           duration: 0.15,
-          ease: 'easeIn',
+          ease: 'easeIn' as Easing,
         },
         scale: {
           duration: 0.15,
-          ease: 'easeIn',
+          ease: 'easeIn' as Easing,
         },
       },
     },
@@ -137,7 +137,7 @@ export function ChatBubble({ bubble, theme }: Props) {
           rotate: [0, 360],
           transition: {
             duration: 1,
-            ease: 'linear',
+            ease: 'linear' as Easing,
             repeat: Number.POSITIVE_INFINITY,
           },
         }
