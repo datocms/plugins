@@ -1,0 +1,45 @@
+{
+  "name": "datocms-plugin-delete-asset-from-other-environments",
+  "description": "This is a SPECIAL-PURPOSE plugin used only to help with CDN cache invalidation of unused assets. It will not help you save disk space or bandwidth. You should only use this if directed to by DatoCMS Support, or if you know you need to completely evict an asset from our CDN cache by ensuring all its copies are gone. If you don't know what this means, you probably don't need this plugin. It is NOT a general-use plugin for cleaning up assets.",
+
+  "homepage": "https://github.com/datocms/datocms-plugin-delete-asset-from-other-environments",
+  "private": false,
+  "version": "0.0.2",
+  "author": "Roger Tuan (DatoCMS) <r.tuan@datocms.com>",
+  "type": "module",
+  "keywords": [
+    "datocms-plugin"
+  ],
+  "datoCmsPlugin": {
+    "title": "Delete Asset From Other Environments",
+    "coverImage": "docs/cover-1200x800.png",
+    "previewImage": "docs/screenshot.png",
+    "entryPoint": "dist/index.html",
+    "permissions": ["currentUserAccessToken"]
+  },
+  "files": [
+    "dist",
+    "docs"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "datocms-plugin-sdk": "^2.0.15",
+    "datocms-react-ui": "^2.0.15",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "@datocms/cma-client-browser": "^5.1.26"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "globals": "^15.9.0",
+    "typescript": "^5.5.3",
+    "vite": "^5.4.1"
+  }
+}
