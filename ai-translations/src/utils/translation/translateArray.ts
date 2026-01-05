@@ -10,6 +10,13 @@ import { normalizeProviderError } from './ProviderErrors';
 import { mapDatoToDeepL, isFormalitySupported } from './DeepLMap';
 import { resolveGlossaryId } from './DeepLGlossary';
 
+/**
+ * Maximum number of segments to translate in a single API call for chat vendors.
+ * DeepL uses its own batching (45 segments), but chat vendors (OpenAI, Gemini, Anthropic)
+ * need chunking to handle large arrays reliably.
+ */
+const CHAT_VENDOR_CHUNK_SIZE = 25;
+
 type Options = {
   isHTML?: boolean;
   formality?: 'default' | 'more' | 'less';
@@ -58,6 +65,62 @@ function detokenize(text: string, map: TokenMap): string {
     out = out.split(safe).join(orig);
   }
   return out;
+}
+
+/**
+ * Parses a translation response from a chat vendor and repairs common issues.
+ * Handles JSON parsing, bracket extraction repair, and length mismatch repair.
+ *
+ * @param responseText - Raw response text from the translation provider.
+ * @param originalSegments - Original segments for length repair fallback.
+ * @returns Array of translated strings with the same length as originalSegments.
+ */
+function parseTranslationResponse(responseText: string, originalSegments: string[]): string[] {
+  const trimmedTxt = (responseText || '').trim();
+  let arr: unknown = [];
+  let jsonRepaired = false;
+
+  try {
+    arr = JSON.parse(trimmedTxt);
+  } catch {
+    // Hard repair: try to extract between first [ and last ]
+    // Only attempt if trimmedTxt is not empty
+    if (trimmedTxt.length > 0) {
+      const start = trimmedTxt.indexOf('[');
+      const end = trimmedTxt.lastIndexOf(']');
+      if (start >= 0 && end > start) {
+        try {
+          arr = JSON.parse(trimmedTxt.slice(start, end + 1));
+          jsonRepaired = true;
+          console.info('[translateArray] JSON repaired by extracting array brackets');
+        } catch {
+          // Log repair failure for debugging
+          console.warn('[translateArray] JSON repair failed', {
+            originalLength: trimmedTxt.length,
+            extractedRange: [start, end],
+          });
+        }
+      }
+    }
+  }
+
+  if (!Array.isArray(arr)) {
+    throw new Error('Model did not return a JSON array');
+  }
+
+  // Log if repair was successful
+  if (jsonRepaired) {
+    console.info(`[translateArray] Successfully parsed ${arr.length} segments after JSON repair`);
+  }
+
+  // Length repair: ensure output has same length as input
+  const fixed: string[] = [];
+  for (let i = 0; i < originalSegments.length; i++) {
+    const v = arr[i];
+    fixed.push(typeof v === 'string' ? v : String(originalSegments[i] ?? ''));
+  }
+
+  return fixed;
 }
 
 /**
@@ -111,54 +174,30 @@ export async function translateArray(
         glossaryId: resolveGlossaryId(pluginParams, fromLocale, toLocale),
       });
     } else {
-      // Chat vendors: JSON-array prompt
+      // Chat vendors: JSON-array prompt with chunking for large arrays
       const from = fromLocale;
       const to = toLocale;
       const instruction = `Translate the following array of strings from ${from} to ${to}. Return ONLY a valid JSON array of the exact same length, preserving placeholders like {foo}, {{bar}}, and tokens like ⟦PH_0⟧. You may encounter ICU Message Format strings (e.g., {gender, select, male {He said} female {She said}}). You MUST preserve the structure, keywords, and variable keys exactly. ONLY translate the human-readable content inside the brackets. Do not explain.`;
-      const arrayLiteral = JSON.stringify(protectedSegments);
-      const prompt = `${instruction}\n${arrayLiteral}`;
-      const txt = await provider.completeText(prompt);
-      // Parse result safely with null check
-      const trimmedTxt = (txt || '').trim();
-      let arr: unknown = [];
-      let jsonRepaired = false;
-      try {
-        arr = JSON.parse(trimmedTxt);
-      } catch {
-        // Hard repair: try to extract between first [ and last ]
-        // Only attempt if trimmedTxt is not empty
-        if (trimmedTxt.length > 0) {
-          const start = trimmedTxt.indexOf('[');
-          const end = trimmedTxt.lastIndexOf(']');
-          if (start >= 0 && end > start) {
-            try {
-              arr = JSON.parse(trimmedTxt.slice(start, end + 1));
-              jsonRepaired = true;
-              console.info('[translateArray] JSON repaired by extracting array brackets');
-            } catch {
-              // Log repair failure for debugging
-              console.warn('[translateArray] JSON repair failed', {
-                originalLength: trimmedTxt.length,
-                extractedRange: [start, end]
-              });
-            }
-          }
+
+      // Chunk large arrays to improve reliability and enable partial recovery
+      if (protectedSegments.length > CHAT_VENDOR_CHUNK_SIZE) {
+        const allResults: string[] = [];
+
+        for (let i = 0; i < protectedSegments.length; i += CHAT_VENDOR_CHUNK_SIZE) {
+          const chunkSegments = protectedSegments.slice(i, i + CHAT_VENDOR_CHUNK_SIZE);
+          const chunkPrompt = `${instruction}\n${JSON.stringify(chunkSegments)}`;
+          const chunkResponse = await provider.completeText(chunkPrompt);
+          const chunkResults = parseTranslationResponse(chunkResponse, chunkSegments);
+          allResults.push(...chunkResults);
         }
-      }
-      if (!Array.isArray(arr)) throw new Error('Model did not return a JSON array');
 
-      // Log if repair was successful
-      if (jsonRepaired) {
-        console.info(`[translateArray] Successfully parsed ${arr.length} segments after JSON repair`);
+        out = allResults;
+      } else {
+        // Single call for small arrays (original behavior)
+        const prompt = `${instruction}\n${JSON.stringify(protectedSegments)}`;
+        const txt = await provider.completeText(prompt);
+        out = parseTranslationResponse(txt, protectedSegments);
       }
-
-      // Length repair
-      const fixed: string[] = [];
-      for (let i = 0; i < segments.length; i++) {
-        const v = arr[i];
-        fixed.push(typeof v === 'string' ? v : String(segments[i] ?? ''));
-      }
-      out = fixed;
     }
 
     // Reinsert tokens with safe fallback for tokenMaps

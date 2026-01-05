@@ -134,6 +134,87 @@ function extractBlockModelId(block: DatoCMSBlock): string | undefined {
   return undefined;
 }
 
+/**
+ * Represents a cancelled operation during concurrent execution.
+ * Used internally by runWithConcurrency to signal early termination.
+ */
+class CancellationError extends Error {
+  constructor() {
+    super('Operation cancelled');
+    this.name = 'CancellationError';
+  }
+}
+
+/**
+ * Result wrapper for concurrent task execution.
+ * Tracks both the result and whether the task completed successfully.
+ */
+interface ConcurrencyResult<T> {
+  index: number;
+  result?: T;
+  completed: boolean;
+}
+
+/**
+ * Executes an array of async tasks with a maximum concurrency limit.
+ * Uses a worker-pool pattern where workers pull tasks from a shared queue.
+ *
+ * @param tasks - Array of async task functions to execute.
+ * @param maxConcurrency - Maximum number of concurrent tasks.
+ * @param checkCancellation - Optional function that throws if cancelled.
+ * @returns Array of results in the same order as input tasks.
+ *          Incomplete tasks (due to cancellation) will have undefined results.
+ */
+async function runWithConcurrency<T>(
+  tasks: Array<() => Promise<T>>,
+  maxConcurrency: number,
+  checkCancellation?: () => void
+): Promise<ConcurrencyResult<T>[]> {
+  const results: ConcurrencyResult<T>[] = tasks.map((_, index) => ({
+    index,
+    completed: false,
+  }));
+
+  let nextIndex = 0;
+  let cancelled = false;
+
+  async function worker(): Promise<void> {
+    while (!cancelled && nextIndex < tasks.length) {
+      const index = nextIndex++;
+
+      // Check for cancellation before starting each task
+      try {
+        checkCancellation?.();
+      } catch {
+        cancelled = true;
+        return;
+      }
+
+      try {
+        const result = await tasks[index]();
+        results[index] = { index, result, completed: true };
+      } catch (error) {
+        // If task throws due to cancellation, stop this worker
+        if (error instanceof CancellationError) {
+          cancelled = true;
+          return;
+        }
+        // Re-throw other errors to fail the whole operation
+        throw error;
+      }
+    }
+  }
+
+  // Start workers up to maxConcurrency or task count, whichever is smaller
+  const workerCount = Math.min(maxConcurrency, tasks.length);
+  const workers = Array(workerCount)
+    .fill(null)
+    .map(() => worker());
+
+  await Promise.all(workers);
+  return results;
+}
+
 // Re-export StreamCallbacks for backwards compatibility
 export type { StreamCallbacks } from './types';
 
@@ -268,6 +349,12 @@ export async function translateFieldValue(
 const BLOCK_FIELDS_CACHE_MAX_SIZE = 100;
 
 /**
+ * Maximum number of block fields to translate in parallel.
+ * Conservative value to avoid rate limits within a single block.
+ */
+const BLOCK_FIELD_CONCURRENCY = 3;
+
+/**
  * Module-level cache for block field metadata.
  * Avoids repeated CMA calls when translating multiple blocks of the same type.
  * Limited to BLOCK_FIELDS_CACHE_MAX_SIZE entries to prevent memory leaks.
@@ -387,10 +474,19 @@ const BLOCK_METADATA_FIELDS = [
 ] as const;
 
 /**
- * Processes fields within a block's source object.
+ * Represents a translated field result.
+ */
+interface TranslatedFieldResult {
+  field: string;
+  value: unknown;
+}
+
+/**
+ * Processes fields within a block's source object using parallel execution.
  *
- * Extracted from translateBlockValue to improve testability and reduce closure complexity.
- * All dependencies are now explicitly passed via the context parameter.
+ * Translates multiple fields concurrently (up to BLOCK_FIELD_CONCURRENCY) to improve
+ * performance while respecting rate limits. Supports cancellation and applies
+ * partial results if translation is interrupted.
  *
  * @param source - The source object containing fields to translate.
  * @param fieldTypeDictionary - Dictionary mapping field API keys to their editor type and ID.
@@ -402,28 +498,25 @@ async function processBlockFields(
   fieldTypeDictionary: Record<string, { editor: string; id: string }>,
   ctx: BlockFieldProcessingContext
 ): Promise<void> {
-  for (const field in source) {
-    if (BLOCK_METADATA_FIELDS.includes(field as typeof BLOCK_METADATA_FIELDS[number])) {
-      continue;
-    }
+  // Collect translatable fields (skip metadata fields)
+  const translatableFields = Object.keys(source).filter(
+    (field) => !BLOCK_METADATA_FIELDS.includes(field as typeof BLOCK_METADATA_FIELDS[number])
+  );
 
+  if (translatableFields.length === 0) {
+    return;
+  }
+
+  // Create translation tasks for each field
+  const tasks = translatableFields.map((field) => async (): Promise<TranslatedFieldResult> => {
     // Show progress if using streaming callbacks
-    if (ctx.streamCallbacks?.onStream) {
-      ctx.streamCallbacks.onStream(`Translating block field: ${field}...`);
-    }
-
-    // Check for cancellation - early return from processBlockFields
-    // The parent function will return the partially translated cleanedFieldValue
-    if (ctx.streamCallbacks?.checkCancellation?.()) {
-      ctx.logger.info('Translation cancelled by user');
-      return;
-    }
+    ctx.streamCallbacks?.onStream?.(`Translating block field: ${field}...`);
 
     let nestedPrompt = ' Return the response in the format of ';
     nestedPrompt +=
       fieldPrompt[fieldTypeDictionary[field]?.editor as keyof typeof fieldPrompt] || '';
 
-    source[field] = await translateFieldValue(
+    const translatedValue = await translateFieldValue(
       source[field],
       ctx.pluginParams,
       ctx.toLocale,
@@ -438,6 +531,28 @@ async function processBlockFields(
       ctx.recordContext,
       ctx.schemaRepository
     );
+
+    return { field, value: translatedValue };
+  });
+
+  // Execute tasks with concurrency limit, checking for cancellation between tasks
+  const results = await runWithConcurrency(
+    tasks,
+    BLOCK_FIELD_CONCURRENCY,
+    ctx.streamCallbacks?.checkCancellation
+  );
+
+  // Apply completed results to source object
+  for (const result of results) {
+    if (result.completed && result.result) {
+      source[result.result.field] = result.result.value;
+    }
+  }
+
+  // Log if cancelled mid-way
+  const completedCount = results.filter((r) => r.completed).length;
+  if (completedCount < translatableFields.length) {
+    ctx.logger.info(`Translation cancelled: ${completedCount}/${translatableFields.length} fields translated`);
   }
 }
 
