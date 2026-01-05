@@ -9,6 +9,7 @@ The plugin requires no configuration. After it's installed in your project, all 
 
 ## Changelog
 
+* v0.2.2: Moved plugin to official DatoCMS plugins repository. This was just an organizational change and does not add any features or fixes.
 * v0.2.1: Fixed bug when pasting multiple links into a block field
 * v0.2.0: Added support for link fields inside of blocks
 * v0.1.1: Added readme

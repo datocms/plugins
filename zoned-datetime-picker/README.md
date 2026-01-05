@@ -86,6 +86,7 @@ The plugin supports localized datetime entry and time zone names in the followin
 
 ## Changelog
 
+- 0.1.6 - Moved plugin to official DatoCMS plugins repository. This was just an organizational change and does not add any features or fixes.
 - 0.1.5 - Minor package updates and readme clarifications
 - 0.1.4 - Minor bug fixes
 - 0.1.2 - Initial release
