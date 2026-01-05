@@ -1,0 +1,46 @@
+{
+  "name": "datocms-plugin-asset-localization-checker",
+  "description": "A field extension for single asset fields that shows whether alt text and are title filled in for all used locales. Galleries are not supported.",
+  "homepage": "https://github.com/arcataroger/datocms-plugin-asset-localization-checker",
+  "private": false,
+  "version": "0.2.0",
+  "author": "Roger Tuan (DatoCMS) <r.tuan@datocms.com>",
+  "type": "module",
+  "keywords": [
+    "datocms-plugin"
+  ],
+  "datoCmsPlugin": {
+    "title": "Asset Localization Checker",
+    "coverImage": "docs/cover-1200x800.png",
+    "previewImage": "docs/preview.png",
+    "entryPoint": "dist/index.html",
+    "permissions": [
+      "currentUserAccessToken"
+    ]
+  },
+  "files": [
+    "dist",
+    "docs"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@datocms/cma-client-browser": "^4.0.2",
+    "datocms-plugin-sdk": "^2.0.13",
+    "datocms-react-ui": "^2.0.14",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "@vitejs/plugin-react": "^4.6.0",
+    "typescript": "^5.8.3",
+    "vite": "^7.0.4",
+    "prettier": "^3.6.2"
+  }
+}
