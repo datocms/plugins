@@ -1,0 +1,57 @@
+{
+  "name": "datocms-plugin-zoned-datetime-picker",
+  "description": "Zoned DateTime Picker is a DatoCMS plugin that stores datetime timestamps with time zone information. Outputs a JSON with ISO8601 and IXDTF strings, the IANA time zone string, UTC offset, and more.",
+  "homepage": "https://github.com/datocms/datocms-plugin-zoned-datetime-picker",
+  "private": false,
+  "version": "0.1.5",
+  "author": "Roger Tuan (DatoCMS) <r.tuan@datocms.com>",
+  "type": "module",
+  "keywords": [
+    "datocms-plugin",
+    "datocms",
+    "field-editor",
+    "datetime",
+    "timezone",
+    "iana",
+    "ixdtf",
+    "rfc-9557",
+    "iso-8601"
+  ],
+  "datoCmsPlugin": {
+    "title": "Zoned DateTime Picker",
+    "coverImage": "docs/cover-1200x800.png",
+    "previewImage": "docs/preview.mp4",
+    "entryPoint": "dist/index.html",
+    "permissions": []
+  },
+  "files": [
+    "dist",
+    "docs"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
+    "@mui/material": "^7.3.6",
+    "@mui/x-date-pickers": "^7.29.4",
+    "datocms-plugin-sdk": "^2.0.18",
+    "datocms-react-ui": "^2.0.19",
+    "luxon": "^3.7.2",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3"
+  },
+  "devDependencies": {
+    "@types/luxon": "^3.7.1",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.2",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.0",
+    "prettier": "^3.7.4"
+  }
+}
