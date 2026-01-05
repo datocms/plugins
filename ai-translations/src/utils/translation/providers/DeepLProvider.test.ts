@@ -205,22 +205,84 @@ describe('DeepLProvider', () => {
       expect(body.splitting_tags).toEqual(['br']);
     });
 
-    it('should include glossary_id when provided', async () => {
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            translations: [{ text: 'Hallo' }],
-          }),
-      });
+    it('should include glossary_id when provided and glossary matches language pair', async () => {
+      mockFetch
+        // First call: fetch glossary info
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              glossary_id: 'gls-123',
+              name: 'Test Glossary',
+              ready: true,
+              source_lang: 'en',
+              target_lang: 'de',
+              creation_time: '2021-01-01T00:00:00Z',
+              entry_count: 10,
+            }),
+        })
+        // Second call: translate
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              translations: [{ text: 'Hallo' }],
+            }),
+        });
 
       await provider.translateArray(['Hello'], {
         targetLang: 'DE',
+        sourceLang: 'EN',
         glossaryId: 'gls-123',
       });
 
-      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      // First call should be glossary info fetch (URL-encoded)
+      expect(mockFetch.mock.calls[0][0]).toContain('glossaries%2Fgls-123');
+
+      // Second call should be translate with glossary_id
+      const body = JSON.parse(mockFetch.mock.calls[1][1].body);
       expect(body.glossary_id).toBe('gls-123');
+    });
+
+    it('should NOT include glossary_id when glossary does not match language pair', async () => {
+      mockFetch
+        // First call: fetch glossary info (EN->IT glossary)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              glossary_id: 'gls-enit',
+              name: 'EN-IT Glossary',
+              ready: true,
+              source_lang: 'en',
+              target_lang: 'it',
+              creation_time: '2021-01-01T00:00:00Z',
+              entry_count: 10,
+            }),
+        })
+        // Second call: translate (without glossary since pair doesn't match)
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              translations: [{ text: 'Bonjour' }],
+            }),
+        });
+
+      const result = await provider.translateArray(['Hello'], {
+        targetLang: 'FR', // Translating to French, but glossary is EN->IT
+        sourceLang: 'EN',
+        glossaryId: 'gls-enit',
+      });
+
+      expect(result).toEqual(['Bonjour']);
+
+      // First call should be glossary info fetch (URL-encoded)
+      expect(mockFetch.mock.calls[0][0]).toContain('glossaries%2Fgls-enit');
+
+      // Second call should be translate WITHOUT glossary_id
+      const body = JSON.parse(mockFetch.mock.calls[1][1].body);
+      expect(body.glossary_id).toBeUndefined();
     });
 
     it('should return translated texts in order', async () => {
@@ -312,11 +374,28 @@ describe('DeepLProvider', () => {
         }
       });
 
-      it('should retry without glossary on glossary mismatch', async () => {
+      it('should retry without glossary on glossary mismatch error from API', async () => {
         let callCount = 0;
         mockFetch.mockImplementation(() => {
           callCount++;
+          // First call: glossary info fetch (returns matching pair to pass validation)
           if (callCount === 1) {
+            return Promise.resolve({
+              ok: true,
+              json: () =>
+                Promise.resolve({
+                  glossary_id: 'gls-wrong',
+                  name: 'Test Glossary',
+                  ready: true,
+                  source_lang: 'en',
+                  target_lang: 'de',
+                  creation_time: '2021-01-01T00:00:00Z',
+                  entry_count: 10,
+                }),
+            });
+          }
+          // Second call: translate with glossary - returns error
+          if (callCount === 2) {
             return Promise.resolve({
               ok: false,
               status: 400,
@@ -327,6 +406,7 @@ describe('DeepLProvider', () => {
                 }),
             });
           }
+          // Third call: retry without glossary - succeeds
           return Promise.resolve({
             ok: true,
             json: () =>
@@ -338,11 +418,13 @@ describe('DeepLProvider', () => {
 
         const result = await provider.translateArray(['Hello'], {
           targetLang: 'DE',
+          sourceLang: 'EN',
           glossaryId: 'gls-wrong',
         });
 
         expect(result).toEqual(['Hallo']);
-        expect(mockFetch).toHaveBeenCalledTimes(2);
+        // 1 glossary info + 1 translate with glossary (failed) + 1 retry without
+        expect(mockFetch).toHaveBeenCalledTimes(3);
       });
 
       it('should fallback to original text on missing translation', async () => {

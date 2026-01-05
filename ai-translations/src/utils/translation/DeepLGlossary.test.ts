@@ -308,7 +308,19 @@ FR->ES=gls-also-valid`;
           deeplGlossaryPairs: 'EN->*=gls-source',
           deeplGlossaryId: 'gls-default',
         };
-        expect(resolveGlossaryId(params, undefined, 'de')).toBe('gls-default');
+        // When pair mappings are configured, default is NOT used as fallback
+        // because the glossary likely doesn't support unmapped pairs
+        expect(resolveGlossaryId(params, undefined, 'de')).toBeUndefined();
+      });
+
+      it('should return undefined for non-matching pairs when pair mappings exist', () => {
+        const params = {
+          deeplGlossaryPairs: 'EN->IT=gls-enit',
+          deeplGlossaryId: 'gls-default',
+        };
+        // EN->IT is configured, but EN->FR is not - should NOT fall back to default
+        // because the glossary likely doesn't support EN->FR
+        expect(resolveGlossaryId(params, 'en', 'fr')).toBeUndefined();
       });
     });
 

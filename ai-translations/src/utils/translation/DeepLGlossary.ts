@@ -104,6 +104,13 @@ export function resolveGlossaryId(
     if (map[sourceToAnyRaw]) return map[sourceToAnyRaw];
   }
 
-  // Fallback default
+  // Fallback to default ONLY if no pair mappings are configured.
+  // If the user has configured specific pairs, we should not apply the default
+  // glossary to other pairs - it likely doesn't support them and would cause
+  // translations to fail silently or return original text.
+  const hasPairMappings = Object.keys(map).length > 0;
+  if (hasPairMappings) {
+    return undefined;
+  }
   return defaultId;
 }
