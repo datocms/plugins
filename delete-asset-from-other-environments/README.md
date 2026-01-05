@@ -23,5 +23,6 @@ It does NOT:
 Please make sure you have sufficient permissions for managing images across all your environments, and access to the environments themselves.
 
 ## Version History
+* 0.0.3: Moved plugin to official DatoCMS plugins repository. This was just an organizational change and does not add any features or fixes.
 * 0.0.2: Clarified how it works
 * 0.0.1: Initial alpha release. Basic working functionality, but limited permissions and error checking.
