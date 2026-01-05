@@ -1,10 +1,10 @@
 {
   "name": "datocms-plugin-asset-localization-checker",
   "description": "A field extension for single asset fields that shows whether alt text and are title filled in for all used locales. Galleries are not supported.",
-  "homepage": "https://github.com/arcataroger/datocms-plugin-asset-localization-checker",
+  "homepage": "https://github.com/datocms/plugins/tree/master/asset-localization-checker",
   "private": false,
   "version": "0.2.0",
-  "author": "Roger Tuan (DatoCMS) <r.tuan@datocms.com>",
+  "author": "DatoCMS <support@datocms.com>",
   "type": "module",
   "keywords": [
     "datocms-plugin"
