@@ -1,10 +1,10 @@
 {
   "name": "datocms-plugin-copy-links",
   "description": "Copy linked references from one field to another",
-  "homepage": "https://github.com/arcataroger/datocms-plugin-copy-links",
+  "homepage": "https://github.com/datocms/plugins/tree/master/copy-links",
   "private": false,
   "version": "0.2.1",
-  "author": "Roger Tuan (DatoCMS) <r.tuan@datocms.com>",
+  "author": "DatoCMS <support@datocms.com>",
   "type": "module",
   "keywords": [
     "datocms-plugin"
