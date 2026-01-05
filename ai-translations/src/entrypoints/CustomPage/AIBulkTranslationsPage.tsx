@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { buildDatoCMSClient } from '../../utils/clients';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import { isProviderConfigured } from '../../utils/translation/ProviderFactory';
+import { handleUIError } from '../../utils/translation/ProviderErrors';
 import s from './AIBulkTranslationsPage.module.css';
 // Light local equivalents of react-select types to avoid adding the package
 type SingleValue<T> = T | null;
@@ -112,14 +113,15 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
       setIsLoading(true);
       
       for (const model of selectedModels) {
+        // Don't use nested: true here since we only need record IDs
+        // This makes responses lighter and allows larger page sizes (up to 500 vs 30)
         const recordsIterator = client.items.listPagedIterator({
           filter: {
             type: model.value,
           },
           version: 'current',
-          nested: true
         });
-        
+
         for await (const record of recordsIterator) {
           allRecordIds.push(record.id);
         }
@@ -155,11 +157,11 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
           ctx.notice(`Translation from ${sourceLocale.value} to ${targetLocale.value} was canceled`);
         }
       } catch (error) {
-        ctx.alert(`Error: ${error instanceof Error ? error.message : String(error)}`);
+        handleUIError(error, pluginParams.vendor, ctx);
       }
     } catch (error) {
       setIsLoading(false);
-      ctx.alert(`Error: ${error instanceof Error ? error.message : String(error)}`);
+      handleUIError(error, pluginParams.vendor, ctx);
     }
   };
 

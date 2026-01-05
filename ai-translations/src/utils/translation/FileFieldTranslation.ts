@@ -13,9 +13,10 @@
  */
 
 import type { TranslationProvider, StreamCallbacks } from './types';
-import { normalizeProviderError } from './ProviderErrors';
+import { handleTranslationError } from './ProviderErrors';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import { createLogger } from '../logging/Logger';
+import { translateArray } from './translateArray';
 
 /**
  * Translates metadata for file and gallery fields
@@ -135,12 +136,12 @@ async function translateSingleFileMetadata(
     return fileValue;
   }
 
-  // Extract translatable metadata fields
+  // Extract translatable metadata fields using Object.entries to avoid prototype chain iteration
   const metadataToTranslate: Record<string, unknown> = {};
-  for (const key in metadata) {
+  for (const [key, value] of Object.entries(metadata)) {
     // Only include string values for translation
-    if (metadata[key] && typeof metadata[key] === 'string') {
-      metadataToTranslate[key] = metadata[key];
+    if (value && typeof value === 'string') {
+      metadataToTranslate[key] = value;
     }
   }
 
@@ -157,7 +158,6 @@ async function translateSingleFileMetadata(
   try {
     const keys = Object.keys(metadataToTranslate);
     const values = keys.map((k) => String(metadataToTranslate[k] ?? ''));
-    const { translateArray } = await import('./translateArray');
     const translatedValues = await translateArray(provider, pluginParams, values, fromLocale, toLocale, { isHTML: false, recordContext });
     const translatedMetadata = keys.reduce((acc, key, idx) => { acc[key] = translatedValues[idx]; return acc; }, {} as Record<string, unknown>);
 
@@ -170,8 +170,7 @@ async function translateSingleFileMetadata(
       },
     };
   } catch (error) {
-    const normalized = normalizeProviderError(error, provider.vendor);
-    logger.error('File metadata translation error', { message: normalized.message, code: normalized.code, hint: normalized.hint });
-    throw new Error(normalized.message);
+    // DRY-001: Use centralized error handler
+    handleTranslationError(error, provider.vendor, logger, 'File metadata translation error');
   }
 }

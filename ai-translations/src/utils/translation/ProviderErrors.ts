@@ -1,3 +1,6 @@
+import { isProviderError, hasStatusCode, type VendorId } from './types';
+import type { Logger } from '../logging/Logger';
+
 /**
  * Canonical error shape used across providers to surface actionable messages
  * and hints to the UI.
@@ -19,6 +22,85 @@ const includes = (s: unknown, ...needles: string[]) =>
   typeof s === 'string' && needles.some((n) => s.toLowerCase().includes(n.toLowerCase()));
 
 /**
+ * Safely extracts the status code from an error object.
+ *
+ * @param err - The error to extract status from.
+ * @returns The status code, or undefined if not present.
+ */
+function extractStatus(err: unknown): number | string | undefined {
+  if (isProviderError(err)) {
+    return err.status;
+  }
+  if (hasStatusCode(err)) {
+    return err.status;
+  }
+  if (err !== null && typeof err === 'object') {
+    const obj = err as Record<string, unknown>;
+    // Check various status locations
+    if (typeof obj.status === 'number' || typeof obj.status === 'string') {
+      return obj.status;
+    }
+    if (typeof obj.code === 'number' || typeof obj.code === 'string') {
+      return obj.code;
+    }
+    // Check nested response.status (axios-style)
+    if (obj.response && typeof obj.response === 'object') {
+      const response = obj.response as Record<string, unknown>;
+      if (typeof response.status === 'number') {
+        return response.status;
+      }
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Safely extracts the error message from an error object.
+ *
+ * @param err - The error to extract message from.
+ * @returns The error message string.
+ */
+function extractMessage(err: unknown): string {
+  if (err instanceof Error) {
+    return err.message;
+  }
+  if (err !== null && typeof err === 'object') {
+    const obj = err as Record<string, unknown>;
+    if (typeof obj.message === 'string') {
+      return obj.message;
+    }
+    // Check nested error.message (some APIs return { error: { message } })
+    if (obj.error && typeof obj.error === 'object') {
+      const errorObj = obj.error as Record<string, unknown>;
+      if (typeof errorObj.message === 'string') {
+        return errorObj.message;
+      }
+    }
+  }
+  return String(err || 'Unknown error');
+}
+
+/**
+ * Safely extracts nested error properties for OpenAI-specific checks.
+ *
+ * @param err - The error object.
+ * @returns Object with code and param if present.
+ */
+function extractErrorDetails(err: unknown): { code?: string; param?: string } {
+  if (err !== null && typeof err === 'object') {
+    const obj = err as Record<string, unknown>;
+    if (obj.error && typeof obj.error === 'object') {
+      const errorObj = obj.error as Record<string, unknown>;
+      return {
+        code: typeof errorObj.code === 'string' ? errorObj.code : undefined,
+        param: typeof errorObj.param === 'string' ? errorObj.param : undefined,
+      };
+    }
+  }
+  return {};
+}
+
+/**
  * Normalizes provider-specific errors to a compact, user-friendly shape, with
  * special handling for common authentication, quota, rate-limit and model
  * errors. Includes targeted hints where we can determine a likely fix.
@@ -28,16 +110,16 @@ const includes = (s: unknown, ...needles: string[]) =>
  * @returns A normalized error with `code`, `message`, and optional `hint`.
  */
 export function normalizeProviderError(err: unknown, vendor: 'openai' | 'google' | 'anthropic' | 'deepl'): NormalizedProviderError {
-  const anyErr = err as any;
-  const status = anyErr?.status || anyErr?.code || anyErr?.response?.status;
-  const rawMessage = String(anyErr?.message || anyErr?.error?.message || anyErr || 'Unknown error');
+  const status = extractStatus(err);
+  const rawMessage = extractMessage(err);
+  const errorDetails = extractErrorDetails(err);
   const message = rawMessage;
 
   // Special OpenAI streaming verification failure
   if (
     vendor === 'openai' &&
-    (anyErr?.error?.code === 'unsupported_value' || status === 400) &&
-    (anyErr?.error?.param === 'stream' || includes(message, 'stream')) &&
+    (errorDetails.code === 'unsupported_value' || status === 400) &&
+    (errorDetails.param === 'stream' || includes(message, 'stream')) &&
     includes(message, 'must be verified to stream this model')
   ) {
     return {
@@ -121,4 +203,90 @@ export function normalizeProviderError(err: unknown, vendor: 'openai' | 'google'
     code: 'unknown',
     message,
   };
+}
+
+/**
+ * Formats a normalized error for display to users.
+ * Combines message and hint into a single user-friendly string.
+ *
+ * @param error - The normalized error object.
+ * @returns A formatted string suitable for display in alerts/notices.
+ */
+export function formatErrorForUser(error: NormalizedProviderError): string {
+  if (error.hint) {
+    return `${error.message} ${error.hint}`;
+  }
+  return error.message;
+}
+
+/**
+ * DRY-001: Centralized error handling for translation operations.
+ * Logs the error, normalizes it, and throws a new error with the original as cause.
+ *
+ * @param error - The caught error
+ * @param vendor - The vendor ID for error normalization
+ * @param logger - Logger instance for error logging
+ * @param context - Optional context string for the log message
+ * @throws Error with normalized message and original error as cause
+ */
+export function handleTranslationError(
+  error: unknown,
+  vendor: VendorId,
+  logger: Logger,
+  context = 'Translation error'
+): never {
+  const normalized = normalizeProviderError(error, vendor);
+  logger.error(context, {
+    message: normalized.message,
+    code: normalized.code,
+    hint: normalized.hint
+  });
+  // Include hint in thrown error for consistent user-facing messages
+  throw new Error(formatErrorForUser(normalized), { cause: error });
+}
+
+/**
+ * Context interface for DatoCMS UI operations that can display alerts/notices.
+ */
+interface UIContext {
+  alert: (msg: string) => void;
+  notice: (msg: string) => void;
+}
+
+/**
+ * UI-layer error handler for DatoCMS contexts.
+ * Normalizes errors and displays them via ctx.alert().
+ * Handles AbortError separately with ctx.notice() for graceful cancellation.
+ *
+ * Use this in entry points (main.tsx, sidebar, bulk page) to ensure consistent
+ * error presentation to users across all plugin features.
+ *
+ * @param error - The caught error
+ * @param vendor - The vendor ID for error normalization (defaults to 'openai' for generic errors)
+ * @param ctx - DatoCMS context with alert/notice methods
+ * @param logger - Optional logger for error logging
+ */
+export function handleUIError(
+  error: unknown,
+  vendor: VendorId | undefined,
+  ctx: UIContext,
+  logger?: Logger
+): void {
+  // Handle user cancellation gracefully
+  if (error instanceof Error && error.name === 'AbortError') {
+    ctx.notice('Operation was cancelled');
+    return;
+  }
+
+  const normalized = normalizeProviderError(error, vendor ?? 'openai');
+
+  if (logger) {
+    logger.error('UI Error', {
+      message: normalized.message,
+      code: normalized.code,
+      hint: normalized.hint
+    });
+  }
+
+  ctx.alert(formatErrorForUser(normalized));
 }

@@ -68,8 +68,13 @@ export async function listRelevantGeminiModels(apiKey: string): Promise<string[]
       })
       .filter((id, idx, arr) => arr.indexOf(id) === idx);
     return sorted;
-  } catch (_e) {
-    // Fall back to a minimal list when listing fails
-    return ['gemini-1.5-flash', 'gemini-1.5-pro'];
+  } catch (error) {
+    // DESIGN DECISION: No fallback models are provided. When the API call fails
+    // (network issues, invalid API key, etc.), we return an empty array. This
+    // forces the user to provide a valid API key to see available models, rather
+    // than presenting potentially outdated hardcoded models that could confuse
+    // users or cause translation failures.
+    console.error('Failed to fetch Gemini models:', error);
+    return [];
   }
 }

@@ -4,29 +4,135 @@
  * This module serves as the main orchestrator for the AI translation system.
  * It coordinates the logic for translating various field types in DatoCMS by
  * delegating to specialized translator modules based on field type.
- * 
+ *
  * The module handles field type detection and routing to the appropriate
  * specialized translators for complex fields like SEO, structured text,
  * rich text, and file fields.
+ *
+ * ## Entry Points
+ *
+ * This module provides two main entry points:
+ *
+ * 1. **`TranslateField()`** (default export)
+ *    - Used by field dropdown actions in the DatoCMS UI
+ *    - Requires `ExecuteFieldDropdownActionCtx` from the plugin SDK
+ *    - Handles form values, streaming UI updates, and provider resolution
+ *
+ * 2. **`translateFieldValueDirect()`** (named export)
+ *    - Context-free entry point for CMA-based flows and testing
+ *    - No dependency on DatoCMS plugin SDK context
+ *    - Used by `ItemsDropdownUtils.ts` for bulk/modal translation
+ *    - Can be tested without mocking the full DatoCMS context
+ *
+ * Both entry points ultimately delegate to `translateFieldValue()` which
+ * routes to specialized translators based on field type.
+ *
+ * ## Circular Dependency Note
+ *
+ * This module has a circular import relationship with StructuredTextTranslation.ts:
+ * - TranslateField imports translateStructuredTextValue from StructuredTextTranslation
+ * - StructuredTextTranslation imports translateFieldValue from TranslateField
+ *
+ * This is intentional and necessary because:
+ * - Structured text fields can contain blocks (handled by TranslateField)
+ * - Blocks within structured text need to translate their nested fields recursively
+ *
+ * TypeScript handles this correctly at build time. The circular dependency is
+ * a natural consequence of DatoCMS's recursive content structure.
  */
 
 import type { TranslationProvider, StreamCallbacks } from './types';
 import { buildClient } from '@datocms/cma-client-browser';
 import type { ExecuteFieldDropdownActionCtx } from 'datocms-plugin-sdk';
-import { 
+import {
   type ctxParamsType,
   modularContentVariations,
 } from '../../entrypoints/Config/ConfigScreen';
 import { fieldPrompt } from '../../prompts/FieldPrompts';
-import { isFieldTranslatable } from './SharedFieldUtils';
+import { isFieldTranslatable, prepareFieldTypePrompt } from './SharedFieldUtils';
 import { translateDefaultFieldValue } from './DefaultTranslation';
 import { type SeoObject, translateSeoFieldValue } from './SeoTranslation';
 import { translateStructuredTextValue } from './StructuredTextTranslation';
 import { translateFileFieldValue } from './FileFieldTranslation';
 import { deleteItemIdKeys } from './utils';
-import { createLogger } from '../logging/Logger';
+import { createLogger, type Logger } from '../logging/Logger';
 import { getProvider } from './ProviderFactory';
-import { normalizeProviderError } from './ProviderErrors';
+import { handleTranslationError } from './ProviderErrors';
+import {
+  type SchemaRepository,
+  getBlockFieldsFromRepo,
+} from '../schemaRepository';
+
+/**
+ * Block structure that may contain relationships with item_type data.
+ * Used for accessing block model ID from various block formats.
+ */
+interface BlockRelationships {
+  item_type?: {
+    data?: {
+      id?: string;
+    };
+  };
+}
+
+/**
+ * Represents a block with potential nested item structure.
+ * Supports both direct attributes and nested item.attributes patterns.
+ */
+interface BlockWithItem {
+  item?: {
+    attributes?: Record<string, unknown>;
+    relationships?: BlockRelationships;
+  };
+  relationships?: BlockRelationships;
+}
+
+/**
+ * Combined block type supporting all possible block structures in DatoCMS.
+ */
+type DatoCMSBlock = Record<string, unknown> & {
+  itemTypeId?: string;
+  blockModelId?: string;
+  attributes?: Record<string, unknown>;
+} & BlockWithItem;
+
+/**
+ * Type guard to check if a block has nested item structure.
+ *
+ * @param block - The block to check.
+ * @returns True if block has item.attributes structure.
+ */
+function hasNestedItem(block: DatoCMSBlock): block is DatoCMSBlock & { item: { attributes: Record<string, unknown> } } {
+  return (
+    block.item !== undefined &&
+    typeof block.item === 'object' &&
+    block.item !== null &&
+    'attributes' in block.item &&
+    typeof block.item.attributes === 'object'
+  );
+}
+
+/**
+ * Extracts the block model ID from various possible locations in a block structure.
+ *
+ * @param block - The block to extract the model ID from.
+ * @returns The block model ID or undefined if not found.
+ */
+function extractBlockModelId(block: DatoCMSBlock): string | undefined {
+  // Direct properties
+  if (block.itemTypeId) return String(block.itemTypeId);
+  if (block.blockModelId) return String(block.blockModelId);
+
+  // From relationships
+  const relationshipId = block.relationships?.item_type?.data?.id;
+  if (relationshipId) return relationshipId;
+
+  // From nested item relationships
+  const nestedRelationshipId = block.item?.relationships?.item_type?.data?.id;
+  if (nestedRelationshipId) return nestedRelationshipId;
+
+  return undefined;
+}
 
 // Re-export StreamCallbacks for backwards compatibility
 export type { StreamCallbacks } from './types';
@@ -51,6 +157,7 @@ export type { StreamCallbacks } from './types';
  * @param environment - Dato environment for any API lookups
  * @param streamCallbacks - Optional callbacks for streaming translations
  * @param recordContext - Additional context about the record being translated
+ * @param schemaRepository - Optional SchemaRepository for cached schema lookups
  * @returns The translated field value
  */
 export async function translateFieldValue(
@@ -65,7 +172,8 @@ export async function translateFieldValue(
   fieldId: string | undefined,
   environment: string,
   streamCallbacks?: StreamCallbacks,
-  recordContext = ''
+  recordContext = '',
+  schemaRepository?: SchemaRepository
 ): Promise<unknown> {
   const logger = createLogger(pluginParams, 'translateFieldValue');
   
@@ -111,7 +219,8 @@ export async function translateFieldValue(
         apiToken,
         environment,
         streamCallbacks,
-        recordContext
+        recordContext,
+        schemaRepository
       );
     case 'rich_text':
     case 'framed_single_block':
@@ -125,7 +234,8 @@ export async function translateFieldValue(
         fieldType,
         environment,
         streamCallbacks,
-        recordContext
+        recordContext,
+        schemaRepository
       );
     case 'file':
     case 'gallery':
@@ -152,18 +262,192 @@ export async function translateFieldValue(
 }
 
 /**
+ * Maximum number of block field entries to cache.
+ * SMELL-004: Prevents unbounded cache growth.
+ */
+const BLOCK_FIELDS_CACHE_MAX_SIZE = 100;
+
+/**
  * Module-level cache for block field metadata.
  * Avoids repeated CMA calls when translating multiple blocks of the same type.
+ * Limited to BLOCK_FIELDS_CACHE_MAX_SIZE entries to prevent memory leaks.
+ *
+ * BUGFIX: We store Promises to prevent race conditions where multiple concurrent
+ * requests for the same block model ID would all make API calls. By caching the
+ * Promise itself, subsequent requests wait for the same pending request.
  */
-const blockFieldsCache = new Map<string, Record<string, { editor: string; id: string }>>();
+const blockFieldsCache = new Map<string, Promise<Record<string, { editor: string; id: string }>>>();
+
+/**
+ * Adds an entry to the block fields cache with size management.
+ * When cache exceeds max size, oldest entries are removed.
+ *
+ * @param key - The cache key (typically block model ID).
+ * @param value - Promise resolving to the field metadata dictionary.
+ */
+function addToBlockFieldsCache(key: string, value: Promise<Record<string, { editor: string; id: string }>>): void {
+  // Remove oldest entries if at capacity
+  if (blockFieldsCache.size >= BLOCK_FIELDS_CACHE_MAX_SIZE) {
+    const firstKey = blockFieldsCache.keys().next().value;
+    if (firstKey) {
+      blockFieldsCache.delete(firstKey);
+    }
+  }
+  blockFieldsCache.set(key, value);
+}
+
+/**
+ * Fetches field metadata for a block model from the CMA.
+ * Results are cached to avoid repeated API calls for the same block type.
+ *
+ * This function is exported for testing and for cases where field metadata
+ * is needed outside the translation flow.
+ *
+ * BUGFIX: Uses Promise-based caching to prevent race conditions. The Promise
+ * is stored in the cache immediately, so concurrent requests for the same
+ * block model ID will await the same Promise.
+ *
+ * @param apiToken - DatoCMS API token.
+ * @param environment - Dato environment slug.
+ * @param blockModelId - The block model ID to fetch fields for.
+ * @param schemaRepository - Optional SchemaRepository for cached lookups.
+ * @returns Dictionary mapping field API keys to editor type and ID.
+ */
+export async function fetchBlockFields(
+  apiToken: string,
+  environment: string,
+  blockModelId: string,
+  schemaRepository?: SchemaRepository
+): Promise<Record<string, { editor: string; id: string }>> {
+  // If SchemaRepository is provided, use it for cached lookups
+  if (schemaRepository) {
+    return getBlockFieldsFromRepo(schemaRepository, blockModelId);
+  }
+
+  // Fall back to manual cache for backwards compatibility
+  // Check if we already have a pending or completed request for this block model
+  const cached = blockFieldsCache.get(blockModelId);
+  if (cached) return cached;
+
+  // Create the fetch Promise and cache it immediately to prevent race conditions
+  const fetchPromise = (async () => {
+    const client = buildClient({ apiToken, environment });
+    const fields = await client.fields.list(blockModelId);
+    return fields.reduce((acc, field) => {
+      acc[field.api_key] = {
+        editor: field.appearance.editor,
+        id: field.id,
+      };
+      return acc;
+    }, {} as Record<string, { editor: string; id: string }>);
+  })();
+
+  // Store the Promise in cache before awaiting, so concurrent requests share it
+  addToBlockFieldsCache(blockModelId, fetchPromise);
+
+  try {
+    return await fetchPromise;
+  } catch (error) {
+    // On error, remove from cache so subsequent requests can retry
+    blockFieldsCache.delete(blockModelId);
+    throw error;
+  }
+}
+
+/**
+ * Context object for block field processing.
+ * Groups all the parameters needed to translate fields within a block,
+ * making the processBlockFields function easier to call and test.
+ */
+interface BlockFieldProcessingContext {
+  pluginParams: ctxParamsType;
+  toLocale: string;
+  fromLocale: string;
+  provider: TranslationProvider;
+  apiToken: string;
+  environment: string;
+  streamCallbacks?: StreamCallbacks;
+  recordContext: string;
+  logger: Logger;
+  schemaRepository?: SchemaRepository;
+}
+
+/**
+ * Fields to skip when processing block content.
+ * These are metadata or structural fields, not translatable content.
+ */
+const BLOCK_METADATA_FIELDS = [
+  'itemTypeId',
+  'originalIndex',
+  'blockModelId',
+  'type',
+  'children',
+  'relationships',
+  'attributes',
+] as const;
+
+/**
+ * Processes fields within a block's source object.
+ *
+ * Extracted from translateBlockValue to improve testability and reduce closure complexity.
+ * All dependencies are now explicitly passed via the context parameter.
+ *
+ * @param source - The source object containing fields to translate.
+ * @param fieldTypeDictionary - Dictionary mapping field API keys to their editor type and ID.
+ * @param ctx - Processing context containing all translation configuration.
+ * @returns Resolves when all fields in the block have been translated.
+ */
+async function processBlockFields(
+  source: Record<string, unknown>,
+  fieldTypeDictionary: Record<string, { editor: string; id: string }>,
+  ctx: BlockFieldProcessingContext
+): Promise<void> {
+  for (const field in source) {
+    if (BLOCK_METADATA_FIELDS.includes(field as typeof BLOCK_METADATA_FIELDS[number])) {
+      continue;
+    }
+
+    // Show progress if using streaming callbacks
+    if (ctx.streamCallbacks?.onStream) {
+      ctx.streamCallbacks.onStream(`Translating block field: ${field}...`);
+    }
+
+    // Check for cancellation - early return from processBlockFields
+    // The parent function will return the partially translated cleanedFieldValue
+    if (ctx.streamCallbacks?.checkCancellation?.()) {
+      ctx.logger.info('Translation cancelled by user');
+      return;
+    }
+
+    let nestedPrompt = ' Return the response in the format of ';
+    nestedPrompt +=
+      fieldPrompt[fieldTypeDictionary[field]?.editor as keyof typeof fieldPrompt] || '';
+
+    source[field] = await translateFieldValue(
+      source[field],
+      ctx.pluginParams,
+      ctx.toLocale,
+      ctx.fromLocale,
+      fieldTypeDictionary[field]?.editor || 'text',
+      ctx.provider,
+      nestedPrompt,
+      ctx.apiToken,
+      fieldTypeDictionary[field]?.id || '',
+      ctx.environment,
+      ctx.streamCallbacks,
+      ctx.recordContext,
+      ctx.schemaRepository
+    );
+  }
+}
 
 /**
  * Translates modular content and framed block fields
- * 
+ *
  * This specialized translator handles block-based content structures,
  * including nested fields within blocks. It dynamically fetches field metadata
  * for each block and processes each field according to its type.
- * 
+ *
  * @param fieldValue - The block value to translate
  * @param pluginParams - Plugin configuration parameters
  * @param toLocale - Target locale code
@@ -174,6 +458,7 @@ const blockFieldsCache = new Map<string, Record<string, { editor: string; id: st
  * @param environment - Dato environment
  * @param streamCallbacks - Optional callbacks for streaming translations
  * @param recordContext - Additional context about the record being translated
+ * @param schemaRepository - Optional SchemaRepository for cached schema lookups
  * @returns The translated block value
  */
 async function translateBlockValue(
@@ -186,103 +471,50 @@ async function translateBlockValue(
   fieldType: string,
   environment: string,
   streamCallbacks?: StreamCallbacks,
-  recordContext = ''
+  recordContext = '',
+  schemaRepository?: SchemaRepository
 ) {
   const logger = createLogger(pluginParams, 'translateBlockValue');
   logger.info('Translating block value');
-  
+
   const isFramedSingleBlock = fieldType === 'framed_single_block';
   // Clean block array from any leftover item IDs
   const cleanedFieldValue = deleteItemIdKeys(
     !isFramedSingleBlock ? fieldValue : [fieldValue]
-  ) as Array<Record<string, unknown>>;
+  ) as Array<DatoCMSBlock>;
 
-  const client = buildClient({ apiToken, environment });
+  // Create processing context with all translation configuration
+  const processingContext: BlockFieldProcessingContext = {
+    pluginParams,
+    toLocale,
+    fromLocale,
+    provider,
+    apiToken,
+    environment,
+    streamCallbacks,
+    recordContext,
+    logger,
+    schemaRepository,
+  };
 
   for (const block of cleanedFieldValue) {
-    // Determine the block model ID
-    // biome-ignore lint/suspicious/noExplicitAny: <i need to type blocks here>
-    const blockModelId = block.itemTypeId || block.blockModelId || (block as any)?.relationships?.item_type?.data?.id ||(block as any)?.item?.relationships?.item_type?.data?.id;
+    // Determine the block model ID using type-safe extraction
+    const blockModelId = extractBlockModelId(block);
     if (!blockModelId) {
       logger.warning('Block model ID not found', block);
       continue;
     }
 
-    // Fetch fields for this specific block (with memoization)
-    let fieldTypeDictionary = blockFieldsCache.get(String(blockModelId));
-    if (!fieldTypeDictionary) {
-      const fields = await client.fields.list(blockModelId as string);
-      fieldTypeDictionary = fields.reduce((acc, field) => {
-        acc[field.api_key] = {
-          editor: field.appearance.editor,
-          id: field.id,
-        };
-        return acc;
-      }, {} as Record<string, { editor: string; id: string }>);
-      blockFieldsCache.set(String(blockModelId), fieldTypeDictionary);
-    }
+    // Fetch fields for this specific block using SchemaRepository or manual cache
+    const fieldTypeDictionary = await fetchBlockFields(apiToken, environment, blockModelId, schemaRepository);
 
-    // Translate each field within the block
+    // Translate each field within the block using type guard for nested item check
     if (block.attributes) {
-      // Process fields in block.attributes
-      await processBlockFields(block.attributes as Record<string, unknown>, fieldTypeDictionary);
-    // biome-ignore lint/suspicious/noExplicitAny: <i need to type blocks here>
-    } else if ((block as any).item?.attributes) {
-      // biome-ignore lint/suspicious/noExplicitAny: <i need to type blocks here>
-      await processBlockFields((block as any).item.attributes as Record<string, unknown>, fieldTypeDictionary);
+      await processBlockFields(block.attributes, fieldTypeDictionary, processingContext);
+    } else if (hasNestedItem(block)) {
+      await processBlockFields(block.item.attributes, fieldTypeDictionary, processingContext);
     } else {
-      await processBlockFields(block, fieldTypeDictionary);
-    }
-
-    // Helper function to process fields and avoid code duplication
-    async function processBlockFields(
-      source: Record<string, unknown>,
-      fieldTypeDictionary: Record<string, { editor: string; id: string }>
-    ) {
-      for (const field in source) {
-        if (
-          field === 'itemTypeId' ||
-          field === 'originalIndex' ||
-          field === 'blockModelId' ||
-          field === 'type' ||
-          field === 'children' ||
-          field === "relationships" ||
-          field === "attributes" // Skip the attributes object itself
-        ) {
-          continue;
-        }
-
-        // Show progress if using streaming callbacks
-        if (streamCallbacks?.onStream) {
-          streamCallbacks.onStream(`Translating block field: ${field}...`);
-        }
-        
-        // Check for cancellation
-        if (streamCallbacks?.checkCancellation?.()) {
-          logger.info('Translation cancelled by user');
-          return cleanedFieldValue;
-        }
-
-        let nestedPrompt = ' Return the response in the format of ';
-        nestedPrompt +=
-          fieldPrompt[fieldTypeDictionary[field]?.editor as keyof typeof fieldPrompt] ||
-          '';
-
-        source[field] = await translateFieldValue(
-          source[field],
-          pluginParams,
-          toLocale,
-          fromLocale,
-          fieldTypeDictionary[field]?.editor || 'text',
-          provider,
-          nestedPrompt,
-          apiToken,
-          fieldTypeDictionary[field]?.id || '',
-          environment,
-          streamCallbacks,
-          recordContext
-        );
-      }
+      await processBlockFields(block as Record<string, unknown>, fieldTypeDictionary, processingContext);
     }
   }
 
@@ -291,14 +523,72 @@ async function translateBlockValue(
 }
 
 /**
- * Main entry point for translating a field value from one locale to another
- * 
- * This function is the primary interface called by the DatoCMS plugin UI.
- * It handles all the setup, including creating a provider client, generating
- * record context, and managing streaming responses back to the UI.
- * 
+ * Context-free entry point for translating a field value.
+ *
+ * This function can be used without a DatoCMS plugin context, making it suitable
+ * for CMA-based flows (like bulk translation via `ItemsDropdownUtils.ts`) and
+ * for unit testing translation logic without mocking the full SDK context.
+ *
+ * @param fieldValue - The field value to translate.
+ * @param pluginParams - Plugin configuration parameters.
+ * @param toLocale - Target locale code.
+ * @param fromLocale - Source locale code.
+ * @param fieldType - The DatoCMS field type (e.g., 'single_line', 'structured_text').
+ * @param apiToken - DatoCMS API token for any required CMA calls.
+ * @param fieldId - ID of the field being translated (for exclusion checking).
+ * @param environment - Dato environment slug.
+ * @param streamCallbacks - Optional callbacks for streaming translations.
+ * @param recordContext - Optional context about the record being translated.
+ * @param schemaRepository - Optional SchemaRepository for cached schema lookups.
+ * @returns The translated field value.
+ */
+export async function translateFieldValueDirect(
+  fieldValue: unknown,
+  pluginParams: ctxParamsType,
+  toLocale: string,
+  fromLocale: string,
+  fieldType: string,
+  apiToken: string,
+  fieldId: string | undefined,
+  environment: string,
+  streamCallbacks?: StreamCallbacks,
+  recordContext = '',
+  schemaRepository?: SchemaRepository
+): Promise<unknown> {
+  const provider = getProvider(pluginParams);
+  const fieldTypePrompt = prepareFieldTypePrompt(fieldType);
+
+  return translateFieldValue(
+    fieldValue,
+    pluginParams,
+    toLocale,
+    fromLocale,
+    fieldType,
+    provider,
+    fieldTypePrompt,
+    apiToken,
+    fieldId,
+    environment,
+    streamCallbacks,
+    recordContext,
+    schemaRepository
+  );
+}
+
+/**
+ * Main entry point for translating a field value from one locale to another.
+ *
+ * This function is the primary interface called by the DatoCMS plugin UI
+ * (field dropdown actions). It requires a full `ExecuteFieldDropdownActionCtx`
+ * because it:
+ * - Reads the current user's access token from context
+ * - Generates record context from form values
+ * - Handles streaming UI updates
+ *
+ * For CMA-based flows or testing, use `translateFieldValueDirect()` instead.
+ *
  * @param fieldValue - The field value to translate
- * @param ctx - DatoCMS plugin context
+ * @param ctx - DatoCMS plugin context (provides access token and form values)
  * @param pluginParams - Plugin configuration parameters
  * @param toLocale - Target locale code
  * @param fromLocale - Source locale code
@@ -369,9 +659,8 @@ async function TranslateField(
     logger.info('Field translation completed');
     return translatedValue;
   } catch (error) {
-    const normalized = normalizeProviderError(error, provider.vendor);
-    logger.error('Translation failed', { message: normalized.message, code: normalized.code, hint: normalized.hint });
-    throw new Error(normalized.message);
+    // DRY-001: Use centralized error handler
+    handleTranslationError(error, provider.vendor, logger, 'Translation failed');
   }
 }
 
@@ -418,8 +707,5 @@ export function generateRecordContext(formValues: Record<string, unknown>, sourc
 
   return hasAddedContext ? contextStr : '';
 }
-
-// Re-export findExactLocaleKey for backwards compatibility
-export { findExactLocaleKey } from './SharedFieldUtils';
 
 export default TranslateField;

@@ -3,8 +3,9 @@
  * Configuration component for Google Gemini vendor settings.
  */
 
-import { SelectField, TextField } from 'datocms-react-ui';
+import { TextField } from 'datocms-react-ui';
 import s from '../../styles.module.css';
+import ModelSelectField from './ModelSelectField';
 
 export interface GeminiConfigProps {
   googleApiKey: string;
@@ -36,29 +37,14 @@ export default function GeminiConfig({
         />
       </div>
 
-      {/* Gemini model select */}
-      <div className={s.dropdownLabel}>
-        <span className={s.label}>Gemini Model*</span>
-        <div className={s.modelSelect}>
-          <SelectField
-            name="geminiModel"
-            id="geminiModel"
-            label=""
-            value={{ label: geminiModel, value: geminiModel }}
-            selectInputProps={{
-              options: listOfGeminiModels.map((m) => ({ label: m, value: m })),
-            }}
-            onChange={(newValue) => {
-              if (!Array.isArray(newValue)) {
-                const selected = newValue as { value: string } | null;
-                setGeminiModel(selected?.value || geminiModel);
-              }
-            }}
-          />
-        </div>
-      </div>
+      {/* Gemini Model select - DRY-003: Using shared component */}
+      <ModelSelectField
+        id="geminiModel"
+        label="Gemini Model"
+        value={geminiModel}
+        onChange={setGeminiModel}
+        models={listOfGeminiModels}
+      />
     </>
   );
 }
-
-

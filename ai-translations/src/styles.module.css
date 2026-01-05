@@ -19,6 +19,10 @@
   min-height: auto;
 }
 
+.bubbleContainer.error {
+  min-height: auto;
+}
+
 /* Main Bubble */
 .bubble {
   position: relative;

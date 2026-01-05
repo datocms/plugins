@@ -34,6 +34,7 @@ import ConfigScreen, {
   type ctxParamsType,
   modularContentVariations,
   translateFieldTypes,
+  isValidCtxParams,
 } from './entrypoints/Config/ConfigScreen';
 import { render } from './utils/render';
 import { localeSelect } from './utils/localeUtils';
@@ -42,13 +43,90 @@ import DatoGPTTranslateSidebar from './entrypoints/Sidebar/DatoGPTTranslateSideb
 import LoadingAddon from './entrypoints/LoadingAddon';
 import { defaultPrompt } from './prompts/DefaultPrompt';
 import TranslationProgressModal from './components/TranslationProgressModal';
+import ErrorBoundary from './components/ErrorBoundary';
 import AIBulkTranslationsPage from './entrypoints/CustomPage/AIBulkTranslationsPage';
 
 // Import refactored utility functions and types
 import { parseActionId } from './utils/translation/ItemsDropdownUtils';
-import { isProviderConfigured } from './utils/translation/ProviderFactory';
+import { isProviderConfigured, getProvider } from './utils/translation/ProviderFactory';
 import { isFieldTranslatable } from './utils/translation/SharedFieldUtils';
 import { isEmptyStructuredText } from './utils/translation/utils';
+import { normalizeProviderError, formatErrorForUser, handleUIError } from './utils/translation/ProviderErrors';
+
+/**
+ * Result shape returned from the translation progress modal.
+ */
+interface TranslationModalResult {
+  completed: boolean;
+  canceled: boolean;
+}
+
+/**
+ * Parameters passed to the TranslationProgressModal.
+ * Shared interface between modal opener and renderer for type safety.
+ */
+interface TranslationProgressModalParams {
+  totalRecords: number;
+  fromLocale: string;
+  toLocale: string;
+  accessToken: string;
+  pluginParams: ctxParamsType;
+  itemIds: string[];
+}
+
+/**
+ * Type guard for TranslationProgressModalParams.
+ * Validates that modal parameters contain all required fields.
+ *
+ * @param params - The parameters to validate.
+ * @returns True if params has all required TranslationProgressModalParams fields.
+ */
+function isTranslationProgressModalParams(params: unknown): params is TranslationProgressModalParams {
+  if (!params || typeof params !== 'object') return false;
+  const p = params as Record<string, unknown>;
+  return (
+    typeof p.totalRecords === 'number' &&
+    typeof p.fromLocale === 'string' &&
+    typeof p.toLocale === 'string' &&
+    typeof p.accessToken === 'string' &&
+    p.pluginParams !== undefined &&
+    Array.isArray(p.itemIds)
+  );
+}
+
+/**
+ * Helper to extract plugin parameters from any DatoCMS context.
+ *
+ * Uses isValidCtxParams type guard to validate the shape at runtime.
+ * Falls back to a cast if validation fails (which can happen on first boot
+ * before defaults are applied by onBoot).
+ *
+ * @param ctx - Any DatoCMS context with plugin attributes.
+ * @returns Typed plugin parameters.
+ */
+function getPluginParams(ctx: { plugin: { attributes: { parameters: unknown } } }): ctxParamsType {
+  const params = ctx.plugin.attributes.parameters;
+
+  if (isValidCtxParams(params)) {
+    return params;
+  }
+
+  // Fallback for unconfigured state (first boot, before onBoot applies defaults)
+  // This is safe because onBoot() will apply defaults immediately after
+  return params as ctxParamsType;
+}
+
+/**
+ * Type guard for TranslationModalResult.
+ * The modal can return undefined or an object with completed/canceled flags.
+ */
+function isTranslationModalResult(value: unknown): value is TranslationModalResult {
+  return (
+    value !== null &&
+    typeof value === 'object' &&
+    ('completed' in value || 'canceled' in value)
+  );
+}
 
 /**
  * Helper function to get nested values by dot/bracket notation
@@ -75,7 +153,7 @@ function getValueAtPath(obj: Record<string, unknown> | unknown[], path: string):
  */
 connect({
   onBoot(ctx) {
-    const pluginParams = ctx.plugin.attributes.parameters as ctxParamsType;
+    const pluginParams = getPluginParams(ctx);
     
     // Collect all missing default values in a single object
     const defaults: Partial<ctxParamsType> = {};
@@ -118,7 +196,11 @@ connect({
   },
 
   renderConfigScreen(ctx) {
-    return render(<ConfigScreen ctx={ctx} />);
+    return render(
+      <ErrorBoundary>
+        <ConfigScreen ctx={ctx} />
+      </ErrorBoundary>
+    );
   },
   
   // New hook to add a custom section in the Settings area
@@ -148,14 +230,20 @@ connect({
   renderPage(pageId: string, ctx: RenderPageCtx) {
     switch (pageId) {
       case 'ai-bulk-translations':
-        return render(<AIBulkTranslationsPage ctx={ctx} />);
+        return render(
+          <ErrorBoundary
+            onNavigateToSettings={() => ctx.navigateTo(`/configuration/plugins/${ctx.plugin.id}/edit`)}
+          >
+            <AIBulkTranslationsPage ctx={ctx} />
+          </ErrorBoundary>
+        );
       default:
         return null;
     }
   },
   
   itemsDropdownActions(_itemType: ItemType, ctx: ItemDropdownActionsCtx) {
-    const pluginParams = ctx.plugin.attributes.parameters as ctxParamsType;
+    const pluginParams = getPluginParams(ctx);
     
     // Check for feature toggle and exclusion rules
     const isRoleExcluded = pluginParams.rolesToBeExcludedFromThisPlugin?.includes(ctx.currentRole.id);
@@ -188,8 +276,8 @@ connect({
     // Parse action ID to get locale information
     const { fromLocale, toLocale } = parseActionId(actionId);
     
-    const pluginParams = ctx.plugin.attributes.parameters as ctxParamsType;
-    
+    const pluginParams = getPluginParams(ctx);
+
     // Open a modal to show translation progress and handle translation process
     const modalPromise = ctx.openModal({
       id: 'translationProgressModal',
@@ -208,14 +296,16 @@ connect({
     try {
       // Wait for the modal to be closed by the user
       const result = await modalPromise;
-      
-      if (result && (result as TranslationModalResult).completed) {
-        ctx.notice(`Successfully translated ${items.length} record(s) from ${fromLocale} to ${toLocale}`);
-      } else if (result && (result as TranslationModalResult).canceled) {
-        ctx.notice(`Translation from ${fromLocale} to ${toLocale} was canceled`);
+
+      if (isTranslationModalResult(result)) {
+        if (result.completed) {
+          ctx.notice(`Successfully translated ${items.length} record(s) from ${fromLocale} to ${toLocale}`);
+        } else if (result.canceled) {
+          ctx.notice(`Translation from ${fromLocale} to ${toLocale} was canceled`);
+        }
       }
     } catch (error) {
-      ctx.alert(`Error: ${error instanceof Error ? error.message : String(error)}`);
+      handleUIError(error, pluginParams.vendor, ctx);
     }
     
     return;
@@ -225,7 +315,7 @@ connect({
    * Registers a sidebar panel if 'translateWholeRecord' is enabled.
    */
   itemFormSidebarPanels(model: ItemType, ctx: ItemFormSidebarPanelsCtx) {
-    const pluginParams = ctx.plugin.attributes.parameters as ctxParamsType;
+    const pluginParams = getPluginParams(ctx);
     const isRoleExcluded =
       pluginParams.rolesToBeExcludedFromThisPlugin.includes(ctx.currentRole.id);
     const isModelExcluded =
@@ -258,7 +348,7 @@ connect({
     sidebarPanelId,
     ctx: RenderItemFormSidebarPanelCtx
   ) {
-    const pluginParams = ctx.plugin.attributes.parameters as ctxParamsType;
+    const pluginParams = getPluginParams(ctx);
     if (!isProviderConfigured(pluginParams)) {
       return render(
         <Canvas ctx={ctx}>
@@ -281,7 +371,13 @@ connect({
         Array.isArray(ctx.formValues.internalLocales) &&
         ctx.formValues.internalLocales.length > 1
       ) {
-        return render(<DatoGPTTranslateSidebar ctx={ctx} />);
+        return render(
+          <ErrorBoundary
+            onNavigateToSettings={() => ctx.navigateTo(`/configuration/plugins/${ctx.plugin.id}/edit`)}
+          >
+            <DatoGPTTranslateSidebar ctx={ctx} />
+          </ErrorBoundary>
+        );
       }
       return render(
         <Canvas ctx={ctx}>
@@ -299,7 +395,7 @@ connect({
    * Creates dropdown actions for each translatable field.
    */
   fieldDropdownActions(_field, ctx: FieldDropdownActionsCtx) {
-    const pluginParams = ctx.plugin.attributes.parameters as ctxParamsType;
+    const pluginParams = getPluginParams(ctx);
 
     // If plugin is not properly configured, show an error action
     if (!isProviderConfigured(pluginParams)) {
@@ -428,7 +524,14 @@ connect({
   renderFieldExtension(fieldExtensionId: string, ctx: RenderFieldExtensionCtx) {
     switch (fieldExtensionId) {
       case 'loadingAddon':
-        return render(<LoadingAddon ctx={ctx} />);
+        return render(
+          <ErrorBoundary>
+            <LoadingAddon ctx={ctx} />
+          </ErrorBoundary>
+        );
+      default:
+        // Unknown field extension; return null to let SDK handle gracefully
+        return null;
     }
   },
 
@@ -439,7 +542,7 @@ connect({
     actionId: string,
     ctx: ExecuteFieldDropdownActionCtx
   ) {
-    const pluginParams = ctx.plugin.attributes.parameters as ctxParamsType;
+    const pluginParams = getPluginParams(ctx);
     const locales = ctx.formValues.internalLocales as string[];
     const fieldType = ctx.field.attributes.appearance.editor;
     const fieldValue = ctx.formValues[ctx.field.attributes.api_key];
@@ -477,7 +580,9 @@ connect({
           ctx.environment,
         );
       } catch (e) {
-        ctx.alert((e as Error).message || 'Translation failed. Please try another model or check your settings.');
+        const provider = getProvider(pluginParams);
+        const normalized = normalizeProviderError(e, provider.vendor);
+        ctx.alert(formatErrorForUser(normalized));
         return;
       }
 
@@ -520,7 +625,9 @@ connect({
               ctx.environment,
             );
           } catch (e) {
-            ctx.alert((e as Error).message || 'Translation failed. Please try another model or check your settings.');
+            const provider = getProvider(pluginParams);
+            const normalized = normalizeProviderError(e, provider.vendor);
+            ctx.alert(formatErrorForUser(normalized));
             continue;
           }
 
@@ -554,7 +661,9 @@ connect({
           ctx.environment,
         );
       } catch (e) {
-        ctx.alert((e as Error).message || 'Translation failed. Please try another model or check your settings.');
+        const provider = getProvider(pluginParams);
+        const normalized = normalizeProviderError(e, provider.vendor);
+        ctx.alert(formatErrorForUser(normalized));
         return;
       }
 
@@ -582,25 +691,23 @@ connect({
   renderModal(modalId: string, ctx: RenderModalCtx) {
     switch (modalId) {
       case 'translationProgressModal':
-        // Properly type the parameters to match the expected interface
-        return render(<TranslationProgressModal 
-          ctx={ctx} 
-          parameters={ctx.parameters as {
-            totalRecords: number;
-            fromLocale: string;
-            toLocale: string;
-            accessToken: string;
-            pluginParams: ctxParamsType;
-            itemIds: string[];
-          }} 
-        />);
+        if (!isTranslationProgressModalParams(ctx.parameters)) {
+          return render(
+            <Canvas ctx={ctx}>
+              <p>Invalid modal parameters</p>
+            </Canvas>
+          );
+        }
+        return render(
+          <ErrorBoundary>
+            <TranslationProgressModal
+              ctx={ctx}
+              parameters={ctx.parameters}
+            />
+          </ErrorBoundary>
+        );
       default:
         return null;
     }
   }
 });
-
-interface TranslationModalResult {
-  completed: boolean;
-  canceled: boolean;
-}

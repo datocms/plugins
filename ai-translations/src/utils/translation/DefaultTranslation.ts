@@ -13,9 +13,10 @@
  */
 
 import type { TranslationProvider, StreamCallbacks } from './types';
-import { normalizeProviderError } from './ProviderErrors';
+import { handleTranslationError } from './ProviderErrors';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import { createLogger } from '../logging/Logger';
+import { translateArray } from './translateArray';
 
 /**
  * Translates a basic text field value using OpenAI's language model
@@ -57,12 +58,10 @@ export async function translateDefaultFieldValue(
 
   try {
     // Translate as a single-element array to align with DeepL + chat vendors via helper
-    const { translateArray } = await import('./translateArray');
     const [translated] = await translateArray(provider, pluginParams, [String(fieldValue)], fromLocale, toLocale, { isHTML: false, recordContext });
     return translated;
   } catch (error) {
-    const normalized = normalizeProviderError(error, provider.vendor);
-    logger.error(`Translation error: ${normalized.message}`, { code: normalized.code, hint: normalized.hint });
-    throw new Error(normalized.message);
+    // DRY-001: Use centralized error handler
+    handleTranslationError(error, provider.vendor, logger, 'Translation error');
   }
 }

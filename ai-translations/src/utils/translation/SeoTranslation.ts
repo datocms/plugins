@@ -13,10 +13,11 @@
  */
 
 import type { TranslationProvider, StreamCallbacks } from './types';
-import { normalizeProviderError } from './ProviderErrors';
+import { handleTranslationError } from './ProviderErrors';
 import locale from 'locale-codes';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import { createLogger } from '../logging/Logger';
+import { translateArray } from './translateArray';
 
 /**
  * SEO field character limits as recommended by search engines.
@@ -100,7 +101,6 @@ export async function translateSeoFieldValue(
     logger.logPrompt('SEO translation prompt', formattedPrompt);
 
     // Translate via array helper for parity across vendors
-    const { translateArray } = await import('./translateArray');
     const [titleT, descT] = await translateArray(
       provider,
       pluginParams,
@@ -129,8 +129,7 @@ export async function translateSeoFieldValue(
     logger.info('SEO translation completed successfully');
     return seoObject;
   } catch (error) {
-    const normalized = normalizeProviderError(error, provider.vendor);
-    logger.error('SEO translation error', { message: normalized.message, code: normalized.code, hint: normalized.hint });
-    throw new Error(normalized.message);
+    // DRY-001: Use centralized error handler
+    handleTranslationError(error, provider.vendor, logger, 'SEO translation error');
   }
 }

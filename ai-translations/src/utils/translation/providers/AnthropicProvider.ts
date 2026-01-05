@@ -1,4 +1,6 @@
-import type { TranslationProvider, ProviderCapabilities, VendorId, StreamOptions } from '../types';
+import { ProviderError } from '../types';
+import type { TranslationProvider, VendorId, StreamOptions } from '../types';
+import { isEmptyPrompt, withTimeout } from '../providerUtils';
 
 type AnthropicProviderConfig = {
   apiKey: string;
@@ -12,10 +14,13 @@ type AnthropicProviderConfig = {
  * Anthropic Claude provider using the Messages API. Implements a lightweight
  * fetch-based client and exposes streaming via single-yield (non-streaming
  * on server) to conform to the TranslationProvider interface.
+ *
+ * Note: streamText() yields the complete response once (not true streaming)
+ * because the Anthropic Messages API streaming adds complexity for minimal
+ * benefit in this translation context.
  */
 export default class AnthropicProvider implements TranslationProvider {
   public readonly vendor: VendorId = 'anthropic';
-  public readonly capabilities: ProviderCapabilities = { streaming: false };
   private readonly apiKey: string;
   private readonly model: string;
   private readonly temperature?: number;
@@ -57,52 +62,66 @@ export default class AnthropicProvider implements TranslationProvider {
    * @returns Response text string.
    */
   async completeText(prompt: string, options?: StreamOptions): Promise<string> {
-    const controller = new AbortController();
-    const signal = options?.abortSignal;
-    if (signal) {
-      if (signal.aborted) throw new DOMException('Aborted', 'AbortError');
-      signal.addEventListener('abort', () => controller.abort(), { once: true });
+    if (isEmptyPrompt(prompt)) {
+      return '';
     }
 
-    const body = {
-      model: this.model,
-      max_output_tokens: this.maxOutputTokens,
-      temperature: this.temperature,
-      messages: [
-        { role: 'user', content: prompt }
-      ],
-    } as Record<string, unknown>;
+    const apiKey = this.apiKey;
+    const model = this.model;
+    const temperature = this.temperature;
+    const maxOutputTokens = this.maxOutputTokens;
+    const baseUrl = this.baseUrl;
 
-    const res = await fetch(this.baseUrl, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': this.apiKey,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
+    return withTimeout(options, async (signal) => {
+      const body = {
+        model,
+        max_output_tokens: maxOutputTokens,
+        temperature,
+        messages: [
+          { role: 'user', content: prompt }
+        ],
+      } as Record<string, unknown>;
 
-    if (!res.ok) {
-      let msg = res.statusText;
-      try {
-        const err = await res.json();
-        msg = err?.error?.message || msg;
-      } catch {}
-      const e = new Error(msg);
-      (e as any).status = res.status;
-      throw e;
-    }
+      const res = await fetch(baseUrl, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify(body),
+        signal,
+      });
 
-    const data = await res.json();
-    const parts: string[] = [];
-    const content = Array.isArray(data?.content) ? data.content : [];
-    for (const c of content) {
-      if (c?.type === 'text' && typeof c?.text === 'string') {
-        parts.push(c.text);
+      if (!res.ok) {
+        let msg = res.statusText;
+        try {
+          const err = await res.json();
+          msg = err?.error?.message || msg;
+        } catch {
+          // JSON parsing failed, use statusText
+        }
+        throw new ProviderError(msg, res.status, 'anthropic');
       }
-    }
-    return parts.join('');
+
+      const data = await res.json();
+      const parts: string[] = [];
+      const content = Array.isArray(data?.content) ? data.content : [];
+      for (const c of content) {
+        if (c?.type === 'text' && typeof c?.text === 'string') {
+          parts.push(c.text);
+        }
+      }
+      const result = parts.join('');
+
+      // EDGE-003: Log warning if API returned empty response (may indicate issue)
+      // NOTE: Uses console.warn because providers are stateless and don't have
+      // access to pluginParams required by the Logger utility. This warning
+      // indicates a potential API issue that should always be visible.
+      if (!result && prompt.trim()) {
+        console.warn('[AnthropicProvider] API returned empty response for non-empty prompt');
+      }
+      return result;
+    });
   }
 }

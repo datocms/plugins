@@ -21,11 +21,15 @@ export function isEmptyStructuredText(value: unknown): boolean {
  * Recursively extracts all text values from a nested structure,
  * commonly used with structured text fields.
  *
+ * Uses a WeakSet to detect and prevent infinite loops from circular references.
+ *
  * @param data - Any structured text document or node tree.
  * @returns An array of string values discovered in `text` or string `value` keys.
  */
 export function extractTextValues(data: unknown): string[] {
   const textValues: string[] = [];
+  // BUGFIX: Track visited objects to prevent infinite loops from circular references
+  const visited = new WeakSet<object>();
 
   // Define a recursive type for structured text nodes
   type StructuredTextItem = {
@@ -36,8 +40,15 @@ export function extractTextValues(data: unknown): string[] {
 
   function traverse(obj: unknown) {
     if (Array.isArray(obj)) {
+      // Arrays are objects, so we need to track them too
+      if (visited.has(obj)) return;
+      visited.add(obj);
       obj.forEach(traverse);
     } else if (typeof obj === 'object' && obj !== null) {
+      // Skip if we've already visited this object (circular reference)
+      if (visited.has(obj)) return;
+      visited.add(obj);
+
       const item = obj as StructuredTextItem;
       if (item.text !== undefined) {
         textValues.push(item.text);
@@ -92,6 +103,10 @@ export function removeIds(obj: unknown): unknown {
  * Reconstructs an object by replacing 'text' (or string 'value') fields with
  * values from a translated array, preserving overall structure.
  *
+ * Uses a Map to track visited objects for circular reference detection.
+ * Note: We use Map instead of WeakSet because we need to return the already-
+ * processed clone for circular references, not just detect them.
+ *
  * @param originalObject - The original object with text fields.
  * @param textValues - Array of translated text strings.
  * @returns The reconstructed object with translated text inserted back in.
@@ -101,7 +116,10 @@ export function reconstructObject(
   textValues: string[]
 ): unknown {
   let index = 0;
-  
+  // BUGFIX: Track visited objects to prevent infinite loops from circular references
+  // We use Map to store original->clone mapping so circular refs point to the same clone
+  const visited = new Map<object, unknown>();
+
   type StructuredTextNode = {
     text?: string;
     value?: string;
@@ -110,12 +128,28 @@ export function reconstructObject(
 
   function traverse(obj: unknown): unknown {
     if (Array.isArray(obj)) {
-      return obj.map((item) => traverse(item));
+      // Check for circular reference
+      if (visited.has(obj)) {
+        return visited.get(obj);
+      }
+      const clone: unknown[] = [];
+      visited.set(obj, clone);
+      for (const item of obj) {
+        clone.push(traverse(item));
+      }
+      return clone;
     }
-    
+
     if (typeof obj === 'object' && obj !== null) {
+      // Check for circular reference
+      if (visited.has(obj)) {
+        return visited.get(obj);
+      }
+
       const typedObj = obj as StructuredTextNode;
       const newObj: Record<string, unknown> = {};
+      visited.set(obj, newObj);
+
       for (const key in typedObj) {
         if ((key === 'text' || (key === 'value' && typeof typedObj[key] === 'string')) && index < textValues.length) {
           newObj[key] = textValues[index++];

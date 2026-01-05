@@ -8,6 +8,7 @@ import { ChatBubble } from './Components/ChatbubbleTranslate';
 import { MdCelebration } from 'react-icons/md';
 import { localeSelect } from '../../utils/localeUtils';
 import { isProviderConfigured } from '../../utils/translation/ProviderFactory';
+import { handleUIError } from '../../utils/translation/ProviderErrors';
 /**
  * DatoGPTTranslateSidebar.tsx
  *
@@ -65,16 +66,17 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
   const [isCancelling, setIsCancelling] = useState<boolean>(false);
 
   // translationBubbles stores the chat-like bubble info.
-  // Each bubble: { fieldLabel: string, locale: string, status: 'pending'|'done' }
+  // Each bubble: { fieldLabel: string, locale: string, status: 'pending'|'done'|'error' }
   const [translationBubbles, setTranslationBubbles] = useState<
     {
       id: string;
       fieldLabel: string;
       locale: string;
-      status: 'pending' | 'done';
+      status: 'pending' | 'done' | 'error';
       fieldPath: string;
       streamingContent?: string;
       startedAt?: number;
+      errorMessage?: string;
     }[]
   >([]);
 
@@ -83,8 +85,8 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
   const [progress, setProgress] = useState<number>(100);
   const TIMER_DURATION = 7500; // 7.5 seconds in milliseconds
 
-  // Reference to the AbortController for cancelling API requests
-  const [abortController, setAbortController] = useState<AbortController | null>(null);
+  // Reference to the AbortController for cancelling API requests (using ref to avoid state updates on unmount)
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Prevent duplicate success notices across effect and completion handler
   const successShownRef = useRef(false);
@@ -124,14 +126,20 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
 
   // Removed global long-running banner; rely on per-bubble hint instead
 
-  // Show success as soon as all bubbles report done, without waiting for the worker to settle
+  // Show success as soon as all bubbles report done (no errors), without waiting for the worker to settle
   useEffect(() => {
     if (!isLoading || isCancelling || showTimer) return;
     if (translationBubbles.length === 0) return;
-    const allDone = translationBubbles.every((b) => b.status === 'done');
-    if (allDone) {
+    const allFinished = translationBubbles.every((b) => b.status === 'done' || b.status === 'error');
+    const hasErrors = translationBubbles.some((b) => b.status === 'error');
+    if (allFinished) {
       const t = setTimeout(() => {
-        showSuccessNoticeOnce();
+        if (hasErrors) {
+          // Don't show success if there were errors - just end loading state
+          setIsLoading(false);
+        } else {
+          showSuccessNoticeOnce();
+        }
       }, 100); // allow final bubble animation to commit
       return () => clearTimeout(t);
     }
@@ -179,7 +187,7 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
     
     // Create a new AbortController for this translation session
     const controller = new AbortController();
-    setAbortController(controller);
+    abortControllerRef.current = controller;
 
     try {
       await translateRecordFields(
@@ -215,30 +223,33 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
               )
             );
           },
+          onError: (fieldLabel, locale, fieldPath, errorMessage) => {
+            setTranslationBubbles((prev) =>
+              prev.map((bubble) =>
+                bubble.id === fieldPath
+                  ? { ...bubble, status: 'error', streamingContent: undefined, errorMessage }
+                  : bubble
+              )
+            );
+            ctx.alert(`Failed to translate "${fieldLabel}" to ${locale}: ${errorMessage}`);
+          },
           checkCancellation: () => isCancelling,
           abortSignal: controller.signal
         }
       );
 
-      if (!isCancelling) {
-        showSuccessNoticeOnce();
-      } else {
+      if (isCancelling) {
         ctx.notice('Translation cancelled');
         setIsCancelling(false);
         setIsLoading(false);
       }
+      // Success/error handling is done via useEffect when all bubbles are finished
     } catch (error) {
-      if ((error as Error).name === 'AbortError') {
-        ctx.notice('Translation was cancelled');
-      } else {
-        ctx.alert(
-          (error as Error).message || 'An unknown error occurred during translation'
-        );
-      }
+      handleUIError(error, pluginParams.vendor, ctx);
       setIsLoading(false);
       setIsCancelling(false);
     } finally {
-      setAbortController(null);
+      abortControllerRef.current = null;
     }
   }
 
@@ -254,8 +265,8 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
     ctx.notice('Translation cancellation requested. Please wait...');
     
     // Abort the API request
-    if (abortController) {
-      abortController.abort();
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
     }
   }
 
@@ -378,6 +389,7 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
                   onClick={() => {
                     ctx.scrollToField(bubble.fieldPath, bubble.locale);
                   }}
+                  aria-label={`Go to field: ${bubble.fieldLabel} (${bubble.locale}) - ${bubble.status === 'done' ? 'completed' : 'in progress'}`}
                   style={{
                     background: 'none',
                     border: 'none',
@@ -389,7 +401,6 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
                   type="button"
                 >
                   <ChatBubble
-                    key={`chat-${bubble.id}`}
                     index={index}
                     bubble={bubble}
                     theme={ctx.theme}

@@ -53,8 +53,13 @@ export async function listRelevantAnthropicModels(apiKey: string): Promise<strin
       const s = scoreClaude(b) - scoreClaude(a);
       return s !== 0 ? s : a.localeCompare(b);
     });
-  } catch {
-    // Sensible fallback if listing fails
-    return ['claude-3.5-haiku-latest', 'claude-3.5-sonnet-latest'];
+  } catch (error) {
+    // DESIGN DECISION: No fallback models are provided. When the API call fails
+    // (network issues, invalid API key, etc.), we return an empty array. This
+    // forces the user to provide a valid API key to see available models, rather
+    // than presenting potentially outdated hardcoded models that could confuse
+    // users or cause translation failures.
+    console.error('Failed to fetch Anthropic models:', error);
+    return [];
   }
 }

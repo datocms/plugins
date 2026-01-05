@@ -4,7 +4,7 @@ import type { RenderModalCtx } from 'datocms-plugin-sdk';
 // no direct types from OpenAI or buildClient needed here
 import {
   fetchRecordsWithPagination,
-  buildFieldTypeDictionary,
+  buildFieldTypeDictionaryWithRepo,
   translateAndUpdateRecords,
   type ProgressUpdate
 } from '../utils/translation/ItemsDropdownUtils';
@@ -12,20 +12,27 @@ import { buildDatoCMSClient } from '../utils/clients';
 import { getProvider } from '../utils/translation/ProviderFactory';
 import type { ctxParamsType } from '../entrypoints/Config/ConfigScreen';
 import { getLocaleName } from '../utils/localeUtils';
+import { createSchemaRepository } from '../utils/schemaRepository';
 import './TranslationProgressModal.css';
 
 // ProgressUpdate type imported from ItemsDropdownUtils
 
+/**
+ * Parameters passed to the translation modal.
+ * NOTE: Keep in sync with TranslationProgressModalParams in main.tsx
+ */
+interface TranslationProgressModalParams {
+  totalRecords: number;
+  fromLocale: string;
+  toLocale: string;
+  accessToken: string;
+  pluginParams: ctxParamsType;
+  itemIds: string[];
+}
+
 interface TranslationProgressModalProps {
   ctx: RenderModalCtx;
-  parameters: {
-    totalRecords: number;
-    fromLocale: string;
-    toLocale: string;
-    accessToken: string;
-    pluginParams: ctxParamsType;
-    itemIds: string[];
-  };
+  parameters: TranslationProgressModalParams;
 }
 
 /**
@@ -59,12 +66,13 @@ export default function TranslationProgressModal({ ctx, parameters }: Translatio
     }
   };
   
-  // Handle the translation process
+  // Handle the translation process - runs once on mount
   useEffect(() => {
     let isMounted = true;
 
     const processTranslation = async () => {
-      if (isProcessing || isCompleted || !isMounted || hasStartedTranslation.current) return;
+      // Guard: only start once per modal instance
+      if (!isMounted || hasStartedTranslation.current) return;
 
       hasStartedTranslation.current = true;
       setIsProcessing(true);
@@ -74,14 +82,12 @@ export default function TranslationProgressModal({ ctx, parameters }: Translatio
         const records = await fetchRecordsWithPagination(client, itemIds);
         const provider = getProvider(pluginParams);
 
-        // Cache field dictionaries per item type
-        const cache = new Map<string, Record<string, { editor: string; id: string; isLocalized: boolean }>>();
+        // Create SchemaRepository for cached schema lookups
+        const schemaRepository = createSchemaRepository(client);
+
+        // Use SchemaRepository for field dictionary lookups (cached automatically)
         const getFieldTypeDictionary = async (itemTypeId: string) => {
-          if (!cache.has(itemTypeId)) {
-            const dict = await buildFieldTypeDictionary(client, itemTypeId);
-            cache.set(itemTypeId, dict);
-          }
-          return cache.get(itemTypeId)!;
+          return buildFieldTypeDictionaryWithRepo(schemaRepository, itemTypeId);
         };
 
         // Prepare AbortController for in-flight cancellations
@@ -100,9 +106,10 @@ export default function TranslationProgressModal({ ctx, parameters }: Translatio
           accessToken,
           {
             onProgress: addProgressUpdate,
-            checkCancelled: () => isCancelled,
+            checkCancellation: () => isCancelled,
             abortSignal: controller.signal,
-          }
+          },
+          schemaRepository
         );
       } catch (_error) {
         if (isMounted) {
@@ -116,7 +123,9 @@ export default function TranslationProgressModal({ ctx, parameters }: Translatio
     return () => {
       isMounted = false;
     };
-  }, [accessToken, fromLocale, toLocale, itemIds, pluginParams.apiKey, isProcessing, isCompleted, ctx.environment, isCancelled]);
+    // Intentionally run only on mount - hasStartedTranslation ref prevents re-execution
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   
   // Translation handled by shared translateAndUpdateRecords utility
   

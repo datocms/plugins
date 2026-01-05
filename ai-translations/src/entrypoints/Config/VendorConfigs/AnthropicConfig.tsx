@@ -3,8 +3,9 @@
  * Configuration component for Anthropic Claude vendor settings.
  */
 
-import { SelectField, TextField } from 'datocms-react-ui';
+import { TextField } from 'datocms-react-ui';
 import s from '../../styles.module.css';
+import ModelSelectField from './ModelSelectField';
 
 export interface AnthropicConfigProps {
   anthropicApiKey: string;
@@ -36,24 +37,15 @@ export default function AnthropicConfig({
         />
       </div>
 
-      {/* Claude Model */}
-      <SelectField
-        name="anthropicModel"
+      {/* Claude Model - DRY-003: Using shared component */}
+      <ModelSelectField
         id="anthropicModel"
         label="Claude Model"
-        value={{ label: anthropicModel, value: anthropicModel }}
-        selectInputProps={{
-          options: listOfAnthropicModels.map((m) => ({ label: m, value: m })),
-        }}
-        onChange={(newValue) => {
-          if (!Array.isArray(newValue)) {
-            const selected = newValue as { value: string } | null;
-            setAnthropicModel(selected?.value || anthropicModel);
-          }
-        }}
+        value={anthropicModel}
+        onChange={setAnthropicModel}
+        models={listOfAnthropicModels}
+        useStyledWrapper={false}
       />
     </>
   );
 }
-
-

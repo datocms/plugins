@@ -3,12 +3,67 @@
  * Configuration component for DeepL vendor settings.
  */
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { Button, SelectField, SwitchField, TextField } from 'datocms-react-ui';
 import ReactTextareaAutosize from 'react-textarea-autosize';
 import DeepLProvider from '../../../utils/translation/providers/DeepLProvider';
 import { normalizeProviderError } from '../../../utils/translation/ProviderErrors';
+import { RESPONSE_PREVIEW_MAX_LENGTH } from '../../../utils/constants';
 import s from '../../styles.module.css';
+
+/**
+ * Validates a glossary pair line and returns an error message if invalid.
+ * Valid formats:
+ * - SOURCE->TARGET=GLOSSARY_ID (e.g., EN->DE=gls-abc123)
+ * - SOURCE→TARGET=GLOSSARY_ID (unicode arrow)
+ * - *->TARGET=GLOSSARY_ID (wildcard source)
+ * - SOURCE->*=GLOSSARY_ID (wildcard target)
+ *
+ * @param line - A single line from the glossary pairs textarea
+ * @returns Error message if invalid, null if valid or empty
+ */
+function validateGlossaryPairLine(line: string): string | null {
+  const trimmed = line.trim();
+  if (!trimmed) return null; // Empty lines are OK
+
+  // Normalize arrow variants
+  const normalized = trimmed
+    .replace(/[→⇒–—]/g, '->')
+    .replace(/\s+/g, '');
+
+  // Pattern: SOURCE->TARGET=GLOSSARY_ID or SOURCE->TARGET:GLOSSARY_ID
+  const pattern = /^([a-zA-Z*]{1,5}(?:-[a-zA-Z]{2,4})?)->([a-zA-Z*]{1,5}(?:-[a-zA-Z]{2,4})?)(?:=|:)((?:gls-)?[A-Za-z0-9_-]+)$/;
+
+  if (!pattern.test(normalized)) {
+    return `Invalid format: "${trimmed}". Expected: SOURCE->TARGET=gls-ID (e.g., EN->DE=gls-abc123)`;
+  }
+
+  return null;
+}
+
+/**
+ * Validates all glossary pair lines and returns validation result.
+ *
+ * @param text - The full textarea content with multiple lines
+ * @returns Object with isValid boolean and array of error messages
+ */
+function validateGlossaryPairs(text: string): { isValid: boolean; errors: string[] } {
+  if (!text.trim()) {
+    return { isValid: true, errors: [] };
+  }
+
+  const lines = text.split(/[;\n,]/).filter(l => l.trim());
+  const errors: string[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const error = validateGlossaryPairLine(lines[i]);
+    if (error) {
+      errors.push(`Line ${i + 1}: ${error}`);
+    }
+  }
+
+  return { isValid: errors.length === 0, errors };
+}
 
 export interface DeepLConfigProps {
   deeplApiKey: string;
@@ -58,6 +113,12 @@ export default function DeepLConfig({
     'idle' | 'success' | 'error'
   >('idle');
 
+  // Validate glossary pairs in real-time
+  const glossaryValidation = useMemo(
+    () => validateGlossaryPairs(deeplGlossaryPairs),
+    [deeplGlossaryPairs]
+  );
+
   const handleTestApiKey = async () => {
     if (!deeplApiKey) {
       setTestApiKeyStatus('error');
@@ -79,7 +140,7 @@ export default function DeepLConfig({
       if (sample) {
         setTestApiKeyStatus('success');
         setTestApiKeyMessage(
-          `API Key OK. DeepL responded: ${sample.slice(0, 64)}${sample.length > 64 ? '…' : ''}`
+          `API Key OK. DeepL responded: ${sample.slice(0, RESPONSE_PREVIEW_MAX_LENGTH)}${sample.length > RESPONSE_PREVIEW_MAX_LENGTH ? '…' : ''}`
         );
       } else {
         setTestApiKeyStatus('success');
@@ -272,7 +333,23 @@ export default function DeepLConfig({
               onChange={(e) => setDeeplGlossaryPairs(e.target.value)}
               minRows={2}
               placeholder={'EN->DE=gls-...\nen-US->pt-BR=gls-...'}
+              style={{
+                borderColor: !glossaryValidation.isValid ? '#cf1322' : undefined,
+              }}
             />
+            {!glossaryValidation.isValid && (
+              <div
+                className={s.inlineStatus}
+                style={{ color: '#cf1322', marginTop: 4 }}
+              >
+                {glossaryValidation.errors.slice(0, 3).map((err, i) => (
+                  <div key={i}>{err}</div>
+                ))}
+                {glossaryValidation.errors.length > 3 && (
+                  <div>...and {glossaryValidation.errors.length - 3} more error(s)</div>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
-import type { TranslationProvider, ProviderCapabilities, VendorId, StreamOptions } from '../types';
+import type { TranslationProvider, VendorId, StreamOptions } from '../types';
+import { isEmptyPrompt, withTimeout, withTimeoutGenerator } from '../providerUtils';
 
 type OpenAIProviderConfig = {
   apiKey: string;
@@ -14,7 +15,6 @@ type OpenAIProviderConfig = {
  */
 export default class OpenAIProvider implements TranslationProvider {
   public readonly vendor: VendorId = 'openai';
-  public readonly capabilities: ProviderCapabilities = { streaming: true };
   private readonly client: OpenAI;
   private readonly model: string;
 
@@ -41,21 +41,31 @@ export default class OpenAIProvider implements TranslationProvider {
    * @returns Async iterable of text deltas.
    */
   async *streamText(prompt: string, options?: StreamOptions): AsyncIterable<string> {
-    const stream = await this.client.chat.completions.create(
-      {
-        model: this.model,
-        messages: [{ role: 'user', content: prompt }],
-        stream: true,
-      },
-      { signal: options?.abortSignal }
-    );
-
-    for await (const chunk of stream) {
-      const content = (chunk as any)?.choices?.[0]?.delta?.content || '';
-      if (content) {
-        yield content as string;
-      }
+    if (isEmptyPrompt(prompt)) {
+      return;
     }
+
+    const client = this.client;
+    const model = this.model;
+
+    yield* withTimeoutGenerator(options, async function* (signal: AbortSignal) {
+      const stream = await client.chat.completions.create(
+        {
+          model,
+          messages: [{ role: 'user', content: prompt }],
+          stream: true,
+        },
+        { signal }
+      );
+
+      for await (const chunk of stream) {
+        const delta = chunk.choices?.[0]?.delta;
+        const content = delta && 'content' in delta ? delta.content : null;
+        if (content) {
+          yield content;
+        }
+      }
+    });
   }
 
   /**
@@ -66,14 +76,20 @@ export default class OpenAIProvider implements TranslationProvider {
    * @returns Final message content (or empty string).
    */
   async completeText(prompt: string, options?: StreamOptions): Promise<string> {
-    const resp = await this.client.chat.completions.create(
-      {
-        model: this.model,
-        messages: [{ role: 'user', content: prompt }],
-        stream: false,
-      },
-      { signal: options?.abortSignal }
-    );
-    return resp.choices?.[0]?.message?.content ?? '';
+    if (isEmptyPrompt(prompt)) {
+      return '';
+    }
+
+    return withTimeout(options, async (signal) => {
+      const resp = await this.client.chat.completions.create(
+        {
+          model: this.model,
+          messages: [{ role: 'user', content: prompt }],
+          stream: false,
+        },
+        { signal }
+      );
+      return resp.choices?.[0]?.message?.content ?? '';
+    });
   }
 }

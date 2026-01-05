@@ -8,6 +8,17 @@
 import { mapDatoToDeepL } from './DeepLMap';
 
 /**
+ * Minimum params shape needed for glossary resolution.
+ * This avoids importing the full ctxParamsType and allows for flexibility.
+ */
+interface GlossaryParams {
+  /** Default glossary ID applied to all translations. */
+  deeplGlossaryId?: string;
+  /** Per-pair glossary mappings in user-defined format. */
+  deeplGlossaryPairs?: string;
+}
+
+/**
  * Parses a user-provided mapping of glossary ids by language pair.
  *
  * Accepts lines in the following flexible formats (case-insensitive):
@@ -56,12 +67,12 @@ export function parseGlossaryMap(input?: string): Record<string, string> {
  * @returns The resolved glossary id for this translation pair, if any.
  */
 export function resolveGlossaryId(
-  params: any,
+  params: GlossaryParams | null | undefined,
   fromLocale: string | undefined,
   toLocale: string
 ): string | undefined {
-  const defaultId: string | undefined = params?.deeplGlossaryId || undefined;
-  const rawMap: string | undefined = params?.deeplGlossaryPairs || undefined;
+  const defaultId = params?.deeplGlossaryId;
+  const rawMap = params?.deeplGlossaryPairs;
   if (!rawMap && !defaultId) return undefined;
 
   // Compute DeepL codes for the actual request

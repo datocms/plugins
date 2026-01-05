@@ -42,8 +42,10 @@ export class Logger {
     // Collect known secrets for redaction
     const candidates = [
       pluginParams.apiKey,
-      (pluginParams as any).googleApiKey,
-    ].filter(Boolean) as string[];
+      pluginParams.googleApiKey,
+      pluginParams.anthropicApiKey,
+      pluginParams.deeplApiKey,
+    ].filter((s): s is string => typeof s === 'string' && s.length > 0);
     // Only keep reasonably long secrets to avoid redacting trivial words
     this.secrets = candidates.filter((s) => typeof s === 'string' && s.length >= 8);
   }

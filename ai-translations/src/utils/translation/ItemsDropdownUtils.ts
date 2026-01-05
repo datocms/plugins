@@ -8,6 +8,10 @@ import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 // no specific ctx type required here; we accept a minimal ctx shape
 import { translateFieldValue, generateRecordContext } from './TranslateField';
 import { prepareFieldTypePrompt, getExactSourceValue, type FieldTypeDictionary } from './SharedFieldUtils';
+import {
+  type SchemaRepository,
+  buildFieldTypeDictionaryFromRepo,
+} from '../schemaRepository';
 
 /**
  * Defines a DatoCMS record structure with common fields
@@ -193,13 +197,84 @@ export type ProgressUpdate = {
 
 /**
  * Options for batch translation flow, including progress and cancellation.
+ * Uses CancellationOptions naming convention for consistency across the codebase.
  */
 export type TranslateBatchOptions = {
   onProgress?: (update: ProgressUpdate) => void;
-  checkCancelled?: () => boolean;
+  /** Returns true if user has requested cancellation. Matches CancellationOptions convention. */
+  checkCancellation?: () => boolean;
   abortSignal?: AbortSignal;
 };
 
+
+/**
+ * Safely extracts error candidates from various error object shapes.
+ *
+ * @param error - The error object to extract from.
+ * @returns An array of error objects if found, otherwise undefined.
+ */
+function extractErrorCandidates(error: unknown): unknown[] | undefined {
+  if (error === null || typeof error !== 'object') return undefined;
+  const obj = error as Record<string, unknown>;
+
+  // Check various nested locations where errors might be stored
+  const candidates =
+    getNestedArray(obj, ['response', 'data', 'errors']) ||
+    getNestedArray(obj, ['response', 'errors']) ||
+    getNestedArray(obj, ['data', 'errors']) ||
+    (Array.isArray(obj.errors) ? obj.errors : undefined);
+
+  return candidates;
+}
+
+/**
+ * Helper to safely navigate nested properties and return an array.
+ *
+ * @param obj - The object to navigate.
+ * @param path - Array of property keys to follow.
+ * @returns The array at the path, or undefined if not found or not an array.
+ */
+function getNestedArray(obj: Record<string, unknown>, path: string[]): unknown[] | undefined {
+  let current: unknown = obj;
+  for (const key of path) {
+    if (current === null || typeof current !== 'object') return undefined;
+    current = (current as Record<string, unknown>)[key];
+  }
+  return Array.isArray(current) ? current : undefined;
+}
+
+/**
+ * Safely extracts error code from an error entry.
+ *
+ * @param e - An error entry object.
+ * @returns The error code if present, otherwise null.
+ */
+function extractErrorCode(e: unknown): string | null {
+  if (e === null || typeof e !== 'object') return null;
+  const obj = e as Record<string, unknown>;
+  // Check attributes.code first, then code directly
+  if (obj.attributes && typeof obj.attributes === 'object') {
+    const attrs = obj.attributes as Record<string, unknown>;
+    if (typeof attrs.code === 'string') return attrs.code;
+  }
+  if (typeof obj.code === 'string') return obj.code;
+  return null;
+}
+
+/**
+ * Safely extracts error message from an error object.
+ *
+ * @param error - The error object.
+ * @returns The message if present and is a string, otherwise undefined.
+ */
+function extractErrorMessage(error: unknown): string | undefined {
+  if (error instanceof Error) return error.message;
+  if (error !== null && typeof error === 'object') {
+    const obj = error as Record<string, unknown>;
+    if (typeof obj.message === 'string') return obj.message;
+  }
+  return undefined;
+}
 
 /**
  * Returns a user-friendly message for known DatoCMS API errors.
@@ -211,25 +286,16 @@ export type TranslateBatchOptions = {
  * @returns A user-friendly message or null when no mapping matches.
  */
 function getFriendlyDatoErrorMessage(error: unknown, recordId: string): string | null {
-  const anyErr = error as any;
-  const candidates =
-    anyErr?.response?.data?.errors ||
-    anyErr?.response?.errors ||
-    anyErr?.data?.errors ||
-    anyErr?.errors;
-
-  const extractCode = (e: any) => e?.attributes?.code || e?.code || null;
-
   try {
+    const candidates = extractErrorCandidates(error);
     if (Array.isArray(candidates)) {
-      const codes: Array<string | null> = candidates.map(extractCode);
+      const codes = candidates.map(extractErrorCode);
       if (codes.includes('ITEM_LOCKED')) {
         return `Cannot save translations for record ${recordId}: the record is locked because it is being edited. Please ensure no one (including you in another tab) is editing the record in DatoCMS, then try again.`;
       }
     }
 
-    const msg: string | undefined =
-      typeof anyErr?.message === 'string' ? anyErr.message : undefined;
+    const msg = extractErrorMessage(error);
     if (msg && msg.includes('ITEM_LOCKED')) {
       return `Cannot save translations for record ${recordId}: the record is locked because it is being edited. Please ensure no one is editing the record, then try again.`;
     }
@@ -256,6 +322,7 @@ function getFriendlyDatoErrorMessage(error: unknown, recordId: string): string |
  * @param ctx - Minimal context for alerts and environment.
  * @param accessToken - Current user API token for DatoCMS.
  * @param options - Optional callbacks and AbortSignal for cancellation.
+ * @param schemaRepository - Optional SchemaRepository for cached schema lookups.
  */
 export async function translateAndUpdateRecords(
   records: DatoCMSRecordFromAPI[],
@@ -267,7 +334,8 @@ export async function translateAndUpdateRecords(
   pluginParams: ctxParamsType,
   ctx: { alert: (msg: string) => void; environment: string },
   accessToken: string,
-  options: TranslateBatchOptions = {}
+  options: TranslateBatchOptions = {},
+  schemaRepository?: SchemaRepository
 ): Promise<void> {
   const updateProgress = (u: ProgressUpdate) => {
     // Normalize legacy in-progress message that included the word "fields"
@@ -282,7 +350,7 @@ export async function translateAndUpdateRecords(
     const recordLabel = deriveRecordLabel(record, fromLocale);
 
     // Cooperative cancellation
-    if (options.checkCancelled?.()) {
+    if (options.checkCancellation?.()) {
       updateProgress({ recordIndex: i, recordId: record.id, status: 'error', message: `Translation cancelled for "${recordLabel}" (#${record.id}).` });
       return;
     }
@@ -312,7 +380,8 @@ export async function translateAndUpdateRecords(
         pluginParams,
         accessToken,
         ctx.environment,
-        { abortSignal: options.abortSignal, checkCancelled: options.checkCancelled }
+        { abortSignal: options.abortSignal, checkCancellation: options.checkCancellation },
+        schemaRepository
       );
 
       updateProgress({ recordIndex: i, recordId: record.id, status: 'processing', message: `Saving "${recordLabel}" (#${record.id})…` });
@@ -362,6 +431,7 @@ export async function translateAndUpdateRecords(
  * @param accessToken - Current user API token for DatoCMS.
  * @param environment - Dato environment slug.
  * @param opts - Optional AbortSignal and cancellation function.
+ * @param schemaRepository - Optional SchemaRepository for cached schema lookups.
  * @returns Partial payload for client.items.update.
  */
 export async function buildTranslatedUpdatePayload(
@@ -373,7 +443,8 @@ export async function buildTranslatedUpdatePayload(
   pluginParams: ctxParamsType,
   accessToken: string,
   environment: string,
-  opts: { abortSignal?: AbortSignal; checkCancelled?: () => boolean } = {}
+  opts: { abortSignal?: AbortSignal; checkCancellation?: () => boolean } = {},
+  schemaRepository?: SchemaRepository
 ): Promise<Record<string, unknown>> {
   const updatePayload: Record<string, Record<string, unknown>> = {};
   const excludedFieldIds = new Set(pluginParams.apiKeysToBeExcludedFromThisPlugin ?? []);
@@ -445,20 +516,27 @@ export async function buildTranslatedUpdatePayload(
           accessToken,
           fieldTypeDictionary[field].id,
           environment,
-          { abortSignal: opts.abortSignal, checkCancellation: opts.checkCancelled },
-          generateRecordContext(record, fromLocale)
+          { abortSignal: opts.abortSignal, checkCancellation: opts.checkCancellation },
+          generateRecordContext(record, fromLocale),
+          schemaRepository
         );
         // Ensure we use the exact case-sensitive toLocale key as expected by DatoCMS
         updatePayload[field][toLocale] = translatedValue;
       }
     } catch (error) {
-      // On error during translation for this specific field, set its target locale to null.
+      // DESIGN DECISION: On field-level translation errors, we set the target locale
+      // to null and continue with other fields. This approach was chosen because:
+      // 1. A single field failure shouldn't block the entire record translation
+      // 2. The user can manually translate failed fields after the batch completes
+      // 3. Record-level errors (like ITEM_LOCKED) are still surfaced via progress updates
+      //
+      // Alternative approaches considered but rejected:
+      // - Collecting all field errors and re-throwing: Would stop the entire batch
+      // - Returning a partial success object: Would complicate the API significantly
+      // - Per-field retry logic: Would add complexity without clear benefit
       updatePayload[field][toLocale] = null;
       const norm = normalizeProviderError(error, provider.vendor);
       console.error(`Error translating field ${field} for record ${record.id}: ${norm.message}`);
-      // Depending on desired behavior, you might want to collect these errors
-      // or re-throw if one field error should stop the whole batch.
-      // For now, it just sets to null and continues.
     }
   }
   
@@ -551,4 +629,21 @@ export async function buildFieldTypeDictionary(
     };
     return acc;
   }, {});
+}
+
+/**
+ * Builds a dictionary of field metadata using SchemaRepository for caching.
+ *
+ * This is the preferred method when SchemaRepository is available, as it uses
+ * cached schema data instead of making new API calls.
+ *
+ * @param schemaRepository - SchemaRepository instance with cached data.
+ * @param itemTypeId - Item type ID.
+ * @returns FieldTypeDictionary with editor, id and localized flags.
+ */
+export async function buildFieldTypeDictionaryWithRepo(
+  schemaRepository: SchemaRepository,
+  itemTypeId: string
+): Promise<FieldTypeDictionary> {
+  return buildFieldTypeDictionaryFromRepo(schemaRepository, itemTypeId);
 }

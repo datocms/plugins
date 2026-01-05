@@ -93,13 +93,13 @@ export async function translateArray(
 
   try {
     let out: string[] = [];
-    if ((provider as any).vendor === 'deepl' && typeof (provider as any).translateArray === 'function') {
-      // DeepL native array translation
-      const deepL = provider as any;
+
+    // Use native batch translation if provider supports it (e.g., DeepL)
+    if (provider.translateArray) {
       const target = mapDatoToDeepL(toLocale, 'target');
       const source = fromLocale ? mapDatoToDeepL(fromLocale, 'source') : undefined;
       const formality = opts.formality && isFormalitySupported(target) ? opts.formality : undefined;
-      out = await deepL.translateArray(protectedSegments, {
+      out = await provider.translateArray(protectedSegments, {
         sourceLang: source,
         targetLang: target,
         isHTML: !!opts.isHTML,
@@ -118,15 +118,40 @@ export async function translateArray(
       const arrayLiteral = JSON.stringify(protectedSegments);
       const prompt = `${instruction}\n${arrayLiteral}`;
       const txt = await provider.completeText(prompt);
-      // Parse result safely
+      // Parse result safely with null check
+      const trimmedTxt = (txt || '').trim();
       let arr: unknown = [];
-      try { arr = JSON.parse((txt || '').trim()); } catch {
-        // hard repair: try to extract between first [ and last ]
-        const start = txt.indexOf('[');
-        const end = txt.lastIndexOf(']');
-        arr = start >= 0 && end > start ? JSON.parse(txt.slice(start, end + 1)) : [];
+      let jsonRepaired = false;
+      try {
+        arr = JSON.parse(trimmedTxt);
+      } catch {
+        // Hard repair: try to extract between first [ and last ]
+        // Only attempt if trimmedTxt is not empty
+        if (trimmedTxt.length > 0) {
+          const start = trimmedTxt.indexOf('[');
+          const end = trimmedTxt.lastIndexOf(']');
+          if (start >= 0 && end > start) {
+            try {
+              arr = JSON.parse(trimmedTxt.slice(start, end + 1));
+              jsonRepaired = true;
+              console.info('[translateArray] JSON repaired by extracting array brackets');
+            } catch {
+              // Log repair failure for debugging
+              console.warn('[translateArray] JSON repair failed', {
+                originalLength: trimmedTxt.length,
+                extractedRange: [start, end]
+              });
+            }
+          }
+        }
       }
       if (!Array.isArray(arr)) throw new Error('Model did not return a JSON array');
+
+      // Log if repair was successful
+      if (jsonRepaired) {
+        console.info(`[translateArray] Successfully parsed ${arr.length} segments after JSON repair`);
+      }
+
       // Length repair
       const fixed: string[] = [];
       for (let i = 0; i < segments.length; i++) {
@@ -136,10 +161,14 @@ export async function translateArray(
       out = fixed;
     }
 
-    // Reinsert tokens
-    return out.map((t, i) => detokenize(String(t ?? ''), tokenMaps[i]));
+    // Reinsert tokens with safe fallback for tokenMaps
+    return out.map((t, i) => {
+      const tokenMap = tokenMaps[i] ?? [];
+      return detokenize(String(t ?? ''), tokenMap);
+    });
   } catch (error) {
-    const norm = normalizeProviderError(error, (provider as any).vendor || 'openai');
-    throw new Error(norm.message);
+    const norm = normalizeProviderError(error, provider.vendor);
+    // ERR-002: Preserve original error context in the cause chain
+    throw new Error(norm.message, { cause: error });
   }
 }

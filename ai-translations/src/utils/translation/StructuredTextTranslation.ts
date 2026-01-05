@@ -14,7 +14,7 @@
 
 import type { TranslationProvider, StreamCallbacks } from './types';
 import { translateArray } from './translateArray';
-import { normalizeProviderError } from './ProviderErrors';
+import { handleTranslationError } from './ProviderErrors';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import { translateFieldValue } from './TranslateField';
 import { createLogger } from '../logging/Logger';
@@ -24,6 +24,7 @@ import {
   insertObjectAtIndex,
   removeIds
 } from './utils';
+import type { SchemaRepository } from '../schemaRepository';
 
 /**
  * Interface representing a structured text node from DatoCMS.
@@ -35,6 +36,49 @@ interface StructuredTextNode {
   item?: string;
   originalIndex?: number;
   [key: string]: unknown;
+}
+
+/**
+ * Interface for API response format with document wrapper.
+ */
+interface APIResponseFormat {
+  document: {
+    children: unknown[];
+    type?: string;
+  };
+  schema?: string;
+}
+
+/**
+ * Type guard to check if value is an API response format with document.children.
+ *
+ * @param value - The value to check.
+ * @returns True if the value has a document.children array.
+ */
+function isAPIResponseFormat(value: unknown): value is APIResponseFormat {
+  if (value === null || typeof value !== 'object') return false;
+  const obj = value as Record<string, unknown>;
+  if (!obj.document || typeof obj.document !== 'object') return false;
+  const doc = obj.document as Record<string, unknown>;
+  return Array.isArray(doc.children) && doc.children.length > 0;
+}
+
+/**
+ * Comprehensive Unicode whitespace regex covering all Unicode space characters.
+ * Includes standard whitespace plus: NBSP, Ogham Space, various Em/En spaces,
+ * Figure/Punctuation/Thin/Hair spaces, Line/Paragraph separators,
+ * Narrow NBSP, Mathematical space, and Ideographic space.
+ */
+const UNICODE_WHITESPACE_REGEX = /^[\s\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000]+$/;
+
+/**
+ * Checks if a string is whitespace-only (empty or containing any Unicode whitespace).
+ *
+ * @param s - The string to check.
+ * @returns True if the string is empty or whitespace-only.
+ */
+function isWhitespaceOnly(s: string): boolean {
+  return s === '' || UNICODE_WHITESPACE_REGEX.test(s);
 }
 
 /**
@@ -75,11 +119,10 @@ function ensureArrayLengthsMatch(originalValues: string[], translatedValues: str
  */
 function preserveEdgeWhitespace(originalValues: string[], translatedValues: string[]): string[] {
   const out: string[] = new Array(translatedValues.length);
-  const isWsOnly = (s: string) => s === '' || /^[\s\u00A0]+$/.test(s);
   for (let i = 0; i < translatedValues.length; i++) {
     const orig = String(originalValues[i] ?? '');
     const tr = String(translatedValues[i] ?? '');
-    if (isWsOnly(orig)) {
+    if (isWhitespaceOnly(orig)) {
       // Keep pure whitespace nodes exactly as in the original
       out[i] = orig;
       continue;
@@ -108,10 +151,9 @@ function preserveEdgeWhitespace(originalValues: string[], translatedValues: stri
 function alignSegmentsPreservingWhitespace(originalValues: string[], translatedValues: string[]): string[] {
   const out: string[] = [];
   let j = 0;
-  const isWsOnly = (s: string) => s === '' || /^[\s\u00A0]+$/.test(s);
   for (let i = 0; i < originalValues.length; i++) {
     const orig = String(originalValues[i] ?? '');
-    if (isWsOnly(orig)) {
+    if (isWhitespaceOnly(orig)) {
       out.push(orig); // keep exact whitespace segment in place
     } else {
       const tr = j < translatedValues.length ? String(translatedValues[j++]) : orig;
@@ -132,13 +174,12 @@ function alignSegmentsPreservingWhitespace(originalValues: string[], translatedV
  * @returns A defensively spaced translated array.
  */
 function enforceBoundarySpaces(originalValues: string[], processed: string[]): string[] {
-  const isWsOnly = (s: string) => s === '' || /^[\s\u00A0]+$/.test(s);
   const out = processed.slice();
   for (let i = 0; i < originalValues.length - 1; i++) {
     const oL = String(originalValues[i] ?? '');
     const oR = String(originalValues[i + 1] ?? '');
     // If either side is a dedicated whitespace segment, leave as-is
-    if (isWsOnly(oL) || isWsOnly(oR)) continue;
+    if (isWhitespaceOnly(oL) || isWhitespaceOnly(oR)) continue;
 
     const needSpace = /[\s\u00A0]$/.test(oL) || /^[\s\u00A0]/.test(oR);
     if (!needSpace) continue;
@@ -186,7 +227,7 @@ function enforcePunctuationBoundarySpaces(originalValues: string[], processed: s
 
 /**
  * Translates a structured text field value while preserving its structure
- * 
+ *
  * @param initialValue - The structured text field value to translate
  * @param pluginParams - Plugin configuration parameters
  * @param toLocale - Target locale code
@@ -196,6 +237,7 @@ function enforcePunctuationBoundarySpaces(originalValues: string[], processed: s
  * @param environment - Dato environment
  * @param streamCallbacks - Optional callbacks for streaming responses
  * @param recordContext - Optional context about the record being translated
+ * @param schemaRepository - Optional SchemaRepository for cached schema lookups
  * @returns The translated structured text value
  */
 export async function translateStructuredTextValue(
@@ -207,17 +249,19 @@ export async function translateStructuredTextValue(
   apiToken: string,
   environment: string,
   streamCallbacks?: StreamCallbacks,
-  recordContext = ''
+  recordContext = '',
+  schemaRepository?: SchemaRepository
 ): Promise<unknown> {
   // Create logger
   const logger = createLogger(pluginParams, 'StructuredTextTranslation');
   
-  let fieldValue = initialValue;
+  let fieldValue: unknown = initialValue;
   let isAPIResponse = false;
 
-  if((fieldValue as { document: { children: unknown[] } })?.document?.children?.length) {
-    fieldValue = (fieldValue as { document: { children: unknown[] } })?.document?.children
-    isAPIResponse = true
+  // Check if this is an API response format with document.children wrapper
+  if (isAPIResponseFormat(initialValue)) {
+    fieldValue = initialValue.document.children;
+    isAPIResponse = true;
   }
 
   // Skip translation if null or not an array
@@ -324,7 +368,8 @@ export async function translateStructuredTextValue(
         '',
         environment,
         streamCallbacks,
-        recordContext
+        recordContext,
+        schemaRepository
       ) as StructuredTextNode[];
 
       // Insert translated blocks back at their original positions
@@ -357,8 +402,7 @@ export async function translateStructuredTextValue(
     logger.info('Successfully translated structured text');
     return cleanedReconstructedObject;
   } catch (error) {
-    const normalized = normalizeProviderError(error, provider.vendor);
-    logger.error('Error during structured text translation', { message: normalized.message, code: normalized.code, hint: normalized.hint });
-    throw new Error(normalized.message);
+    // DRY-001: Use centralized error handler
+    handleTranslationError(error, provider.vendor, logger, 'Error during structured text translation');
   }
 }

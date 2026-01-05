@@ -3,6 +3,11 @@
 // This component defines the plugin's configuration screen inside DatoCMS.
 // It allows the user to set the OpenAI API Key, select a GPT model, and choose
 // which field types can be translated.
+//
+// PERF-003: State has been refactored into custom hooks to reduce re-renders:
+// - useVendorConfig: Vendor credentials and settings
+// - useFeatureToggles: Translation fields and feature flags
+// - useExclusionRules: Model/role/field exclusions
 
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import {
@@ -27,6 +32,12 @@ import GeminiConfig from './VendorConfigs/GeminiConfig';
 import AnthropicConfig from './VendorConfigs/AnthropicConfig';
 import DeepLConfig from './VendorConfigs/DeepLConfig';
 import ExclusionRulesSection from './ExclusionRulesSection';
+
+// PERF-003: Custom hooks for grouped state management
+import { useVendorConfig } from './hooks/useVendorConfig';
+import { useFeatureToggles } from './hooks/useFeatureToggles';
+import { useExclusionRules } from './hooks/useExclusionRules';
+import { translateFieldTypes } from './configConstants';
 
 /**
  * The shape of the plugin parameters we store in DatoCMS.
@@ -67,23 +78,49 @@ export type ctxParamsType = {
 };
 
 /**
- * A mapping from field editor types to their user-friendly labels.
- * Used to present a friendly multi-select of possible translatable fields.
+ * Valid vendor identifiers for the plugin.
  */
-export const translateFieldTypes = {
-  single_line: 'Single line string',
-  markdown: 'Markdown',
-  wysiwyg: 'HTML Editor',
-  textarea: 'Textarea',
-  slug: 'Slug',
-  json: 'JSON',
-  seo: 'SEO',
-  structured_text: 'Structured Text',
-  rich_text: 'Modular Content',
-  file: 'Media Fields',
-};
+const VALID_VENDORS = ['openai', 'google', 'anthropic', 'deepl'] as const;
 
-export const modularContentVariations = ['framed_single_block'];
+/**
+ * Type guard to validate plugin parameters at runtime.
+ * Ensures the parameters object conforms to ctxParamsType shape.
+ *
+ * This should be used when extracting plugin parameters from the SDK context
+ * to ensure type safety without using unsafe casts.
+ *
+ * @param obj - Unknown object to validate
+ * @returns True if obj conforms to ctxParamsType
+ */
+export function isValidCtxParams(obj: unknown): obj is ctxParamsType {
+  if (!obj || typeof obj !== 'object') return false;
+  const p = obj as Record<string, unknown>;
+
+  // Required string fields
+  if (typeof p.gptModel !== 'string') return false;
+  if (typeof p.apiKey !== 'string') return false;
+  if (typeof p.prompt !== 'string') return false;
+
+  // Required boolean fields
+  if (typeof p.translateWholeRecord !== 'boolean') return false;
+  if (typeof p.enableDebugging !== 'boolean') return false;
+
+  // Required array fields
+  if (!Array.isArray(p.translationFields)) return false;
+  if (!Array.isArray(p.modelsToBeExcludedFromThisPlugin)) return false;
+  if (!Array.isArray(p.rolesToBeExcludedFromThisPlugin)) return false;
+  if (!Array.isArray(p.apiKeysToBeExcludedFromThisPlugin)) return false;
+
+  // Vendor must be valid if present
+  if (p.vendor !== undefined && !VALID_VENDORS.includes(p.vendor as typeof VALID_VENDORS[number])) {
+    return false;
+  }
+
+  return true;
+}
+
+// Re-export constants for backwards compatibility
+export { translateFieldTypes, modularContentVariations } from './configConstants';
 
 /**
  * Fetches the list of available models from OpenAI using the provided API key.
@@ -96,8 +133,8 @@ export const modularContentVariations = ['framed_single_block'];
  */
 async function fetchAvailableModels(
   apiKey: string,
-  setOptions: React.Dispatch<React.SetStateAction<string[]>>,
-  setGptModel: React.Dispatch<React.SetStateAction<string>>,
+  setOptions: (models: string[]) => void,
+  setGptModel: (model: string) => void,
   currentModel: string
 ) {
   try {
@@ -156,73 +193,39 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   // Retrieve existing plugin params or use defaults if not set
   const pluginParams = ctx.plugin.attributes.parameters as ctxParamsType;
 
-  // Local state for the API key
-  const [vendor, setVendor] = useState<'openai' | 'google' | 'anthropic' | 'deepl'>(pluginParams.vendor ?? 'openai');
-  const [apiKey, setApiKey] = useState(pluginParams.apiKey ?? '');
-  const [googleApiKey, setGoogleApiKey] = useState(pluginParams.googleApiKey ?? '');
+  // PERF-003: Use custom hooks to group related state and reduce re-renders
+  const [vendorConfig, vendorActions] = useVendorConfig(pluginParams);
+  const [featureToggles, featureActions] = useFeatureToggles(pluginParams, defaultPrompt);
+  const [exclusionRules, exclusionActions] = useExclusionRules(pluginParams);
 
-  // Local state for the selected GPT model
-  const [gptModel, setGptModel] = useState(
-    pluginParams.gptModel ?? 'None'
-  );
-  const [geminiModel, setGeminiModel] = useState(pluginParams.geminiModel ?? 'gemini-1.5-flash');
-  const [anthropicApiKey, setAnthropicApiKey] = useState(pluginParams.anthropicApiKey ?? '');
-  const [anthropicModel, setAnthropicModel] = useState(pluginParams.anthropicModel ?? 'claude-3.5-haiku-latest');
-  const [deeplUseFree, setDeeplUseFree] = useState<boolean>(pluginParams.deeplUseFree ?? false);
-  const [deeplFormality, setDeeplFormality] = useState<'default'|'more'|'less'>(pluginParams.deeplFormality ?? 'default');
-  const [deeplPreserveFormatting, setDeeplPreserveFormatting] = useState<boolean>(pluginParams.deeplPreserveFormatting ?? true);
-  const [deeplIgnoreTags, setDeeplIgnoreTags] = useState<string>(pluginParams.deeplIgnoreTags ?? 'notranslate,ph');
-  const [deeplNonSplittingTags, setDeeplNonSplittingTags] = useState<string>(pluginParams.deeplNonSplittingTags ?? 'a,code,pre,strong,em,ph,notranslate');
-  const [deeplSplittingTags, setDeeplSplittingTags] = useState<string>(pluginParams.deeplSplittingTags ?? '');
-  const [deeplApiKey, setDeeplApiKey] = useState<string>(pluginParams.deeplApiKey ?? '');
-  const [deeplGlossaryId, setDeeplGlossaryId] = useState<string>(pluginParams.deeplGlossaryId ?? '');
-  const [deeplGlossaryPairs, setDeeplGlossaryPairs] = useState<string>(pluginParams.deeplGlossaryPairs ?? '');
+  // Destructure for easier access (maintains backward compatibility with rest of component)
+  const {
+    vendor, apiKey, gptModel, googleApiKey, geminiModel,
+    anthropicApiKey, anthropicModel, deeplApiKey, deeplUseFree,
+    deeplFormality, deeplPreserveFormatting, deeplIgnoreTags,
+    deeplNonSplittingTags, deeplSplittingTags, deeplGlossaryId, deeplGlossaryPairs,
+  } = vendorConfig;
+  const {
+    setVendor, setApiKey, setGptModel, setGoogleApiKey, setGeminiModel,
+    setAnthropicApiKey, setAnthropicModel, setDeeplApiKey, setDeeplUseFree,
+    setDeeplFormality, setDeeplPreserveFormatting, setDeeplIgnoreTags,
+    setDeeplNonSplittingTags, setDeeplSplittingTags, setDeeplGlossaryId, setDeeplGlossaryPairs,
+  } = vendorActions;
 
-  // Local state for which field types can be translated
-  const [translationFields, setTranslationFields] = useState<string[]>(
-    Array.isArray(pluginParams.translationFields)
-      ? pluginParams.translationFields
-      : Object.keys(translateFieldTypes)
-  );
+  const {
+    translationFields, translateWholeRecord, translateBulkRecords, prompt, enableDebugging,
+  } = featureToggles;
+  const {
+    setTranslationFields, setTranslateWholeRecord, setTranslateBulkRecords, setPrompt, setEnableDebugging,
+  } = featureActions;
 
-  // Local state for models to be excluded from translation
-  const [modelsToBeExcluded, setModelsToBeExcluded] = useState<string[]>(
-    pluginParams.modelsToBeExcludedFromThisPlugin ?? []
-  );
-
-  // Local state for roles to be excluded from translation
-  const [rolesToBeExcluded, setRolesToBeExcluded] = useState<string[]>(
-    pluginParams.rolesToBeExcludedFromThisPlugin ?? []
-  );
-
-  // Local state for API keys to be excluded from translation
-  const [apiKeysToBeExcluded, setApiKeysToBeExcluded] = useState<string[]>(
-    pluginParams.apiKeysToBeExcludedFromThisPlugin ?? []
-  );
-
-  // Local state to allow entire record translation
-  const [translateWholeRecord, setTranslateWholeRecord] = useState<boolean>(
-    typeof pluginParams.translateWholeRecord === 'boolean'
-      ? pluginParams.translateWholeRecord
-      : true
-  );
-
-  // Local state to allow bulk records translation
-  const [translateBulkRecords, setTranslateBulkRecords] = useState<boolean>(
-    typeof pluginParams.translateBulkRecords === 'boolean'
-      ? pluginParams.translateBulkRecords
-      : true
-  );
-
-  // Local state for the translation prompt (includes placeholders like {fieldValue})
-  const [prompt, setPrompt] = useState(pluginParams.prompt ?? defaultPrompt);
-
-  // Local state for debugging
-  const [enableDebugging, setEnableDebugging] = useState<boolean>(
-    typeof pluginParams.enableDebugging === 'boolean'
-      ? pluginParams.enableDebugging
-      : false
-  );
+  const {
+    modelsToBeExcluded, rolesToBeExcluded, apiKeysToBeExcluded,
+    showExclusionRules, hasExclusionRules,
+  } = exclusionRules;
+  const {
+    setModelsToBeExcluded, setRolesToBeExcluded, setApiKeysToBeExcluded, setShowExclusionRules,
+  } = exclusionActions;
 
   // Performance concurrency is now fully automatic; no user setting.
 
@@ -244,25 +247,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       model: string;
     }[]
   >([]);
-
-  // Add state for exclusion rules visibility
-  const [showExclusionRules, setShowExclusionRules] = useState<boolean>(false);
-
-  // Calculate if any exclusion rules are set
-  const hasExclusionRules = useMemo(() => {
-    return (
-      modelsToBeExcluded.length > 0 ||
-      rolesToBeExcluded.length > 0 ||
-      apiKeysToBeExcluded.length > 0
-    );
-  }, [modelsToBeExcluded, rolesToBeExcluded, apiKeysToBeExcluded]);
-
-  useEffect(() => {
-    // Force show exclusion rules if any are set
-    if (hasExclusionRules) {
-      setShowExclusionRules(true);
-    }
-  }, [hasExclusionRules]);
 
   /**
    * When the user updates or removes the API key, we refetch the model list.
@@ -295,6 +279,8 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
 
             return [...prevFields, ...uniqueNewFields];
           });
+        }).catch((error) => {
+          console.error(`Failed to load fields for item type ${itemTypeID}:`, error);
         });
       }
     }
@@ -369,6 +355,18 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   /**
    * Checks if the user has changed any of the config fields,
    * so we can enable or disable the "Save" button accordingly.
+   *
+   * DESIGN DECISION: This useMemo has a large dependency array (~45 items)
+   * which is intentional. Breaking this into smaller memos was considered but rejected:
+   *
+   * 1. Each field comparison depends on both current state AND saved pluginParams
+   * 2. Splitting would require passing partial dirty states between memos
+   * 3. The performance impact is negligible (simple value comparisons, not expensive ops)
+   * 4. Having all dirty checks in one place improves maintainability
+   * 5. React's dependency tracking handles this efficiently
+   *
+   * If this becomes a maintenance burden, consider extracting comparison logic into
+   * a utility function that takes (currentState, savedParams) and returns boolean.
    */
   const isFormDirty = useMemo(() => {
     const sortedSelectedFields = [...translationFields].sort().join(',');
@@ -502,9 +500,13 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
               ],
             }}
             onChange={(opt) => {
-            const v = Array.isArray(opt) ? (opt[0]?.value as 'openai'|'google'|'anthropic'|'deepl') : (opt as any)?.value;
-            if (v) setVendor(v);
-          }}
+              // datocms-react-ui SelectField returns { value, label } or array thereof
+              const selected = Array.isArray(opt) ? opt[0] : opt;
+              const v = selected && typeof selected === 'object' && 'value' in selected
+                ? (selected.value as 'openai'|'google'|'anthropic'|'deepl')
+                : undefined;
+              if (v) setVendor(v);
+            }}
           />
         </div>
 
@@ -593,11 +595,11 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
             />
             {/* Tooltip container with image for sidebar translation */}
             <div className={s.tooltipContainer}>
-              ⓘ
+              <span role="img" aria-label="Information about sidebar translation" tabIndex={0}>ⓘ</span>
               <div className={`${s.tooltipText} ${s.imageTooltip}`}>
-                <img 
-                  src="/public/assets/sidebar-translation-example.png" 
-                  alt="Sidebar translation example"
+                <img
+                  src="/public/assets/sidebar-translation-example.png"
+                  alt="Screenshot showing the sidebar translation feature with locale selection and translate button"
                   style={{ width: '100%', maxWidth: '420px' }}
                 />
                 <div style={{ marginTop: '10px', fontWeight: 'bold' }}>Sidebar Translation</div>
@@ -619,11 +621,11 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
             />
             {/* Tooltip container with image for bulk translation */}
             <div className={s.tooltipContainer}>
-              ⓘ
+              <span role="img" aria-label="Information about bulk translation" tabIndex={0}>ⓘ</span>
               <div className={`${s.tooltipText} ${s.imageTooltip}`}>
-                <img 
-                  src="/public/assets/bulk-translation-example.png" 
-                  alt="Bulk records translation example"
+                <img
+                  src="/public/assets/bulk-translation-example.png"
+                  alt="Screenshot showing bulk translation of multiple records in tabular view"
                   style={{ width: '100%', maxWidth: '420px' }}
                 />
                 <div style={{ marginTop: '10px', fontWeight: 'bold' }}>Bulk Translation</div>
