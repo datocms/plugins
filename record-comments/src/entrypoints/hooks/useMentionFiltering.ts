@@ -1,7 +1,3 @@
-import { useMemo } from 'react';
-import { filterUsers, filterFields, filterModels } from '@utils/mentions';
-import type { TriggerInfo } from '@utils/mentions';
-
 export type UserInfo = {
   id: string;
   email: string;
@@ -28,44 +24,3 @@ export type ModelInfo = {
   name: string;
   isBlockModel: boolean;
 };
-
-type UseMentionFilteringOptions = {
-  users: UserInfo[];
-  fields: FieldInfo[];
-  models: ModelInfo[];
-  triggerInfo: TriggerInfo | null;
-};
-
-type UseMentionFilteringReturn = {
-  filteredUsers: UserInfo[];
-  filteredFields: FieldInfo[];
-  filteredModels: ModelInfo[];
-};
-
-export function useMentionFiltering({
-  users,
-  fields,
-  models,
-  triggerInfo,
-}: UseMentionFilteringOptions): UseMentionFilteringReturn {
-  const filteredUsers = useMemo(() => {
-    if (triggerInfo?.type !== 'user') return [];
-    return filterUsers(users, triggerInfo.query);
-  }, [users, triggerInfo]);
-
-  const filteredFields = useMemo(() => {
-    if (triggerInfo?.type !== 'field') return [];
-    return filterFields(fields, triggerInfo.query);
-  }, [fields, triggerInfo]);
-
-  const filteredModels = useMemo(() => {
-    if (triggerInfo?.type !== 'model') return [];
-    return filterModels(models, triggerInfo.query);
-  }, [models, triggerInfo]);
-
-  return {
-    filteredUsers,
-    filteredFields,
-    filteredModels,
-  };
-}

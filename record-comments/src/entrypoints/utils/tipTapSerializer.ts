@@ -1,16 +1,6 @@
 import type { JSONContent } from '@tiptap/react';
-import type { CommentSegment, Mention } from '@ctypes/mentions';
-import {
-  isValidUserMentionAttrs,
-  isValidFieldMentionAttrs,
-  isValidAssetMentionAttrs,
-  isValidRecordMentionAttrs,
-  isValidModelMentionAttrs,
-} from './typeGuards';
-import {
-  applyFieldMentionDefaults,
-  applyModelMentionDefaults,
-} from './tiptapDefaults';
+import type { CommentSegment, Mention, MentionType } from '@ctypes/mentions';
+import { attrsToMention } from './attrsToMention';
 
 // Converts between CommentSegment[] (storage) and TipTap JSONContent (editor)
 
@@ -22,72 +12,27 @@ const MENTION_NODE_TYPES = {
   model: 'modelMention',
 } as const;
 
+type NodeTypeValue = (typeof MENTION_NODE_TYPES)[keyof typeof MENTION_NODE_TYPES];
+
+const NODE_TYPE_TO_MENTION_TYPE: Record<NodeTypeValue, MentionType> = {
+  userMention: 'user',
+  fieldMention: 'field',
+  assetMention: 'asset',
+  recordMention: 'record',
+  modelMention: 'model',
+};
+
 function mentionToAttrs(mention: Mention): Record<string, unknown> {
   return { ...mention };
 }
 
-function attrsToMention(nodeType: string, attrs: Record<string, unknown>): Mention | null {
-  switch (nodeType) {
-    case MENTION_NODE_TYPES.user:
-      if (!isValidUserMentionAttrs(attrs)) return null;
-      return {
-        type: 'user',
-        id: attrs.id,
-        name: attrs.name,
-        email: attrs.email,
-        avatarUrl: attrs.avatarUrl,
-      };
-
-    case MENTION_NODE_TYPES.field:
-      if (!isValidFieldMentionAttrs(attrs)) return null;
-      return {
-        type: 'field',
-        apiKey: attrs.apiKey,
-        label: attrs.label,
-        localized: applyFieldMentionDefaults.localized(attrs.localized),
-        fieldPath: attrs.fieldPath,
-        locale: attrs.locale ?? undefined,
-        fieldType: attrs.fieldType ?? undefined,
-      };
-
-    case MENTION_NODE_TYPES.asset:
-      if (!isValidAssetMentionAttrs(attrs)) return null;
-      return {
-        type: 'asset',
-        id: attrs.id,
-        filename: attrs.filename,
-        url: attrs.url,
-        thumbnailUrl: attrs.thumbnailUrl,
-        mimeType: attrs.mimeType,
-      };
-
-    case MENTION_NODE_TYPES.record:
-      if (!isValidRecordMentionAttrs(attrs)) return null;
-      return {
-        type: 'record',
-        id: attrs.id,
-        title: attrs.title,
-        modelId: attrs.modelId,
-        modelApiKey: attrs.modelApiKey,
-        modelName: attrs.modelName,
-        modelEmoji: attrs.modelEmoji,
-        thumbnailUrl: attrs.thumbnailUrl,
-        isSingleton: attrs.isSingleton,
-      };
-
-    case MENTION_NODE_TYPES.model:
-      if (!isValidModelMentionAttrs(attrs)) return null;
-      return {
-        type: 'model',
-        id: attrs.id,
-        apiKey: attrs.apiKey,
-        name: attrs.name,
-        isBlockModel: applyModelMentionDefaults.isBlockModel(attrs.isBlockModel),
-      };
-
-    default:
-      return null;
-  }
+function nodeAttrsToMention(
+  nodeType: string,
+  attrs: Record<string, unknown>
+): Mention | null {
+  const mentionType = NODE_TYPE_TO_MENTION_TYPE[nodeType as NodeTypeValue];
+  if (!mentionType) return null;
+  return attrsToMention(mentionType, attrs);
 }
 
 export function segmentsToTipTapDoc(segments: CommentSegment[]): JSONContent {
@@ -164,7 +109,7 @@ export function tipTapDocToSegments(doc: JSONContent): CommentSegment[] {
 
     if (mentionNodeType) {
       flushText();
-      const mention = attrsToMention(mentionNodeType, node.attrs ?? {});
+      const mention = nodeAttrsToMention(mentionNodeType, node.attrs ?? {});
       if (mention) {
         segments.push({ type: 'mention', mention });
       }

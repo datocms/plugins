@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import type { Client } from '@datocms/cma-client-browser';
 
@@ -19,6 +19,7 @@ import { useCommentActions } from '@hooks/useCommentActions';
 import { useToolbarHandlers } from '@hooks/useToolbarHandlers';
 import { usePageAssetMention } from '@hooks/usePageAssetMention';
 import { usePageRecordMention } from '@hooks/usePageRecordMention';
+import { useReplyPicker } from '@hooks/useReplyPicker';
 import { useAutoScroll } from '@hooks/useAutoScroll';
 import { usePagination } from '@hooks/usePagination';
 
@@ -30,11 +31,9 @@ import { useMentionPermissionsContext } from '../contexts/MentionPermissionsCont
 import type { CommentType } from '@ctypes/comments';
 import type { CommentSegment } from '@ctypes/mentions';
 import { SUBSCRIPTION_STATUS } from '@hooks/useCommentsSubscription';
-import { GLOBAL_MODEL_ID, GLOBAL_RECORD_ID, ERROR_MESSAGES } from '@/constants';
+import { GLOBAL_MODEL_ID, GLOBAL_RECORD_ID } from '@/constants';
 import { categorizeGeneralError } from '@utils/errorCategorization';
-import { createRecordMention } from '@utils/recordPickerHelpers';
-import { isComposerEmpty, createAssetMention } from '@utils/composerHelpers';
-import { logError } from '@/utils/errorLogger';
+import { isComposerEmpty } from '@utils/composerHelpers';
 import styles from '@styles/dashboard.module.css';
 
 type GlobalCommentsChannelProps = {
@@ -143,82 +142,15 @@ const GlobalCommentsChannel = ({
     projectModels,
   });
 
-  const activeReplyComposerRef = useRef<TipTapComposerRef | null>(null);
-  const [isReplyPickerLoading, setIsReplyPickerLoading] = useState(false);
-
-  const handleReplyPickerRequest = useCallback(
-    async (type: 'asset' | 'record', replyComposerRef: RefObject<TipTapComposerRef | null>) => {
-      // Record mentions are now handled by the Comment component's own dropdown
-      if (type !== 'asset') return;
-      if (isReplyPickerLoading) return;
-      if (!canMentionAssets) return;
-
-      activeReplyComposerRef.current = replyComposerRef.current;
-      setIsReplyPickerLoading(true);
-
-      try {
-        const upload = await ctx.selectUpload({ multiple: false });
-        if (!upload) {
-          activeReplyComposerRef.current?.focus();
-          return;
-        }
-
-        const assetMention = createAssetMention(upload);
-        activeReplyComposerRef.current?.insertMention(assetMention);
-      } catch (error) {
-        logError('Reply asset picker error:', error);
-        ctx.alert(ERROR_MESSAGES.ASSET_PICKER_FAILED);
-        activeReplyComposerRef.current?.focus();
-      } finally {
-        setIsReplyPickerLoading(false);
-      }
-    },
-    [ctx, canMentionAssets, isReplyPickerLoading]
-  );
-
-  // Callback for Comment component's record model selection (renders dropdown inside comment)
-  const handleRecordModelSelectFromComment = useCallback(
-    async (
-      model: ModelInfo,
-      targetComposerRef: RefObject<TipTapComposerRef | null>
-    ) => {
-      const targetComposer = targetComposerRef.current;
-      if (!targetComposer) {
-        return;
-      }
-
-      setIsReplyPickerLoading(true);
-
-      try {
-        const record = await ctx.selectItem(model.id, { multiple: false });
-        if (!record) {
-          targetComposer.focus();
-          return;
-        }
-
-        const itemType = ctx.itemTypes[model.id];
-        const fields = itemType ? await ctx.loadItemTypeFields(model.id) : [];
-        const mainLocale = ctx.site.attributes.locales[0];
-
-        const recordMention = await createRecordMention(
-          { id: record.id, attributes: record.attributes },
-          { id: model.id, apiKey: model.apiKey, name: model.name, isBlockModel: model.isBlockModel },
-          itemType,
-          fields,
-          mainLocale,
-          client
-        );
-
-        targetComposer.insertMention(recordMention);
-      } catch (error) {
-        logError('Reply record picker error:', error);
-        ctx.alert(ERROR_MESSAGES.RECORD_PICKER_FAILED);
-      } finally {
-        setIsReplyPickerLoading(false);
-      }
-    },
-    [ctx, client]
-  );
+  const {
+    isPickerInProgress: isReplyPickerLoading,
+    handleReplyPickerRequest,
+    handleRecordModelSelectFromComment,
+  } = useReplyPicker({
+    ctx,
+    client,
+    canMentionAssets,
+  });
 
   const sortedComments = useMemo(
     () =>

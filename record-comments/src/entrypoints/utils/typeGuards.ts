@@ -13,6 +13,7 @@ function isOptionalStringAttr(value: unknown): value is string | undefined | nul
   return value === undefined || value === null || typeof value === 'string';
 }
 
+/** TipTap omits attrs matching defaults, so booleans defaulting to false may be undefined. */
 function isOptionalBooleanAttr(value: unknown): value is boolean | undefined {
   return value === undefined || typeof value === 'boolean';
 }
@@ -33,11 +34,6 @@ export function isValidUserMentionAttrs(
   );
 }
 
-// TipTap omits attrs matching defaults, so booleans defaulting to false may be undefined
-function isOptionalBooleanAttrForTipTap(value: unknown): value is boolean | undefined {
-  return value === undefined || typeof value === 'boolean';
-}
-
 export function isValidFieldMentionAttrs(
   attrs: Record<string, unknown>
 ): attrs is Record<string, unknown> & {
@@ -51,7 +47,7 @@ export function isValidFieldMentionAttrs(
   return (
     isStringAttr(attrs.apiKey) &&
     isStringAttr(attrs.label) &&
-    isOptionalBooleanAttrForTipTap(attrs.localized) &&
+    isOptionalBooleanAttr(attrs.localized) &&
     isStringAttr(attrs.fieldPath) &&
     isOptionalStringAttr(attrs.locale) &&
     isOptionalStringAttr(attrs.fieldType)
@@ -112,7 +108,7 @@ export function isValidModelMentionAttrs(
     isStringAttr(attrs.id) &&
     isStringAttr(attrs.apiKey) &&
     isStringAttr(attrs.name) &&
-    isOptionalBooleanAttrForTipTap(attrs.isBlockModel)
+    isOptionalBooleanAttr(attrs.isBlockModel)
   );
 }
 

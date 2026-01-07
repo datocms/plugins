@@ -1,6 +1,5 @@
 const isDev = import.meta.env.DEV;
 
-// TODO: Integrate with error reporting service (Sentry, Bugsnag) in production
 export function logError(
   message: string,
   error?: unknown,

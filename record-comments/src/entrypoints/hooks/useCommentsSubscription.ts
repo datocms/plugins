@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RenderItemFormSidebarCtx, RenderPageCtx } from 'datocms-plugin-sdk';
 import { useQuerySubscription } from 'react-datocms';
 import type { Client } from '@datocms/cma-client-browser';
-import { COMMENTS_MODEL_API_KEY } from '@/constants';
+import { COMMENTS_MODEL_API_KEY, CMA_FETCH } from '@/constants';
 import { findCommentsModel } from '@utils/itemTypeUtils';
 import { type CommentType, type QueryResult, parseComments, isContentEmpty } from '@ctypes/comments';
 import { logError } from '@/utils/errorLogger';
@@ -270,21 +270,20 @@ export function useCommentsSubscription({
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
     let retryTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
-    const CMA_FETCH_TIMEOUT_MS = 30000;
-    const MAX_CMA_RETRIES = 3;
-
     const fetchComments = async (attempt = 0): Promise<void> => {
       if (!isMounted) return;
 
       setIsLoading(true);
       if (attempt === 0) setCmaFetchError(null);
 
+      // Note: DatoCMS client doesn't support AbortController, so we rely on
+      // isMounted checks to discard stale responses after timeout/unmount
       const timeoutPromise = new Promise<never>((_, reject) => {
         timeoutId = setTimeout(() => {
           if (isMounted) {
-            reject(new Error(`CMA fetch timed out after ${CMA_FETCH_TIMEOUT_MS / 1000} seconds`));
+            reject(new Error(`CMA fetch timed out after ${CMA_FETCH.TIMEOUT_MS / 1000} seconds`));
           }
-        }, CMA_FETCH_TIMEOUT_MS);
+        }, CMA_FETCH.TIMEOUT_MS);
       });
 
       try {
@@ -345,11 +344,11 @@ export function useCommentsSubscription({
 
         const normalizedErr = error instanceof Error ? error : new Error(String(error));
 
-        if (attempt < MAX_CMA_RETRIES) {
+        if (attempt < CMA_FETCH.MAX_RETRIES) {
           cmaRetryCountRef.current = attempt + 1;
           const delayMs = Math.min(1000 * Math.pow(2, attempt), 8000);
 
-          logError(`CMA fetch failed (attempt ${attempt + 1}/${MAX_CMA_RETRIES + 1}), retrying in ${delayMs}ms`, normalizedErr, {
+          logError(`CMA fetch failed (attempt ${attempt + 1}/${CMA_FETCH.MAX_RETRIES + 1}), retrying in ${delayMs}ms`, normalizedErr, {
             modelId: filterParams.modelId,
             recordId: filterParams.recordId,
           });

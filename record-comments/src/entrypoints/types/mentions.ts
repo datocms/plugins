@@ -60,6 +60,8 @@ export type Mention =
   | RecordMention
   | ModelMention;
 
+export type MentionType = Mention['type'];
+
 export type CommentSegment =
   | { type: 'text'; content: string }
   | { type: 'mention'; mention: Mention };

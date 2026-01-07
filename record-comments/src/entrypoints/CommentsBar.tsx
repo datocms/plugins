@@ -1,6 +1,6 @@
 import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
 import { Canvas, Spinner } from 'datocms-react-ui';
-import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import RecordModelSelectorDropdown from '@components/RecordModelSelectorDropdown';
 import ComposerToolbar from '@components/ComposerToolbar';
@@ -15,6 +15,7 @@ import { useToolbarHandlers } from '@hooks/useToolbarHandlers';
 import { useCommentsData } from '@hooks/useCommentsData';
 import { useCommentActions } from '@hooks/useCommentActions';
 import { useMentionPermissions } from '@hooks/useMentionPermissions';
+import { useReplyPicker } from '@hooks/useReplyPicker';
 
 import { ProjectDataProvider } from './contexts/ProjectDataContext';
 import { MentionPermissionsProvider } from './contexts/MentionPermissionsContext';
@@ -37,8 +38,7 @@ export type { UserInfo, FieldInfo, ModelInfo } from '@hooks/useMentions';
 export type { CommentSegment, Mention } from '@ctypes/mentions';
 export type { CommentType, Upvoter } from '@ctypes/comments';
 
-// Uses props (not context) due to shallow tree. Picker logic duplicated with GlobalCommentsChannel
-// due to different context types - update both locations for bug fixes.
+// Uses props (not context) due to shallow tree. Reply picker logic shared via useReplyPicker hook.
 type Props = {
   ctx: RenderItemFormSidebarCtx;
 };
@@ -51,7 +51,6 @@ const CommentsBar = ({ ctx }: Props) => {
   const pendingNewReplies = useRef(new Set<string>());
 
   const [isRecordModelSelectorOpen, setIsRecordModelSelectorOpen] = useState(false);
-  const [isPickerInProgress, setIsPickerInProgress] = useState(false);
 
   // Tracks how many old comments to hide (new comments at index 0 always visible)
   const [hiddenOldCount, setHiddenOldCount] = useState<number | null>(null);
@@ -155,48 +154,27 @@ const CommentsBar = ({ ctx }: Props) => {
     }
   }, [ctx, canMentionAssets]);
 
+  const activeReplyComposerRef = useRef<TipTapComposerRef | null>(null);
+
   const handleRecordTrigger = useCallback(() => {
     setIsRecordModelSelectorOpen(true);
   }, []);
 
   const handleRecordModelSelectorClose = useCallback(() => {
     setIsRecordModelSelectorOpen(false);
-    setIsPickerInProgress(false);
     (activeReplyComposerRef.current || composerRef.current)?.focus();
     activeReplyComposerRef.current = null;
   }, []);
 
-  const activeReplyComposerRef = useRef<TipTapComposerRef | null>(null);
-
-  const handleReplyPickerRequest = useCallback(
-    async (type: 'asset' | 'record', replyComposerRef: RefObject<TipTapComposerRef | null>) => {
-      // Record mentions are now handled by the Comment component's own dropdown
-      if (type !== 'asset') return;
-      if (!canMentionAssets) return;
-
-      activeReplyComposerRef.current = replyComposerRef.current;
-      setIsPickerInProgress(true);
-
-      try {
-        const upload = await ctx.selectUpload({ multiple: false });
-        if (!upload) {
-          activeReplyComposerRef.current?.focus();
-          setIsPickerInProgress(false);
-          return;
-        }
-
-        const assetMention = createAssetMention(upload);
-        await insertMentionWithRetry(activeReplyComposerRef, assetMention);
-      } catch (error) {
-        logError('Asset picker error:', error);
-        ctx.alert(ERROR_MESSAGES.ASSET_PICKER_FAILED);
-      } finally {
-        setIsPickerInProgress(false);
-        activeReplyComposerRef.current = null;
-      }
-    },
-    [ctx, canMentionAssets]
-  );
+  const {
+    isPickerInProgress,
+    handleReplyPickerRequest,
+    handleRecordModelSelectFromComment,
+  } = useReplyPicker({
+    ctx,
+    client,
+    canMentionAssets,
+  });
 
   const handleRecordModelSelectForReply = useCallback(
     async (model: { id: string; apiKey: string; name: string; isBlockModel: boolean }) => {
@@ -205,7 +183,6 @@ const CommentsBar = ({ ctx }: Props) => {
 
       if (!targetComposer) {
         logWarn('No valid composer target for record mention, aborting');
-        setIsPickerInProgress(false);
         activeReplyComposerRef.current = null;
         return;
       }
@@ -228,7 +205,7 @@ const CommentsBar = ({ ctx }: Props) => {
           }
         }
 
-        const mainLocale = ctx.site.attributes.locales[0];
+        const mainLocale = ctx.site.attributes.locales[0] ?? 'en';
 
         const recordMention = await createRecordMention(
           { id: record.id, attributes: record.attributes },
@@ -244,62 +221,7 @@ const CommentsBar = ({ ctx }: Props) => {
         logError('Record picker error:', error);
         ctx.alert(ERROR_MESSAGES.RECORD_PICKER_FAILED);
       } finally {
-        setIsPickerInProgress(false);
         activeReplyComposerRef.current = null;
-      }
-    },
-    [ctx, client]
-  );
-
-  // Callback for Comment component's record model selection (renders dropdown inside comment)
-  const handleRecordModelSelectFromComment = useCallback(
-    async (
-      model: { id: string; apiKey: string; name: string; isBlockModel: boolean },
-      targetComposerRef: RefObject<TipTapComposerRef | null>
-    ) => {
-      const targetComposer = targetComposerRef.current;
-      if (!targetComposer) {
-        logWarn('No valid composer target for record mention from comment, aborting');
-        return;
-      }
-
-      setIsPickerInProgress(true);
-
-      try {
-        const record = await ctx.selectItem(model.id, { multiple: false });
-        if (!record) {
-          targetComposer.focus();
-          return;
-        }
-
-        const itemType = ctx.itemTypes[model.id];
-
-        let fields: Awaited<ReturnType<typeof ctx.loadItemTypeFields>> = [];
-        if (itemType) {
-          try {
-            fields = await ctx.loadItemTypeFields(model.id);
-          } catch (fieldError) {
-            logError('Failed to load item type fields for record mention', fieldError, { modelId: model.id });
-          }
-        }
-
-        const mainLocale = ctx.site.attributes.locales[0];
-
-        const recordMention = await createRecordMention(
-          { id: record.id, attributes: record.attributes },
-          { id: model.id, apiKey: model.apiKey, name: model.name, isBlockModel: model.isBlockModel },
-          itemType,
-          fields,
-          mainLocale,
-          client
-        );
-
-        await insertMentionWithRetry(targetComposerRef, recordMention);
-      } catch (error) {
-        logError('Record picker error:', error);
-        ctx.alert(ERROR_MESSAGES.RECORD_PICKER_FAILED);
-      } finally {
-        setIsPickerInProgress(false);
       }
     },
     [ctx, client]

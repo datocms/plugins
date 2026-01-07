@@ -16,10 +16,6 @@ export function usePageNavigationCallbacks(ctx: RenderPageCtx): UsePageNavigatio
 
   const handleOpenRecord = useCallback(
     async (recordId: string, _modelId: string) => {
-      if (window.location.hash.includes('fieldPath=')) {
-        const currentPath = window.location.pathname + window.location.search;
-        window.history.replaceState(null, '', currentPath);
-      }
       await ctx.editItem(recordId);
     },
     [ctx]

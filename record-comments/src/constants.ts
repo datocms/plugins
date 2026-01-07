@@ -5,15 +5,6 @@ export const COMMENTS_MODEL_API_KEY = 'project_comment';
 export const GLOBAL_MODEL_ID = '__global__';
 export const GLOBAL_RECORD_ID = '__project__';
 
-export const MENTION_TRIGGERS = {
-  USER: '@',
-  FIELD: '#',
-  MODEL: '$',
-  ASSET: '^',
-  RECORD: '&',
-} as const;
-
-export const ALL_TRIGGERS = Object.values(MENTION_TRIGGERS);
 
 export const TIMING = {
   SYNC_COOLDOWN_MS: 8000,
@@ -24,12 +15,17 @@ export const TIMING = {
   COMMENT_BLUR_DELAY_MS: 150, // Allows button clicks to register before blur
   HIGHLIGHT_DURATION_MS: 2000,
   MIGRATION_UI_DELAY_MS: 100,
+  SCROLL_AFTER_REPLY_DELAY_MS: 100, // Wait for React to render new reply before scrolling
 } as const;
 
 export const COMMENTS_PAGE_SIZE = 30;
 
 export const UI = {
   MENTION_CHIP_MAX_NAME_LENGTH: 8,
+  AVATAR_SIZE_COMMENT: 32,
+  AVATAR_SIZE_REPLY: 24,
+  AVATAR_SIZE_THUMBNAIL: 40, // Used for replier avatars in collapsed view
+  MAX_VISIBLE_REPLIER_AVATARS: 3,
 } as const;
 
 export const COMMENT_FIELDS = {
@@ -60,6 +56,12 @@ export const ERROR_MESSAGES = {
 export const RETRY_LIMITS = {
   MAX_ATTEMPTS: 15,
   MAX_DURATION_MS: 120000,
+} as const;
+
+// CMA fallback fetch settings (when realtime disabled)
+export const CMA_FETCH = {
+  TIMEOUT_MS: 30000,
+  MAX_RETRIES: 3,
 } as const;
 
 

@@ -23,10 +23,11 @@ export function getThumbnailUrl(
   if (isVideo && muxPlaybackId) {
     return `https://image.mux.com/${muxPlaybackId}/thumbnail.jpg?width=${width}&fit_mode=preserve`;
   }
-  
+
   return null;
 }
 
-
-
-
+/** Normalizes a string for case-insensitive comparison by lowercasing and trimming. */
+export function normalizeForComparison(value: string | undefined | null): string {
+  return value?.toLowerCase().trim() ?? '';
+}

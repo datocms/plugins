@@ -1,6 +1,6 @@
-export const TIPTAP_MENTION_DEFAULTS = {
-  field: { localized: false as const },
-  model: { isBlockModel: false as const },
+const TIPTAP_MENTION_DEFAULTS = {
+  field: { localized: false },
+  model: { isBlockModel: false },
 } as const;
 
 export const applyFieldMentionDefaults = {

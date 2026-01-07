@@ -23,7 +23,7 @@ export function isAuthorValid(userName: string, userEmail: string): boolean {
   return userName.trim().length > 0 && userEmail.trim().length > 0;
 }
 
-export function toggleUpvote(
+function toggleUpvote(
   voters: Upvoter[],
   user: Upvoter,
   userUpvoted: boolean

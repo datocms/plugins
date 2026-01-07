@@ -56,7 +56,7 @@ export function usePageRecordMention({
 
         const itemType = ctx.itemTypes[model.id];
         const fields = itemType ? await ctx.loadItemTypeFields(model.id) : [];
-        const mainLocale = ctx.site.attributes.locales[0];
+        const mainLocale = ctx.site.attributes.locales[0] ?? 'en';
 
         const recordMention = await createRecordMention(
           { id: record.id, attributes: record.attributes },

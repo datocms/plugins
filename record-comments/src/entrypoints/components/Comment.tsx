@@ -19,7 +19,7 @@ import { useCommentEditor } from '@hooks/useCommentEditor';
 import type { CommentSegment } from '@ctypes/mentions';
 import type { CommentType } from '@ctypes/comments';
 import { isContentEmpty } from '@ctypes/comments';
-import { getGravatarUrl } from '@/utils/helpers';
+import { getGravatarUrl, normalizeForComparison } from '@/utils/helpers';
 import {
   areSegmentsEqual,
   areUpvotersEqual,
@@ -27,6 +27,7 @@ import {
 } from '@utils/comparisonHelpers';
 import { isComposerEmpty } from '@utils/composerHelpers';
 import { cn } from '@/utils/cn';
+import { TIMING, UI } from '@/constants';
 import styles from '@styles/comment.module.css';
 import {
   resolveUpvoterName,
@@ -150,7 +151,7 @@ const Comment = memo(function Comment({
   const replyCount = replies.length;
   const hasNewReply = replies.some((r) => isContentEmpty(r.content));
 
-  const avatarSize = isReply ? 24 : 32;
+  const avatarSize = isReply ? UI.AVATAR_SIZE_REPLY : UI.AVATAR_SIZE_COMMENT;
 
   const userLookupMaps = useMemo(() => {
     const byEmail = new Map<string, number>();
@@ -158,8 +159,8 @@ const Comment = memo(function Comment({
 
     for (let i = 0; i < typedUsers.length; i++) {
       const user = typedUsers[i].user;
-      const email = user.email?.toLowerCase().trim();
-      const name = user.name?.toLowerCase().trim();
+      const email = normalizeForComparison(user.email);
+      const name = normalizeForComparison(user.name);
 
       if (email && !byEmail.has(email)) {
         byEmail.set(email, i);
@@ -174,8 +175,8 @@ const Comment = memo(function Comment({
 
   const resolvedAuthor = useMemo(() => {
     const fallbackAvatarUrl = getGravatarUrl(commentObject.author.email || '', avatarSize * 2);
-    const authorEmail = commentObject.author.email?.toLowerCase().trim();
-    const authorNameLower = commentObject.author.name?.toLowerCase().trim();
+    const authorEmail = normalizeForComparison(commentObject.author.email);
+    const authorNameLower = normalizeForComparison(commentObject.author.name);
 
     let matchedIndex = -1;
     if (authorEmail) {
@@ -242,6 +243,54 @@ const Comment = memo(function Comment({
     () => isComposerEmpty(segments),
     [segments]
   );
+
+  // Extract unique repliers for collapsed reply preview (max 3 avatars)
+  const uniqueReplierAvatars = useMemo(() => {
+    if (!isTopLevel || replies.length === 0) return [];
+
+    const seenUsers = new Set<string>();
+    const result: Array<{
+      id: string;
+      avatarUrl: string;
+      name: string;
+      fallbackUrl: string;
+    }> = [];
+
+    for (const reply of replies) {
+      const userKey =
+        normalizeForComparison(reply.author.email) ||
+        normalizeForComparison(reply.author.name) ||
+        reply.id;
+
+      if (seenUsers.has(userKey)) continue;
+      seenUsers.add(userKey);
+
+      const replyEmail = normalizeForComparison(reply.author.email);
+      const replyNameLower = normalizeForComparison(reply.author.name);
+
+      let matchIndex = -1;
+      if (replyEmail) {
+        matchIndex = userLookupMaps.byEmail.get(replyEmail) ?? -1;
+      }
+      if (matchIndex === -1 && replyNameLower) {
+        matchIndex = userLookupMaps.byName.get(replyNameLower) ?? -1;
+      }
+
+      const matchedUser = matchIndex !== -1 ? projectUsers[matchIndex] : null;
+      const fallbackUrl = getGravatarUrl(reply.author.email || '', UI.AVATAR_SIZE_THUMBNAIL);
+
+      result.push({
+        id: reply.id,
+        avatarUrl: matchedUser?.avatarUrl ?? fallbackUrl,
+        name: matchedUser?.name ?? reply.author.name,
+        fallbackUrl,
+      });
+
+      if (result.length >= UI.MAX_VISIBLE_REPLIER_AVATARS) break;
+    }
+
+    return result;
+  }, [isTopLevel, replies, userLookupMaps, projectUsers]);
 
   // Keep refs updated synchronously to avoid stale closures in blur handler
   isSegmentsEmptyRef.current = isSegmentsEmpty;
@@ -312,7 +361,7 @@ const Comment = memo(function Comment({
         // Fallback: scroll the whole comment into view
         commentRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
       }
-    }, 100);
+    }, TIMING.SCROLL_AFTER_REPLY_DELAY_MS);
   };
 
   const handleEscape = () => {
@@ -328,7 +377,7 @@ const Comment = memo(function Comment({
     }
   };
 
-  // 150ms delay allows button clicks to register before blur
+  // Delay allows button clicks to register before blur
   // Uses refs to check current values, avoiding stale closure issues when
   // the user types quickly after blur fires
   const handleBlur = () => {
@@ -341,7 +390,7 @@ const Comment = memo(function Comment({
           deleteComment(commentObject.id, commentObject.parentCommentId);
         }
       }
-    }, 150);
+    }, TIMING.COMMENT_BLUR_DELAY_MS);
   };
 
   const toggleReplies = () => {
@@ -504,55 +553,20 @@ const Comment = memo(function Comment({
                 aria-label={`${repliesExpanded ? 'Collapse' : 'Expand'} ${replyCount} ${replyCount === 1 ? 'reply' : 'replies'}`}
               >
                 <div className={styles.replyAvatars}>
-                  {(() => {
-                    const seenUsers = new Set<string>();
-                    const uniqueRepliers: typeof replies = [];
-
-                    for (const reply of replies) {
-                      const userKey = reply.author.email?.toLowerCase().trim()
-                        || reply.author.name?.toLowerCase().trim()
-                        || reply.id;
-
-                      if (!seenUsers.has(userKey)) {
-                        seenUsers.add(userKey);
-                        uniqueRepliers.push(reply);
-                        if (uniqueRepliers.length >= 3) break;
-                      }
-                    }
-
-                    return uniqueRepliers.map((reply, idx) => {
-                      const fallbackUrl = getGravatarUrl(reply.author.email || '', 40);
-                      const replyEmail = reply.author.email?.toLowerCase().trim();
-                      const replyNameLower = reply.author.name?.toLowerCase().trim();
-
-                      let replyMatchIndex = -1;
-                      if (replyEmail) {
-                        replyMatchIndex = userLookupMaps.byEmail.get(replyEmail) ?? -1;
-                      }
-                      if (replyMatchIndex === -1 && replyNameLower) {
-                        replyMatchIndex = userLookupMaps.byName.get(replyNameLower) ?? -1;
-                      }
-
-                      const matchedReplyUser = replyMatchIndex !== -1 ? projectUsers[replyMatchIndex] : null;
-                      const displayAvatarUrl = matchedReplyUser?.avatarUrl ?? fallbackUrl;
-                      const displayName = matchedReplyUser?.name ?? reply.author.name;
-                      const replyFallbackUrl = getGravatarUrl(reply.author.email || '', 40);
-                      return (
-                        <img
-                          key={reply.id}
-                          src={displayAvatarUrl}
-                          alt={displayName}
-                          className={styles.replyAvatar}
-                          style={{ zIndex: 3 - idx }}
-                          onError={(e) => {
-                            const target = e.currentTarget;
-                            target.onerror = null; // Prevent infinite loop
-                            target.src = replyFallbackUrl;
-                          }}
-                        />
-                      );
-                    });
-                  })()}
+                  {uniqueReplierAvatars.map((replier, idx) => (
+                    <img
+                      key={replier.id}
+                      src={replier.avatarUrl}
+                      alt={replier.name}
+                      className={styles.replyAvatar}
+                      style={{ zIndex: UI.MAX_VISIBLE_REPLIER_AVATARS - idx }}
+                      onError={(e) => {
+                        const target = e.currentTarget;
+                        target.onerror = null;
+                        target.src = replier.fallbackUrl;
+                      }}
+                    />
+                  ))}
                 </div>
                 <div className={styles.replyMeta}>
                   <span className={styles.replyText}>

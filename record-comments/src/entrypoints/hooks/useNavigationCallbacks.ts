@@ -45,10 +45,12 @@ export function useNavigationCallbacks(ctx: RenderItemFormSidebarCtx): UseNaviga
 
   const handleOpenRecord = useCallback(
     async (recordId: string, _modelId: string) => {
-      // Clear fieldPath hash to prevent highlight carry-over to modal
-      if (window.location.hash.includes('fieldPath=')) {
-        const currentPath = window.location.pathname + window.location.search;
-        window.history.replaceState(null, '', currentPath);
+      // Clear fieldPath hash by navigating to clean path before opening modal
+      // This prevents field highlight from carrying over to the record edit modal
+      const currentRecordId = ctx.item?.id;
+      if (currentRecordId) {
+        const cleanPath = buildRecordEditPath(ctx.itemType.id, currentRecordId);
+        await ctx.navigateTo(cleanPath);
       }
       await ctx.editItem(recordId);
     },

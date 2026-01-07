@@ -127,42 +127,35 @@ const CommentContentRenderer = memo(function CommentContentRenderer({
   );
 }, arePropsEqual);
 
-function getMentionKey(mention: Mention, index: number): string {
-  switch (mention.type) {
-    case 'user':
-      return `user-${mention.id}-${index}`;
-    case 'field': {
-      const fieldPath = mention.fieldPath ?? mention.apiKey;
-      return `field-${fieldPath}-${mention.locale ?? ''}-${index}`;
+function getMentionIdentifier(mention: Mention, index: number, prefix: string): string {
+  const base = (() => {
+    switch (mention.type) {
+      case 'user':
+        return `user-${mention.id}`;
+      case 'field': {
+        const fieldPath = mention.fieldPath ?? mention.apiKey;
+        return `field-${fieldPath}-${mention.locale ?? ''}`;
+      }
+      case 'asset':
+        return `asset-${mention.id}`;
+      case 'record':
+        return `record-${mention.id}`;
+      case 'model':
+        return `model-${mention.id}`;
+      default:
+        return 'unknown';
     }
-    case 'asset':
-      return `asset-${mention.id}-${index}`;
-    case 'record':
-      return `record-${mention.id}-${index}`;
-    case 'model':
-      return `model-${mention.id}-${index}`;
-    default:
-      return `unknown-${index}`;
-  }
+  })();
+
+  return prefix ? `${base}-${prefix}-${index}` : `${base}-${index}`;
+}
+
+function getMentionKey(mention: Mention, index: number): string {
+  return getMentionIdentifier(mention, index, '');
 }
 
 function getTooltipId(mention: Mention, index: number): string {
-  switch (mention.type) {
-    case 'user':
-      return `user-tooltip-${mention.id}-${index}`;
-    case 'field': {
-      const fieldPath = mention.fieldPath ?? mention.apiKey;
-      return `field-tooltip-${fieldPath}-${mention.locale ?? ''}-${index}`;
-    }
-    case 'asset':
-      return `asset-tooltip-${mention.id}-${index}`;
-    case 'record':
-      return `record-tooltip-${mention.id}-${index}`;
-    case 'model':
-      return `model-tooltip-${mention.id}-${index}`;
-    default:
-      return `tooltip-${index}`;
-  }
+  return getMentionIdentifier(mention, index, 'tooltip');
 }
 
 export default CommentContentRenderer;
