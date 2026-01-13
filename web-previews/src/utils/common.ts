@@ -28,14 +28,20 @@ export async function makeRequest(
     }
 
     const url = new URL(previewWebhook);
+    const {hostname} = url;
 
     const headers = new Headers({ 'Content-Type': 'application/json' });
     customHeaders?.forEach(({ name, value }) => headers.set(name, value));
 
+    const isLoopback:boolean = hostname === 'localhost' || hostname === '127.0.0.1';
+
     const request = await fetch(url.toString(), {
-      method: 'POST',
+      method: "POST",
       headers,
       body: payload,
+      //@ts-expect-error targetAddressSpace is a Chromium thing
+      // See https://github.com/WICG/local-network-access/blob/main/explainer.md
+      targetAddressSpace: isLoopback ? "loopback" : undefined, // e.g. localhost or 127.0.0.1
     });
 
     if (request.status !== 200) {
