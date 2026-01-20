@@ -19,15 +19,16 @@ import {
 export type FrontendStatus = { previewLinks: PreviewLink[] } | { error: any };
 
 export async function makeRequest(
-  { previewWebhook, name, customHeaders }: Frontend,
+  frontend: Frontend,
   payload: string,
 ): Promise<[string, FrontendStatus]> {
   try {
-    if (!previewWebhook) {
+    if (!frontend.previewLinks) {
       throw new Error(`Missing "Preview Webhook URL" option!`);
     }
 
-    const url = new URL(previewWebhook);
+    const { webhook, customHeaders } = frontend.previewLinks;
+    const url = new URL(webhook);
     const { hostname } = url;
 
     const headers = new Headers({ 'Content-Type': 'application/json' });
@@ -49,7 +50,7 @@ export async function makeRequest(
 
     if (request.status !== 200) {
       throw new Error(
-        `[Web Previews] Webhook for frontend "${name}" returned a ${request.status} status!`,
+        `[Web Previews] Webhook for frontend "${frontend.name}" returned a ${request.status} status!`,
       );
     }
 
@@ -57,13 +58,13 @@ export async function makeRequest(
 
     if (!isValidResponse(response)) {
       throw new Error(
-        `[Web Previews] Webhook for frontend "${name}" returned an invalid payload!`,
+        `[Web Previews] Webhook for frontend "${frontend.name}" returned an invalid payload!`,
       );
     }
 
-    return [name, { previewLinks: response.previewLinks }];
+    return [frontend.name, { previewLinks: response.previewLinks }];
   } catch (error) {
-    return [name, { error }];
+    return [frontend.name, { error }];
   }
 }
 
@@ -78,7 +79,7 @@ export function useStatusByFrontend(
     ctx.plugin.attributes.parameters as Parameters,
   );
 
-  const frontends = rawFrontends.filter((f) => !f.disabled);
+  const frontends = rawFrontends.filter((f) => !f.disabled && f.previewLinks);
 
   const {
     item,

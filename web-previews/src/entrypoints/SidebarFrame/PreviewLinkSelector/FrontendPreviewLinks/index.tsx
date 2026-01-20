@@ -1,15 +1,17 @@
 import { DropdownOption } from 'datocms-react-ui';
-import type { PreviewLink } from '../../../../types';
+import type { Frontend, PreviewLinkWithFrontend } from '../../../../types';
 import type { FrontendStatus } from '../../../../utils/common';
 
 export const FrontendPreviewLinks = ({
   status,
+  frontend,
   onSelectPreviewLink,
   currentPreviewLink,
 }: {
   status: FrontendStatus | undefined;
-  onSelectPreviewLink: (previewLink: PreviewLink) => void;
-  currentPreviewLink: PreviewLink | undefined;
+  frontend: Frontend;
+  onSelectPreviewLink: (previewLink: PreviewLinkWithFrontend) => void;
+  currentPreviewLink: PreviewLinkWithFrontend | undefined;
 }) => {
   if (status && 'error' in status) {
     return <div>Webhook error: check the console for more info!</div>;
@@ -23,10 +25,14 @@ export const FrontendPreviewLinks = ({
         </DropdownOption>
       ) : (
         status.previewLinks.map((previewLink) => {
+          const previewLinkWithFrontend: PreviewLinkWithFrontend = {
+            ...previewLink,
+            frontendName: frontend.name,
+          };
           return (
             <DropdownOption
               key={previewLink.url}
-              onClick={() => onSelectPreviewLink(previewLink)}
+              onClick={() => onSelectPreviewLink(previewLinkWithFrontend)}
               active={currentPreviewLink?.url === previewLink.url}
             >
               {previewLink.label}

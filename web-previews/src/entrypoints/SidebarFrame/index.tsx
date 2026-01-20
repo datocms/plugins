@@ -21,7 +21,7 @@ import { ViewportSelector } from '../../components/Browser/ViewportSelector';
 import { ButtonGroup, ButtonGroupButton } from '../../components/ButtonGroup';
 import {
   type Parameters,
-  type PreviewLink,
+  type PreviewLinkWithFrontend,
   type Viewport,
   normalizeParameters,
 } from '../../types';
@@ -34,13 +34,9 @@ type PropTypes = {
 };
 
 const SidebarFrame = ({ ctx }: PropTypes) => {
-  const { iframeAllowAttribute, visualEditing } = normalizeParameters(
+  const { iframeAllowAttribute } = normalizeParameters(
     ctx.plugin.attributes.parameters as Parameters,
   );
-
-  const visualEditingOrigin = visualEditing?.enableDraftModeUrl
-    ? new URL(visualEditing.enableDraftModeUrl).origin
-    : undefined;
 
   const [reloadCounter, setReloadCounter] = useState(0);
   const [iframeLoading, setIframeLoading] = useState(true);
@@ -68,31 +64,32 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
 
   const [frontends, statusByFrontend] = useStatusByFrontend(ctx);
   const [currentPreviewLink, setCurrentPreviewLink] = useState<
-    PreviewLink | undefined
+    PreviewLinkWithFrontend | undefined
   >();
 
   usePersistedSidebarWidth(ctx.site);
 
-  const allPreviewLinks = useMemo(() => {
-    if (!statusByFrontend) {
-      return [];
-    }
+  const allPreviewLinksWithFrontend = useMemo(() => {
+    if (!statusByFrontend) return [];
 
-    return Object.entries(statusByFrontend).flatMap((result) => {
-      const status = result[1];
-      if (status && 'previewLinks' in status) {
-        return status.previewLinks;
-      }
-
-      return [];
-    });
+    return Object.entries(statusByFrontend).flatMap(
+      ([frontendName, status]) => {
+        if (status && 'previewLinks' in status) {
+          return status.previewLinks.map((link) => ({
+            ...link,
+            frontendName,
+          }));
+        }
+        return [];
+      },
+    );
   }, [statusByFrontend]);
 
   useDeepCompareEffect(() => {
-    if (allPreviewLinks.length > 0) {
-      setCurrentPreviewLink(allPreviewLinks[0]);
+    if (allPreviewLinksWithFrontend.length > 0) {
+      setCurrentPreviewLink(allPreviewLinksWithFrontend[0]);
     }
-  }, [allPreviewLinks]);
+  }, [allPreviewLinksWithFrontend]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentional
   useEffect(() => {
@@ -143,25 +140,41 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
                 />
                 <ToolbarSlot withLeftBorder withPadding={8}>
                   <ButtonGroup>
-                    {visualEditing?.enableDraftModeUrl &&
-                      visualEditingOrigin ===
-                        new URL(currentPreviewLink.url).origin && (
+                    {(() => {
+                      if (!currentPreviewLink) return null;
+
+                      const frontend = frontends.find(
+                        (f) => f.name === currentPreviewLink.frontendName,
+                      );
+                      if (!frontend?.visualEditing?.enableDraftModeUrl)
+                        return null;
+
+                      const frontendOrigin = new URL(
+                        frontend.visualEditing.enableDraftModeUrl,
+                      ).origin;
+                      const linkOrigin = new URL(currentPreviewLink.url).origin;
+
+                      if (frontendOrigin !== linkOrigin) return null;
+
+                      return (
                         <ButtonGroupButton
                           tooltip="Open in Visual"
                           onClick={() => {
                             const url = new URL(currentPreviewLink.url);
                             ctx.navigateTo(
-                              `/p/${
-                                ctx.plugin.id
-                              }/inspectors/visual?${new URLSearchParams({
-                                path: url.pathname + url.search,
-                              }).toString()}`,
+                              `/p/${ctx.plugin.id}/inspectors/visual?${new URLSearchParams(
+                                {
+                                  path: url.pathname + url.search,
+                                  frontend: currentPreviewLink.frontendName,
+                                },
+                              ).toString()}`,
                             );
                           }}
                         >
                           <FontAwesomeIcon icon={faEye} />
                         </ButtonGroupButton>
-                      )}
+                      );
+                    })()}
                     <ButtonGroupButton
                       tooltip="Copy URL to clipboard"
                       onClick={() => {

@@ -8,18 +8,24 @@ import { library } from '@fortawesome/fontawesome-svg-core';
 import { fas } from '@fortawesome/free-solid-svg-icons';
 import Inspector from './entrypoints/Inspector';
 import InspectorLoading from './entrypoints/InspectorLoading';
-import { type Parameters, normalizeParameters } from './types';
+import {
+  type Parameters,
+  getVisualEditingFrontends,
+  normalizeParameters,
+} from './types';
 import { readSidebarWidth } from './utils/persistedWidth';
 
 library.add(fas);
 
 connect({
   mainNavigationTabs(ctx) {
-    const { visualEditing } = normalizeParameters(
+    const params = normalizeParameters(
       ctx.plugin.attributes.parameters as Parameters,
     );
 
-    return visualEditing?.enableDraftModeUrl
+    const visualEditingFrontends = getVisualEditingFrontends(params);
+
+    return visualEditingFrontends.length > 0
       ? [
           {
             label: 'Visual',
@@ -36,15 +42,20 @@ connect({
     render(<ConfigScreen ctx={ctx} />);
   },
   itemFormSidebarPanels(_itemType, ctx) {
-    const { startOpen } = normalizeParameters(
+    const { previewLinksSidebarPanel } = normalizeParameters(
       ctx.plugin.attributes.parameters as Parameters,
     );
+
+    // Only register the sidebar panel if it's enabled
+    if (!previewLinksSidebarPanel) {
+      return [];
+    }
 
     return [
       {
         id: 'webPreviews',
         label: 'Related website pages',
-        startOpen,
+        startOpen: previewLinksSidebarPanel.startOpen,
         placement: ['before', 'links'],
       },
     ];
@@ -53,15 +64,21 @@ connect({
     render(<SidebarPanel ctx={ctx} />);
   },
   itemFormSidebars(_itemType, ctx) {
-    const { defaultSidebarWidth } = normalizeParameters(
+    const { previewLinksSidebar } = normalizeParameters(
       ctx.plugin.attributes.parameters as Parameters,
     );
+
+    // Only register the sidebar if it's enabled
+    if (!previewLinksSidebar) {
+      return [];
+    }
 
     return [
       {
         id: 'webPreviews',
         label: 'Website preview',
-        preferredWidth: readSidebarWidth(ctx.site) || defaultSidebarWidth,
+        preferredWidth:
+          readSidebarWidth(ctx.site) || previewLinksSidebar.defaultWidth,
       },
     ];
   },

@@ -1,12 +1,10 @@
 import { faArrowsRotate } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import classNames from 'classnames';
-import type { RenderInspectorCtx } from 'datocms-plugin-sdk';
-import { useCtx } from 'datocms-react-ui';
 import { Tooltip, TooltipContent, TooltipTrigger } from 'datocms-react-ui';
 import type React from 'react';
 import { useEffect, useState } from 'react';
-import { type Parameters, normalizeParameters } from '../../../../types';
+import type { Frontend } from '../../../../types';
 import { useContentLink } from '../../ContentLinkContext';
 import styles from './styles.module.css';
 
@@ -34,20 +32,13 @@ function isRelativeUrl(str: string) {
 
 interface AddressBarProps {
   onRefresh: () => void;
+  frontend: Frontend;
 }
 
-function AddressBar({ onRefresh }: AddressBarProps) {
-  const ctx = useCtx<RenderInspectorCtx>();
-
-  const { visualEditing } = normalizeParameters(
-    ctx.plugin.attributes.parameters as Parameters,
-  );
-
-  if (!visualEditing) {
-    return null;
-  }
-
-  const visualEditingOrigin = new URL(visualEditing.enableDraftModeUrl).origin;
+function AddressBar({ onRefresh, frontend }: AddressBarProps) {
+  const visualEditingOrigin = new URL(
+    frontend.visualEditing!.enableDraftModeUrl,
+  ).origin;
 
   const { contentLink, iframeState } = useContentLink();
 

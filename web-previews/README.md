@@ -1,17 +1,87 @@
 # Web Previews DatoCMS plugin
 
-This plugin adds side-by-side previews, and quick links in the record sidebar to preview your webpages.
+This plugin provides two independent, optional features to preview and edit your content:
 
-🚨 **Important:** This is not a drag & drop plugin! It requires a lambda function on your frontend website(s) in order to function. Read more in the following sections!
+1. **Preview Links** — Show preview links in the sidebar for draft or published content from any environment
+2. **Visual Editing** — Enable full-screen, side-by-side editing with click-to-edit overlays directly in your website
+
+You can enable one or both features for each frontend you configure. They work great together, but each is useful on its own.
+
+🚨 **Important:** This is not a drag & drop plugin! It requires implementing API endpoints on your frontend website(s) to function. Read more in the following sections!
 
 ## Installation and configuration
 
-Once the plugin is installed you need to specify:
+Once the plugin is installed, you can configure one or more frontends (e.g., "Production", "Staging", "Marketing Site"). For each frontend, you can choose which features to enable:
 
-- A list of frontends. Each frontend specifies a name and a preview webhook, which will be called as soon as the plugin is loaded. Read more about it on the next chapter.
-- Sidebar open: to specify whether you want the sidebar panel to be opened by default.
+### Feature 1: Preview Links
 
-⚠️ For side-by-side previews to work, if your website implements a [Content Security Policy `frame-ancestors` directive](https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP), you need to add `https://plugins-cdn.datocms.com` to your list of allowed sources, ie.:
+**Toggle:** Enable Preview Links
+
+When enabled, the plugin calls your webhook to retrieve preview URLs for the current record. You can then control how these links are displayed (see Preview Links Settings below).
+
+**Required configuration:**
+- **Webhook URL** — The endpoint that returns preview links (e.g., `https://yourwebsite.com/api/preview-links`)
+- **Custom Headers (Optional)** — Additional headers to send with the webhook request
+
+### Feature 2: Visual Editing
+
+**Toggle:** Enable Visual Editing
+
+When enabled, editors can open a full-screen, side-by-side view with click-to-edit overlays on your actual website. Visual Editing shows your website in an iframe and adds interactive editing capabilities.
+
+**Required configuration:**
+- **Draft Mode API Endpoint** — The API route that enables draft/preview mode (e.g., `https://yourwebsite.com/api/draft`). This endpoint receives a `redirect` query parameter with the path to load.
+- **Initial Path (Optional)** — The default path to load when opening Visual Editing (defaults to `/` if not specified)
+
+### Valid configurations per frontend
+
+- ✅ **Only Preview Links** — Sidebar with preview URLs (optionally shown as links or in an iframe)
+- ✅ **Only Visual Editing** — Direct access to full-screen side-by-side editing with overlays
+- ✅ **Both features together** — Full integration with sidebar preview links and visual editing
+- ❌ **Neither feature** — Frontend would be disabled
+
+### Multiple frontends support
+
+You can configure multiple frontends, each with their own combination of features. When multiple frontends have Visual Editing enabled, a frontend selector dropdown appears in the Visual Editing toolbar, allowing editors to switch between different environments.
+
+### Preview Links Settings
+
+When Preview Links is enabled for at least one frontend, you can control how the preview URLs are displayed:
+
+#### Sidebar Panel
+**Toggle:** Enable Sidebar Panel
+
+Shows a small panel in the record sidebar with quick links to preview URLs. Links open in a new browser tab when clicked.
+
+**Optional settings:**
+- **Start with the panel open by default** — The panel will be expanded when users open a record
+
+#### Full Preview Sidebar
+**Toggle:** Enable Full Preview Sidebar
+
+Shows a full sidebar with an iframe preview of the selected URL. This provides a side-by-side view of your website directly within DatoCMS.
+
+**Optional settings:**
+- **Default sidebar width (px)** — The initial width when the sidebar is opened
+
+**Note:** Both the Sidebar Panel and Full Preview Sidebar can be enabled together. The Full Preview Sidebar shows the same URLs returned by your webhook, but renders them in an iframe for in-app preview.
+
+### Understanding the overlap
+
+Both **Preview Links (Full Preview Sidebar)** and **Visual Editing** show your website in a side-by-side iframe view, but with different capabilities:
+
+- **Preview Links (Full Preview Sidebar):** Passive viewing of any URL returned by your webhook (draft, published, different environments, etc.)
+- **Visual Editing:** Interactive editing with click-to-edit overlays that let editors modify content directly on the page
+
+You can use them independently or together:
+- **Just Sidebar Panel:** Quick links only (no iframe preview)
+- **Sidebar Panel + Full Preview Sidebar:** Links + passive iframe preview
+- **Visual Editing only:** Direct access to interactive editing (no preview links webhook needed)
+- **All features:** Sidebar links + passive preview + interactive visual editing
+
+### Content Security Policy
+
+⚠️ For side-by-side previews to work, if your website implements a [Content Security Policy `frame-ancestors` directive](https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP), you need to add `https://plugins-cdn.datocms.com` to your list of allowed sources:
 
 ```
 Content-Security-Policy: frame-ancestors 'self' https://plugins-cdn.datocms.com;

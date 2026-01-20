@@ -1,15 +1,15 @@
 import { Dropdown, DropdownMenu, DropdownOption } from 'datocms-react-ui';
-import type { Frontend, PreviewLink } from '../../../types';
+import type { Frontend, PreviewLinkWithFrontend } from '../../../types';
 import type { FrontendStatus } from '../../../utils/common';
 import { FrontendGroup } from './FrontendGroup';
 import { FrontendPreviewLinks } from './FrontendPreviewLinks';
 import { Trigger } from './Trigger';
 
 type Props = {
-  currentPreviewLink: PreviewLink | undefined;
+  currentPreviewLink: PreviewLinkWithFrontend | undefined;
   frontends: Frontend[];
   statusByFrontend: Record<string, FrontendStatus | undefined>;
-  onChange: (previewLink: PreviewLink) => void;
+  onChange: (previewLink: PreviewLinkWithFrontend) => void;
 };
 
 export function PreviewLinkSelector({
@@ -32,6 +32,7 @@ export function PreviewLinkSelector({
         ) : frontends.length === 1 && firstStatus ? (
           <FrontendPreviewLinks
             status={firstStatus}
+            frontend={frontends[0]}
             currentPreviewLink={currentPreviewLink}
             onSelectPreviewLink={onChange}
           />

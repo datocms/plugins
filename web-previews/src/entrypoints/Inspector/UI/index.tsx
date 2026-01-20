@@ -1,3 +1,4 @@
+import cuid from 'cuid';
 import type { RenderInspectorCtx } from 'datocms-plugin-sdk';
 import { useCtx } from 'datocms-react-ui';
 import type React from 'react';
@@ -10,33 +11,48 @@ import { ViewportCustomizer } from '../../../components/Browser/ViewportCustomiz
 import type { ViewportSize } from '../../../components/Browser/ViewportCustomizer';
 import { ViewportSelector } from '../../../components/Browser/ViewportSelector';
 import {
+  type Frontend,
   type Parameters,
   type Viewport,
+  getVisualEditingFrontends,
   normalizeParameters,
 } from '../../../types';
 import { useContentLink } from '../ContentLinkContext';
 import AddressBar from './AddressBar';
 import { EditModeToggle } from './EditModeToggle';
+import { FrontendSelector } from './FrontendSelector';
 
 const UI: React.FC = () => {
   const ctx = useCtx<RenderInspectorCtx>();
 
-  const { visualEditing, iframeAllowAttribute } = normalizeParameters(
+  const params = normalizeParameters(
     ctx.plugin.attributes.parameters as Parameters,
   );
+  const { iframeAllowAttribute } = params;
+  const visualEditingFrontends = getVisualEditingFrontends(params);
 
-  if (!visualEditing) {
-    return null;
-  }
+  const [selectedFrontend, setSelectedFrontend] = useState<Frontend>(() => {
+    const urlParams = new URLSearchParams(ctx.location.search);
+    const frontendName = urlParams.get('frontend');
+    if (frontendName) {
+      return (
+        visualEditingFrontends.find((f) => f.name === frontendName) ||
+        visualEditingFrontends[0]
+      );
+    }
+    return visualEditingFrontends[0];
+  });
 
-  const { iframeRef, iframeState, reloadIframe, contentLink } =
+  const currentVisualEditing = selectedFrontend.visualEditing!;
+
+  const { iframeRef, iframeState, setIframeState, reloadIframe, contentLink } =
     useContentLink();
 
   const iframeSrc = useMemo(() => {
-    const url = new URL(visualEditing.enableDraftModeUrl);
+    const url = new URL(currentVisualEditing.enableDraftModeUrl);
     url.searchParams.set('redirect', iframeState.path);
     return url.toString();
-  }, [visualEditing.enableDraftModeUrl, iframeState.path]);
+  }, [currentVisualEditing.enableDraftModeUrl, iframeState.path]);
 
   const [customViewportSize, setCustomViewportSize] = useState<ViewportSize>({
     width: 800,
@@ -94,9 +110,39 @@ const UI: React.FC = () => {
     contentLink.type === 'error' ? contentLink.reason : undefined,
   ]);
 
+  // Handle frontend deletion while Inspector open
+  useEffect(() => {
+    if (!visualEditingFrontends.find((f) => f.name === selectedFrontend.name)) {
+      setSelectedFrontend(visualEditingFrontends[0]);
+    }
+  }, [visualEditingFrontends, selectedFrontend.name]);
+
   return (
     <BrowserWrapper>
       <Toolbar>
+        {visualEditingFrontends.length > 1 && (
+          <ToolbarSlot withLeftBorder>
+            <FrontendSelector
+              frontends={visualEditingFrontends}
+              currentFrontend={selectedFrontend}
+              onChange={(frontend) => {
+                setSelectedFrontend(frontend);
+                // Reset to new frontend's initial path
+                setIframeState({
+                  path: frontend.visualEditing?.initialPath || '/',
+                  key: cuid(),
+                });
+                // Update URL
+                ctx.navigateTo(
+                  `/p/${ctx.plugin.id}/inspectors/visual?${new URLSearchParams({
+                    path: frontend.visualEditing?.initialPath || '/',
+                    frontend: frontend.name,
+                  }).toString()}`,
+                );
+              }}
+            />
+          </ToolbarSlot>
+        )}
         <ToolbarSlot withLeftBorder>
           <ViewportSelector
             menuAlignment="left"
@@ -105,7 +151,7 @@ const UI: React.FC = () => {
           />
         </ToolbarSlot>
         <ToolbarSlot flex withLeftBorder withPadding={9}>
-          <AddressBar onRefresh={handleRefresh} />
+          <AddressBar onRefresh={handleRefresh} frontend={selectedFrontend} />
         </ToolbarSlot>
         <ToolbarSlot withLeftBorder>
           <EditModeToggle

@@ -9,9 +9,13 @@ type CustomHeader = {
 
 export type RawFrontend = {
   name: string;
-  previewWebhook: string;
+  previewWebhook?: string;
   customHeaders?: CustomHeader[];
   disabled?: boolean;
+  visualEditing?: {
+    enableDraftModeUrl: string;
+    initialPath?: string;
+  };
 };
 
 export type RawVisualEditingSettings = {
@@ -30,9 +34,10 @@ export type Parameters = {
   frontends?: RawFrontend[];
   startOpen?: boolean;
   defaultSidebarWidth?: string;
+  previewLinksSidebarDisabled?: boolean;
+  previewLinksSidebarPanelDisabled?: boolean;
   iframeAllowAttribute?: string;
   defaultViewports?: RawViewport[];
-  visualEditing?: RawVisualEditingSettings;
 };
 
 export type Viewport = {
@@ -44,9 +49,15 @@ export type Viewport = {
 
 export type Frontend = {
   name: string;
-  previewWebhook: string;
-  customHeaders: CustomHeader[];
   disabled: boolean;
+  previewLinks?: {
+    webhook: string;
+    customHeaders: CustomHeader[];
+  };
+  visualEditing?: {
+    enableDraftModeUrl: string;
+    initialPath?: string;
+  };
 };
 
 export type VisualEditingSettings = {
@@ -56,11 +67,10 @@ export type VisualEditingSettings = {
 
 export type NormalizedParameters = {
   frontends: Frontend[];
-  startOpen: boolean;
-  defaultSidebarWidth: number;
+  previewLinksSidebarPanel?: { startOpen: boolean };
+  previewLinksSidebar?: { defaultWidth: number };
   iframeAllowAttribute: string | undefined;
   defaultViewports: Viewport[];
-  visualEditing?: VisualEditingSettings;
 };
 
 const DEFAULT_VIEWPORTS: readonly Viewport[] = [
@@ -76,21 +86,43 @@ export function normalizeParameters({
   frontends,
   startOpen,
   defaultSidebarWidth,
+  previewLinksSidebarDisabled,
+  previewLinksSidebarPanelDisabled,
   iframeAllowAttribute,
   defaultViewports,
-  visualEditing,
 }: Parameters): NormalizedParameters {
   return {
     frontends:
       frontends?.map((frontend) => ({
-        ...frontend,
-        customHeaders: frontend.customHeaders || [],
+        name: frontend.name,
         disabled: Boolean(frontend.disabled),
+        previewLinks: frontend.previewWebhook
+          ? {
+              webhook: frontend.previewWebhook,
+              customHeaders: frontend.customHeaders || [],
+            }
+          : undefined,
+        visualEditing: frontend.visualEditing
+          ? {
+              enableDraftModeUrl: frontend.visualEditing.enableDraftModeUrl,
+              initialPath: frontend.visualEditing.initialPath || undefined,
+            }
+          : undefined,
       })) || [],
-    startOpen: Boolean(startOpen),
-    defaultSidebarWidth: defaultSidebarWidth
-      ? Number.parseInt(defaultSidebarWidth)
-      : 900,
+    // If not explicitly disabled (backwards compatible), create the sidebar panel config
+    previewLinksSidebarPanel: previewLinksSidebarPanelDisabled
+      ? undefined
+      : {
+          startOpen: Boolean(startOpen),
+        },
+    // If not explicitly disabled (backwards compatible), create the sidebar config
+    previewLinksSidebar: previewLinksSidebarDisabled
+      ? undefined
+      : {
+          defaultWidth: defaultSidebarWidth
+            ? Number.parseInt(defaultSidebarWidth)
+            : 900,
+        },
     iframeAllowAttribute,
     defaultViewports: defaultViewports?.map((viewport) => ({
       name: viewport.name,
@@ -104,12 +136,6 @@ export function normalizeParameters({
           : Number.parseInt(viewport.height),
       icon: viewport.icon as IconName,
     })) || [...DEFAULT_VIEWPORTS],
-    visualEditing: visualEditing
-      ? {
-          ...visualEditing,
-          initialPath: visualEditing.initialPath || undefined,
-        }
-      : undefined,
   };
 }
 
@@ -142,3 +168,15 @@ export function isValidResponse(data: unknown): data is Response {
 
   return previewLinks.every(isValidPreviewLink);
 }
+
+export function getVisualEditingFrontends(
+  params: NormalizedParameters,
+): Frontend[] {
+  return params.frontends.filter(
+    (f) => !f.disabled && f.visualEditing?.enableDraftModeUrl,
+  );
+}
+
+export type PreviewLinkWithFrontend = PreviewLink & {
+  frontendName: string;
+};

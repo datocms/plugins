@@ -48,3 +48,29 @@
   grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
   gap: var(--spacing-m);
 }
+
+.featureSection {
+  margin-top: var(--spacing-l);
+  padding: var(--spacing-m);
+  background: var(--light-bg-color);
+  border-radius: var(--border-radius-m);
+  border: 1px solid var(--border-color);
+}
+
+.featureHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-s);
+}
+
+.featureTitle {
+  margin: 0;
+  font-weight: 600;
+}
+
+.featureDescription {
+  font-size: var(--font-size-s);
+  color: var(--light-body-color);
+  margin-bottom: var(--spacing-m);
+}

@@ -10,7 +10,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { type Parameters, normalizeParameters } from '../../../types';
+import type { Frontend } from '../../../types';
 import {
   type ContentLinkMethods,
   type ContentLinkState,
@@ -34,6 +34,7 @@ interface ContextValue {
 
   iframeRef: (element: HTMLIFrameElement | null) => void;
   iframeState: IframeState;
+  setIframeState: (state: IframeState) => void;
   reloadIframe: () => void;
 }
 
@@ -53,17 +54,16 @@ export const useContentLink = () => {
 
 type Props = {
   children: ReactNode;
+  frontend: Frontend;
 };
 
 const editUrlRegExp =
   /^(?<base_url>.+?)(?:\/environments\/(?<environment>[^\/]+))?\/editor\/item_types\/(?<item_type_id>[^\/]+)\/items\/(?<item_id>[^\/]+)\/edit#fieldPath=(?<field_path>.+)$/;
 
-export function ContentLinkContextProvider({ children }: Props) {
+export function ContentLinkContextProvider({ children, frontend }: Props) {
   const ctx = useCtx<RenderInspectorCtx>();
 
-  const { visualEditing } = normalizeParameters(
-    ctx.plugin.attributes.parameters as Parameters,
-  );
+  const currentVisualEditing = frontend.visualEditing!;
 
   const [contentLinkState, setContentLinkState] = useState<
     CleanContentLinkState | undefined
@@ -79,7 +79,7 @@ export function ContentLinkContextProvider({ children }: Props) {
   const [iframeState, setIframeState] = useState<IframeState>({
     path:
       new URLSearchParams(ctx.location.search).get('path') ||
-      visualEditing?.initialPath ||
+      currentVisualEditing.initialPath ||
       '/',
     key: cuid(),
   });
@@ -184,6 +184,7 @@ export function ContentLinkContextProvider({ children }: Props) {
     iframeRef,
 
     iframeState,
+    setIframeState,
     reloadIframe,
 
     contentLink:

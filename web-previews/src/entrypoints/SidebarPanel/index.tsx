@@ -7,11 +7,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import type { RenderItemFormSidebarPanelCtx } from 'datocms-plugin-sdk';
 import { Canvas, Spinner, useCtx } from 'datocms-react-ui';
 import { ButtonGroup, ButtonGroupButton } from '../../components/ButtonGroup';
-import {
-  type Frontend,
-  type Parameters,
-  normalizeParameters,
-} from '../../types';
+import type { Frontend } from '../../types';
 import { type FrontendStatus, useStatusByFrontend } from '../../utils/common';
 import styles from './styles.module.css';
 
@@ -40,20 +36,23 @@ const FrontendGroup = ({
   return (
     <div className={styles.group}>
       <div className={styles.groupName}>{frontend.name}</div>
-      <FrontendResult status={status} />
+      <FrontendResult status={status} frontend={frontend} />
     </div>
   );
 };
 
-const FrontendResult = ({ status }: { status: FrontendStatus }) => {
+const FrontendResult = ({
+  status,
+  frontend,
+}: {
+  status: FrontendStatus;
+  frontend: Frontend;
+}) => {
   const ctx = useCtx();
 
-  const { visualEditing } = normalizeParameters(
-    ctx.plugin.attributes.parameters as Parameters,
-  );
-
-  const visualEditingOrigin = visualEditing?.enableDraftModeUrl
-    ? new URL(visualEditing.enableDraftModeUrl).origin
+  const hasVisualEditing = !!frontend.visualEditing?.enableDraftModeUrl;
+  const visualEditingOrigin = hasVisualEditing
+    ? new URL(frontend.visualEditing!.enableDraftModeUrl).origin
     : undefined;
 
   if ('error' in status) {
@@ -67,6 +66,8 @@ const FrontendResult = ({ status }: { status: FrontendStatus }) => {
       ) : (
         status.previewLinks.map(({ url: urlString, label }) => {
           const url = new URL(urlString);
+          const canOpenInVisual =
+            hasVisualEditing && visualEditingOrigin === url.origin;
 
           return (
             <div key={`${url}`} className={styles.previewLink}>
@@ -77,23 +78,23 @@ const FrontendResult = ({ status }: { status: FrontendStatus }) => {
                 </div>
               </div>
               <ButtonGroup>
-                {visualEditing?.enableDraftModeUrl &&
-                  visualEditingOrigin === url.origin && (
-                    <ButtonGroupButton
-                      tooltip="Open in Visual"
-                      onClick={() => {
-                        ctx.navigateTo(
-                          `/p/${
-                            ctx.plugin.id
-                          }/inspectors/visual?${new URLSearchParams({
+                {canOpenInVisual && (
+                  <ButtonGroupButton
+                    tooltip="Open in Visual"
+                    onClick={() => {
+                      ctx.navigateTo(
+                        `/p/${ctx.plugin.id}/inspectors/visual?${new URLSearchParams(
+                          {
                             path: url.pathname + url.search,
-                          }).toString()}`,
-                        );
-                      }}
-                    >
-                      <FontAwesomeIcon icon={faEye} />
-                    </ButtonGroupButton>
-                  )}
+                            frontend: frontend.name,
+                          },
+                        ).toString()}`,
+                      );
+                    }}
+                  >
+                    <FontAwesomeIcon icon={faEye} />
+                  </ButtonGroupButton>
+                )}
                 <ButtonGroupButton
                   tooltip="Copy URL to clipboard"
                   onClick={() => {
@@ -132,7 +133,7 @@ const PreviewUrl = ({ ctx }: PropTypes) => {
           {frontends.length === 0 ? (
             <div>No frontends configured!</div>
           ) : frontends.length === 1 && firstStatus ? (
-            <FrontendResult status={firstStatus} />
+            <FrontendResult status={firstStatus} frontend={frontends[0]} />
           ) : Object.values(statusByFrontend).every(
               (status) =>
                 !status ||

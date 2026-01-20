@@ -12,7 +12,6 @@ import {
   FieldGroup,
   FieldWrapper,
   Form,
-  FormLabel,
   Section,
   SwitchField,
   TextField,
@@ -58,7 +57,7 @@ export default function ConfigScreen({ ctx }: PropTypes) {
         validate={(values) => {
           const errors: Record<string, any> = {};
 
-          errors.frontends = values.frontends.map((rule) => {
+          errors.frontends = values.frontends.map((rule: any) => {
             const ruleErrors: Record<string, any> = {};
 
             if (!rule.name) {
@@ -66,36 +65,60 @@ export default function ConfigScreen({ ctx }: PropTypes) {
             }
 
             if (
-              values.frontends.filter((f) => f.name === rule.name).length > 1
+              values.frontends.filter((f: any) => f.name === rule.name).length >
+              1
             ) {
               ruleErrors.name = 'Name must be unique!';
             }
 
-            if (!rule.previewWebhook || !isValidUrl(rule.previewWebhook)) {
-              ruleErrors.previewWebhook = 'Please specify an URL!';
+            // Validate that at least one feature is enabled (using flat structure)
+            if (
+              !rule.previewWebhook &&
+              !rule.visualEditing?.enableDraftModeUrl &&
+              !rule.disabled
+            ) {
+              ruleErrors._error =
+                'Enable at least one feature (Preview Links or Visual Editing) or disable this frontend.';
             }
 
-            ruleErrors.customHeaders = rule.customHeaders?.map((header) => {
-              const headerErrors: Record<string, string> = {};
+            // Validate preview webhook URL if provided (flat structure)
+            if (rule.previewWebhook && !isValidUrl(rule.previewWebhook)) {
+              ruleErrors.previewWebhook = 'Please specify a valid URL!';
+            }
 
-              if (!header.name) {
-                headerErrors.name = 'Name required!';
+            // Validate custom headers (flat structure)
+            ruleErrors.customHeaders = rule.customHeaders?.map(
+              (header: any) => {
+                const headerErrors: Record<string, string> = {};
+
+                if (!header.name) {
+                  headerErrors.name = 'Name required!';
+                }
+
+                if (
+                  rule.customHeaders &&
+                  rule.customHeaders.filter((h: any) => h.name === header.name)
+                    .length > 1
+                ) {
+                  headerErrors.name = 'Name must be unique!';
+                }
+
+                if (!header.value) {
+                  headerErrors.value = 'Value required!';
+                }
+
+                return headerErrors;
+              },
+            );
+
+            // Validate visual editing URL if provided
+            if (rule.visualEditing?.enableDraftModeUrl) {
+              if (!isValidUrl(rule.visualEditing.enableDraftModeUrl)) {
+                ruleErrors.visualEditing = {
+                  enableDraftModeUrl: 'Please specify a valid URL!',
+                };
               }
-
-              if (
-                rule.customHeaders &&
-                rule.customHeaders.filter((h) => h.name === header.name)
-                  .length > 1
-              ) {
-                headerErrors.name = 'Name must be unique!';
-              }
-
-              if (!header.value) {
-                headerErrors.value = 'Value required!';
-              }
-
-              return headerErrors;
-            });
+            }
 
             return ruleErrors;
           });
@@ -130,20 +153,6 @@ export default function ConfigScreen({ ctx }: PropTypes) {
 
             return ruleErrors;
           });
-
-          if (values.visualEditing) {
-            const visualEditingErrors: Record<string, any> = {};
-
-            if (
-              values.visualEditing.enableDraftModeUrl &&
-              !isValidUrl(values.visualEditing.enableDraftModeUrl)
-            ) {
-              visualEditingErrors.enableDraftModeUrl =
-                'Please specify a valid URL!';
-            }
-
-            errors.visualEditing = visualEditingErrors;
-          }
 
           return errors;
         }}
@@ -198,102 +207,242 @@ export default function ConfigScreen({ ctx }: PropTypes) {
                                 />
                               )}
                             </Field>
-                            <Field name={`${name}.previewWebhook`}>
-                              {({ input, meta: { error } }) => (
-                                <TextField
-                                  id={`frontend-${index}-previewWebhook`}
-                                  required
-                                  label="Webhook URL"
-                                  placeholder="https://yourwebsite.com/api/preview-links"
-                                  error={error}
-                                  hint={
-                                    <>
-                                      Read more about the JSON output required
-                                      by Web Preview webhooks in the{' '}
-                                      <a
-                                        href="https://www.datocms.com/marketplace/plugins/i/datocms-plugin-web-previews#the-previews-webhook"
-                                        target="_blank"
-                                        rel="noreferrer"
-                                      >
-                                        README
-                                      </a>
-                                      .
-                                    </>
-                                  }
-                                  {...input}
-                                />
-                              )}
-                            </Field>
 
-                            <div>
-                              <FormLabel htmlFor="">Custom Headers</FormLabel>
-                              <FieldArray<
-                                NonNullable<Frontend['customHeaders']>[number]
-                              >
-                                name={`${name}.customHeaders`}
-                              >
-                                {({ fields }) => (
-                                  <FieldGroup>
-                                    {fields.map((header, headerIndex) => (
-                                      <div key={header} className={s.grid}>
-                                        <div className={s.headerGrid}>
-                                          <div>
-                                            <Field name={`${header}.name`}>
-                                              {({ input, meta: { error } }) => (
-                                                <TextField
-                                                  id={`frontend-${index}-headers-${headerIndex}-name`}
-                                                  label="Header"
-                                                  placeholder="Header"
-                                                  required
-                                                  error={error}
-                                                  {...input}
-                                                />
-                                              )}
-                                            </Field>
-                                          </div>
-                                          <div>
-                                            <Field name={`${header}.value`}>
-                                              {({ input, meta: { error } }) => (
-                                                <TextField
-                                                  id={`frontend-${index}-headers-${headerIndex}-value`}
-                                                  required
-                                                  label="Value"
-                                                  placeholder="Value"
-                                                  error={error}
-                                                  {...input}
-                                                />
-                                              )}
-                                            </Field>
-                                          </div>
+                            {/* ========== SECTION 1: PREVIEW LINKS ========== */}
+                            <div className={s.featureSection}>
+                              <div className={s.featureHeader}>
+                                <div className={s.featureTitle}>
+                                  Preview Links
+                                </div>
+                                <Field name={`${name}.previewWebhook`}>
+                                  {({ input }) => (
+                                    <SwitchField
+                                      id={`frontend-${index}-enablePreviewLinks`}
+                                      name={`frontend-${index}-enablePreviewLinks`}
+                                      label="Enable"
+                                      value={!!input.value}
+                                      onChange={(enabled) => {
+                                        input.onChange(
+                                          enabled ? 'https://' : '',
+                                        );
+                                      }}
+                                    />
+                                  )}
+                                </Field>
+                              </div>
+
+                              <p className={s.featureDescription}>
+                                Show preview links in the sidebar. Preview links
+                                can display draft or published content from any
+                                environment.
+                              </p>
+
+                              <Field name={`${name}.previewWebhook`}>
+                                {({ input, meta: { error } }) =>
+                                  input.value ? (
+                                    <FieldGroup>
+                                      <TextField
+                                        id={`frontend-${index}-previewWebhook`}
+                                        label="Webhook URL"
+                                        placeholder="https://yourwebsite.com/api/preview-links"
+                                        error={error}
+                                        hint={
+                                          <>
+                                            This webhook returns preview links.{' '}
+                                            <a
+                                              href="https://www.datocms.com/marketplace/plugins/i/datocms-plugin-web-previews#the-previews-webhook"
+                                              target="_blank"
+                                              rel="noreferrer"
+                                            >
+                                              Learn more
+                                            </a>
+                                          </>
+                                        }
+                                        {...input}
+                                      />
+
+                                      {/* Custom Headers */}
+                                      <div>
+                                        <div
+                                          style={{
+                                            fontWeight: 600,
+                                            marginBottom: 'var(--spacing-s)',
+                                          }}
+                                        >
+                                          Custom Headers (Optional)
                                         </div>
-                                        <Button
-                                          type="button"
-                                          buttonType="muted"
-                                          buttonSize="xxs"
-                                          leftIcon={
-                                            <FontAwesomeIcon icon={faTrash} />
-                                          }
-                                          onClick={() =>
-                                            fields.remove(headerIndex)
-                                          }
-                                        />
+                                        <FieldArray
+                                          name={`${name}.customHeaders`}
+                                        >
+                                          {({ fields }) => (
+                                            <FieldGroup>
+                                              {fields.map(
+                                                (header, headerIndex) => (
+                                                  <div
+                                                    key={header}
+                                                    className={s.grid}
+                                                  >
+                                                    <div
+                                                      className={s.headerGrid}
+                                                    >
+                                                      <Field
+                                                        name={`${header}.name`}
+                                                      >
+                                                        {({
+                                                          input,
+                                                          meta: { error },
+                                                        }) => (
+                                                          <TextField
+                                                            id={`frontend-${index}-headers-${headerIndex}-name`}
+                                                            label="Header"
+                                                            placeholder="Header"
+                                                            required
+                                                            error={error}
+                                                            {...input}
+                                                          />
+                                                        )}
+                                                      </Field>
+                                                      <Field
+                                                        name={`${header}.value`}
+                                                      >
+                                                        {({
+                                                          input,
+                                                          meta: { error },
+                                                        }) => (
+                                                          <TextField
+                                                            id={`frontend-${index}-headers-${headerIndex}-value`}
+                                                            label="Value"
+                                                            placeholder="Value"
+                                                            required
+                                                            error={error}
+                                                            {...input}
+                                                          />
+                                                        )}
+                                                      </Field>
+                                                    </div>
+                                                    <Button
+                                                      type="button"
+                                                      buttonType="muted"
+                                                      buttonSize="xxs"
+                                                      leftIcon={
+                                                        <FontAwesomeIcon
+                                                          icon={faTrash}
+                                                        />
+                                                      }
+                                                      onClick={() =>
+                                                        fields.remove(
+                                                          headerIndex,
+                                                        )
+                                                      }
+                                                    />
+                                                  </div>
+                                                ),
+                                              )}
+                                              <Button
+                                                type="button"
+                                                buttonSize="s"
+                                                leftIcon={
+                                                  <FontAwesomeIcon
+                                                    icon={faPlus}
+                                                  />
+                                                }
+                                                onClick={() =>
+                                                  fields.push({
+                                                    name: '',
+                                                    value: '',
+                                                  })
+                                                }
+                                              >
+                                                Add header
+                                              </Button>
+                                            </FieldGroup>
+                                          )}
+                                        </FieldArray>
                                       </div>
-                                    ))}
-                                    <Button
-                                      type="button"
-                                      buttonSize="s"
-                                      leftIcon={
-                                        <FontAwesomeIcon icon={faPlus} />
-                                      }
-                                      onClick={() =>
-                                        fields.push({ name: '', value: '' })
-                                      }
-                                    >
-                                      Add new header
-                                    </Button>
-                                  </FieldGroup>
-                                )}
-                              </FieldArray>
+                                    </FieldGroup>
+                                  ) : null
+                                }
+                              </Field>
+                            </div>
+
+                            {/* ========== SECTION 2: VISUAL EDITING ========== */}
+                            <div className={s.featureSection}>
+                              <div className={s.featureHeader}>
+                                <div className={s.featureTitle}>
+                                  Visual Editing
+                                </div>
+                                <Field
+                                  name={`${name}.visualEditing.enableDraftModeUrl`}
+                                >
+                                  {({ input }) => (
+                                    <SwitchField
+                                      id={`frontend-${index}-enableVisualEditing`}
+                                      name={`frontend-${index}-enableVisualEditing`}
+                                      label="Enable"
+                                      value={!!input.value}
+                                      onChange={(enabled) => {
+                                        input.onChange(
+                                          enabled ? 'https://' : '',
+                                        );
+                                      }}
+                                    />
+                                  )}
+                                </Field>
+                              </div>
+
+                              <p className={s.featureDescription}>
+                                Enable full-screen, side-by-side editing with
+                                click-to-edit overlays. Requires your frontend
+                                to implement a draft mode API endpoint.
+                              </p>
+
+                              <Field
+                                name={`${name}.visualEditing.enableDraftModeUrl`}
+                              >
+                                {({ input, meta: { error } }) =>
+                                  input.value ? (
+                                    <FieldGroup>
+                                      <TextField
+                                        id={`frontend-${index}-visualEditing-enableDraftModeUrl`}
+                                        label="Draft Mode API Endpoint"
+                                        placeholder="https://yourwebsite.com/api/draft"
+                                        error={error}
+                                        hint={
+                                          <>
+                                            The API route that enables
+                                            draft/preview mode. Receives a{' '}
+                                            <code>redirect</code> query
+                                            parameter with the path to load.{' '}
+                                            <a
+                                              href="https://www.datocms.com/docs/content-delivery-api/draft-mode"
+                                              target="_blank"
+                                              rel="noreferrer"
+                                            >
+                                              Learn more
+                                            </a>
+                                          </>
+                                        }
+                                        {...input}
+                                      />
+
+                                      <Field
+                                        name={`${name}.visualEditing.initialPath`}
+                                      >
+                                        {({ input, meta: { error } }) => (
+                                          <TextField
+                                            id={`frontend-${index}-visualEditing-initialPath`}
+                                            label="Initial Path (Optional)"
+                                            placeholder="/"
+                                            hint="The default path to load when opening Visual Editing. Defaults to '/' if not specified."
+                                            error={error}
+                                            {...input}
+                                          />
+                                        )}
+                                      </Field>
+                                    </FieldGroup>
+                                  ) : null
+                                }
+                              </Field>
                             </div>
                           </FieldGroup>
                           <Button
@@ -316,7 +465,11 @@ export default function ConfigScreen({ ctx }: PropTypes) {
                           disabled: false,
                           previewWebhook: '',
                           customHeaders: [],
-                        })
+                          visualEditing: {
+                            enableDraftModeUrl: '',
+                            initialPath: '',
+                          },
+                        } as any)
                       }
                     >
                       Add new frontend
@@ -325,63 +478,102 @@ export default function ConfigScreen({ ctx }: PropTypes) {
                 )}
               </FieldArray>
             </Section>
-            <Section title="Web Previews sidebar">
+            <Section title="Preview Links Settings">
+              <p>
+                Configure display options for preview links shown in the sidebar
+                and panel.
+              </p>
               <FieldGroup>
-                <Field name="defaultSidebarWidth">
-                  {({ input, meta: { error } }) => (
-                    <TextField
-                      id="sidebarWidth"
-                      label="Default sidebar width (px)"
-                      hint="Specify the initial width for the sidebar"
-                      type="number"
-                      error={error}
-                      {...input}
-                    />
-                  )}
-                </Field>
-              </FieldGroup>
-            </Section>
-            <Section title="Web Previews panel">
-              <FieldGroup>
-                <Field name="startOpen">
-                  {({ input, meta: { error } }) => (
-                    <SwitchField
-                      id="startOpen"
-                      label="Start with the sidebar panel open?"
-                      error={error}
-                      {...input}
-                    />
-                  )}
-                </Field>
-              </FieldGroup>
-            </Section>
-            <Section title="Visual Editing">
-              <FieldGroup>
-                <Field name="visualEditing.enableDraftModeUrl">
-                  {({ input, meta: { error } }) => (
-                    <TextField
-                      id="visualEditing.enableDraftModeUrl"
-                      label="Enable Draft Mode URL"
-                      placeholder="https://yourwebsite.com/api/draft"
-                      hint="URL endpoint to enable draft/preview mode in your frontend application"
-                      error={error}
-                      {...input}
-                    />
-                  )}
-                </Field>
+                {/* Sidebar Panel Toggle */}
+                <div className={s.featureSection}>
+                  <div className={s.featureHeader}>
+                    <div className={s.featureTitle}>Sidebar Panel</div>
+                    <Field name="previewLinksSidebarPanelDisabled">
+                      {({ input }) => (
+                        <SwitchField
+                          id="previewLinksSidebarPanelEnabled"
+                          name="previewLinksSidebarPanelEnabled"
+                          label="Enable"
+                          value={!input.value}
+                          onChange={(enabled) => {
+                            input.onChange(!enabled);
+                          }}
+                        />
+                      )}
+                    </Field>
+                  </div>
 
-                <Field name="visualEditing.initialPath">
-                  {({ input, meta: { error } }) => (
-                    <TextField
-                      id="visualEditing.initialPath"
-                      label="Initial path"
-                      placeholder="/"
-                      hint="The initial path to load when Visual Editing is opened"
-                      error={error}
-                      {...input}
-                    />
-                  )}
-                </Field>
+                  <p className={s.featureDescription}>
+                    Show a small panel in the record sidebar with quick links to
+                    preview URLs.
+                  </p>
+
+                  <Field name="previewLinksSidebarPanelDisabled">
+                    {({ input }) =>
+                      !input.value ? (
+                        <FieldGroup>
+                          <Field name="startOpen">
+                            {({ input, meta: { error } }) => (
+                              <SwitchField
+                                id="startOpen"
+                                label="Start with the panel open by default?"
+                                hint="The panel will be expanded when users open a record"
+                                error={error}
+                                {...input}
+                              />
+                            )}
+                          </Field>
+                        </FieldGroup>
+                      ) : null
+                    }
+                  </Field>
+                </div>
+
+                {/* Full Sidebar Toggle */}
+                <div className={s.featureSection}>
+                  <div className={s.featureHeader}>
+                    <div className={s.featureTitle}>Full Preview Sidebar</div>
+                    <Field name="previewLinksSidebarDisabled">
+                      {({ input }) => (
+                        <SwitchField
+                          id="previewLinksSidebarEnabled"
+                          name="previewLinksSidebarEnabled"
+                          label="Enable"
+                          value={!input.value}
+                          onChange={(enabled) => {
+                            input.onChange(!enabled);
+                          }}
+                        />
+                      )}
+                    </Field>
+                  </div>
+
+                  <p className={s.featureDescription}>
+                    Show a full sidebar with an iframe preview of the selected
+                    URL.
+                  </p>
+
+                  <Field name="previewLinksSidebarDisabled">
+                    {({ input }) =>
+                      !input.value ? (
+                        <FieldGroup>
+                          <Field name="defaultSidebarWidth">
+                            {({ input, meta: { error } }) => (
+                              <TextField
+                                id="defaultSidebarWidth"
+                                label="Default sidebar width (px)"
+                                hint="The initial width when the sidebar is opened"
+                                type="number"
+                                error={error}
+                                {...input}
+                              />
+                            )}
+                          </Field>
+                        </FieldGroup>
+                      ) : null
+                    }
+                  </Field>
+                </div>
               </FieldGroup>
             </Section>
             <Section
