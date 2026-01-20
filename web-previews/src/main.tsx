@@ -14,6 +14,7 @@ import {
   normalizeParameters,
 } from './types';
 import { readSidebarWidth } from './utils/persistedWidth';
+import { IconPickerModal } from './entrypoints/ConfigScreen/IconPickerInput/IconPickerModal';
 
 library.add(fas);
 
@@ -91,5 +92,11 @@ connect({
   renderInspectorPanel(_panelId, ctx) {
     // currently not used
     render(<InspectorLoading ctx={ctx} />);
+  },
+  renderModal(modalId, ctx) {
+    switch (modalId) {
+      case 'iconPicker':
+        return render(<IconPickerModal ctx={ctx} />);
+    }
   },
 });

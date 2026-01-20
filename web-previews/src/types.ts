@@ -139,6 +139,55 @@ export function normalizeParameters({
   };
 }
 
+export function denormalizeParameters({
+  frontends,
+  previewLinksSidebarPanel,
+  previewLinksSidebar,
+  iframeAllowAttribute,
+  defaultViewports,
+}: NormalizedParameters): Parameters {
+  return {
+    frontends: frontends.map((frontend) => {
+      const rawFrontend: RawFrontend = {
+        name: frontend.name,
+      };
+
+      if (frontend.disabled) {
+        rawFrontend.disabled = true;
+      }
+
+      if (frontend.previewLinks) {
+        rawFrontend.previewWebhook = frontend.previewLinks.webhook;
+        if (frontend.previewLinks.customHeaders.length > 0) {
+          rawFrontend.customHeaders = frontend.previewLinks.customHeaders;
+        }
+      }
+
+      if (frontend.visualEditing) {
+        rawFrontend.visualEditing = {
+          enableDraftModeUrl: frontend.visualEditing.enableDraftModeUrl,
+        };
+        if (frontend.visualEditing.initialPath) {
+          rawFrontend.visualEditing.initialPath = frontend.visualEditing.initialPath;
+        }
+      }
+
+      return rawFrontend;
+    }),
+    startOpen: previewLinksSidebarPanel?.startOpen,
+    defaultSidebarWidth: previewLinksSidebar?.defaultWidth.toString(),
+    previewLinksSidebarDisabled: !previewLinksSidebar,
+    previewLinksSidebarPanelDisabled: !previewLinksSidebarPanel,
+    iframeAllowAttribute,
+    defaultViewports: defaultViewports.map((viewport) => ({
+      name: viewport.name,
+      width: viewport.width,
+      height: viewport.height,
+      icon: viewport.icon,
+    })),
+  };
+}
+
 export type PreviewLink = {
   url: string;
   label: string;
