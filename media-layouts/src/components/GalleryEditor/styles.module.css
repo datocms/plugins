@@ -1,0 +1,11 @@
+.galleryEditor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.assetList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}

@@ -1,0 +1,26 @@
+.emptyState {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  border: 1px dashed var(--border-color);
+  border-radius: 4px;
+  background: var(--light-bg-color);
+}
+
+.icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--light-body-color);
+}
+
+.icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.text {
+  display: none;
+}

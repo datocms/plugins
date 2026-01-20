@@ -1,0 +1,441 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.gridControls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.controlGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.controlLabel {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--light-body-color);
+}
+
+.controlSelect {
+  padding: 6px 10px;
+  font-size: 12px;
+  color: var(--base-body-color);
+  background: white;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.controlSelect:focus {
+  outline: none;
+  border-color: var(--accent-color);
+}
+
+.gridInfo {
+  font-size: 12px;
+  color: var(--light-body-color);
+  padding: 6px 12px;
+  background: var(--light-bg-color);
+  border-radius: 4px;
+}
+
+/* Visual Grid */
+.gridPreview {
+  padding: 16px;
+  background: linear-gradient(135deg, #f8f9fa 0%, #f0f2f5 100%);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
+.grid {
+  display: grid;
+  gap: 12px;
+}
+
+.grid[data-columns="1"] {
+  grid-template-columns: 1fr;
+}
+
+.grid[data-columns="2"] {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.grid[data-columns="3"] {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.grid[data-columns="4"] {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+/* Visual Slot Item */
+.slotItem {
+  position: relative;
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: grab;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.slotItem:active {
+  cursor: grabbing;
+}
+
+.slotItem:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  transform: translateY(-1px);
+}
+
+.slotItem.isSelected {
+  box-shadow: 0 0 0 2px var(--accent-color), 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.slotItem.isDragging {
+  opacity: 0.5;
+  transform: scale(0.98);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.slotItem.isDragOver {
+  box-shadow: 0 0 0 2px var(--accent-color), 0 8px 24px rgba(0, 0, 0, 0.2);
+  transform: scale(1.02);
+}
+
+.slotItem.isRequired::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: var(--accent-color);
+  z-index: 2;
+}
+
+.slotPreview {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: white;
+  color: var(--light-body-color);
+  min-height: 60px;
+}
+
+.slotPreview > svg {
+  width: 24px;
+  height: 24px;
+  opacity: 0.4;
+}
+
+.dragHandle {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--light-body-color);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  cursor: grab;
+}
+
+.dragHandle:active {
+  cursor: grabbing;
+}
+
+.dragHandle svg {
+  width: 12px;
+  height: 12px;
+}
+
+.slotItem:hover .dragHandle {
+  opacity: 0.6;
+}
+
+.slotItem.isDragging .dragHandle {
+  opacity: 1;
+}
+
+.slotLabel {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--base-body-color);
+  text-align: center;
+  padding: 0 8px;
+}
+
+.slotMeta {
+  font-size: 9px;
+  color: var(--light-body-color);
+  text-align: center;
+}
+
+/* Slot hover overlay */
+.slotOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.slotItem:hover .slotOverlay {
+  opacity: 1;
+}
+
+.overlayButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--base-body-color);
+  transition: all 0.15s ease;
+}
+
+.overlayButton:hover {
+  background: var(--accent-color);
+  color: white;
+}
+
+.overlayButton.danger:hover {
+  background: var(--alert-color);
+}
+
+.overlayButton svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Edit Panel */
+.editPanel {
+  margin-top: 12px;
+  padding: 16px;
+  background: white;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.editPanelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.editPanelTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--base-body-color);
+}
+
+.closeButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--light-body-color);
+  transition: all 0.15s ease;
+}
+
+.closeButton:hover {
+  background: var(--light-bg-color);
+  color: var(--base-body-color);
+}
+
+.closeButton svg {
+  width: 14px;
+  height: 14px;
+}
+
+.editPanelForm {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.formRow {
+  display: flex;
+  gap: 12px;
+}
+
+.formField {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.formLabel {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--light-body-color);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.formInput {
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--base-body-color);
+  background: var(--light-bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+}
+
+.formInput:focus {
+  outline: none;
+  border-color: var(--accent-color);
+  background: white;
+}
+
+.formSelect {
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--base-body-color);
+  background: var(--light-bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.formSelect:focus {
+  outline: none;
+  border-color: var(--accent-color);
+}
+
+.formCheckbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+}
+
+.formCheckbox input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.formCheckbox span {
+  font-size: 13px;
+  color: var(--base-body-color);
+}
+
+/* Empty state */
+.emptyGrid {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 48px 24px;
+  background: linear-gradient(135deg, #f8f9fa 0%, #f0f2f5 100%);
+  border: 2px dashed var(--border-color);
+  border-radius: 8px;
+  text-align: center;
+}
+
+.emptyIcon {
+  color: var(--light-body-color);
+  opacity: 0.5;
+}
+
+.emptyIcon svg {
+  width: 48px;
+  height: 48px;
+}
+
+.emptyText {
+  font-size: 14px;
+  color: var(--light-body-color);
+}
+
+.emptyHint {
+  font-size: 12px;
+  color: var(--lighter-body-color);
+}
+
+/* Empty cell */
+.emptyCell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 80px;
+  border: 2px dashed var(--border-color);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.5);
+  transition: all 0.2s ease;
+}
+
+.emptyCell:hover {
+  border-color: var(--accent-color);
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.emptyCell.isDragOver {
+  border-color: var(--accent-color);
+  background: rgba(var(--accent-color-rgb, 59, 130, 246), 0.1);
+  transform: scale(1.02);
+}
+
+.addCellButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--light-body-color);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.addCellButton:hover {
+  background: var(--accent-color);
+  color: white;
+  transform: scale(1.1);
+}
+
+.addCellButton svg {
+  width: 20px;
+  height: 20px;
+}
