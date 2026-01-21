@@ -53,14 +53,11 @@ describe('applyOperation (dispatcher)', () => {
 
     it('handles UPVOTE_COMMENT operations', () => {
       const comment = createBaseComment({ id: 'to-upvote' });
-      const op = createUpvoteCommentOp('to-upvote', 'add', {
-        name: 'Voter',
-        email: 'voter@test.com',
-      });
+      const op = createUpvoteCommentOp('to-upvote', 'add', 'voter-user-1');
 
       const result = applyOperation([comment], op);
 
-      expect(result.comments[0].usersWhoUpvoted).toHaveLength(1);
+      expect(result.comments[0].upvoterIds).toHaveLength(1);
     });
 
     it('handles ADD_REPLY operations', () => {
@@ -89,13 +86,10 @@ describe('applyOperation (dispatcher)', () => {
       expect(comments).toHaveLength(1);
 
       // Add upvote
-      const upvoteOp = createUpvoteCommentOp('comment-1', 'add', {
-        name: 'Voter',
-        email: 'voter@test.com',
-      });
+      const upvoteOp = createUpvoteCommentOp('comment-1', 'add', 'voter-user-1');
       result = applyOperation(comments, upvoteOp);
       comments = result.comments;
-      expect(comments[0].usersWhoUpvoted).toHaveLength(1);
+      expect(comments[0].upvoterIds).toHaveLength(1);
 
       // Edit content
       const editOp = createEditCommentOp('comment-1', [createTextSegment('Edited')]);

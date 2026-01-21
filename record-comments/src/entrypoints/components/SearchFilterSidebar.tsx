@@ -110,8 +110,8 @@ const SearchFilterSidebar = ({
           <FilterDropdown
             label=""
             options={authorOptions}
-            selectedValue={filters.authorEmail}
-            onSelect={(value) => updateFilter('authorEmail', value)}
+            selectedValue={filters.authorId}
+            onSelect={(value) => updateFilter('authorId', value)}
             placeholder="All authors"
             emptyMessage="No comments yet"
           />
@@ -162,8 +162,8 @@ const SearchFilterSidebar = ({
           <FilterDropdown
             label=""
             options={userOptions}
-            selectedValue={filters.mentionedUserEmail}
-            onSelect={(value) => updateFilter('mentionedUserEmail', value)}
+            selectedValue={filters.mentionedUserId}
+            onSelect={(value) => updateFilter('mentionedUserId', value)}
             placeholder="All users"
             emptyMessage="No user mentions yet"
           />

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { RenderItemFormSidebarCtx, RenderPageCtx } from 'datocms-plugin-sdk';
 import { useQuerySubscription } from 'react-datocms';
 import type { Client } from '@datocms/cma-client-browser';
-import { COMMENTS_MODEL_API_KEY, CMA_FETCH } from '@/constants';
+import { COMMENTS_MODEL_API_KEY, CMA_FETCH, TIMING } from '@/constants';
 import { findCommentsModel } from '@utils/itemTypeUtils';
 import { type CommentType, type QueryResult, parseComments, isContentEmpty } from '@ctypes/comments';
 import { logError } from '@/utils/errorLogger';
@@ -21,19 +21,19 @@ type Draft = {
  * Extracts draft comments (empty content by current user) from comments list.
  * Returns both top-level drafts and reply drafts with their parent IDs.
  */
-function extractDrafts(comments: CommentType[], currentUserEmail: string): Draft[] {
+function extractDrafts(comments: CommentType[], currentUserId: string): Draft[] {
   const drafts: Draft[] = [];
 
   for (const comment of comments) {
     // Check if this is a top-level draft
-    if (isContentEmpty(comment.content) && comment.author.email === currentUserEmail) {
+    if (isContentEmpty(comment.content) && comment.authorId === currentUserId) {
       drafts.push({ comment });
     }
 
     // Check replies for drafts
     if (comment.replies) {
       for (const reply of comment.replies) {
-        if (isContentEmpty(reply.content) && reply.author.email === currentUserEmail) {
+        if (isContentEmpty(reply.content) && reply.authorId === currentUserId) {
           drafts.push({ comment: reply, parentId: comment.id });
         }
       }
@@ -87,8 +87,6 @@ function mergeWithDrafts(serverComments: CommentType[], drafts: Draft[]): MergeR
   return { comments: mergedComments, orphanedDrafts };
 }
 
-export type { SubscriptionErrorType };
-
 export type SubscriptionErrorInfo = {
   error: Error;
   type: SubscriptionErrorType;
@@ -109,8 +107,8 @@ type UseCommentsSubscriptionParams = {
   filterParams: { modelId: string; recordId: string };
   subscriptionEnabled: boolean;
   onCommentRecordIdChange?: (id: string | null) => void;
-  /** Current user's email for identifying their drafts */
-  currentUserEmail: string;
+  /** Current user's ID for identifying their drafts */
+  currentUserId: string;
   /** Callback when a draft reply's parent comment was deleted */
   onOrphanedDraft?: () => void;
   /** Called before sync updates are applied - use to save scroll position */
@@ -138,6 +136,7 @@ export type UseCommentsSubscriptionReturn = {
   errorInfo: SubscriptionErrorInfo | null;
   status: SubscriptionStatus;
   retry: () => void;
+  isAutoReconnecting: boolean;
 };
 
 export function useCommentsSubscription({
@@ -151,7 +150,7 @@ export function useCommentsSubscription({
   filterParams,
   subscriptionEnabled,
   onCommentRecordIdChange,
-  currentUserEmail,
+  currentUserId,
   onOrphanedDraft,
   onBeforeSync,
   onAfterSync,
@@ -169,6 +168,15 @@ export function useCommentsSubscription({
   const [subscriptionKey, setSubscriptionKey] = useState(0);
   const consecutiveErrorCount = useRef(0);
   const previousErrorRef = useRef<unknown>(null);
+  const [isAutoReconnecting, setIsAutoReconnecting] = useState(false);
+  const autoReconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Track when subscription data was received to detect stale data
+  const dataReceivedAtRef = useRef<number>(0);
+  // Track when isSyncAllowed last became false (operation started)
+  const syncBlockedAtRef = useRef<number>(0);
+  // Track previous isSyncAllowed value to detect transitions
+  const prevIsSyncAllowedRef = useRef(isSyncAllowed);
 
   const { data, status, error } = useQuerySubscription<QueryResult>({
     query,
@@ -182,8 +190,58 @@ export function useCommentsSubscription({
   useEffect(() => {
     if (status === 'connected') {
       consecutiveErrorCount.current = 0;
+      setIsAutoReconnecting(false);
+      // Clear any pending auto-reconnect timeout
+      if (autoReconnectTimeoutRef.current) {
+        clearTimeout(autoReconnectTimeoutRef.current);
+        autoReconnectTimeoutRef.current = null;
+      }
     }
   }, [status]);
+
+  // Auto-reconnect when connection is closed
+  useEffect(() => {
+    if (!realTimeEnabled) return;
+
+    // Only auto-reconnect when status is 'closed' (connection lost)
+    if (status === 'closed') {
+      const errorCount = consecutiveErrorCount.current;
+      // Exponential backoff: 1s, 2s, 4s, 8s... max 30s
+      const delayMs = Math.min(1000 * Math.pow(2, errorCount), 30000);
+
+      setIsAutoReconnecting(true);
+
+      autoReconnectTimeoutRef.current = setTimeout(() => {
+        autoReconnectTimeoutRef.current = null;
+        setSubscriptionKey((prev) => prev + 1);
+      }, delayMs);
+    }
+
+    return () => {
+      if (autoReconnectTimeoutRef.current) {
+        clearTimeout(autoReconnectTimeoutRef.current);
+        autoReconnectTimeoutRef.current = null;
+      }
+    };
+  }, [status, realTimeEnabled]);
+
+  // Track when isSyncAllowed transitions to false (operation started)
+  useEffect(() => {
+    if (!isSyncAllowed && prevIsSyncAllowedRef.current) {
+      // Sync just became blocked - record when this happened
+      syncBlockedAtRef.current = Date.now();
+    }
+    prevIsSyncAllowedRef.current = isSyncAllowed;
+  }, [isSyncAllowed]);
+
+  // Track when new subscription data arrives
+  const prevDataRef = useRef(data);
+  useEffect(() => {
+    if (data && data !== prevDataRef.current) {
+      dataReceivedAtRef.current = Date.now();
+      prevDataRef.current = data;
+    }
+  }, [data]);
 
   useEffect(() => {
     if (error) {
@@ -217,18 +275,70 @@ export function useCommentsSubscription({
     }
   }, [realTimeEnabled]);
 
+  // Track when tab was hidden and refresh subscription when tab becomes visible after long inactivity
+  // This handles stale WebSocket connections in long-running tabs
+  const hiddenAtRef = useRef<number>(0);
+  useEffect(() => {
+    if (!realTimeEnabled) return;
+
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        // Tab is being hidden - record the time
+        hiddenAtRef.current = Date.now();
+      } else {
+        // Tab is becoming visible
+        const hiddenAt = hiddenAtRef.current;
+        if (hiddenAt > 0) {
+          const hiddenDuration = Date.now() - hiddenAt;
+          hiddenAtRef.current = 0;
+
+          // If tab was hidden for longer than threshold, force subscription refresh
+          // This ensures we get fresh data after long periods of inactivity
+          if (hiddenDuration > TIMING.VISIBILITY_REFRESH_THRESHOLD_MS) {
+            setSubscriptionKey((prev) => prev + 1);
+          }
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [realTimeEnabled]);
+
   useEffect(() => {
     const commentsModel = findCommentsModel(ctx.itemTypes);
     if (commentsModel) setCommentsModelId(commentsModel.id);
   }, [ctx.itemTypes]);
 
   // WARNING: Real-time API can be 5-10s delayed - don't overwrite optimistic updates
+  // Critical: We must check if subscription data was received AFTER our last operation started
+  // to prevent stale data from overwriting fresh local state (the "disappearing comment" bug)
   useEffect(() => {
     if (!realTimeEnabled) return;
 
     const record = data?.allProjectComments[0];
     if (data) setIsLoading(false);
     if (!record || !isSyncAllowed) return;
+
+    // CRITICAL FIX: Check if subscription data is fresh enough
+    // If we had an operation (syncBlockedAtRef > 0) and the data was received BEFORE
+    // that operation started, the data is stale and could overwrite our local changes.
+    // This prevents the "disappearing comment" bug where stale subscription data
+    // overwrites optimistic updates after cooldown expires.
+    const dataReceivedAt = dataReceivedAtRef.current;
+    const syncBlockedAt = syncBlockedAtRef.current;
+
+    if (syncBlockedAt > 0 && dataReceivedAt > 0 && dataReceivedAt < syncBlockedAt) {
+      // Data is stale - it was received before our operation started.
+      // Skip this sync and wait for fresh subscription data.
+      // The subscription should eventually deliver updated data.
+      return;
+    }
+
+    // Reset the sync blocked timestamp now that we're applying fresh data
+    syncBlockedAtRef.current = 0;
 
     setCommentRecordId(record.id);
 
@@ -237,7 +347,7 @@ export function useCommentsSubscription({
 
     // Preserve drafts during sync
     setComments((prevComments) => {
-      const drafts = extractDrafts(prevComments, currentUserEmail);
+      const drafts = extractDrafts(prevComments, currentUserId);
       const serverComments = parseComments(record.content);
       const { comments: mergedComments, orphanedDrafts } = mergeWithDrafts(serverComments, drafts);
 
@@ -253,7 +363,7 @@ export function useCommentsSubscription({
     if (onAfterSync) {
       requestAnimationFrame(onAfterSync);
     }
-  }, [data, isSyncAllowed, realTimeEnabled, setCommentRecordId, currentUserEmail, onOrphanedDraft, onBeforeSync, onAfterSync]);
+  }, [data, isSyncAllowed, realTimeEnabled, setCommentRecordId, currentUserId, onOrphanedDraft, onBeforeSync, onAfterSync]);
 
   const [cmaFetchError, setCmaFetchError] = useState<Error | null>(null);
   const [cmaRetryKey, setCmaRetryKey] = useState(0);
@@ -317,7 +427,7 @@ export function useCommentsSubscription({
 
           // Preserve drafts during sync
           setComments((prevComments) => {
-            const drafts = extractDrafts(prevComments, currentUserEmail);
+            const drafts = extractDrafts(prevComments, currentUserId);
             const serverComments = parseComments(firstRecord.content);
             const { comments: mergedComments, orphanedDrafts } = mergeWithDrafts(serverComments, drafts);
 
@@ -406,5 +516,6 @@ export function useCommentsSubscription({
     errorInfo,
     status: status as SubscriptionStatus,
     retry,
+    isAutoReconnecting,
   };
 }

@@ -34,6 +34,12 @@ const NETWORK_KEYWORDS = [
 
 const GRAPHQL_KEYWORDS = ['graphql', 'query', 'syntax', 'validation'] as const;
 
+// Subset of keywords for permission denied errors in general contexts
+const PERMISSION_KEYWORDS = ['forbidden', '401', '403'] as const;
+
+// Subset of keywords for network errors in general contexts
+const GENERAL_NETWORK_KEYWORDS = ['network', 'fetch', 'timeout'] as const;
+
 function messageContainsAny(
   errorMessage: string,
   keywords: readonly string[]
@@ -79,22 +85,14 @@ export function categorizeGeneralError(
 ): ErrorCategorization<GeneralErrorType> {
   const errorMessage = error.message.toLowerCase();
 
-  if (
-    errorMessage.includes('forbidden') ||
-    errorMessage.includes('401') ||
-    errorMessage.includes('403')
-  ) {
+  if (messageContainsAny(errorMessage, PERMISSION_KEYWORDS)) {
     return {
       type: 'permission_denied',
       message: 'Permission denied.',
     };
   }
 
-  if (
-    errorMessage.includes('network') ||
-    errorMessage.includes('fetch') ||
-    errorMessage.includes('timeout')
-  ) {
+  if (messageContainsAny(errorMessage, GENERAL_NETWORK_KEYWORDS)) {
     return {
       type: 'network_error',
       message: 'Network error. Check your connection.',

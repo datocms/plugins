@@ -1,17 +1,11 @@
 import { useState, useMemo, useCallback } from 'react';
 import type { CommentType } from '@ctypes/comments';
-import type {
-  CommentSegment,
-  UserMention,
-  AssetMention,
-  RecordMention,
-  ModelMention,
-} from '@ctypes/mentions';
+import type { StoredCommentSegment } from '@ctypes/mentions';
 
 // Filter state types
 export type CommentFilters = {
   searchQuery: string;
-  authorEmail: string | null;
+  authorId: string | null;
   dateRange: {
     start: Date | null;
     end: Date | null;
@@ -19,12 +13,12 @@ export type CommentFilters = {
   mentionedRecordId: string | null;
   mentionedAssetId: string | null;
   mentionedModelId: string | null;
-  mentionedUserEmail: string | null;
+  mentionedUserId: string | null;
 };
 
 // Option types for dropdowns
 export type AuthorOption = {
-  email: string;
+  id: string;
   name: string;
 };
 
@@ -45,7 +39,7 @@ export type ModelOption = {
 };
 
 export type UserOption = {
-  email: string;
+  id: string;
   name: string;
 };
 
@@ -59,23 +53,23 @@ export type FilterOptions = {
 
 const initialFilters: CommentFilters = {
   searchQuery: '',
-  authorEmail: null,
+  authorId: null,
   dateRange: { start: null, end: null },
   mentionedRecordId: null,
   mentionedAssetId: null,
   mentionedModelId: null,
-  mentionedUserEmail: null,
+  mentionedUserId: null,
 };
 
 type IndexedComment = {
   comment: CommentType;
   dateTimestamp: number;
   searchText: string; // Pre-computed lowercase searchable text
-  userEmails: Set<string>; // All mentioned user emails (including replies)
+  userIds: Set<string>; // All mentioned user IDs (including replies)
   assetIds: Set<string>; // All mentioned asset IDs (including replies)
   recordIds: Set<string>; // All mentioned record IDs (including replies)
   modelIds: Set<string>; // All mentioned model IDs (including replies)
-  authorEmails: Set<string>; // Author email + reply author emails
+  authorIds: Set<string>; // Author ID + reply author IDs
 };
 
 type CombinedIndexResult = {
@@ -83,11 +77,12 @@ type CombinedIndexResult = {
   filterOptions: FilterOptions;
 };
 
-function extractMentionsFromContent(content: CommentSegment[]) {
-  const userMentions: UserMention[] = [];
-  const assetMentions: AssetMention[] = [];
-  const recordMentions: RecordMention[] = [];
-  const modelMentions: ModelMention[] = [];
+/** Extracts mention IDs and text from stored comment segments. */
+function extractMentionsFromContent(content: StoredCommentSegment[]) {
+  const userIds: string[] = [];
+  const assetIds: string[] = [];
+  const recordIds: string[] = [];
+  const modelIds: string[] = [];
   const textParts: string[] = [];
 
   for (const segment of content) {
@@ -96,29 +91,26 @@ function extractMentionsFromContent(content: CommentSegment[]) {
     } else if (segment.type === 'mention') {
       switch (segment.mention.type) {
         case 'user':
-          userMentions.push(segment.mention);
-          textParts.push(segment.mention.name);
+          userIds.push(segment.mention.id);
           break;
         case 'asset':
-          assetMentions.push(segment.mention);
-          textParts.push(segment.mention.filename);
+          assetIds.push(segment.mention.id);
           break;
         case 'record':
-          recordMentions.push(segment.mention);
-          textParts.push(segment.mention.title);
+          recordIds.push(segment.mention.id);
           break;
         case 'model':
-          modelMentions.push(segment.mention);
-          textParts.push(segment.mention.name);
+          modelIds.push(segment.mention.id);
           break;
         case 'field':
-          textParts.push(segment.mention.label);
+          // Field mentions: can add fieldPath to text if needed
+          textParts.push(segment.mention.fieldPath);
           break;
       }
     }
   }
 
-  return { userMentions, assetMentions, recordMentions, modelMentions, textParts };
+  return { userIds, assetIds, recordIds, modelIds, textParts };
 }
 
 type FilterOptionAccumulators = {
@@ -133,57 +125,57 @@ function indexCommentWithOptions(
   comment: CommentType,
   accumulators: FilterOptionAccumulators
 ): IndexedComment {
-  const userEmails = new Set<string>();
+  const userIds = new Set<string>();
   const assetIds = new Set<string>();
   const recordIds = new Set<string>();
   const modelIds = new Set<string>();
-  const authorEmails = new Set<string>();
+  const authorIds = new Set<string>();
   const allTextParts: string[] = [];
 
   const { authorsMap, recordsMap, assetsMap, modelsMap, usersMap } = accumulators;
 
   function processComment(c: CommentType) {
-    authorEmails.add(c.author.email);
-    allTextParts.push(c.author.name);
+    authorIds.add(c.authorId);
 
-    if (!authorsMap.has(c.author.email)) {
-      authorsMap.set(c.author.email, {
-        email: c.author.email,
-        name: c.author.name,
+    if (!authorsMap.has(c.authorId)) {
+      authorsMap.set(c.authorId, {
+        id: c.authorId,
+        name: `User ${c.authorId.slice(0, 8)}`, // Actual name resolved elsewhere
       });
     }
 
     const extracted = extractMentionsFromContent(c.content);
 
-    for (const user of extracted.userMentions) {
-      userEmails.add(user.email);
-      if (!usersMap.has(user.email)) {
-        usersMap.set(user.email, { email: user.email, name: user.name });
+    // StoredMention only has IDs - add to sets for filtering
+    for (const mentionedUserId of extracted.userIds) {
+      userIds.add(mentionedUserId);
+      if (!usersMap.has(mentionedUserId)) {
+        usersMap.set(mentionedUserId, { id: mentionedUserId, name: `User ${mentionedUserId.slice(0, 8)}` });
       }
     }
 
-    for (const asset of extracted.assetMentions) {
-      assetIds.add(asset.id);
-      if (!assetsMap.has(asset.id)) {
-        assetsMap.set(asset.id, { id: asset.id, filename: asset.filename });
+    for (const assetId of extracted.assetIds) {
+      assetIds.add(assetId);
+      if (!assetsMap.has(assetId)) {
+        assetsMap.set(assetId, { id: assetId, filename: `Asset ${assetId.slice(0, 8)}` });
       }
     }
 
-    for (const record of extracted.recordMentions) {
-      recordIds.add(record.id);
-      if (!recordsMap.has(record.id)) {
-        recordsMap.set(record.id, {
-          id: record.id,
-          title: record.title,
-          modelName: record.modelName,
+    for (const recordId of extracted.recordIds) {
+      recordIds.add(recordId);
+      if (!recordsMap.has(recordId)) {
+        recordsMap.set(recordId, {
+          id: recordId,
+          title: `Record ${recordId.slice(0, 8)}`,
+          modelName: 'Unknown',
         });
       }
     }
 
-    for (const model of extracted.modelMentions) {
-      modelIds.add(model.id);
-      if (!modelsMap.has(model.id)) {
-        modelsMap.set(model.id, { id: model.id, name: model.name });
+    for (const modelId of extracted.modelIds) {
+      modelIds.add(modelId);
+      if (!modelsMap.has(modelId)) {
+        modelsMap.set(modelId, { id: modelId, name: `Model ${modelId.slice(0, 8)}` });
       }
     }
 
@@ -202,11 +194,11 @@ function indexCommentWithOptions(
     comment,
     dateTimestamp: new Date(comment.dateISO).getTime(),
     searchText: allTextParts.join(' ').toLowerCase(),
-    userEmails,
+    userIds,
     assetIds,
     recordIds,
     modelIds,
-    authorEmails,
+    authorIds,
   };
 }
 
@@ -263,11 +255,11 @@ function filterIndexedComments(
       }
     }
 
-    if (filters.authorEmail && !indexed.authorEmails.has(filters.authorEmail)) {
+    if (filters.authorId && !indexed.authorIds.has(filters.authorId)) {
       continue;
     }
 
-    if (filters.mentionedUserEmail && !indexed.userEmails.has(filters.mentionedUserEmail)) {
+    if (filters.mentionedUserId && !indexed.userIds.has(filters.mentionedUserId)) {
       continue;
     }
     if (filters.mentionedAssetId && !indexed.assetIds.has(filters.mentionedAssetId)) {
@@ -293,26 +285,26 @@ function filterIndexedComments(
 function hasActiveFilters(filters: CommentFilters): boolean {
   return (
     filters.searchQuery.trim() !== '' ||
-    filters.authorEmail !== null ||
+    filters.authorId !== null ||
     filters.dateRange.start !== null ||
     filters.dateRange.end !== null ||
     filters.mentionedRecordId !== null ||
     filters.mentionedAssetId !== null ||
     filters.mentionedModelId !== null ||
-    filters.mentionedUserEmail !== null
+    filters.mentionedUserId !== null
   );
 }
 
 function filtersAreEqual(a: CommentFilters, b: CommentFilters): boolean {
   return (
     a.searchQuery === b.searchQuery &&
-    a.authorEmail === b.authorEmail &&
+    a.authorId === b.authorId &&
     a.dateRange.start?.getTime() === b.dateRange.start?.getTime() &&
     a.dateRange.end?.getTime() === b.dateRange.end?.getTime() &&
     a.mentionedRecordId === b.mentionedRecordId &&
     a.mentionedAssetId === b.mentionedAssetId &&
     a.mentionedModelId === b.mentionedModelId &&
-    a.mentionedUserEmail === b.mentionedUserEmail
+    a.mentionedUserId === b.mentionedUserId
   );
 }
 

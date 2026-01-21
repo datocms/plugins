@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import type { ReactNode } from 'react';
 import type { StyleWithCustomProps } from '@ctypes/styles';
+import { cn } from '@/utils/cn';
 import styles from '@styles/dashboard.module.css';
 
 type ComposerBoxProps = {
@@ -14,16 +15,12 @@ const ComposerBox = memo(function ComposerBox({
   accentColor,
   children,
 }: ComposerBoxProps) {
-  const className = compact
-    ? `${styles.composerBox} ${styles.compact}`
-    : styles.composerBox;
-
   const style: StyleWithCustomProps | undefined = accentColor
     ? { '--composer-accent': accentColor }
     : undefined;
 
   return (
-    <div className={className} style={style}>
+    <div className={cn(styles.composerBox, compact && styles.compact)} style={style}>
       {children}
     </div>
   );

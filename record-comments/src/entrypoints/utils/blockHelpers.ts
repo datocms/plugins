@@ -61,7 +61,7 @@ export function isStructuredTextBlock(
   return block.__isStructuredTextBlock === true && typeof block.__dastIndex === 'number';
 }
 
-// SDK types validators/appearance as unknown - these guards provide runtime validation
+// DatoCMS SDK types validators/appearance as `unknown`; type guards below provide runtime validation
 export type FieldValidators = {
   item_item_type?: { item_types: string[] };
   rich_text_blocks?: { item_types: string[] };
@@ -161,40 +161,30 @@ export function extractBlocksFromFieldValue(
 ): BlockValue[] {
   if (!fieldValue) return [];
 
-  // Structured text (rich_text in API) stores blocks in a DAST (document) format
-  if (fieldType === 'structured_text' || fieldType === 'rich_text') {
-    return extractBlocksFromStructuredText(fieldValue);
-  }
-
   // Modular content is just an array of blocks
-  if (Array.isArray(fieldValue)) {
-    return fieldValue as BlockValue[];
+  if (fieldType !== 'structured_text' && fieldType !== 'rich_text') {
+    return Array.isArray(fieldValue) ? (fieldValue as BlockValue[]) : [];
   }
 
-  return [];
-}
-
-function extractBlocksFromStructuredText(fieldValue: FieldValue): BlockValue[] {
+  // Structured text (rich_text in API) stores blocks in a DAST (document) format
+  // Check for document wrapper format (from API)
   if (isPlainObject(fieldValue) && 'document' in fieldValue) {
-    const doc = fieldValue as { document: unknown; schema: string; blocks?: BlockValue[] };
+    const doc = fieldValue as { blocks?: BlockValue[] };
     return doc.blocks ?? [];
   }
 
+  // Check for value wrapper format (alternative API format)
   if (isPlainObject(fieldValue) && 'value' in fieldValue) {
-    const doc = fieldValue as { value: unknown; schema?: string; blocks?: BlockValue[] };
+    const doc = fieldValue as { blocks?: BlockValue[] };
     return doc.blocks ?? [];
   }
 
-  if (Array.isArray(fieldValue)) {
-    return extractBlocksFromDastArray(fieldValue);
-  }
+  // Handle raw DAST array format
+  if (!Array.isArray(fieldValue)) return [];
 
-  return [];
-}
-
-function extractBlocksFromDastArray(fieldValue: unknown[]): BlockValue[] {
   const firstItem = fieldValue[0] as Record<string, unknown> | undefined;
 
+  // If first item has itemTypeId but no blockModelId, it's modular content (not structured text)
   const isModularContentArray =
     firstItem &&
     typeof firstItem.itemTypeId === 'string' &&
@@ -204,23 +194,23 @@ function extractBlocksFromDastArray(fieldValue: unknown[]): BlockValue[] {
     return fieldValue as BlockValue[];
   }
 
-  // Structured text DAST - extract block nodes preserving their original index
-  const blockNodesWithIndex: { node: Record<string, unknown>; originalIndex: number }[] = [];
+  // Extract block nodes from structured text DAST, preserving their original index for navigation
+  const blocks: BlockValue[] = [];
 
   fieldValue.forEach((node: unknown, index: number) => {
     const n = node as Record<string, unknown>;
     if (typeof n.blockModelId === 'string') {
-      blockNodesWithIndex.push({ node: n, originalIndex: index });
+      blocks.push({
+        ...n,
+        itemTypeId: n.blockModelId as string,
+        type: n.blockModelId as string,
+        __dastIndex: index,
+        __isStructuredTextBlock: true,
+      } as BlockValue);
     }
   });
 
-  return blockNodesWithIndex.map(({ node, originalIndex }) => ({
-    ...node,
-    itemTypeId: node.blockModelId as string,
-    type: node.blockModelId as string,
-    __dastIndex: originalIndex,
-    __isStructuredTextBlock: true,
-  } as BlockValue));
+  return blocks;
 }
 
 /** Gets effective block index, handling structured text's DAST index. */

@@ -13,7 +13,7 @@ export function useFilterOptionsTransform(filterOptions: FilterOptions): Transfo
   return useMemo(
     () => ({
       authorOptions: filterOptions.authors.map((a) => ({
-        value: a.email,
+        value: a.id,
         label: a.name,
       })),
       recordOptions: filterOptions.mentionedRecords.map((r) => ({
@@ -30,7 +30,7 @@ export function useFilterOptionsTransform(filterOptions: FilterOptions): Transfo
         label: m.name,
       })),
       userOptions: filterOptions.mentionedUsers.map((u) => ({
-        value: u.email,
+        value: u.id,
         label: u.name,
       })),
     }),

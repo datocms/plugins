@@ -3,7 +3,7 @@ import { SchemaRepository } from '@datocms/cma-client';
 import { logError } from '@/utils/errorLogger';
 import { extractLocalizedValue } from './fieldLoader';
 
-export type RecordTitleInfo = {
+type RecordTitleInfo = {
   title: string;
   modelName: string;
   isSingleton: boolean;
@@ -19,6 +19,10 @@ export type NormalizedField = {
   apiKey: string;
 };
 
+function getFallbackTitle(recordId: string) {
+  return `Record #${recordId}`;
+}
+
 /** singleton -> presentation_title_field -> title_field -> localized value -> fallback */
 export function extractTitleFromRecordData(
   recordId: string,
@@ -29,7 +33,7 @@ export function extractTitleFromRecordData(
   mainLocale: string,
   isSingleton: boolean
 ): string {
-  const fallbackTitle = `Record #${recordId}`;
+  const fallbackTitle = getFallbackTitle(recordId);
 
   if (isSingleton) {
     return modelName;
@@ -67,7 +71,7 @@ export function extractTitleFromRecordData(
 }
 
 // Type assertion needed due to version mismatch between cma-client-browser and cma-client
-let schemaRepoCache = new WeakMap<Client, SchemaRepository>();
+const schemaRepoCache = new WeakMap<Client, SchemaRepository>();
 
 function getSchemaRepository(client: Client): SchemaRepository {
   let repo = schemaRepoCache.get(client);
@@ -76,6 +80,27 @@ function getSchemaRepository(client: Client): SchemaRepository {
     schemaRepoCache.set(client, repo);
   }
   return repo;
+}
+
+// Cache titles to avoid refetching on every poll interval
+const titleCache = new Map<string, RecordTitleInfo>();
+const TITLE_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+let titleCacheTimestamp = 0;
+
+function getCachedTitle(recordId: string): RecordTitleInfo | undefined {
+  // Invalidate cache if expired
+  if (Date.now() - titleCacheTimestamp > TITLE_CACHE_TTL_MS) {
+    titleCache.clear();
+    return undefined;
+  }
+  return titleCache.get(recordId);
+}
+
+function setCachedTitle(recordId: string, info: RecordTitleInfo) {
+  if (titleCache.size === 0) {
+    titleCacheTimestamp = Date.now();
+  }
+  titleCache.set(recordId, info);
 }
 
 /** Batch fetch: groups by model, uses caching, 100 records/call, parallel model processing. */
@@ -91,8 +116,24 @@ export async function getRecordTitles(
     uniqueRecords.set(record.recordId, record);
   }
 
-  const recordsByModel = new Map<string, string[]>();
+  // Check cache first - only fetch records we don't have cached
+  const uncachedRecords: Array<{ recordId: string; modelId: string }> = [];
   for (const { recordId, modelId } of uniqueRecords.values()) {
+    const cached = getCachedTitle(recordId);
+    if (cached) {
+      results.set(recordId, cached);
+    } else {
+      uncachedRecords.push({ recordId, modelId });
+    }
+  }
+
+  // If everything is cached, return early
+  if (uncachedRecords.length === 0) {
+    return results;
+  }
+
+  const recordsByModel = new Map<string, string[]>();
+  for (const { recordId, modelId } of uncachedRecords) {
     const existing = recordsByModel.get(modelId) ?? [];
     existing.push(recordId);
     recordsByModel.set(modelId, existing);
@@ -109,7 +150,9 @@ export async function getRecordTitles(
 
         if (isSingleton) {
           for (const recordId of recordIds) {
-            results.set(recordId, { title: modelName, modelName, isSingleton });
+            const info = { title: modelName, modelName, isSingleton };
+            results.set(recordId, info);
+            setCachedTitle(recordId, info);
           }
           return;
         }
@@ -145,7 +188,7 @@ export async function getRecordTitles(
 
               if (!record) {
                 results.set(recordId, {
-                  title: `Record #${recordId}`,
+                  title: getFallbackTitle(recordId),
                   modelName,
                   isSingleton: false,
                 });
@@ -162,13 +205,15 @@ export async function getRecordTitles(
                 isSingleton
               );
 
-              results.set(recordId, { title, modelName, isSingleton });
+              const info = { title, modelName, isSingleton };
+              results.set(recordId, info);
+              setCachedTitle(recordId, info);
             }
           } catch (batchError) {
             logError('Failed to batch fetch records:', batchError, { modelId, batchIds });
             for (const recordId of batchIds) {
               results.set(recordId, {
-                title: `Record #${recordId}`,
+                title: getFallbackTitle(recordId),
                 modelName,
                 isSingleton: false,
               });
@@ -179,7 +224,7 @@ export async function getRecordTitles(
         logError('Failed to process model for titles:', error, { modelId });
         for (const recordId of recordIds) {
           results.set(recordId, {
-            title: `Record #${recordId}`,
+            title: getFallbackTitle(recordId),
             modelName: 'Unknown',
             isSingleton: false,
           });
@@ -191,9 +236,4 @@ export async function getRecordTitles(
   await Promise.all(modelPromises);
 
   return results;
-}
-
-/** Clear the SchemaRepository cache. Useful for testing or when schema changes. */
-export function clearRecordTitleCaches(): void {
-  schemaRepoCache = new WeakMap<Client, SchemaRepository>();
 }

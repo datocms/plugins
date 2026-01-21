@@ -6,8 +6,8 @@ import type {
   AddReplyOp,
   CommentOperation,
 } from '@ctypes/operations';
-import type { CommentType, Upvoter } from '@ctypes/comments';
-import type { CommentSegment } from '@ctypes/mentions';
+import type { CommentType } from '@ctypes/comments';
+import type { StoredCommentSegment } from '@ctypes/mentions';
 import { createBaseComment, createTextSegment } from './comments';
 
 export function createAddCommentOp(comment: CommentType): AddCommentOp {
@@ -30,7 +30,7 @@ export function createDeleteCommentOp(
 
 export function createEditCommentOp(
   id: string,
-  newContent: CommentSegment[],
+  newContent: StoredCommentSegment[],
   parentCommentId?: string
 ): EditCommentOp {
   return {
@@ -44,14 +44,14 @@ export function createEditCommentOp(
 export function createUpvoteCommentOp(
   id: string,
   action: 'add' | 'remove',
-  user: Upvoter,
+  userId: string,
   parentCommentId?: string
 ): UpvoteCommentOp {
   return {
     type: 'UPVOTE_COMMENT',
     id,
     action,
-    user,
+    userId,
     parentCommentId,
   };
 }
@@ -98,19 +98,19 @@ export const operationFixtures = {
   addUpvote: createUpvoteCommentOp(
     'comment-to-upvote',
     'add',
-    { name: 'Voter', email: 'voter@example.com' }
+    'user-voter-1'
   ),
 
   removeUpvote: createUpvoteCommentOp(
     'comment-to-upvote',
     'remove',
-    { name: 'Voter', email: 'voter@example.com' }
+    'user-voter-1'
   ),
 
   upvoteReply: createUpvoteCommentOp(
     'reply-to-upvote',
     'add',
-    { name: 'Voter', email: 'voter@example.com' },
+    'user-voter-1',
     'parent-comment-id'
   ),
 
@@ -138,7 +138,7 @@ export const addUpvoteEditSequence: CommentOperation[] = [
   createUpvoteCommentOp(
     'new-comment-1',
     'add',
-    { name: 'Upvoter', email: 'upvoter@example.com' }
+    'user-upvoter-1'
   ),
   createEditCommentOp('new-comment-1', [createTextSegment('Edited content')]),
 ];

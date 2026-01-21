@@ -1,5 +1,6 @@
 import type { MutableRefObject, ReactNode, Ref } from 'react';
 import styles from '@styles/comment.module.css';
+import { cn } from '@/utils/cn';
 
 type LocalePickerViewProps = {
   locales: string[];
@@ -27,7 +28,7 @@ export function LocalePickerView({
           type="button"
           role="option"
           aria-selected={index === selectedIndex}
-          className={`${styles.mentionOption} ${index === selectedIndex ? styles.mentionOptionSelected : ''}`}
+          className={cn(styles.mentionOption, index === selectedIndex && styles.mentionOptionSelected)}
           onMouseDown={(e) => {
             e.preventDefault();
             justClickedInsideRef.current = true;
@@ -43,5 +44,3 @@ export function LocalePickerView({
     </div>
   );
 }
-
-export default LocalePickerView;

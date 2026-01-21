@@ -51,8 +51,6 @@ export type BlockInfo = {
   modelName: string;
 };
 
-export type BlockFieldType = 'modular_content' | 'structured_text' | 'single_block' | 'rich_text';
-
 export type Mention =
   | UserMention
   | FieldMention
@@ -65,9 +63,6 @@ export type MentionType = Mention['type'];
 export type CommentSegment =
   | { type: 'text'; content: string }
   | { type: 'mention'; mention: Mention };
-
-// Keys prefixed to avoid collisions: "user:123", "field:title", etc.
-export type MentionMapKey = `user:${string}` | `field:${string}` | `asset:${string}` | `record:${string}` | `model:${string}`;
 
 export function isUserMention(mention: Mention): mention is UserMention {
   return mention.type === 'user';
@@ -89,28 +84,45 @@ export function isModelMention(mention: Mention): mention is ModelMention {
   return mention.type === 'model';
 }
 
-export function createMentionKey(mention: Mention): MentionMapKey {
-  switch (mention.type) {
-    case 'user':
-      return `user:${mention.id}`;
-    case 'field': {
-      const fieldPath = mention.fieldPath ?? mention.apiKey;
-      // Encode dots as double colons (sections.0.hero_title -> sections::0::hero_title)
-      const encodedPath = fieldPath.replace(/\./g, '::');
-      // Add locale suffix unless already embedded in path (e.g., sections::it::0::hero_title)
-      const localeAlreadyInPath = mention.locale && encodedPath.includes(`::${mention.locale}::`);
-      const localeKey = (mention.locale && !localeAlreadyInPath) ? `::${mention.locale}` : '';
-      return `field:${encodedPath}${localeKey}` as MentionMapKey;
-    }
-    case 'asset':
-      return `asset:${mention.id}`;
-    case 'record':
-      return `record:${mention.id}`;
-    case 'model':
-      return `model:${mention.id}`;
-  }
-}
+// ============================================================================
+// Stored (Slim) Mention Types - Used for persistence, contain only IDs
+// ============================================================================
 
+export type StoredUserMention = {
+  type: 'user';
+  id: string;
+};
 
+export type StoredFieldMention = {
+  type: 'field';
+  fieldPath: string;
+  locale?: string;
+  modelId: string;
+};
 
+export type StoredAssetMention = {
+  type: 'asset';
+  id: string;
+};
 
+export type StoredRecordMention = {
+  type: 'record';
+  id: string;
+  modelId: string;
+};
+
+export type StoredModelMention = {
+  type: 'model';
+  id: string;
+};
+
+export type StoredMention =
+  | StoredUserMention
+  | StoredFieldMention
+  | StoredAssetMention
+  | StoredRecordMention
+  | StoredModelMention;
+
+export type StoredCommentSegment =
+  | { type: 'text'; content: string }
+  | { type: 'mention'; mention: StoredMention };

@@ -24,7 +24,10 @@ function getCurrentField(stack: NavigationStep[]): FieldInfo | null {
 }
 
 function getSelectedLocale(stack: NavigationStep[]): string | undefined {
-  for (const step of stack) {
+  // Return the MOST RECENT locale in the stack (iterate in reverse)
+  // This is important for nested localized fields where each level has its own locale
+  for (let i = stack.length - 1; i >= 0; i--) {
+    const step = stack[i];
     if (step.type === 'locale') {
       return step.locale;
     }
@@ -129,7 +132,7 @@ function handleListKeyNav(
   }
 }
 
-export type ViewMode = 'fields' | 'locales' | 'blocks' | 'nestedFields';
+type ViewMode = 'fields' | 'locales' | 'blocks' | 'nestedFields';
 
 type UseFieldNavigationParams = {
   ctx?: RenderItemFormSidebarCtx;
@@ -137,6 +140,8 @@ type UseFieldNavigationParams = {
   pendingFieldForLocale?: FieldInfo | null;
   onClearPendingField?: () => void;
   selectedIndex: number;
+  /** Called when field navigation path changes (for updating editor preview) */
+  onPathChange?: (path: string) => void;
 };
 
 type UseFieldNavigationReturn = {
@@ -171,6 +176,7 @@ export function useFieldNavigation({
   pendingFieldForLocale,
   onClearPendingField,
   selectedIndex,
+  onPathChange,
 }: UseFieldNavigationParams): UseFieldNavigationReturn {
   const [navigationStack, setNavigationStack] = useState<NavigationStep[]>([]);
   const [localSelectedIndex, setLocalSelectedIndex] = useState(0);
@@ -185,6 +191,14 @@ export function useFieldNavigation({
   const currentField = useMemo(() => getCurrentField(navigationStack), [navigationStack]);
   const selectedLocale = useMemo(() => getSelectedLocale(navigationStack), [navigationStack]);
   const breadcrumb = useMemo(() => buildBreadcrumb(navigationStack), [navigationStack]);
+
+  // Notify parent when navigation path changes (for editor text preview)
+  const onPathChangeRef = useRef(onPathChange);
+  onPathChangeRef.current = onPathChange;
+
+  useEffect(() => {
+    onPathChangeRef.current?.(breadcrumb);
+  }, [breadcrumb]);
 
   useEffect(() => {
     if (viewMode !== 'blocks') return;
@@ -265,10 +279,9 @@ export function useFieldNavigation({
         selectedLocale
       );
 
-      let basePath = currentField.fieldPath;
-      if (currentField.blockFieldType !== 'single_block') {
-        basePath = `${basePath}.${lastBlockStep.blockIndex}`;
-      }
+      // Use buildFieldPath to get the full path including locales
+      // This handles nested localized fields correctly (e.g., "content.en.0" instead of "content.0")
+      const basePath = buildFieldPath(navigationStack);
 
       const nestedFields = await getFieldsForBlock(
         ctx,

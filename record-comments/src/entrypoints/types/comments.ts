@@ -1,17 +1,34 @@
-import type { CommentSegment } from './mentions';
+import type { CommentSegment, StoredCommentSegment } from './mentions';
 import { isValidCommentArray } from '@utils/typeGuards';
 import { logError } from '@/utils/errorLogger';
 
-export type Upvoter = { name: string; email: string };
-
-/** id: UUID for lookups. dateISO: timestamp for display/sorting. Legacy data may have id === dateISO. */
+/** id: UUID for lookups. dateISO: timestamp for display/sorting. Stores only IDs for author/upvoters. */
 export type CommentType = {
   id: string;
   dateISO: string;
-  content: CommentSegment[];
-  author: { name: string; email: string };
-  usersWhoUpvoted: Upvoter[];
+  content: StoredCommentSegment[];
+  authorId: string;
+  upvoterIds: string[];
   replies?: CommentType[];
+  parentCommentId?: string;
+};
+
+/** Resolved author with full display data */
+export type ResolvedAuthor = {
+  id: string;
+  email: string;
+  name: string;
+  avatarUrl: string | null;
+};
+
+/** Resolved comment with full display data for rendering */
+export type ResolvedCommentType = {
+  id: string;
+  dateISO: string;
+  content: CommentSegment[];
+  author: ResolvedAuthor;
+  upvoters: ResolvedAuthor[];
+  replies?: ResolvedCommentType[];
   parentCommentId?: string;
 };
 
@@ -76,18 +93,15 @@ export function parseComments(content: unknown): CommentType[] {
   return [];
 }
 
-export function isContentEmpty(content: CommentSegment[]): boolean {
+/**
+ * Checks if comment content is empty (no mentions and only whitespace text).
+ * Works with both full segments (for display) and stored segments (for persistence).
+ */
+export function isContentEmpty(
+  content: CommentSegment[] | StoredCommentSegment[]
+): boolean {
   if (content.length === 0) return true;
   return content.every(
     (seg) => seg.type === 'text' && seg.content.trim() === ''
   );
 }
-
-export type CommentsDataProps = {
-  comments: CommentType[];
-  filteredComments: CommentType[];
-  setComments: React.Dispatch<React.SetStateAction<CommentType[]>>;
-  commentsModelId: string | null;
-  commentRecordId: string | null;
-  setCommentRecordId: (id: string | null) => void;
-};

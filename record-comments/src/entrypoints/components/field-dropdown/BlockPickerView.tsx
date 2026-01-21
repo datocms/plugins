@@ -1,5 +1,6 @@
 import type { MutableRefObject, ReactNode, Ref } from 'react';
 import type { BlockInfo } from '@ctypes/mentions';
+import { cn } from '@/utils/cn';
 import styles from '@styles/comment.module.css';
 
 type BlockPickerViewProps = {
@@ -38,7 +39,7 @@ export function BlockPickerView({
         type="button"
         role="option"
         aria-selected={selectedIndex === 0}
-        className={`${styles.mentionOption} ${styles.mentionOptionEntireField} ${selectedIndex === 0 ? styles.mentionOptionSelected : ''}`}
+        className={cn(styles.mentionOption, styles.mentionOptionEntireField, selectedIndex === 0 && styles.mentionOptionSelected)}
         onMouseDown={(e) => {
           e.preventDefault();
           justClickedInsideRef.current = true;
@@ -67,7 +68,7 @@ export function BlockPickerView({
               type="button"
               role="option"
               aria-selected={itemIndex === selectedIndex}
-              className={`${styles.mentionOption} ${itemIndex === selectedIndex ? styles.mentionOptionSelected : ''}`}
+              className={cn(styles.mentionOption, itemIndex === selectedIndex && styles.mentionOptionSelected)}
               onMouseDown={(e) => {
                 e.preventDefault();
                 justClickedInsideRef.current = true;
@@ -89,5 +90,3 @@ export function BlockPickerView({
     </div>
   );
 }
-
-export default BlockPickerView;

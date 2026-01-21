@@ -10,7 +10,15 @@ const PLUGIN_PARAMS_DEFAULTS = {
   migrationCompleted: false,
   realTimeUpdatesEnabled: true,
   dashboardEnabled: true,
-};
+} as const;
+
+function parseString(value: unknown, fallback: string) {
+  return typeof value === 'string' ? value : fallback;
+}
+
+function parseBoolean(value: unknown, fallback: boolean) {
+  return typeof value === 'boolean' ? value : fallback;
+}
 
 export function parsePluginParams(params: unknown): PluginParameters {
   if (!params || typeof params !== 'object') {
@@ -20,22 +28,10 @@ export function parsePluginParams(params: unknown): PluginParameters {
   const rawParams = params as Record<string, unknown>;
 
   return {
-    cdaToken:
-      typeof rawParams.cdaToken === 'string'
-        ? rawParams.cdaToken
-        : PLUGIN_PARAMS_DEFAULTS.cdaToken,
-    migrationCompleted:
-      typeof rawParams.migrationCompleted === 'boolean'
-        ? rawParams.migrationCompleted
-        : PLUGIN_PARAMS_DEFAULTS.migrationCompleted,
-    realTimeUpdatesEnabled:
-      typeof rawParams.realTimeUpdatesEnabled === 'boolean'
-        ? rawParams.realTimeUpdatesEnabled
-        : PLUGIN_PARAMS_DEFAULTS.realTimeUpdatesEnabled,
-    dashboardEnabled:
-      typeof rawParams.dashboardEnabled === 'boolean'
-        ? rawParams.dashboardEnabled
-        : PLUGIN_PARAMS_DEFAULTS.dashboardEnabled,
+    cdaToken: parseString(rawParams.cdaToken, PLUGIN_PARAMS_DEFAULTS.cdaToken),
+    migrationCompleted: parseBoolean(rawParams.migrationCompleted, PLUGIN_PARAMS_DEFAULTS.migrationCompleted),
+    realTimeUpdatesEnabled: parseBoolean(rawParams.realTimeUpdatesEnabled, PLUGIN_PARAMS_DEFAULTS.realTimeUpdatesEnabled),
+    dashboardEnabled: parseBoolean(rawParams.dashboardEnabled, PLUGIN_PARAMS_DEFAULTS.dashboardEnabled),
   };
 }
 

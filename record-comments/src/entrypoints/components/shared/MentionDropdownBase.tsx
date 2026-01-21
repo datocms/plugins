@@ -69,5 +69,3 @@ export function MentionDropdownBase<T>({
     </div>
   );
 }
-
-export default MentionDropdownBase;

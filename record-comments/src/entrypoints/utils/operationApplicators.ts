@@ -1,4 +1,4 @@
-import type { CommentType, Upvoter } from '@ctypes/comments';
+import type { CommentType } from '@ctypes/comments';
 import type {
   CommentOperation,
   AddCommentOp,
@@ -18,6 +18,11 @@ function findReply(parent: CommentType, replyId: string): CommentType | undefine
   return parent.replies?.find((r) => r.id === replyId);
 }
 
+/**
+ * Comment resolution types for the unified lookup pattern.
+ * Operations on replies need to first find the parent comment, then the reply within it.
+ * This discriminated union lets callers handle success/failure paths cleanly.
+ */
 type CommentResolutionSuccess = {
   success: true;
   isReply: boolean;
@@ -32,10 +37,16 @@ type CommentResolutionFailure = {
 
 type CommentResolution = CommentResolutionSuccess | CommentResolutionFailure;
 
+/**
+ * Configuration for failure messages when resolving comment targets.
+ * Each operation provides user-facing error messages appropriate to the context
+ * (e.g., edit vs delete have different implications for lost user work).
+ */
 type ResolutionFailureConfig = {
   operationName: string;
   parentMissingReason: string;
   targetMissingReason: string;
+  /** If true, target not found returns no_op_idempotent (e.g., delete of already-deleted comment) */
   targetNotFoundIsIdempotent?: boolean;
 };
 
@@ -206,21 +217,21 @@ function applyUpvoteComment(comments: CommentType[], op: UpvoteCommentOp): Opera
     return resolution.result;
   }
 
-  const modifyUpvotes = (voters: Upvoter[]): Upvoter[] => {
-    const hasUpvoted = voters.some((v) => v.email === op.user.email);
+  const modifyUpvotes = (voterIds: string[]): string[] => {
+    const hasUpvoted = voterIds.includes(op.userId);
 
     if (op.action === 'add') {
-      if (hasUpvoted) return voters;
-      return [...voters, op.user];
+      if (hasUpvoted) return voterIds;
+      return [...voterIds, op.userId];
     }
-    return voters.filter((v) => v.email !== op.user.email);
+    return voterIds.filter((id) => id !== op.userId);
   };
 
   const newComments = applyCommentUpdate(
     comments,
     op.id,
     op.parentCommentId,
-    (comment) => ({ ...comment, usersWhoUpvoted: modifyUpvotes(comment.usersWhoUpvoted) })
+    (comment) => ({ ...comment, upvoterIds: modifyUpvotes(comment.upvoterIds) })
   );
   return { comments: newComments, status: 'applied' };
 }
@@ -251,5 +262,3 @@ function applyAddReply(comments: CommentType[], op: AddReplyOp): OperationResult
 
   return { comments: newComments, status: 'applied' };
 }
-
-

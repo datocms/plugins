@@ -16,6 +16,7 @@ import { useCommentsData } from '@hooks/useCommentsData';
 import { useCommentActions } from '@hooks/useCommentActions';
 import { useMentionPermissions } from '@hooks/useMentionPermissions';
 import { useReplyPicker } from '@hooks/useReplyPicker';
+import { useEntityResolver } from '@hooks/useEntityResolver';
 
 import { ProjectDataProvider } from './contexts/ProjectDataContext';
 import { MentionPermissionsProvider } from './contexts/MentionPermissionsContext';
@@ -25,7 +26,8 @@ import { getCurrentUserInfo } from '@utils/userTransformers';
 import { createApiClient } from '@utils/apiClient';
 import { createRecordMention } from '@utils/recordPickerHelpers';
 import { insertMentionWithRetry } from '@utils/textareaUtils';
-import { isComposerEmpty, createAssetMention } from '@utils/composerHelpers';
+import { createAssetMention } from '@utils/composerHelpers';
+import { isContentEmpty } from '@ctypes/comments';
 import { parsePluginParams } from '@utils/pluginParams';
 import { findCommentsModel } from '@utils/itemTypeUtils';
 import { SUBSCRIPTION_STATUS } from '@hooks/useCommentsSubscription';
@@ -34,17 +36,13 @@ import { logError, logWarn } from '@/utils/errorLogger';
 import { categorizeGeneralError } from '@utils/errorCategorization';
 import styles from '@styles/commentbar.module.css';
 
-export type { UserInfo, FieldInfo, ModelInfo } from '@hooks/useMentions';
-export type { CommentSegment, Mention } from '@ctypes/mentions';
-export type { CommentType, Upvoter } from '@ctypes/comments';
-
 // Uses props (not context) due to shallow tree. Reply picker logic shared via useReplyPicker hook.
 type Props = {
   ctx: RenderItemFormSidebarCtx;
 };
 
 const CommentsBar = ({ ctx }: Props) => {
-  const { email: userEmail, name: userName } = getCurrentUserInfo(ctx.currentUser);
+  const { id: currentUserId } = getCurrentUserInfo(ctx.currentUser);
 
   const [composerSegments, setComposerSegments] = useState<CommentSegment[]>([]);
   const composerRef = useRef<TipTapComposerRef>(null);
@@ -63,6 +61,16 @@ const CommentsBar = ({ ctx }: Props) => {
   const client = useMemo(() => createApiClient(cmaToken), [cmaToken]);
   const { projectUsers, projectModels, modelFields, typedUsers } = useProjectData(ctx, { loadFields: true });
   const { canMentionAssets, canMentionModels, readableModels } = useMentionPermissions(ctx, projectModels);
+
+  const mainLocale = ctx.site.attributes.locales[0] ?? 'en';
+  const { resolveComments, cacheVersion } = useEntityResolver({
+    client,
+    projectUsers,
+    projectModels,
+    modelFields,
+    itemTypes: ctx.itemTypes,
+    mainLocale,
+  });
 
   const commentsModelId = useMemo(() => {
     const model = findCommentsModel(ctx.itemTypes);
@@ -95,6 +103,7 @@ const CommentsBar = ({ ctx }: Props) => {
     errorInfo,
     status,
     retry: retrySubscription,
+    isAutoReconnecting,
   } = useCommentsData({
     context: 'record',
     ctx,
@@ -103,7 +112,7 @@ const CommentsBar = ({ ctx }: Props) => {
     client,
     isSyncAllowed,
     onCommentRecordIdChange: setCommentRecordId,
-    currentUserEmail: userEmail,
+    currentUserId,
     onOrphanedDraft: handleOrphanedDraft,
   });
 
@@ -116,8 +125,10 @@ const CommentsBar = ({ ctx }: Props) => {
   const visibleComments = useMemo(() => {
     const hideCount = hiddenOldCount ?? Math.max(0, comments.length - COMMENTS_PAGE_SIZE);
     const showCount = comments.length - hideCount;
-    return comments.slice(0, showCount);
-  }, [comments, hiddenOldCount]);
+    const sliced = comments.slice(0, showCount);
+    return resolveComments(sliced);
+    // cacheVersion triggers re-resolution when async entities (records/assets) are fetched
+  }, [comments, hiddenOldCount, resolveComments, cacheVersion]);
 
   const hasMoreComments = (hiddenOldCount ?? 0) > 0;
 
@@ -129,8 +140,7 @@ const CommentsBar = ({ ctx }: Props) => {
     replyComment,
   } = useCommentActions({
     ctx,
-    userEmail,
-    userName,
+    userId: currentUserId,
     setComments,
     enqueue,
     composerSegments,
@@ -241,7 +251,7 @@ const CommentsBar = ({ ctx }: Props) => {
   });
 
   const isComposerEmptyValue = useMemo(
-    () => isComposerEmpty(composerSegments),
+    () => isContentEmpty(composerSegments),
     [composerSegments]
   );
 
@@ -273,7 +283,7 @@ const CommentsBar = ({ ctx }: Props) => {
         projectUsers={projectUsers}
         projectModels={projectModels}
         modelFields={modelFields}
-        currentUserEmail={userEmail}
+        currentUserId={currentUserId}
         typedUsers={typedUsers}
       >
         <MentionPermissionsProvider
@@ -282,15 +292,19 @@ const CommentsBar = ({ ctx }: Props) => {
           canMentionModels={canMentionModels}
         >
         <div className={styles.container}>
-          <div className={styles.header}>
-            <SyncStatusIndicator
-              subscriptionStatus={status}
-              subscriptionError={errorInfo?.message ?? null}
-              retryState={retryState}
-              onRetry={retrySubscription}
-              realTimeEnabled={realTimeEnabled}
-            />
-          </div>
+          {/* Inline status indicators (errors, retrying, connecting) - positioned in header */}
+          {!isAutoReconnecting && (
+            <div className={styles.header}>
+              <SyncStatusIndicator
+                subscriptionStatus={status}
+                subscriptionError={errorInfo?.message ?? null}
+                retryState={retryState}
+                onRetry={retrySubscription}
+                realTimeEnabled={realTimeEnabled}
+                isAutoReconnecting={false}
+              />
+            </div>
+          )}
 
           {realTimeEnabled && !cdaToken && (
             <div className={styles.warning}>
@@ -304,13 +318,25 @@ const CommentsBar = ({ ctx }: Props) => {
 
           <div className={styles.composer}>
             <CommentErrorBoundary fallbackMessage="Unable to load editor. Please refresh.">
+              {/* Reconnecting banner - full width above composer */}
+              {isAutoReconnecting && (
+                <SyncStatusIndicator
+                  subscriptionStatus={status}
+                  subscriptionError={null}
+                  retryState={retryState}
+                  onRetry={retrySubscription}
+                  realTimeEnabled={realTimeEnabled}
+                  isAutoReconnecting={true}
+                  variant="banner"
+                />
+              )}
               <div className={styles.composerInputWrapper}>
                 <TipTapComposer
                   ref={composerRef}
                   segments={composerSegments}
                   onSegmentsChange={setComposerSegments}
                   onSubmit={submitNewComment}
-                  placeholder="Add a comment...&#10;@ user, # field, & record, ^ asset, $ model"
+                  placeholder="Add a comment...&#10;Type / for commands"
                   projectUsers={projectUsers}
                   modelFields={modelFields}
                   projectModels={projectModels}
@@ -350,7 +376,7 @@ const CommentsBar = ({ ctx }: Props) => {
             comments={visibleComments}
             hasMoreComments={hasMoreComments}
             onLoadMore={() => setHiddenOldCount((prev) => Math.max(0, (prev ?? 0) - COMMENTS_PAGE_SIZE))}
-            currentUserEmail={userEmail}
+            currentUserId={currentUserId}
             modelFields={modelFields}
             projectUsers={projectUsers}
             projectModels={projectModels}

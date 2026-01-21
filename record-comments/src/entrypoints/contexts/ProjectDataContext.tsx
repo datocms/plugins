@@ -6,7 +6,7 @@ type ProjectDataContextType = {
   projectUsers: UserInfo[];
   projectModels: ModelInfo[];
   modelFields: FieldInfo[];
-  currentUserEmail: string;
+  currentUserId: string;
   typedUsers: TypedUserInfo[];
 };
 
@@ -17,7 +17,7 @@ type ProjectDataProviderProps = {
   projectUsers: UserInfo[];
   projectModels: ModelInfo[];
   modelFields: FieldInfo[];
-  currentUserEmail: string;
+  currentUserId: string;
   typedUsers: TypedUserInfo[];
 };
 
@@ -26,7 +26,7 @@ export function ProjectDataProvider({
   projectUsers,
   projectModels,
   modelFields,
-  currentUserEmail,
+  currentUserId,
   typedUsers,
 }: ProjectDataProviderProps) {
   const value = useMemo(
@@ -34,10 +34,10 @@ export function ProjectDataProvider({
       projectUsers,
       projectModels,
       modelFields,
-      currentUserEmail,
+      currentUserId,
       typedUsers,
     }),
-    [projectUsers, projectModels, modelFields, currentUserEmail, typedUsers]
+    [projectUsers, projectModels, modelFields, currentUserId, typedUsers]
   );
 
   return (

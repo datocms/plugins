@@ -5,13 +5,14 @@ import {
   ownerToUserInfo,
   regularUserToUserInfo,
   ssoUserToUserInfo,
+  currentUserToUserInfo,
   type UserInfo,
 } from '@utils/userTransformers';
 import type { FieldInfo, ModelInfo } from './useMentions';
 import { getValidItemTypes } from '@utils/itemTypeUtils';
 import { logError } from '@/utils/errorLogger';
 import { useAsyncOperation } from './useAsyncOperation';
-import { type UserType, type TypedUserInfo } from '@utils/userDisplayResolver';
+import type { TypedUserInfo } from '@utils/userDisplayResolver';
 
 type ProjectDataContext = RenderItemFormSidebarCtx | RenderPageCtx;
 
@@ -81,6 +82,8 @@ export function useProjectData(
     errorContext: { itemTypeId },
   });
 
+  const currentUserId = ctx.currentUser.id;
+
   const loadUsersAsync = useCallback(async (): Promise<{
     allUsers: UserInfo[];
     typedUsers: TypedUserInfo[];
@@ -108,26 +111,33 @@ export function useProjectData(
 
     for (const user of regularUsersRaw) {
       const userInfo = regularUserToUserInfo(user, 48);
-      typedUsers.push({ user: userInfo, userType: 'user' as UserType });
+      typedUsers.push({ user: userInfo, userType: 'user' });
     }
 
     for (const user of ssoUsersRaw) {
       const userInfo = ssoUserToUserInfo(user, 48);
-      typedUsers.push({ user: userInfo, userType: 'sso' as UserType });
+      typedUsers.push({ user: userInfo, userType: 'sso' });
     }
 
     const ownerInfo = ownerToUserInfo(ctx.owner, 48);
-    const ownerType: UserType = ctx.owner.type === 'organization' ? 'org' : 'account';
+    const ownerType = ctx.owner.type === 'organization' ? 'org' : 'account' as const;
     const ownerAlreadyIncluded = typedUsers.some((tu) => tu.user.id === ownerInfo.id);
     if (!ownerAlreadyIncluded) {
       typedUsers.unshift({ user: ownerInfo, userType: ownerType });
+    }
+
+    // Include current user if not already in the list (e.g., org owners without email)
+    const currentUserAlreadyIncluded = typedUsers.some((tu) => tu.user.id === ctx.currentUser.id);
+    if (!currentUserAlreadyIncluded) {
+      const currentUserInfo = currentUserToUserInfo(ctx.currentUser, 48);
+      typedUsers.unshift({ user: currentUserInfo, userType: 'user' });
     }
 
     const allUsers = typedUsers.map((tu) => tu.user);
 
     return { allUsers, typedUsers };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [siteId]);
+  }, [siteId, currentUserId]);
 
   const {
     data: userData,

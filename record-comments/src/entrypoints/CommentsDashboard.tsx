@@ -26,6 +26,7 @@ import { getCurrentUserInfo } from '@utils/userTransformers';
 import { parsePluginParams, hasCdaToken } from '@utils/pluginParams';
 
 import type { StyleWithCustomProps } from '@ctypes/styles';
+import { cn } from '@/utils/cn';
 
 import styles from '@styles/dashboard.module.css';
 
@@ -39,7 +40,7 @@ const CommentsDashboard = ({ ctx }: CommentsDashboardProps) => {
   const cdaToken = pluginParams.cdaToken;
   const realTimeEnabled = hasCdaToken(pluginParams);
 
-  const { email: userEmail, name: userName } = getCurrentUserInfo(ctx.currentUser);
+  const { id: currentUserId } = getCurrentUserInfo(ctx.currentUser);
 
   const client = useMemo(() => {
     if (!ctx.currentUserAccessToken) return null;
@@ -74,7 +75,7 @@ const CommentsDashboard = ({ ctx }: CommentsDashboardProps) => {
     cdaToken,
     client,
     isSyncAllowed,
-    currentUserEmail: userEmail,
+    currentUserId,
     onOrphanedDraft: handleOrphanedDraft,
     onBeforeSync,
     onAfterSync,
@@ -96,7 +97,7 @@ const CommentsDashboard = ({ ctx }: CommentsDashboardProps) => {
     mainLocale,
   });
 
-  const userMentions = useMemo(() => extractUserMentions(allComments, userEmail), [allComments, userEmail]);
+  const userMentions = useMemo(() => extractUserMentions(allComments, currentUserId), [allComments, currentUserId]);
   const recentComments = useMemo(() => extractRecentComments(allComments, 20), [allComments]);
 
   const handleNavigateToRecord = useCallback(
@@ -123,13 +124,13 @@ const CommentsDashboard = ({ ctx }: CommentsDashboardProps) => {
 
   const activeFilterCount = [
     filters.searchQuery.trim(),
-    filters.authorEmail,
+    filters.authorId,
     filters.dateRange.start,
     filters.dateRange.end,
     filters.mentionedRecordId,
     filters.mentionedAssetId,
     filters.mentionedModelId,
-    filters.mentionedUserEmail,
+    filters.mentionedUserId,
   ].filter(Boolean).length;
 
   const showFilterColumn = hasComments && !isFilterCollapsed;
@@ -143,7 +144,7 @@ const CommentsDashboard = ({ ctx }: CommentsDashboardProps) => {
             projectUsers={projectUsers}
             projectModels={projectModels}
             modelFields={[]}
-            currentUserEmail={userEmail}
+            currentUserId={currentUserId}
             typedUsers={typedUsers}
           >
             <MentionPermissionsProvider
@@ -154,7 +155,6 @@ const CommentsDashboard = ({ ctx }: CommentsDashboardProps) => {
               <GlobalCommentsChannel
                 ctx={ctx}
                 client={client}
-                userName={userName}
                 readableModels={readableModels}
                 accentColor={accentColor}
                 comments={comments}
@@ -192,7 +192,7 @@ const CommentsDashboard = ({ ctx }: CommentsDashboardProps) => {
         {hasComments && (
           <button
             type="button"
-            className={`${styles.filterToggleFab}${isFiltering ? ` ${styles.filterToggleFabActive}` : ''}${!isFilterCollapsed ? ` ${styles.filterToggleFabExpanded}` : ''}`}
+            className={cn(styles.filterToggleFab, isFiltering && styles.filterToggleFabActive, !isFilterCollapsed && styles.filterToggleFabExpanded)}
             onClick={() => setIsFilterCollapsed(!isFilterCollapsed)}
             style={{ '--accent-color': accentColor } as StyleWithCustomProps}
             title={isFilterCollapsed ? 'Show filters' : 'Hide filters'}

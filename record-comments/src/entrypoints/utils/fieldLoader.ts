@@ -20,8 +20,6 @@ import {
 } from './blockHelpers';
 import { logError } from '@/utils/errorLogger';
 
-export type { BlockValue, FieldValue } from './blockHelpers';
-
 export function extractLocalizedValue<T = unknown>(
   fieldValue: T,
   locale: string | undefined
@@ -421,8 +419,6 @@ function getFieldValueByPath(
   return undefined;
 }
 
-export { extractBlocksFromFieldValue } from './blockHelpers';
-
 export function getBlocksForField(
   ctx: RenderItemFormSidebarCtx,
   fieldPath: string,
@@ -509,7 +505,7 @@ export async function getFieldsForBlock(
   });
 }
 
-export function getValueAtPath(
+function getValueAtPath(
   formValues: Record<string, FieldValue>,
   path: string
 ): FieldValue | undefined {
@@ -560,4 +556,3 @@ export function getBlockAttributesAtPath(
 
   return null;
 }
-

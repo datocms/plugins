@@ -1,42 +1,41 @@
-import type { Upvoter } from '@ctypes/comments';
-
-export type { Upvoter } from '@ctypes/comments';
+// Legacy format types for migration
+type LegacyUpvoter = { name: string; email: string };
 
 export type LegacyComment = {
   dateISO: string;
   content: unknown;
   author: { name: string; email: string };
-  usersWhoUpvoted: (string | Upvoter)[];
+  usersWhoUpvoted: (string | LegacyUpvoter)[];
   replies?: LegacyComment[];
   parentCommentISO?: string;
 };
 
+// New slim format after migration
 export type NormalizedComment = {
   dateISO: string;
   content: unknown;
-  author: { name: string; email: string };
-  usersWhoUpvoted: Upvoter[];
+  authorEmail: string;
+  upvoterEmails: string[];
   replies?: NormalizedComment[];
   parentCommentId?: string;
 };
 
-/** Normalizes legacy upvoter format (email strings) to { name, email } objects. */
-export function normalizeUpvoters(upvoters: (string | Upvoter)[]): Upvoter[] {
+/** Normalizes legacy upvoter format to email strings. */
+function normalizeUpvoters(upvoters: (string | LegacyUpvoter)[]): string[] {
   if (!upvoters || !Array.isArray(upvoters)) return [];
   return upvoters.map((upvoter) => {
-    if (typeof upvoter !== 'string') return upvoter;
-    const email = upvoter;
-    const derivedName = email.includes('@') ? email.split('@')[0] : email;
-    return { name: derivedName, email };
+    if (typeof upvoter === 'string') return upvoter;
+    return upvoter.email;
   });
 }
 
 export function normalizeComment(comment: LegacyComment): NormalizedComment {
-  const { parentCommentISO, ...rest } = comment;
+  const { parentCommentISO, author, usersWhoUpvoted, replies, ...rest } = comment;
   return {
     ...rest,
-    usersWhoUpvoted: normalizeUpvoters(comment.usersWhoUpvoted),
-    replies: comment.replies?.map(normalizeComment),
+    authorEmail: author.email,
+    upvoterEmails: normalizeUpvoters(usersWhoUpvoted),
+    replies: replies?.map(normalizeComment),
     ...(parentCommentISO !== undefined && { parentCommentId: parentCommentISO }),
   };
 }
@@ -45,7 +44,7 @@ type CommentWithId = NormalizedComment & { id?: string };
 type MigratedComment = NormalizedComment & { id: string };
 
 /** Legacy: id missing, equals dateISO, or is ISO timestamp. */
-export function isLegacyIdFormat(comment: CommentWithId): boolean {
+function isLegacyIdFormat(comment: CommentWithId): boolean {
   if (!comment.id) return true;
   if (comment.id === comment.dateISO) return true;
 
@@ -54,7 +53,7 @@ export function isLegacyIdFormat(comment: CommentWithId): boolean {
 }
 
 /** Migrates legacy IDs to UUIDs and updates parentCommentId references. */
-export function migrateCommentId(
+function migrateCommentId(
   comment: CommentWithId,
   parentIdMap: Map<string, string> = new Map()
 ): MigratedComment {

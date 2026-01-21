@@ -1,4 +1,4 @@
-import { useId, memo, useMemo } from 'react';
+import { useId, memo, useMemo, useState } from 'react';
 import type { Mention } from '@ctypes/mentions';
 import type { UserInfo } from '@hooks/useMentions';
 import {
@@ -8,6 +8,7 @@ import {
 } from '@utils/mentionFormatters';
 import { areMentionsEqual } from '@utils/comparisonHelpers';
 import { RecordDocumentIcon, ModelMentionIcon } from '../Icons';
+import { cn } from '@/utils/cn';
 import styles from '@styles/comment.module.css';
 
 type MentionDisplayProps = {
@@ -19,6 +20,75 @@ type MentionDisplayProps = {
   tooltipId?: string;
   projectUsers?: UserInfo[];
 };
+
+type AssetThumbnailMentionProps = {
+  mention: Extract<Mention, { type: 'asset' }>;
+  tabIndex: number;
+  onClick: (e: React.MouseEvent) => void;
+  tooltipId: string;
+};
+
+function AssetThumbnailMention({ mention, tabIndex, onClick, tooltipId }: AssetThumbnailMentionProps) {
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
+  const truncatedName = getTruncatedFilename(mention.filename);
+
+  // On error, fall back to simple filename display (same as non-visual assets)
+  if (hasError) {
+    return (
+      <span className={styles.assetMentionWrapper}>
+        <button
+          type="button"
+          tabIndex={tabIndex}
+          className={cn(styles.assetMention, styles.assetMentionNoThumb)}
+          aria-describedby={tooltipId}
+          onClick={onClick}
+        >
+          <span className={styles.assetMentionName}>{truncatedName}</span>
+        </button>
+        <span
+          id={tooltipId}
+          role="tooltip"
+          className={styles.assetMentionTooltip}
+        >
+          {mention.filename}
+          <span className={styles.assetMentionTooltipArrow} aria-hidden="true" />
+        </span>
+      </span>
+    );
+  }
+
+  return (
+    <span className={styles.assetMentionBlockWrapper}>
+      <button
+        type="button"
+        tabIndex={tabIndex}
+        className={styles.assetMentionBlock}
+        onClick={onClick}
+      >
+        {isLoading && (
+          <span className={styles.assetMentionBlockSkeleton} aria-hidden="true" />
+        )}
+        <img
+          src={mention.thumbnailUrl!}
+          alt={mention.filename}
+          className={cn(
+            styles.assetMentionBlockThumb,
+            isLoading && styles.assetMentionBlockThumbHidden
+          )}
+          onLoad={() => setIsLoading(false)}
+          onError={() => {
+            setIsLoading(false);
+            setHasError(true);
+          }}
+        />
+        <span className={styles.assetMentionBlockName}>
+          {mention.filename}
+        </span>
+      </button>
+    </span>
+  );
+}
 
 const MentionDisplayComponent = ({
   mention,
@@ -69,7 +139,7 @@ const MentionDisplayComponent = ({
           <button
             type="button"
             tabIndex={tabIndex}
-            className={`${styles.userMention}${!isClickable ? ` ${styles.userMentionDisabled}` : ''}`}
+            className={cn(styles.userMention, !isClickable && styles.userMentionDisabled)}
             aria-describedby={tooltipId}
             onClick={isClickable ? handleClick : undefined}
             disabled={!isClickable}
@@ -97,7 +167,7 @@ const MentionDisplayComponent = ({
           <button
             type="button"
             tabIndex={tabIndex}
-            className={`${styles.fieldMention}${!isClickable ? ` ${styles.fieldMentionDisabled}` : ''}`}
+            className={cn(styles.fieldMention, !isClickable && styles.fieldMentionDisabled)}
             aria-describedby={formattedFieldType ? tooltipId : undefined}
             onClick={isClickable ? handleClick : undefined}
             disabled={!isClickable}
@@ -130,35 +200,12 @@ const MentionDisplayComponent = ({
 
       if (hasThumb) {
         return (
-          <span className={styles.assetMentionBlockWrapper}>
-            <button
-              type="button"
-              tabIndex={tabIndex}
-              className={styles.assetMentionBlock}
-              onClick={handleClick}
-            >
-              <img
-                src={mention.thumbnailUrl!}
-                alt={mention.filename}
-                className={styles.assetMentionBlockThumb}
-                onError={(e) => {
-                  const target = e.currentTarget;
-                  target.onerror = null;
-                  target.style.display = 'none';
-                  const parentButton = target.closest('button');
-                  if (parentButton) {
-                    parentButton.setAttribute('data-img-error', 'true');
-                  }
-                }}
-              />
-              <span className={styles.assetMentionBlockFallback} aria-hidden="true">
-                ^
-              </span>
-              <span className={styles.assetMentionBlockName}>
-                {mention.filename}
-              </span>
-            </button>
-          </span>
+          <AssetThumbnailMention
+            mention={mention}
+            tabIndex={tabIndex}
+            onClick={handleClick}
+            tooltipId={tooltipId}
+          />
         );
       }
 
@@ -167,7 +214,7 @@ const MentionDisplayComponent = ({
           <button
             type="button"
             tabIndex={tabIndex}
-            className={`${styles.assetMention} ${styles.assetMentionNoThumb}`}
+            className={cn(styles.assetMention, styles.assetMentionNoThumb)}
             aria-describedby={tooltipId}
             onClick={handleClick}
           >
@@ -196,7 +243,7 @@ const MentionDisplayComponent = ({
           <button
             type="button"
             tabIndex={tabIndex}
-            className={`${styles.recordMention} ${!mention.thumbnailUrl ? styles.recordMentionNoThumb : ''}`}
+            className={cn(styles.recordMention, !mention.thumbnailUrl && styles.recordMentionNoThumb)}
             aria-describedby={tooltipId}
             onClick={handleClick}
           >
@@ -285,5 +332,3 @@ export const MentionDisplay = memo(MentionDisplayComponent, (prevProps, nextProp
 
   return areMentionsEqual(prevProps.mention, nextProps.mention);
 });
-
-export default MentionDisplay;

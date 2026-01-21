@@ -6,12 +6,12 @@ type ContextWithSite = {
   };
 };
 
-export function getBaseUrl(ctx: ContextWithSite): string {
+function getBaseUrl(ctx: ContextWithSite) {
   const domain = ctx.site.attributes.internal_domain;
   return domain ? `https://${domain}` : '';
 }
 
-export function buildModelPath(modelId: string, isBlockModel: boolean): string {
+function buildModelPath(modelId: string, isBlockModel: boolean) {
   return isBlockModel
     ? `/schema/blocks_library/${modelId}`
     : `/schema/item_types/${modelId}`;

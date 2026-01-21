@@ -1,5 +1,6 @@
 import type { MutableRefObject, ReactNode, Ref } from 'react';
 import type { FieldInfo } from '@hooks/useMentions';
+import { cn } from '@/utils/cn';
 import styles from '@styles/comment.module.css';
 
 type NestedFieldsViewProps = {
@@ -48,7 +49,7 @@ export function NestedFieldsView({
             key={field.fieldPath}
             ref={index === selectedIndex ? selectedRef : null}
             type="button"
-            className={`${styles.mentionOption} ${index === selectedIndex ? styles.mentionOptionSelected : ''}`}
+            className={cn(styles.mentionOption, index === selectedIndex && styles.mentionOptionSelected)}
             onMouseDown={(e) => {
               e.preventDefault();
               justClickedInsideRef.current = true;
@@ -79,5 +80,3 @@ export function NestedFieldsView({
     </div>
   );
 }
-
-export default NestedFieldsView;

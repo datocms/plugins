@@ -29,9 +29,9 @@ type SsoUser = {
 };
 
 type CurrentUser = {
+  id: string;
   attributes: Record<string, unknown>;
 };
-
 
 /** Extract local part of email (before @), or return original if no @. */
 function extractEmailLocalPart(emailOrUsername: string): string {
@@ -97,11 +97,44 @@ export function ownerToUserInfo(
   };
 }
 
-export function getCurrentUserInfo(currentUser: CurrentUser): { email: string; name: string } {
+const USER_ID_PREFIX = '__user_id:';
+const USER_ID_SUFFIX = '__';
+
+function createUserIdIdentifier(userId: string) {
+  return `${USER_ID_PREFIX}${userId}${USER_ID_SUFFIX}`;
+}
+
+export function getCurrentUserInfo(currentUser: CurrentUser): { id: string; email: string; name: string } {
   const attrs = currentUser.attributes;
-  const email = getString(attrs.email) ?? 'unknown@email.com';
-  const name = getString(attrs.full_name) ?? getString(attrs.name) ?? extractEmailLocalPart(email);
-  return { email, name };
+  const id = currentUser.id;
+  const actualEmail = getString(attrs.email);
+
+  // Use actual email if available, otherwise use special ID-based identifier
+  const email = actualEmail ?? createUserIdIdentifier(id);
+
+  // For name: prefer full_name, then name attr, then email local part (if real email), then "User"
+  const name = getString(attrs.full_name)
+    ?? getString(attrs.name)
+    ?? (actualEmail ? extractEmailLocalPart(actualEmail) : 'User');
+
+  return { id, email, name };
+}
+
+/**
+ * Converts the current user to a full UserInfo object for inclusion in projectUsers.
+ * This ensures the current user can be resolved even if they're not in the regular/SSO users list
+ * (e.g., organization owners).
+ */
+export function currentUserToUserInfo(currentUser: CurrentUser, avatarSize = 48): UserInfo {
+  const { id, email, name } = getCurrentUserInfo(currentUser);
+  const actualEmail = getString(currentUser.attributes.email);
+
+  return {
+    id,
+    email,
+    name,
+    avatarUrl: actualEmail ? getGravatarUrl(actualEmail, avatarSize) : null,
+  };
 }
 
 export function transformUsersToUserInfo(

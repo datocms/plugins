@@ -177,10 +177,10 @@ describe('applyAddReply', () => {
     });
 
     it('preserves parent upvoters', () => {
-      const upvoters = [{ name: 'Voter', email: 'voter@test.com' }];
+      const upvoterIds = ['voter-1', 'voter-2'];
       const parent = createBaseComment({
         id: 'parent',
-        usersWhoUpvoted: upvoters,
+        upvoterIds,
       });
       const reply = createBaseComment({
         id: 'reply',
@@ -190,14 +190,14 @@ describe('applyAddReply', () => {
 
       const result = applyOperation([parent], op);
 
-      expect(result.comments[0].usersWhoUpvoted).toEqual(upvoters);
+      expect(result.comments[0].upvoterIds).toEqual(upvoterIds);
     });
 
-    it('preserves parent author', () => {
-      const author = { name: 'Author', email: 'author@test.com' };
+    it('preserves parent authorId', () => {
+      const authorId = 'author-123';
       const parent = createBaseComment({
         id: 'parent',
-        author,
+        authorId,
       });
       const reply = createBaseComment({
         id: 'reply',
@@ -207,7 +207,7 @@ describe('applyAddReply', () => {
 
       const result = applyOperation([parent], op);
 
-      expect(result.comments[0].author).toEqual(author);
+      expect(result.comments[0].authorId).toBe(authorId);
     });
   });
 

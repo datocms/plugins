@@ -56,10 +56,11 @@ describe('getGravatarUrl', () => {
 
 describe('getThumbnailUrl', () => {
   describe('image thumbnails', () => {
-    it('returns thumbnail URL for images', () => {
+    it('returns thumbnail URL for images with optimization params', () => {
       const result = getThumbnailUrl('image/jpeg', 'https://cdn.example.com/image.jpg');
 
-      expect(result).toBe('https://cdn.example.com/image.jpg?w=300&fit=max&auto=format');
+      // Includes dpr=2 for retina, q=80 for compression, auto=format for webp/avif
+      expect(result).toBe('https://cdn.example.com/image.jpg?w=300&fit=max&auto=format&dpr=2&q=80');
     });
 
     it('uses custom width', () => {

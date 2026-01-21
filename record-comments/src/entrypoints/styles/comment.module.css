@@ -899,27 +899,38 @@
   color: var(--mention-asset-dark);
 }
 
-/* Fallback for broken image thumbnails - shows ^ character when image fails to load.
- * Hidden by default, shown via CSS when parent button has data-img-error="true".
- * This approach is more robust than DOM traversal (nextElementSibling) because:
- * 1. CSS handles the visibility toggle, not JavaScript DOM manipulation
- * 2. Works regardless of DOM structure changes or React re-renders
- * 3. Fallback is always guaranteed to show if image fails */
-.assetMentionBlockFallback {
-  display: none; /* Hidden by default */
-  align-items: center;
-  justify-content: center;
+/* Skeleton loading state for asset thumbnails */
+.assetMentionBlockSkeleton {
+  display: block;
   width: 100%;
+  min-width: 120px;
   height: 80px;
-  font-size: 24px;
-  font-weight: 500;
-  color: var(--mention-asset);
-  background-color: var(--mention-asset-bg);
+  background: linear-gradient(
+    90deg,
+    var(--mention-asset-bg) 0%,
+    var(--mention-asset-border) 50%,
+    var(--mention-asset-bg) 100%
+  );
+  background-size: 200% 100%;
+  animation: assetSkeletonShimmer 1.5s ease-in-out infinite;
 }
 
-/* Show fallback when image fails to load (parent button gets data-img-error attribute) */
-.assetMentionBlock[data-img-error="true"] .assetMentionBlockFallback {
-  display: flex;
+@keyframes assetSkeletonShimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Hide image while loading */
+.assetMentionBlockThumbHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
 }
 
 /* ============================================
@@ -1285,4 +1296,70 @@
   border: 1px solid var(--color-error-border);
   border-radius: var(--radius-md);
   text-align: center;
+}
+
+/* ============================================
+   Slash Command Menu
+   ============================================ */
+
+.slashCommandMenu {
+  min-width: 180px;
+}
+
+.slashCommandItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  text-align: left;
+}
+
+.slashCommandIcon {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--light-body-color);
+  background-color: var(--bg-tertiary);
+  border-radius: var(--radius-sm);
+  flex-shrink: 0;
+}
+
+.mentionOptionSelected .slashCommandIcon {
+  background-color: var(--accent-color-a20);
+  color: var(--accent-color);
+}
+
+.slashCommandContent {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.slashCommandName {
+  font-weight: 600;
+  font-size: var(--font-size-xs);
+  color: var(--base-body-color);
+}
+
+.mentionOptionSelected .slashCommandName {
+  color: var(--accent-color);
+}
+
+.slashCommandDescription {
+  font-size: 10px;
+  color: var(--light-body-color);
+  line-height: 1.3;
+}
+
+.mentionOptionSelected .slashCommandDescription {
+  color: var(--accent-color);
+  opacity: 0.8;
 }

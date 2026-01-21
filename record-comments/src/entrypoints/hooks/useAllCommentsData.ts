@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Client } from '@datocms/cma-client-browser';
 import { COMMENTS_MODEL_API_KEY, GLOBAL_MODEL_ID, TIMING } from '@/constants';
 import { type CommentType, parseComments } from '@ctypes/comments';
-import type { CommentSegment } from '@ctypes/mentions';
+import type { StoredCommentSegment } from '@ctypes/mentions';
 import { getRecordTitles } from '@utils/recordTitleUtils';
 import { delay, calculateBackoffDelay } from '@utils/backoff';
 
@@ -59,22 +59,28 @@ type UseAllCommentsDataReturn = {
   refetch: () => Promise<void>;
 };
 
-function segmentMentionsUser(segment: CommentSegment, userEmail: string): boolean {
+/** Checks if a stored segment mentions a specific user by ID. */
+function segmentMentionsUser(segment: StoredCommentSegment, userId: string): boolean {
   if (segment.type !== 'mention') return false;
   if (segment.mention.type !== 'user') return false;
-  return segment.mention.email === userEmail;
+  return segment.mention.id === userId;
 }
 
-function commentMentionsUser(content: CommentSegment[], userEmail: string): boolean {
-  return content.some((segment) => segmentMentionsUser(segment, userEmail));
+/** Checks if comment content contains a mention of a specific user by ID. */
+function commentMentionsUser(content: StoredCommentSegment[], userId: string): boolean {
+  return content.some((segment) => segmentMentionsUser(segment, userId));
 }
 
+/**
+ * Extracts comments that mention the specified user.
+ * @param userId - The user ID to match (use projectUsers to find ID from email)
+ */
 export function extractUserMentions(
   comments: CommentWithContext[],
-  userEmail: string
+  userId: string
 ): CommentWithContext[] {
   return comments
-    .filter((item) => commentMentionsUser(item.comment.content, userEmail))
+    .filter((item) => commentMentionsUser(item.comment.content, userId))
     .sort((a, b) =>
       new Date(b.comment.dateISO).getTime() - new Date(a.comment.dateISO).getTime()
     );
@@ -101,6 +107,7 @@ export function useAllCommentsData({
   const [allComments, setAllComments] = useState<CommentWithContext[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const hasFetchedOnce = useRef(false);
 
   const mainLocaleRef = useRef(mainLocale);
   mainLocaleRef.current = mainLocale;
@@ -110,6 +117,9 @@ export function useAllCommentsData({
       setIsLoading(false);
       return;
     }
+
+    // Only show loading state on first fetch
+    const isFirstFetch = !hasFetchedOnce.current;
 
     try {
       const records = await fetchWithRetry(() =>
@@ -185,7 +195,10 @@ export function useAllCommentsData({
     } catch (e) {
       setError(e instanceof Error ? e : new Error(String(e)));
     } finally {
-      setIsLoading(false);
+      hasFetchedOnce.current = true;
+      if (isFirstFetch) {
+        setIsLoading(false);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mainLocale accessed via ref
   }, [client]);

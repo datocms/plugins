@@ -39,5 +39,3 @@ export function FieldDropdownHeader({
     </div>
   );
 }
-
-export default FieldDropdownHeader;

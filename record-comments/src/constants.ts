@@ -5,7 +5,6 @@ export const COMMENTS_MODEL_API_KEY = 'project_comment';
 export const GLOBAL_MODEL_ID = '__global__';
 export const GLOBAL_RECORD_ID = '__project__';
 
-
 export const TIMING = {
   SYNC_COOLDOWN_MS: 8000,
   VERSION_CONFLICT_BACKOFF_BASE: 100,
@@ -16,6 +15,9 @@ export const TIMING = {
   HIGHLIGHT_DURATION_MS: 2000,
   MIGRATION_UI_DELAY_MS: 100,
   SCROLL_AFTER_REPLY_DELAY_MS: 100, // Wait for React to render new reply before scrolling
+  // If tab was hidden for longer than this, refresh subscription when tab becomes visible
+  // This prevents stale WebSocket connections in long-running tabs
+  VISIBILITY_REFRESH_THRESHOLD_MS: 60000, // 1 minute
 } as const;
 
 export const COMMENTS_PAGE_SIZE = 30;
@@ -63,7 +65,3 @@ export const CMA_FETCH = {
   TIMEOUT_MS: 30000,
   MAX_RETRIES: 3,
 } as const;
-
-
-
-

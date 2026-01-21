@@ -9,6 +9,9 @@ type SyncStatusIndicatorProps = {
   retryState: RetryState;
   onRetry?: () => void;
   realTimeEnabled: boolean;
+  isAutoReconnecting?: boolean;
+  /** Display as full-width banner (for reconnecting state above composer) */
+  variant?: 'inline' | 'banner';
 };
 
 function SyncStatusIndicatorComponent({
@@ -17,6 +20,8 @@ function SyncStatusIndicatorComponent({
   retryState,
   onRetry,
   realTimeEnabled,
+  isAutoReconnecting = false,
+  variant = 'inline',
 }: SyncStatusIndicatorProps) {
   if (retryState.isRetrying) {
     return (
@@ -72,6 +77,26 @@ function SyncStatusIndicatorComponent({
   }
 
   if (realTimeEnabled && subscriptionStatus === SUBSCRIPTION_STATUS.CLOSED) {
+    // Auto-reconnecting - show spinner and "Reconnecting..." message
+    if (isAutoReconnecting) {
+      const className = variant === 'banner'
+        ? `${styles.indicator} ${styles.banner}`
+        : styles.indicator;
+
+      return (
+        <div
+          className={className}
+          data-status="reconnecting"
+          role="status"
+          aria-live="polite"
+        >
+          <span className={styles.spinner} aria-hidden="true" />
+          <span className={styles.text}>Reconnecting...</span>
+        </div>
+      );
+    }
+
+    // Fallback: show error state with manual retry (shouldn't normally reach here)
     return (
       <div
         className={styles.indicator}

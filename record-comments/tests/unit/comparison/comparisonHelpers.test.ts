@@ -7,10 +7,10 @@ import {
   areCommentsEqual,
 } from '@utils/comparisonHelpers';
 import {
-  createBaseComment,
-  createCommentWithReplies,
-  createTextSegment,
-  createUpvoter,
+  createResolvedComment,
+  createResolvedCommentWithReplies,
+  createResolvedAuthor,
+  createFullTextSegment,
   resetIdCounter,
 } from '../fixtures/comments';
 import {
@@ -185,14 +185,14 @@ describe('areMentionsEqual', () => {
 describe('areSegmentsEqual', () => {
   describe('text segments', () => {
     it('returns true for identical text segments', () => {
-      const a = [createTextSegment('Hello')];
-      const b = [createTextSegment('Hello')];
+      const a = [createFullTextSegment('Hello')];
+      const b = [createFullTextSegment('Hello')];
       expect(areSegmentsEqual(a, b)).toBe(true);
     });
 
     it('returns false for different text content', () => {
-      const a = [createTextSegment('Hello')];
-      const b = [createTextSegment('World')];
+      const a = [createFullTextSegment('Hello')];
+      const b = [createFullTextSegment('World')];
       expect(areSegmentsEqual(a, b)).toBe(false);
     });
 
@@ -201,8 +201,8 @@ describe('areSegmentsEqual', () => {
     });
 
     it('returns false for different lengths', () => {
-      const a = [createTextSegment('A'), createTextSegment('B')];
-      const b = [createTextSegment('A')];
+      const a = [createFullTextSegment('A'), createFullTextSegment('B')];
+      const b = [createFullTextSegment('A')];
       expect(areSegmentsEqual(a, b)).toBe(false);
     });
   });
@@ -225,20 +225,20 @@ describe('areSegmentsEqual', () => {
   describe('mixed segments', () => {
     it('returns true for identical mixed segments', () => {
       const mention = createUserMention();
-      const a = [createTextSegment('Hello '), createMentionSegment(mention)];
-      const b = [createTextSegment('Hello '), createMentionSegment(mention)];
+      const a = [createFullTextSegment('Hello '), createMentionSegment(mention)];
+      const b = [createFullTextSegment('Hello '), createMentionSegment(mention)];
       expect(areSegmentsEqual(a, b)).toBe(true);
     });
 
     it('returns false when text differs in mixed segments', () => {
       const mention = createUserMention();
-      const a = [createTextSegment('Hello '), createMentionSegment(mention)];
-      const b = [createTextSegment('Hi '), createMentionSegment(mention)];
+      const a = [createFullTextSegment('Hello '), createMentionSegment(mention)];
+      const b = [createFullTextSegment('Hi '), createMentionSegment(mention)];
       expect(areSegmentsEqual(a, b)).toBe(false);
     });
 
     it('returns false for text vs mention', () => {
-      const a = [createTextSegment('Hello')];
+      const a = [createFullTextSegment('Hello')];
       const b = [createMentionSegment(createUserMention())];
       expect(areSegmentsEqual(a, b)).toBe(false);
     });
@@ -246,7 +246,7 @@ describe('areSegmentsEqual', () => {
 
   describe('reference equality', () => {
     it('returns true for same reference', () => {
-      const segments = [createTextSegment('Hello')];
+      const segments = [createFullTextSegment('Hello')];
       expect(areSegmentsEqual(segments, segments)).toBe(true);
     });
   });
@@ -254,8 +254,8 @@ describe('areSegmentsEqual', () => {
 
 describe('areUpvotersEqual', () => {
   it('returns true for identical upvoters', () => {
-    const a = [createUpvoter({ email: 'a@test.com' })];
-    const b = [createUpvoter({ email: 'a@test.com' })];
+    const a = [createResolvedAuthor({ email: 'a@test.com' })];
+    const b = [createResolvedAuthor({ email: 'a@test.com' })];
     expect(areUpvotersEqual(a, b)).toBe(true);
   });
 
@@ -264,31 +264,31 @@ describe('areUpvotersEqual', () => {
   });
 
   it('returns false for different emails', () => {
-    const a = [createUpvoter({ email: 'a@test.com' })];
-    const b = [createUpvoter({ email: 'b@test.com' })];
+    const a = [createResolvedAuthor({ email: 'a@test.com' })];
+    const b = [createResolvedAuthor({ email: 'b@test.com' })];
     expect(areUpvotersEqual(a, b)).toBe(false);
   });
 
   it('returns false for different lengths', () => {
-    const a = [createUpvoter({ email: 'a@test.com' }), createUpvoter({ email: 'b@test.com' })];
-    const b = [createUpvoter({ email: 'a@test.com' })];
+    const a = [createResolvedAuthor({ email: 'a@test.com' }), createResolvedAuthor({ email: 'b@test.com' })];
+    const b = [createResolvedAuthor({ email: 'a@test.com' })];
     expect(areUpvotersEqual(a, b)).toBe(false);
   });
 
   it('compares by email only (ignores name differences)', () => {
-    const a = [createUpvoter({ name: 'Alice', email: 'test@test.com' })];
-    const b = [createUpvoter({ name: 'Bob', email: 'test@test.com' })];
+    const a = [createResolvedAuthor({ name: 'Alice', email: 'test@test.com' })];
+    const b = [createResolvedAuthor({ name: 'Bob', email: 'test@test.com' })];
     expect(areUpvotersEqual(a, b)).toBe(true);
   });
 
   it('is order-sensitive', () => {
-    const a = [createUpvoter({ email: 'a@test.com' }), createUpvoter({ email: 'b@test.com' })];
-    const b = [createUpvoter({ email: 'b@test.com' }), createUpvoter({ email: 'a@test.com' })];
+    const a = [createResolvedAuthor({ email: 'a@test.com' }), createResolvedAuthor({ email: 'b@test.com' })];
+    const b = [createResolvedAuthor({ email: 'b@test.com' }), createResolvedAuthor({ email: 'a@test.com' })];
     expect(areUpvotersEqual(a, b)).toBe(false);
   });
 
   it('returns true for same reference', () => {
-    const upvoters = [createUpvoter()];
+    const upvoters = [createResolvedAuthor()];
     expect(areUpvotersEqual(upvoters, upvoters)).toBe(true);
   });
 });
@@ -315,37 +315,37 @@ describe('areRepliesEqual', () => {
   });
 
   it('returns true for identical replies', () => {
-    const reply1 = createBaseComment({ id: 'reply-1' });
-    const reply2 = createBaseComment({ id: 'reply-1' });
+    const reply1 = createResolvedComment({ id: 'reply-1' });
+    const reply2 = createResolvedComment({ id: 'reply-1' });
     expect(areRepliesEqual([reply1], [reply2])).toBe(true);
   });
 
   it('returns false for different reply IDs', () => {
-    const a = [createBaseComment({ id: 'reply-1' })];
-    const b = [createBaseComment({ id: 'reply-2' })];
+    const a = [createResolvedComment({ id: 'reply-1' })];
+    const b = [createResolvedComment({ id: 'reply-2' })];
     expect(areRepliesEqual(a, b)).toBe(false);
   });
 
   it('returns false for different reply content', () => {
-    const a = [createBaseComment({ id: 'reply-1', content: [createTextSegment('A')] })];
-    const b = [createBaseComment({ id: 'reply-1', content: [createTextSegment('B')] })];
+    const a = [createResolvedComment({ id: 'reply-1', content: [createFullTextSegment('A')] })];
+    const b = [createResolvedComment({ id: 'reply-1', content: [createFullTextSegment('B')] })];
     expect(areRepliesEqual(a, b)).toBe(false);
   });
 
   it('returns false for different reply upvoters', () => {
-    const a = [createBaseComment({ id: 'reply-1', usersWhoUpvoted: [] })];
+    const a = [createResolvedComment({ id: 'reply-1', upvoters: [] })];
     const b = [
-      createBaseComment({
+      createResolvedComment({
         id: 'reply-1',
-        usersWhoUpvoted: [createUpvoter()],
+        upvoters: [createResolvedAuthor()],
       }),
     ];
     expect(areRepliesEqual(a, b)).toBe(false);
   });
 
   it('returns false for different lengths', () => {
-    const reply = createBaseComment({ id: 'reply-1' });
-    const a = [reply, createBaseComment({ id: 'reply-2' })];
+    const reply = createResolvedComment({ id: 'reply-1' });
+    const a = [reply, createResolvedComment({ id: 'reply-2' })];
     const b = [reply];
     expect(areRepliesEqual(a, b)).toBe(false);
   });
@@ -354,9 +354,9 @@ describe('areRepliesEqual', () => {
     it('returns false when exceeding max recursion depth', () => {
       // Create two identical deeply nested structures (separate object references)
       function createDeepNesting() {
-        let current = createBaseComment({ id: 'level-0' });
+        let current = createResolvedComment({ id: 'level-0' });
         for (let i = 1; i <= 25; i++) {
-          current = createBaseComment({
+          current = createResolvedComment({
             id: `level-${i}`,
             replies: [current],
           });
@@ -372,12 +372,12 @@ describe('areRepliesEqual', () => {
     });
 
     it('handles reasonable nesting depth', () => {
-      const nested = createBaseComment({
+      const nested = createResolvedComment({
         id: 'parent',
         replies: [
-          createBaseComment({
+          createResolvedComment({
             id: 'child',
-            replies: [createBaseComment({ id: 'grandchild' })],
+            replies: [createResolvedComment({ id: 'grandchild' })],
           }),
         ],
       });
@@ -387,7 +387,7 @@ describe('areRepliesEqual', () => {
   });
 
   it('returns true for same reference', () => {
-    const replies = [createBaseComment({ id: 'reply-1' })];
+    const replies = [createResolvedComment({ id: 'reply-1' })];
     expect(areRepliesEqual(replies, replies)).toBe(true);
   });
 });
@@ -398,91 +398,91 @@ describe('areCommentsEqual', () => {
   });
 
   it('returns true for identical comments', () => {
-    const a = createBaseComment({ id: 'test-1' });
-    const b = createBaseComment({ id: 'test-1' });
+    const a = createResolvedComment({ id: 'test-1' });
+    const b = createResolvedComment({ id: 'test-1' });
     expect(areCommentsEqual(a, b)).toBe(true);
   });
 
   it('returns false for different IDs', () => {
-    const a = createBaseComment({ id: 'test-1' });
-    const b = createBaseComment({ id: 'test-2' });
+    const a = createResolvedComment({ id: 'test-1' });
+    const b = createResolvedComment({ id: 'test-2' });
     expect(areCommentsEqual(a, b)).toBe(false);
   });
 
   it('returns false for different author emails', () => {
-    const a = createBaseComment({
+    const a = createResolvedComment({
       id: 'test-1',
-      author: { name: 'Test', email: 'a@test.com' },
+      author: createResolvedAuthor({ name: 'Test', email: 'a@test.com' }),
     });
-    const b = createBaseComment({
+    const b = createResolvedComment({
       id: 'test-1',
-      author: { name: 'Test', email: 'b@test.com' },
+      author: createResolvedAuthor({ name: 'Test', email: 'b@test.com' }),
     });
     expect(areCommentsEqual(a, b)).toBe(false);
   });
 
   it('returns false for different content', () => {
-    const a = createBaseComment({
+    const a = createResolvedComment({
       id: 'test-1',
-      content: [createTextSegment('A')],
+      content: [createFullTextSegment('A')],
     });
-    const b = createBaseComment({
+    const b = createResolvedComment({
       id: 'test-1',
-      content: [createTextSegment('B')],
+      content: [createFullTextSegment('B')],
     });
     expect(areCommentsEqual(a, b)).toBe(false);
   });
 
   it('returns false for different upvoters', () => {
-    const a = createBaseComment({ id: 'test-1', usersWhoUpvoted: [] });
-    const b = createBaseComment({
+    const a = createResolvedComment({ id: 'test-1', upvoters: [] });
+    const b = createResolvedComment({
       id: 'test-1',
-      usersWhoUpvoted: [createUpvoter()],
+      upvoters: [createResolvedAuthor()],
     });
     expect(areCommentsEqual(a, b)).toBe(false);
   });
 
   it('returns false for different replies', () => {
-    const a = createBaseComment({ id: 'test-1', replies: [] });
-    const b = createCommentWithReplies(1, { id: 'test-1' });
+    const a = createResolvedComment({ id: 'test-1', replies: [] });
+    const b = createResolvedCommentWithReplies(1, { id: 'test-1' });
     expect(areCommentsEqual(a, b)).toBe(false);
   });
 
   it('compares replies deeply', () => {
-    const replyA = createBaseComment({
+    const replyA = createResolvedComment({
       id: 'reply-1',
-      content: [createTextSegment('Reply A')],
+      content: [createFullTextSegment('Reply A')],
     });
-    const replyB = createBaseComment({
+    const replyB = createResolvedComment({
       id: 'reply-1',
-      content: [createTextSegment('Reply B')],
+      content: [createFullTextSegment('Reply B')],
     });
 
-    const a = createBaseComment({ id: 'parent', replies: [replyA] });
-    const b = createBaseComment({ id: 'parent', replies: [replyB] });
+    const a = createResolvedComment({ id: 'parent', replies: [replyA] });
+    const b = createResolvedComment({ id: 'parent', replies: [replyB] });
 
     expect(areCommentsEqual(a, b)).toBe(false);
   });
 
   it('returns true for same reference', () => {
-    const comment = createBaseComment();
+    const comment = createResolvedComment();
     expect(areCommentsEqual(comment, comment)).toBe(true);
   });
 
   it('ignores dateISO differences (uses id for identity)', () => {
-    const a = createBaseComment({ id: 'test-1', dateISO: '2024-01-01T00:00:00Z' });
-    const b = createBaseComment({ id: 'test-1', dateISO: '2024-12-31T23:59:59Z' });
+    const a = createResolvedComment({ id: 'test-1', dateISO: '2024-01-01T00:00:00Z' });
+    const b = createResolvedComment({ id: 'test-1', dateISO: '2024-12-31T23:59:59Z' });
     expect(areCommentsEqual(a, b)).toBe(true);
   });
 
   it('ignores author name differences (uses email for identity)', () => {
-    const a = createBaseComment({
+    const a = createResolvedComment({
       id: 'test-1',
-      author: { name: 'Alice', email: 'test@test.com' },
+      author: createResolvedAuthor({ name: 'Alice', email: 'test@test.com' }),
     });
-    const b = createBaseComment({
+    const b = createResolvedComment({
       id: 'test-1',
-      author: { name: 'Bob', email: 'test@test.com' },
+      author: createResolvedAuthor({ name: 'Bob', email: 'test@test.com' }),
     });
     expect(areCommentsEqual(a, b)).toBe(true);
   });

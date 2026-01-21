@@ -197,4 +197,3 @@ export function GlobeIcon(props: IconProps) {
     </svg>
   );
 }
-

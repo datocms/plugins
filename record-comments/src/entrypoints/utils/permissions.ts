@@ -3,83 +3,60 @@ import type { ModelInfo } from '@hooks/useMentions';
 
 export type PermissionContext = RenderItemFormSidebarCtx | RenderPageCtx;
 
-export function hasUploadReadPermission(ctx: PermissionContext): boolean {
-  const role = ctx.currentRole;
-  const currentEnv = ctx.environment;
+type Permission = {
+  environment: string;
+  action: string;
+  item_type?: string | null;
+};
 
-  // Access the permissions from the role attributes
-  const positiveUploadPermissions = role.attributes.positive_upload_permissions || [];
-  const negativeUploadPermissions = role.attributes.negative_upload_permissions || [];
+/**
+ * Checks if permission is granted based on positive/negative permission lists.
+ * A permission is granted if there's a matching positive permission and no matching negative permission.
+ */
+function checkPermission(
+  positivePermissions: Permission[],
+  negativePermissions: Permission[],
+  currentEnv: string,
+  extraMatcher?: (perm: Permission) => boolean
+) {
+  const matchesEnvironmentAndAction = (perm: Permission) =>
+    perm.environment === currentEnv &&
+    (perm.action === 'all' || perm.action === 'read');
 
-  const hasPositive = positiveUploadPermissions.some(
-    (perm) =>
-      perm.environment === currentEnv &&
-      (perm.action === 'all' || perm.action === 'read')
-  );
+  const matchesPerm = (perm: Permission) =>
+    matchesEnvironmentAndAction(perm) && (!extraMatcher || extraMatcher(perm));
 
+  const hasPositive = positivePermissions.some(matchesPerm);
   if (!hasPositive) return false;
 
-  const hasNegative = negativeUploadPermissions.some(
-    (perm) =>
-      perm.environment === currentEnv &&
-      (perm.action === 'all' || perm.action === 'read')
-  );
-
+  const hasNegative = negativePermissions.some(matchesPerm);
   return !hasNegative;
 }
 
-export function canEditSchema(ctx: PermissionContext): boolean {
+export function hasUploadReadPermission(ctx: PermissionContext) {
+  const role = ctx.currentRole;
+  const positivePermissions = role.attributes.positive_upload_permissions || [];
+  const negativePermissions = role.attributes.negative_upload_permissions || [];
+
+  return checkPermission(positivePermissions, negativePermissions, ctx.environment);
+}
+
+export function canEditSchema(ctx: PermissionContext) {
   return ctx.currentRole.meta.final_permissions.can_edit_schema;
 }
 
 /** item_type=null applies to all models. */
-export function canReadModel(
-  ctx: PermissionContext,
-  modelId: string
-): boolean {
+function canReadModel(ctx: PermissionContext, modelId: string) {
   const role = ctx.currentRole;
-  const currentEnv = ctx.environment;
+  const positivePermissions = role.attributes.positive_item_type_permissions || [];
+  const negativePermissions = role.attributes.negative_item_type_permissions || [];
 
-  const positiveItemPermissions = role.attributes.positive_item_type_permissions || [];
-  const negativeItemPermissions = role.attributes.negative_item_type_permissions || [];
+  const matchesModel = (perm: Permission) =>
+    perm.item_type === null || perm.item_type === modelId;
 
-  const hasPositive = positiveItemPermissions.some(
-    (perm) =>
-      perm.environment === currentEnv &&
-      (perm.action === 'all' || perm.action === 'read') &&
-      (perm.item_type === null || perm.item_type === modelId)
-  );
-
-  if (!hasPositive) return false;
-
-  const hasNegative = negativeItemPermissions.some(
-    (perm) =>
-      perm.environment === currentEnv &&
-      (perm.action === 'all' || perm.action === 'read') &&
-      (perm.item_type === null || perm.item_type === modelId)
-  );
-
-  return !hasNegative;
+  return checkPermission(positivePermissions, negativePermissions, ctx.environment, matchesModel);
 }
 
-export function filterReadableModels(
-  ctx: PermissionContext,
-  models: ModelInfo[]
-): ModelInfo[] {
+export function filterReadableModels(ctx: PermissionContext, models: ModelInfo[]) {
   return models.filter((model) => canReadModel(ctx, model.id));
-}
-
-export function getMentionPermissions(
-  ctx: PermissionContext,
-  models: ModelInfo[]
-): {
-  canMentionAssets: boolean;
-  canMentionModels: boolean;
-  readableModels: ModelInfo[];
-} {
-  return {
-    canMentionAssets: hasUploadReadPermission(ctx),
-    canMentionModels: canEditSchema(ctx),
-    readableModels: filterReadableModels(ctx, models),
-  };
 }

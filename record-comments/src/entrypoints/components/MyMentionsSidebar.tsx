@@ -17,7 +17,7 @@ const MyMentionsSidebar = ({
 }: MyMentionsSidebarProps) => (
   <CommentSidebarSection
     title="My Mentions"
-    emptyMessage="No mentions yet. When someone mentions you with @, it will appear here."
+    emptyMessage="No mentions yet. When someone mentions you with /user, it will appear here."
     items={mentions}
     isLoading={isLoading}
     onNavigateToRecord={onNavigateToRecord}

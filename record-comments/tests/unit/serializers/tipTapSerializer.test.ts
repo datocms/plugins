@@ -387,8 +387,8 @@ describe('tipTapDocToSegments', () => {
       expect((segments[0] as any).mention.type).toBe('user');
     });
 
-    it('extracts field mention with defaults applied', () => {
-      const mention = createFieldMention({ localized: undefined as any });
+    it('extracts field mention as slim stored format (no localized property)', () => {
+      const mention = createFieldMention({ localized: true });
       const doc = {
         type: 'doc',
         content: [
@@ -401,24 +401,30 @@ describe('tipTapDocToSegments', () => {
 
       const segments = tipTapDocToSegments(doc);
 
-      expect((segments[0] as any).mention.localized).toBe(false);
+      // StoredFieldMention doesn't include localized - only fieldPath, locale?, modelId
+      expect((segments[0] as any).mention.type).toBe('field');
+      expect((segments[0] as any).mention.fieldPath).toBe(mention.fieldPath);
+      expect((segments[0] as any).mention).not.toHaveProperty('localized');
     });
 
-    it('extracts model mention with defaults applied', () => {
-      const { isBlockModel: _isBlockModel, ...mentionWithoutDefault } = createModelMention();
+    it('extracts model mention as slim stored format (no isBlockModel property)', () => {
+      const mention = createModelMention({ isBlockModel: true });
       const doc = {
         type: 'doc',
         content: [
           {
             type: 'paragraph',
-            content: [{ type: 'modelMention', attrs: mentionWithoutDefault }],
+            content: [{ type: 'modelMention', attrs: mention }],
           },
         ],
       };
 
       const segments = tipTapDocToSegments(doc);
 
-      expect((segments[0] as any).mention.isBlockModel).toBe(false);
+      // StoredModelMention doesn't include isBlockModel - only id
+      expect((segments[0] as any).mention.type).toBe('model');
+      expect((segments[0] as any).mention.id).toBe(mention.id);
+      expect((segments[0] as any).mention).not.toHaveProperty('isBlockModel');
     });
 
     it('skips invalid mention nodes', () => {

@@ -22,6 +22,7 @@ import { usePageRecordMention } from '@hooks/usePageRecordMention';
 import { useReplyPicker } from '@hooks/useReplyPicker';
 import { useAutoScroll } from '@hooks/useAutoScroll';
 import { usePagination } from '@hooks/usePagination';
+import { useEntityResolver } from '@hooks/useEntityResolver';
 
 // Contexts
 import { useProjectDataContext } from '../contexts/ProjectDataContext';
@@ -33,13 +34,12 @@ import type { CommentSegment } from '@ctypes/mentions';
 import { SUBSCRIPTION_STATUS } from '@hooks/useCommentsSubscription';
 import { GLOBAL_MODEL_ID, GLOBAL_RECORD_ID } from '@/constants';
 import { categorizeGeneralError } from '@utils/errorCategorization';
-import { isComposerEmpty } from '@utils/composerHelpers';
+import { isContentEmpty } from '@ctypes/comments';
 import styles from '@styles/dashboard.module.css';
 
 type GlobalCommentsChannelProps = {
   ctx: RenderPageCtx;
   client: Client | null;
-  userName: string;
   readableModels: ModelInfo[];
   accentColor: string;
   // Comments data (lifted to parent)
@@ -61,7 +61,6 @@ type GlobalCommentsChannelProps = {
 const GlobalCommentsChannel = ({
   ctx,
   client,
-  userName,
   readableModels,
   accentColor,
   comments,
@@ -77,8 +76,18 @@ const GlobalCommentsChannel = ({
   onSyncAllowedChange,
   commentsListRef,
 }: GlobalCommentsChannelProps) => {
-  const { projectUsers, projectModels, currentUserEmail: userEmail, typedUsers } = useProjectDataContext();
+  const { projectUsers, projectModels, modelFields, currentUserId: userId, typedUsers } = useProjectDataContext();
   const { canMentionAssets, canMentionModels } = useMentionPermissionsContext();
+
+  const mainLocale = ctx.site.attributes.locales[0] ?? 'en';
+  const { resolveComments, cacheVersion } = useEntityResolver({
+    client,
+    projectUsers,
+    projectModels,
+    modelFields,
+    itemTypes: ctx.itemTypes,
+    mainLocale,
+  });
 
   const [composerSegments, setComposerSegments] = useState<CommentSegment[]>([]);
   const composerRef = useRef<TipTapComposerRef>(null);
@@ -105,8 +114,7 @@ const GlobalCommentsChannel = ({
     upvoteComment,
     replyComment,
   } = useCommentActions({
-    userEmail,
-    userName,
+    userId,
     setComments,
     enqueue: operationQueue.enqueue,
     composerSegments,
@@ -176,8 +184,15 @@ const GlobalCommentsChannel = ({
     containerRef: commentsListRef,
   });
 
+  // Resolve stored comments to display-ready format with full mention data
+  // cacheVersion triggers re-resolution when async entities (records/assets) are fetched
+  const resolvedComments = useMemo(
+    () => resolveComments(paginatedComments),
+    [paginatedComments, resolveComments, cacheVersion]
+  );
+
   const isComposerEmptyValue = useMemo(
-    () => isComposerEmpty(composerSegments),
+    () => isContentEmpty(composerSegments),
     [composerSegments]
   );
 
@@ -232,7 +247,7 @@ const GlobalCommentsChannel = ({
               </button>
             </div>
           )}
-          {paginatedComments.map((comment) => (
+          {resolvedComments.map((comment) => (
             <div key={comment.id} style={{ padding: '0 24px' }}>
               <CommentErrorBoundary>
                 <Comment
@@ -241,7 +256,7 @@ const GlobalCommentsChannel = ({
                   upvoteComment={upvoteComment}
                   replyComment={replyComment}
                   commentObject={comment}
-                  currentUserEmail={userEmail}
+                  currentUserId={userId}
                   modelFields={[]}
                   projectUsers={projectUsers}
                   projectModels={projectModels}
@@ -292,7 +307,7 @@ const GlobalCommentsChannel = ({
               segments={composerSegments}
               onSegmentsChange={setComposerSegments}
               onSubmit={submitNewComment}
-              placeholder={"Add a message...\n@ user, & record, ^ asset, $ model"}
+              placeholder={"Add a message...\nType / for commands"}
               projectUsers={projectUsers}
               modelFields={[]}
               projectModels={projectModels}

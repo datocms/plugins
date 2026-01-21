@@ -2,7 +2,7 @@ import { memo, type RefObject } from 'react';
 import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
 import Comment from './Comment';
 import { CommentErrorBoundary } from './shared/CommentErrorBoundary';
-import type { CommentType } from '@ctypes/comments';
+import type { ResolvedCommentType } from '@ctypes/comments';
 import type { CommentSegment } from '@ctypes/mentions';
 import type { FieldInfo, UserInfo, ModelInfo } from '@hooks/useMentions';
 import type { TipTapComposerRef } from './tiptap/TipTapComposer';
@@ -10,10 +10,10 @@ import type { TypedUserInfo } from '@utils/userDisplayResolver';
 import styles from '@styles/commentbar.module.css';
 
 type CommentsListProps = {
-  comments: CommentType[];
+  comments: ResolvedCommentType[];
   hasMoreComments: boolean;
   onLoadMore: () => void;
-  currentUserEmail: string;
+  currentUserId: string;
   modelFields: FieldInfo[];
   projectUsers: UserInfo[];
   projectModels: ModelInfo[];
@@ -42,7 +42,7 @@ const CommentsListComponent = ({
   comments,
   hasMoreComments,
   onLoadMore,
-  currentUserEmail,
+  currentUserId,
   modelFields,
   projectUsers,
   projectModels,
@@ -78,7 +78,7 @@ const CommentsListComponent = ({
             upvoteComment={upvoteComment}
             replyComment={replyComment}
             commentObject={comment}
-            currentUserEmail={currentUserEmail}
+            currentUserId={currentUserId}
             modelFields={modelFields}
             projectUsers={projectUsers}
             projectModels={projectModels}

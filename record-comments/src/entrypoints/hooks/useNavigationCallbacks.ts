@@ -11,7 +11,6 @@ type UseNavigationCallbacksReturn = {
   handleOpenRecord: (recordId: string, modelId: string) => Promise<void>;
 };
 
-
 export function useNavigationCallbacks(ctx: RenderItemFormSidebarCtx): UseNavigationCallbacksReturn {
   const base = useNavigationCallbacksBase(ctx);
 

@@ -605,9 +605,9 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
           This plugin enables team collaboration through comments in two ways: a{' '}
           <strong>sidebar panel</strong> on every record for record-specific discussions, and a{' '}
           <strong>project-wide Comments Dashboard</strong> for general team conversations. Use rich
-          mentions to reference users (@), fields (#), records (&amp;), assets (^), and models ($)
-          directly in your comments. The dashboard also shows your mentions and recent activity
-          across the project.
+          mentions to reference users, fields, records, assets, and models directly in your comments
+          using slash commands (type / to see all options). The dashboard also shows your mentions
+          and recent activity across the project.
         </p>
 
         <div className={styles.section}>

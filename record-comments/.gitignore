@@ -35,3 +35,4 @@ playwright/.cache/
 coverage/
 
 CLAUDE.md
+agent.md

@@ -9,11 +9,31 @@
   white-space: nowrap;
 }
 
+/* Full-width banner variant - matches composer input box design */
+.banner {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  padding: var(--space-2);
+  margin-bottom: var(--space-2);
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--border-color);
+  background-color: var(--lighter-bg-color);
+  box-sizing: border-box;
+}
+
 .indicator[data-status="retrying"],
 .indicator[data-status="saving"],
-.indicator[data-status="connecting"] {
+.indicator[data-status="connecting"],
+.indicator[data-status="reconnecting"] {
   background-color: var(--status-neutral-bg);
   color: var(--status-neutral-text);
+}
+
+/* Reconnecting banner overrides - use lighter styling */
+.banner[data-status="reconnecting"] {
+  background-color: var(--lighter-bg-color);
+  color: var(--light-body-color);
 }
 
 .indicator[data-status="error"] {

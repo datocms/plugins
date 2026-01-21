@@ -55,4 +55,3 @@ export async function insertMentionWithRetry(
   });
   return false;
 }
-

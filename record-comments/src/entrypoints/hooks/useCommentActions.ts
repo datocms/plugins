@@ -4,6 +4,7 @@ import type { CommentSegment } from '@ctypes/mentions';
 import type { CommentType } from '@ctypes/comments';
 import type { CommentOperation } from '@ctypes/operations';
 import { ERROR_MESSAGES } from '@/constants';
+import { segmentsToStoredSegments } from '@utils/tipTapSerializer';
 import {
   isSegmentsEmpty,
   isAuthorValid,
@@ -15,11 +16,10 @@ import {
   type CommentActionsReturn,
 } from './commentActionHelpers';
 
-export type InsertPosition = 'prepend' | 'append';
+type InsertPosition = 'prepend' | 'append';
 
 type UseCommentActionsParams = {
-  userEmail: string;
-  userName: string;
+  userId: string;
   setComments: React.Dispatch<React.SetStateAction<CommentType[]>>;
   enqueue: (operation: CommentOperation) => void;
   composerSegments: CommentSegment[];
@@ -39,8 +39,7 @@ type UseCommentActionsParams = {
 };
 
 export function useCommentActions({
-  userEmail,
-  userName,
+  userId,
   setComments,
   enqueue,
   composerSegments,
@@ -52,7 +51,7 @@ export function useCommentActions({
   const submitNewComment = useCallback(() => {
     if (isSegmentsEmpty(composerSegments)) return;
 
-    if (!isAuthorValid(userName, userEmail)) {
+    if (!isAuthorValid(userId)) {
       ctx?.alert(ERROR_MESSAGES.MISSING_USER_INFO);
       return;
     }
@@ -63,7 +62,7 @@ export function useCommentActions({
       return;
     }
 
-    const newComment = createComment(composerSegments, userName, userEmail);
+    const newComment = createComment(composerSegments, userId);
 
     if (insertPosition === 'prepend') {
       setComments((prev) => [newComment, ...prev]);
@@ -76,8 +75,7 @@ export function useCommentActions({
   }, [
     composerSegments,
     ctx,
-    userEmail,
-    userName,
+    userId,
     setComments,
     enqueue,
     setComposerSegments,
@@ -98,6 +96,9 @@ export function useCommentActions({
       const isNewReply = pendingNewReplies.current?.has(id) ?? false;
       setComments((prev) => applyEditToState(prev, id, newContent, parentCommentId));
 
+      // Convert to slim format for storage
+      const storedContent = segmentsToStoredSegments(newContent);
+
       if (isNewReply && parentCommentId) {
         pendingNewReplies.current?.delete(id);
 
@@ -113,9 +114,9 @@ export function useCommentActions({
             reply: {
               id,
               dateISO: originalDateISO,
-              content: newContent,
-              author: { name: userName, email: userEmail },
-              usersWhoUpvoted: [],
+              content: storedContent,
+              authorId: userId,
+              upvoterIds: [],
               parentCommentId,
             },
           });
@@ -126,35 +127,34 @@ export function useCommentActions({
         enqueue({
           type: 'EDIT_COMMENT',
           id,
-          newContent,
+          newContent: storedContent,
           parentCommentId,
         });
       }
     },
-    [userName, userEmail, setComments, enqueue, pendingNewReplies]
+    [userId, setComments, enqueue, pendingNewReplies]
   );
 
   const upvoteComment = useCallback(
     (id: string, userUpvoted: boolean, parentCommentId?: string) => {
-      const user = { name: userName, email: userEmail };
       setComments((prev) =>
-        applyUpvoteToState(prev, id, user, userUpvoted, parentCommentId)
+        applyUpvoteToState(prev, id, userId, userUpvoted, parentCommentId)
       );
 
       enqueue({
         type: 'UPVOTE_COMMENT',
         id,
         action: userUpvoted ? 'remove' : 'add',
-        user,
+        userId,
         parentCommentId,
       });
     },
-    [userEmail, userName, setComments, enqueue]
+    [userId, setComments, enqueue]
   );
 
   const replyComment = useCallback(
     (parentCommentId: string) => {
-      const newReply = createComment([], userName, userEmail, parentCommentId);
+      const newReply = createComment([], userId, parentCommentId);
       pendingNewReplies.current?.add(newReply.id);
 
       setComments((prev) =>
@@ -169,7 +169,7 @@ export function useCommentActions({
         })
       );
     },
-    [userEmail, userName, setComments, pendingNewReplies, insertPosition]
+    [userId, setComments, pendingNewReplies, insertPosition]
   );
 
   return {

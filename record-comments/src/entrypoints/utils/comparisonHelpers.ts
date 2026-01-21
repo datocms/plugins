@@ -6,7 +6,7 @@ import {
   isRecordMention,
   isModelMention,
 } from '@ctypes/mentions';
-import type { CommentType, Upvoter } from '@ctypes/comments';
+import type { ResolvedCommentType, ResolvedAuthor } from '@ctypes/comments';
 
 /** Compares all mention fields (not just ID) to detect metadata changes. */
 export function areMentionsEqual(a: Mention, b: Mention): boolean {
@@ -95,7 +95,7 @@ export function areSegmentsEqual(
   return true;
 }
 
-export function areUpvotersEqual(a: Upvoter[], b: Upvoter[]): boolean {
+export function areUpvotersEqual(a: ResolvedAuthor[], b: ResolvedAuthor[]): boolean {
   if (a === b) return true;
   if (a.length !== b.length) return false;
 
@@ -111,8 +111,8 @@ const MAX_REPLY_RECURSION_DEPTH = 20;
 
 /** Uses `id` as identifier (NOT dateISO). Also checks content, upvotes, nested replies. */
 export function areRepliesEqual(
-  a: CommentType[] | undefined,
-  b: CommentType[] | undefined,
+  a: ResolvedCommentType[] | undefined,
+  b: ResolvedCommentType[] | undefined,
   depth = 0
 ): boolean {
   if (depth > MAX_REPLY_RECURSION_DEPTH) {
@@ -130,7 +130,7 @@ export function areRepliesEqual(
 
     if (replyA.id !== replyB.id) return false;
     if (!areSegmentsEqual(replyA.content, replyB.content)) return false;
-    if (!areUpvotersEqual(replyA.usersWhoUpvoted, replyB.usersWhoUpvoted)) return false;
+    if (!areUpvotersEqual(replyA.upvoters, replyB.upvoters)) return false;
     if (!areRepliesEqual(replyA.replies, replyB.replies, depth + 1)) return false;
   }
 
@@ -138,12 +138,12 @@ export function areRepliesEqual(
 }
 
 /** Uses `id` as canonical identifier (NOT dateISO). */
-export function areCommentsEqual(a: CommentType, b: CommentType): boolean {
+export function areCommentsEqual(a: ResolvedCommentType, b: ResolvedCommentType): boolean {
   if (a === b) return true;
   if (a.id !== b.id) return false;
   if (a.author.email !== b.author.email) return false;
   if (!areSegmentsEqual(a.content, b.content)) return false;
-  if (!areUpvotersEqual(a.usersWhoUpvoted, b.usersWhoUpvoted)) return false;
+  if (!areUpvotersEqual(a.upvoters, b.upvoters)) return false;
   if (!areRepliesEqual(a.replies, b.replies)) return false;
   return true;
 }

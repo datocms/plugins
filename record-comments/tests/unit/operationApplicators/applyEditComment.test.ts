@@ -38,19 +38,19 @@ describe('applyEditComment', () => {
     });
 
     it('preserves other comment properties', () => {
-      const upvoters = [{ name: 'Voter', email: 'voter@test.com' }];
+      const upvoterIds = ['voter-1', 'voter-2'];
       const comment = createBaseComment({
         id: 'to-edit',
-        author: { name: 'Author', email: 'author@test.com' },
-        usersWhoUpvoted: upvoters,
+        authorId: 'author-123',
+        upvoterIds,
         dateISO: '2024-01-15T10:00:00.000Z',
       });
       const op = createEditCommentOp('to-edit', [createTextSegment('New')]);
 
       const result = applyOperation([comment], op);
 
-      expect(result.comments[0].author).toEqual(comment.author);
-      expect(result.comments[0].usersWhoUpvoted).toEqual(upvoters);
+      expect(result.comments[0].authorId).toBe(comment.authorId);
+      expect(result.comments[0].upvoterIds).toEqual(upvoterIds);
       expect(result.comments[0].dateISO).toBe(comment.dateISO);
       expect(result.comments[0].id).toBe(comment.id);
     });

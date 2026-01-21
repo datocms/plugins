@@ -1,5 +1,6 @@
 import type { MutableRefObject, ReactNode, Ref } from 'react';
 import type { FieldInfo } from '@hooks/useMentions';
+import { cn } from '@/utils/cn';
 import styles from '@styles/comment.module.css';
 
 type FieldListViewProps = {
@@ -33,7 +34,7 @@ export function FieldListView({
               type="button"
               role="option"
               aria-selected={index === selectedIndex}
-              className={`${styles.mentionOption} ${index === selectedIndex ? styles.mentionOptionSelected : ''}`}
+              className={cn(styles.mentionOption, index === selectedIndex && styles.mentionOptionSelected)}
               style={{ paddingLeft: `${8 + field.depth * 12}px` }}
               onMouseDown={(e) => {
                 e.preventDefault();
@@ -67,5 +68,3 @@ export function FieldListView({
     </>
   );
 }
-
-export default FieldListView;

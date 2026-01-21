@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   isValidComment,
   isValidCommentArray,
-  isValidAuthor,
+  isValidAuthorId,
   isValidISOString,
 } from '@utils/typeGuards';
 import { createBaseComment, createCommentWithReplies } from '../fixtures/comments';
@@ -55,53 +55,40 @@ describe('isValidISOString', () => {
   });
 });
 
-describe('isValidAuthor', () => {
-  describe('valid authors', () => {
-    it('accepts author with name and email', () => {
-      expect(isValidAuthor({ name: 'John Doe', email: 'john@example.com' })).toBe(true);
+describe('isValidAuthorId', () => {
+  describe('valid author IDs', () => {
+    it('accepts non-empty string ID', () => {
+      expect(isValidAuthorId('user-123')).toBe(true);
     });
 
-    it('accepts empty strings for name and email', () => {
-      expect(isValidAuthor({ name: '', email: '' })).toBe(true);
+    it('accepts UUID-style ID', () => {
+      expect(isValidAuthorId('550e8400-e29b-41d4-a716-446655440000')).toBe(true);
     });
   });
 
-  describe('invalid authors', () => {
+  describe('invalid author IDs', () => {
     it('rejects null', () => {
-      expect(isValidAuthor(null)).toBe(false);
+      expect(isValidAuthorId(null)).toBe(false);
     });
 
     it('rejects undefined', () => {
-      expect(isValidAuthor(undefined)).toBe(false);
+      expect(isValidAuthorId(undefined)).toBe(false);
     });
 
-    it('rejects empty object', () => {
-      expect(isValidAuthor({})).toBe(false);
+    it('rejects empty string', () => {
+      expect(isValidAuthorId('')).toBe(false);
     });
 
-    it('rejects missing name', () => {
-      expect(isValidAuthor({ email: 'john@example.com' })).toBe(false);
+    it('rejects numbers', () => {
+      expect(isValidAuthorId(123)).toBe(false);
     });
 
-    it('rejects missing email', () => {
-      expect(isValidAuthor({ name: 'John Doe' })).toBe(false);
-    });
-
-    it('rejects non-string name', () => {
-      expect(isValidAuthor({ name: 123, email: 'john@example.com' })).toBe(false);
-    });
-
-    it('rejects non-string email', () => {
-      expect(isValidAuthor({ name: 'John', email: null })).toBe(false);
+    it('rejects objects', () => {
+      expect(isValidAuthorId({ id: 'user-123' })).toBe(false);
     });
 
     it('rejects arrays', () => {
-      expect(isValidAuthor(['John', 'john@example.com'])).toBe(false);
-    });
-
-    it('rejects primitives', () => {
-      expect(isValidAuthor('John Doe')).toBe(false);
-      expect(isValidAuthor(42)).toBe(false);
+      expect(isValidAuthorId(['user-123'])).toBe(false);
     });
   });
 });
@@ -139,10 +126,7 @@ describe('isValidComment', () => {
 
     it('accepts comment with upvoters', () => {
       const comment = createBaseComment({
-        usersWhoUpvoted: [
-          { name: 'Voter 1', email: 'voter1@test.com' },
-          { name: 'Voter 2', email: 'voter2@test.com' },
-        ],
+        upvoterIds: ['user-voter1', 'user-voter2'],
       });
       expect(isValidComment(comment)).toBe(true);
     });
@@ -188,9 +172,10 @@ describe('isValidComment', () => {
       expect(isValidComment(comment)).toBe(false);
     });
 
-    it('rejects invalid author', () => {
+    it('rejects invalid authorId', () => {
       const comment = createBaseComment();
-      expect(isValidComment({ ...comment, author: { name: 123 } })).toBe(false);
+      expect(isValidComment({ ...comment, authorId: '' })).toBe(false);
+      expect(isValidComment({ ...comment, authorId: 123 })).toBe(false);
     });
 
     it('rejects non-array content', () => {
@@ -205,14 +190,14 @@ describe('isValidComment', () => {
       expect(isValidComment(comment)).toBe(false);
     });
 
-    it('rejects non-array usersWhoUpvoted', () => {
+    it('rejects non-array upvoterIds', () => {
       const comment = createBaseComment();
-      expect(isValidComment({ ...comment, usersWhoUpvoted: {} })).toBe(false);
+      expect(isValidComment({ ...comment, upvoterIds: {} })).toBe(false);
     });
 
-    it('rejects invalid upvoters', () => {
+    it('rejects invalid upvoterIds (non-string elements)', () => {
       const comment = createBaseComment({
-        usersWhoUpvoted: [{ invalid: true }] as any,
+        upvoterIds: [123, 456] as any,
       });
       expect(isValidComment(comment)).toBe(false);
     });

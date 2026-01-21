@@ -1,5 +1,5 @@
-import type { CommentType, Upvoter } from '@ctypes/comments';
-import type { CommentSegment } from '@ctypes/mentions';
+import type { CommentType, ResolvedCommentType, ResolvedAuthor } from '@ctypes/comments';
+import type { StoredCommentSegment, CommentSegment } from '@ctypes/mentions';
 
 // Counter for unique IDs
 let idCounter = 0;
@@ -17,15 +17,7 @@ export function resetIdCounter(): void {
   idCounter = 0;
 }
 
-export function createUpvoter(overrides: Partial<Upvoter> = {}): Upvoter {
-  return {
-    name: 'Upvoter User',
-    email: 'upvoter@example.com',
-    ...overrides,
-  };
-}
-
-export function createTextSegment(text: string): CommentSegment {
+export function createTextSegment(text: string): StoredCommentSegment {
   return { type: 'text', content: text };
 }
 
@@ -35,8 +27,8 @@ export function createBaseComment(overrides: Partial<CommentType> = {}): Comment
     id,
     dateISO: overrides.dateISO ?? generateDateISO(),
     content: overrides.content ?? [createTextSegment('Test comment')],
-    author: overrides.author ?? { name: 'Test User', email: 'test@example.com' },
-    usersWhoUpvoted: overrides.usersWhoUpvoted ?? [],
+    authorId: overrides.authorId ?? 'user-123',
+    upvoterIds: overrides.upvoterIds ?? [],
     replies: overrides.replies,
     parentCommentId: overrides.parentCommentId,
   };
@@ -66,16 +58,13 @@ export function createCommentWithUpvotes(
   upvoterCount = 2,
   commentOverrides: Partial<CommentType> = {}
 ): CommentType {
-  const upvoters: Upvoter[] = Array.from({ length: upvoterCount }, (_, i) =>
-    createUpvoter({
-      name: `Upvoter ${i + 1}`,
-      email: `upvoter${i + 1}@example.com`,
-    })
+  const upvoterIds = Array.from({ length: upvoterCount }, (_, i) =>
+    `upvoter-${i + 1}`
   );
 
   return createBaseComment({
     ...commentOverrides,
-    usersWhoUpvoted: upvoters,
+    upvoterIds,
   });
 }
 
@@ -106,6 +95,55 @@ export function createNestedComment(depth: number): CommentType {
   });
 }
 
+// Helper for creating full CommentSegment (with full mention data) for editing
+export function createFullTextSegment(text: string): CommentSegment {
+  return { type: 'text', content: text };
+}
+
+// Helper for creating resolved author
+export function createResolvedAuthor(overrides: Partial<ResolvedAuthor> = {}): ResolvedAuthor {
+  return {
+    id: overrides.id ?? 'author-123',
+    email: overrides.email ?? 'test@example.com',
+    name: overrides.name ?? 'Test Author',
+    avatarUrl: overrides.avatarUrl ?? null,
+  };
+}
+
+// Helper for creating resolved comments (used for comparison tests)
+export function createResolvedComment(overrides: Partial<ResolvedCommentType> = {}): ResolvedCommentType {
+  const id = overrides.id ?? generateId();
+  return {
+    id,
+    dateISO: overrides.dateISO ?? generateDateISO(),
+    content: overrides.content ?? [createFullTextSegment('Test comment')],
+    author: overrides.author ?? createResolvedAuthor(),
+    upvoters: overrides.upvoters ?? [],
+    replies: overrides.replies,
+    parentCommentId: overrides.parentCommentId,
+  };
+}
+
+export function createResolvedCommentWithReplies(
+  replyCount = 2,
+  commentOverrides: Partial<ResolvedCommentType> = {}
+): ResolvedCommentType {
+  const parentId = commentOverrides.id ?? generateId();
+  const replies: ResolvedCommentType[] = Array.from({ length: replyCount }, (_, i) =>
+    createResolvedComment({
+      id: `${parentId}-reply-${i + 1}`,
+      content: [createFullTextSegment(`Reply ${i + 1}`)],
+      parentCommentId: parentId,
+    })
+  );
+
+  return createResolvedComment({
+    ...commentOverrides,
+    id: parentId,
+    replies,
+  });
+}
+
 // Pre-built fixtures for common test scenarios
 export const fixtures = {
   emptyComment: createBaseComment({
@@ -132,9 +170,10 @@ export const fixtures = {
     ],
   }),
 
-  author: {
-    alice: { name: 'Alice Smith', email: 'alice@example.com' },
-    bob: { name: 'Bob Jones', email: 'bob@example.com' },
-    charlie: { name: 'Charlie Brown', email: 'charlie@example.com' },
+  // User IDs for testing
+  userIds: {
+    alice: 'user-alice',
+    bob: 'user-bob',
+    charlie: 'user-charlie',
   },
 };

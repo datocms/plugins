@@ -43,5 +43,3 @@ export class CommentErrorBoundary extends React.Component<Props, State> {
     return this.props.children;
   }
 }
-
-export default CommentErrorBoundary;

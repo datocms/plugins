@@ -10,30 +10,13 @@ import {
   type UseCommentsSubscriptionReturn,
 } from './useCommentsSubscription';
 
-const GLOBAL_COMMENTS_QUERY = `
-  query GlobalCommentsQuery($modelId: String!, $recordId: String!) {
-    allProjectComments(
-      filter: {
-        modelId: { eq: $modelId },
-        recordId: { eq: $recordId }
-      }
-      first: 1
-    ) {
-      id
-      content
-    }
-  }
-`;
-
-export type CommentsDataContext = 'record' | 'global';
-
 type BaseParams = {
   realTimeEnabled: boolean;
   cdaToken: string | undefined;
   client: Client | null;
   isSyncAllowed: boolean;
-  /** Current user's email for identifying their drafts */
-  currentUserEmail: string;
+  /** Current user's ID for identifying their drafts */
+  currentUserId: string;
   /** Callback when a draft reply's parent comment was deleted */
   onOrphanedDraft?: () => void;
   /** Called before sync updates are applied - use to save scroll position */
@@ -63,6 +46,7 @@ type UseCommentsDataReturn = {
   errorInfo: SubscriptionErrorInfo | null;
   status: SubscriptionStatus;
   retry: () => void;
+  isAutoReconnecting: boolean;
   fullResult: UseCommentsSubscriptionReturn;
 };
 
@@ -71,25 +55,22 @@ function isRecordParams(params: UseCommentsDataParams): params is RecordComments
 }
 
 export function useCommentsData(params: UseCommentsDataParams): UseCommentsDataReturn {
-  const { realTimeEnabled, cdaToken, client, isSyncAllowed, currentUserEmail, onOrphanedDraft, onBeforeSync, onAfterSync } = params;
+  const { realTimeEnabled, cdaToken, client, isSyncAllowed, currentUserId, onOrphanedDraft, onBeforeSync, onAfterSync } = params;
   const isRecordContext = isRecordParams(params);
 
   let modelId: string;
   let recordId: string;
-  let query: string;
   let subscriptionEnabled: boolean;
   let onCommentRecordIdChange: ((id: string | null) => void) | undefined;
 
   if (isRecordContext) {
     modelId = params.ctx.itemType.id;
     recordId = params.ctx.item?.id ?? '';
-    query = COMMENTS_QUERY;
     subscriptionEnabled = !!params.ctx.item?.id;
     onCommentRecordIdChange = params.onCommentRecordIdChange;
   } else {
     modelId = GLOBAL_MODEL_ID;
     recordId = GLOBAL_RECORD_ID;
-    query = GLOBAL_COMMENTS_QUERY;
     subscriptionEnabled = true;
     onCommentRecordIdChange = undefined;
   }
@@ -100,12 +81,12 @@ export function useCommentsData(params: UseCommentsDataParams): UseCommentsDataR
     cdaToken,
     client,
     isSyncAllowed,
-    query,
+    query: COMMENTS_QUERY,
     variables: { modelId, recordId },
     filterParams: { modelId, recordId },
     subscriptionEnabled,
     onCommentRecordIdChange,
-    currentUserEmail,
+    currentUserId,
     onOrphanedDraft,
     onBeforeSync,
     onAfterSync,
@@ -119,6 +100,7 @@ export function useCommentsData(params: UseCommentsDataParams): UseCommentsDataR
     errorInfo: result.errorInfo,
     status: result.status,
     retry: result.retry,
+    isAutoReconnecting: result.isAutoReconnecting,
     fullResult: result,
   };
 }

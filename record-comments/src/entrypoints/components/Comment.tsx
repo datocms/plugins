@@ -17,22 +17,17 @@ import { useCommentEditor } from '@hooks/useCommentEditor';
 
 // Types and utilities
 import type { CommentSegment } from '@ctypes/mentions';
-import type { CommentType } from '@ctypes/comments';
+import type { ResolvedCommentType } from '@ctypes/comments';
 import { isContentEmpty } from '@ctypes/comments';
 import { getGravatarUrl, normalizeForComparison } from '@/utils/helpers';
 import {
   areSegmentsEqual,
-  areUpvotersEqual,
   areRepliesEqual,
 } from '@utils/comparisonHelpers';
-import { isComposerEmpty } from '@utils/composerHelpers';
 import { cn } from '@/utils/cn';
 import { TIMING, UI } from '@/constants';
 import styles from '@styles/comment.module.css';
-import {
-  resolveUpvoterName,
-  type TypedUserInfo,
-} from '@utils/userDisplayResolver';
+import type { TypedUserInfo } from '@utils/userDisplayResolver';
 
 type CommentProps = {
   deleteComment: (id: string, parentCommentId?: string) => void;
@@ -47,8 +42,8 @@ type CommentProps = {
     parentCommentId?: string
   ) => void;
   replyComment: (parentCommentId: string) => void;
-  commentObject: CommentType;
-  currentUserEmail: string;
+  commentObject: ResolvedCommentType;
+  currentUserId: string;
   isReply?: boolean;
   modelFields?: FieldInfo[];
   projectUsers: UserInfo[];
@@ -87,7 +82,9 @@ function arePropsEqual(prev: CommentProps, next: CommentProps): boolean {
 
   if (prevComment.id !== nextComment.id) return false;
   if (!areSegmentsEqual(prevComment.content, nextComment.content)) return false;
-  if (!areUpvotersEqual(prevComment.usersWhoUpvoted, nextComment.usersWhoUpvoted)) return false;
+  // Compare upvoters arrays (resolved authors)
+  if (prevComment.upvoters.length !== nextComment.upvoters.length) return false;
+  if (!prevComment.upvoters.every((u, i) => u.email === nextComment.upvoters[i].email)) return false;
   if (!areRepliesEqual(prevComment.replies, nextComment.replies)) return false;
 
   return compareRemainingProps(prev, next);
@@ -96,7 +93,7 @@ function arePropsEqual(prev: CommentProps, next: CommentProps): boolean {
 // ctx excluded - recreated every render, only used in editing mode
 function compareRemainingProps(prev: CommentProps, next: CommentProps): boolean {
   return (
-    prev.currentUserEmail === next.currentUserEmail &&
+    prev.currentUserId === next.currentUserId &&
     prev.isReply === next.isReply &&
     prev.canMentionFields === next.canMentionFields &&
     prev.canMentionAssets === next.canMentionAssets &&
@@ -122,7 +119,7 @@ const Comment = memo(function Comment({
   upvoteComment,
   replyComment,
   commentObject,
-  currentUserEmail,
+  currentUserId,
   isReply = false,
   modelFields = [],
   projectUsers,
@@ -139,13 +136,14 @@ const Comment = memo(function Comment({
   dropdownPosition = 'below',
 }: CommentProps) {
   const [isRecordSelectorOpen, setIsRecordSelectorOpen] = useState(false);
-  const userUpvotedThisComment = commentObject.usersWhoUpvoted.some(
-    (upvoter) => upvoter.email === currentUserEmail
+  const userUpvotedThisComment = commentObject.upvoters.some(
+    (u) => u.id === currentUserId
   );
 
   const isNewComment = isContentEmpty(commentObject.content);
   const isTopLevel = 'replies' in commentObject;
-  const userIsAuthor = commentObject.author.email === currentUserEmail;
+  const parentId = isTopLevel ? undefined : commentObject.parentCommentId;
+  const userIsAuthor = commentObject.author.id === currentUserId;
 
   const replies = isTopLevel ? commentObject.replies ?? [] : [];
   const replyCount = replies.length;
@@ -153,55 +151,11 @@ const Comment = memo(function Comment({
 
   const avatarSize = isReply ? UI.AVATAR_SIZE_REPLY : UI.AVATAR_SIZE_COMMENT;
 
-  const userLookupMaps = useMemo(() => {
-    const byEmail = new Map<string, number>();
-    const byName = new Map<string, number>();
-
-    for (let i = 0; i < typedUsers.length; i++) {
-      const user = typedUsers[i].user;
-      const email = normalizeForComparison(user.email);
-      const name = normalizeForComparison(user.name);
-
-      if (email && !byEmail.has(email)) {
-        byEmail.set(email, i);
-      }
-      if (name && !byName.has(name)) {
-        byName.set(name, i);
-      }
-    }
-
-    return { byEmail, byName };
-  }, [typedUsers]);
-
-  const resolvedAuthor = useMemo(() => {
-    const fallbackAvatarUrl = getGravatarUrl(commentObject.author.email || '', avatarSize * 2);
-    const authorEmail = normalizeForComparison(commentObject.author.email);
-    const authorNameLower = normalizeForComparison(commentObject.author.name);
-
-    let matchedIndex = -1;
-    if (authorEmail) {
-      matchedIndex = userLookupMaps.byEmail.get(authorEmail) ?? -1;
-    }
-    if (matchedIndex === -1 && authorNameLower) {
-      matchedIndex = userLookupMaps.byName.get(authorNameLower) ?? -1;
-    }
-
-    if (matchedIndex !== -1 && matchedIndex < projectUsers.length) {
-      const userWithOverrides = projectUsers[matchedIndex];
-      return {
-        name: userWithOverrides.name,
-        avatarUrl: userWithOverrides.avatarUrl ?? fallbackAvatarUrl,
-      };
-    }
-
-    return {
-      name: commentObject.author.name,
-      avatarUrl: fallbackAvatarUrl,
-    };
-  }, [commentObject.author, projectUsers, userLookupMaps, avatarSize]);
-
-  const avatarUrl = resolvedAuthor.avatarUrl;
-  const authorName = resolvedAuthor.name;
+  // Author data is pre-resolved - use directly with fallback for avatar
+  const avatarUrl =
+    commentObject.author.avatarUrl ??
+    getGravatarUrl(commentObject.author.email, avatarSize * 2);
+  const authorName = commentObject.author.name;
 
   const [repliesExpanded, setRepliesExpanded] = useState(false);
 
@@ -231,20 +185,19 @@ const Comment = memo(function Comment({
     }
   }, [hasNewReply, repliesExpanded]);
 
+  // Upvoter names are pre-resolved
   const upvoterNames = useMemo(
-    () =>
-      commentObject.usersWhoUpvoted
-        .map((upvoter) => resolveUpvoterName(upvoter, typedUsers))
-        .join(', '),
-    [commentObject.usersWhoUpvoted, typedUsers]
+    () => commentObject.upvoters.map((u) => u.name).join(', '),
+    [commentObject.upvoters]
   );
 
   const isSegmentsEmpty = useMemo(
-    () => isComposerEmpty(segments),
+    () => isContentEmpty(segments),
     [segments]
   );
 
   // Extract unique repliers for collapsed reply preview (max 3 avatars)
+  // Reply authors are pre-resolved
   const uniqueReplierAvatars = useMemo(() => {
     if (!isTopLevel || replies.length === 0) return [];
 
@@ -257,32 +210,17 @@ const Comment = memo(function Comment({
     }> = [];
 
     for (const reply of replies) {
-      const userKey =
-        normalizeForComparison(reply.author.email) ||
-        normalizeForComparison(reply.author.name) ||
-        reply.id;
+      const userKey = normalizeForComparison(reply.author.email) || reply.id;
 
       if (seenUsers.has(userKey)) continue;
       seenUsers.add(userKey);
 
-      const replyEmail = normalizeForComparison(reply.author.email);
-      const replyNameLower = normalizeForComparison(reply.author.name);
-
-      let matchIndex = -1;
-      if (replyEmail) {
-        matchIndex = userLookupMaps.byEmail.get(replyEmail) ?? -1;
-      }
-      if (matchIndex === -1 && replyNameLower) {
-        matchIndex = userLookupMaps.byName.get(replyNameLower) ?? -1;
-      }
-
-      const matchedUser = matchIndex !== -1 ? projectUsers[matchIndex] : null;
-      const fallbackUrl = getGravatarUrl(reply.author.email || '', UI.AVATAR_SIZE_THUMBNAIL);
+      const fallbackUrl = getGravatarUrl(reply.author.email, UI.AVATAR_SIZE_THUMBNAIL);
 
       result.push({
         id: reply.id,
-        avatarUrl: matchedUser?.avatarUrl ?? fallbackUrl,
-        name: matchedUser?.name ?? reply.author.name,
+        avatarUrl: reply.author.avatarUrl ?? fallbackUrl,
+        name: reply.author.name,
         fallbackUrl,
       });
 
@@ -290,7 +228,7 @@ const Comment = memo(function Comment({
     }
 
     return result;
-  }, [isTopLevel, replies, userLookupMaps, projectUsers]);
+  }, [isTopLevel, replies]);
 
   // Keep refs updated synchronously to avoid stale closures in blur handler
   isSegmentsEmptyRef.current = isSegmentsEmpty;
@@ -298,20 +236,12 @@ const Comment = memo(function Comment({
 
   const handleSave = () => {
     if (isSegmentsEmpty) {
-      if (isTopLevel) {
-        deleteComment(commentObject.id);
-      } else {
-        deleteComment(commentObject.id, commentObject.parentCommentId);
-      }
+      deleteComment(commentObject.id, parentId);
       return;
     }
 
     setIsEditing(false);
-    if (isTopLevel) {
-      editComment(commentObject.id, segments);
-    } else {
-      editComment(commentObject.id, segments, commentObject.parentCommentId);
-    }
+    editComment(commentObject.id, segments, parentId);
   };
 
   const handleDelete = async () => {
@@ -324,19 +254,11 @@ const Comment = memo(function Comment({
 
     if (!confirmed) return;
 
-    if (isTopLevel) {
-      deleteComment(commentObject.id);
-    } else {
-      deleteComment(commentObject.id, commentObject.parentCommentId);
-    }
+    deleteComment(commentObject.id, parentId);
   };
 
   const handleUpvote = () => {
-    if (isTopLevel) {
-      upvoteComment(commentObject.id, userUpvotedThisComment);
-    } else {
-      upvoteComment(commentObject.id, userUpvotedThisComment, commentObject.parentCommentId);
-    }
+    upvoteComment(commentObject.id, userUpvotedThisComment, parentId);
   };
 
   const commentRef = useRef<HTMLDivElement>(null);
@@ -367,11 +289,7 @@ const Comment = memo(function Comment({
   const handleEscape = () => {
     if (isNewComment) {
       // For new comments, just delete without confirmation
-      if (isTopLevel) {
-        deleteComment(commentObject.id);
-      } else {
-        deleteComment(commentObject.id, commentObject.parentCommentId);
-      }
+      deleteComment(commentObject.id, parentId);
     } else {
       resetToOriginal();
     }
@@ -384,11 +302,7 @@ const Comment = memo(function Comment({
     setTimeout(() => {
       if (isSegmentsEmptyRef.current && isNewCommentRef.current && !isPickerActiveRef.current) {
         // For empty new comments, just delete without confirmation
-        if (isTopLevel) {
-          deleteComment(commentObject.id);
-        } else {
-          deleteComment(commentObject.id, commentObject.parentCommentId);
-        }
+        deleteComment(commentObject.id, parentId);
       }
     }, TIMING.COMMENT_BLUR_DELAY_MS);
   };
@@ -442,7 +356,7 @@ const Comment = memo(function Comment({
           userUpvoted={userUpvotedThisComment}
           userIsAuthor={userIsAuthor}
           isTopLevel={isTopLevel}
-          hasUpvotes={commentObject.usersWhoUpvoted.length > 0}
+          hasUpvotes={commentObject.upvoters.length > 0}
         />
       )}
 
@@ -456,7 +370,7 @@ const Comment = memo(function Comment({
             onError={(e) => {
               const target = e.currentTarget;
               target.onerror = null; // Prevent infinite loop
-              target.src = getGravatarUrl(commentObject.author.email || '', avatarSize * 2);
+              target.src = getGravatarUrl(commentObject.author.email, avatarSize * 2);
             }}
           />
         </div>
@@ -526,7 +440,7 @@ const Comment = memo(function Comment({
           )}
 
           <div className={styles.footer}>
-            {commentObject.usersWhoUpvoted.length > 0 && !isEditing && (
+            {commentObject.upvoters.length > 0 && !isEditing && (
               <div className={styles.reactionWrapper}>
                 <button
                   type="button"
@@ -535,7 +449,7 @@ const Comment = memo(function Comment({
                 >
                   <UpvoteIcon role="img" aria-labelledby="upvoteIconTitle" />
                   <title id="upvoteIconTitle">Upvote</title>
-                  <span>{commentObject.usersWhoUpvoted.length}</span>
+                  <span>{commentObject.upvoters.length}</span>
                 </button>
                 <div className={styles.tooltip}>
                   {upvoterNames}
@@ -595,7 +509,7 @@ const Comment = memo(function Comment({
               upvoteComment={upvoteComment}
               replyComment={replyComment}
               commentObject={reply}
-              currentUserEmail={currentUserEmail}
+              currentUserId={currentUserId}
               isReply
               modelFields={modelFields}
               projectUsers={projectUsers}

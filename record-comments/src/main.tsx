@@ -7,6 +7,9 @@ import {
   type RenderItemFormSidebarCtx,
   type RenderPageCtx,
   type ContentAreaSidebarItemsCtx,
+  // Postponed: Field dropdown feature
+  // type FieldDropdownActionsCtx,
+  // type ExecuteFieldDropdownActionCtx,
 } from 'datocms-plugin-sdk';
 import { buildClient } from '@datocms/cma-client-browser';
 import { render } from '@/utils/render';
@@ -37,8 +40,11 @@ async function ensureCommentsModelExists(ctx: OnBootCtx) {
     (model) => model.api_key === COMMENTS_MODEL_API_KEY
   );
 
-  if (commentsModel) return;
+  if (commentsModel) {
+    return;
+  }
 
+  // Model doesn't exist - create it with all fields
   const newModel = await client.itemTypes.create({
     name: 'Project Comment',
     api_key: COMMENTS_MODEL_API_KEY,
@@ -128,4 +134,3 @@ connect({
     }
   },
 });
-

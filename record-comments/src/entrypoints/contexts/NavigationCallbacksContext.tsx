@@ -15,8 +15,6 @@ export type NavigationCallbacks = {
   handleNavigateToRecordComments?: (modelId: string, recordId: string) => Promise<void>;
 };
 
-export type { NavigableUserType };
-
 const NavigationCallbacksContext = createContext<NavigationCallbacks | null>(null);
 
 export function useNavigationContext(): NavigationCallbacks {
@@ -50,16 +48,8 @@ type PageProviderProps = {
 export function PageNavigationProvider({ ctx, children }: PageProviderProps) {
   const callbacks = usePageNavigationCallbacks(ctx);
 
-  const value: NavigationCallbacks = {
-    handleNavigateToUsers: callbacks.handleNavigateToUsers,
-    handleNavigateToModel: callbacks.handleNavigateToModel,
-    handleOpenAsset: callbacks.handleOpenAsset,
-    handleOpenRecord: callbacks.handleOpenRecord,
-    handleNavigateToRecordComments: callbacks.handleNavigateToRecordComments,
-  };
-
   return (
-    <NavigationCallbacksContext.Provider value={value}>
+    <NavigationCallbacksContext.Provider value={callbacks}>
       {children}
     </NavigationCallbacksContext.Provider>
   );

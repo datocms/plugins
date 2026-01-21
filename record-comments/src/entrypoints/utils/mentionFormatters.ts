@@ -1,7 +1,6 @@
 import { UI } from '@/constants';
 
 export { extractLeadingEmoji } from './emojiUtils';
-export type { LeadingEmojiResult } from './emojiUtils';
 
 /** Truncates filename keeping first N chars + extension. */
 export function getTruncatedFilename(filename: string): string {

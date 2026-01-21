@@ -316,8 +316,9 @@ describe('ownerToUserInfo', () => {
 });
 
 describe('getCurrentUserInfo', () => {
-  it('extracts email and full_name', () => {
+  it('extracts id, email and full_name', () => {
     const currentUser = {
+      id: 'user-123',
       attributes: {
         email: 'current@example.com',
         full_name: 'Current User',
@@ -327,6 +328,7 @@ describe('getCurrentUserInfo', () => {
     const result = getCurrentUserInfo(currentUser);
 
     expect(result).toEqual({
+      id: 'user-123',
       email: 'current@example.com',
       name: 'Current User',
     });
@@ -334,6 +336,7 @@ describe('getCurrentUserInfo', () => {
 
   it('uses name attribute when full_name missing', () => {
     const currentUser = {
+      id: 'user-123',
       attributes: {
         email: 'current@example.com',
         name: 'Alt Name',
@@ -347,6 +350,7 @@ describe('getCurrentUserInfo', () => {
 
   it('falls back to email local part when no names', () => {
     const currentUser = {
+      id: 'user-123',
       attributes: {
         email: 'fallback@example.com',
       },
@@ -357,8 +361,9 @@ describe('getCurrentUserInfo', () => {
     expect(result.name).toBe('fallback');
   });
 
-  it('uses default email when missing', () => {
+  it('uses ID-based identifier when email missing', () => {
     const currentUser = {
+      id: 'org-owner-456',
       attributes: {
         full_name: 'Test User',
       },
@@ -366,7 +371,21 @@ describe('getCurrentUserInfo', () => {
 
     const result = getCurrentUserInfo(currentUser);
 
-    expect(result.email).toBe('unknown@email.com');
+    // When email is missing, creates special identifier for ID-based lookup
+    expect(result.email).toBe('__user_id:org-owner-456__');
+    expect(result.name).toBe('Test User');
+    expect(result.id).toBe('org-owner-456');
+  });
+
+  it('falls back to "User" for name when no email and no names', () => {
+    const currentUser = {
+      id: 'user-789',
+      attributes: {},
+    };
+
+    const result = getCurrentUserInfo(currentUser);
+
+    expect(result.name).toBe('User');
   });
 });
 

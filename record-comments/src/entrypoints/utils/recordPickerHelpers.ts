@@ -53,13 +53,13 @@ export type RecordPickerModelInfo = {
   isBlockModel: boolean;
 };
 
-export function extractRecordTitle(
+function extractRecordTitle(
   record: RecordWithAttributes,
   itemType: ItemTypeWithRelationships | undefined,
   fields: RecordField[],
   modelName: string,
   mainLocale: string
-): string {
+) {
   if (!itemType) {
     return `Record #${record.id}`;
   }
@@ -115,25 +115,28 @@ function getUploadIdFromFieldValue(fieldValue: unknown, mainLocale: string): str
   return null;
 }
 
+// Record thumbnails display at 18x18px, so 48px width covers 2x retina with buffer
+const RECORD_THUMBNAIL_WIDTH = 48;
+
 async function fetchThumbnailFromUpload(client: Client, uploadId: string): Promise<string | null> {
   try {
     const upload = await client.uploads.find(uploadId);
     const mimeType = upload.mime_type ?? '';
     const url = upload.url ?? '';
-    return getThumbnailUrl(mimeType, url, upload.mux_playback_id);
+    return getThumbnailUrl(mimeType, url, upload.mux_playback_id, RECORD_THUMBNAIL_WIDTH);
   } catch (error) {
     logError('Failed to fetch thumbnail for upload:', error, { uploadId });
     return null;
   }
 }
 
-export async function extractRecordThumbnail(
+async function extractRecordThumbnail(
   record: RecordWithAttributes,
   itemType: ItemTypeWithRelationships | undefined,
   fields: RecordField[],
   mainLocale: string,
   client: Client | null
-): Promise<string | null> {
+) {
   if (!itemType || !client) {
     return null;
   }
@@ -194,9 +197,7 @@ export async function createRecordMention(
   const recordTitle = extractRecordTitle(record, itemType, fields, model.name, mainLocale);
   const recordThumbnailUrl = await extractRecordThumbnail(record, itemType, fields, mainLocale, client);
 
-  const modelEmoji: string | null = modelEmojiOverride !== undefined
-    ? modelEmojiOverride
-    : extractLeadingEmoji(model.name).emoji;
+  const modelEmoji = modelEmojiOverride ?? extractLeadingEmoji(model.name).emoji;
 
   return {
     type: 'record',

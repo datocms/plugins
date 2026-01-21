@@ -1,8 +1,14 @@
 import type { JSONContent } from '@tiptap/react';
-import type { CommentSegment, Mention, MentionType } from '@ctypes/mentions';
+import type {
+  CommentSegment,
+  Mention,
+  MentionType,
+  StoredCommentSegment,
+  StoredMention,
+} from '@ctypes/mentions';
 import { attrsToMention } from './attrsToMention';
 
-// Converts between CommentSegment[] (storage) and TipTap JSONContent (editor)
+// Converts between StoredCommentSegment[] (storage) and TipTap JSONContent (editor)
 
 const MENTION_NODE_TYPES = {
   user: 'userMention',
@@ -33,6 +39,67 @@ function nodeAttrsToMention(
   const mentionType = NODE_TYPE_TO_MENTION_TYPE[nodeType as NodeTypeValue];
   if (!mentionType) return null;
   return attrsToMention(mentionType, attrs);
+}
+
+/**
+ * Converts a full Mention to a slim StoredMention for persistence.
+ * Only stores the minimal data needed to resolve the full mention later.
+ */
+export function mentionToStoredMention(mention: Mention): StoredMention {
+  switch (mention.type) {
+    case 'user':
+      return { type: 'user', id: mention.id };
+    case 'field':
+      return {
+        type: 'field',
+        fieldPath: mention.fieldPath,
+        ...(mention.locale && { locale: mention.locale }),
+        modelId: '', // Will be set by caller with current record's model ID
+      };
+    case 'asset':
+      return { type: 'asset', id: mention.id };
+    case 'record':
+      return { type: 'record', id: mention.id, modelId: mention.modelId };
+    case 'model':
+      return { type: 'model', id: mention.id };
+  }
+}
+
+/**
+ * Converts TipTap node attrs directly to StoredMention for persistence.
+ */
+function nodeAttrsToStoredMention(
+  nodeType: string,
+  attrs: Record<string, unknown>
+): StoredMention | null {
+  const mentionType = NODE_TYPE_TO_MENTION_TYPE[nodeType as NodeTypeValue];
+  if (!mentionType) return null;
+
+  // Extract only the fields needed for stored mentions
+  switch (mentionType) {
+    case 'user':
+      if (typeof attrs.id !== 'string') return null;
+      return { type: 'user', id: attrs.id };
+    case 'field':
+      if (typeof attrs.fieldPath !== 'string') return null;
+      return {
+        type: 'field',
+        fieldPath: attrs.fieldPath,
+        ...(typeof attrs.locale === 'string' && { locale: attrs.locale }),
+        modelId: typeof attrs.modelId === 'string' ? attrs.modelId : '',
+      };
+    case 'asset':
+      if (typeof attrs.id !== 'string') return null;
+      return { type: 'asset', id: attrs.id };
+    case 'record':
+      if (typeof attrs.id !== 'string' || typeof attrs.modelId !== 'string') return null;
+      return { type: 'record', id: attrs.id, modelId: attrs.modelId };
+    case 'model':
+      if (typeof attrs.id !== 'string') return null;
+      return { type: 'model', id: attrs.id };
+    default:
+      return null;
+  }
 }
 
 export function segmentsToTipTapDoc(segments: CommentSegment[]): JSONContent {
@@ -79,8 +146,19 @@ export function segmentsToTipTapDoc(segments: CommentSegment[]): JSONContent {
   };
 }
 
-export function tipTapDocToSegments(doc: JSONContent): CommentSegment[] {
-  const segments: CommentSegment[] = [];
+type TextSegment = { type: 'text'; content: string };
+type MentionSegment<T> = { type: 'mention'; mention: T };
+type GenericSegment<T> = TextSegment | MentionSegment<T>;
+
+/**
+ * Core TipTap doc to segments conversion logic.
+ * Parameterized by mention converter function to avoid code duplication.
+ */
+function convertTipTapDoc<TMention>(
+  doc: JSONContent,
+  convertMention: (nodeType: string, attrs: Record<string, unknown>) => TMention | null
+): GenericSegment<TMention>[] {
+  const segments: GenericSegment<TMention>[] = [];
   let currentText = '';
 
   const flushText = () => {
@@ -109,7 +187,7 @@ export function tipTapDocToSegments(doc: JSONContent): CommentSegment[] {
 
     if (mentionNodeType) {
       flushText();
-      const mention = nodeAttrsToMention(mentionNodeType, node.attrs ?? {});
+      const mention = convertMention(mentionNodeType, node.attrs ?? {});
       if (mention) {
         segments.push({ type: 'mention', mention });
       }
@@ -138,8 +216,8 @@ export function tipTapDocToSegments(doc: JSONContent): CommentSegment[] {
   };
 
   if (doc.content) {
-    for (let i = 0; i < doc.content.length; i++) {
-      processNode(doc.content[i]);
+    for (const child of doc.content) {
+      processNode(child);
     }
   }
 
@@ -158,7 +236,36 @@ export function tipTapDocToSegments(doc: JSONContent): CommentSegment[] {
     break;
   }
 
+  // Strip trailing whitespace-only text segments
+  while (segments.length > 0) {
+    const last = segments[segments.length - 1];
+    if (last.type === 'text') {
+      last.content = last.content.replace(/[\s\n\r]+$/, '');
+      if (!last.content) {
+        segments.pop();
+        continue;
+      }
+    }
+    break;
+  }
+
   return segments;
+}
+
+/**
+ * Converts TipTap document to StoredCommentSegment[] for persistence.
+ * Outputs slim mentions containing only IDs.
+ */
+export function tipTapDocToSegments(doc: JSONContent): StoredCommentSegment[] {
+  return convertTipTapDoc(doc, nodeAttrsToStoredMention);
+}
+
+/**
+ * Converts TipTap document to full CommentSegment[] for editing.
+ * Used when loading comments into the TipTap editor - preserves full mention data.
+ */
+export function tipTapDocToFullSegments(doc: JSONContent): CommentSegment[] {
+  return convertTipTapDoc(doc, nodeAttrsToMention);
 }
 
 export function createEmptyDoc(): JSONContent {
@@ -175,6 +282,22 @@ export function isDocEmpty(doc: JSONContent): boolean {
     return !segments[0].content.trim();
   }
   return false;
+}
+
+/**
+ * Converts full CommentSegment[] to StoredCommentSegment[] for persistence.
+ * Used when saving edited content.
+ */
+export function segmentsToStoredSegments(segments: CommentSegment[]): StoredCommentSegment[] {
+  return segments.map((segment) => {
+    if (segment.type === 'text') {
+      return segment;
+    }
+    return {
+      type: 'mention',
+      mention: mentionToStoredMention(segment.mention),
+    };
+  });
 }
 
 export { MENTION_NODE_TYPES };

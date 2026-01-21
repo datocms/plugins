@@ -129,15 +129,15 @@ function isNonNullObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-export function isValidAuthor(
-  author: unknown
-): author is { name: string; email: string } {
-  if (!isNonNullObject(author)) return false;
-  return isStringAttr(author.name) && isStringAttr(author.email);
+/** Validates authorId is a non-empty string */
+export function isValidAuthorId(authorId: unknown): authorId is string {
+  return isStringAttr(authorId) && authorId.length > 0;
 }
 
-function isValidUpvoter(upvoter: unknown): upvoter is { name: string; email: string } {
-  return isValidAuthor(upvoter);
+/** Validates upvoterIds is an array of strings */
+function isValidUpvoterIds(upvoterIds: unknown): upvoterIds is string[] {
+  if (!Array.isArray(upvoterIds)) return false;
+  return upvoterIds.every((id) => isStringAttr(id));
 }
 
 function isValidCommentSegment(segment: unknown): boolean {
@@ -164,17 +164,14 @@ export function isValidComment(comment: unknown, visited: WeakSet<object> = new 
   if (!isStringAttr(comment.id)) return false;
   if (!isStringAttr(comment.dateISO)) return false;
   if (!isValidISOString(comment.dateISO)) return false;
-  if (!isValidAuthor(comment.author)) return false;
+  if (!isValidAuthorId(comment.authorId)) return false;
 
   if (!Array.isArray(comment.content)) return false;
   for (const segment of comment.content) {
     if (!isValidCommentSegment(segment)) return false;
   }
 
-  if (!Array.isArray(comment.usersWhoUpvoted)) return false;
-  for (const upvoter of comment.usersWhoUpvoted) {
-    if (!isValidUpvoter(upvoter)) return false;
-  }
+  if (!isValidUpvoterIds(comment.upvoterIds)) return false;
 
   if (comment.parentCommentId !== undefined && !isStringAttr(comment.parentCommentId)) {
     return false;

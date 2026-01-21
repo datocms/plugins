@@ -1,5 +1,5 @@
 import type { CommentType } from './comments';
-import type { CommentSegment } from './mentions';
+import type { StoredCommentSegment } from './mentions';
 
 // Operations are enqueued and processed sequentially. Each is idempotent.
 
@@ -17,7 +17,7 @@ export type DeleteCommentOp = {
 export type EditCommentOp = {
   type: 'EDIT_COMMENT';
   id: string;
-  newContent: CommentSegment[];
+  newContent: StoredCommentSegment[];
   parentCommentId?: string;
 };
 
@@ -25,7 +25,7 @@ export type UpvoteCommentOp = {
   type: 'UPVOTE_COMMENT';
   id: string;
   action: 'add' | 'remove'; // Explicit for idempotency
-  user: { name: string; email: string };
+  userId: string;
   parentCommentId?: string;
 };
 
@@ -53,5 +53,3 @@ export type OperationResult = {
   status: OperationResultStatus;
   failureReason?: string;
 };
-
-

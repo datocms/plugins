@@ -24,6 +24,8 @@ type FieldMentionDropdownProps = {
   ctx?: RenderItemFormSidebarCtx;
   registerKeyHandler?: (handler: (key: string) => boolean) => void;
   position?: 'above' | 'below';
+  /** Called when field navigation path changes (for updating editor preview) */
+  onPathChange?: (path: string) => void;
 };
 
 const FieldMentionDropdown = ({
@@ -37,6 +39,7 @@ const FieldMentionDropdown = ({
   ctx,
   registerKeyHandler,
   position = 'below',
+  onPathChange,
 }: FieldMentionDropdownProps) => {
   const dropdownClassName = cn(
     styles.mentionDropdown,
@@ -81,6 +84,7 @@ const FieldMentionDropdown = ({
     pendingFieldForLocale,
     onClearPendingField,
     selectedIndex,
+    onPathChange,
   });
 
   // Scroll selected item into view

@@ -16,14 +16,16 @@ A DatoCMS plugin for team collaboration through threaded comments on records and
 - Recent Comments — latest activity across the project
 - Search and filter by author, date, records, assets, models, or users
 
-### Mentions
-| Trigger | Type |
-|---------|------|
-| `@` | User |
-| `#` | Field |
-| `&` | Record |
-| `^` | Asset |
-| `$` | Model |
+### Mentions (Slash Commands)
+| Command | Type | Description |
+|---------|------|-------------|
+| `/user` | User | Mention a team member |
+| `/field` | Field | Reference a field |
+| `/record` | Record | Link to a record |
+| `/asset` | Asset | Link to an asset |
+| `/model` | Model | Reference a model |
+
+Type `/` to see all available commands, or type the full command (e.g., `/user john`) to search directly.
 
 ## Installation
 
@@ -51,7 +53,7 @@ To enable realtime updates:
 Click **Comments** in the left sidebar to access project-wide discussions, your mentions, and recent activity.
 
 ### Mentions
-Type a trigger character (`@`, `#`, `&`, `^`, `$`) followed by a search term, or use the toolbar buttons.
+Type `/` to open the command menu, then select a mention type. You can also type the full command directly (e.g., `/user john` to search for "john"). Use the toolbar buttons for quick access.
 
 ## Troubleshooting
 

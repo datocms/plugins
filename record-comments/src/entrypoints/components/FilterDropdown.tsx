@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo, useId } from 'react';
 import { cn } from '@/utils/cn';
 import styles from '@styles/dashboard.module.css';
 
-export type FilterOption = {
+type FilterOption = {
   value: string;
   label: string;
   sublabel?: string;

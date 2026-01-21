@@ -17,7 +17,8 @@ export function getThumbnailUrl(
   const isVideo = mimeType.startsWith('video/');
 
   if (isImage && url) {
-    return `${url}?w=${width}&fit=max&auto=format`;
+    // dpr=2 for retina, q=80 for smaller file size, auto=format for webp/avif
+    return `${url}?w=${width}&fit=max&auto=format&dpr=2&q=80`;
   }
 
   if (isVideo && muxPlaybackId) {

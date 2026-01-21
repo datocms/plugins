@@ -1,7 +1,8 @@
 import type { RefObject } from 'react';
 import type { CommentSegment } from '@ctypes/mentions';
-import type { CommentType, Upvoter } from '@ctypes/comments';
+import type { CommentType } from '@ctypes/comments';
 import type { CommentOperation } from '@ctypes/operations';
+import { segmentsToStoredSegments } from '@utils/tipTapSerializer';
 
 // LOCAL/OPTIMISTIC state updates (fast, assumes success).
 // Separate from operationApplicators.ts which handles SERVER state (with status tracking).
@@ -19,21 +20,18 @@ export function isSegmentsEmpty(segments: CommentSegment[]): boolean {
   });
 }
 
-export function isAuthorValid(userName: string, userEmail: string): boolean {
-  return userName.trim().length > 0 && userEmail.trim().length > 0;
+export function isAuthorValid(userId: string): boolean {
+  return userId.trim().length > 0;
 }
 
 function toggleUpvote(
-  voters: Upvoter[],
-  user: Upvoter,
+  voterIds: string[],
+  voterId: string,
   userUpvoted: boolean
-): Upvoter[] {
-  if (userUpvoted) {
-    // Remove current user's upvote
-    return voters.filter((voter) => voter.email !== user.email);
-  }
-  // Add current user's upvote
-  return [...voters, user];
+): string[] {
+  return userUpvoted
+    ? voterIds.filter((id) => id !== voterId)
+    : [...voterIds, voterId];
 }
 
 export function applyDeleteToState(
@@ -51,33 +49,37 @@ export function applyDeleteToState(
   return comments.filter((c) => c.id !== id);
 }
 
+/**
+ * Takes full CommentSegment[] and converts to StoredCommentSegment[] for state update.
+ */
 export function applyEditToState(
   comments: CommentType[],
   id: string,
   newContent: CommentSegment[],
   parentCommentId?: string
 ): CommentType[] {
+  const storedContent = segmentsToStoredSegments(newContent);
   if (parentCommentId) {
     return comments.map((c) =>
       c.id === parentCommentId
         ? {
             ...c,
             replies: c.replies?.map((r) =>
-              r.id === id ? { ...r, content: newContent } : r
+              r.id === id ? { ...r, content: storedContent } : r
             ),
           }
         : c
     );
   }
   return comments.map((c) =>
-    c.id === id ? { ...c, content: newContent } : c
+    c.id === id ? { ...c, content: storedContent } : c
   );
 }
 
 export function applyUpvoteToState(
   comments: CommentType[],
   id: string,
-  user: Upvoter,
+  voterId: string,
   userUpvoted: boolean,
   parentCommentId?: string
 ): CommentType[] {
@@ -88,7 +90,7 @@ export function applyUpvoteToState(
             ...c,
             replies: c.replies?.map((r) =>
               r.id === id
-                ? { ...r, usersWhoUpvoted: toggleUpvote(r.usersWhoUpvoted, user, userUpvoted) }
+                ? { ...r, upvoterIds: toggleUpvote(r.upvoterIds, voterId, userUpvoted) }
                 : r
             ),
           }
@@ -97,36 +99,37 @@ export function applyUpvoteToState(
   }
   return comments.map((c) =>
     c.id === id
-      ? { ...c, usersWhoUpvoted: toggleUpvote(c.usersWhoUpvoted, user, userUpvoted) }
+      ? { ...c, upvoterIds: toggleUpvote(c.upvoterIds, voterId, userUpvoted) }
       : c
   );
 }
 
 /**
  * id: UUID for stable lookups/React keys. dateISO: timestamp for display/sorting.
- * Legacy data may have id === dateISO (see CommentType docs).
+ * Takes full CommentSegment[] from editor and converts to StoredCommentSegment[] for storage.
+ * Only stores user ID - display data resolved at render time.
  */
 export function createComment(
   content: CommentSegment[],
-  userName: string,
-  userEmail: string,
+  authorId: string,
   parentCommentId?: string
 ): CommentType {
-  if (!isAuthorValid(userName, userEmail)) {
-    throw new Error('Cannot create comment: author name and email are required');
+  if (!isAuthorValid(authorId)) {
+    throw new Error('Cannot create comment: author ID is required');
   }
 
   const id = crypto.randomUUID();
   const dateISO = new Date().toISOString();
+  const storedContent = segmentsToStoredSegments(content);
 
   // Replies omit 'replies' property; Comment.tsx uses its presence to detect top-level
   if (parentCommentId) {
     return {
       id,
       dateISO,
-      content,
-      author: { name: userName, email: userEmail },
-      usersWhoUpvoted: [],
+      content: storedContent,
+      authorId,
+      upvoterIds: [],
       parentCommentId,
     };
   }
@@ -134,9 +137,9 @@ export function createComment(
   return {
     id,
     dateISO,
-    content,
-    author: { name: userName, email: userEmail },
-    usersWhoUpvoted: [],
+    content: storedContent,
+    authorId,
+    upvoterIds: [],
     replies: [],
   };
 }

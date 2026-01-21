@@ -11,6 +11,7 @@ type CommentPreviewProps = {
   showMentionBadge?: boolean;
 };
 
+/** Extracts preview text from stored comment content. */
 function getPreviewText(comment: CommentWithContext['comment'], maxLength = 80): string {
   const textParts: string[] = [];
 
@@ -18,21 +19,22 @@ function getPreviewText(comment: CommentWithContext['comment'], maxLength = 80):
     if (segment.type === 'text') {
       textParts.push(segment.content);
     } else if (segment.type === 'mention') {
+      // StoredMention only has IDs - show type prefix as placeholder
       switch (segment.mention.type) {
         case 'user':
-          textParts.push(`@${segment.mention.name}`);
+          textParts.push(`@user`);
           break;
         case 'field':
-          textParts.push(`#${segment.mention.apiKey}`);
+          textParts.push(`#${segment.mention.fieldPath}`);
           break;
         case 'record':
-          textParts.push(segment.mention.title);
+          textParts.push(`[record]`);
           break;
         case 'asset':
-          textParts.push(segment.mention.filename);
+          textParts.push(`[asset]`);
           break;
         case 'model':
-          textParts.push(`$${segment.mention.name}`);
+          textParts.push(`$model`);
           break;
       }
     }
@@ -51,7 +53,10 @@ const CommentPreviewComponent = ({
   showMentionBadge = false,
 }: CommentPreviewProps) => {
   const { comment, isGlobal, isReply } = commentWithContext;
-  const avatarUrl = getGravatarUrl(comment.author.email, 64);
+  // Use authorId for display - author details are stored only as ID
+  // Full name/avatar resolution would happen via projectUsers lookup in parent
+  const authorDisplayName = `User ${comment.authorId.slice(0, 8)}`;
+  const avatarUrl = getGravatarUrl('', 64); // Default avatar - no email in slim format
   const previewText = getPreviewText(comment);
 
   return (
@@ -62,17 +67,17 @@ const CommentPreviewComponent = ({
     >
       <img
         src={avatarUrl}
-        alt={comment.author.name}
+        alt={authorDisplayName}
         className={styles.previewAvatar}
         onError={(e) => {
           const target = e.currentTarget;
           target.onerror = null; // Prevent infinite loop
-          target.src = getGravatarUrl(comment.author.email, 64);
+          target.src = getGravatarUrl('', 64);
         }}
       />
       <div className={styles.previewContent}>
         <div className={styles.previewHeader}>
-          <span className={styles.previewAuthor}>{comment.author.name}</span>
+          <span className={styles.previewAuthor}>{authorDisplayName}</span>
           <span className={styles.previewTime}>
             <ReactTimeAgo date={new Date(comment.dateISO)} />
           </span>

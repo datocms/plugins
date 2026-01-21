@@ -1,16 +1,5 @@
-import type { CommentSegment, AssetMention } from '@ctypes/mentions';
+import type { AssetMention } from '@ctypes/mentions';
 import { getThumbnailUrl } from '@/utils/helpers';
-
-/** Empty if no segments, or single text segment with only whitespace. */
-export function isComposerEmpty(segments: CommentSegment[]): boolean {
-  if (segments.length === 0) return true;
-
-  if (segments.length === 1 && segments[0].type === 'text') {
-    return !segments[0].content.trim();
-  }
-
-  return false;
-}
 
 type UploadResult = {
   id: string;

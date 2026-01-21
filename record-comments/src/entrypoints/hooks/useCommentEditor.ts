@@ -23,7 +23,7 @@ export function useCommentEditor({
 }: UseCommentEditorParams): UseCommentEditorReturn {
   const composerRef = useRef<TipTapComposerRef>(null);
   const [isEditing, setIsEditing] = useState(isNewComment);
-  const [segments, setSegments] = useState<CommentSegment[]>(commentContent);
+  const [segments, setSegments] = useState(commentContent);
 
   useEffect(() => {
     if (!isEditing) {
