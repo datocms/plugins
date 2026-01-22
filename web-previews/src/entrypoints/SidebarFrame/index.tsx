@@ -27,6 +27,7 @@ import {
 } from '../../types';
 import { useStatusByFrontend } from '../../utils/common';
 import { usePersistedSidebarWidth } from '../../utils/persistedWidth';
+import { inspectorUrl } from '../../utils/urls';
 import { PreviewLinkSelector } from './PreviewLinkSelector';
 
 type PropTypes = {
@@ -162,12 +163,10 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
                           onClick={() => {
                             const url = new URL(currentPreviewLink.url);
                             ctx.navigateTo(
-                              `/p/${ctx.plugin.id}/inspectors/visual?${new URLSearchParams(
-                                {
-                                  path: url.pathname + url.search,
-                                  frontend: currentPreviewLink.frontendName,
-                                },
-                              ).toString()}`,
+                              inspectorUrl(ctx, {
+                                path: url.pathname + url.search,
+                                frontend: currentPreviewLink.frontendName,
+                              }),
                             );
                           }}
                         >

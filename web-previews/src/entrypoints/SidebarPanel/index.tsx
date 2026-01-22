@@ -9,6 +9,7 @@ import { Canvas, Spinner, useCtx } from 'datocms-react-ui';
 import { ButtonGroup, ButtonGroupButton } from '../../components/ButtonGroup';
 import type { Frontend } from '../../types';
 import { type FrontendStatus, useStatusByFrontend } from '../../utils/common';
+import { inspectorUrl } from '../../utils/urls';
 import styles from './styles.module.css';
 
 type PropTypes = {
@@ -83,12 +84,10 @@ const FrontendResult = ({
                     tooltip="Open in Visual"
                     onClick={() => {
                       ctx.navigateTo(
-                        `/p/${ctx.plugin.id}/inspectors/visual?${new URLSearchParams(
-                          {
-                            path: url.pathname + url.search,
-                            frontend: frontend.name,
-                          },
-                        ).toString()}`,
+                        inspectorUrl(ctx, {
+                          path: url.pathname + url.search,
+                          frontend: frontend.name,
+                        }),
                       );
                     }}
                   >

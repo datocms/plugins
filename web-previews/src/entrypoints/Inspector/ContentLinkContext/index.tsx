@@ -11,6 +11,7 @@ import {
   useState,
 } from 'react';
 import type { Frontend } from '../../../types';
+import { inspectorUrl } from '../../../utils/urls';
 import {
   type ContentLinkMethods,
   type ContentLinkState,
@@ -157,9 +158,9 @@ export function ContentLinkContextProvider({ children, frontend }: Props) {
     );
 
     ctx.navigateTo(
-      `/p/${ctx.plugin.id}/inspectors/visual?${new URLSearchParams({
+      inspectorUrl(ctx, {
         path: contentLinkState.path,
-      }).toString()}`,
+      }),
     );
 
     if (
