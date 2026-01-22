@@ -9,6 +9,7 @@ import { fas } from '@fortawesome/free-solid-svg-icons';
 import { IconPickerModal } from './entrypoints/ConfigScreen/IconPickerInput/IconPickerModal';
 import Inspector from './entrypoints/Inspector';
 import InspectorLoading from './entrypoints/InspectorLoading';
+import WrongEnvironmentPanel from './entrypoints/WrongEnvironmentPanel';
 import {
   type Parameters,
   getVisualEditingFrontends,
@@ -89,9 +90,13 @@ connect({
   renderInspector(_inspectorId, ctx) {
     render(<Inspector ctx={ctx} />);
   },
-  renderInspectorPanel(_panelId, ctx) {
-    // currently not used
-    render(<InspectorLoading ctx={ctx} />);
+  renderInspectorPanel(panelId, ctx) {
+    switch (panelId) {
+      case 'CONTENT_COMING_FROM_WRONG_ENVIRONMENT':
+        return render(<WrongEnvironmentPanel ctx={ctx} />);
+      default:
+        return render(<InspectorLoading ctx={ctx} />);
+    }
   },
   renderModal(modalId, ctx) {
     switch (modalId) {

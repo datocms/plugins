@@ -1,10 +1,12 @@
 import type { RenderInspectorCtx } from 'datocms-plugin-sdk';
 import { Canvas } from 'datocms-react-ui';
+import { useEffect } from 'react';
 import {
   type Parameters,
   getVisualEditingFrontends,
   normalizeParameters,
 } from '../../types';
+import { inspectorUrl } from '../../utils/urls';
 import { ContentLinkContextProvider } from './ContentLinkContext';
 import UI from './UI';
 
@@ -24,15 +26,28 @@ const Inspector = ({ ctx }: PropTypes) => {
     ? visualEditingFrontends.find((f) => f.name === frontendName)
     : visualEditingFrontends[0];
 
+  // If frontend param was provided but no match found, redirect to first available frontend
+  useEffect(() => {
+    if (
+      frontendName &&
+      !selectedFrontend &&
+      visualEditingFrontends.length > 0
+    ) {
+      const firstFrontend = visualEditingFrontends[0];
+      const path = firstFrontend.visualEditing?.initialPath || '/';
+
+      ctx.navigateTo(
+        inspectorUrl(ctx, {
+          path,
+          frontend: firstFrontend.name,
+        }),
+      );
+    }
+  }, [frontendName, selectedFrontend, visualEditingFrontends, ctx]);
+
   if (!selectedFrontend) {
-    return (
-      <Canvas ctx={ctx}>
-        <div style={{ padding: 'var(--spacing-m)' }}>
-          No frontends with visual editing enabled. Configure visual editing for
-          at least one frontend in plugin settings.
-        </div>
-      </Canvas>
-    );
+    // Return null during redirect, or if there are truly no frontends configured
+    return null;
   }
 
   return (

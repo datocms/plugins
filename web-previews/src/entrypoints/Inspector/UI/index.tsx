@@ -1,3 +1,4 @@
+import cuid from 'cuid';
 import type { RenderInspectorCtx } from 'datocms-plugin-sdk';
 import { useCtx } from 'datocms-react-ui';
 import type React from 'react';
@@ -16,6 +17,7 @@ import {
   getVisualEditingFrontends,
   normalizeParameters,
 } from '../../../types';
+import { inspectorUrl } from '../../../utils/urls';
 import { useContentLink } from '../ContentLinkContext';
 import AddressBar from './AddressBar';
 import { EditModeToggle } from './EditModeToggle';
@@ -43,7 +45,7 @@ const UI: React.FC = () => {
 
   const currentVisualEditing = selectedFrontend.visualEditing!;
 
-  const { iframeRef, iframeState, reloadIframe, contentLink } =
+  const { iframeRef, iframeState, setIframeState, reloadIframe, contentLink } =
     useContentLink();
 
   const iframeSrc = useMemo(() => {
@@ -118,7 +120,7 @@ const UI: React.FC = () => {
   return (
     <BrowserWrapper>
       <Toolbar>
-        <ToolbarSlot withLeftBorder>
+        <ToolbarSlot>
           <ViewportSelector
             menuAlignment="left"
             currentViewport={currentViewport}
@@ -126,7 +128,26 @@ const UI: React.FC = () => {
           />
         </ToolbarSlot>
         <ToolbarSlot flex withLeftBorder withPadding={9}>
-          <AddressBar onRefresh={handleRefresh} frontend={selectedFrontend} />
+          <AddressBar
+            onRefresh={handleRefresh}
+            frontend={selectedFrontend}
+            frontends={visualEditingFrontends}
+            onFrontendChange={(frontend) => {
+              setSelectedFrontend(frontend);
+              // Reset to new frontend's initial path
+              setIframeState({
+                path: frontend.visualEditing?.initialPath || '/',
+                key: cuid(),
+              });
+              // Update URL
+              ctx.navigateTo(
+                inspectorUrl(ctx, {
+                  path: frontend.visualEditing?.initialPath || '/',
+                  frontend: frontend.name,
+                }),
+              );
+            }}
+          />
         </ToolbarSlot>
         <ToolbarSlot withLeftBorder>
           <EditModeToggle

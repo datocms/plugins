@@ -6,6 +6,7 @@ import type React from 'react';
 import { useEffect, useState } from 'react';
 import type { Frontend } from '../../../../types';
 import { useContentLink } from '../../ContentLinkContext';
+import { FrontendSelector } from './FrontendSelector';
 import styles from './styles.module.css';
 
 export function toCompletePath(urlOrPath: string) {
@@ -33,9 +34,16 @@ function isRelativeUrl(str: string) {
 interface AddressBarProps {
   onRefresh: () => void;
   frontend: Frontend;
+  frontends: Frontend[];
+  onFrontendChange?: (frontend: Frontend) => void;
 }
 
-function AddressBar({ onRefresh, frontend }: AddressBarProps) {
+function AddressBar({
+  onRefresh,
+  frontend,
+  frontends,
+  onFrontendChange,
+}: AddressBarProps) {
   const visualEditingOrigin = new URL(
     frontend.visualEditing!.enableDraftModeUrl,
   ).origin;
@@ -104,18 +112,27 @@ function AddressBar({ onRefresh, frontend }: AddressBarProps) {
       onSubmit={handleSubmit}
       className={classNames(styles.root, hasError && styles.error)}
     >
-      <Tooltip>
-        <TooltipTrigger>
-          <button
-            type="button"
-            onClick={onRefresh}
-            className={styles.refreshButton}
-          >
-            <FontAwesomeIcon icon={faArrowsRotate} />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent>Reload page</TooltipContent>
-      </Tooltip>
+      <div className={styles.controls}>
+        <Tooltip>
+          <TooltipTrigger>
+            <button
+              type="button"
+              onClick={onRefresh}
+              className={styles.refreshButton}
+            >
+              <FontAwesomeIcon icon={faArrowsRotate} />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Reload page</TooltipContent>
+        </Tooltip>
+        {frontends.length > 1 && onFrontendChange && (
+          <FrontendSelector
+            frontends={frontends}
+            currentFrontend={frontend}
+            onChange={onFrontendChange}
+          />
+        )}
+      </div>
       <input
         type="text"
         value={inputValue}

@@ -105,10 +105,34 @@ export function ContentLinkContextProvider({ children, frontend }: Props) {
     onStateChange: ({ itemIdsPerEnvironment, ...rest }) => {
       setContentLinkState(rest);
 
-      ctx.setInspectorItemListData({
-        title: 'Records in this page',
-        itemIds: itemIdsPerEnvironment[currentEnvironmentId] ?? [],
-      });
+      const currentEnvItems = itemIdsPerEnvironment[currentEnvironmentId] ?? [];
+
+      // Check for items from other environments
+      const otherEnvironments = Object.keys(itemIdsPerEnvironment).filter(
+        (env) =>
+          env !== currentEnvironmentId && itemIdsPerEnvironment[env].length > 0,
+      );
+
+      if (otherEnvironments.length > 0) {
+        console.warn(
+          `Content link returned items from environments that don't match the current environment (${currentEnvironmentId}):`,
+          otherEnvironments,
+        );
+      }
+
+      // If there are NO records for the current environment but there are records from other environments
+      if (currentEnvItems.length === 0 && otherEnvironments.length > 0) {
+        ctx.setInspectorMode({
+          type: 'customPanel',
+          panelId: 'CONTENT_COMING_FROM_WRONG_ENVIRONMENT',
+          parameters: { environments: otherEnvironments },
+        });
+      } else {
+        ctx.setInspectorItemListData({
+          title: 'Records in this page',
+          itemIds: currentEnvItems,
+        });
+      }
 
       lastVisitedPathRef.current = rest.path;
     },
@@ -160,6 +184,7 @@ export function ContentLinkContextProvider({ children, frontend }: Props) {
     ctx.navigateTo(
       inspectorUrl(ctx, {
         path: contentLinkState.path,
+        frontend: frontend.name,
       }),
     );
 

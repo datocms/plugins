@@ -1,8 +1,8 @@
-import { BaseCtx } from 'datocms-react-ui';
+import type { BaseCtx } from 'datocms-react-ui';
 
 export function inspectorUrl(
   ctx: BaseCtx,
-  params: Record<string, string>,
+  params: { path: string; frontend: string },
 ): string {
   const base = ctx.isEnvironmentPrimary
     ? `/p/${ctx.plugin.id}/inspectors/visual`
