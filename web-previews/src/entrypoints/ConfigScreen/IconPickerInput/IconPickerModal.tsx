@@ -1,11 +1,11 @@
 import { findIconDefinition } from '@fortawesome/fontawesome-svg-core';
 import { type IconName, fas } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import type { RenderModalCtx } from 'datocms-plugin-sdk';
 import { Canvas, TextField, TextInput } from 'datocms-react-ui';
 import { snakeCase } from 'lodash-es';
 import { useMemo, useState } from 'react';
 import s from './modal-styles.module.css';
-import { RenderModalCtx } from 'datocms-plugin-sdk';
 
 export function IconPickerModal({ ctx }: { ctx: RenderModalCtx }) {
   const [searchQuery, setSearchQuery] = useState('');

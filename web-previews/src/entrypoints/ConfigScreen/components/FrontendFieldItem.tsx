@@ -39,7 +39,7 @@ export function FrontendFieldItem({ name, index, frontend, onRemove }: Props) {
             {({ input, meta: { error } }) => (
               <SwitchField
                 id={`frontend-${index}-disabled`}
-                label="Temporarily disable this frontend?"
+                label="Temporarily disable this frontend"
                 hint="Disabled frontends remain configured but won't be visible to editors."
                 error={error}
                 {...input}

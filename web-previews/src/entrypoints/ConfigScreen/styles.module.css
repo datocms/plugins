@@ -9,9 +9,6 @@
   border-color: var(--darker-border-color);
 }
 
-.deletableItem {
-}
-
 .deletableItemAction {
   padding-top: var(--spacing-l);
   display: flex;

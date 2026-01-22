@@ -41,10 +41,10 @@ export function PreviewLinksSection({ name, index, frontend }: Props) {
                     error={error}
                     hint={
                       <>
-                        URL of the endpoint that returns preview URLs given a
-                        specific record.{' '}
+                        URL of the POST JSON endpoint that returns preview URLs
+                        given a specific record as request payload.{' '}
                         <a
-                          href="https://www.datocms.com/marketplace/plugins/i/datocms-plugin-web-previews#the-previews-webhook"
+                          href="https://www.datocms.com/marketplace/plugins/i/datocms-plugin-web-previews#the-preview-links-api-endpoint"
                           target="_blank"
                           rel="noreferrer"
                         >

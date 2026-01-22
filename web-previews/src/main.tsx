@@ -6,6 +6,7 @@ import { render } from './utils/render';
 import 'datocms-react-ui/styles.css';
 import { library } from '@fortawesome/fontawesome-svg-core';
 import { fas } from '@fortawesome/free-solid-svg-icons';
+import { IconPickerModal } from './entrypoints/ConfigScreen/IconPickerInput/IconPickerModal';
 import Inspector from './entrypoints/Inspector';
 import InspectorLoading from './entrypoints/InspectorLoading';
 import {
@@ -14,7 +15,6 @@ import {
   normalizeParameters,
 } from './types';
 import { readSidebarWidth } from './utils/persistedWidth';
-import { IconPickerModal } from './entrypoints/ConfigScreen/IconPickerInput/IconPickerModal';
 
 library.add(fas);
 

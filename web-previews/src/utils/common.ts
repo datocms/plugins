@@ -27,8 +27,8 @@ export async function makeRequest(
       throw new Error(`Missing "Preview Links API endpoint" option!`);
     }
 
-    const { apiEndpoint, customHeaders } = frontend.previewLinks;
-    const url = new URL(apiEndpoint);
+    const { apiEndpointUrl, customHeaders } = frontend.previewLinks;
+    const url = new URL(apiEndpointUrl);
     const { hostname } = url;
 
     const headers = new Headers({ 'Content-Type': 'application/json' });

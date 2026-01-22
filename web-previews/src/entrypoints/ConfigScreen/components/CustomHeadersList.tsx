@@ -1,6 +1,6 @@
 import { faPlus, faTrash } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { Button, FieldGroup, TextField, FormLabel } from 'datocms-react-ui';
+import { Button, FieldGroup, FormLabel, TextField } from 'datocms-react-ui';
 import { Field } from 'react-final-form';
 import { FieldArray } from 'react-final-form-arrays';
 import s from '../styles.module.css';

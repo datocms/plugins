@@ -18,8 +18,8 @@ export function VisualEditingSection({ name, index, frontend }: Props) {
             <SwitchField
               id={`frontend-${index}-enableVisualEditing`}
               name={`frontend-${index}-enableVisualEditing`}
-              label="This frontend offers Visual Editing"
-              hint="Enable full-screen, side-by-side editing with click-to-edit overlays. Requires your frontend to implement draft mode endpoints."
+              label="This frontend supports Visual Editing"
+              hint="Enable full-screen, side-by-side editing with click-to-edit overlays. Requires your frontend to implement draft mode, and integrate with DatoCMS Content Link SDKs."
               value={!!input.value}
               onChange={(enabled) => {
                 input.onChange(enabled ? 'https://' : '');
@@ -40,11 +40,11 @@ export function VisualEditingSection({ name, index, frontend }: Props) {
                     error={error}
                     hint={
                       <>
-                        The route that enables draft/preview mode. Receives
-                        a <code>redirect</code> query parameter with the path to
+                        The route that enables draft/preview mode. Receives a{' '}
+                        <code>redirect</code> query parameter with the path to
                         load.{' '}
                         <a
-                          href="https://www.datocms.com/docs/content-delivery-api/draft-mode"
+                          href="https://www.datocms.com/marketplace/plugins/i/datocms-plugin-web-previews#the-enable-draft-mode-route"
                           target="_blank"
                           rel="noreferrer"
                         >
@@ -61,7 +61,7 @@ export function VisualEditingSection({ name, index, frontend }: Props) {
                         id={`frontend-${index}-visualEditing-initialPath`}
                         label="Initial Path (Optional)"
                         placeholder="/"
-                        hint="The default path to load when opening Visual Editing. Defaults to '/' if not specified."
+                        hint="The default frontend path to load when opening Visual Editing. Defaults to '/'."
                         error={error}
                         {...input}
                       />

@@ -1,4 +1,3 @@
-import cuid from 'cuid';
 import type { RenderInspectorCtx } from 'datocms-plugin-sdk';
 import { useCtx } from 'datocms-react-ui';
 import type React from 'react';
@@ -20,7 +19,6 @@ import {
 import { useContentLink } from '../ContentLinkContext';
 import AddressBar from './AddressBar';
 import { EditModeToggle } from './EditModeToggle';
-import { FrontendSelector } from './FrontendSelector';
 
 const UI: React.FC = () => {
   const ctx = useCtx<RenderInspectorCtx>();
@@ -45,7 +43,7 @@ const UI: React.FC = () => {
 
   const currentVisualEditing = selectedFrontend.visualEditing!;
 
-  const { iframeRef, iframeState, setIframeState, reloadIframe, contentLink } =
+  const { iframeRef, iframeState, reloadIframe, contentLink } =
     useContentLink();
 
   const iframeSrc = useMemo(() => {
@@ -96,7 +94,7 @@ const UI: React.FC = () => {
 
     if (contentLink.reason === 'failed-connection') {
       ctx.alert(
-        'Could not establish communication with the website. Please make sure the @datocms/content-link library is properly installed and active on your site.',
+        'Could not establish communication with the website. Please make sure that DatoCMS Content Link is properly installed on your website.',
       );
     }
 
@@ -120,29 +118,6 @@ const UI: React.FC = () => {
   return (
     <BrowserWrapper>
       <Toolbar>
-        {visualEditingFrontends.length > 1 && (
-          <ToolbarSlot withLeftBorder>
-            <FrontendSelector
-              frontends={visualEditingFrontends}
-              currentFrontend={selectedFrontend}
-              onChange={(frontend) => {
-                setSelectedFrontend(frontend);
-                // Reset to new frontend's initial path
-                setIframeState({
-                  path: frontend.visualEditing?.initialPath || '/',
-                  key: cuid(),
-                });
-                // Update URL
-                ctx.navigateTo(
-                  `/p/${ctx.plugin.id}/inspectors/visual?${new URLSearchParams({
-                    path: frontend.visualEditing?.initialPath || '/',
-                    frontend: frontend.name,
-                  }).toString()}`,
-                );
-              }}
-            />
-          </ToolbarSlot>
-        )}
         <ToolbarSlot withLeftBorder>
           <ViewportSelector
             menuAlignment="left"

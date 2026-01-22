@@ -1,5 +1,5 @@
 import { findIconDefinition } from '@fortawesome/fontawesome-svg-core';
-import { type IconName } from '@fortawesome/free-solid-svg-icons';
+import type { IconName } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { useCtx } from 'datocms-react-ui';
 import type { FieldInputProps } from 'react-final-form';

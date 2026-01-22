@@ -15,11 +15,11 @@ import { useState } from 'react';
 import { Field, Form as FormHandler } from 'react-final-form';
 import { FieldArray } from 'react-final-form-arrays';
 import {
-  denormalizeParameters,
-  normalizeParameters,
   type Parameters,
   type RawFrontend,
   type RawViewport,
+  denormalizeParameters,
+  normalizeParameters,
 } from '../../types';
 import { FrontendFieldItem } from './components/FrontendFieldItem';
 import { PreviewLinksSettings } from './components/PreviewLinksSettings';
