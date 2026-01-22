@@ -19,11 +19,11 @@ Configure your project's frontends and the features each provides (e.g., "Produc
 
 #### Feature 1: Preview Links
 
-When enabled, the plugin calls your webhook to retrieve preview URLs for the current record. You can then control how these links are displayed in the Record Sidebar (see section below).
+When enabled, the plugin calls your API endpoint to retrieve preview URLs for the current record. You can then control how these links are displayed in the Record Sidebar (see section below).
 
 **Required configuration:**
-- **Webhook URL** — The endpoint that returns preview links (e.g., `https://yourwebsite.com/api/preview-links`)
-- **Custom Headers (Optional)** — Additional headers to send with the webhook request
+- **API endpoint URL** — The endpoint that returns preview links (e.g., `https://yourwebsite.com/api/preview-links`)
+- **Custom Headers (Optional)** — Additional headers to send with the API request
 
 #### Feature 2: Visual Editing
 
@@ -63,19 +63,19 @@ Shows a full sidebar with an iframe preview of the selected URL. This provides a
 **Optional settings:**
 - **Default sidebar width (px)** — The initial width when the sidebar is opened
 
-**Note:** Both the Sidebar Panel and Full Preview Sidebar can be enabled together. The Full Preview Sidebar shows the same URLs returned by your webhook, but renders them in an iframe for in-app preview.
+**Note:** Both the Sidebar Panel and Full Preview Sidebar can be enabled together. The Full Preview Sidebar shows the same URLs returned by your API endpoint, but renders them in an iframe for in-app preview.
 
 #### Understanding the overlap
 
 Both **Preview Links (Full Preview Sidebar)** and **Visual Editing** can show your website in a side-by-side iframe view, but with different capabilities:
 
-- **Preview Links (Full Preview Sidebar):** Passive viewing of any URL returned by your webhook (draft, published, different environments, etc.)
+- **Preview Links (Full Preview Sidebar):** Passive viewing of any URL returned by your API endpoint (draft, published, different environments, etc.)
 - **Visual Editing:** Interactive editing with click-to-edit overlays that let editors modify content directly on the page
 
 You can use them independently or together:
 - **Just Sidebar Panel:** Quick links only (no iframe preview)
 - **Sidebar Panel + Full Preview Sidebar:** Links + passive iframe preview
-- **Visual Editing only:** Direct access to interactive editing (no preview links webhook needed)
+- **Visual Editing only:** Direct access to interactive editing (no preview links API endpoint needed)
 - **All features:** Sidebar links + passive preview + interactive visual editing
 
 ### 3. Custom viewports
@@ -96,11 +96,11 @@ Configure iframe permissions and security settings:
 Content-Security-Policy: frame-ancestors 'self' https://plugins-cdn.datocms.com;
 ```
 
-## The Preview Links webhook
+## The Preview Links API endpoint
 
 Each frontend must implement a CORS-ready JSON endpoint that, given a specific DatoCMS record, returns an array of preview link(s).
 
-The plugin performs a POST request to the Preview Links webhook URL, passing a payload that includes the current environment, record and model:
+The plugin performs a POST request to the Preview Links API endpoint URL, passing a payload that includes the current environment, record and model:
 
 ```json
 {
@@ -155,37 +155,37 @@ If you have built alternative endpoint implementations for other frameworks/SSGs
 
 We suggest you look at the code of our [official Starter Kit](https://github.com/datocms/nextjs-starter-kit):
 
-* Route handler for the Preview Links webhook: [`app/api/preview-links/route.tsx`](https://github.com/datocms/nextjs-starter-kit/blob/main/src/app/api/preview-links/route.tsx)
+* Route handler for the Preview Links API endpoint: [`app/api/preview-links/route.tsx`](https://github.com/datocms/nextjs-starter-kit/blob/main/src/app/api/preview-links/route.tsx)
 * Route handlers to toggle Next.js [Draft Mode](https://www.datocms.com/docs/next-js/setting-up-next-js-draft-mode): [`app/api/draft-mode/enable/route.tsx`](https://github.com/datocms/nextjs-starter-kit/blob/main/src/app/api/draft-mode/enable/route.tsx) and [`app/api/draft-mode/disable/route.tsx`](https://github.com/datocms/nextjs-starter-kit/blob/main/src/app/api/draft-mode/disable/route.tsx)
 
-The preview link URLs also include a `token` query parameter that the plugin would send to the webhook receiver, like `https://www.mywebsite.com/api/preview-links?token=some-secret-ish-string`. The `token` is a string of your choice that just has to match in both the plugin settings and [in your frontend's environment variables](https://github.com/datocms/nextjs-starter-kit/blob/main/src/app/api/preview-links/route.tsx#L31-L34). While not encryption, this token is an easy way to limit access to your preview content.
+The preview link URLs also include a `token` query parameter that the plugin would send to the API endpoint, like `https://www.mywebsite.com/api/preview-links?token=some-secret-ish-string`. The `token` is a string of your choice that just has to match in both the plugin settings and [in your frontend's environment variables](https://github.com/datocms/nextjs-starter-kit/blob/main/src/app/api/preview-links/route.tsx#L31-L34). While not encryption, this token is an easy way to limit access to your preview content.
 
 ### Nuxt
 
 We suggest you look at the code of our [official Starter Kit](https://github.com/datocms/nuxt-starter-kit):
 
-* Route handler called for the Preview Links webhook [server/api/preview-links/index.ts](https://github.com/datocms/nuxt-starter-kit/blob/main/server/api/preview-links/index.ts)
+* Route handler for the Preview Links API endpoint: [server/api/preview-links/index.ts](https://github.com/datocms/nuxt-starter-kit/blob/main/server/api/preview-links/index.ts)
 * Route handlers to toggle draft mode: [`server/api/draft-mode/enable.ts`](https://github.com/datocms/nuxt-starter-kit/blob/main/server/api/draft-mode/enable.ts) and [`server/api/draft-mode/disable.ts`](https://github.com/datocms/nuxt-starter-kit/blob/main/server/api/draft-mode/disable.ts)
 
-The preview link URLs also include a `token` query parameter that the plugin would send to the webhook receiver, like `https://www.mywebsite.com/api/preview-links?token=some-secret-ish-string`. The `token` is a string of your choice that just has to match in both the plugin settings and [in your frontend's environment variables](https://github.com/datocms/nuxt-starter-kit/blob/main/server/api/preview-links/index.ts#L42-L44). While not encryption, this token is an easy way to limit access to your preview content.
+The preview link URLs also include a `token` query parameter that the plugin would send to the API endpoint, like `https://www.mywebsite.com/api/preview-links?token=some-secret-ish-string`. The `token` is a string of your choice that just has to match in both the plugin settings and [in your frontend's environment variables](https://github.com/datocms/nuxt-starter-kit/blob/main/server/api/preview-links/index.ts#L42-L44). While not encryption, this token is an easy way to limit access to your preview content.
 
 ### SvelteKit
 
 We suggest you look at the code of our [official Starter Kit](https://github.com/datocms/sveltekit-starter-kit):
 
-* Route handler for the Preview Links webhook: [`src/routes/api/preview-links/+server.ts`](https://github.com/datocms/sveltekit-starter-kit/blob/main/src/routes/api/preview-links/%2Bserver.ts)
+* Route handler for the Preview Links API endpoint: [`src/routes/api/preview-links/+server.ts`](https://github.com/datocms/sveltekit-starter-kit/blob/main/src/routes/api/preview-links/%2Bserver.ts)
 * Route handlers to toggle draft mode: [`routes/api/draft-mode/enable/+server.ts`](https://github.com/datocms/sveltekit-starter-kit/blob/main/src/routes/api/draft-mode/enable/%2Bserver.ts) and [`routes/api/draft-mode/disable/+server.ts`](https://github.com/datocms/sveltekit-starter-kit/blob/main/src/routes/api/draft-mode/disable/%2Bserver.ts)
 
-The preview link URLs also include a `token` query parameter that the plugin would send to the webhook receiver, like `https://www.mywebsite.com/api/preview-links?token=some-secret-ish-string`. The `token` is a string of your choice that just has to match in both the plugin settings and [in your frontend's environment variables](https://github.com/datocms/sveltekit-starter-kit/blob/main/src/routes/api/preview-links/%2Bserver.ts#L34-L36). While not encryption, this token is an easy way to limit access to your preview content.
+The preview link URLs also include a `token` query parameter that the plugin would send to the API endpoint, like `https://www.mywebsite.com/api/preview-links?token=some-secret-ish-string`. The `token` is a string of your choice that just has to match in both the plugin settings and [in your frontend's environment variables](https://github.com/datocms/sveltekit-starter-kit/blob/main/src/routes/api/preview-links/%2Bserver.ts#L34-L36). While not encryption, this token is an easy way to limit access to your preview content.
 
 ### Astro
 
 We suggest you look at the code of our [official Starter Kit](https://github.com/datocms/astro-starter-kit):
 
-* Route handler for the Preview Links webhook: [`src/pages/api/preview-links/index.ts`](https://github.com/datocms/astro-starter-kit/blob/main/src/pages/api/preview-links/index.ts)
+* Route handler for the Preview Links API endpoint: [`src/pages/api/preview-links/index.ts`](https://github.com/datocms/astro-starter-kit/blob/main/src/pages/api/preview-links/index.ts)
 * Route handlers to toggle draft mode: [`src/pages/api/draft-mode/enable/index.ts`](https://github.com/datocms/astro-starter-kit/blob/main/src/pages/api/draft-mode/enable/index.ts) and [`src/pages/api/draft-mode/disable/index.ts`](https://github.com/datocms/astro-starter-kit/blob/main/src/pages/api/draft-mode/disable/index.ts)
 
-The preview link URLs also include a `token` query parameter that the plugin would send to the webhook receiver, like `https://www.mywebsite.com/api/preview-links?token=some-secret-ish-string`. The `token` is a string of your choice that just has to match in both the plugin settings and [in your frontend's environment variables](https://github.com/datocms/astro-starter-kit/blob/main/src/pages/api/preview-links/index.ts#L33-L35). While not encryption, this token is an easy way to limit access to your preview content.
+The preview link URLs also include a `token` query parameter that the plugin would send to the API endpoint, like `https://www.mywebsite.com/api/preview-links?token=some-secret-ish-string`. The `token` is a string of your choice that just has to match in both the plugin settings and [in your frontend's environment variables](https://github.com/datocms/astro-starter-kit/blob/main/src/pages/api/preview-links/index.ts#L33-L35). While not encryption, this token is an easy way to limit access to your preview content.
 
 
 

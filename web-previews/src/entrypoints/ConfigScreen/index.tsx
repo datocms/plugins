@@ -76,7 +76,7 @@ export default function ConfigScreen({ ctx }: PropTypes) {
                 'Enable at least one feature (Preview Links or Visual Editing) or disable this frontend.';
             }
 
-            // Validate preview webhook URL if provided (flat structure)
+            // Validate preview API endpoint URL if provided (flat structure)
             if (rule.previewWebhook && !isValidUrl(rule.previewWebhook)) {
               ruleErrors.previewWebhook = 'Please specify a valid URL!';
             }
@@ -165,7 +165,7 @@ export default function ConfigScreen({ ctx }: PropTypes) {
             >
               <p>
                 Configure your project's frontends and the features each
-                provides
+                provides.
               </p>
               <FieldArray<RawFrontend> name="frontends">
                 {({ fields }) => (

@@ -51,7 +51,7 @@ export type Frontend = {
   name: string;
   disabled: boolean;
   previewLinks?: {
-    webhook: string;
+    apiEndpoint: string;
     customHeaders: CustomHeader[];
   };
   visualEditing?: {
@@ -98,7 +98,7 @@ export function normalizeParameters({
         disabled: Boolean(frontend.disabled),
         previewLinks: frontend.previewWebhook
           ? {
-              webhook: frontend.previewWebhook,
+              apiEndpoint: frontend.previewWebhook,
               customHeaders: frontend.customHeaders || [],
             }
           : undefined,
@@ -157,7 +157,7 @@ export function denormalizeParameters({
       }
 
       if (frontend.previewLinks) {
-        rawFrontend.previewWebhook = frontend.previewLinks.webhook;
+        rawFrontend.previewWebhook = frontend.previewLinks.apiEndpoint;
         if (frontend.previewLinks.customHeaders.length > 0) {
           rawFrontend.customHeaders = frontend.previewLinks.customHeaders;
         }

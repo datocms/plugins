@@ -24,11 +24,11 @@ export async function makeRequest(
 ): Promise<[string, FrontendStatus]> {
   try {
     if (!frontend.previewLinks) {
-      throw new Error(`Missing "Preview Webhook URL" option!`);
+      throw new Error(`Missing "Preview Links API endpoint" option!`);
     }
 
-    const { webhook, customHeaders } = frontend.previewLinks;
-    const url = new URL(webhook);
+    const { apiEndpoint, customHeaders } = frontend.previewLinks;
+    const url = new URL(apiEndpoint);
     const { hostname } = url;
 
     const headers = new Headers({ 'Content-Type': 'application/json' });
@@ -50,7 +50,7 @@ export async function makeRequest(
 
     if (request.status !== 200) {
       throw new Error(
-        `[Web Previews] Webhook for frontend "${frontend.name}" returned a ${request.status} status!`,
+        `[Web Previews] API endpoint for frontend "${frontend.name}" returned a ${request.status} status!`,
       );
     }
 
@@ -58,7 +58,7 @@ export async function makeRequest(
 
     if (!isValidResponse(response)) {
       throw new Error(
-        `[Web Previews] Webhook for frontend "${frontend.name}" returned an invalid payload!`,
+        `[Web Previews] API endpoint for frontend "${frontend.name}" returned an invalid payload!`,
       );
     }
 

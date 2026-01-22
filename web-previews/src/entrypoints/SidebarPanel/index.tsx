@@ -56,7 +56,7 @@ const FrontendResult = ({
     : undefined;
 
   if ('error' in status) {
-    return <div>Webhook error: check the console for more info!</div>;
+    return <div>API endpoint error: check the console for more info!</div>;
   }
 
   return (

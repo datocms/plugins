@@ -36,12 +36,13 @@ export function PreviewLinksSection({ name, index, frontend }: Props) {
                 <FieldGroup>
                   <TextField
                     id={`frontend-${index}-previewWebhook`}
-                    label="Webhook URL"
+                    label="API endpoint URL"
                     placeholder="https://yourwebsite.com/api/preview-links"
                     error={error}
                     hint={
                       <>
-                        URL of the webhook that returns preview links.{' '}
+                        URL of the endpoint that returns preview URLs given a
+                        specific record.{' '}
                         <a
                           href="https://www.datocms.com/marketplace/plugins/i/datocms-plugin-web-previews#the-previews-webhook"
                           target="_blank"

@@ -5,9 +5,9 @@
 This plugin enables side-by-side website previews within the DatoCMS editor. It provides:
 - **Sidebar previews**: iframe-based previews of web pages alongside record editing
 - **Visual editing mode**: full-screen inspector with draft mode integration
-- **Preview links**: quick access to published/draft versions via webhook integration
+- **Preview links**: quick access to published/draft versions via API endpoint integration
 
-**Not handled here**: The preview webhook endpoints themselves live in frontend applications (Next.js, Nuxt, etc.). This plugin consumes those endpoints but doesn't implement them.
+**Not handled here**: The preview API endpoints themselves live in frontend applications (Next.js, Nuxt, etc.). This plugin consumes those endpoints but doesn't implement them.
 
 ## Architecture Overview
 
@@ -27,7 +27,7 @@ src/utils/                  → Shared utilities (rendering, persisted width)
 
 DatoCMS plugins use a hook-based system. This plugin implements:
 
-1. **`renderConfigScreen`** → `ConfigScreen/` - Configure frontends, webhooks, viewports
+1. **`renderConfigScreen`** → `ConfigScreen/` - Configure frontends, API endpoints, viewports
 2. **`renderItemFormSidebarPanel`** → `SidebarPanel/` - Shows clickable preview link list
 3. **`renderItemFormSidebar`** → `SidebarFrame/` - Main preview iframe with toolbar
 4. **`renderInspector`** → `Inspector/` - Visual editing mode (draft mode integration)
@@ -40,7 +40,7 @@ Each entry point receives a DatoCMS context object (`ctx`) with access to the cu
 ```
 User edits record in DatoCMS
   ↓
-Plugin calls configured webhook(s) with item/itemType/locale payload
+Plugin calls configured API endpoint(s) with item/itemType/locale payload
   ↓
 Frontend returns { previewLinks: [{ label, url, reloadPreviewOnRecordUpdate? }] }
   ↓
@@ -61,8 +61,8 @@ When `visualEditing.enableDraftModeUrl` is configured:
 - **Always normalize parameters**: Raw plugin parameters from DatoCMS are loose. Use `normalizeParameters()` from `types.ts` to convert to `NormalizedParameters` before use.
 - **Viewport dimensions**: Must be between `MIN_VIEWPORT_DIMENSION` (200px) and `MAX_VIEWPORT_DIMENSION` (3840px)
 
-### Webhook Contract
-Frontend webhooks must:
+### API Endpoint Contract
+Frontend API endpoints must:
 - Accept POST with `{ item, itemType, currentUser, siteId, environmentId, locale }`
 - Return `200` with `{ previewLinks: PreviewLink[] }`
 - Be CORS-ready (plugin runs from `https://plugins-cdn.datocms.com`)
@@ -121,7 +121,7 @@ const { frontends } = normalizeParameters(ctx.plugin.attributes.parameters);
 ```
 
 ### Don't Construct Preview URLs Client-Side
-The plugin **never** builds preview URLs itself. Always call the configured webhook. The frontend knows its routing, the plugin doesn't.
+The plugin **never** builds preview URLs itself. Always call the configured API endpoint. The frontend knows its routing, the plugin doesn't.
 
 ### Don't Share State Between Entry Points
 Each entry point is isolated (separate React render). Use `ctx.parameters` or `ctx.notice()` to coordinate, not global state.
@@ -129,9 +129,10 @@ Each entry point is isolated (separate React render). Use `ctx.parameters` or `c
 ### Don't Mutate ctx.item
 The context object is read-only. To update records, use DatoCMS SDK methods on `ctx.item.meta`.
 
-## Visual Editing (NEW)
+## Visual Editing
 
-Recent addition. When enabled:
+When enabled:
+
 - Adds "Visual" tab to main navigation
 - Full-screen inspector at `/p/{pluginId}/inspectors/visual`
 - Expects frontend to implement draft mode toggle endpoint
@@ -145,8 +146,8 @@ Recent addition. When enabled:
 
 ### Preview not loading
 1. Check CSP headers on frontend (must allow `https://plugins-cdn.datocms.com`)
-2. Verify webhook returns valid JSON (use browser network inspector)
-3. Check CORS headers on webhook endpoint
+2. Verify API endpoint returns valid JSON (use browser network inspector)
+3. Check CORS headers on API endpoint
 4. Look for validation errors in `isValidResponse()`
 
 ### Iframe blank after reload
@@ -176,3 +177,4 @@ The plugin is loaded into DatoCMS via iframe from `dist/index.html` after build.
 - React 18 with TypeScript, using Vite for bundling
 - UI components from `datocms-react-ui` should be preferred for consistency
 - Plugin runs in sandboxed iframe, no direct localStorage access (use `ctx` methods)
+- The type `Parameters` represents the plugin stored settings. It should always be kept retro-compatible, even if it becomes ugly. The normalized representation of the same settings we use everywhere else is `NormalizedParameters`.
