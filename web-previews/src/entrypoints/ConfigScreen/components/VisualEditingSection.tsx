@@ -35,12 +35,12 @@ export function VisualEditingSection({ name, index, frontend }: Props) {
                 <FieldGroup>
                   <TextField
                     id={`frontend-${index}-visualEditing-enableDraftModeUrl`}
-                    label="Draft Mode API Endpoint"
+                    label="Enable Draft Mode route"
                     placeholder="https://yourwebsite.com/api/draft"
                     error={error}
                     hint={
                       <>
-                        The API route that enables draft/preview mode. Receives
+                        The route that enables draft/preview mode. Receives
                         a <code>redirect</code> query parameter with the path to
                         load.{' '}
                         <a

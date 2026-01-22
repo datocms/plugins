@@ -36,7 +36,7 @@ export function PreviewLinksSection({ name, index, frontend }: Props) {
                 <FieldGroup>
                   <TextField
                     id={`frontend-${index}-previewWebhook`}
-                    label="API endpoint URL"
+                    label="Preview Links API Endpoint"
                     placeholder="https://yourwebsite.com/api/preview-links"
                     error={error}
                     hint={
