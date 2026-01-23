@@ -151,23 +151,53 @@ export function ContentLinkContextProvider({ children, frontend }: Props) {
 
   useEffect(() => {
     const interval = setInterval(() => {
+      // Don't check for ping timeout when the tab is hidden
+      if (document.hidden) {
+        return;
+      }
+
       const timeSinceLastPing = Date.now() - lastPingTimeRef.current;
       if (timeSinceLastPing >= 5000) {
         setIsPingActive(false);
       }
     }, 1000);
 
-    return () => clearInterval(interval);
+    // Reset ping state when tab becomes visible again
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        lastPingTimeRef.current = Date.now();
+        setIsPingActive(true);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
+
+  const [highlightedItemId, setHighligtedItemId] = useState<string | undefined>(
+    undefined,
+  );
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentional
   useEffect(() => {
-    if (ctx.highlightedItemId && connection.type === 'connected') {
+    if (highlightedItemId && connection.type === 'connected') {
       connection.methods.flashItem({
-        itemId: ctx.highlightedItemId,
+        itemId: highlightedItemId,
         scrollToNearestTarget: true,
       });
     }
+  }, [highlightedItemId]);
+
+  useEffect(() => {
+    const itemId = ctx.highlightedItemId;
+    setHighligtedItemId(itemId);
+    setTimeout(() => {
+      setHighligtedItemId((old) => (old === itemId ? undefined : old));
+    }, 5000);
   }, [ctx.highlightedItemId]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentional
