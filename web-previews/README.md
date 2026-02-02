@@ -1,13 +1,21 @@
 # Web Previews DatoCMS plugin
 
-This plugin provides two independent, optional features to preview and edit your content:
+The plugin adds several touchpoints to the DatoCMS UI:
 
-1. **Preview Links** — Show preview links in the sidebar for draft or published content from any environment
-2. **Visual Editing** — Enable full-screen, side-by-side editing with click-to-edit overlays directly in your website
+- **A "Visual" tab in the main navigation**: a full-screen, side-by-side editing view where the website preview sits next to the editing panel. Editors click on any element in the preview, and the corresponding record and field open right there. The tab includes:
+  - An address bar for navigating the preview
+  - Viewport controls for testing responsive layouts
+  - A frontend selector for switching between environments (e.g. production vs. staging)
 
-You can enable one or both features for each frontend you configure. They work great together, but each is useful on its own.
+- **Preview links in the record sidebar**: when editors open any record, they see quick links to view that content on the actual website. The plugin determines which URL corresponds to each record by calling an API endpoint on your frontend.
 
-🚨 **Important:** This plugin requires configuration and development work. You'll need to implement API endpoints on your frontend website(s) for it to function. Read more in the following sections!
+- **A full iframe preview in the sidebar**: beyond just links, editors can expand an inline preview of the page directly in the sidebar, with viewport presets (mobile, tablet, desktop) and auto-reload on save.
+
+The plugin supports **multiple frontends**, so if your content powers different websites or environments, editors can switch between them from a single dropdown.
+
+Each feature can be enabled independently per frontend — they work great together, but each is useful on its own.
+
+> **Important:** This plugin requires configuration and development work. You'll need to implement API endpoints on your frontend website(s) for it to function. Read more in the following sections.
 
 ## Installation and configuration
 
