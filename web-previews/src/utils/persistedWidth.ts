@@ -19,6 +19,7 @@ export function readSidebarWidth(site: Site) {
 export function usePersistedSidebarWidth(site: Site) {
   const { width } = useWindowSize();
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional
   useEffect(() => {
     saveSidebarWidth(site, width);
   }, [site.id, width]);

@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import type { SizingStrategy } from '../Iframe';
+import type { SizingStrategy } from './index';
 
 export function computeIframeStyles(
   sizing: SizingStrategy,
@@ -7,10 +7,6 @@ export function computeIframeStyles(
 ): CSSProperties {
   const baseStyles: CSSProperties = {
     position: 'absolute',
-    top: '50%',
-    left: '50%',
-    transformOrigin: 'center center',
-    transition: 'width 0.3s ease, height 0.3s ease, transform 0.3s ease',
   };
 
   if (sizing === 'responsive') {
@@ -20,7 +16,6 @@ export function computeIframeStyles(
       height: '100%',
       maxWidth: '100%',
       maxHeight: '100%',
-      transform: 'translate(-50%, -50%)',
     };
   }
 
@@ -29,5 +24,9 @@ export function computeIframeStyles(
     width: `${sizing.width}px`,
     height: `${sizing.height}px`,
     transform: `translate(-50%, -50%) scale(${scale})`,
+    top: '50%',
+    left: '50%',
+    transformOrigin: 'center center',
+    transition: 'width 0.3s ease, height 0.3s ease, transform 0.3s ease',
   };
 }

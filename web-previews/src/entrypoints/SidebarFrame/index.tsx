@@ -1,22 +1,34 @@
-import { faArrowsRotate, faCopy } from '@fortawesome/free-solid-svg-icons';
+import {
+  faArrowsRotate,
+  faCopy,
+  faExternalLinkAlt,
+  faEye,
+} from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
 import { Canvas, Spinner } from 'datocms-react-ui';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useDeepCompareEffect } from 'use-deep-compare';
+import { BrowserWrapper } from '../../components/Browser/BrowserWrapper';
+import styles from '../../components/Browser/BrowserWrapper/styles.module.css';
+import { IframeContainer } from '../../components/Browser/IframeContainer';
+import { Toolbar } from '../../components/Browser/Toolbar';
+import { ToolbarButton } from '../../components/Browser/Toolbar/ToolbarButton';
+import { ToolbarSlot } from '../../components/Browser/Toolbar/ToolbarSlot';
+import { ViewportCustomizer } from '../../components/Browser/ViewportCustomizer';
+import type { ViewportSize } from '../../components/Browser/ViewportCustomizer';
+import { ViewportSelector } from '../../components/Browser/ViewportSelector';
+import { ButtonGroup, ButtonGroupButton } from '../../components/ButtonGroup';
 import {
   type Parameters,
-  type PreviewLink,
+  type PreviewLinkWithFrontend,
   type Viewport,
   normalizeParameters,
 } from '../../types';
 import { useStatusByFrontend } from '../../utils/common';
 import { usePersistedSidebarWidth } from '../../utils/persistedWidth';
-import { Iframe } from './Iframe';
+import { inspectorUrl } from '../../utils/urls';
 import { PreviewLinkSelector } from './PreviewLinkSelector';
-import { ViewportCustomizer, type ViewportSize } from './ViewportCustomizer';
-import { ViewportSelector } from './ViewportSelector';
-import styles from './styles.module.css';
 
 type PropTypes = {
   ctx: RenderItemFormSidebarCtx;
@@ -28,7 +40,12 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
   );
 
   const [reloadCounter, setReloadCounter] = useState(0);
-  const forceReload = () => setReloadCounter((old) => old + 1);
+  const [iframeLoading, setIframeLoading] = useState(true);
+
+  const forceReload = useCallback(() => {
+    setReloadCounter((old) => old + 1);
+    setIframeLoading(true);
+  }, []);
 
   const [customViewportSize, setCustomViewportSize] = useState<ViewportSize>({
     width: 800,
@@ -48,32 +65,34 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
 
   const [frontends, statusByFrontend] = useStatusByFrontend(ctx);
   const [currentPreviewLink, setCurrentPreviewLink] = useState<
-    PreviewLink | undefined
+    PreviewLinkWithFrontend | undefined
   >();
 
   usePersistedSidebarWidth(ctx.site);
 
-  const allPreviewLinks = useMemo(() => {
-    if (!statusByFrontend) {
-      return [];
-    }
+  const allPreviewLinksWithFrontend = useMemo(() => {
+    if (!statusByFrontend) return [];
 
-    return Object.entries(statusByFrontend).flatMap((result) => {
-      const status = result[1];
-      if ('previewLinks' in status) {
-        return status.previewLinks;
-      }
-
-      return [];
-    });
+    return Object.entries(statusByFrontend).flatMap(
+      ([frontendName, status]) => {
+        if (status && 'previewLinks' in status) {
+          return status.previewLinks.map((link) => ({
+            ...link,
+            frontendName,
+          }));
+        }
+        return [];
+      },
+    );
   }, [statusByFrontend]);
 
   useDeepCompareEffect(() => {
-    if (allPreviewLinks.length > 0) {
-      setCurrentPreviewLink(allPreviewLinks[0]);
+    if (allPreviewLinksWithFrontend.length > 0) {
+      setCurrentPreviewLink(allPreviewLinksWithFrontend[0]);
     }
-  }, [allPreviewLinks]);
+  }, [allPreviewLinksWithFrontend]);
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional
   useEffect(() => {
     const reloadSettings = currentPreviewLink?.reloadPreviewOnRecordUpdate;
 
@@ -85,6 +104,7 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
 
     setTimeout(forceReload, delayInMs);
   }, [
+    forceReload,
     ctx.item?.meta.current_version,
     currentPreviewLink,
     currentPreviewLink?.reloadPreviewOnRecordUpdate,
@@ -92,77 +112,118 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
 
   return (
     <Canvas ctx={ctx} noAutoResizer={true}>
-      <div className={styles.wrapper}>
-        {statusByFrontend ? (
-          <>
-            <div className={styles.toolbar}>
-              <ViewportSelector
-                currentViewport={currentViewport}
-                onChange={handleViewportChange}
+      {!statusByFrontend ? (
+        <div className={styles.spinnerWrapper}>
+          <Spinner placement="centered" size={48} />
+        </div>
+      ) : (
+        <BrowserWrapper>
+          <Toolbar>
+            <ViewportSelector
+              menuAlignment="left"
+              currentViewport={currentViewport}
+              onChange={handleViewportChange}
+            />
+            <ToolbarSlot flex withLeftBorder>
+              <PreviewLinkSelector
+                frontends={frontends}
+                statusByFrontend={statusByFrontend}
+                currentPreviewLink={currentPreviewLink}
+                onChange={setCurrentPreviewLink}
               />
-              <div className={styles.previewLinksWrapper}>
-                <PreviewLinkSelector
-                  frontends={frontends}
-                  statusByFrontend={statusByFrontend}
-                  currentPreviewLink={currentPreviewLink}
-                  onChange={setCurrentPreviewLink}
-                />
-              </div>
-              {currentPreviewLink && (
-                <>
-                  <button
-                    type="button"
-                    className={styles.toolbarButton}
-                    title="Refresh the preview"
-                    onClick={() => {
-                      forceReload();
-                    }}
-                  >
-                    <FontAwesomeIcon icon={faArrowsRotate} />
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.toolbarButton}
-                    title="Copy URL to clipboard"
-                    onClick={() => {
-                      navigator.clipboard.writeText(currentPreviewLink.url);
-                      ctx.notice('URL saved in clipboard!');
-                    }}
-                  >
-                    <FontAwesomeIcon icon={faCopy} />
-                  </button>
-                </>
-              )}
-            </div>
+            </ToolbarSlot>
             {currentPreviewLink && (
               <>
-                {currentViewport === 'custom' && (
-                  <ViewportCustomizer
-                    size={customViewportSize}
-                    onChange={setCustomViewportSize}
-                  />
-                )}
-                <Iframe
-                  key={`${currentPreviewLink.url}-${reloadCounter}`}
-                  previewLink={currentPreviewLink}
-                  sizing={
-                    currentViewport === 'responsive'
-                      ? 'responsive'
-                      : currentViewport === 'custom'
-                        ? customViewportSize
-                        : currentViewport
-                  }
-                  allow={iframeAllowAttribute}
+                <ToolbarButton
+                  icon={faArrowsRotate}
+                  tooltip="Refresh the preview"
+                  onClick={forceReload}
                 />
+                <ToolbarSlot withLeftBorder withPadding={8}>
+                  <ButtonGroup>
+                    {(() => {
+                      if (!currentPreviewLink) return null;
+
+                      const frontend = frontends.find(
+                        (f) => f.name === currentPreviewLink.frontendName,
+                      );
+                      if (!frontend?.visualEditing?.enableDraftModeUrl)
+                        return null;
+
+                      const frontendOrigin = new URL(
+                        frontend.visualEditing.enableDraftModeUrl,
+                      ).origin;
+                      const linkOrigin = new URL(currentPreviewLink.url).origin;
+
+                      if (frontendOrigin !== linkOrigin) return null;
+
+                      return (
+                        <ButtonGroupButton
+                          tooltip="Open in Visual"
+                          onClick={() => {
+                            const url = new URL(currentPreviewLink.url);
+                            ctx.navigateTo(
+                              inspectorUrl(ctx, {
+                                path: url.pathname + url.search,
+                                frontend: currentPreviewLink.frontendName,
+                              }),
+                            );
+                          }}
+                        >
+                          <FontAwesomeIcon icon={faEye} />
+                        </ButtonGroupButton>
+                      );
+                    })()}
+                    <ButtonGroupButton
+                      tooltip="Copy URL to clipboard"
+                      onClick={() => {
+                        navigator.clipboard.writeText(currentPreviewLink.url);
+                        ctx.notice('URL saved in clipboard!');
+                      }}
+                    >
+                      <FontAwesomeIcon icon={faCopy} />
+                    </ButtonGroupButton>
+                    <ButtonGroupButton
+                      tooltip="Visit URL"
+                      onClick={() => {
+                        window.open(currentPreviewLink.url, '_blank');
+                      }}
+                    >
+                      <FontAwesomeIcon icon={faExternalLinkAlt} />
+                    </ButtonGroupButton>
+                  </ButtonGroup>
+                </ToolbarSlot>
               </>
             )}
-          </>
-        ) : (
-          <div className={styles.spinnerWrapper}>
-            <Spinner placement="centered" size={48} />
-          </div>
-        )}
-      </div>
+          </Toolbar>
+
+          {currentPreviewLink && (
+            <>
+              {currentViewport === 'custom' && (
+                <ViewportCustomizer
+                  size={customViewportSize}
+                  onChange={setCustomViewportSize}
+                />
+              )}
+
+              <IframeContainer
+                key={`${currentPreviewLink.url}-${reloadCounter}`}
+                src={currentPreviewLink.url}
+                allow={iframeAllowAttribute}
+                sizing={
+                  currentViewport === 'responsive'
+                    ? 'responsive'
+                    : currentViewport === 'custom'
+                      ? customViewportSize
+                      : currentViewport
+                }
+                loading={iframeLoading}
+                onLoad={() => setIframeLoading(false)}
+              />
+            </>
+          )}
+        </BrowserWrapper>
+      )}
     </Canvas>
   );
 };
