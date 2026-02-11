@@ -13,8 +13,9 @@ import { render } from "./utils/render";
 
 const ACTION_ID = "bulkChangeCreator";
 const MODAL_ID = "select-creator";
+type CreatorType = "user" | "sso_user" | "account" | "organization";
 
-type ModalResult = { userId: string } | null;
+type ModalResult = { userId: string; userType: CreatorType } | null;
 
 function summarizeFailures(failures: Array<{ id: string; error: unknown }>) {
 	const preview = failures
@@ -82,6 +83,7 @@ connect({
 			environment: ctx.environment,
 			itemIds: items.map((item) => item.id),
 			userId: modalResult.userId,
+			userType: modalResult.userType,
 		});
 
 		if (ok.length) {

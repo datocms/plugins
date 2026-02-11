@@ -1,6 +1,6 @@
 # Bulk Change Author for DatoCMS
 
-Give editors a fast, safe way to transfer ownership of many records at once. The **Bulk Change Author** plugin adds a Global Record Action to DatoCMS that lets you pick a collaborator and reassign the `creator` metadata across multiple entries in just a few clicks.
+Give editors a fast, safe way to transfer ownership of many records at once. The **Bulk Change Author** plugin adds a Global Record Action to DatoCMS that lets you pick a collaborator, SSO user, or project owner and reassign the `creator` metadata across multiple entries in just a few clicks.
 
 ![Bulk action modal showing the collaborator picker](docs/demonstrationModal.png)
 
@@ -18,7 +18,7 @@ Give editors a fast, safe way to transfer ownership of many records at once. The
 ## Features at a glance
 
 - Registers a **Global Record Action** labelled “Change creators…” in both the collection (table) view and the record detail view.
-- Opens a modal that fetches the project’s collaborators from the Content Management API (`users.list()`), letting the editor pick one collaborator.
+- Opens a modal that fetches collaborators, SSO users, and the project owner (`users.list()` + `ssoUsers.list()` + `site.find()`), letting the editor pick the new creator from a combined list.
 - Performs bulk `items.update()` calls with gentle concurrency limits to respect rate limits.
 - Displays post-action notices/alerts, including individual failure messages for items that could not be updated.
 - Works in the active environment (primary or sandbox) thanks to `ctx.environment`.
@@ -73,7 +73,6 @@ When you’re ready to ship, run `pnpm build` and upload the contents of the `di
 
 ## Roadmap ideas
 
-- Combine regular and SSO collaborators in the picker.
 - Remember the last selected collaborator per editor session.
 - Allow filtering by role before rendering the dropdown options.
 

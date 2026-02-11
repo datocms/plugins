@@ -10,6 +10,7 @@ type Params = {
 	environment?: string;
 	itemIds: string[];
 	userId: string;
+	userType: "user" | "sso_user" | "account" | "organization";
 	concurrency?: number;
 };
 
@@ -18,6 +19,7 @@ export async function bulkChangeCreator({
 	environment,
 	itemIds,
 	userId,
+	userType,
 	concurrency = 6,
 }: Params): Promise<BulkResult> {
 	const client = makeClient(apiToken, environment);
@@ -27,7 +29,7 @@ export async function bulkChangeCreator({
 	await runWithConcurrency(itemIds, concurrency, async (itemId) => {
 		try {
 			await client.items.update(itemId, {
-				creator: { id: userId, type: "user" },
+				creator: { id: userId, type: userType },
 			});
 			successes.push(itemId);
 		} catch (error) {
