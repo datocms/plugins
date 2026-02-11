@@ -9,24 +9,8 @@
   flex-direction: column;
 }
 
-.tooltipSpan {
-  visibility: hidden;
+.filteredExportOptions {
   width: 100%;
-  background-color: #f8f8f8;
-  color: #333;
-  text-align: center;
-  border-radius: 6px;
-  padding: 10px;
-  position: absolute;
-  z-index: 1;
-  top: 125%;
-  left: 50%;
-  transform: translateX(-50%);
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-  transition: opacity 0.3s ease, transform 0.3s ease, visibility 0s linear 4s;
-  opacity: 0;
-  transform: translateX(-50%) translateY(-10px);
-  z-index: 10;
 }
 
 .tooltipBox {
@@ -36,19 +20,6 @@
   font-size: 14px;
   color: #666;
   z-index: 10;
-}
-
-.assetItem:hover + .tooltipBox .tooltipSpan,
-.tooltipBox:hover .tooltipSpan,
-.tooltipSpan:hover {
-  visibility: visible;
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
-  transition-delay: 0s;
-}
-
-.assetItem {
-  position: relative;
 }
 
 .modelSelectorContainer {

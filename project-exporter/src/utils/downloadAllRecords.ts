@@ -1,6 +1,10 @@
-import { buildClient, SimpleSchemaTypes } from '@datocms/cma-client-browser';
+import { buildClient } from '@datocms/cma-client-browser';
 import { AvailableFormats } from '../entrypoints/ConfigScreen';
 import downloadRecordsFile from './downloadRecordsFile';
+import {
+  buildRecordExportEnvelope,
+  fetchProjectConfigurationExport,
+} from './recordExport';
 
 type Options = {
   modelIDs?: string[];
@@ -17,12 +21,10 @@ export default async function downloadAllRecords(
     apiToken,
   });
 
-  const records = [];
+  const records: Record<string, unknown>[] = [];
   onProgress?.(0, 'Fetching entities...');
 
-  const filterObject: SimpleSchemaTypes.ItemInstancesHrefSchema = {};
-
-  filterObject.filter = {
+  const filter = {
     ...(options.modelIDs && { type: options.modelIDs.join(',') }),
     ...(options.textQuery && { query: options.textQuery }),
   };
@@ -56,7 +58,10 @@ export default async function downloadAllRecords(
   }
 
   let count = 0;
-  for await (const record of client.items.listPagedIterator(filterObject)) {
+  for await (const record of client.items.listPagedIterator({
+    nested: false,
+    filter,
+  })) {
     records.push(record);
     count++;
     if (count % 50 === 0) {
@@ -73,9 +78,26 @@ export default async function downloadAllRecords(
     const fields = (
       await Promise.all(itemTypes.map((model) => client.fields.list(model.id)))
     ).flat();
+    onProgress?.(100, 'Fetching project configuration...');
+    const { projectConfiguration, siteInfo } =
+      await fetchProjectConfigurationExport({
+        client,
+        itemTypes: itemTypes as unknown as Record<string, unknown>[],
+        records,
+      });
+    onProgress?.(100, 'Building export metadata...');
+    const exportEnvelope = buildRecordExportEnvelope({
+      records,
+      itemTypes: itemTypes as unknown as Record<string, unknown>[],
+      fields: fields as unknown as Record<string, unknown>[],
+      siteInfo,
+      projectConfiguration,
+      filtersUsed: options,
+      scope: 'bulk',
+    });
 
-    downloadRecordsFile({ records, schema: { itemTypes, fields } }, format);
+    await downloadRecordsFile(exportEnvelope, format);
   } else {
-    downloadRecordsFile(records, format);
+    await downloadRecordsFile(records, format);
   }
 }

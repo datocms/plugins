@@ -34,6 +34,7 @@ export default function ConfigScreen({ ctx }: Props) {
   const [loadingProgress, setLoadingProgress] = useState<number | undefined>(
     undefined
   );
+  const [isFilteredExportOpen, setIsFilteredExportOpen] = useState(false);
   const [selectedModels, setSelectedModels] = useState<ModelObject[]>([]);
   const [allModels, setAllModels] = useState<ModelObject[]>([]);
   const [selectedFormat, setSelectedFormat] = useState<AvailableFormats>(
@@ -82,11 +83,14 @@ export default function ConfigScreen({ ctx }: Props) {
   const handleAllAssets = async () => {
     setLoading(true);
     setLoadingStatus('Initializing asset download...');
-    setLoadingProgress(undefined);
+    setLoadingProgress(0);
 
     await downloadAllAssets(
       ctx.currentUserAccessToken as string,
-      (msg) => setLoadingStatus(msg)
+      (progress, msg) => {
+        setLoadingStatus(msg);
+        setLoadingProgress(progress);
+      }
     );
 
     setLoading(false);
@@ -193,61 +197,6 @@ export default function ConfigScreen({ ctx }: Props) {
           }}
         />
 
-        <div className={s.modelSelectorContainer}>
-          <div className={s.modelSelector}>
-            <SelectField
-              name="multipleOption"
-              id="multipleOption"
-              label=""
-              placeholder="Select models to download records from"
-              value={selectedModels.map((model) => {
-                return { label: model.name, value: model.id };
-              })}
-              selectInputProps={{
-                isMulti: true,
-                options: allModels.map((model) => {
-                  return { label: model.name, value: model.id };
-                }),
-              }}
-              onChange={(newValue) =>
-                setSelectedModels(
-                  newValue.map((model) => {
-                    return { name: model.label, id: model.value };
-                  })
-                )
-              }
-            />
-          </div>
-
-          <Button
-            disabled={!selectedModels.length}
-            onClick={() =>
-              handleRecordDownload({
-                modelIDs: selectedModels.map((model) => model.id),
-              })
-            }
-            fullWidth
-          >
-            Download records from selected models
-          </Button>
-        </div>
-
-        <div className={s.textQueryContainer}>
-          <TextField
-            name="name"
-            id="name"
-            label=""
-            value={textQuery}
-            onChange={(newValue) => setTextQuery(newValue)}
-          />
-          <Button
-            disabled={!textQuery}
-            onClick={() => handleRecordDownload({ textQuery })}
-            fullWidth
-          >
-            Download records from text query
-          </Button>
-        </div>
         <Button
           className={s.buttonItem}
           onClick={() => handleRecordDownload()}
@@ -257,28 +206,77 @@ export default function ConfigScreen({ ctx }: Props) {
         </Button>
         <Button
           onClick={handleAllAssets}
-          className={s.buttonItem + ' ' + s.assetItem}
+          className={s.buttonItem}
           disabled={isLoading}
         >
           Download all assets
         </Button>
-        <div className={s.tooltipBox}>
-          <span className={s.tooltipSpan}>
-            Keep in mind that for projects with too many records this button
-            will not work, instead, use the script specified here:{' '}
-            <a
-              href="https://www.datocms.com/docs/import-and-export/export-data"
-              target="_blank"
-              rel="noreferrer"
-              style={{
-                color: '#0077cc',
-                textDecoration: 'none',
-              }}
-            >
-              https://www.datocms.com/docs/import-and-export/export-data
-            </a>
-          </span>
-        </div>
+        <Button
+          className={s.buttonItem}
+          onClick={() => setIsFilteredExportOpen((isOpen) => !isOpen)}
+          rightIcon={isFilteredExportOpen ? <CaretUpIcon /> : <CaretDownIcon />}
+        >
+          Filtered export
+        </Button>
+        {isFilteredExportOpen && (
+          <div className={s.filteredExportOptions}>
+            <div className={s.modelSelectorContainer}>
+              <div className={s.modelSelector}>
+                <SelectField
+                  name="multipleOption"
+                  id="multipleOption"
+                  label=""
+                  placeholder="Select models to download records from"
+                  value={selectedModels.map((model) => {
+                    return { label: model.name, value: model.id };
+                  })}
+                  selectInputProps={{
+                    isMulti: true,
+                    options: allModels.map((model) => {
+                      return { label: model.name, value: model.id };
+                    }),
+                  }}
+                  onChange={(newValue) =>
+                    setSelectedModels(
+                      newValue.map((model) => {
+                        return { name: model.label, id: model.value };
+                      })
+                    )
+                  }
+                />
+              </div>
+
+              <Button
+                disabled={!selectedModels.length}
+                onClick={() =>
+                  handleRecordDownload({
+                    modelIDs: selectedModels.map((model) => model.id),
+                  })
+                }
+                fullWidth
+              >
+                Download records from selected models
+              </Button>
+            </div>
+
+            <div className={s.textQueryContainer}>
+              <TextField
+                name="name"
+                id="name"
+                label=""
+                value={textQuery}
+                onChange={(newValue) => setTextQuery(newValue)}
+              />
+              <Button
+                disabled={!textQuery}
+                onClick={() => handleRecordDownload({ textQuery })}
+                fullWidth
+              >
+                Download records from text query
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </Canvas>
   );
