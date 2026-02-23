@@ -12,6 +12,7 @@ import {
 } from 'react';
 import type { Frontend } from '../../../types';
 import { inspectorUrl } from '../../../utils/urls';
+import { normalizePathForVisualEditing } from '../normalizePathForVisualEditing';
 import {
   type ContentLinkMethods,
   type ContentLinkState,
@@ -65,6 +66,7 @@ export function ContentLinkContextProvider({ children, frontend }: Props) {
   const ctx = useCtx<RenderInspectorCtx>();
 
   const currentVisualEditing = frontend.visualEditing!;
+  const fallbackPath = currentVisualEditing.initialPath || '/';
 
   const [contentLinkState, setContentLinkState] = useState<
     CleanContentLinkState | undefined
@@ -77,13 +79,14 @@ export function ContentLinkContextProvider({ children, frontend }: Props) {
     ? SYMBOL_FOR_PRIMARY_ENVIRONMENT
     : ctx.environment;
 
-  const [iframeState, setIframeState] = useState<IframeState>({
-    path:
-      new URLSearchParams(ctx.location.search).get('path') ||
-      currentVisualEditing.initialPath ||
-      '/',
+  const [iframeState, setIframeState] = useState<IframeState>(() => ({
+    path: normalizePathForVisualEditing({
+      path: new URLSearchParams(ctx.location.search).get('path'),
+      draftModeUrl: currentVisualEditing.enableDraftModeUrl,
+      fallbackPath,
+    }),
     key: cuid(),
-  });
+  }));
   const lastVisitedPathRef = useRef(iframeState.path);
 
   const { iframeRef, connection } = useContentLinkConnection({
@@ -134,7 +137,11 @@ export function ContentLinkContextProvider({ children, frontend }: Props) {
         });
       }
 
-      lastVisitedPathRef.current = rest.path;
+      lastVisitedPathRef.current = normalizePathForVisualEditing({
+        path: rest.path,
+        draftModeUrl: currentVisualEditing.enableDraftModeUrl,
+        fallbackPath,
+      });
     },
     openItem: (info) => {
       if (info.environment !== currentEnvironmentId) {
@@ -206,6 +213,12 @@ export function ContentLinkContextProvider({ children, frontend }: Props) {
       return;
     }
 
+    const safePath = normalizePathForVisualEditing({
+      path: contentLinkState.path,
+      draftModeUrl: currentVisualEditing.enableDraftModeUrl,
+      fallbackPath,
+    });
+
     ctx.setInspectorMode(
       { type: 'itemList' },
       { ignoreIfUnsavedChanges: true },
@@ -213,7 +226,7 @@ export function ContentLinkContextProvider({ children, frontend }: Props) {
 
     ctx.navigateTo(
       inspectorUrl(ctx, {
-        path: contentLinkState.path,
+        path: safePath,
         frontend: frontend.name,
       }),
     );
