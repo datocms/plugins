@@ -19,6 +19,7 @@ import {
 } from '../../../types';
 import { inspectorUrl } from '../../../utils/urls';
 import { useContentLink } from '../ContentLinkContext';
+import { normalizePathForVisualEditing } from '../normalizePathForVisualEditing';
 import AddressBar from './AddressBar';
 import { EditModeToggle } from './EditModeToggle';
 
@@ -44,15 +45,24 @@ const UI: React.FC = () => {
   });
 
   const currentVisualEditing = selectedFrontend.visualEditing!;
+  const fallbackPath = currentVisualEditing.initialPath || '/';
 
   const { iframeRef, iframeState, setIframeState, reloadIframe, contentLink } =
     useContentLink();
 
   const iframeSrc = useMemo(() => {
     const url = new URL(currentVisualEditing.enableDraftModeUrl);
-    url.searchParams.set('redirect', iframeState.path);
+    // Re-validate at the sink so query-parameter tampering cannot reach `redirect`.
+    url.searchParams.set(
+      'redirect',
+      normalizePathForVisualEditing({
+        path: iframeState.path,
+        draftModeUrl: currentVisualEditing.enableDraftModeUrl,
+        fallbackPath,
+      }),
+    );
     return url.toString();
-  }, [currentVisualEditing.enableDraftModeUrl, iframeState.path]);
+  }, [currentVisualEditing.enableDraftModeUrl, fallbackPath, iframeState.path]);
 
   const [customViewportSize, setCustomViewportSize] = useState<ViewportSize>({
     width: 800,
@@ -134,15 +144,21 @@ const UI: React.FC = () => {
             frontends={visualEditingFrontends}
             onFrontendChange={(frontend) => {
               setSelectedFrontend(frontend);
+              const frontendVisualEditing = frontend.visualEditing!;
+              const path = normalizePathForVisualEditing({
+                path: frontendVisualEditing.initialPath,
+                draftModeUrl: frontendVisualEditing.enableDraftModeUrl,
+                fallbackPath: '/',
+              });
               // Reset to new frontend's initial path
               setIframeState({
-                path: frontend.visualEditing?.initialPath || '/',
+                path,
                 key: cuid(),
               });
               // Update URL
               ctx.navigateTo(
                 inspectorUrl(ctx, {
-                  path: frontend.visualEditing?.initialPath || '/',
+                  path,
                   frontend: frontend.name,
                 }),
               );
