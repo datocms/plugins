@@ -89,6 +89,13 @@ async function generateAlts(
       const newAssets = existingAssets.map((asset, index) => {
         const outcome = results[index];
         if (outcome.status === "rejected") {
+          const reason =
+            outcome.reason instanceof Error
+              ? outcome.reason.message
+              : String(outcome.reason ?? "Unknown error");
+          errorMessages.push(
+            `<a href="/media/assets/${asset.upload_id}" target="_blank">Image ${asset.upload_id}</a>: <code>request_failed: ${reason}</code>`,
+          );
           return asset;
         }
         const result = outcome.value;
@@ -129,6 +136,11 @@ async function generateAlts(
     }
   } catch (error) {
     console.error(error);
+    const reason =
+      error instanceof Error ? error.message : String(error ?? "Unknown error");
+    await ctx.alert(
+      `Unexpected error while generating alt text: <code>${reason}</code>`,
+    );
   } finally {
     setIsLoading(false);
   }
