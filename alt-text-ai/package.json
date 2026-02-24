@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-alt-text-ai",
   "homepage": "https://github.com/datocms/plugins/blob/addMarceloPlugins/alt-text-ai/README.md",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "author": "DatoCMS <support@datocms.com>",
   "description": "Generate alt texts for your assets in a single click",
   "keywords": [
