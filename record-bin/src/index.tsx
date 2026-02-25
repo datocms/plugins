@@ -1,6 +1,6 @@
 import {
   connect,
-  IntentCtx,
+  ItemFormOutletsCtx,
   ItemType,
   RenderItemFormOutletCtx,
   RenderModalCtx,
@@ -9,37 +9,38 @@ import { render } from "./utils/render";
 import ConfigScreen from "./entrypoints/ConfigScreen";
 import "datocms-react-ui/styles.css";
 import BinOutlet from "./entrypoints/BinOutlet";
-import InstallationModal from "./entrypoints/InstallationModal";
-import PreInstallConfig from "./entrypoints/PreInstallConfig";
 import ErrorModal from "./entrypoints/ErrorModal";
 import binCleanup from "./utils/binCleanup";
+import { createDebugLogger, isDebugEnabled } from "./utils/debugLogger";
 
 connect({
   async onBoot(ctx) {
-    if (
-      !ctx.plugin.attributes.parameters.installationState &&
-      !ctx.plugin.attributes.parameters.hasBeenPrompted
-    ) {
-      ctx.updatePluginParameters({ hasBeenPrompted: true });
-      await ctx.openModal({
-        id: "installationModal",
-        title: "Record Bin setup",
-        width: "m",
-        parameters: { foo: "bar" },
-        closeDisabled: true,
-      });
-      return;
-    }
+    const pluginParameters = ctx.plugin.attributes.parameters;
+    const debugLogger = createDebugLogger(
+      isDebugEnabled(pluginParameters),
+      "index.onBoot"
+    );
+    debugLogger.log("Plugin boot started");
+
+    debugLogger.log("Running daily cleanup check");
     await binCleanup(ctx);
+    debugLogger.log("Plugin boot completed");
   },
   renderConfigScreen(ctx) {
-    if (ctx.plugin.attributes.parameters.installationState === "installed") {
-      return render(<ConfigScreen ctx={ctx} />);
-    }
-    return render(<PreInstallConfig ctx={ctx} />);
+    const debugLogger = createDebugLogger(
+      isDebugEnabled(ctx.plugin.attributes.parameters),
+      "index.renderConfigScreen"
+    );
+    debugLogger.log("Rendering config screen");
+    return render(<ConfigScreen ctx={ctx} />);
   },
-  itemFormOutlets(model: ItemType, ctx: IntentCtx) {
+  itemFormOutlets(model: ItemType, _ctx: ItemFormOutletsCtx) {
+    const debugLogger = createDebugLogger(
+      isDebugEnabled(_ctx.plugin.attributes.parameters),
+      "index.itemFormOutlets"
+    );
     if (model.attributes.api_key === "record_bin") {
+      debugLogger.log("Registering item form outlet for record_bin model");
       return [
         {
           id: "recordBin",
@@ -47,22 +48,40 @@ connect({
         },
       ];
     }
+
+    debugLogger.log("Skipping item form outlet for model", {
+      modelApiKey: model.attributes.api_key,
+    });
     return [];
   },
   renderItemFormOutlet(outletId, ctx: RenderItemFormOutletCtx) {
-    if (
-      outletId === "recordBin" &&
-      ctx.plugin.attributes.parameters.installationState === "installed"
-    ) {
+    const debugLogger = createDebugLogger(
+      isDebugEnabled(ctx.plugin.attributes.parameters),
+      "index.renderItemFormOutlet"
+    );
+    if (outletId === "recordBin") {
+      debugLogger.log("Rendering record bin outlet");
       render(<BinOutlet ctx={ctx} />);
+      return;
     }
+
+    debugLogger.log("Skipping outlet rendering", {
+      outletId,
+    });
   },
   renderModal(modalId: string, ctx: RenderModalCtx) {
+    const debugLogger = createDebugLogger(
+      isDebugEnabled(ctx.plugin.attributes.parameters),
+      "index.renderModal"
+    );
+    debugLogger.log("Rendering modal", { modalId });
+
     switch (modalId) {
-      case "installationModal":
-        return render(<InstallationModal ctx={ctx} />);
       case "errorModal":
         return render(<ErrorModal ctx={ctx} />);
+      default:
+        debugLogger.warn("Received unknown modal id", { modalId });
+        return undefined;
     }
   },
 });
