@@ -1,32 +1,71 @@
 # 🗑 Record Bin
 
-Record Bin is a DatoCMS plugin that stores deleted records so they can be restored later.
+Record Bin stores deleted records so they can be restored later.
 
-The plugin requires an auxiliary lambda deployment. Setup is done entirely in the plugin config screen.
-The plugin also requires the `currentUserAccessToken` permission to manage project webhooks.
+The plugin now supports two runtimes:
 
-## Setup (config-screen first)
+1. `Lambda` runtime (webhook/API capable)
+2. `Lambda-less` runtime (dashboard delete capture only)
+
+The plugin requires the `currentUserAccessToken` permission.
+
+## Runtime modes
+
+Runtime is selected with a single toggle in the plugin config screen:
+
+- Toggle off (`Also save records deleted from the API` disabled): `Lambda-less` mode.
+- Toggle on (`Also save records deleted from the API` enabled): `Lambda-full` mode.
+
+If you are not sure what Lambda is, keep the toggle off.
+
+If no explicit runtime has ever been saved yet, the plugin falls back to legacy auto-detection:
+
+- Lambda URL present -> `Lambda-full`
+- No Lambda URL -> `Lambda-less`
+
+## Capability matrix
+
+| Capability | Lambda runtime | Lambda-less runtime |
+|---|---|---|
+| Capture dashboard deletions | ✅ | ✅ |
+| Capture API deletions | ✅ | ❌ |
+| Restore from Record Bin | ✅ | ✅ |
+| Daily cleanup of old bin entries | ✅ | ✅ |
+
+## Setup
+
+### Option 1: Lambda-less (default)
 
 1. Open the plugin config screen.
-2. Click `Deploy lambda` and choose one option:
+2. Keep `Also save records deleted from the API` disabled.
+3. Save plugin settings.
+
+In this mode, deleted records are captured through `onBeforeItemsDestroy`.
+
+### Option 2: Lambda-full (API deletion capture)
+
+1. Open the plugin config screen.
+2. Enable `Also save records deleted from the API`.
+3. Lambda setup fields appear. Click `Deploy lambda` and choose one option:
    - Vercel
    - Netlify
    - Cloudflare
-3. Paste your deployed URL into `Lambda URL`.
+4. Paste your deployed URL into `Lambda URL`.
    - You can paste either `https://your-app.netlify.app` or just `your-app.netlify.app`; the plugin will prepend `https://` when needed.
-4. Click `Connect lambda`.
-5. Confirm status shows `Connected (ping successful)`.
-6. The plugin creates or updates a project webhook named `🗑️ Record Bin` pointing to your lambda root URL.
+5. Click `Connect`.
+6. Confirm status shows `Connected (ping successful)`.
 
-From that point on, deleted records appear in the `🗑 Record Bin` model and can be restored with `Restore record ♻️`.
+When connected, the plugin creates or updates a project webhook named `🗑️ Record Bin` pointing to your lambda root URL.
+The current user role must be allowed to manage webhooks for connect/disconnect operations.
 
-If you click `Disconnect current lambda function`, the plugin removes the `🗑️ Record Bin` webhook and clears the saved lambda URL.
+## Important limitations and behavior
 
-If restoration fails, an error modal can show the full API payload.
+- In Lambda-less mode, API-triggered deletions are not captured. Only dashboard-triggered deletions go to the bin.
+- Lambda-less capture is fail-open: if backup capture fails, deletion still proceeds.
+- Existing webhook-origin `record_body` payloads are still restorable.
+- New Lambda-less payloads are stored in a webhook-compatible envelope (`event_type: to_be_restored`) so records stay restorable after runtime switches.
 
-On the config screen you can also enable the `debug` switch to log boot, cleanup, health checks, and restoration events in the browser console.
-
-## Lambda health handshake contract
+## Lambda health handshake contract (Lambda runtime)
 
 The plugin sends this request payload to `POST /api/datocms/plugin-health`:
 
@@ -46,7 +85,8 @@ The plugin sends this request payload to `POST /api/datocms/plugin-health`:
 ```
 
 `phase` values:
-- `config_connect` when the user clicks `Connect lambda` on the config screen.
+
+- `config_connect` when the user clicks `Connect` on the config screen.
 - `config_mount` every time the config screen is opened.
 - `finish_installation` is legacy and kept for backward compatibility with older saved states.
 
@@ -66,12 +106,12 @@ Expected successful response (`HTTP 200`):
 
 Any non-200 status, invalid JSON, timeout, network failure, or contract mismatch is treated as a connectivity error.
 
-## Record Bin webhook contract
+## Record Bin webhook contract (Lambda runtime)
 
 On connect, the plugin reconciles a managed project-level webhook (creates if missing, updates if existing):
 
 - `name`: `🗑️ Record Bin` (legacy `🗑 Record Bin` is migrated)
-- `url`: the connected lambda base URL (for example, `https://record-bin.example.com`)
+- `url`: connected lambda base URL
 - `events`: `item.delete`
 - `custom_payload`: `null`
 - `headers`: `{}`

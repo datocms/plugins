@@ -12,6 +12,8 @@ import BinOutlet from "./entrypoints/BinOutlet";
 import ErrorModal from "./entrypoints/ErrorModal";
 import binCleanup from "./utils/binCleanup";
 import { createDebugLogger, isDebugEnabled } from "./utils/debugLogger";
+import { getRuntimeMode } from "./utils/getRuntimeMode";
+import { captureDeletedItemsWithoutLambda } from "./utils/lambdaLessCapture";
 
 connect({
   async onBoot(ctx) {
@@ -25,6 +27,30 @@ connect({
     debugLogger.log("Running daily cleanup check");
     await binCleanup(ctx);
     debugLogger.log("Plugin boot completed");
+  },
+  async onBeforeItemsDestroy(items, ctx) {
+    const debugLogger = createDebugLogger(
+      isDebugEnabled(ctx.plugin.attributes.parameters),
+      "index.onBeforeItemsDestroy"
+    );
+    const runtimeMode = getRuntimeMode(ctx.plugin.attributes.parameters);
+
+    if (runtimeMode === "lambda") {
+      debugLogger.log("Skipping Lambda-less delete capture because lambda mode is active");
+      return true;
+    }
+
+    try {
+      const captureResult = await captureDeletedItemsWithoutLambda(items, ctx);
+      debugLogger.log("Lambda-less delete capture completed", captureResult);
+    } catch (error) {
+      debugLogger.error(
+        "Unexpected error in Lambda-less delete capture. Proceeding with deletion (fail-open).",
+        error
+      );
+    }
+
+    return true;
   },
   renderConfigScreen(ctx) {
     const debugLogger = createDebugLogger(
