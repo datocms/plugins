@@ -1,0 +1,50 @@
+{
+  "name": "datocms-plugin-backup-importer",
+  "description": "Import external backups into DatoCMS",
+  "homepage": "https://github.com/datocms/plugins",
+  "private": false,
+  "version": "0.1.0",
+  "author": "Marcelo Finamor Vieira <marcelofinamorvieira@gmail.com>",
+  "type": "module",
+  "keywords": [
+    "datocms-plugin"
+  ],
+  "datoCmsPlugin": {
+    "title": "Backup Importer",
+    "coverImage": "docs/cover-1200x800.png",
+    "previewImage": "docs/preview.mp4",
+    "entryPoint": "dist/index.html",
+    "permissions": [
+      "currentUserAccessToken"
+    ]
+  },
+  "files": [
+    "dist",
+    "docs"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@datocms/cma-client-browser": "^5.3.0",
+    "datocms-plugin-sdk": "*",
+    "datocms-react-ui": "*",
+    "jszip": "^3.10.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.28",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^5.1.4",
+    "globals": "^17.3.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1",
+    "vitest": "^4.0.18"
+  }
+}
