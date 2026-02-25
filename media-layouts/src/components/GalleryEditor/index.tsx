@@ -1,7 +1,7 @@
 import { Button } from 'datocms-react-ui';
 import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
 import { useCallback } from 'react';
-import type { MediaLayoutItem, MultipleFieldValue } from '../../types';
+import type { MediaLayoutItem, MultipleFieldValue, WidthOption } from '../../types';
 import { calculateOutputHeight } from '../../utils/aspectRatio';
 import AssetCard from '../AssetCard';
 import s from './styles.module.css';
@@ -10,9 +10,21 @@ type Props = {
   ctx: RenderFieldExtensionCtx;
   items: MultipleFieldValue;
   onAddAsset: () => void;
+  widthOptions: WidthOption[];
+  enableCssClass: boolean;
+  enableLazyLoading: boolean;
 };
 
-export default function GalleryEditor({ ctx, items, onAddAsset }: Props) {
+export default function GalleryEditor({
+  ctx,
+  items,
+  onAddAsset,
+  widthOptions,
+  enableCssClass,
+  enableLazyLoading,
+}: Props) {
+  const assetCountLabel = `${items.length} asset${items.length === 1 ? '' : 's'}`;
+
   const handleLayoutChange = useCallback(
     (index: number, newLayout: Partial<MediaLayoutItem>) => {
       const merged = { ...items[index], ...newLayout };
@@ -22,7 +34,7 @@ export default function GalleryEditor({ ctx, items, onAddAsset }: Props) {
         merged.customAspectRatio,
         merged.originalWidth,
         merged.originalHeight
-      );
+      ) || merged.height;
       const newItems = [...items];
       newItems[index] = { ...merged, height };
       ctx.setFieldValue(ctx.fieldPath, JSON.stringify(newItems));
@@ -67,6 +79,21 @@ export default function GalleryEditor({ ctx, items, onAddAsset }: Props) {
 
   return (
     <div className={s.galleryEditor}>
+      <div className={s.header}>
+        <div className={s.headerInfo}>
+          <span className={s.headerTitle}>Assets</span>
+          <span className={s.headerCount}>{assetCountLabel}</span>
+        </div>
+        <Button
+          onClick={onAddAsset}
+          disabled={ctx.disabled}
+          buttonSize="xs"
+          buttonType="muted"
+        >
+          + Add assets
+        </Button>
+      </div>
+
       <div className={s.assetList}>
         {items.map((item, index) => (
           <AssetCard
@@ -76,14 +103,13 @@ export default function GalleryEditor({ ctx, items, onAddAsset }: Props) {
             onLayoutChange={(layout) => handleLayoutChange(index, layout)}
             onRemove={() => handleRemove(index)}
             onEditMetadata={() => handleEditMetadata(index)}
+            widthOptions={widthOptions}
+            enableCssClass={enableCssClass}
+            enableLazyLoading={enableLazyLoading}
             disabled={ctx.disabled}
           />
         ))}
       </div>
-
-      <Button onClick={onAddAsset} disabled={ctx.disabled} buttonSize="xs" buttonType="muted">
-        + Add assets
-      </Button>
     </div>
   );
 }

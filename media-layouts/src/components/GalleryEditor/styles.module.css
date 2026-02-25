@@ -4,6 +4,37 @@
   gap: 12px;
 }
 
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.headerInfo {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.headerTitle {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--base-body-color);
+}
+
+.headerCount {
+  font-size: 11px;
+  color: var(--light-body-color);
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-color);
+  background: var(--light-bg-color);
+}
+
 .assetList {
   display: flex;
   flex-direction: column;

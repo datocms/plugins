@@ -4,7 +4,14 @@ export type AspectRatioOption = {
   ratio: number | null; // null for 'custom'
 };
 
+export type WidthValue = number | 'original';
+
 export type WidthOption = {
+  value: WidthValue;
+  label: string;
+};
+
+export type CustomWidthPreset = {
   value: number;
   label: string;
 };
@@ -18,10 +25,12 @@ export type MediaLayoutItem = {
   size: number;
   alt: string | null;
   title: string | null;
+  cssClass?: string;
+  lazyLoading?: boolean;
   focalPoint: { x: number; y: number } | null;
   aspectRatio: string;
   customAspectRatio?: string;
-  width: number;
+  width: WidthValue;
   height: number; // Calculated from width and aspectRatio for easy imgix param usage
   originalWidth: number | null; // Original image dimensions for "original" aspect ratio
   originalHeight: number | null;
@@ -38,9 +47,12 @@ export type LayoutSlot = {
   label: string;
   aspectRatio: string;
   customAspectRatio?: string;
-  width: number;
+  width: WidthValue;
   row: number;
   col: number;
+  rowSpan?: number;
+  colSpan?: number;
+  autoSpan?: boolean;
   required: boolean;
 };
 
@@ -48,6 +60,10 @@ export type LayoutConfig = {
   slots: LayoutSlot[];
   columns: number;
   rows: number;
+  layoutStyle?: 'grid' | 'masonry';
+  layoutAspectRatio?: string;
+  layoutCustomAspectRatio?: string;
+  layoutWidth?: number;
 };
 
 export type SlotAssignment = {
@@ -59,22 +75,28 @@ export type SlotAssignment = {
   size: number;
   alt: string | null;
   title: string | null;
+  cssClass?: string;
+  lazyLoading?: boolean;
   focalPoint: { x: number; y: number } | null;
   aspectRatio: string;
   customAspectRatio?: string;
-  width: number;
+  width: WidthValue;
   height: number;
   originalWidth: number | null;
   originalHeight: number | null;
 };
 
-export type LayoutFieldValue = SlotAssignment[];
+export type LayoutFieldValue = {
+  layout: LayoutConfig;
+  assignments: SlotAssignment[];
+};
 
 // Plugin parameters
 export type GlobalParams = {
   paramsVersion: '1';
   defaultAspectRatio: string;
-  defaultWidth: number;
+  defaultWidth: WidthValue;
+  widthPresets: CustomWidthPreset[];
 };
 
 // Field params for single/multiple modes (legacy)
@@ -82,7 +104,9 @@ export type FieldParamsLegacy = {
   paramsVersion: '1';
   mode: 'single' | 'multiple';
   overrideDefaultAspectRatio?: string;
-  overrideDefaultWidth?: number;
+  overrideDefaultWidth?: WidthValue;
+  enableCssClass?: boolean;
+  enableLazyLoading?: boolean;
 };
 
 // Field params for layout mode
@@ -90,6 +114,8 @@ export type FieldParamsLayout = {
   paramsVersion: '2';
   mode: 'layout';
   layoutConfig: LayoutConfig;
+  enableCssClass?: boolean;
+  enableLazyLoading?: boolean;
 };
 
 export type FieldParams = FieldParamsLegacy | FieldParamsLayout;
@@ -100,11 +126,15 @@ export type ValidFieldParams =
   | {
       mode: 'single' | 'multiple';
       aspectRatio: string | null;
-      width: number | null;
+      width: WidthValue | null;
+      enableCssClass: boolean;
+      enableLazyLoading: boolean;
     }
   | {
       mode: 'layout';
       layoutConfig: LayoutConfig;
+      enableCssClass: boolean;
+      enableLazyLoading: boolean;
     };
 
 // Upload data from DatoCMS API

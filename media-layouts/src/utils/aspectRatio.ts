@@ -1,4 +1,6 @@
 import { ASPECT_RATIO_OPTIONS } from '../constants';
+import type { WidthValue } from '../types';
+import { resolveWidthValue } from './width';
 
 export function parseAspectRatio(value: string): number | null {
   // Handle predefined ratios
@@ -65,16 +67,23 @@ export function getEffectiveRatio(
 }
 
 export function calculateOutputHeight(
-  width: number,
+  width: WidthValue,
   aspectRatio: string,
   customAspectRatio?: string,
   originalWidth?: number | null,
   originalHeight?: number | null
 ): number {
   const ratio = getEffectiveRatio(aspectRatio, customAspectRatio, originalWidth, originalHeight);
-  if (ratio && ratio > 0) {
-    return Math.round(width / ratio);
+  const resolvedWidth = resolveWidthValue(width, originalWidth);
+  if (resolvedWidth && ratio && ratio > 0) {
+    return Math.round(resolvedWidth / ratio);
   }
-  // Fallback: if we can't determine ratio, use width (1:1)
-  return width;
+  // Fallback: if we can't determine ratio or width, use width (1:1)
+  if (resolvedWidth) {
+    return resolvedWidth;
+  }
+  if (width === 'original' && originalHeight) {
+    return originalHeight;
+  }
+  return 0;
 }

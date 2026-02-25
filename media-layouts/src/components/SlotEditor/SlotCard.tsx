@@ -6,27 +6,42 @@ import {
   formatDimensions,
 } from '../../utils/aspectRatio';
 import { ASPECT_RATIO_OPTIONS } from '../../constants';
+import { getWidthLabel, resolveWidthValue } from '../../utils/width';
+import type { WidthOption } from '../../types';
 import { useUploadData } from '../../hooks/useUploadData';
+import {
+  resolveFormat,
+  isImageFormat,
+  getFormatLabel,
+} from '../../utils/upload';
 import s from './styles.module.css';
 
 type Props = {
   ctx: RenderFieldExtensionCtx;
   slot: LayoutSlot;
   assignment: SlotAssignment | undefined;
+  widthOptions: WidthOption[];
+  enableCssClass: boolean;
+  enableLazyLoading: boolean;
   disabled?: boolean;
   onSelectAsset: () => void;
   onRemoveAsset: () => void;
   onEditMetadata: () => void;
+  onAssignmentChange: (updates: Partial<SlotAssignment>) => void;
 };
 
 export default function SlotCard({
   ctx,
   slot,
   assignment,
+  widthOptions,
+  enableCssClass,
+  enableLazyLoading,
   disabled,
   onSelectAsset,
   onRemoveAsset,
   onEditMetadata,
+  onAssignmentChange,
 }: Props) {
   const aspectLabel =
     slot.aspectRatio === 'custom'
@@ -48,9 +63,9 @@ export default function SlotCard({
     <div className={cardClasses}>
       <div className={s.slotHeader}>
         <div>
-          <div className={s.slotLabel}>{slot.label}</div>
+          <div className={s.slotLabel}>{slot.label || 'Untitled'}</div>
           <div className={s.slotMeta}>
-            {aspectLabel} • {slot.width}px
+            {aspectLabel} • {getWidthLabel(slot.width, widthOptions)}
           </div>
         </div>
         {slot.required && <span className={s.requiredBadge}>Required</span>}
@@ -86,10 +101,13 @@ export default function SlotCard({
             ctx={ctx}
             assignment={assignment}
             slot={slot}
+            enableCssClass={enableCssClass}
+            enableLazyLoading={enableLazyLoading}
             disabled={disabled}
             onSelectAsset={onSelectAsset}
             onRemoveAsset={onRemoveAsset}
             onEditMetadata={onEditMetadata}
+            onAssignmentChange={onAssignmentChange}
           />
         )}
       </div>
@@ -101,28 +119,42 @@ type FilledSlotContentProps = {
   ctx: RenderFieldExtensionCtx;
   assignment: SlotAssignment;
   slot: LayoutSlot;
+  enableCssClass: boolean;
+  enableLazyLoading: boolean;
   disabled?: boolean;
   onSelectAsset: () => void;
   onRemoveAsset: () => void;
   onEditMetadata: () => void;
+  onAssignmentChange: (updates: Partial<SlotAssignment>) => void;
 };
 
 function FilledSlotContent({
   ctx,
   assignment,
   slot,
+  enableCssClass,
+  enableLazyLoading,
   disabled,
   onSelectAsset,
   onRemoveAsset,
   onEditMetadata,
+  onAssignmentChange,
 }: FilledSlotContentProps) {
+  const baseFormat = resolveFormat({
+    format: assignment.format,
+    url: assignment.url,
+    filename: assignment.filename,
+  });
+  const needsOriginalWidth =
+    slot.width === 'original' || slot.aspectRatio === 'original';
+  const needsOriginalHeight = slot.aspectRatio === 'original';
+
   const needsFetch =
     !assignment.url ||
     !assignment.filename ||
-    assignment.format === null ||
-    assignment.format === undefined ||
-    (slot.aspectRatio === 'original' &&
-      (!assignment.originalWidth || !assignment.originalHeight));
+    !baseFormat ||
+    (needsOriginalWidth && !assignment.originalWidth) ||
+    (needsOriginalHeight && !assignment.originalHeight);
 
   const { upload, loading, error } = useUploadData(
     ctx,
@@ -155,28 +187,18 @@ function FilledSlotContent({
 
   const url = assignment.url || upload?.attributes.url || '';
   const filename = assignment.filename || upload?.attributes.filename || '';
-  const originalWidth = assignment.originalWidth ?? upload?.attributes.width ?? null;
-  const originalHeight = assignment.originalHeight ?? upload?.attributes.height ?? null;
+  const originalWidth =
+    assignment.originalWidth ?? upload?.attributes.width ?? null;
+  const originalHeight =
+    assignment.originalHeight ?? upload?.attributes.height ?? null;
 
-  const formatFromPath = (value: string) => {
-    const cleaned = value.split('?')[0];
-    const parts = cleaned.split('.');
-    if (parts.length < 2) return null;
-    return parts[parts.length - 1].toLowerCase();
-  };
-
-  const format =
-    assignment.format ??
-    upload?.attributes.format ??
-    formatFromPath(url || filename);
-
-  const normalizedFormat = format ? format.toLowerCase() : null;
-  const isImage =
-    !!normalizedFormat &&
-    (['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'svg'].includes(
-      normalizedFormat
-    ) ||
-      normalizedFormat.startsWith('image/'));
+  const format = resolveFormat({
+    format: assignment.format ?? upload?.attributes.format ?? null,
+    url,
+    filename,
+  });
+  const isImage = isImageFormat(format);
+  const formatLabel = getFormatLabel(format);
 
   const ratio = getEffectiveRatio(
     slot.aspectRatio,
@@ -184,6 +206,10 @@ function FilledSlotContent({
     originalWidth,
     originalHeight
   );
+  const resolvedWidth = resolveWidthValue(slot.width, originalWidth);
+  const cssClassValue = assignment.cssClass ?? '';
+  const lazyLoadingValue = assignment.lazyLoading ?? false;
+  const showExtraControls = enableCssClass || enableLazyLoading;
 
   const aspectStyle =
     ratio && ratio > 0
@@ -201,7 +227,7 @@ function FilledSlotContent({
           />
         ) : (
           <div className={s.filePlaceholder}>
-            {format ? format.toUpperCase() : 'FILE'}
+            {formatLabel?.toUpperCase() || 'FILE'}
           </div>
         )}
 
@@ -243,11 +269,48 @@ function FilledSlotContent({
       </div>
 
       <div className={s.assetInfo}>
-        <span className={s.filename}>{filename || 'Untitled'}</span>
-        {ratio && ratio > 0 && (
-          <span className={s.dimensions}>{formatDimensions(slot.width, ratio)}</span>
+        <span className={s.filename} title={filename || 'Untitled'}>
+          {filename || 'Untitled'}
+        </span>
+        {ratio && ratio > 0 && resolvedWidth && (
+          <span className={s.dimensions}>
+            {formatDimensions(resolvedWidth, ratio)}
+          </span>
         )}
       </div>
+
+      {showExtraControls && (
+        <div className={s.assetOptions}>
+          {enableCssClass && (
+            <input
+              type="text"
+              className={s.cssClassInput}
+              placeholder="CSS class"
+              value={cssClassValue}
+              onChange={(e) => onAssignmentChange({ cssClass: e.target.value })}
+              disabled={disabled}
+            />
+          )}
+          {enableLazyLoading && (
+            <label
+              className={
+                disabled ? `${s.lazyToggle} ${s.toggleDisabled}` : s.lazyToggle
+              }
+            >
+              <input
+                type="checkbox"
+                checked={lazyLoadingValue}
+                onChange={(e) =>
+                  onAssignmentChange({ lazyLoading: e.target.checked })
+                }
+                disabled={disabled}
+              />
+              <span className={s.toggleTrack} aria-hidden="true" />
+              <span className={s.toggleLabel}>Lazy</span>
+            </label>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -14,6 +14,7 @@ export const ASPECT_RATIO_OPTIONS: AspectRatioOption[] = [
 ];
 
 export const WIDTH_OPTIONS: WidthOption[] = [
+  { value: 'original', label: 'Original (max)' },
   { value: 320, label: '320px (Mobile small)' },
   { value: 640, label: '640px (Mobile)' },
   { value: 768, label: '768px (Tablet)' },

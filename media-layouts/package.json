@@ -3,7 +3,7 @@
   "description": "A DatoCMS plugin that adds a field that allows you to select an asset together with a layout configuration",
   "homepage": "https://github.com/datocms/plugins/media-layouts",
   "private": false,
-  "version": "0.1.0",
+  "version": "0.1.2",
   "author": "Marcelo Finamor Vieira <marcelofinamorvieira@gmail.com>",
   "type": "module",
   "keywords": [

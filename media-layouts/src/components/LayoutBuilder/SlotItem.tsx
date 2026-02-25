@@ -1,12 +1,17 @@
 import { ASPECT_RATIO_OPTIONS } from '../../constants';
-import type { LayoutSlot } from '../../types';
+import { formatDimensions, getEffectiveRatio } from '../../utils/aspectRatio';
+import { getWidthLabel, resolveWidthValue } from '../../utils/width';
+import type { LayoutSlot, WidthOption } from '../../types';
 import s from './styles.module.css';
 
 type Props = {
   slot: LayoutSlot;
+  widthOptions: WidthOption[];
   isSelected: boolean;
   isDragging: boolean;
   isDragOver: boolean;
+  style?: React.CSSProperties;
+  showRatioFrame?: boolean;
   onSelect: () => void;
   onDelete: () => void;
   onDragStart: (e: React.DragEvent) => void;
@@ -18,9 +23,12 @@ type Props = {
 
 export default function SlotItem({
   slot,
+  widthOptions,
   isSelected,
   isDragging,
   isDragOver,
+  style,
+  showRatioFrame = true,
   onSelect,
   onDelete,
   onDragStart,
@@ -33,8 +41,19 @@ export default function SlotItem({
   const aspectOption = ASPECT_RATIO_OPTIONS.find(
     (opt) => opt.value === slot.aspectRatio
   );
-  const aspectRatio = aspectOption?.ratio ?? 1;
   const aspectLabel = aspectOption?.label.split(' ')[0] || slot.aspectRatio;
+  const ratio =
+    getEffectiveRatio(slot.aspectRatio, slot.customAspectRatio) ?? 1;
+  const previewRatio = ratio > 0 ? ratio : 1;
+  const resolvedWidth = resolveWidthValue(slot.width);
+  const dimensions =
+    ratio && ratio > 0 && resolvedWidth
+      ? formatDimensions(resolvedWidth, ratio)
+      : getWidthLabel(slot.width, widthOptions);
+  const ratioStyle: React.CSSProperties =
+    previewRatio >= 1
+      ? { aspectRatio: String(previewRatio), width: '100%', height: 'auto' }
+      : { aspectRatio: String(previewRatio), width: 'auto', height: '100%' };
 
   const slotClasses = [
     s.slotItem,
@@ -59,6 +78,7 @@ export default function SlotItem({
   return (
     <div
       className={slotClasses}
+      style={style}
       onClick={onSelect}
       draggable
       onDragStart={onDragStart}
@@ -67,10 +87,12 @@ export default function SlotItem({
       onDragLeave={onDragLeave}
       onDrop={onDrop}
     >
-      <div
-        className={s.slotPreview}
-        style={{ aspectRatio: aspectRatio > 0 ? String(aspectRatio) : '1' }}
-      >
+      <div className={s.slotPreview}>
+        {showRatioFrame && (
+          <div className={s.ratioFrame}>
+            <div className={s.ratioShape} style={ratioStyle} />
+          </div>
+        )}
         <div className={s.dragHandle}>
           <svg
             viewBox="0 0 24 24"
@@ -84,20 +106,22 @@ export default function SlotItem({
             <circle cx="15" cy="18" r="1.5" />
           </svg>
         </div>
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-        >
-          <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-          <circle cx="8.5" cy="8.5" r="1.5" />
-          <polyline points="21 15 16 10 5 21" />
-        </svg>
-        <span className={s.slotLabel}>{slot.label || 'Untitled'}</span>
-        <span className={s.slotMeta}>
-          {aspectLabel} · {slot.width}px
-        </span>
+        <div className={s.previewContent}>
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          >
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+            <circle cx="8.5" cy="8.5" r="1.5" />
+            <polyline points="21 15 16 10 5 21" />
+          </svg>
+          <span className={s.slotLabel}>{slot.label || 'Untitled'}</span>
+          <span className={s.slotMeta}>
+            {aspectLabel} · {dimensions}
+          </span>
+        </div>
       </div>
 
       <div className={s.slotOverlay}>
