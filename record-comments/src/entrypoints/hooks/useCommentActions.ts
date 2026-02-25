@@ -6,7 +6,11 @@ import type { CommentOperation } from '@ctypes/operations';
 import type { MentionStateOperation } from '@ctypes/mentionState';
 import { ERROR_MESSAGES } from '@/constants';
 import { segmentsToStoredSegments } from '@utils/tipTapSerializer';
-import { buildMentionEntriesByUser, extractMentionedUserIds } from '@utils/mentionState';
+import {
+  buildMentionEntriesByUser,
+  buildMentionEntryKey,
+  extractMentionedUserIds,
+} from '@utils/mentionState';
 import { sendMentionNotifications } from '@utils/mentionNotifications';
 import type { UserInfo } from '@utils/userTransformers';
 import {
@@ -24,6 +28,7 @@ type InsertPosition = 'prepend' | 'append';
 
 type UseCommentActionsParams = {
   userId: string;
+  comments: CommentType[];
   setComments: React.Dispatch<React.SetStateAction<CommentType[]>>;
   enqueue: (operation: CommentOperation) => void;
   enqueueMentionState?: (operation: MentionStateOperation) => void;
@@ -40,6 +45,8 @@ type UseCommentActionsParams = {
    * - 'append': chronological order, newest at bottom (page/dashboard behavior)
    */
   insertPosition?: InsertPosition;
+  /** Optional override for reply insertion order. Defaults to insertPosition. */
+  replyInsertPosition?: InsertPosition;
   /**
    * Sidebar context - only required when insertPosition is 'prepend'
    * and record needs to be saved before commenting.
@@ -47,8 +54,84 @@ type UseCommentActionsParams = {
   ctx?: RenderItemFormSidebarCtx;
 };
 
+function findCommentById(
+  comments: CommentType[],
+  id: string,
+  parentCommentId?: string
+): CommentType | null {
+  if (parentCommentId) {
+    const parent = comments.find((comment) => comment.id === parentCommentId);
+    return parent?.replies?.find((reply) => reply.id === id) ?? null;
+  }
+
+  return comments.find((comment) => comment.id === id) ?? null;
+}
+
+function flattenCommentTree(comment: CommentType): CommentType[] {
+  const items: CommentType[] = [comment];
+
+  for (const reply of comment.replies ?? []) {
+    items.push(...flattenCommentTree(reply));
+  }
+
+  return items;
+}
+
+function getDeletedComments(
+  comments: CommentType[],
+  id: string,
+  parentCommentId?: string
+): CommentType[] {
+  const target = findCommentById(comments, id, parentCommentId);
+  if (!target) return [];
+
+  if (parentCommentId) return [target];
+  return flattenCommentTree(target);
+}
+
+function buildMentionRemovalsByUser(
+  commentsToRemove: CommentType[]
+): Map<string, string[]> {
+  const removalsByUser = new Map<string, Set<string>>();
+
+  for (const comment of commentsToRemove) {
+    const mentionedUserIds = extractMentionedUserIds(comment.content);
+
+    for (const mentionedUserId of mentionedUserIds) {
+      let removals = removalsByUser.get(mentionedUserId);
+      if (!removals) {
+        removals = new Set<string>();
+        removalsByUser.set(mentionedUserId, removals);
+      }
+
+      removals.add(buildMentionEntryKey(comment.id, mentionedUserId));
+    }
+  }
+
+  return new Map(
+    Array.from(removalsByUser.entries()).map(([mentionedUserId, removals]) => [
+      mentionedUserId,
+      Array.from(removals),
+    ])
+  );
+}
+
+function diffMentionedUsers(
+  previousSegments: CommentType['content'],
+  nextSegments: CommentSegment[]
+): { additions: string[]; removals: string[] } {
+  const previous = new Set(extractMentionedUserIds(previousSegments));
+  const next = new Set(extractMentionedUserIds(nextSegments));
+
+  const additions = Array.from(next).filter((userId) => !previous.has(userId));
+  const removals = Array.from(previous).filter((userId) => !next.has(userId));
+
+  return { additions, removals };
+}
+
 export function useCommentActions({
   userId,
+  comments,
   setComments,
   enqueue,
   enqueueMentionState,
@@ -60,19 +143,18 @@ export function useCommentActions({
   setComposerSegments,
   pendingNewReplies,
   insertPosition = 'prepend',
+  replyInsertPosition = insertPosition,
   ctx,
 }: UseCommentActionsParams): CommentActionsReturn {
-  const enqueueMentionUpdates = useCallback(
+  const enqueueMentionAdditions = useCallback(
     (
       comment: CommentType,
-      segments: CommentSegment[],
       isReply: boolean,
+      mentionedUserIds: string[],
       parentCommentId?: string
     ) => {
       if (!enqueueMentionState || !mentionContext) return;
       if (!mentionContext.recordId) return;
-
-      const mentionedUserIds = extractMentionedUserIds(segments);
       if (mentionedUserIds.length === 0) return;
 
       const entriesByUser = buildMentionEntriesByUser(
@@ -112,6 +194,25 @@ export function useCommentActions({
     ]
   );
 
+  const enqueueMentionRemovals = useCallback(
+    (removalsByUser: Map<string, string[]>) => {
+      if (!enqueueMentionState) return;
+      if (removalsByUser.size === 0) return;
+
+      for (const [mentionedUserId, removals] of removalsByUser) {
+        const uniqueRemovals = Array.from(new Set(removals));
+        if (uniqueRemovals.length === 0) continue;
+
+        enqueueMentionState({
+          type: 'UPDATE_MENTION_STATE',
+          userId: mentionedUserId,
+          removals: uniqueRemovals,
+        });
+      }
+    },
+    [enqueueMentionState]
+  );
+
   const submitNewComment = useCallback(() => {
     if (isSegmentsEmpty(composerSegments)) return;
 
@@ -134,8 +235,9 @@ export function useCommentActions({
       setComments((prev) => [...prev, newComment]);
     }
 
+    const mentionedUserIds = extractMentionedUserIds(composerSegments);
     enqueue({ type: 'ADD_COMMENT', comment: newComment });
-    enqueueMentionUpdates(newComment, composerSegments, false);
+    enqueueMentionAdditions(newComment, false, mentionedUserIds);
     setComposerSegments([]);
   }, [
     composerSegments,
@@ -145,21 +247,31 @@ export function useCommentActions({
     enqueue,
     setComposerSegments,
     insertPosition,
-    enqueueMentionUpdates,
+    enqueueMentionAdditions,
   ]);
 
   // Authorization is handled at UI layer (visibility) and server (validation)
   const deleteComment = useCallback(
     (id: string, parentCommentId?: string) => {
+      const isUnsavedNewReply = pendingNewReplies.current?.has(id) ?? false;
+      const commentsToRemove = isUnsavedNewReply
+        ? []
+        : getDeletedComments(comments, id, parentCommentId);
+
       setComments((prev) => applyDeleteToState(prev, id, parentCommentId));
       handlePendingReplyDelete(pendingNewReplies, id, parentCommentId, enqueue);
+
+      if (commentsToRemove.length > 0) {
+        enqueueMentionRemovals(buildMentionRemovalsByUser(commentsToRemove));
+      }
     },
-    [setComments, enqueue, pendingNewReplies]
+    [comments, setComments, enqueue, pendingNewReplies, enqueueMentionRemovals]
   );
 
   const editComment = useCallback(
     (id: string, newContent: CommentSegment[], parentCommentId?: string) => {
       const isNewReply = pendingNewReplies.current?.has(id) ?? false;
+      const existingComment = findCommentById(comments, id, parentCommentId);
       setComments((prev) => applyEditToState(prev, id, newContent, parentCommentId));
 
       // Convert to slim format for storage
@@ -169,31 +281,55 @@ export function useCommentActions({
         pendingNewReplies.current?.delete(id);
 
         // Preserve original dateISO (creation time, not save time)
-        setComments((currentComments) => {
-          const parentComment = currentComments.find((c) => c.id === parentCommentId);
-          const reply = parentComment?.replies?.find((r) => r.id === id);
-          const originalDateISO = reply?.dateISO ?? new Date().toISOString();
+        const replyComment: CommentType = {
+          id,
+          dateISO: existingComment?.dateISO ?? new Date().toISOString(),
+          content: storedContent,
+          authorId: userId,
+          upvoterIds: [],
+          parentCommentId,
+        };
 
-          const replyComment: CommentType = {
-            id,
-            dateISO: originalDateISO,
-            content: storedContent,
-            authorId: userId,
-            upvoterIds: [],
-            parentCommentId,
-          };
-
-          enqueue({
-            type: 'ADD_REPLY',
-            parentCommentId,
-            reply: replyComment,
-          });
-
-          enqueueMentionUpdates(replyComment, newContent, true, parentCommentId);
-
-          return currentComments;
+        enqueue({
+          type: 'ADD_REPLY',
+          parentCommentId,
+          reply: replyComment,
         });
+
+        const mentionedUserIds = extractMentionedUserIds(newContent);
+        enqueueMentionAdditions(replyComment, true, mentionedUserIds, parentCommentId);
       } else {
+        if (existingComment) {
+          const { additions, removals } = diffMentionedUsers(existingComment.content, newContent);
+
+          if (additions.length > 0) {
+            const editedComment: CommentType = {
+              ...existingComment,
+              content: storedContent,
+              // Mentions added via edit should surface as new mention events.
+              dateISO: new Date().toISOString(),
+            };
+
+            enqueueMentionAdditions(
+              editedComment,
+              !!parentCommentId,
+              additions,
+              parentCommentId
+            );
+          }
+
+          if (removals.length > 0) {
+            enqueueMentionRemovals(
+              new Map(
+                removals.map((mentionedUserId) => [
+                  mentionedUserId,
+                  [buildMentionEntryKey(id, mentionedUserId)],
+                ])
+              )
+            );
+          }
+        }
+
         enqueue({
           type: 'EDIT_COMMENT',
           id,
@@ -202,7 +338,15 @@ export function useCommentActions({
         });
       }
     },
-    [userId, setComments, enqueue, pendingNewReplies, enqueueMentionUpdates]
+    [
+      userId,
+      comments,
+      setComments,
+      enqueue,
+      pendingNewReplies,
+      enqueueMentionAdditions,
+      enqueueMentionRemovals,
+    ]
   );
 
   const upvoteComment = useCallback(
@@ -231,7 +375,7 @@ export function useCommentActions({
         prev.map((c) => {
           if (c.id !== parentCommentId) return c;
 
-          if (insertPosition === 'prepend') {
+          if (replyInsertPosition === 'prepend') {
             return { ...c, replies: [newReply, ...(c.replies ?? [])] };
           } else {
             return { ...c, replies: [...(c.replies ?? []), newReply] };
@@ -239,7 +383,7 @@ export function useCommentActions({
         })
       );
     },
-    [userId, setComments, pendingNewReplies, insertPosition]
+    [userId, setComments, pendingNewReplies, replyInsertPosition]
   );
 
   return {

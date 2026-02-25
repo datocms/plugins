@@ -56,8 +56,9 @@ const CommentsBar = ({ ctx }: Props) => {
 
   const cmaToken = ctx.currentUserAccessToken;
   const pluginParams = parsePluginParams(ctx.plugin.attributes.parameters);
-  const realTimeEnabled = pluginParams.realTimeUpdatesEnabled ?? true;
+  const realTimeRequested = pluginParams.realTimeUpdatesEnabled ?? true;
   const cdaToken = pluginParams.cdaToken;
+  const realTimeEnabled = realTimeRequested && !!cdaToken;
   const notificationsEndpoint = pluginParams.notificationsEndpoint;
 
   const client = useMemo(() => createApiClient(cmaToken), [cmaToken]);
@@ -65,7 +66,7 @@ const CommentsBar = ({ ctx }: Props) => {
   const { canMentionAssets, canMentionModels, readableModels } = useMentionPermissions(ctx, projectModels);
 
   const mainLocale = ctx.site.attributes.locales[0] ?? 'en';
-  const { resolveComments, cacheVersion } = useEntityResolver({
+  const { prefetchEntities, resolveComments, cacheVersion } = useEntityResolver({
     client,
     projectUsers,
     projectModels,
@@ -129,13 +130,21 @@ const CommentsBar = ({ ctx }: Props) => {
     }
   }, [comments.length, hiddenOldCount]);
 
-  const visibleComments = useMemo(() => {
+  const visibleStoredComments = useMemo(() => {
     const hideCount = hiddenOldCount ?? Math.max(0, comments.length - COMMENTS_PAGE_SIZE);
     const showCount = comments.length - hideCount;
-    const sliced = comments.slice(0, showCount);
-    return resolveComments(sliced);
+    return comments.slice(0, showCount);
+  }, [comments, hiddenOldCount]);
+
+  useEffect(() => {
+    prefetchEntities(visibleStoredComments);
+  }, [visibleStoredComments, prefetchEntities]);
+
+  const visibleComments = useMemo(
+    () => resolveComments(visibleStoredComments),
     // cacheVersion triggers re-resolution when async entities (records/assets) are fetched
-  }, [comments, hiddenOldCount, resolveComments, cacheVersion]);
+    [visibleStoredComments, resolveComments, cacheVersion]
+  );
 
   const hasMoreComments = (hiddenOldCount ?? 0) > 0;
 
@@ -148,6 +157,7 @@ const CommentsBar = ({ ctx }: Props) => {
   } = useCommentActions({
     ctx,
     userId: currentUserId,
+    comments,
     setComments,
     enqueue,
     enqueueMentionState: mentionStateQueue.enqueue,
@@ -321,7 +331,7 @@ const CommentsBar = ({ ctx }: Props) => {
             </div>
           )}
 
-          {realTimeEnabled && !cdaToken && (
+          {realTimeRequested && !cdaToken && (
             <div className={styles.warning}>
               <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" role="img" aria-labelledby="warningIconTitle">
                 <title id="warningIconTitle">Warning</title>

@@ -171,6 +171,8 @@ export function useCommentsSubscription({
   const [isAutoReconnecting, setIsAutoReconnecting] = useState(false);
   const autoReconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const isRealtimeSubscriptionEnabled = subscriptionEnabled && !!cdaToken && realTimeEnabled;
+
   // Track when subscription data was received to detect stale data
   const dataReceivedAtRef = useRef<number>(0);
   // Track when isSyncAllowed last became false (operation started)
@@ -182,12 +184,13 @@ export function useCommentsSubscription({
     query,
     variables,
     token: cdaToken ?? '',
-    enabled: subscriptionEnabled && !!cdaToken && realTimeEnabled,
+    enabled: isRealtimeSubscriptionEnabled,
     includeDrafts: true,
     reconnectionPeriod: subscriptionKey > 0 ? 100 : undefined,
   });
 
   useEffect(() => {
+    if (!isRealtimeSubscriptionEnabled) return;
     if (status === 'connected') {
       consecutiveErrorCount.current = 0;
       setIsAutoReconnecting(false);
@@ -197,11 +200,18 @@ export function useCommentsSubscription({
         autoReconnectTimeoutRef.current = null;
       }
     }
-  }, [status]);
+  }, [status, isRealtimeSubscriptionEnabled]);
 
   // Auto-reconnect when connection is closed
   useEffect(() => {
-    if (!realTimeEnabled) return;
+    if (!isRealtimeSubscriptionEnabled) {
+      setIsAutoReconnecting(false);
+      if (autoReconnectTimeoutRef.current) {
+        clearTimeout(autoReconnectTimeoutRef.current);
+        autoReconnectTimeoutRef.current = null;
+      }
+      return;
+    }
 
     // Only auto-reconnect when status is 'closed' (connection lost)
     if (status === 'closed') {
@@ -223,7 +233,7 @@ export function useCommentsSubscription({
         autoReconnectTimeoutRef.current = null;
       }
     };
-  }, [status, realTimeEnabled]);
+  }, [status, isRealtimeSubscriptionEnabled]);
 
   // Track when isSyncAllowed transitions to false (operation started)
   useEffect(() => {
@@ -259,7 +269,7 @@ export function useCommentsSubscription({
   }, [error]);
 
   const retry = useCallback(async () => {
-    if (realTimeEnabled) {
+    if (isRealtimeSubscriptionEnabled) {
       const errorCount = consecutiveErrorCount.current;
       const delayMs = Math.min(1000 * Math.pow(2, errorCount), 30000); // 1s, 2s, 4s... max 30s
 
@@ -273,13 +283,13 @@ export function useCommentsSubscription({
       setCmaFetchError(null);
       setCmaRetryKey((prev) => prev + 1);
     }
-  }, [realTimeEnabled]);
+  }, [isRealtimeSubscriptionEnabled]);
 
   // Track when tab was hidden and refresh subscription when tab becomes visible after long inactivity
   // This handles stale WebSocket connections in long-running tabs
   const hiddenAtRef = useRef<number>(0);
   useEffect(() => {
-    if (!realTimeEnabled) return;
+    if (!isRealtimeSubscriptionEnabled) return;
 
     const handleVisibilityChange = () => {
       if (document.hidden) {
@@ -305,7 +315,7 @@ export function useCommentsSubscription({
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [realTimeEnabled]);
+  }, [isRealtimeSubscriptionEnabled]);
 
   useEffect(() => {
     const commentsModel = findCommentsModel(ctx.itemTypes);
@@ -316,11 +326,21 @@ export function useCommentsSubscription({
   // Critical: We must check if subscription data was received AFTER our last operation started
   // to prevent stale data from overwriting fresh local state (the "disappearing comment" bug)
   useEffect(() => {
-    if (!realTimeEnabled) return;
+    if (!isRealtimeSubscriptionEnabled) return;
 
     const record = data?.allProjectComments[0];
     if (data) setIsLoading(false);
-    if (!record || !isSyncAllowed) return;
+    if (!isSyncAllowed) return;
+
+    if (!record) {
+      setCommentRecordId(null);
+      onBeforeSync?.();
+      setComments((prevComments) => (prevComments.length === 0 ? prevComments : []));
+      if (onAfterSync) {
+        requestAnimationFrame(onAfterSync);
+      }
+      return;
+    }
 
     // CRITICAL FIX: Check if subscription data is fresh enough
     // If we had an operation (syncBlockedAtRef > 0) and the data was received BEFORE
@@ -363,14 +383,14 @@ export function useCommentsSubscription({
     if (onAfterSync) {
       requestAnimationFrame(onAfterSync);
     }
-  }, [data, isSyncAllowed, realTimeEnabled, setCommentRecordId, currentUserId, onOrphanedDraft, onBeforeSync, onAfterSync]);
+  }, [data, isSyncAllowed, isRealtimeSubscriptionEnabled, setCommentRecordId, currentUserId, onOrphanedDraft, onBeforeSync, onAfterSync]);
 
   const [cmaFetchError, setCmaFetchError] = useState<Error | null>(null);
   const [cmaRetryKey, setCmaRetryKey] = useState(0);
   const cmaRetryCountRef = useRef(0);
 
   useEffect(() => {
-    if (realTimeEnabled) return;
+    if (isRealtimeSubscriptionEnabled) return;
     if (!client || !commentsModelId || !filterParams.recordId) {
       setIsLoading(false);
       return;
@@ -443,6 +463,13 @@ export function useCommentsSubscription({
           if (onAfterSync) {
             requestAnimationFrame(onAfterSync);
           }
+        } else {
+          setCommentRecordId(null);
+          onBeforeSync?.();
+          setComments((prevComments) => (prevComments.length === 0 ? prevComments : []));
+          if (onAfterSync) {
+            requestAnimationFrame(onAfterSync);
+          }
         }
         setIsLoading(false);
       } catch (error) {
@@ -494,7 +521,7 @@ export function useCommentsSubscription({
         retryTimeoutId = null;
       }
     };
-  }, [realTimeEnabled, client, filterParams.modelId, filterParams.recordId, commentsModelId, cmaRetryKey, setCommentRecordId, setComments]);
+  }, [isRealtimeSubscriptionEnabled, client, filterParams.modelId, filterParams.recordId, commentsModelId, cmaRetryKey, setCommentRecordId, setComments, currentUserId, onOrphanedDraft, onBeforeSync, onAfterSync]);
 
   const normalizedError = error ? normalizeError(error) : cmaFetchError;
   const errorInfo: SubscriptionErrorInfo | null = normalizedError

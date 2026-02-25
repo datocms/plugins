@@ -375,6 +375,13 @@
   flex-shrink: 0;
 }
 
+.sectionHeaderRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .sectionTitle {
   margin: 0;
   font-size: var(--text-xs);
@@ -382,6 +389,35 @@
   color: var(--text-secondary);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+.sectionActionButton {
+  padding: 0;
+  margin: 0;
+  font-family: inherit;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--accent-color, #1264a3);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.sectionActionButton:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+.sectionActionButton:disabled {
+  color: var(--text-secondary);
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.sectionActionButton:focus-visible {
+  outline: none;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 0 0 2px var(--accent-color-a30);
 }
 
 .sectionContent {

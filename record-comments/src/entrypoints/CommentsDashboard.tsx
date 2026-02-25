@@ -103,7 +103,9 @@ const CommentsDashboard = ({ ctx }: CommentsDashboardProps) => {
   const {
     mentions: userMentions,
     isLoading: isMentionsLoading,
+    unreadCount: unreadMentionsCount,
     markAsRead,
+    markAllAsRead,
   } = useMentionState({
     client,
     userId: currentUserId,
@@ -236,6 +238,8 @@ const CommentsDashboard = ({ ctx }: CommentsDashboardProps) => {
           <MyMentionsSidebar
             mentions={userMentions}
             isLoading={isMentionsLoading}
+            unreadCount={unreadMentionsCount}
+            onMarkAllAsRead={markAllAsRead}
             onNavigateToRecord={handleNavigateToRecord}
             onScrollToGlobalComment={handleScrollToGlobalComment}
             onItemClick={handleMentionClick}

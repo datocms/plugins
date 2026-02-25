@@ -167,15 +167,25 @@ export const TipTapComposer = forwardRef<TipTapComposerRef, TipTapComposerProps>
       });
     }, [canMentionAssets, canMentionModels, canMentionFields, modelFields]);
 
+    const isCommandAvailable = useCallback(
+      (name: SlashCommandDefinition['name']) =>
+        availableCommands.some((cmd) => cmd.name === name),
+      [availableCommands]
+    );
+
+    const getAvailableMatchingCommands = useCallback(
+      (query: string) =>
+        filterSlashCommands(query).filter((cmd) => isCommandAvailable(cmd.name)),
+      [isCommandAvailable]
+    );
+
     // Filtered slash commands for command_selection phase
     const filteredCommands = useMemo(() => {
       if (!activeSlashCommand || activeSlashCommand.phase !== 'command_selection') {
         return availableCommands;
       }
-      const filtered = filterSlashCommands(activeSlashCommand.commandPart);
-      // Only return commands that are available based on permissions
-      return filtered.filter((cmd) => availableCommands.some((ac) => ac.name === cmd.name));
-    }, [activeSlashCommand, availableCommands]);
+      return getAvailableMatchingCommands(activeSlashCommand.commandPart);
+    }, [activeSlashCommand, availableCommands, getAvailableMatchingCommands]);
 
     // Filtered items for type_selection phase
     const filteredUsers = useMemo(() => {
@@ -255,6 +265,8 @@ export const TipTapComposer = forwardRef<TipTapComposerRef, TipTapComposerProps>
     // Handle command selection in the slash command menu
     const handleSelectCommand = useCallback(
       (command: SlashCommandDefinition) => {
+        if (!isCommandAvailable(command.name)) return;
+
         const currentEditor = editorRef.current;
         const currentCommand = activeSlashCommandRef.current;
 
@@ -302,7 +314,7 @@ export const TipTapComposer = forwardRef<TipTapComposerRef, TipTapComposerProps>
         });
         setSelectedItemIndex(0);
       },
-      []
+      [isCommandAvailable]
     );
 
     // Create slash suggestion handler
@@ -320,6 +332,20 @@ export const TipTapComposer = forwardRef<TipTapComposerRef, TipTapComposerProps>
             // If starting with a complete command (e.g., from toolbar inserting "/user "),
             // skip directly to type_selection phase
             if (parsed.isComplete && parsed.exactMatch) {
+              if (!isCommandAvailable(parsed.exactMatch.name)) {
+                setActiveSlashCommand({
+                  phase: 'command_selection',
+                  rawQuery: props.query,
+                  commandPart: parsed.commandPart,
+                  searchQuery: parsed.searchQuery,
+                  selectedType: null,
+                  range: props.range,
+                  clientRect: props.clientRect ?? null,
+                });
+                setSelectedCommandIndex(0);
+                return;
+              }
+
               // Special handling for record/asset - trigger picker immediately
               if (parsed.exactMatch.name === 'record' || parsed.exactMatch.name === 'asset') {
                 const currentEditor = editorRef.current;
@@ -366,6 +392,24 @@ export const TipTapComposer = forwardRef<TipTapComposerRef, TipTapComposerProps>
 
             // Auto-transition to type_selection if command is complete
             if (parsed.isComplete && parsed.exactMatch && currentCommand?.phase === 'command_selection') {
+              if (!isCommandAvailable(parsed.exactMatch.name)) {
+                setActiveSlashCommand((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        rawQuery: props.query,
+                        commandPart: parsed.commandPart,
+                        searchQuery: parsed.searchQuery,
+                        selectedType: null,
+                        range: props.range,
+                        clientRect: props.clientRect ?? null,
+                      }
+                    : null
+                );
+                setSelectedCommandIndex(0);
+                return;
+              }
+
               // Special handling for record/asset - trigger picker immediately
               if (parsed.exactMatch.name === 'record' || parsed.exactMatch.name === 'asset') {
                 const currentEditor = editorRef.current;
@@ -433,7 +477,7 @@ export const TipTapComposer = forwardRef<TipTapComposerRef, TipTapComposerProps>
 
             // Phase 1: Command selection
             if (currentCommand.phase === 'command_selection') {
-              const commands = filterSlashCommands(currentCommand.commandPart);
+              const commands = getAvailableMatchingCommands(currentCommand.commandPart);
 
               if (event.key === 'ArrowDown') {
                 if (commands.length > 0) {
@@ -611,7 +655,7 @@ export const TipTapComposer = forwardRef<TipTapComposerRef, TipTapComposerProps>
           },
         }),
       }),
-      [handleSelectCommand]
+      [handleSelectCommand, getAvailableMatchingCommands, isCommandAvailable]
     );
 
     // Create mention node extensions (without suggestion handlers)

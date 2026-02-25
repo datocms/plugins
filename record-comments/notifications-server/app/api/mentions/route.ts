@@ -48,11 +48,15 @@ export async function POST(req: Request) {
       (senderEmail ? senderEmail.split('@')[0] : null) ||
       'Someone';
 
-    await sendEmail({
+    const deliveryResult = await sendEmail({
       to: user.email,
       subject: `${senderName} mentioned you in a comment`,
       text: `${senderName} mentioned you in a comment in DatoCMS.`,
     });
+
+    if (deliveryResult === 'disabled') {
+      return NextResponse.json({ error: 'email_not_configured' }, { status: 503 });
+    }
 
     return NextResponse.json({ ok: true });
   } catch {

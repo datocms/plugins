@@ -58,6 +58,8 @@ type UseEntityResolverParams = {
 };
 
 type UseEntityResolverReturn = {
+  /** Starts async resolution for record/asset mentions found in comments. */
+  prefetchEntities: (comments: CommentType[]) => void;
   resolveComments: (comments: CommentType[]) => ResolvedCommentType[];
   isResolving: boolean;
   /** Increments when async entities (records/assets) are resolved. Use as useMemo dependency. */
@@ -316,22 +318,34 @@ export function useEntityResolver(params: UseEntityResolverParams): UseEntityRes
   const collectAsyncMentions = useCallback((comments: CommentType[]) => {
     const recordsToFetch: Array<{ id: string; modelId: string }> = [];
     const assetsToFetch: string[] = [];
+    const seenRecordIds = new Set<string>();
+    const seenAssetIds = new Set<string>();
 
     const processSegments = (segments: StoredCommentSegment[]) => {
       for (const segment of segments) {
         if (segment.type === 'mention') {
           if (segment.mention.type === 'record') {
             const cached = cacheRef.current.records.get(segment.mention.id);
-            if (!cached && !pendingRecordsRef.current.has(segment.mention.id)) {
+            if (
+              !cached &&
+              !pendingRecordsRef.current.has(segment.mention.id) &&
+              !seenRecordIds.has(segment.mention.id)
+            ) {
               recordsToFetch.push({
                 id: segment.mention.id,
                 modelId: segment.mention.modelId,
               });
+              seenRecordIds.add(segment.mention.id);
             }
           } else if (segment.mention.type === 'asset') {
             const cached = cacheRef.current.assets.get(segment.mention.id);
-            if (!cached && !pendingAssetsRef.current.has(segment.mention.id)) {
+            if (
+              !cached &&
+              !pendingAssetsRef.current.has(segment.mention.id) &&
+              !seenAssetIds.has(segment.mention.id)
+            ) {
               assetsToFetch.push(segment.mention.id);
+              seenAssetIds.add(segment.mention.id);
             }
           }
         }
@@ -435,23 +449,22 @@ export function useEntityResolver(params: UseEntityResolverParams): UseEntityRes
     [client, mainLocale, itemTypes]
   );
 
-  const resolveComments = useCallback(
-    (comments: CommentType[]): ResolvedCommentType[] => {
-      // Collect async mentions that need fetching
+  const prefetchEntities = useCallback(
+    (comments: CommentType[]) => {
       const { recordsToFetch, assetsToFetch } = collectAsyncMentions(comments);
-
-      // Trigger async fetch in background
-      if (recordsToFetch.length > 0 || assetsToFetch.length > 0) {
-        fetchAsyncEntities(recordsToFetch, assetsToFetch);
-      }
-
-      // Return resolved comments (with fallbacks for pending async)
-      return comments.map(resolveComment);
+      if (recordsToFetch.length === 0 && assetsToFetch.length === 0) return;
+      void fetchAsyncEntities(recordsToFetch, assetsToFetch);
     },
-    [collectAsyncMentions, fetchAsyncEntities, resolveComment]
+    [collectAsyncMentions, fetchAsyncEntities]
+  );
+
+  const resolveComments = useCallback(
+    (comments: CommentType[]): ResolvedCommentType[] => comments.map(resolveComment),
+    [resolveComment]
   );
 
   return {
+    prefetchEntities,
     resolveComments,
     isResolving,
     cacheVersion,

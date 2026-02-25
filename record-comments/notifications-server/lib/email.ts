@@ -8,14 +8,16 @@ type EmailParams = {
   html?: string;
 };
 
-export async function sendEmail({ to, subject, text, html }: EmailParams) {
+export type SendEmailResult = 'sent' | 'disabled';
+
+export async function sendEmail({ to, subject, text, html }: EmailParams): Promise<SendEmailResult> {
   const apiKey = process.env.MAILGUN_API_KEY;
   const domain = process.env.MAILGUN_DOMAIN;
   const from = process.env.MAIL_FROM;
 
   if (!apiKey || !domain || !from) {
     console.log('Email disabled:', { to, subject, text });
-    return;
+    return 'disabled';
   }
 
   const mg = new Mailgun(formData).client({
@@ -30,4 +32,6 @@ export async function sendEmail({ to, subject, text, html }: EmailParams) {
     text,
     html,
   });
+
+  return 'sent';
 }

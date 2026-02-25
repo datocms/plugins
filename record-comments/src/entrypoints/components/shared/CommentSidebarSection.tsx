@@ -8,6 +8,9 @@ type CommentSidebarSectionProps = {
   emptyMessage: string;
   items: CommentWithContext[];
   isLoading: boolean;
+  headerActionLabel?: string;
+  onHeaderAction?: () => void;
+  isHeaderActionDisabled?: boolean;
   onNavigateToRecord: (modelId: string, recordId: string) => void;
   onScrollToGlobalComment?: (commentId: string) => void;
   onItemClick?: (item: CommentWithContext) => void;
@@ -24,6 +27,9 @@ const CommentSidebarSection = ({
   emptyMessage,
   items,
   isLoading,
+  headerActionLabel,
+  onHeaderAction,
+  isHeaderActionDisabled = false,
   onNavigateToRecord,
   onScrollToGlobalComment,
   onItemClick,
@@ -46,7 +52,19 @@ const CommentSidebarSection = ({
   return (
     <div className={styles.sidebarSection}>
       <div className={styles.sectionHeader}>
-        <h3 className={styles.sectionTitle}>{title}</h3>
+        <div className={styles.sectionHeaderRow}>
+          <h3 className={styles.sectionTitle}>{title}</h3>
+          {headerActionLabel && onHeaderAction && (
+            <button
+              type="button"
+              className={styles.sectionActionButton}
+              onClick={onHeaderAction}
+              disabled={isHeaderActionDisabled}
+            >
+              {headerActionLabel}
+            </button>
+          )}
+        </div>
       </div>
       <div className={styles.sectionContent}>
         {isLoading ? (

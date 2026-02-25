@@ -84,7 +84,7 @@ const GlobalCommentsChannel = ({
   const notificationsEndpoint = pluginParams.notificationsEndpoint;
 
   const mainLocale = ctx.site.attributes.locales[0] ?? 'en';
-  const { resolveComments, cacheVersion } = useEntityResolver({
+  const { prefetchEntities, resolveComments, cacheVersion } = useEntityResolver({
     client,
     projectUsers,
     projectModels,
@@ -124,6 +124,7 @@ const GlobalCommentsChannel = ({
     replyComment,
   } = useCommentActions({
     userId,
+    comments,
     setComments,
     enqueue: operationQueue.enqueue,
     enqueueMentionState: mentionStateQueue.enqueue,
@@ -138,6 +139,7 @@ const GlobalCommentsChannel = ({
     setComposerSegments,
     pendingNewReplies,
     insertPosition: 'append',
+    replyInsertPosition: 'prepend',
   });
 
   const {
@@ -200,6 +202,10 @@ const GlobalCommentsChannel = ({
     items: sortedComments,
     containerRef: commentsListRef,
   });
+
+  useEffect(() => {
+    prefetchEntities(paginatedComments);
+  }, [paginatedComments, prefetchEntities]);
 
   // Resolve stored comments to display-ready format with full mention data
   // cacheVersion triggers re-resolution when async entities (records/assets) are fetched

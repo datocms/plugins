@@ -123,12 +123,22 @@ export function useAllCommentsData({
     const isFirstFetch = !hasFetchedOnce.current;
 
     try {
-      const records = await fetchWithRetry(() =>
-        client.items.list({
-          filter: { type: COMMENTS_MODEL_API_KEY },
-          page: { limit: 100 },
-        })
-      );
+      const records: Awaited<ReturnType<typeof client.items.list>> = [];
+      const PAGE_SIZE = 100;
+      let offset = 0;
+
+      while (true) {
+        const page = await fetchWithRetry(() =>
+          client.items.list({
+            filter: { type: COMMENTS_MODEL_API_KEY },
+            page: { limit: PAGE_SIZE, offset },
+          })
+        );
+
+        records.push(...page);
+        if (page.length < PAGE_SIZE) break;
+        offset += PAGE_SIZE;
+      }
 
       const commentsWithContext: CommentWithContext[] = [];
       const recordsToFetch: Array<{ recordId: string; modelId: string }> = [];

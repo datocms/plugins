@@ -12,6 +12,10 @@ export function buildMentionStateRecordId(userId: string): string {
   return `${MENTION_STATE_RECORD_PREFIX}${userId}`;
 }
 
+export function buildMentionEntryKey(commentId: string, userId: string): string {
+  return `${commentId}:${userId}`;
+}
+
 function normalizeMentionStateContent(raw: unknown): MentionStateContent {
   if (!raw || typeof raw !== 'object') {
     return { ...EMPTY_STATE };
@@ -112,7 +116,7 @@ export function buildMentionEntriesByUser(
 
   for (const userId of uniqueUserIds) {
     const entry: MentionEntry = {
-      key: `${comment.id}:${userId}`,
+      key: buildMentionEntryKey(comment.id, userId),
       commentId: comment.id,
       recordId: context.recordId,
       modelId: context.modelId,
