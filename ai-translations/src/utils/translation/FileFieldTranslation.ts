@@ -2,27 +2,62 @@
  * FileFieldTranslation.ts
  * ------------------------------------------------------
  * This module handles translation of metadata associated with file fields in DatoCMS,
- * such as alt text, title, and other custom metadata fields that may be attached
+ * including alt text, title, and other custom metadata fields that may be attached
  * to file uploads. It supports both single file fields and gallery (array of files) fields.
  * 
  * The module provides functionality to:
- * - Extract translatable metadata from file objects
+ * - Extract translatable alt/title and metadata from file objects
  * - Process both single files and galleries (collections of files)
  * - Preserve file structure while updating only the relevant metadata
  * - Stream translation progress back to the UI
  */
 
 import type { TranslationProvider, StreamCallbacks } from './types';
+import { buildClient } from '@datocms/cma-client-browser';
 import { handleTranslationError } from './ProviderErrors';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import { createLogger } from '../logging/Logger';
 import { translateArray } from './translateArray';
+import { findExactLocaleKey } from './SharedFieldUtils';
+
+type UploadDefaultFieldMetadata = Record<string, { alt?: string; title?: string }>;
+
+const uploadDefaultMetadataCache = new Map<string, Promise<UploadDefaultFieldMetadata | undefined>>();
+
+async function fetchUploadDefaultMetadata(
+  uploadId: string,
+  apiToken: string,
+  environment: string,
+  logger: ReturnType<typeof createLogger>
+): Promise<UploadDefaultFieldMetadata | undefined> {
+  const cacheKey = `${environment}:${uploadId}`;
+  const cached = uploadDefaultMetadataCache.get(cacheKey);
+  if (cached) return cached;
+
+  const fetchPromise = (async () => {
+    try {
+      const client = buildClient({ apiToken, environment });
+      const upload = await client.uploads.find(uploadId);
+      const metadata = (upload as { default_field_metadata?: unknown }).default_field_metadata;
+      if (!metadata || typeof metadata !== 'object') {
+        return undefined;
+      }
+      return metadata as UploadDefaultFieldMetadata;
+    } catch (error) {
+      logger.warning('Failed to fetch upload default metadata', { uploadId, error });
+      return undefined;
+    }
+  })();
+
+  uploadDefaultMetadataCache.set(cacheKey, fetchPromise);
+  return fetchPromise;
+}
 
 /**
  * Translates metadata for file and gallery fields
  * 
  * This function handles both single file fields and gallery fields (arrays of files).
- * It extracts the metadata from each file object, translates text-based metadata fields,
+ * It extracts alt/title and metadata from each file object, translates text-based fields,
  * and reconstructs the file objects with the translated metadata while preserving
  * other properties like URLs, dimensions, etc.
  * 
@@ -33,7 +68,7 @@ import { translateArray } from './translateArray';
  * @param provider - TranslationProvider instance used for translation
  * @param _streamCallbacks - Optional callbacks for streaming progress updates
  * @param recordContext - Optional context about the record to improve translation quality
- * @returns Updated file field data with translated metadata
+ * @returns Updated file field data with translated alt/title and metadata
  */
 export async function translateFileFieldValue(
   fieldValue: unknown,
@@ -41,6 +76,8 @@ export async function translateFileFieldValue(
   toLocale: string,
   fromLocale: string,
   provider: TranslationProvider,
+  apiToken?: string,
+  environment?: string,
   _streamCallbacks?: StreamCallbacks,
   recordContext = ''
 ): Promise<unknown> {
@@ -71,6 +108,8 @@ export async function translateFileFieldValue(
           toLocale,
           fromLocale,
           provider,
+          apiToken,
+          environment,
           _streamCallbacks,
           recordContext
         );
@@ -88,6 +127,8 @@ export async function translateFileFieldValue(
     toLocale,
     fromLocale,
     provider,
+    apiToken,
+    environment,
     _streamCallbacks,
     recordContext
   );
@@ -96,10 +137,10 @@ export async function translateFileFieldValue(
 /**
  * Translates metadata for a single file object
  * 
- * This function extracts text-based metadata fields from a file object,
- * translates them using the provider, and then merges the translated metadata
- * back into the original file object, preserving all non-metadata properties.
- * It only translates string-type metadata values, leaving other types untouched.
+ * This function extracts text-based alt/title and metadata fields from a file object,
+ * translates them using the provider, and then merges the translated values
+ * back into the original file object, preserving all non-text properties.
+ * It only translates string-type values, leaving other types untouched.
  * 
  * @param fileValue - The file object containing metadata to translate
  * @param pluginParams - Plugin configuration parameters
@@ -116,6 +157,8 @@ async function translateSingleFileMetadata(
   toLocale: string,
   fromLocale: string,
   provider: TranslationProvider,
+  apiToken?: string,
+  environment?: string,
   _streamCallbacks?: StreamCallbacks,
   recordContext = ''
 ): Promise<unknown> {
@@ -129,46 +172,125 @@ async function translateSingleFileMetadata(
   }
 
   const fileObj = fileValue as Record<string, unknown>;
-  const metadata = fileObj.metadata as Record<string, unknown>;
+  const metadata =
+    fileObj.metadata && typeof fileObj.metadata === 'object' && !Array.isArray(fileObj.metadata)
+      ? (fileObj.metadata as Record<string, unknown>)
+      : undefined;
 
-  if (!metadata) {
-    logger.info('No metadata found in file object');
-    return fileValue;
-  }
+  const entries: Array<{ kind: 'alt' | 'title' | 'metadata'; key?: string; value: string }> = [];
 
-  // Extract translatable metadata fields using Object.entries to avoid prototype chain iteration
-  const metadataToTranslate: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(metadata)) {
-    // Only include string values for translation
-    if (value && typeof value === 'string') {
-      metadataToTranslate[key] = value;
+  const altFromFile = typeof fileObj.alt === 'string' ? fileObj.alt : undefined;
+  const altFromMetadata = typeof metadata?.alt === 'string' ? metadata.alt : undefined;
+  const titleFromFile = typeof fileObj.title === 'string' ? fileObj.title : undefined;
+  const titleFromMetadata = typeof metadata?.title === 'string' ? metadata.title : undefined;
+
+  const pickNonEmpty = (primary?: string, fallback?: string) => {
+    if (primary && primary.trim()) return primary;
+    if (fallback && fallback.trim()) return fallback;
+    return undefined;
+  };
+
+  let altSource = pickNonEmpty(altFromFile, altFromMetadata);
+  let titleSource = pickNonEmpty(titleFromFile, titleFromMetadata);
+
+  const uploadId =
+    typeof fileObj.upload_id === 'string'
+      ? fileObj.upload_id
+      : typeof fileObj.uploadId === 'string'
+        ? fileObj.uploadId
+        : undefined;
+
+  if ((!altSource || !titleSource) && uploadId && apiToken && environment) {
+    const defaultMetadata = await fetchUploadDefaultMetadata(uploadId, apiToken, environment, logger);
+    if (defaultMetadata) {
+      const localeKey = findExactLocaleKey(defaultMetadata as Record<string, unknown>, fromLocale);
+      const localeMetadata = localeKey ? defaultMetadata[localeKey] : undefined;
+      if (localeMetadata && typeof localeMetadata === 'object') {
+        if (!altSource && typeof localeMetadata.alt === 'string' && localeMetadata.alt.trim()) {
+          altSource = localeMetadata.alt;
+        }
+        if (!titleSource && typeof localeMetadata.title === 'string' && localeMetadata.title.trim()) {
+          titleSource = localeMetadata.title;
+        }
+      }
     }
   }
 
-  // If no translatable metadata, return as is
-  if (Object.keys(metadataToTranslate).length === 0) {
-    logger.info('No translatable string metadata found');
+  const altValue = typeof altSource === 'string' ? altSource : undefined;
+  const titleValue = typeof titleSource === 'string' ? titleSource : undefined;
+  const hasAltEntry = typeof altValue === 'string';
+  const hasTitleEntry = typeof titleValue === 'string';
+
+  if (altValue) {
+    entries.push({ kind: 'alt', value: altValue });
+  }
+  if (titleValue) {
+    entries.push({ kind: 'title', value: titleValue });
+  }
+
+  if (metadata) {
+    for (const [key, value] of Object.entries(metadata)) {
+      // Avoid double-translating alt/title when handled above
+      if ((key === 'alt' && hasAltEntry) || (key === 'title' && hasTitleEntry)) {
+        continue;
+      }
+      if (value && typeof value === 'string') {
+        entries.push({ kind: 'metadata', key, value });
+      }
+    }
+  }
+
+  if (entries.length === 0) {
+    logger.info('No translatable alt/title or metadata found');
     return fileValue;
   }
 
-  logger.info('Translating file metadata', metadataToTranslate);
-
-  // No display names needed for array helper path
+  logger.info('Translating file metadata', {
+    alt: altSource,
+    title: titleSource,
+    metadataKeys: metadata ? Object.keys(metadata) : [],
+  });
 
   try {
-    const keys = Object.keys(metadataToTranslate);
-    const values = keys.map((k) => String(metadataToTranslate[k] ?? ''));
-    const translatedValues = await translateArray(provider, pluginParams, values, fromLocale, toLocale, { isHTML: false, recordContext });
-    const translatedMetadata = keys.reduce((acc, key, idx) => { acc[key] = translatedValues[idx]; return acc; }, {} as Record<string, unknown>);
+    const values = entries.map((entry) => entry.value);
+    const translatedValues = await translateArray(provider, pluginParams, values, fromLocale, toLocale, {
+      isHTML: false,
+      recordContext,
+    });
 
-    // Update the original file object with translated metadata
-    return {
-      ...fileObj,
-      metadata: {
-        ...metadata,
-        ...translatedMetadata,
-      },
-    };
+    let metadataOut: Record<string, unknown> | undefined = metadata ? { ...metadata } : undefined;
+    const fileOut: Record<string, unknown> = { ...fileObj };
+
+    translatedValues.forEach((translated, idx) => {
+      const entry = entries[idx];
+      if (!entry) return;
+      switch (entry.kind) {
+        case 'alt':
+          fileOut.alt = translated;
+          if (metadataOut && 'alt' in metadataOut) {
+            metadataOut.alt = translated;
+          }
+          break;
+        case 'title':
+          fileOut.title = translated;
+          if (metadataOut && 'title' in metadataOut) {
+            metadataOut.title = translated;
+          }
+          break;
+        case 'metadata':
+          if (!metadataOut) metadataOut = {};
+          metadataOut[entry.key as string] = translated;
+          break;
+        default:
+          break;
+      }
+    });
+
+    if (metadataOut) {
+      fileOut.metadata = metadataOut;
+    }
+
+    return fileOut;
   } catch (error) {
     // DRY-001: Use centralized error handler
     handleTranslationError(error, provider.vendor, logger, 'File metadata translation error');

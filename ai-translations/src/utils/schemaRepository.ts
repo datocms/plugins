@@ -18,6 +18,8 @@ import type { buildClient } from '@datocms/cma-client-browser';
 export type BlockFieldMeta = {
   editor: string;
   id: string;
+  localized?: boolean;
+  validators?: unknown;
 };
 
 /**
@@ -80,6 +82,8 @@ export async function getBlockFieldsFromRepo(
       acc[field.api_key] = {
         editor: field.appearance.editor,
         id: field.id,
+        localized: field.localized,
+        validators: field.validators,
       };
       return acc;
     },

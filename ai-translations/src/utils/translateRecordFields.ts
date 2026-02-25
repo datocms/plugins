@@ -116,6 +116,21 @@ export async function translateRecordFields(
   // Throttle streaming UI updates to ~30fps per fieldPath (uses constant from constants.ts)
   const lastStreamAt = new Map<string, number>();
 
+  // Map block item type ID -> array of frameless_single_block field api_keys that reference it
+  const framelessParentsByItemType = new Map<string, string[]>();
+  for (const field of Object.values(ctx.fields)) {
+    if (!field?.attributes) continue;
+    if (field.attributes.appearance.editor !== 'frameless_single_block') continue;
+    if (!field.attributes.localized) continue;
+    const validators = field.attributes.validators;
+    if (!hasSingleBlockBlocks(validators)) continue;
+    for (const itemTypeId of validators.single_block_blocks.item_types) {
+      const existing = framelessParentsByItemType.get(itemTypeId) ?? [];
+      existing.push(field.attributes.api_key);
+      framelessParentsByItemType.set(itemTypeId, existing);
+    }
+  }
+
   // Small helper to yield to the UI thread
   const nextFrame = () =>
     new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
@@ -142,15 +157,24 @@ export async function translateRecordFields(
     formValues: Record<string, unknown>
   ): { value: unknown; basePath: string; isFramelessField?: boolean; framelessParentKey?: string } | null => {
     const fieldApiKey = field.attributes.api_key;
+    const fieldItemTypeId = field.relationships?.item_type?.data?.id;
+    const isNestedBlockField = fieldItemTypeId && fieldItemTypeId !== ctx.itemType.id;
     
     // First try: direct access (top-level fields)
-    let fieldValue = formValues[fieldApiKey];
-    if (fieldValue && typeof fieldValue === 'object' && !Array.isArray(fieldValue)) {
-      return { value: fieldValue, basePath: fieldApiKey, isFramelessField: false };
+    if (!isNestedBlockField) {
+      const fieldValue = formValues[fieldApiKey];
+      if (fieldValue && typeof fieldValue === 'object' && !Array.isArray(fieldValue)) {
+        return { value: fieldValue, basePath: fieldApiKey, isFramelessField: false };
+      }
     }
     
     // Second try: search inside frameless blocks
-    for (const [parentKey, parentValue] of Object.entries(formValues)) {
+    const candidateParents = isNestedBlockField && fieldItemTypeId
+      ? framelessParentsByItemType.get(fieldItemTypeId) ?? []
+      : Object.keys(formValues);
+
+    for (const parentKey of candidateParents) {
+      const parentValue = formValues[parentKey];
       if (parentValue && typeof parentValue === 'object' && !Array.isArray(parentValue)) {
         const parentObj = parentValue as Record<string, unknown>;
         

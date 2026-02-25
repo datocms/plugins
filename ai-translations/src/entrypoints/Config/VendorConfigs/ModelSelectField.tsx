@@ -5,7 +5,7 @@
  */
 
 import { useMemo } from 'react';
-import { SelectField } from 'datocms-react-ui';
+import { SelectField, SelectInput } from 'datocms-react-ui';
 import s from '../../styles.module.css';
 
 export interface ModelSelectFieldProps {
@@ -41,35 +41,40 @@ export default function ModelSelectField({
     [models]
   );
 
-  const selectField = (
-    <SelectField
-      name={id}
-      id={id}
-      label={label}
-      value={{ label: value, value }}
-      selectInputProps={{
-        'aria-labelledby': useStyledWrapper ? `${id}Label` : undefined,
-        options,
-      }}
-      onChange={(newValue) => {
-        if (!Array.isArray(newValue)) {
-          const selected = newValue as { value: string } | null;
-          onChange(selected?.value || value);
-        }
-      }}
-    />
-  );
+  const selectValue = { label: value, value };
+  const handleChange = (newValue: unknown) => {
+    if (!Array.isArray(newValue)) {
+      const selected = newValue as { value: string } | null;
+      onChange(selected?.value || value);
+    }
+  };
 
   if (useStyledWrapper) {
     return (
       <div className={s.dropdownLabel}>
         <span className={s.label} id={`${id}Label`}>{label}*</span>
         <div className={s.modelSelect}>
-          {selectField}
+          <SelectInput
+            id={id}
+            name={id}
+            value={selectValue}
+            onChange={handleChange}
+            options={options}
+            aria-labelledby={`${id}Label`}
+          />
         </div>
       </div>
     );
   }
 
-  return selectField;
+  return (
+    <SelectField
+      name={id}
+      id={id}
+      label={label}
+      value={selectValue}
+      selectInputProps={{ options }}
+      onChange={handleChange}
+    />
+  );
 }
