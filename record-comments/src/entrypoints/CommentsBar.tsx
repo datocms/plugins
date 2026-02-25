@@ -10,6 +10,7 @@ import { CommentErrorBoundary } from '@components/shared/CommentErrorBoundary';
 import { TipTapComposer, type TipTapComposerRef } from '@components/tiptap/TipTapComposer';
 
 import { useOperationQueue } from '@hooks/useOperationQueue';
+import { useMentionStateQueue } from '@hooks/useMentionStateQueue';
 import { useProjectData } from '@hooks/useProjectData';
 import { useToolbarHandlers } from '@hooks/useToolbarHandlers';
 import { useCommentsData } from '@hooks/useCommentsData';
@@ -57,6 +58,7 @@ const CommentsBar = ({ ctx }: Props) => {
   const pluginParams = parsePluginParams(ctx.plugin.attributes.parameters);
   const realTimeEnabled = pluginParams.realTimeUpdatesEnabled ?? true;
   const cdaToken = pluginParams.cdaToken;
+  const notificationsEndpoint = pluginParams.notificationsEndpoint;
 
   const client = useMemo(() => createApiClient(cmaToken), [cmaToken]);
   const { projectUsers, projectModels, modelFields, typedUsers } = useProjectData(ctx, { loadFields: true });
@@ -89,6 +91,11 @@ const CommentsBar = ({ ctx }: Props) => {
     recordId: ctx.item?.id,
     ctx,
     onRecordCreated: setCommentRecordId,
+  });
+
+  const mentionStateQueue = useMentionStateQueue({
+    client,
+    commentsModelId,
   });
 
   const handleOrphanedDraft = useCallback(() => {
@@ -143,6 +150,14 @@ const CommentsBar = ({ ctx }: Props) => {
     userId: currentUserId,
     setComments,
     enqueue,
+    enqueueMentionState: mentionStateQueue.enqueue,
+    mentionContext: {
+      modelId: ctx.itemType.id,
+      recordId: ctx.item?.id ?? '',
+    },
+    notificationsEndpoint,
+    currentUserAccessToken: ctx.currentUserAccessToken,
+    projectUsers,
     composerSegments,
     setComposerSegments,
     pendingNewReplies,

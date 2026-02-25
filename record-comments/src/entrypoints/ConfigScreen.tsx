@@ -46,9 +46,17 @@ type ScanProgress = {
 
 const ConfigScreen = ({ ctx }: PropTypes) => {
   const pluginParams = parsePluginParams(ctx.plugin.attributes.parameters);
-  const [cdaToken, setCdaToken] = useState(pluginParams.cdaToken ?? '');
-  const [realTimeEnabled, setRealTimeEnabled] = useState(pluginParams.realTimeUpdatesEnabled ?? true);
-  const [dashboardEnabled, setDashboardEnabled] = useState(pluginParams.dashboardEnabled ?? true);
+  const initialSettings = {
+    cdaToken: pluginParams.cdaToken ?? '',
+    realTimeEnabled: pluginParams.realTimeUpdatesEnabled ?? true,
+    dashboardEnabled: pluginParams.dashboardEnabled ?? true,
+    notificationsEndpoint: pluginParams.notificationsEndpoint ?? '',
+  };
+  const [cdaToken, setCdaToken] = useState(initialSettings.cdaToken);
+  const [realTimeEnabled, setRealTimeEnabled] = useState(initialSettings.realTimeEnabled);
+  const [dashboardEnabled, setDashboardEnabled] = useState(initialSettings.dashboardEnabled);
+  const [notificationsEndpoint, setNotificationsEndpoint] = useState(initialSettings.notificationsEndpoint);
+  const [savedSettings, setSavedSettings] = useState(initialSettings);
   const [isSaving, setIsSaving] = useState(false);
 
   const [migrationStatus, setMigrationStatus] = useState<MigrationStatus>(
@@ -62,6 +70,12 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
   const [showCleanupConfirm, setShowCleanupConfirm] = useState(false);
   const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
 
+  const hasChanges =
+    savedSettings.cdaToken !== cdaToken ||
+    savedSettings.realTimeEnabled !== realTimeEnabled ||
+    savedSettings.dashboardEnabled !== dashboardEnabled ||
+    savedSettings.notificationsEndpoint !== notificationsEndpoint;
+
   const handleSave = async () => {
     setIsSaving(true);
     try {
@@ -70,6 +84,13 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
         cdaToken,
         realTimeUpdatesEnabled: realTimeEnabled,
         dashboardEnabled,
+        notificationsEndpoint,
+      });
+      setSavedSettings({
+        cdaToken,
+        realTimeEnabled,
+        dashboardEnabled,
+        notificationsEndpoint,
       });
       ctx.notice('Settings saved successfully!');
     } catch (error) {
@@ -653,11 +674,23 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
             />
           </div>
 
+          <div className={styles.formField}>
+            <TextField
+              id="notifications-endpoint"
+              name="notifications-endpoint"
+              label="Notifications Endpoint URL"
+              hint="Endpoint that receives comment mention payloads."
+              value={notificationsEndpoint}
+              onChange={(newValue) => setNotificationsEndpoint(newValue)}
+              textInputProps={{ monospaced: true }}
+            />
+          </div>
+
           <div className={styles.buttonRow}>
             <Button
               buttonType="primary"
               onClick={handleSave}
-              disabled={isSaving || (realTimeEnabled && !cdaToken)}
+              disabled={isSaving || !hasChanges || (realTimeEnabled && !cdaToken)}
             >
               {isSaving ? 'Saving...' : 'Save Settings'}
             </Button>

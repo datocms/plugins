@@ -472,7 +472,7 @@
 
 .mentionHeader {
   padding: var(--space-1) var(--space-2) var(--space-1);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--light-body-color);
   text-transform: uppercase;
@@ -526,7 +526,7 @@
   justify-content: space-between;
   width: 100%;
   padding: var(--space-1) var(--space-2);
-  font-size: var(--font-size-s);
+  font-size: calc(var(--font-size-s) + 1px);
   color: var(--base-body-color);
   background: transparent;
   border: none;
@@ -554,7 +554,7 @@
 }
 
 .mentionFieldApiKey {
-  font-size: 11px;
+  font-size: calc(var(--font-size-xxs) + 1px);
   color: var(--light-body-color);
   font-family: 'SF Mono', Monaco, 'Courier New', monospace;
 }
@@ -656,7 +656,7 @@
 }
 
 .mentionUserEmail {
-  font-size: 11px;
+  font-size: calc(var(--font-size-xxs) + 1px);
   color: var(--light-body-color);
   margin-left: 8px;
   flex-shrink: 0;
@@ -688,7 +688,7 @@
 }
 
 .mentionModelBadge {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 600;
   color: var(--mention-model);
   background-color: rgba(217, 119, 6, 0.15);
@@ -1316,12 +1316,12 @@
 }
 
 .slashCommandIcon {
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   color: var(--light-body-color);
   background-color: var(--bg-tertiary);
@@ -1345,7 +1345,7 @@
 
 .slashCommandName {
   font-weight: 600;
-  font-size: var(--font-size-xs);
+  font-size: calc(var(--font-size-s) + 1px);
   color: var(--base-body-color);
 }
 
@@ -1354,7 +1354,7 @@
 }
 
 .slashCommandDescription {
-  font-size: 10px;
+  font-size: var(--font-size-xxs);
   color: var(--light-body-color);
   line-height: 1.3;
 }

@@ -346,7 +346,11 @@ const Comment = memo(function Comment({
   }, [composerRef]);
 
   return (
-    <div ref={commentRef} className={cn(styles.comment, isReply && styles.reply, userIsAuthor && styles.ownComment)}>
+    <div
+      ref={commentRef}
+      className={cn(styles.comment, isReply && styles.reply, userIsAuthor && styles.ownComment)}
+      data-comment-id={commentObject.id}
+    >
       {!isEditing && (
         <CommentActions
           onUpvote={handleUpvote}

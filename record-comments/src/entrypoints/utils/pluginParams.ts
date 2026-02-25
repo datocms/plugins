@@ -3,6 +3,7 @@ export type PluginParameters = {
   migrationCompleted?: boolean;
   realTimeUpdatesEnabled?: boolean;
   dashboardEnabled?: boolean;
+  notificationsEndpoint?: string;
 };
 
 const PLUGIN_PARAMS_DEFAULTS = {
@@ -10,6 +11,7 @@ const PLUGIN_PARAMS_DEFAULTS = {
   migrationCompleted: false,
   realTimeUpdatesEnabled: true,
   dashboardEnabled: true,
+  notificationsEndpoint: '',
 } as const;
 
 function parseString(value: unknown, fallback: string) {
@@ -32,6 +34,7 @@ export function parsePluginParams(params: unknown): PluginParameters {
     migrationCompleted: parseBoolean(rawParams.migrationCompleted, PLUGIN_PARAMS_DEFAULTS.migrationCompleted),
     realTimeUpdatesEnabled: parseBoolean(rawParams.realTimeUpdatesEnabled, PLUGIN_PARAMS_DEFAULTS.realTimeUpdatesEnabled),
     dashboardEnabled: parseBoolean(rawParams.dashboardEnabled, PLUGIN_PARAMS_DEFAULTS.dashboardEnabled),
+    notificationsEndpoint: parseString(rawParams.notificationsEndpoint, PLUGIN_PARAMS_DEFAULTS.notificationsEndpoint),
   };
 }
 

@@ -15,6 +15,7 @@ import { SearchIcon, ChatBubbleIcon } from './Icons';
 // Hooks
 import type { ModelInfo } from '@hooks/useMentions';
 import { useOperationQueue } from '@hooks/useOperationQueue';
+import { useMentionStateQueue } from '@hooks/useMentionStateQueue';
 import { useCommentActions } from '@hooks/useCommentActions';
 import { useToolbarHandlers } from '@hooks/useToolbarHandlers';
 import { usePageAssetMention } from '@hooks/usePageAssetMention';
@@ -35,6 +36,7 @@ import { SUBSCRIPTION_STATUS } from '@hooks/useCommentsSubscription';
 import { GLOBAL_MODEL_ID, GLOBAL_RECORD_ID } from '@/constants';
 import { categorizeGeneralError } from '@utils/errorCategorization';
 import { isContentEmpty } from '@ctypes/comments';
+import { parsePluginParams } from '@utils/pluginParams';
 import styles from '@styles/dashboard.module.css';
 
 type GlobalCommentsChannelProps = {
@@ -78,6 +80,8 @@ const GlobalCommentsChannel = ({
 }: GlobalCommentsChannelProps) => {
   const { projectUsers, projectModels, modelFields, currentUserId: userId, typedUsers } = useProjectDataContext();
   const { canMentionAssets, canMentionModels } = useMentionPermissionsContext();
+  const pluginParams = parsePluginParams(ctx.plugin.attributes.parameters);
+  const notificationsEndpoint = pluginParams.notificationsEndpoint;
 
   const mainLocale = ctx.site.attributes.locales[0] ?? 'en';
   const { resolveComments, cacheVersion } = useEntityResolver({
@@ -103,6 +107,11 @@ const GlobalCommentsChannel = ({
     onRecordCreated: setCommentRecordId,
   });
 
+  const mentionStateQueue = useMentionStateQueue({
+    client,
+    commentsModelId,
+  });
+
   useEffect(() => {
     onSyncAllowedChange(operationQueue.isSyncAllowed);
   }, [operationQueue.isSyncAllowed, onSyncAllowedChange]);
@@ -117,6 +126,14 @@ const GlobalCommentsChannel = ({
     userId,
     setComments,
     enqueue: operationQueue.enqueue,
+    enqueueMentionState: mentionStateQueue.enqueue,
+    mentionContext: {
+      modelId: GLOBAL_MODEL_ID,
+      recordId: GLOBAL_RECORD_ID,
+    },
+    notificationsEndpoint,
+    currentUserAccessToken: ctx.currentUserAccessToken,
+    projectUsers,
     composerSegments,
     setComposerSegments,
     pendingNewReplies,

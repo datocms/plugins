@@ -1,5 +1,9 @@
-// Internal model for storing comments (auto-created on plugin boot)
+// Internal model for storing comments + mention state (auto-created on plugin boot)
 export const COMMENTS_MODEL_API_KEY = 'project_comment';
+
+// Special markers for mention state records stored inside project_comment
+export const MENTION_STATE_MODEL_ID = '__mention_state__';
+export const MENTION_STATE_RECORD_PREFIX = 'mention_state:';
 
 // Identifiers for project-wide global comments (not tied to a specific record)
 export const GLOBAL_MODEL_ID = '__global__';
@@ -10,6 +14,7 @@ export const TIMING = {
   VERSION_CONFLICT_BACKOFF_BASE: 100,
   VERSION_CONFLICT_BACKOFF_MAX: 5000,
   POLLING_INTERVAL_MS: 30000,
+  MENTION_POLL_INTERVAL_MS: 60000,
   SCROLL_THRESHOLD_PX: 100,
   COMMENT_BLUR_DELAY_MS: 150, // Allows button clicks to register before blur
   HIGHLIGHT_DURATION_MS: 2000,
@@ -18,6 +23,7 @@ export const TIMING = {
   // If tab was hidden for longer than this, refresh subscription when tab becomes visible
   // This prevents stale WebSocket connections in long-running tabs
   VISIBILITY_REFRESH_THRESHOLD_MS: 60000, // 1 minute
+  MENTION_CACHE_TTL_MS: 300000, // 5 minutes
 } as const;
 
 export const COMMENTS_PAGE_SIZE = 30;
@@ -35,6 +41,7 @@ export const COMMENT_FIELDS = {
   RECORD_ID: 'record_id',
   CONTENT: 'content',
 } as const;
+
 
 export const PLUGIN_IDS = {
   SIDEBAR: 'comments',

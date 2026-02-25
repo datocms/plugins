@@ -27,11 +27,35 @@ import en from 'javascript-time-ago/locale/en.json';
 import { COMMENTS_MODEL_API_KEY, COMMENT_FIELDS, PLUGIN_IDS } from '@/constants';
 import { logError } from '@/utils/errorLogger';
 import { parsePluginParams } from '@utils/pluginParams';
+import { parseMentionStateContent } from '@utils/mentionState';
+import { getCurrentUserInfo } from '@utils/userTransformers';
 
 TimeAgo.addDefaultLocale(en);
 
-async function ensureCommentsModelExists(ctx: OnBootCtx) {
-  if (!ctx.currentUserAccessToken) return;
+const MAX_MENTION_BADGE_COUNT = 99;
+
+function getCachedUnreadMentionCount(projectId: string, userId: string): number {
+  if (typeof localStorage === 'undefined') return 0;
+  try {
+    const raw = localStorage.getItem(`mentionsCache:${projectId}:${userId}`);
+    if (!raw) return 0;
+    const content = parseMentionStateContent(raw);
+    return content.unread.length;
+  } catch {
+    return 0;
+  }
+}
+
+function formatCommentsLabel(baseLabel: string, unreadCount: number): string {
+  if (unreadCount <= 0) return baseLabel;
+  const displayCount = unreadCount > MAX_MENTION_BADGE_COUNT
+    ? `${MAX_MENTION_BADGE_COUNT}+`
+    : String(unreadCount);
+  return `${baseLabel} (${displayCount})`;
+}
+
+async function ensureCommentsModelExists(ctx: OnBootCtx): Promise<string | null> {
+  if (!ctx.currentUserAccessToken) return null;
 
   const client = buildClient({ apiToken: ctx.currentUserAccessToken });
 
@@ -41,7 +65,7 @@ async function ensureCommentsModelExists(ctx: OnBootCtx) {
   );
 
   if (commentsModel) {
-    return;
+    return commentsModel.id;
   }
 
   // Model doesn't exist - create it with all fields
@@ -71,6 +95,8 @@ async function ensureCommentsModelExists(ctx: OnBootCtx) {
     field_type: 'json',
     validators: { required: {} },
   });
+
+  return newModel.id;
 }
 
 connect({
@@ -115,9 +141,13 @@ connect({
       return [];
     }
 
+    const { id: currentUserId } = getCurrentUserInfo(ctx.currentUser);
+    const unreadCount = getCachedUnreadMentionCount(ctx.site.id, currentUserId);
+    const label = formatCommentsLabel('Comments', unreadCount);
+
     return [
       {
-        label: 'Comments',
+        label,
         icon: PLUGIN_IDS.ICON,
         placement: ['before', 'menuItems'],
         pointsTo: { pageId: PLUGIN_IDS.PAGE },

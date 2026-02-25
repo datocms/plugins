@@ -3,8 +3,12 @@ import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
 import type { CommentSegment } from '@ctypes/mentions';
 import type { CommentType } from '@ctypes/comments';
 import type { CommentOperation } from '@ctypes/operations';
+import type { MentionStateOperation } from '@ctypes/mentionState';
 import { ERROR_MESSAGES } from '@/constants';
 import { segmentsToStoredSegments } from '@utils/tipTapSerializer';
+import { buildMentionEntriesByUser, extractMentionedUserIds } from '@utils/mentionState';
+import { sendMentionNotifications } from '@utils/mentionNotifications';
+import type { UserInfo } from '@utils/userTransformers';
 import {
   isSegmentsEmpty,
   isAuthorValid,
@@ -22,6 +26,11 @@ type UseCommentActionsParams = {
   userId: string;
   setComments: React.Dispatch<React.SetStateAction<CommentType[]>>;
   enqueue: (operation: CommentOperation) => void;
+  enqueueMentionState?: (operation: MentionStateOperation) => void;
+  mentionContext?: { modelId: string; recordId: string };
+  notificationsEndpoint?: string;
+  currentUserAccessToken?: string | null;
+  projectUsers?: UserInfo[];
   composerSegments: CommentSegment[];
   setComposerSegments: (segments: CommentSegment[]) => void;
   pendingNewReplies: RefObject<Set<string> | null>;
@@ -42,12 +51,67 @@ export function useCommentActions({
   userId,
   setComments,
   enqueue,
+  enqueueMentionState,
+  mentionContext,
+  notificationsEndpoint,
+  currentUserAccessToken,
+  projectUsers,
   composerSegments,
   setComposerSegments,
   pendingNewReplies,
   insertPosition = 'prepend',
   ctx,
 }: UseCommentActionsParams): CommentActionsReturn {
+  const enqueueMentionUpdates = useCallback(
+    (
+      comment: CommentType,
+      segments: CommentSegment[],
+      isReply: boolean,
+      parentCommentId?: string
+    ) => {
+      if (!enqueueMentionState || !mentionContext) return;
+      if (!mentionContext.recordId) return;
+
+      const mentionedUserIds = extractMentionedUserIds(segments);
+      if (mentionedUserIds.length === 0) return;
+
+      const entriesByUser = buildMentionEntriesByUser(
+        comment,
+        {
+          modelId: mentionContext.modelId,
+          recordId: mentionContext.recordId,
+          isReply,
+          parentCommentId,
+        },
+        mentionedUserIds
+      );
+
+      void sendMentionNotifications({
+        endpoint: notificationsEndpoint,
+        accessToken: currentUserAccessToken,
+        mentionedUserIds,
+        users: projectUsers ?? [],
+        currentUserId: userId,
+      });
+
+      for (const [mentionedUserId, entries] of entriesByUser) {
+        enqueueMentionState({
+          type: 'UPDATE_MENTION_STATE',
+          userId: mentionedUserId,
+          additions: entries,
+        });
+      }
+    },
+    [
+      enqueueMentionState,
+      mentionContext,
+      notificationsEndpoint,
+      currentUserAccessToken,
+      projectUsers,
+      userId,
+    ]
+  );
+
   const submitNewComment = useCallback(() => {
     if (isSegmentsEmpty(composerSegments)) return;
 
@@ -71,6 +135,7 @@ export function useCommentActions({
     }
 
     enqueue({ type: 'ADD_COMMENT', comment: newComment });
+    enqueueMentionUpdates(newComment, composerSegments, false);
     setComposerSegments([]);
   }, [
     composerSegments,
@@ -80,6 +145,7 @@ export function useCommentActions({
     enqueue,
     setComposerSegments,
     insertPosition,
+    enqueueMentionUpdates,
   ]);
 
   // Authorization is handled at UI layer (visibility) and server (validation)
@@ -108,18 +174,22 @@ export function useCommentActions({
           const reply = parentComment?.replies?.find((r) => r.id === id);
           const originalDateISO = reply?.dateISO ?? new Date().toISOString();
 
+          const replyComment: CommentType = {
+            id,
+            dateISO: originalDateISO,
+            content: storedContent,
+            authorId: userId,
+            upvoterIds: [],
+            parentCommentId,
+          };
+
           enqueue({
             type: 'ADD_REPLY',
             parentCommentId,
-            reply: {
-              id,
-              dateISO: originalDateISO,
-              content: storedContent,
-              authorId: userId,
-              upvoterIds: [],
-              parentCommentId,
-            },
+            reply: replyComment,
           });
+
+          enqueueMentionUpdates(replyComment, newContent, true, parentCommentId);
 
           return currentComments;
         });
@@ -132,7 +202,7 @@ export function useCommentActions({
         });
       }
     },
-    [userId, setComments, enqueue, pendingNewReplies]
+    [userId, setComments, enqueue, pendingNewReplies, enqueueMentionUpdates]
   );
 
   const upvoteComment = useCallback(

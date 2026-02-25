@@ -1,4 +1,5 @@
 import type { CommentWithContext } from '@hooks/useAllCommentsData';
+import type { UserInfo } from '@hooks/useMentions';
 import CommentSidebarSection from './shared/CommentSidebarSection';
 
 type RecentCommentsListProps = {
@@ -6,6 +7,7 @@ type RecentCommentsListProps = {
   isLoading: boolean;
   onNavigateToRecord: (modelId: string, recordId: string) => void;
   onScrollToGlobalComment?: (commentId: string) => void;
+  projectUsers?: UserInfo[];
 };
 
 /**
@@ -17,6 +19,7 @@ const RecentCommentsList = ({
   isLoading,
   onNavigateToRecord,
   onScrollToGlobalComment,
+  projectUsers,
 }: RecentCommentsListProps) => (
   <CommentSidebarSection
     title="Recent Comments"
@@ -25,6 +28,7 @@ const RecentCommentsList = ({
     isLoading={isLoading}
     onNavigateToRecord={onNavigateToRecord}
     onScrollToGlobalComment={onScrollToGlobalComment}
+    projectUsers={projectUsers}
   />
 );
 

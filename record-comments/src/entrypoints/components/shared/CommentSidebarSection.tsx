@@ -1,4 +1,5 @@
 import type { CommentWithContext } from '@hooks/useAllCommentsData';
+import type { UserInfo } from '@hooks/useMentions';
 import CommentPreview from '../CommentPreview';
 import styles from '@styles/dashboard.module.css';
 
@@ -9,6 +10,9 @@ type CommentSidebarSectionProps = {
   isLoading: boolean;
   onNavigateToRecord: (modelId: string, recordId: string) => void;
   onScrollToGlobalComment?: (commentId: string) => void;
+  onItemClick?: (item: CommentWithContext) => void;
+  showMentionBadge?: boolean;
+  projectUsers?: UserInfo[];
 };
 
 /**
@@ -22,15 +26,21 @@ const CommentSidebarSection = ({
   isLoading,
   onNavigateToRecord,
   onScrollToGlobalComment,
+  onItemClick,
+  showMentionBadge = false,
+  projectUsers,
 }: CommentSidebarSectionProps) => {
   const handleClick = (item: CommentWithContext) => {
-    if (item.isGlobal && onScrollToGlobalComment) {
-      // For global comments, scroll to it in the channel
-      onScrollToGlobalComment(item.comment.id);
-    } else {
-      // For record comments, navigate to the record
-      onNavigateToRecord(item.modelId, item.recordId);
+    if (onItemClick) {
+      onItemClick(item);
     }
+    if (item.isGlobal) {
+      // For global comments, scroll to it in the channel
+      onScrollToGlobalComment?.(item.comment.id);
+      return;
+    }
+    // For record comments, navigate to the record
+    onNavigateToRecord(item.modelId, item.recordId);
   };
 
   return (
@@ -50,9 +60,11 @@ const CommentSidebarSection = ({
         ) : (
           items.map((item) => (
             <CommentPreview
-              key={`${item.recordId}-${item.comment.id}`}
+              key={item.mentionKey ?? `${item.recordId}-${item.comment.id}`}
               commentWithContext={item}
               onClick={() => handleClick(item)}
+              showMentionBadge={showMentionBadge}
+              projectUsers={projectUsers}
             />
           ))
         )}

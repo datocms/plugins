@@ -15,12 +15,13 @@ import { useProjectData } from '@hooks/useProjectData';
 import { useMentionPermissions } from '@hooks/useMentionPermissions';
 import {
   useAllCommentsData,
-  extractUserMentions,
   extractRecentComments,
 } from '@hooks/useAllCommentsData';
+import type { CommentWithContext } from '@hooks/useAllCommentsData';
 import { useCommentsData } from '@hooks/useCommentsData';
 import { useCommentFilters } from '@hooks/useCommentFilters';
 import { useScrollCompensation } from '@hooks/useScrollCompensation';
+import { useMentionState } from '@hooks/useMentionState';
 
 import { getCurrentUserInfo } from '@utils/userTransformers';
 import { parsePluginParams, hasCdaToken } from '@utils/pluginParams';
@@ -38,7 +39,7 @@ type CommentsDashboardProps = {
 const CommentsDashboard = ({ ctx }: CommentsDashboardProps) => {
   const pluginParams = parsePluginParams(ctx.plugin.attributes.parameters);
   const cdaToken = pluginParams.cdaToken;
-  const realTimeEnabled = hasCdaToken(pluginParams);
+  const realTimeEnabled = (pluginParams.realTimeUpdatesEnabled ?? true) && hasCdaToken(pluginParams);
 
   const { id: currentUserId } = getCurrentUserInfo(ctx.currentUser);
 
@@ -97,8 +98,21 @@ const CommentsDashboard = ({ ctx }: CommentsDashboardProps) => {
     mainLocale,
   });
 
-  const userMentions = useMemo(() => extractUserMentions(allComments, currentUserId), [allComments, currentUserId]);
   const recentComments = useMemo(() => extractRecentComments(allComments, 20), [allComments]);
+
+  const {
+    mentions: userMentions,
+    isLoading: isMentionsLoading,
+    markAsRead,
+  } = useMentionState({
+    client,
+    userId: currentUserId,
+    projectId: ctx.site.id,
+    mainLocale,
+    commentsModelId,
+    cdaToken,
+    realTimeEnabled,
+  });
 
   const handleNavigateToRecord = useCallback(
     (modelId: string, recordId: string) => {
@@ -116,6 +130,12 @@ const CommentsDashboard = ({ ctx }: CommentsDashboardProps) => {
       setTimeout(() => commentElement.classList.remove('highlight'), 2000);
     }
   }, []);
+
+  const handleMentionClick = useCallback((item: CommentWithContext) => {
+    if (item.mentionKey) {
+      markAsRead(item.mentionKey);
+    }
+  }, [markAsRead]);
 
   const hasComments = comments.length > 0;
   const accentColor = ctx.theme.accentColor;
@@ -215,15 +235,18 @@ const CommentsDashboard = ({ ctx }: CommentsDashboardProps) => {
         <div className={styles.sidebarInner}>
           <MyMentionsSidebar
             mentions={userMentions}
-            isLoading={isSidebarLoading}
+            isLoading={isMentionsLoading}
             onNavigateToRecord={handleNavigateToRecord}
             onScrollToGlobalComment={handleScrollToGlobalComment}
+            onItemClick={handleMentionClick}
+            projectUsers={projectUsers}
           />
           <RecentCommentsList
             comments={recentComments}
             isLoading={isSidebarLoading}
             onNavigateToRecord={handleNavigateToRecord}
             onScrollToGlobalComment={handleScrollToGlobalComment}
+            projectUsers={projectUsers}
           />
         </div>
       </div>

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Client } from '@datocms/cma-client-browser';
-import { COMMENTS_MODEL_API_KEY, GLOBAL_MODEL_ID, TIMING } from '@/constants';
+import { COMMENTS_MODEL_API_KEY, GLOBAL_MODEL_ID, MENTION_STATE_MODEL_ID, TIMING } from '@/constants';
 import { type CommentType, parseComments } from '@ctypes/comments';
 import type { StoredCommentSegment } from '@ctypes/mentions';
 import { getRecordTitles } from '@utils/recordTitleUtils';
@@ -45,6 +45,7 @@ export type CommentWithContext = {
   recordTitle?: string;
   modelName?: string;
   isSingleton?: boolean;
+  mentionKey?: string;
 };
 
 type UseAllCommentsDataParams = {
@@ -137,6 +138,9 @@ export function useAllCommentsData({
         const rawRecordId = record.record_id;
 
         if (typeof rawModelId !== 'string' || typeof rawRecordId !== 'string') {
+          continue;
+        }
+        if (rawModelId === MENTION_STATE_MODEL_ID) {
           continue;
         }
 

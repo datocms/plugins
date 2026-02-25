@@ -1,4 +1,5 @@
 import type { CommentWithContext } from '@hooks/useAllCommentsData';
+import type { UserInfo } from '@hooks/useMentions';
 import CommentSidebarSection from './shared/CommentSidebarSection';
 
 type MyMentionsSidebarProps = {
@@ -6,6 +7,8 @@ type MyMentionsSidebarProps = {
   isLoading: boolean;
   onNavigateToRecord: (modelId: string, recordId: string) => void;
   onScrollToGlobalComment?: (commentId: string) => void;
+  onItemClick?: (item: CommentWithContext) => void;
+  projectUsers?: UserInfo[];
 };
 
 /** Sidebar section showing comments where the current user was mentioned. */
@@ -14,6 +17,8 @@ const MyMentionsSidebar = ({
   isLoading,
   onNavigateToRecord,
   onScrollToGlobalComment,
+  onItemClick,
+  projectUsers,
 }: MyMentionsSidebarProps) => (
   <CommentSidebarSection
     title="My Mentions"
@@ -22,6 +27,9 @@ const MyMentionsSidebar = ({
     isLoading={isLoading}
     onNavigateToRecord={onNavigateToRecord}
     onScrollToGlobalComment={onScrollToGlobalComment}
+    onItemClick={onItemClick}
+    showMentionBadge
+    projectUsers={projectUsers}
   />
 );
 

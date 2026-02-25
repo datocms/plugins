@@ -1,6 +1,7 @@
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import ReactTimeAgo from 'react-time-ago';
 import type { CommentWithContext } from '@hooks/useAllCommentsData';
+import type { UserInfo } from '@hooks/useMentions';
 import { getGravatarUrl } from '@/utils/helpers';
 import { MentionBadgeIcon, GlobeIcon } from './Icons';
 import styles from '@styles/dashboard.module.css';
@@ -9,10 +10,15 @@ type CommentPreviewProps = {
   commentWithContext: CommentWithContext;
   onClick: () => void;
   showMentionBadge?: boolean;
+  projectUsers?: UserInfo[];
 };
 
 /** Extracts preview text from stored comment content. */
-function getPreviewText(comment: CommentWithContext['comment'], maxLength = 80): string {
+function getPreviewText(
+  comment: CommentWithContext['comment'],
+  maxLength = 80,
+  userNames?: Map<string, string>
+): string {
   const textParts: string[] = [];
 
   for (const segment of comment.content) {
@@ -22,7 +28,7 @@ function getPreviewText(comment: CommentWithContext['comment'], maxLength = 80):
       // StoredMention only has IDs - show type prefix as placeholder
       switch (segment.mention.type) {
         case 'user':
-          textParts.push(`@user`);
+          textParts.push(`@${userNames?.get(segment.mention.id) ?? 'user'}`);
           break;
         case 'field':
           textParts.push(`#${segment.mention.fieldPath}`);
@@ -51,13 +57,23 @@ const CommentPreviewComponent = ({
   commentWithContext,
   onClick,
   showMentionBadge = false,
+  projectUsers,
 }: CommentPreviewProps) => {
   const { comment, isGlobal, isReply } = commentWithContext;
-  // Use authorId for display - author details are stored only as ID
-  // Full name/avatar resolution would happen via projectUsers lookup in parent
-  const authorDisplayName = `User ${comment.authorId.slice(0, 8)}`;
-  const avatarUrl = getGravatarUrl('', 64); // Default avatar - no email in slim format
-  const previewText = getPreviewText(comment);
+  const resolvedAuthor = projectUsers?.find((user) => user.id === comment.authorId);
+  const authorDisplayName = resolvedAuthor?.name ?? `User ${comment.authorId.slice(0, 8)}`;
+  const authorEmail = resolvedAuthor?.email ?? '';
+  const fallbackAvatarUrl = authorEmail
+    ? getGravatarUrl(authorEmail, 64)
+    : getGravatarUrl('', 64);
+  const avatarUrl = resolvedAuthor?.avatarUrl ?? fallbackAvatarUrl;
+  const userNames = useMemo(() => {
+    const map = new Map<string, string>();
+    projectUsers?.forEach((user) => map.set(user.id, user.name));
+    return map;
+  }, [projectUsers]);
+
+  const previewText = getPreviewText(comment, 80, userNames);
 
   return (
     <button
@@ -72,7 +88,7 @@ const CommentPreviewComponent = ({
         onError={(e) => {
           const target = e.currentTarget;
           target.onerror = null; // Prevent infinite loop
-          target.src = getGravatarUrl('', 64);
+          target.src = fallbackAvatarUrl;
         }}
       />
       <div className={styles.previewContent}>
@@ -119,6 +135,9 @@ const CommentPreview = memo(CommentPreviewComponent, (prevProps, nextProps) => {
     return false;
   }
   if (prevProps.onClick !== nextProps.onClick) {
+    return false;
+  }
+  if (prevProps.projectUsers !== nextProps.projectUsers) {
     return false;
   }
   return true;
