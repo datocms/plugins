@@ -1,29 +1,34 @@
 # Automatic environment backups
 
-This is a DatoCMS plugin that automatically creates a daily and weekly backup of your main environment, cycling the backups if they are not in use.
+This plugin automatically creates daily and weekly backups of your primary DatoCMS environment.
 
-To use this plugin an auxiliary scheduled Netlify function is needed. The deployment of that scheduled function is further described bellow in the installation section.
+It requires a serverless deployment of the companion function repository:
+- https://github.com/marcelofinamorvieira/datocms-backups-scheduled-function
 
-# Installation and usage
+## Setup
 
-The video above shows a step by step tutorial on how to install and use the plugin.
-It follows the following instructions:
+Setup is now fully in the plugin config screen (no installation modal).
 
-1. When you install the plugin, a modal will pop up prompting you to create the scheduled function.
+1. Open the plugin config screen.
+2. In **Lambda setup**, click **Deploy lambda** and choose one option:
+   - Vercel: https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fmarcelofinamorvieira%2Fdatocms-backups-scheduled-function&env=DATOCMS_FULLACCESS_API_TOKEN&project-name=datocms-backups-scheduled-function&repo-name=datocms-backups-scheduled-function
+   - Netlify: https://app.netlify.com/start/deploy?repository=https://github.com/marcelofinamorvieira/datocms-backups-scheduled-function
+   - Cloudflare: https://github.com/marcelofinamorvieira/datocms-backups-scheduled-function#deploying-on-cloudflare-workers
+3. Deploy the companion function and copy its base URL.
+4. Paste the URL into **Lambda URL**.
+5. Click **Connect**.
+6. Confirm status shows **Connected (ping successful)**.
 
-2. By clicking the Netlify Deploy button you can start a step by step process that will create that scheduled function (You will be asked your projects Full API token!)
+The plugin validates connectivity by calling:
+- `POST /api/datocms/plugin-health`
 
-3. Enable the feature on [your Netlify Labs page](https://app.netlify.com/user/labs)
+## Legacy deployments
 
-![image](https://user-images.githubusercontent.com/44898680/193444733-32151c30-4ae2-49cf-acec-af7fa1090d25.png)
+If your deployment is older and does not expose `/api/datocms/plugin-health`, the plugin can fallback to the legacy initialization endpoint (`/.netlify/functions/initialization`) during Connect.
 
-4. Then, in the deployed instance of this repository go to the Functions tab, and click "Enable Scheduled Functions"
+When this happens, a warning is shown in the config screen. Update/redeploy the companion function to remove the warning and use health-based validation.
 
-![image](https://user-images.githubusercontent.com/44898680/193444888-ddc09b42-aa6e-4b84-b2b6-2822e0743cb5.png)
+## Notes
 
-5. Finally, copy the Deployed URL and insert it in the modal, and "Finish installation"
-
-The installation will then be complete, from then on, every day the main environment will be forked to an environment labled ("daily-backup") with a timestamp, and will replace the older backup environment (if it hasn't been promoted to the primary environment)
-The same goes for the weekly backup, which is also time-stamped in its own environment labled ("weekly-backup")
-
-To stop the automatic backups you can simply deactivate the netlify instance and uninstall the plugin.
+- Legacy plugin parameters (`netlifyURL`, `installationState`, `hasBeenPrompted`) are still supported for compatibility.
+- Netlify Labs activation is no longer required.

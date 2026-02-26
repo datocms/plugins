@@ -19,21 +19,22 @@
     "permissions": []
   },
   "dependencies": {
-    "@types/node": "^16.11.58",
-    "@types/react": "^18.0.19",
-    "@types/react-dom": "^18.0.6",
-    "datocms-plugin-sdk": "^0.6.4",
-    "datocms-react-ui": "^0.6.4",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-scripts": "5.0.1",
-    "typescript": "^4.8.3"
+    "@types/node": "^25.3.1",
+    "@types/react": "^18.3.28",
+    "@types/react-dom": "^18.3.7",
+    "datocms-plugin-sdk": "^2.1.1",
+    "datocms-react-ui": "^2.1.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "^5.9.3"
   },
   "scripts": {
-    "start": "cross-env BROWSER='none' PUBLIC_URL='/' react-scripts start",
-    "build": "cross-env PUBLIC_URL='.' react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject",
+    "dev": "vite",
+    "start": "npm run dev",
+    "build": "vite build",
+    "test": "npm run test:types && npm run test:unit",
+    "test:types": "tsc --noEmit",
+    "test:unit": "vitest run --passWithNoTests",
     "prepublishOnly": "npm run build"
   },
   "eslintConfig": {
@@ -54,6 +55,9 @@
     ]
   },
   "devDependencies": {
-    "cross-env": "^7.0.3"
+    "@vitejs/plugin-react": "^5.1.0",
+    "cross-env": "^10.1.0",
+    "vite": "^7.1.11",
+    "vitest": "^4.0.0"
   }
 }
