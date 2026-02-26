@@ -1,4 +1,3 @@
-import { Schema } from '@/utils/icons';
 import type { SchemaTypes } from '@datocms/cma-client';
 import {
   Handle,
@@ -10,8 +9,9 @@ import {
   useStore,
 } from '@xyflow/react';
 import classNames from 'classnames';
-import { sortBy } from 'lodash-es';
+import sortBy from 'lodash-es/sortBy';
 import { useState } from 'react';
+import { Schema } from '@/utils/icons';
 import { Field } from '../components/Field';
 
 export type ItemTypeNode = Node<
@@ -23,10 +23,17 @@ export type ItemTypeNode = Node<
   'itemType'
 >;
 
+/**
+ * Renders a fieldset summary inside the item-type tooltip, keeping field ordering in sync
+ * with their schema positions.
+ */
 function Fieldset({
   fieldset,
   allFields,
-}: { fieldset: SchemaTypes.Fieldset; allFields: SchemaTypes.Field[] }) {
+}: {
+  fieldset: SchemaTypes.Fieldset;
+  allFields: SchemaTypes.Field[];
+}) {
   return (
     <div className="fieldset">
       <div className="fieldset__title">{fieldset.attributes.title}</div>
@@ -36,7 +43,7 @@ function Fieldset({
             (f) => f.relationships.fieldset.data?.id === fieldset.id,
           ),
           'attributes.position',
-        ).map((field) => (
+        ).map((field: SchemaTypes.Field) => (
           <Field key={field.id} field={field} />
         ))}
       </div>
@@ -44,8 +51,13 @@ function Fieldset({
   );
 }
 
+// Show extra metadata once the canvas is sufficiently zoomed in.
 const zoomSelector = (s: ReactFlowState) => s.transform[2] >= 0.8;
 
+/**
+ * Node renderer used by React Flow to display a DatoCMS model/block with a hoverable
+ * field list and API key details that show when zoomed in.
+ */
 export function ItemTypeNodeRenderer({
   data: { itemType, fields, fieldsets },
   className,
@@ -72,27 +84,26 @@ export function ItemTypeNodeRenderer({
         isVisible={isTooltipVisible}
         className="tooltip"
       >
-        {fields.length + fieldsets.length === 0 ? (
-          <>No fields</>
-        ) : (
-          sortBy(
-            [
-              ...fields.filter((e) => !e.relationships.fieldset.data),
-              ...fieldsets,
-            ],
-            'attributes.position',
-          ).map((fieldOrFieldset) =>
-            fieldOrFieldset.type === 'field' ? (
-              <Field key={fieldOrFieldset.id} field={fieldOrFieldset} />
-            ) : (
-              <Fieldset
-                key={fieldOrFieldset.id}
-                fieldset={fieldOrFieldset}
-                allFields={fields}
-              />
-            ),
-          )
-        )}
+        {fields.length + fieldsets.length === 0
+          ? 'No fields'
+          : sortBy(
+              [
+                ...fields.filter((e) => !e.relationships.fieldset.data),
+                ...fieldsets,
+              ],
+              'attributes.position',
+            ).map(
+              (fieldOrFieldset: SchemaTypes.Field | SchemaTypes.Fieldset) =>
+                fieldOrFieldset.type === 'field' ? (
+                  <Field key={fieldOrFieldset.id} field={fieldOrFieldset} />
+                ) : (
+                  <Fieldset
+                    key={fieldOrFieldset.id}
+                    fieldset={fieldOrFieldset}
+                    allFields={fields}
+                  />
+                ),
+            )}
       </NodeToolbar>
       <div
         className={classNames(
@@ -102,6 +113,7 @@ export function ItemTypeNodeRenderer({
             : 'app-node--model',
           className,
         )}
+        role="group"
         onMouseEnter={() => setTooltipVisible(true)}
         onMouseLeave={() => setTooltipVisible(false)}
       >

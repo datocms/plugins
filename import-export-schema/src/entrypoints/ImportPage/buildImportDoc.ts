@@ -1,8 +1,8 @@
+import type { SchemaTypes } from '@datocms/cma-client';
 import {
   findLinkedItemTypeIds,
   findLinkedPluginIds,
 } from '@/utils/datocms/schema';
-import type { SchemaTypes } from '@datocms/cma-client';
 import type { ExportSchema } from '../ExportPage/ExportSchema';
 import type { Conflicts } from './ConflictsManager/buildConflicts';
 import type {
@@ -28,6 +28,9 @@ export type ImportDoc = {
   };
 };
 
+/**
+ * Walk the export graph while honoring conflict resolutions, producing a document for import.
+ */
 export async function buildImportDoc(
   exportSchema: ExportSchema,
   conflicts: Conflicts,
@@ -44,7 +47,8 @@ export async function buildImportDoc(
     },
   };
 
-  const queue: QueueItem[][] = [[exportSchema.rootItemType]];
+  // Breadth-first traversal keeps dependencies ordered for creation.
+  const queue: QueueItem[][] = [exportSchema.rootItemTypes];
   const processedNodes = new Set<QueueItem>();
 
   // Process each level of the graph
@@ -93,7 +97,10 @@ export async function buildImportDoc(
             nextLevelQueue.add(linkedItemType);
           }
 
-          for (const linkedPluginId of await findLinkedPluginIds(field)) {
+          for (const linkedPluginId of findLinkedPluginIds(
+            field,
+            new Set(Array.from(exportSchema.pluginsById.keys())),
+          )) {
             const linkedPlugin = exportSchema.pluginsById.get(linkedPluginId)!;
 
             nextLevelQueue.add(linkedPlugin);

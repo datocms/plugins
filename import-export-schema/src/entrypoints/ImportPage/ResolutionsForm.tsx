@@ -1,8 +1,9 @@
-import type { ProjectSchema } from '@/utils/ProjectSchema';
-import { useNodes, useReactFlow } from '@xyflow/react';
-import { get, keyBy, set } from 'lodash-es';
+import get from 'lodash-es/get';
+import keyBy from 'lodash-es/keyBy';
+import set from 'lodash-es/set';
 import { type ReactNode, useContext, useMemo } from 'react';
 import { Form as FormHandler, useFormState } from 'react-final-form';
+import type { ProjectSchema } from '@/utils/ProjectSchema';
 import { ConflictsContext } from './ConflictsManager/ConflictsContext';
 
 export type ItemTypeConflictResolutionRename = {
@@ -39,6 +40,7 @@ type Props = {
   onSubmit: (values: Resolutions) => void;
 };
 
+// Mirrors the platform validation rules plus common reserved identifiers.
 function isValidApiKey(apiKey: string) {
   if (!apiKey.match(/^[a-z](([a-z0-9]|_(?![_0-9]))*[a-z0-9])$/)) {
     return false;
@@ -64,14 +66,11 @@ function isValidApiKey(apiKey: string) {
   return true;
 }
 
+/**
+ * Hosts the conflict resolution form and exposes helpers for components to read state.
+ */
 export default function ResolutionsForm({ schema, children, onSubmit }: Props) {
   const conflicts = useContext(ConflictsContext);
-
-  const { getNode } = useReactFlow();
-
-  // we need this to re-render this component everytime the nodes change, and
-  // revalidate the form!
-  useNodes();
 
   const initialValues = useMemo<FormValues>(
     () =>
@@ -89,6 +88,7 @@ export default function ResolutionsForm({ schema, children, onSubmit }: Props) {
                   `itemType-${id}`,
                   {
                     strategy: null,
+                    // Suggest sensible rename defaults to speed up resolution.
                     name: `${projectItemType.attributes.name} (Import)`,
                     apiKey: `${projectItemType.attributes.api_key}_import`,
                   },
@@ -100,7 +100,7 @@ export default function ResolutionsForm({ schema, children, onSubmit }: Props) {
     [conflicts],
   );
 
-  function handleSubmit(values: FormValues) {
+  async function handleSubmit(values: FormValues) {
     const resolutions: Resolutions = { itemTypes: {}, plugins: {} };
 
     if (!conflicts) {
@@ -108,29 +108,21 @@ export default function ResolutionsForm({ schema, children, onSubmit }: Props) {
     }
 
     for (const pluginId of Object.keys(conflicts.plugins)) {
-      if (!getNode(`plugin--${pluginId}`)) {
-        continue;
-      }
-
       const result = get(values, [`plugin-${pluginId}`]) as PluginValues;
-
-      resolutions.plugins[pluginId] = {
-        strategy: result.strategy as 'reuseExisting' | 'skip',
-      };
+      if (result?.strategy) {
+        resolutions.plugins[pluginId] = {
+          strategy: result.strategy as 'reuseExisting' | 'skip',
+        };
+      }
     }
 
     for (const itemTypeId of Object.keys(conflicts.itemTypes)) {
-      if (!getNode(`itemType--${itemTypeId}`)) {
-        continue;
-      }
-
       const fieldPrefix = `itemType-${itemTypeId}`;
-
       const result = get(values, fieldPrefix) as ItemTypeValues;
 
-      if (result.strategy === 'reuseExisting') {
+      if (result?.strategy === 'reuseExisting') {
         resolutions.itemTypes[itemTypeId] = { strategy: 'reuseExisting' };
-      } else {
+      } else if (result?.strategy === 'rename') {
         resolutions.itemTypes[itemTypeId] = {
           strategy: 'rename',
           apiKey: result.apiKey!,
@@ -139,7 +131,7 @@ export default function ResolutionsForm({ schema, children, onSubmit }: Props) {
       }
     }
 
-    onSubmit(resolutions);
+    await onSubmit(resolutions);
   }
 
   if (!conflicts) {
@@ -149,64 +141,87 @@ export default function ResolutionsForm({ schema, children, onSubmit }: Props) {
   return (
     <FormHandler<FormValues>
       initialValues={initialValues}
-      validate={async (values) => {
+      validate={(values) => {
         const errors: Record<string, string> = {};
 
         if (!conflicts) {
           return {};
         }
 
-        const projectItemTypes = await schema.getAllItemTypes();
-        const itemTypesByName = keyBy(projectItemTypes, 'attributes.name');
-        const itemTypesByApiKey = keyBy(projectItemTypes, 'attributes.api_key');
+        const pluginIds = Object.keys(conflicts.plugins);
+        const itemTypeIds = Object.keys(conflicts.itemTypes);
 
-        for (const pluginId of Object.keys(conflicts.plugins)) {
-          if (!getNode(`plugin--${pluginId}`)) {
-            continue;
-          }
+        // No conflicts at all → nothing to validate; return synchronously.
+        if (pluginIds.length === 0 && itemTypeIds.length === 0) {
+          return {};
+        }
 
+        // Synchronous required checks for strategies across plugins/item types.
+        for (const pluginId of pluginIds) {
           const fieldPrefix = `plugin-${pluginId}`;
-
           if (!get(values, [fieldPrefix, 'strategy'])) {
             set(errors, [fieldPrefix, 'strategy'], 'Required!');
           }
         }
 
-        for (const itemTypeId of Object.keys(conflicts.itemTypes)) {
-          if (!getNode(`itemType--${itemTypeId}`)) {
-            continue;
-          }
-
+        let hasRename = false;
+        for (const itemTypeId of itemTypeIds) {
           const fieldPrefix = `itemType-${itemTypeId}`;
-
           const strategy = get(values, [fieldPrefix, 'strategy']);
-
           if (!strategy) {
             set(errors, [fieldPrefix, 'strategy'], 'Required!');
           }
-
           if (strategy === 'rename') {
+            hasRename = true;
             const name = get(values, [fieldPrefix, 'name']);
-
             if (!name) {
               set(errors, [fieldPrefix, 'name'], 'Required!');
-            } else if (name in itemTypesByName) {
-              set(errors, [fieldPrefix, 'name'], 'Already used in project!');
             }
-
             const apiKey = get(values, [fieldPrefix, 'apiKey']);
-
             if (!apiKey) {
               set(errors, [fieldPrefix, 'apiKey'], 'Required!');
             } else if (!isValidApiKey(apiKey)) {
               set(errors, [fieldPrefix, 'apiKey'], 'Invalid format');
-            } else if (apiKey in itemTypesByApiKey) {
-              set(errors, [fieldPrefix, 'apiKey'], 'Already used in project!');
             }
           }
         }
 
-        return errors;
+        // If there are no rename validations to check against the project
+        // (or there were only required/format errors), return synchronously to
+        // avoid toggling Final Form's `validating` flag.
+        if (!hasRename) {
+          return errors;
+        }
+
+        // Only now perform the async lookup needed to check for collisions
+        // against existing project item types.
+        return (async () => {
+          const projectItemTypes = await schema.getAllItemTypes();
+          const itemTypesByName = keyBy(projectItemTypes, 'attributes.name');
+          const itemTypesByApiKey = keyBy(
+            projectItemTypes,
+            'attributes.api_key',
+          );
+
+          for (const itemTypeId of itemTypeIds) {
+            const fieldPrefix = `itemType-${itemTypeId}`;
+            const strategy = get(values, [fieldPrefix, 'strategy']);
+            if (strategy !== 'rename') continue;
+
+            const name = get(values, [fieldPrefix, 'name']);
+            if (name && name in itemTypesByName) {
+              set(errors, [fieldPrefix, 'name'], 'Already used in project!');
+            }
+            const apiKey = get(values, [fieldPrefix, 'apiKey']);
+            if (apiKey) {
+              if (apiKey in itemTypesByApiKey) {
+                set(errors, [fieldPrefix, 'apiKey'], 'Already used in project!');
+              }
+            }
+          }
+
+          return errors;
+        })();
       }}
       onSubmit={handleSubmit}
     >
@@ -215,6 +230,9 @@ export default function ResolutionsForm({ schema, children, onSubmit }: Props) {
   );
 }
 
+/**
+ * Convenience hook for grabbing validity + values for a specific item type row.
+ */
 export function useResolutionStatusForItemType(itemTypeId: string) {
   const state = useFormState<FormValues>();
 
@@ -233,6 +251,7 @@ export function useResolutionStatusForItemType(itemTypeId: string) {
   };
 }
 
+/** Same as above but for plugin conflicts. */
 export function useResolutionStatusForPlugin(pluginId: string) {
   const state = useFormState<FormValues>();
 
@@ -251,6 +270,9 @@ export function useResolutionStatusForPlugin(pluginId: string) {
   };
 }
 
+/**
+ * Derive which entities are being reused so the graph/list views can hide them.
+ */
 export function useSkippedItemsAndPluginIds() {
   const conflicts = useContext(ConflictsContext);
   const formState = useFormState<FormValues>();

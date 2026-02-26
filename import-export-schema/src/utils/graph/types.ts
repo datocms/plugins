@@ -1,11 +1,12 @@
+import type { EdgeTypes } from '@xyflow/react';
 import {
   type FieldEdge,
   FieldEdgeRenderer,
 } from '@/components/FieldEdgeRenderer';
 import type { ItemTypeNode } from '@/components/ItemTypeNodeRenderer';
 import type { PluginNode } from '@/components/PluginNodeRenderer';
-import type { EdgeTypes } from '@xyflow/react';
 
+/** Shared graph typings + edge registration used across export/import canvases. */
 export type AppNode = ItemTypeNode | PluginNode;
 
 export type AppEdge = FieldEdge;
@@ -17,4 +18,11 @@ export const edgeTypes: EdgeTypes = {
 export type Graph = {
   nodes: Array<AppNode>;
   edges: Array<AppEdge>;
+};
+
+export type SchemaProgressUpdate = {
+  done: number;
+  total: number;
+  label: string;
+  phase?: 'scan' | 'build';
 };
