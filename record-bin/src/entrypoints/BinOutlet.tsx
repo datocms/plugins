@@ -171,7 +171,7 @@ const BinOutlet = ({ ctx }: { ctx: RenderItemFormOutletCtx }) => {
         });
         ctx.notice("The record has been successfully restored!");
         ctx.navigateTo(
-          "/editor/item_types/" +
+          `/environments/${ctx.environment}/editor/item_types/` +
             parsedResponse.restoredRecord.modelID +
             "/items/" +
             parsedResponse.restoredRecord.id
@@ -221,7 +221,7 @@ const BinOutlet = ({ ctx }: { ctx: RenderItemFormOutletCtx }) => {
 
       ctx.notice("The record has been successfully restored!");
       ctx.navigateTo(
-        "/editor/item_types/" +
+        `/environments/${ctx.environment}/editor/item_types/` +
           parsedResponse.restoredRecord.modelID +
           "/items/" +
           parsedResponse.restoredRecord.id
