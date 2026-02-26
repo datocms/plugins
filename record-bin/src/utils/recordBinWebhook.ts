@@ -67,6 +67,11 @@ type WebhookOperationResult = {
   webhookId?: string;
 };
 
+type BulkWebhookRemovalResult = {
+  action: "deleted" | "none";
+  webhookIds: string[];
+};
+
 type WebhookCandidate = {
   id: string;
   name: string;
@@ -260,6 +265,43 @@ export const removeRecordBinWebhook = async (
       },
     });
   }
+};
+
+export const removeAllManagedRecordBinWebhooks = async (
+  baseInput: RemoveRecordBinWebhookInput
+): Promise<BulkWebhookRemovalResult> => {
+  const client = getWebhookClient(baseInput);
+  const managedWebhooks = await listManagedRecordBinWebhooks(client);
+
+  if (managedWebhooks.length === 0) {
+    return {
+      action: "none",
+      webhookIds: [],
+    };
+  }
+
+  const deletedWebhookIds: string[] = [];
+
+  for (const webhookToDelete of managedWebhooks) {
+    try {
+      await client.webhooks.destroy(webhookToDelete.id);
+      deletedWebhookIds.push(webhookToDelete.id);
+    } catch (error) {
+      throw new RecordBinWebhookSyncError({
+        code: "WEBHOOK_DELETE_FAILED",
+        message: `Could not delete the Record Bin webhook. ${getUnknownErrorMessage(error)}`,
+        details: {
+          webhookId: webhookToDelete.id,
+          webhookIdsDeletedBeforeFailure: deletedWebhookIds,
+        },
+      });
+    }
+  }
+
+  return {
+    action: "deleted",
+    webhookIds: deletedWebhookIds,
+  };
 };
 
 const getDetailLines = (

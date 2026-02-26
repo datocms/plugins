@@ -192,7 +192,7 @@ const BinOutlet = ({ ctx }: { ctx: RenderItemFormOutletCtx }) => {
       try {
         parsedResponse = await restoreRecordWithoutLambda({
           currentUserAccessToken: ctx.currentUserAccessToken,
-          fallbackEnvironment: ctx.environment,
+          currentEnvironment: ctx.environment,
           recordBody: parsedRecordBody,
           trashRecordID: ctx.item.id,
         });

@@ -118,6 +118,10 @@ describe("captureDeletedItemsWithoutLambda", () => {
       failedItemIds: [],
       skippedRecordBinItems: 0,
     });
+    expect(buildClient).toHaveBeenCalledWith({
+      apiToken: "token",
+      environment: "main",
+    });
     expect(clientMock.items.rawFind).toHaveBeenCalledWith("item-1", {
       nested: true,
     });

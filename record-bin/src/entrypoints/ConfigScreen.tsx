@@ -27,6 +27,7 @@ import {
   ensureRecordBinWebhook,
   getRecordBinWebhookSyncErrorDetails,
   isRecordBinWebhookSyncError,
+  removeAllManagedRecordBinWebhooks,
   removeRecordBinWebhook,
   RecordBinWebhookSyncError,
 } from "../utils/recordBinWebhook";
@@ -147,6 +148,37 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   const canManageWebhooks =
     ctx.currentRole?.meta?.final_permissions?.can_manage_webhooks === true;
 
+  const removeManagedWebhooksForLambdaLessMode = async ({
+    trigger,
+    notifyOnFailure,
+  }: {
+    trigger: "config_mount" | "settings_save";
+    notifyOnFailure: boolean;
+  }) => {
+    try {
+      const webhookRemovalResult = await removeAllManagedRecordBinWebhooks({
+        currentUserAccessToken: ctx.currentUserAccessToken,
+        canManageWebhooks,
+        environment: ctx.environment,
+      });
+      debugLogger.log("Managed Record Bin webhooks synchronized in Lambda-less mode", {
+        trigger,
+        action: webhookRemovalResult.action,
+        webhookIds: webhookRemovalResult.webhookIds,
+      });
+    } catch (webhookRemovalError) {
+      debugLogger.warn(
+        "Could not synchronize managed Record Bin webhooks in Lambda-less mode",
+        webhookRemovalError
+      );
+      if (notifyOnFailure) {
+        await ctx.notice(
+          "Runtime was saved as Lambda-less, but one or more managed '🗑 Record Bin' webhooks could not be removed automatically. Remove them manually if needed."
+        );
+      }
+    }
+  };
+
   useEffect(() => {
     let isCancelled = false;
     debugLogger.log("Config screen mounted", {
@@ -161,6 +193,10 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         debugLogger.log(
           "Skipping lambda health check because Lambda-full mode is not selected"
         );
+        await removeManagedWebhooksForLambdaLessMode({
+          trigger: "config_mount",
+          notifyOnFailure: false,
+        });
         if (!isCancelled) {
           setIsHealthChecking(false);
         }
@@ -515,29 +551,14 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       let persistedDeploymentUrl = activeDeploymentUrl.trim();
       let persistedConnectionState = connectionState ?? null;
 
-      if (runtimeModeSelection === "lambdaless" && persistedDeploymentUrl) {
+      if (runtimeModeSelection === "lambdaless") {
         debugLogger.log(
-          "Switching to Lambda-less mode: attempting to remove managed webhook and clear lambda URL"
+          "Lambda-less mode selected: synchronizing managed webhooks and clearing lambda URL"
         );
-        try {
-          const webhookRemovalResult = await removeRecordBinWebhook({
-            currentUserAccessToken: ctx.currentUserAccessToken,
-            canManageWebhooks,
-            environment: ctx.environment,
-          });
-          debugLogger.log(
-            "Managed Record Bin webhook synchronized while switching to Lambda-less mode",
-            webhookRemovalResult
-          );
-        } catch (webhookRemovalError) {
-          debugLogger.warn(
-            "Could not remove managed webhook while switching to Lambda-less mode",
-            webhookRemovalError
-          );
-          await ctx.notice(
-            "Runtime was switched to Lambda-less, but the managed webhook could not be removed automatically. If you see duplicate captures, remove the webhook manually."
-          );
-        }
+        await removeManagedWebhooksForLambdaLessMode({
+          trigger: "settings_save",
+          notifyOnFailure: true,
+        });
 
         persistedDeploymentUrl = "";
         persistedConnectionState = null;

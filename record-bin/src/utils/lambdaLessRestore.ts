@@ -85,7 +85,7 @@ export const isLambdaLessRestoreError = (
 
 export type RestoreRecordWithoutLambdaInput = {
   currentUserAccessToken: string | undefined;
-  fallbackEnvironment: string;
+  currentEnvironment: string;
   recordBody: unknown;
   trashRecordID: string;
 };
@@ -99,7 +99,7 @@ export type RestoreRecordWithoutLambdaResult = {
 
 export const restoreRecordWithoutLambda = async ({
   currentUserAccessToken,
-  fallbackEnvironment,
+  currentEnvironment,
   recordBody,
   trashRecordID,
 }: RestoreRecordWithoutLambdaInput): Promise<RestoreRecordWithoutLambdaResult> => {
@@ -109,13 +109,13 @@ export const restoreRecordWithoutLambda = async ({
 
   const normalizedPayload = normalizeRecordBinPayload(
     recordBody,
-    fallbackEnvironment
+    currentEnvironment
   );
   const requestBody = sanitizeEntityForCreation(normalizedPayload.entity);
 
   const client = buildClient({
     apiToken: currentUserAccessToken,
-    environment: normalizedPayload.environment,
+    environment: currentEnvironment,
   });
 
   let restoredRecordResponse:

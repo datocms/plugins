@@ -101,7 +101,7 @@ describe("restoreRecordWithoutLambda", () => {
 
     const result = await restoreRecordWithoutLambda({
       currentUserAccessToken: "token",
-      fallbackEnvironment: "main",
+      currentEnvironment: "main",
       recordBody,
       trashRecordID: "trash-id",
     });
@@ -111,6 +111,10 @@ describe("restoreRecordWithoutLambda", () => {
         id: "restored-item-id",
         modelID: "restored-model-id",
       },
+    });
+    expect(buildClient).toHaveBeenCalledWith({
+      apiToken: "token",
+      environment: "main",
     });
 
     const createPayload = clientMock.items.rawCreate.mock.calls[0][0];
@@ -151,7 +155,7 @@ describe("restoreRecordWithoutLambda", () => {
 
     await restoreRecordWithoutLambda({
       currentUserAccessToken: "token",
-      fallbackEnvironment: "fallback-env",
+      currentEnvironment: "fallback-env",
       recordBody: {
         type: "item",
         id: "item-id",
@@ -180,6 +184,61 @@ describe("restoreRecordWithoutLambda", () => {
     });
   });
 
+  it("always uses the current UI environment for client initialization", async () => {
+    const clientMock = createClientMock();
+    clientMock.items.rawCreate.mockResolvedValue({
+      data: {
+        id: "restored-item-id",
+        relationships: {
+          item_type: {
+            data: {
+              id: "restored-model-id",
+            },
+          },
+        },
+      },
+    });
+    clientMock.items.destroy.mockResolvedValue({});
+
+    vi.mocked(buildClient).mockReturnValue(
+      clientMock as unknown as ReturnType<typeof buildClient>
+    );
+
+    await restoreRecordWithoutLambda({
+      currentUserAccessToken: "token",
+      currentEnvironment: "sandbox",
+      recordBody: {
+        event_type: "to_be_restored",
+        environment: "main",
+        entity: {
+          type: "item",
+          id: "item-id",
+          attributes: {
+            title: "Cross-environment payload",
+          },
+          relationships: {
+            item_type: {
+              data: {
+                type: "item_type",
+                id: "model-id",
+              },
+            },
+          },
+          meta: {
+            created_at: "2024-01-01T00:00:00.000Z",
+            first_published_at: null,
+          },
+        },
+      },
+      trashRecordID: "trash-id",
+    });
+
+    expect(buildClient).toHaveBeenCalledWith({
+      apiToken: "token",
+      environment: "sandbox",
+    });
+  });
+
   it("throws LambdaLessRestoreError with lambda-like payload on rawCreate errors", async () => {
     const clientMock = createClientMock();
     clientMock.items.rawCreate.mockRejectedValue({
@@ -203,7 +262,7 @@ describe("restoreRecordWithoutLambda", () => {
     await expect(
       restoreRecordWithoutLambda({
         currentUserAccessToken: "token",
-        fallbackEnvironment: "main",
+        currentEnvironment: "main",
         recordBody: {
           event_type: "to_be_restored",
           environment: "main",

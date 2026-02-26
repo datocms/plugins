@@ -55,6 +55,10 @@ describe("cleanupRecordBinWithoutLambda", () => {
       deletedCount: 2,
       skipped: false,
     });
+    expect(buildClient).toHaveBeenCalledWith({
+      apiToken: "token",
+      environment: "main",
+    });
     expect(clientMock.items.list).toHaveBeenCalledWith({
       filter: {
         fields: {

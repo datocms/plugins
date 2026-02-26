@@ -3,6 +3,7 @@ import { buildClient } from "@datocms/cma-client-browser";
 import {
   RECORD_BIN_WEBHOOK_NAME,
   ensureRecordBinWebhook,
+  removeAllManagedRecordBinWebhooks,
   removeRecordBinWebhook,
 } from "./recordBinWebhook";
 
@@ -49,6 +50,10 @@ describe("ensureRecordBinWebhook", () => {
     });
 
     expect(result).toEqual({ action: "created", webhookId: "created-id" });
+    expect(buildClient).toHaveBeenCalledWith({
+      apiToken: "token",
+      environment: "main",
+    });
     expect(clientMock.webhooks.create).toHaveBeenCalledWith({
       name: RECORD_BIN_WEBHOOK_NAME,
       url: "https://record-bin.example.com",
@@ -248,6 +253,112 @@ describe("removeRecordBinWebhook", () => {
     await expect(removePromise).rejects.toMatchObject({
       name: "RecordBinWebhookSyncError",
       code: "WEBHOOK_DELETE_FAILED",
+    });
+  });
+});
+
+describe("removeAllManagedRecordBinWebhooks", () => {
+  it("deletes every managed Record Bin webhook, including legacy ones", async () => {
+    const clientMock = createWebhookClientMock();
+    clientMock.webhooks.list.mockResolvedValue([
+      {
+        id: "canonical-id",
+        name: RECORD_BIN_WEBHOOK_NAME,
+      },
+      {
+        id: "legacy-id-1",
+        name: "🗑 Record Bin",
+      },
+      {
+        id: "legacy-id-2",
+        name: "🗑 Record Bin",
+      },
+    ]);
+
+    vi.mocked(buildClient).mockReturnValue(
+      clientMock as unknown as ReturnType<typeof buildClient>
+    );
+
+    const result = await removeAllManagedRecordBinWebhooks({
+      currentUserAccessToken: "token",
+      canManageWebhooks: true,
+      environment: "main",
+    });
+
+    expect(result).toEqual({
+      action: "deleted",
+      webhookIds: ["canonical-id", "legacy-id-1", "legacy-id-2"],
+    });
+    expect(clientMock.webhooks.destroy).toHaveBeenCalledTimes(3);
+    expect(clientMock.webhooks.destroy).toHaveBeenNthCalledWith(
+      1,
+      "canonical-id"
+    );
+    expect(clientMock.webhooks.destroy).toHaveBeenNthCalledWith(
+      2,
+      "legacy-id-1"
+    );
+    expect(clientMock.webhooks.destroy).toHaveBeenNthCalledWith(
+      3,
+      "legacy-id-2"
+    );
+  });
+
+  it("returns no-op when no managed Record Bin webhooks are present", async () => {
+    const clientMock = createWebhookClientMock();
+    clientMock.webhooks.list.mockResolvedValue([
+      {
+        id: "different-id",
+        name: "Some other webhook",
+      },
+    ]);
+
+    vi.mocked(buildClient).mockReturnValue(
+      clientMock as unknown as ReturnType<typeof buildClient>
+    );
+
+    const result = await removeAllManagedRecordBinWebhooks({
+      currentUserAccessToken: "token",
+      canManageWebhooks: true,
+      environment: "main",
+    });
+
+    expect(result).toEqual({ action: "none", webhookIds: [] });
+    expect(clientMock.webhooks.destroy).not.toHaveBeenCalled();
+  });
+
+  it("wraps delete failures with stable error code and partial progress", async () => {
+    const clientMock = createWebhookClientMock();
+    clientMock.webhooks.list.mockResolvedValue([
+      {
+        id: "canonical-id",
+        name: RECORD_BIN_WEBHOOK_NAME,
+      },
+      {
+        id: "legacy-id",
+        name: "🗑 Record Bin",
+      },
+    ]);
+    clientMock.webhooks.destroy.mockResolvedValueOnce(undefined);
+    clientMock.webhooks.destroy.mockRejectedValueOnce(new Error("delete failed"));
+
+    vi.mocked(buildClient).mockReturnValue(
+      clientMock as unknown as ReturnType<typeof buildClient>
+    );
+
+    await expect(
+      removeAllManagedRecordBinWebhooks({
+        currentUserAccessToken: "token",
+        canManageWebhooks: true,
+        environment: "main",
+      })
+    ).rejects.toMatchObject({
+      name: "RecordBinWebhookSyncError",
+      code: "WEBHOOK_DELETE_FAILED",
+      details: {
+        webhookId: "legacy-id",
+        webhookIdsDeletedBeforeFailure: ["canonical-id"],
+      },
     });
   });
 });
