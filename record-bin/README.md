@@ -7,8 +7,6 @@ The plugin now supports two runtimes:
 1. `Lambda` runtime (webhook/API capable)
 2. `Lambda-less` runtime (dashboard delete capture only)
 
-The plugin requires the `currentUserAccessToken` permission.
-
 ## Runtime modes
 
 Runtime is selected with a single toggle in the plugin config screen:
@@ -39,7 +37,7 @@ Cleanup is request-driven in both runtimes, not background-scheduled:
 - The plugin runs a daily cleanup check on `onBoot`.
 - The check is throttled to once per day using `automaticBinCleanup.timeStamp`.
 - In `Lambda-full` mode, the plugin sends `POST /` to your lambda URL with `event_type: "cleanup"`.
-- In `Lambda-less` mode, the plugin performs cleanup directly through the CMA API using `currentUserAccessToken`.
+- In `Lambda-less` mode, the plugin performs cleanup directly through the CMA API.
 - If the plugin is not booted for some time, cleanup runs the next time it boots.
 
 ### Why we do not ship cron jobs

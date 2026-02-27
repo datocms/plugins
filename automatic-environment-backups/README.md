@@ -7,8 +7,6 @@ The plugin supports two runtime modes:
 1. `Lambda-full` (`Use Cronjobs` enabled)
 2. `Lambda-less` (`Use Cronjobs` disabled)
 
-The plugin requires the `currentUserAccessToken` permission.
-
 ## Runtime modes
 
 Runtime is selected with a single toggle in the config screen:

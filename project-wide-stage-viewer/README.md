@@ -39,7 +39,6 @@ Surface every record currently sitting in a DatoCMS workflow stage—across ever
 
 - A DatoCMS project with workflows enabled.
 - Permission to install and configure plugins in the target project.
-- An access token with `currentUserAccessToken` capability (granted automatically when you install the plugin).
 
 ## Installation
 
@@ -103,7 +102,7 @@ When developing locally, configure the plugin in DatoCMS to load from your dev s
 
 - **No stages appear in the configuration screen** – ensure workflows are enabled in your DatoCMS plan and that the logged in user can read workflows.
 - **Table is empty** – either no records are currently assigned to the stage, or applied filters/search exclude them. Clear filters or switch models to confirm.
-- **Navigation fails** – the plugin uses `currentUserAccessToken`; make sure the user has permission to edit the target models.
+- **Navigation fails** – make sure the user has permission to edit the target models.
 
 ## Contributing
 

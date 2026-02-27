@@ -19,7 +19,7 @@ Powerful, safe schema migration for DatoCMS. Export models/blocks and plugins as
 
 ## Installation
 
-- In DatoCMS, open your project, go to Plugins, search for “Schema Import/Export”, then install. The plugin only requests `currentUserAccessToken`.
+- In DatoCMS, open your project, go to Plugins, search for “Schema Import/Export”, then install.
 
 ## Export
 

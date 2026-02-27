@@ -42,8 +42,6 @@ Give editors a fast, safe way to transfer ownership of many records at once. The
 
 4. In your DatoCMS project, go to **Settings → Plugins → Add new plugin → Create a new plugin**.
 5. Paste the local dev server URL (default `http://localhost:5173`) in the manual plugin URL field.
-6. Ensure the plugin has the `currentUserAccessToken` permission enabled. It’s required to perform CMA calls on behalf of the editor.
-
 When you’re ready to ship, run `pnpm build` and upload the contents of the `dist/` folder to DatoCMS or host them on a CDN.
 
 ---
