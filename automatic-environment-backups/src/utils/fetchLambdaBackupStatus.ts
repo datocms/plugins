@@ -79,6 +79,31 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 const isIsoOrNull = (value: unknown): value is string | null =>
   value === null || typeof value === "string";
 
+const toValidatedSlot = (
+  candidate: unknown,
+  expectedScope: "daily" | "weekly" | "biweekly" | "monthly",
+): LambdaBackupStatus["slots"]["daily"] | null => {
+  if (!isObject(candidate)) {
+    return null;
+  }
+
+  if (
+    candidate.scope !== expectedScope ||
+    candidate.executionMode !== "lambda_cron" ||
+    !isIsoOrNull(candidate.lastBackupAt) ||
+    !isIsoOrNull(candidate.nextBackupAt)
+  ) {
+    return null;
+  }
+
+  return {
+    scope: expectedScope,
+    executionMode: "lambda_cron",
+    lastBackupAt: candidate.lastBackupAt,
+    nextBackupAt: candidate.nextBackupAt,
+  };
+};
+
 const toValidatedStatus = (payload: unknown): LambdaBackupStatus | null => {
   if (!isObject(payload)) {
     return null;
@@ -110,23 +135,24 @@ const toValidatedStatus = (payload: unknown): LambdaBackupStatus | null => {
     return null;
   }
 
-  const daily = slots.daily;
-  const weekly = slots.weekly;
-  if (!isObject(daily) || !isObject(weekly)) {
+  const dailySlot = toValidatedSlot(slots.daily, "daily");
+  const weeklySlot = toValidatedSlot(slots.weekly, "weekly");
+  if (!dailySlot || !weeklySlot) {
     return null;
   }
 
-  if (
-    daily.scope !== "daily" ||
-    daily.executionMode !== "lambda_cron" ||
-    !isIsoOrNull(daily.lastBackupAt) ||
-    !isIsoOrNull(daily.nextBackupAt) ||
-    weekly.scope !== "weekly" ||
-    weekly.executionMode !== "lambda_cron" ||
-    !isIsoOrNull(weekly.lastBackupAt) ||
-    !isIsoOrNull(weekly.nextBackupAt)
-  ) {
-    return null;
+  const biweeklySlot = toValidatedSlot(slots.biweekly, "biweekly");
+  const monthlySlot = toValidatedSlot(slots.monthly, "monthly");
+  const validatedSlots: LambdaBackupStatus["slots"] = {
+    daily: dailySlot,
+    weekly: weeklySlot,
+  };
+
+  if (biweeklySlot) {
+    validatedSlots.biweekly = biweeklySlot;
+  }
+  if (monthlySlot) {
+    validatedSlots.monthly = monthlySlot;
   }
 
   return {
@@ -134,20 +160,7 @@ const toValidatedStatus = (payload: unknown): LambdaBackupStatus | null => {
       provider: scheduler.provider,
       cadence: scheduler.cadence,
     },
-    slots: {
-      daily: {
-        scope: "daily",
-        executionMode: "lambda_cron",
-        lastBackupAt: daily.lastBackupAt,
-        nextBackupAt: daily.nextBackupAt,
-      },
-      weekly: {
-        scope: "weekly",
-        executionMode: "lambda_cron",
-        lastBackupAt: weekly.lastBackupAt,
-        nextBackupAt: weekly.nextBackupAt,
-      },
-    },
+    slots: validatedSlots,
     checkedAt: payload.checkedAt,
   };
 };

@@ -10,9 +10,11 @@ import {
   SwitchField,
   TextField,
 } from "datocms-react-ui";
-import { CSSProperties, useCallback, useEffect, useState } from "react";
+import { CSSProperties, MouseEvent, useCallback, useEffect, useState } from "react";
 import {
   AutomaticBackupsScheduleState,
+  BackupCadence,
+  BackupScheduleConfig,
   BackupOverviewRow,
   ConnectionValidationMode,
   LambdaBackupStatus,
@@ -40,10 +42,22 @@ import {
   verifyLambdaHealth,
 } from "../utils/verifyLambdaHealth";
 import {
+  disconnectLambdaScheduler,
+  DisconnectLambdaSchedulerError,
+  getDisconnectLambdaSchedulerErrorDetails,
+} from "../utils/disconnectLambdaScheduler";
+import {
   getTriggerBackupNowErrorDetails,
   triggerBackupNow,
   TriggerBackupNowError,
 } from "../utils/triggerBackupNow";
+import {
+  BACKUP_CADENCES,
+  getCadenceLabel,
+  normalizeBackupScheduleConfig,
+  parseTimeToMinuteOfDay,
+  toLocalDateKey,
+} from "../utils/backupSchedule";
 import { buildBackupOverviewRows } from "../utils/buildBackupOverviewRows";
 import { fetchLambdaBackupStatus } from "../utils/fetchLambdaBackupStatus";
 
@@ -53,6 +67,8 @@ const LEGACY_WARNING_MESSAGE =
   "This deployment does not expose /api/datocms/plugin-health yet. It was connected using the legacy initialization fallback. Update and redeploy the lambda function.";
 const LEGACY_CONNECTED_NOTICE =
   "Connected using legacy initialization fallback. Update the lambda function to support /api/datocms/plugin-health.";
+const SCHEDULER_DISABLE_WARNING_MESSAGE =
+  "Could not disable the remote scheduler. This lambda deployment may still run cron backups. To avoid duplicate backups, manually disable or delete the lambda cron deployment.";
 
 type PluginParameters = Record<string, unknown> | undefined;
 
@@ -90,6 +106,41 @@ const isObject = (value: unknown): value is Record<string, unknown> =>
 const asOptionalString = (value: unknown): string | undefined =>
   typeof value === "string" && value.trim() ? value : undefined;
 
+const getProjectTimezone = (site: unknown): string => {
+  if (
+    site &&
+    typeof site === "object" &&
+    "timezone" in site &&
+    typeof (site as { timezone?: unknown }).timezone === "string" &&
+    (site as { timezone: string }).timezone.trim()
+  ) {
+    return (site as { timezone: string }).timezone.trim();
+  }
+
+  return "UTC";
+};
+
+const toCadenceMap = (
+  value: unknown,
+): Partial<Record<BackupCadence, string>> | undefined => {
+  if (!isObject(value)) {
+    return undefined;
+  }
+
+  const next: Partial<Record<BackupCadence, string>> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (!BACKUP_CADENCES.includes(key as BackupCadence)) {
+      continue;
+    }
+    const normalized = asOptionalString(entry);
+    if (normalized) {
+      next[key as BackupCadence] = normalized;
+    }
+  }
+
+  return Object.keys(next).length > 0 ? next : undefined;
+};
+
 const toAutomaticBackupsScheduleState = (
   value: unknown,
 ): AutomaticBackupsScheduleState => {
@@ -98,6 +149,16 @@ const toAutomaticBackupsScheduleState = (
   }
 
   return {
+    ...value,
+    lastRunLocalDateByCadence: toCadenceMap(value.lastRunLocalDateByCadence),
+    lastRunAtByCadence: toCadenceMap(value.lastRunAtByCadence),
+    lastManagedEnvironmentIdByCadence: toCadenceMap(
+      value.lastManagedEnvironmentIdByCadence,
+    ),
+    lastExecutionModeByCadence: toCadenceMap(
+      value.lastExecutionModeByCadence,
+    ) as AutomaticBackupsScheduleState["lastExecutionModeByCadence"],
+    lastErrorByCadence: toCadenceMap(value.lastErrorByCadence),
     dailyLastRunDate: asOptionalString(value.dailyLastRunDate),
     weeklyLastRunKey: asOptionalString(value.weeklyLastRunKey),
     lastDailyRunAt: asOptionalString(value.lastDailyRunAt),
@@ -114,6 +175,10 @@ const toAutomaticBackupsScheduleState = (
         : undefined,
     lastDailyError: asOptionalString(value.lastDailyError),
     lastWeeklyError: asOptionalString(value.lastWeeklyError),
+    executionLockRunId: asOptionalString(value.executionLockRunId),
+    executionLockOwnerUserId: asOptionalString(value.executionLockOwnerUserId),
+    executionLockAcquiredAt: asOptionalString(value.executionLockAcquiredAt),
+    executionLockExpiresAt: asOptionalString(value.executionLockExpiresAt),
   };
 };
 
@@ -152,6 +217,12 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     pluginParameters?.connectionValidationMode,
   );
   const initialRuntimeMode = getRuntimeMode(pluginParameters);
+  const projectTimezone = getProjectTimezone(ctx.site);
+  const initialScheduleNormalization = normalizeBackupScheduleConfig({
+    value: pluginParameters?.backupSchedule,
+    timezoneFallback: projectTimezone,
+  });
+  const initialBackupSchedule = initialScheduleNormalization.config;
   const initialAutomaticBackupsScheduleState = toAutomaticBackupsScheduleState(
     pluginParameters?.automaticBackupsSchedule,
   );
@@ -169,10 +240,17 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   const [runtimeModeSelection, setRuntimeModeSelection] = useState<RuntimeMode>(
     initialRuntimeMode,
   );
+  const [enabledCadencesSelection, setEnabledCadencesSelection] = useState<
+    BackupCadence[]
+  >(initialBackupSchedule.enabledCadences);
+  const [lambdalessTimeSelection, setLambdalessTimeSelection] = useState(
+    initialBackupSchedule.lambdalessTime,
+  );
   const [debugEnabled, setDebugEnabled] = useState(initialDebugEnabled);
   const [savedFormValues, setSavedFormValues] = useState({
     runtimeMode: initialRuntimeMode,
     debugEnabled: initialDebugEnabled,
+    backupSchedule: initialBackupSchedule,
   });
 
   const [isLoading, setIsLoading] = useState(false);
@@ -212,6 +290,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     [],
   );
   const [showBackupNowDetails, setShowBackupNowDetails] = useState(false);
+  const [schedulerDisableWarning, setSchedulerDisableWarning] = useState("");
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [lambdaBackupStatus, setLambdaBackupStatus] = useState<
     LambdaBackupStatus | undefined
@@ -239,6 +318,10 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     setShowBackupNowDetails(false);
   };
 
+  const clearSchedulerDisableWarning = () => {
+    setSchedulerDisableWarning("");
+  };
+
   const applyDisconnectedState = (state: LambdaConnectionState) => {
     setConnectionState(state);
     setConnectionErrorSummary(getConnectionErrorSummary(state));
@@ -246,14 +329,51 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     setShowConnectionDetails(false);
   };
 
+  const disableRemoteSchedulerIfNeeded = async (
+    candidateBaseUrl: string,
+  ): Promise<boolean> => {
+    if (!candidateBaseUrl.trim()) {
+      return true;
+    }
+
+    try {
+      const result = await disconnectLambdaScheduler({
+        baseUrl: candidateBaseUrl,
+        environment: ctx.environment,
+      });
+      debugLogger.log("Remote scheduler disabled", {
+        endpoint: result.endpoint,
+        attemptName: result.attemptName,
+      });
+      clearSchedulerDisableWarning();
+      return true;
+    } catch (error) {
+      if (error instanceof DisconnectLambdaSchedulerError) {
+        debugLogger.warn(
+          "Could not disable remote scheduler before local disconnect",
+          {
+            normalizedBaseUrl: error.normalizedBaseUrl,
+            failures: error.failures,
+          },
+        );
+        debugLogger.warn(
+          "Remote scheduler disable failure details",
+          getDisconnectLambdaSchedulerErrorDetails(error),
+        );
+      } else {
+        debugLogger.error("Unexpected error while disabling remote scheduler", error);
+      }
+
+      setSchedulerDisableWarning(SCHEDULER_DISABLE_WARNING_MESSAGE);
+      return false;
+    }
+  };
+
   const refreshLambdaBackupOverview = useCallback(
     async (baseUrl?: string) => {
       const candidateUrl = (baseUrl || activeDeploymentUrl).trim();
       const shouldFetch =
-        savedFormValues.runtimeMode === "lambda" &&
-        connectionValidationMode === "health" &&
-        connectionState?.status === "connected" &&
-        candidateUrl.length > 0;
+        savedFormValues.runtimeMode === "lambda" && candidateUrl.length > 0;
 
       if (!shouldFetch) {
         setLambdaBackupStatus(undefined);
@@ -290,8 +410,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     },
     [
       activeDeploymentUrl,
-      connectionState?.status,
-      connectionValidationMode,
       ctx.environment,
       savedFormValues.runtimeMode,
     ],
@@ -308,6 +426,16 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     });
 
     const migrateAndCheck = async () => {
+      if (initialScheduleNormalization.requiresMigration) {
+        try {
+          await persistPluginParameters({
+            backupSchedule: initialBackupSchedule,
+          });
+        } catch {
+          // Best-effort schedule migration.
+        }
+      }
+
       if (initialRuntimeMode !== "lambda") {
         debugLogger.log(
           "Skipping mount health check because cron mode is disabled",
@@ -490,6 +618,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     setIsConnecting(true);
     clearConnectionErrorState();
     clearBackupNowErrorState();
+    clearSchedulerDisableWarning();
     setLegacyUpgradeWarning("");
 
     try {
@@ -656,9 +785,16 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     setIsDisconnecting(true);
     clearConnectionErrorState();
     clearBackupNowErrorState();
+    clearSchedulerDisableWarning();
     setLegacyUpgradeWarning("");
 
     try {
+      const candidateBaseUrl =
+        activeDeploymentUrl.trim() || deploymentUrlInput.trim();
+      const remoteDisableSucceeded = await disableRemoteSchedulerIfNeeded(
+        candidateBaseUrl,
+      );
+
       await persistPluginParameters({
         deploymentURL: "",
         netlifyURL: "",
@@ -680,7 +816,11 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           : "",
       );
       debugLogger.log("Lambda disconnected");
-      ctx.notice("Current lambda function has been disconnected.");
+      ctx.notice(
+        remoteDisableSucceeded
+          ? "Current lambda function has been disconnected."
+          : "Current lambda function has been disconnected locally, but remote scheduler disable failed. To avoid duplicate backups, manually disable or delete the lambda cron deployment.",
+      );
     } catch (error) {
       debugLogger.error("Could not disconnect current lambda", error);
       setConnectionErrorSummary("Could not disconnect the current lambda.");
@@ -695,12 +835,30 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   };
 
   const saveSettingsHandler = async () => {
+    const normalizedEnabledCadences = BACKUP_CADENCES.filter((cadence) =>
+      enabledCadencesSelection.includes(cadence),
+    );
+    const normalizedLambdalessTime = lambdalessTimeSelection.trim();
+
+    if (normalizedEnabledCadences.length === 0) {
+      await ctx.alert("Select at least one backup cadence.");
+      return;
+    }
+
+    if (parseTimeToMinuteOfDay(normalizedLambdalessTime) === null) {
+      await ctx.alert("Use HH:mm format for Lambda-less time.");
+      return;
+    }
+
     debugLogger.log("Saving plugin settings", {
       runtimeModeSelection,
       debugEnabled,
       activeDeploymentUrl,
       connectionStatus: connectionState?.status,
       connectionValidationMode,
+      enabledCadences: normalizedEnabledCadences,
+      lambdalessTime: normalizedLambdalessTime,
+      timezone: projectTimezone,
     });
 
     const hasConnectedLambdaForSave =
@@ -719,14 +877,35 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     }
 
     setIsLoading(true);
+    clearSchedulerDisableWarning();
 
     try {
       let persistedDeploymentUrl = activeDeploymentUrl.trim();
       let persistedConnectionState = connectionState ?? null;
       let persistedValidationMode: ConnectionValidationMode | null =
         connectionValidationMode ?? null;
+      let remoteDisableSucceeded = true;
+      const savedCadences = savedFormValues.backupSchedule.enabledCadences;
+      const didCadencesChange =
+        savedCadences.length !== normalizedEnabledCadences.length ||
+        savedCadences.some(
+          (cadence, index) => cadence !== normalizedEnabledCadences[index],
+        );
+      const persistedBackupSchedule: BackupScheduleConfig = {
+        version: 1,
+        enabledCadences: normalizedEnabledCadences,
+        timezone: projectTimezone,
+        lambdalessTime: normalizedLambdalessTime,
+        anchorLocalDate: didCadencesChange
+          ? toLocalDateKey(new Date(), projectTimezone)
+          : savedFormValues.backupSchedule.anchorLocalDate,
+        updatedAt: new Date().toISOString(),
+      };
 
       if (runtimeModeSelection === "lambdaless") {
+        remoteDisableSucceeded = await disableRemoteSchedulerIfNeeded(
+          persistedDeploymentUrl,
+        );
         persistedDeploymentUrl = "";
         persistedConnectionState = null;
         persistedValidationMode = null;
@@ -750,17 +929,23 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         vercelURL: persistedDeploymentUrl,
         lambdaConnection: persistedConnectionState,
         connectionValidationMode: persistedValidationMode,
+        backupSchedule: persistedBackupSchedule,
       });
 
       setSavedFormValues({
         runtimeMode: runtimeModeSelection,
         debugEnabled,
+        backupSchedule: persistedBackupSchedule,
       });
 
       ctx.notice(
-        `Settings saved. Runtime mode: ${
-          runtimeModeSelection === "lambda" ? "Lambda-full (cron)" : "Lambda-less (on boot)"
-        }. Debug logging is ${debugEnabled ? "enabled" : "disabled"}.`,
+        remoteDisableSucceeded
+          ? `Settings saved. Runtime mode: ${
+              runtimeModeSelection === "lambda"
+                ? "Lambda-full (cron)"
+                : "Lambda-less (on boot)"
+            }. Debug logging is ${debugEnabled ? "enabled" : "disabled"}.`
+          : "Settings saved, but remote scheduler disable failed. To avoid duplicate backups, manually disable or delete the lambda cron deployment.",
       );
     } catch (error) {
       debugLogger.error("Could not save plugin settings", error);
@@ -780,6 +965,28 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
 
     debugLogger.log("Opening deploy provider", { provider, url: option.url });
     window.open(option.url, "_blank", "noreferrer");
+  };
+
+  const setCadenceEnabled = (cadence: BackupCadence, enabled: boolean) => {
+    setEnabledCadencesSelection((current) => {
+      if (enabled) {
+        if (current.includes(cadence)) {
+          return current;
+        }
+        return BACKUP_CADENCES.filter(
+          (candidate) => candidate === cadence || current.includes(candidate),
+        );
+      }
+
+      return current.filter((candidate) => candidate !== cadence);
+    });
+  };
+
+  const openEnvironmentsSettings = async (
+    event: MouseEvent<HTMLAnchorElement>,
+  ) => {
+    event.preventDefault();
+    await ctx.navigateTo("/project_settings/environments");
   };
 
   const triggerBackupNowHandler = async () => {
@@ -984,9 +1191,24 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   const lambdaSetupDisabled =
     isConnecting || isDisconnecting || isHealthChecking || isLoading;
 
+  const normalizedCadenceSelection = BACKUP_CADENCES.filter((cadence) =>
+    enabledCadencesSelection.includes(cadence),
+  );
+  const hasCadenceSelectionChanged =
+    normalizedCadenceSelection.length !==
+      savedFormValues.backupSchedule.enabledCadences.length ||
+    normalizedCadenceSelection.some(
+      (cadence, index) =>
+        cadence !== savedFormValues.backupSchedule.enabledCadences[index],
+    );
+  const hasLambdalessTimeChanged =
+    lambdalessTimeSelection.trim() !==
+    savedFormValues.backupSchedule.lambdalessTime;
   const hasUnsavedChanges =
     debugEnabled !== savedFormValues.debugEnabled ||
-    runtimeModeSelection !== savedFormValues.runtimeMode;
+    runtimeModeSelection !== savedFormValues.runtimeMode ||
+    hasCadenceSelectionChanged ||
+    hasLambdalessTimeChanged;
 
   const canSaveWithLambdaMode =
     !isLambdaFullModeEnabled ||
@@ -1007,9 +1229,11 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           : "";
 
   const savedRuntimeMode = savedFormValues.runtimeMode;
+  const savedBackupSchedule = savedFormValues.backupSchedule;
   const backupOverviewRows: BackupOverviewRow[] = buildBackupOverviewRows({
     runtimeMode: savedRuntimeMode,
     scheduleState: initialAutomaticBackupsScheduleState,
+    scheduleConfig: savedBackupSchedule,
     lambdaStatus: savedRuntimeMode === "lambda" ? lambdaBackupStatus : undefined,
   });
 
@@ -1179,6 +1403,20 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           </div>
         )}
 
+        {schedulerDisableWarning && (
+          <div
+            style={{
+              border: "1px solid var(--warning-color)",
+              borderRadius: "6px",
+              background: "rgba(255, 184, 0, 0.12)",
+              padding: "var(--spacing-m)",
+              marginBottom: "var(--spacing-m)",
+            }}
+          >
+            <p style={{ margin: 0 }}>{schedulerDisableWarning}</p>
+          </div>
+        )}
+
         {isLambdaFullModeEnabled && backupNowErrorSummary && (
           <div
             style={{
@@ -1275,6 +1513,59 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
               fontSize: "var(--font-size-l)",
             }}
           >
+            Backup schedule
+          </h2>
+
+          <p style={infoTextStyle}>
+            Pick the backups you want to keep. The interface is intentionally simple.
+          </p>
+
+          <p style={{ ...subtleTextStyle, marginBottom: "var(--spacing-s)" }}>
+            <strong>Project timezone:</strong> {projectTimezone}
+          </p>
+
+          <div style={{ display: "grid", gap: "var(--spacing-xs)" }}>
+            {BACKUP_CADENCES.map((cadence) => (
+              <div key={`cadence-toggle-${cadence}`} style={switchFieldNoHintGapStyle}>
+                <SwitchField
+                  name={`cadence_${cadence}`}
+                  id={`cadence_${cadence}`}
+                  label={getCadenceLabel(cadence)}
+                  value={enabledCadencesSelection.includes(cadence)}
+                  onChange={(newValue) => setCadenceEnabled(cadence, newValue)}
+                />
+              </div>
+            ))}
+          </div>
+
+          {runtimeModeSelection === "lambdaless" ? (
+            <div style={{ marginTop: "var(--spacing-s)" }}>
+              <TextField
+                name="lambdalessTime"
+                id="lambdalessTime"
+                label="Lambda-less run time"
+                hint="Format: HH:mm (project timezone). Runs on next dashboard login at or after this time."
+                value={lambdalessTimeSelection}
+                placeholder="00:00"
+                onChange={(newValue) => setLambdalessTimeSelection(newValue)}
+              />
+            </div>
+          ) : (
+            <p style={{ ...subtleTextStyle, marginTop: "var(--spacing-s)" }}>
+              Lambda mode runs once a day from provider cron. Custom time is only
+              applied in Lambda-less mode.
+            </p>
+          )}
+        </div>
+
+        <div style={cardStyle}>
+          <h2
+            style={{
+              marginTop: 0,
+              marginBottom: "var(--spacing-s)",
+              fontSize: "var(--font-size-l)",
+            }}
+          >
             Backup overview
           </h2>
 
@@ -1308,9 +1599,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           <div style={overviewGridStyle}>
             {backupOverviewRows.map((row) => (
               <div key={`backup-overview-${row.scope}`} style={overviewRowStyle}>
-                <h3 style={overviewRowLabelStyle}>
-                  {row.scope === "daily" ? "Daily" : "Weekly"}
-                </h3>
+                <h3 style={overviewRowLabelStyle}>{getCadenceLabel(row.scope)}</h3>
                 <p style={overviewRowInfoStyle}>
                   <strong>Last backup:</strong> {row.lastBackup}
                 </p>
@@ -1318,13 +1607,18 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
                   <strong>Next backup:</strong> {row.nextBackup}
                 </p>
                 <p style={overviewRowInfoStyle}>
-                  <strong>Source:</strong> {row.source}
+                  <strong>Environment:</strong>{" "}
+                  {row.environmentLinked ? (
+                    <a
+                      href="/project_settings/environments"
+                      onClick={openEnvironmentsSettings}
+                    >
+                      {row.environmentName}
+                    </a>
+                  ) : (
+                    row.environmentName
+                  )}
                 </p>
-                {row.sourceDetails && (
-                  <p style={overviewRowInfoStyle}>
-                    <strong>Details:</strong> {row.sourceDetails}
-                  </p>
-                )}
               </div>
             ))}
           </div>
@@ -1366,6 +1660,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
                     setRuntimeModeSelection(newValue ? "lambda" : "lambdaless");
                     clearConnectionErrorState();
                     clearBackupNowErrorState();
+                    clearSchedulerDisableWarning();
                     setLegacyUpgradeWarning("");
                   }}
                 />

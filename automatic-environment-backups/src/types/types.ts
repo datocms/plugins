@@ -28,7 +28,28 @@ export type ConnectionValidationMode = "health" | "legacy";
 
 export type RuntimeMode = "lambda" | "lambdaless";
 
+export type BackupCadence = "daily" | "weekly" | "biweekly" | "monthly";
+
+export type BackupExecutionMode =
+  | "lambdaless_on_boot"
+  | "lambda_cron"
+  | "lambda_manual";
+
+export type BackupScheduleConfig = {
+  version: 1;
+  enabledCadences: BackupCadence[];
+  timezone: string;
+  lambdalessTime: string;
+  anchorLocalDate: string;
+  updatedAt: string;
+};
+
 export type AutomaticBackupsScheduleState = {
+  lastRunLocalDateByCadence?: Partial<Record<BackupCadence, string>>;
+  lastRunAtByCadence?: Partial<Record<BackupCadence, string>>;
+  lastManagedEnvironmentIdByCadence?: Partial<Record<BackupCadence, string>>;
+  lastExecutionModeByCadence?: Partial<Record<BackupCadence, BackupExecutionMode>>;
+  lastErrorByCadence?: Partial<Record<BackupCadence, string>>;
   dailyLastRunDate?: string;
   weeklyLastRunKey?: string;
   lastDailyRunAt?: string;
@@ -39,7 +60,11 @@ export type AutomaticBackupsScheduleState = {
   lastWeeklyExecutionMode?: "lambdaless_on_boot";
   lastDailyError?: string;
   lastWeeklyError?: string;
-};
+  executionLockRunId?: string;
+  executionLockOwnerUserId?: string;
+  executionLockAcquiredAt?: string;
+  executionLockExpiresAt?: string;
+} & Record<string, unknown>;
 
 export type LambdaSchedulerProvider =
   | "vercel"
@@ -50,7 +75,7 @@ export type LambdaSchedulerProvider =
 export type LambdaSchedulerCadence = "hourly" | "daily";
 
 export type LambdaBackupStatusSlot = {
-  scope: "daily" | "weekly";
+  scope: BackupCadence;
   executionMode: "lambda_cron";
   lastBackupAt: string | null;
   nextBackupAt: string | null;
@@ -61,7 +86,7 @@ export type LambdaBackupStatus = {
     provider: LambdaSchedulerProvider;
     cadence: LambdaSchedulerCadence;
   };
-  slots: {
+  slots: Partial<Record<BackupCadence, LambdaBackupStatusSlot>> & {
     daily: LambdaBackupStatusSlot;
     weekly: LambdaBackupStatusSlot;
   };
@@ -69,9 +94,9 @@ export type LambdaBackupStatus = {
 };
 
 export type BackupOverviewRow = {
-  scope: "daily" | "weekly";
+  scope: BackupCadence;
   lastBackup: string;
   nextBackup: string;
-  source: string;
-  sourceDetails?: string;
+  environmentName: string;
+  environmentLinked: boolean;
 };

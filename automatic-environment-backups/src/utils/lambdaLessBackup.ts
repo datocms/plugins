@@ -3,6 +3,8 @@ import { buildClient } from "@datocms/cma-client-browser";
 export const MANAGED_BACKUP_ENVIRONMENT_IDS = {
   daily: "automatic-backups-daily",
   weekly: "automatic-backups-weekly",
+  biweekly: "automatic-backups-biweekly",
+  monthly: "automatic-backups-monthly",
 } as const;
 
 export type BackupSlot = keyof typeof MANAGED_BACKUP_ENVIRONMENT_IDS;

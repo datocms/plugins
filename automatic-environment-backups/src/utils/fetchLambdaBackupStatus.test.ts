@@ -48,6 +48,18 @@ describe("fetchLambdaBackupStatus", () => {
               lastBackupAt: "2026-02-20T02:35:00.000Z",
               nextBackupAt: "2026-02-27T02:35:00.000Z",
             },
+            biweekly: {
+              scope: "biweekly",
+              executionMode: "lambda_cron",
+              lastBackupAt: "2026-02-12T02:35:00.000Z",
+              nextBackupAt: "2026-03-12T02:35:00.000Z",
+            },
+            monthly: {
+              scope: "monthly",
+              executionMode: "lambda_cron",
+              lastBackupAt: null,
+              nextBackupAt: "2026-03-26T02:35:00.000Z",
+            },
           },
           checkedAt: "2026-02-26T12:00:00.000Z",
         }),
@@ -63,6 +75,8 @@ describe("fetchLambdaBackupStatus", () => {
 
     expect(result.scheduler.provider).toBe("vercel");
     expect(result.slots.daily.executionMode).toBe("lambda_cron");
+    expect(result.slots.biweekly?.scope).toBe("biweekly");
+    expect(result.slots.monthly?.scope).toBe("monthly");
     expect(fetchMock).toHaveBeenCalledTimes(1);
     const typedCalls =
       fetchMock.mock.calls as unknown as Array<[unknown, RequestInit | undefined]>;

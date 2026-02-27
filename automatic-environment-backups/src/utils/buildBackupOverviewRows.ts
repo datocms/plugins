@@ -1,19 +1,33 @@
+import { formatDistanceStrict } from "date-fns";
 import {
   AutomaticBackupsScheduleState,
+  BackupCadence,
   BackupOverviewRow,
+  BackupScheduleConfig,
   LambdaBackupStatus,
   RuntimeMode,
 } from "../types/types";
+import {
+  getLastRunLocalDateForCadence,
+  getNextDueLocalDate,
+  isCadenceDueNow,
+  toLocalDateKey,
+  toUtcDateFromLocalDateKey,
+} from "./backupSchedule";
 import { MANAGED_BACKUP_ENVIRONMENT_IDS } from "./lambdaLessBackup";
 
 type BuildBackupOverviewRowsInput = {
   runtimeMode: RuntimeMode;
   scheduleState: AutomaticBackupsScheduleState;
+  scheduleConfig: BackupScheduleConfig;
   lambdaStatus?: LambdaBackupStatus;
   now?: Date;
 };
 
-const formatUtcDateTime = (value: Date | string | undefined): string => {
+const formatRelativeDateTime = (
+  value: Date | string | undefined,
+  now: Date,
+): string => {
   if (!value) {
     return "Never";
   }
@@ -23,152 +37,168 @@ const formatUtcDateTime = (value: Date | string | undefined): string => {
     return "Unavailable";
   }
 
-  return `${parsedDate.toISOString().slice(0, 19).replace("T", " ")} UTC`;
+  return formatDistanceStrict(parsedDate, now, { addSuffix: true });
 };
 
-const getNextUtcDayStart = (now: Date): Date => {
-  return new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0, 0),
-  );
+const getCadencePrefix = (cadence: BackupCadence): string => {
+  if (cadence === "daily") {
+    return "backup-plugin-daily";
+  }
+  if (cadence === "weekly") {
+    return "backup-plugin-weekly";
+  }
+  if (cadence === "biweekly") {
+    return "backup-plugin-biweekly";
+  }
+  return "backup-plugin-monthly";
 };
 
-const getNextUtcIsoWeekStart = (now: Date): Date => {
-  const currentWeekday = now.getUTCDay() || 7;
-  const daysUntilNextMonday = 8 - currentWeekday;
-  return new Date(
-    Date.UTC(
-      now.getUTCFullYear(),
-      now.getUTCMonth(),
-      now.getUTCDate() + daysUntilNextMonday,
-      0,
-      0,
-      0,
-      0,
-    ),
-  );
+const toLambdaEnvironmentName = (
+  cadence: BackupCadence,
+  lastBackupAt: string | null,
+): string => {
+  const prefix = getCadencePrefix(cadence);
+  if (!lastBackupAt) {
+    return `${prefix}-*`;
+  }
+
+  const parsed = new Date(lastBackupAt);
+  if (Number.isNaN(parsed.getTime())) {
+    return `${prefix}-*`;
+  }
+
+  return `${prefix}-${parsed.toISOString().slice(0, 10)}`;
 };
 
-const toUtcDateKey = (date: Date): string => date.toISOString().split("T")[0];
+const toLastRunAtForCadence = (
+  cadence: BackupCadence,
+  scheduleState: AutomaticBackupsScheduleState,
+): string | undefined => {
+  const fromMap = scheduleState.lastRunAtByCadence?.[cadence];
+  if (typeof fromMap === "string" && fromMap.trim()) {
+    return fromMap;
+  }
 
-const toUtcIsoWeekKey = (date: Date): string => {
-  const workingDate = new Date(
-    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
-  );
-  const day = workingDate.getUTCDay() || 7;
-  workingDate.setUTCDate(workingDate.getUTCDate() + 4 - day);
+  if (cadence === "daily") {
+    return scheduleState.lastDailyRunAt;
+  }
+  if (cadence === "weekly") {
+    return scheduleState.lastWeeklyRunAt;
+  }
 
-  const yearStart = new Date(Date.UTC(workingDate.getUTCFullYear(), 0, 1));
-  const weekNo = Math.ceil(
-    ((workingDate.getTime() - yearStart.getTime()) / 86400000 + 1) / 7,
-  );
+  return undefined;
+};
 
-  return `${workingDate.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
+const toManagedEnvironmentIdForCadence = (
+  cadence: BackupCadence,
+  scheduleState: AutomaticBackupsScheduleState,
+): string | undefined => {
+  const fromMap = scheduleState.lastManagedEnvironmentIdByCadence?.[cadence];
+  if (typeof fromMap === "string" && fromMap.trim()) {
+    return fromMap;
+  }
+
+  if (cadence === "daily") {
+    return scheduleState.lastDailyManagedEnvironmentId;
+  }
+  if (cadence === "weekly") {
+    return scheduleState.lastWeeklyManagedEnvironmentId;
+  }
+
+  return undefined;
 };
 
 const buildLambdalessRows = (
   scheduleState: AutomaticBackupsScheduleState,
+  scheduleConfig: BackupScheduleConfig,
   now: Date,
 ): BackupOverviewRow[] => {
-  const currentDateKey = toUtcDateKey(now);
-  const currentWeekKey = toUtcIsoWeekKey(now);
-  const dailyIsDueNow = scheduleState.dailyLastRunDate !== currentDateKey;
-  const weeklyIsDueNow = scheduleState.weeklyLastRunKey !== currentWeekKey;
+  const localDateNow = toLocalDateKey(now, scheduleConfig.timezone);
 
-  const dailyNext = dailyIsDueNow
-    ? "Due now (on next dashboard login)"
-    : `${formatUtcDateTime(getNextUtcDayStart(now))} (on next dashboard login)`;
-  const weeklyNext = weeklyIsDueNow
-    ? "Due now (on next dashboard login)"
-    : `${formatUtcDateTime(getNextUtcIsoWeekStart(now))} (on next dashboard login)`;
+  return scheduleConfig.enabledCadences.map((cadence) => {
+    const lastRunAt = toLastRunAtForCadence(cadence, scheduleState);
+    const lastRunLocalDate = getLastRunLocalDateForCadence({
+      scheduleState,
+      cadence,
+      now,
+    });
+    const dueNow = isCadenceDueNow({
+      cadence,
+      anchorLocalDate: scheduleConfig.anchorLocalDate,
+      currentLocalDate: localDateNow,
+      lastRunLocalDate,
+    });
+    const nextDueLocalDate = dueNow
+      ? localDateNow
+      : getNextDueLocalDate({
+          cadence,
+          anchorLocalDate: scheduleConfig.anchorLocalDate,
+          currentLocalDate: localDateNow,
+          lastRunLocalDate,
+        });
+    const nextDueDate = toUtcDateFromLocalDateKey(nextDueLocalDate);
+    const nextBackup = dueNow
+      ? "Due now (on next dashboard login)"
+      : nextDueDate
+        ? `${formatRelativeDateTime(nextDueDate, now)} (on next dashboard login)`
+        : "Unavailable";
+    const managedEnvironmentId = toManagedEnvironmentIdForCadence(cadence, scheduleState);
 
-  return [
-    {
-      scope: "daily",
-      lastBackup: formatUtcDateTime(scheduleState.lastDailyRunAt),
-      nextBackup: dailyNext,
-      source: "Lambdaless on boot",
-      sourceDetails: `Managed env: ${
-        scheduleState.lastDailyManagedEnvironmentId ??
-        MANAGED_BACKUP_ENVIRONMENT_IDS.daily
-      }`,
-    },
-    {
-      scope: "weekly",
-      lastBackup: formatUtcDateTime(scheduleState.lastWeeklyRunAt),
-      nextBackup: weeklyNext,
-      source: "Lambdaless on boot",
-      sourceDetails: `Managed env: ${
-        scheduleState.lastWeeklyManagedEnvironmentId ??
-        MANAGED_BACKUP_ENVIRONMENT_IDS.weekly
-      }`,
-    },
-  ];
+    return {
+      scope: cadence,
+      lastBackup: formatRelativeDateTime(lastRunAt, now),
+      nextBackup,
+      environmentName: lastRunAt
+        ? managedEnvironmentId ?? MANAGED_BACKUP_ENVIRONMENT_IDS[cadence]
+        : "Not yet created",
+      environmentLinked: Boolean(lastRunAt),
+    };
+  });
 };
-
-const toTitleCase = (value: string): string =>
-  value.charAt(0).toUpperCase() + value.slice(1);
 
 const buildLambdaRows = (
   lambdaStatus: LambdaBackupStatus | undefined,
+  scheduleConfig: BackupScheduleConfig,
+  now: Date,
 ): BackupOverviewRow[] => {
-  if (!lambdaStatus) {
-    return [
-      {
-        scope: "daily",
+  return scheduleConfig.enabledCadences.map((cadence) => {
+    const slot = lambdaStatus?.slots[cadence];
+    if (!slot) {
+      return {
+        scope: cadence,
         lastBackup: "Unavailable",
         nextBackup: "Unavailable",
-        source: "Cronjobs (Lambda)",
-        sourceDetails: "Connect a healthy Lambda URL to load status.",
-      },
-      {
-        scope: "weekly",
-        lastBackup: "Unavailable",
-        nextBackup: "Unavailable",
-        source: "Cronjobs (Lambda)",
-        sourceDetails: "Connect a healthy Lambda URL to load status.",
-      },
-    ];
-  }
+        environmentName: "Not yet created",
+        environmentLinked: false,
+      };
+    }
 
-  const sourceDetails = `Provider: ${toTitleCase(
-    lambdaStatus.scheduler.provider,
-  )} | Cadence: ${lambdaStatus.scheduler.cadence}`;
-
-  return [
-    {
-      scope: "daily",
-      lastBackup: lambdaStatus.slots.daily.lastBackupAt
-        ? formatUtcDateTime(lambdaStatus.slots.daily.lastBackupAt)
+    return {
+      scope: cadence,
+      lastBackup: slot.lastBackupAt
+        ? formatRelativeDateTime(slot.lastBackupAt, now)
         : "Never",
-      nextBackup: lambdaStatus.slots.daily.nextBackupAt
-        ? formatUtcDateTime(lambdaStatus.slots.daily.nextBackupAt)
+      nextBackup: slot.nextBackupAt
+        ? formatRelativeDateTime(slot.nextBackupAt, now)
         : "Unavailable",
-      source: "Cronjobs (Lambda)",
-      sourceDetails,
-    },
-    {
-      scope: "weekly",
-      lastBackup: lambdaStatus.slots.weekly.lastBackupAt
-        ? formatUtcDateTime(lambdaStatus.slots.weekly.lastBackupAt)
-        : "Never",
-      nextBackup: lambdaStatus.slots.weekly.nextBackupAt
-        ? formatUtcDateTime(lambdaStatus.slots.weekly.nextBackupAt)
-        : "Unavailable",
-      source: "Cronjobs (Lambda)",
-      sourceDetails,
-    },
-  ];
+      environmentName: slot.lastBackupAt
+        ? toLambdaEnvironmentName(cadence, slot.lastBackupAt)
+        : "Not yet created",
+      environmentLinked: Boolean(slot.lastBackupAt),
+    };
+  });
 };
 
 export const buildBackupOverviewRows = ({
   runtimeMode,
   scheduleState,
+  scheduleConfig,
   lambdaStatus,
   now = new Date(),
 }: BuildBackupOverviewRowsInput): BackupOverviewRow[] => {
   if (runtimeMode === "lambda") {
-    return buildLambdaRows(lambdaStatus);
+    return buildLambdaRows(lambdaStatus, scheduleConfig, now);
   }
 
-  return buildLambdalessRows(scheduleState, now);
+  return buildLambdalessRows(scheduleState, scheduleConfig, now);
 };

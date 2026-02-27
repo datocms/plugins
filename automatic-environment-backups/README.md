@@ -42,6 +42,19 @@ In Lambda-less mode, backups are request-driven:
 - If the plugin is not booted for some time, due backups run the next time it boots.
 - If one slot fails (daily/weekly), only successful slot watermarks are updated. Failed slots remain due for the next boot.
 
+### Concurrency safety (best effort lease lock)
+
+Lambda-less `onBoot` now uses a lightweight lease lock in `automaticBackupsSchedule`:
+
+- Lock fields: `executionLockRunId`, `executionLockOwnerUserId`, `executionLockAcquiredAt`, `executionLockExpiresAt`.
+- Lock TTL is 20 minutes.
+- After writing the lock, each runner waits 5.5 seconds before verifying lock ownership to account for parameter propagation.
+- If a lock is already active, contenders skip immediately (no wait/retry loop).
+- If lock write or verification is uncertain, execution fails closed (no backup run).
+- Lock release happens only if the same run still owns the lock.
+
+This reduces duplicate execution risk across near-simultaneous boots, but it is still best effort and not strict exactly-once coordination.
+
 ### Managed backup environments (rolling slots)
 
 Lambda-less mode uses two managed environment IDs:
@@ -106,16 +119,20 @@ Backups will run during plugin boot and maintain rolling daily/weekly slots.
 The plugin validates connectivity by calling:
 
 - `POST /api/datocms/plugin-health`
+- `POST /api/datocms/scheduler-disconnect` when disconnecting Lambda or saving Lambda-less mode with a connected URL
 
 Legacy deployments that do not expose `/api/datocms/plugin-health` can still connect via legacy initialization fallback (`/.netlify/functions/initialization`), but should be upgraded.
+For scheduler disable, the plugin also falls back to `POST /.netlify/functions/scheduler-disconnect`.
 
 ## Migration and compatibility notes
 
 - Legacy parameters (`netlifyURL`, `installationState`, `hasBeenPrompted`, `lambdaFullMode`) remain supported.
 - `runtimeMode` is persisted and mirrors `lambdaFullMode` for compatibility.
 - Switching to Lambda-less clears the connected Lambda URL and connection state on save.
+- Disconnecting Lambda and switching to Lambda-less both attempt to disable the remote scheduler before clearing local Lambda connection fields.
 
 ## Failure behavior
 
 - Lambda-full mode follows your external scheduler reliability model.
 - Lambda-less mode records slot-level failure details in plugin parameters and retries failed due slots on next boot.
+- If remote scheduler disable fails, the plugin still proceeds locally and shows a warning asking you to manually disable/delete the Lambda cron deployment to avoid duplicate backups.
