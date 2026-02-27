@@ -19,6 +19,16 @@ describe("getDeploymentUrlFromParameters", () => {
     ).toBe("https://legacy.example.com");
   });
 
+  it("falls back to legacy vercelURL when deploymentURL and netlifyURL are empty", () => {
+    expect(
+      getDeploymentUrlFromParameters({
+        deploymentURL: "",
+        netlifyURL: " ",
+        vercelURL: "https://legacy-vercel.example.com",
+      }),
+    ).toBe("https://legacy-vercel.example.com");
+  });
+
   it("returns empty string when no URL is configured", () => {
     expect(getDeploymentUrlFromParameters(undefined)).toBe("");
     expect(getDeploymentUrlFromParameters({})).toBe("");

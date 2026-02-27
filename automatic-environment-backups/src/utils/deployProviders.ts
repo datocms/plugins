@@ -25,7 +25,7 @@ export const DEPLOY_PROVIDER_OPTIONS: DeployProviderOption[] = [
 ];
 
 export const PLUGIN_README_URL =
-  "https://github.com/datocms/plugins/tree/master/automatic-environment-backups#readme";
+  "https://github.com/datocms/plugins/tree/master/automatic-environment-backups";
 
 export const BACKUPS_LAMBDA_README_URL =
   "https://github.com/marcelofinamorvieira/datocms-backups-scheduled-function#readme";

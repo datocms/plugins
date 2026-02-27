@@ -5,13 +5,19 @@ import {
   Dropdown,
   DropdownMenu,
   DropdownOption,
+  Form,
+  Section,
   SwitchField,
   TextField,
 } from "datocms-react-ui";
-import { CSSProperties, useEffect, useState } from "react";
+import { CSSProperties, useCallback, useEffect, useState } from "react";
 import {
+  AutomaticBackupsScheduleState,
+  BackupOverviewRow,
   ConnectionValidationMode,
+  LambdaBackupStatus,
   LambdaConnectionState,
+  RuntimeMode,
 } from "../types/types";
 import {
   attemptLegacyInitialization,
@@ -20,8 +26,11 @@ import {
 import {
   DEPLOY_PROVIDER_OPTIONS,
   DeployProvider,
+  PLUGIN_README_URL,
 } from "../utils/deployProviders";
+import { createDebugLogger, isDebugEnabled } from "../utils/debugLogger";
 import { getDeploymentUrlFromParameters } from "../utils/getDeploymentUrlFromParameters";
+import { getRuntimeMode } from "../utils/getRuntimeMode";
 import {
   buildConnectedLambdaConnectionState,
   buildDisconnectedLambdaConnectionState,
@@ -35,7 +44,8 @@ import {
   triggerBackupNow,
   TriggerBackupNowError,
 } from "../utils/triggerBackupNow";
-import { createDebugLogger, isDebugEnabled } from "../utils/debugLogger";
+import { buildBackupOverviewRows } from "../utils/buildBackupOverviewRows";
+import { fetchLambdaBackupStatus } from "../utils/fetchLambdaBackupStatus";
 
 const DEFAULT_CONNECTION_ERROR_SUMMARY =
   "Could not validate the Automatic Backups deployment.";
@@ -52,7 +62,9 @@ const toConnectionValidationMode = (
   return value === "health" || value === "legacy" ? value : undefined;
 };
 
-const toLambdaConnectionState = (value: unknown): LambdaConnectionState | undefined => {
+const toLambdaConnectionState = (
+  value: unknown,
+): LambdaConnectionState | undefined => {
   if (!value || typeof value !== "object") {
     return undefined;
   }
@@ -70,6 +82,39 @@ const toLambdaConnectionState = (value: unknown): LambdaConnectionState | undefi
   }
 
   return undefined;
+};
+
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const asOptionalString = (value: unknown): string | undefined =>
+  typeof value === "string" && value.trim() ? value : undefined;
+
+const toAutomaticBackupsScheduleState = (
+  value: unknown,
+): AutomaticBackupsScheduleState => {
+  if (!isObject(value)) {
+    return {};
+  }
+
+  return {
+    dailyLastRunDate: asOptionalString(value.dailyLastRunDate),
+    weeklyLastRunKey: asOptionalString(value.weeklyLastRunKey),
+    lastDailyRunAt: asOptionalString(value.lastDailyRunAt),
+    lastWeeklyRunAt: asOptionalString(value.lastWeeklyRunAt),
+    lastDailyManagedEnvironmentId: asOptionalString(value.lastDailyManagedEnvironmentId),
+    lastWeeklyManagedEnvironmentId: asOptionalString(value.lastWeeklyManagedEnvironmentId),
+    lastDailyExecutionMode:
+      value.lastDailyExecutionMode === "lambdaless_on_boot"
+        ? "lambdaless_on_boot"
+        : undefined,
+    lastWeeklyExecutionMode:
+      value.lastWeeklyExecutionMode === "lambdaless_on_boot"
+        ? "lambdaless_on_boot"
+        : undefined,
+    lastDailyError: asOptionalString(value.lastDailyError),
+    lastWeeklyError: asOptionalString(value.lastWeeklyError),
+  };
 };
 
 const getConnectionErrorSummary = (
@@ -94,7 +139,9 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       : undefined;
   const initialDeploymentUrl = getDeploymentUrlFromParameters(pluginParameters);
   const initialLegacyNetlifyUrl =
-    typeof pluginParameters?.netlifyURL === "string" ? pluginParameters.netlifyURL : "";
+    typeof pluginParameters?.netlifyURL === "string"
+      ? pluginParameters.netlifyURL
+      : "";
   const fallbackInitialDeploymentUrl =
     initialDeploymentUrl.trim() || initialLegacyNetlifyUrl.trim();
   const initialDebugEnabled = isDebugEnabled(pluginParameters);
@@ -103,6 +150,10 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   );
   const initialValidationMode = toConnectionValidationMode(
     pluginParameters?.connectionValidationMode,
+  );
+  const initialRuntimeMode = getRuntimeMode(pluginParameters);
+  const initialAutomaticBackupsScheduleState = toAutomaticBackupsScheduleState(
+    pluginParameters?.automaticBackupsSchedule,
   );
 
   const hasInitialConnectionErrorDetails =
@@ -115,11 +166,21 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         initialConnectionState.responseSnippet,
     );
 
+  const [runtimeModeSelection, setRuntimeModeSelection] = useState<RuntimeMode>(
+    initialRuntimeMode,
+  );
+  const [debugEnabled, setDebugEnabled] = useState(initialDebugEnabled);
+  const [savedFormValues, setSavedFormValues] = useState({
+    runtimeMode: initialRuntimeMode,
+    debugEnabled: initialDebugEnabled,
+  });
+
+  const [isLoading, setIsLoading] = useState(false);
   const [isHealthChecking, setIsHealthChecking] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [isTriggeringBackup, setIsTriggeringBackup] = useState(false);
-  const [isUpdatingDebugSetting, setIsUpdatingDebugSetting] = useState(false);
+
   const [deploymentUrlInput, setDeploymentUrlInput] = useState(
     fallbackInitialDeploymentUrl,
   );
@@ -151,13 +212,17 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     [],
   );
   const [showBackupNowDetails, setShowBackupNowDetails] = useState(false);
-  const [debugEnabled, setDebugEnabled] = useState(initialDebugEnabled);
+  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
+  const [lambdaBackupStatus, setLambdaBackupStatus] = useState<
+    LambdaBackupStatus | undefined
+  >(undefined);
+  const [isLoadingBackupOverview, setIsLoadingBackupOverview] = useState(false);
+  const [backupOverviewError, setBackupOverviewError] = useState("");
   const debugLogger = createDebugLogger(debugEnabled, "ConfigScreen");
 
   const persistPluginParameters = async (updates: Record<string, unknown>) => {
     await ctx.updatePluginParameters({
       ...ctx.plugin.attributes.parameters,
-      debug: debugEnabled,
       ...updates,
     });
   };
@@ -174,35 +239,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     setShowBackupNowDetails(false);
   };
 
-  const updateDebugLoggingHandler = async (nextValue: boolean) => {
-    if (nextValue === debugEnabled) {
-      return;
-    }
-
-    const previousValue = debugEnabled;
-    setIsUpdatingDebugSetting(true);
-    setDebugEnabled(nextValue);
-
-    try {
-      await persistPluginParameters({ debug: nextValue });
-      if (nextValue) {
-        console.log("[automatic-backups][ConfigScreen] Debug logging enabled");
-      }
-      ctx.notice(`Debug logging ${nextValue ? "enabled" : "disabled"}.`);
-    } catch (error) {
-      setDebugEnabled(previousValue);
-      await ctx.alert("Could not update debug logging setting.");
-      if (nextValue || previousValue) {
-        console.error(
-          "[automatic-backups][ConfigScreen] Failed to persist debug setting",
-          error,
-        );
-      }
-    } finally {
-      setIsUpdatingDebugSetting(false);
-    }
-  };
-
   const applyDisconnectedState = (state: LambdaConnectionState) => {
     setConnectionState(state);
     setConnectionErrorSummary(getConnectionErrorSummary(state));
@@ -210,16 +246,75 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     setShowConnectionDetails(false);
   };
 
+  const refreshLambdaBackupOverview = useCallback(
+    async (baseUrl?: string) => {
+      const candidateUrl = (baseUrl || activeDeploymentUrl).trim();
+      const shouldFetch =
+        savedFormValues.runtimeMode === "lambda" &&
+        connectionValidationMode === "health" &&
+        connectionState?.status === "connected" &&
+        candidateUrl.length > 0;
+
+      if (!shouldFetch) {
+        setLambdaBackupStatus(undefined);
+        if (savedFormValues.runtimeMode === "lambda") {
+          setBackupOverviewError(
+            "Lambda status is unavailable until the saved Lambda URL is connected with a healthy ping.",
+          );
+        } else {
+          setBackupOverviewError("");
+        }
+        setIsLoadingBackupOverview(false);
+        return;
+      }
+
+      setIsLoadingBackupOverview(true);
+      setBackupOverviewError("");
+
+      try {
+        const status = await fetchLambdaBackupStatus({
+          baseUrl: candidateUrl,
+          environment: ctx.environment,
+        });
+        setLambdaBackupStatus(status);
+      } catch (error) {
+        setLambdaBackupStatus(undefined);
+        setBackupOverviewError(
+          error instanceof Error
+            ? error.message
+            : "Could not load backup overview from lambda status endpoint.",
+        );
+      } finally {
+        setIsLoadingBackupOverview(false);
+      }
+    },
+    [
+      activeDeploymentUrl,
+      connectionState?.status,
+      connectionValidationMode,
+      ctx.environment,
+      savedFormValues.runtimeMode,
+    ],
+  );
+
   useEffect(() => {
     let isCancelled = false;
     debugLogger.log("Config screen mounted", {
       initialDeploymentUrl,
       initialValidationMode,
+      initialRuntimeMode,
       hasInitialConnectionState: Boolean(initialConnectionState),
       debugEnabled,
     });
 
     const migrateAndCheck = async () => {
+      if (initialRuntimeMode !== "lambda") {
+        debugLogger.log(
+          "Skipping mount health check because cron mode is disabled",
+        );
+        return;
+      }
+
       let configuredDeploymentUrl = fallbackInitialDeploymentUrl;
 
       if (!initialDeploymentUrl.trim() && initialLegacyNetlifyUrl.trim()) {
@@ -233,18 +328,42 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           await persistPluginParameters({
             deploymentURL: configuredDeploymentUrl,
             netlifyURL: configuredDeploymentUrl,
+            vercelURL: configuredDeploymentUrl,
+            runtimeMode: "lambda",
+            lambdaFullMode: true,
           });
         } catch {
           // Best-effort migration. Continue with UI state even if persistence fails.
         }
       }
 
+      setIsHealthChecking(true);
+
       if (!configuredDeploymentUrl.trim()) {
-        debugLogger.log("Skipping mount health check because no deployment URL is configured");
+        debugLogger.log(
+          "Skipping mount health check because no deployment URL is configured",
+        );
+        if (!isCancelled) {
+          setConnectionState(undefined);
+          setConnectionValidationMode(undefined);
+          clearConnectionErrorState();
+          setIsHealthChecking(false);
+        }
+
+        try {
+          await persistPluginParameters({
+            lambdaConnection: null,
+            connectionValidationMode: null,
+            runtimeMode: "lambda",
+            lambdaFullMode: true,
+          });
+        } catch {
+          // Ignore persistence errors on mount.
+        }
+
         return;
       }
 
-      setIsHealthChecking(true);
       debugLogger.log("Running mount health check", {
         configuredDeploymentUrl,
         phase: "config_mount",
@@ -273,16 +392,15 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         setConnectionValidationMode("health");
         setLegacyUpgradeWarning("");
         clearConnectionErrorState();
-        debugLogger.log("Mount health check succeeded", {
-          endpoint: verificationResult.endpoint,
-          normalizedBaseUrl: verificationResult.normalizedBaseUrl,
-        });
 
         await persistPluginParameters({
           deploymentURL: verificationResult.normalizedBaseUrl,
           netlifyURL: verificationResult.normalizedBaseUrl,
+          vercelURL: verificationResult.normalizedBaseUrl,
           lambdaConnection: connectedState,
           connectionValidationMode: "health",
+          runtimeMode: "lambda",
+          lambdaFullMode: true,
           hasBeenPrompted: legacyHasBeenPrompted ?? true,
           installationState:
             legacyInstallationState === "installed"
@@ -328,6 +446,8 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           await persistPluginParameters({
             lambdaConnection: disconnectedState,
             connectionValidationMode: initialValidationMode ?? null,
+            runtimeMode: "lambda",
+            lambdaFullMode: true,
           });
         } catch {
           // Ignore persistence failure on mount.
@@ -348,7 +468,16 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     };
   }, []);
 
+  useEffect(() => {
+    void refreshLambdaBackupOverview();
+  }, [refreshLambdaBackupOverview]);
+
   const connectLambdaHandler = async () => {
+    if (runtimeModeSelection !== "lambda") {
+      await ctx.alert("Enable 'Use Cronjobs' before connecting a lambda deployment.");
+      return;
+    }
+
     const candidateUrl = deploymentUrlInput.trim();
     if (!candidateUrl) {
       setConnectionErrorSummary("Enter your lambda deployment URL.");
@@ -385,8 +514,11 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       await persistPluginParameters({
         deploymentURL: verificationResult.normalizedBaseUrl,
         netlifyURL: verificationResult.normalizedBaseUrl,
+        vercelURL: verificationResult.normalizedBaseUrl,
         lambdaConnection: connectedState,
         connectionValidationMode: "health",
+        runtimeMode: runtimeModeSelection,
+        lambdaFullMode: runtimeModeSelection === "lambda",
         hasBeenPrompted: legacyHasBeenPrompted ?? true,
         installationState:
           legacyInstallationState === "installed"
@@ -400,6 +532,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         mode: "health",
       });
       ctx.notice("Lambda function connected successfully.");
+      await refreshLambdaBackupOverview(verificationResult.normalizedBaseUrl);
       return;
     } catch (error) {
       if (shouldUseLegacyInitializationFallback(error)) {
@@ -428,8 +561,11 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           await persistPluginParameters({
             deploymentURL: fallbackResult.normalizedBaseUrl,
             netlifyURL: fallbackResult.normalizedBaseUrl,
+            vercelURL: fallbackResult.normalizedBaseUrl,
             lambdaConnection: legacyConnectedState,
             connectionValidationMode: "legacy",
+            runtimeMode: runtimeModeSelection,
+            lambdaFullMode: runtimeModeSelection === "lambda",
             hasBeenPrompted: legacyHasBeenPrompted ?? true,
             installationState:
               legacyInstallationState === "installed"
@@ -448,9 +584,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           debugLogger.error("Legacy initialization fallback failed", fallbackError);
           setConnectionState(undefined);
           setConnectionValidationMode(undefined);
-          setConnectionErrorSummary(
-            "Could not connect the lambda deployment.",
-          );
+          setConnectionErrorSummary("Could not connect the lambda deployment.");
           setConnectionErrorDetails([
             "Could not connect using the legacy initialization endpoint.",
             fallbackError instanceof LegacyInitializationError
@@ -469,6 +603,8 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
             await persistPluginParameters({
               lambdaConnection: null,
               connectionValidationMode: null,
+              runtimeMode: runtimeModeSelection,
+              lambdaFullMode: runtimeModeSelection === "lambda",
             });
           } catch {
             // Ignore persistence errors here.
@@ -491,6 +627,8 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           await persistPluginParameters({
             lambdaConnection: disconnectedState,
             connectionValidationMode: null,
+            runtimeMode: runtimeModeSelection,
+            lambdaFullMode: runtimeModeSelection === "lambda",
           });
         } catch {
           // Ignore persistence errors while showing errors in UI.
@@ -524,14 +662,23 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       await persistPluginParameters({
         deploymentURL: "",
         netlifyURL: "",
+        vercelURL: "",
         lambdaConnection: null,
         connectionValidationMode: null,
+        runtimeMode: runtimeModeSelection,
+        lambdaFullMode: runtimeModeSelection === "lambda",
       });
 
       setDeploymentUrlInput("");
       setActiveDeploymentUrl("");
       setConnectionState(undefined);
       setConnectionValidationMode(undefined);
+      setLambdaBackupStatus(undefined);
+      setBackupOverviewError(
+        savedFormValues.runtimeMode === "lambda"
+          ? "Lambda status is unavailable until the saved Lambda URL is connected with a healthy ping."
+          : "",
+      );
       debugLogger.log("Lambda disconnected");
       ctx.notice("Current lambda function has been disconnected.");
     } catch (error) {
@@ -544,6 +691,82 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       await ctx.alert("Could not disconnect the current lambda function.");
     } finally {
       setIsDisconnecting(false);
+    }
+  };
+
+  const saveSettingsHandler = async () => {
+    debugLogger.log("Saving plugin settings", {
+      runtimeModeSelection,
+      debugEnabled,
+      activeDeploymentUrl,
+      connectionStatus: connectionState?.status,
+      connectionValidationMode,
+    });
+
+    const hasConnectedLambdaForSave =
+      runtimeModeSelection !== "lambda" ||
+      (activeDeploymentUrl.trim().length > 0 &&
+        connectionState?.status === "connected" &&
+        connectionValidationMode === "health" &&
+        !isHealthChecking &&
+        !isConnecting);
+
+    if (!hasConnectedLambdaForSave) {
+      await ctx.alert(
+        "Cannot save while 'Use Cronjobs' is enabled unless the Lambda URL is connected and ping status is Connected.",
+      );
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      let persistedDeploymentUrl = activeDeploymentUrl.trim();
+      let persistedConnectionState = connectionState ?? null;
+      let persistedValidationMode: ConnectionValidationMode | null =
+        connectionValidationMode ?? null;
+
+      if (runtimeModeSelection === "lambdaless") {
+        persistedDeploymentUrl = "";
+        persistedConnectionState = null;
+        persistedValidationMode = null;
+        setDeploymentUrlInput("");
+        setActiveDeploymentUrl("");
+        setConnectionState(undefined);
+        setConnectionValidationMode(undefined);
+        setLegacyUpgradeWarning("");
+        clearConnectionErrorState();
+        clearBackupNowErrorState();
+        setLambdaBackupStatus(undefined);
+        setBackupOverviewError("");
+      }
+
+      await persistPluginParameters({
+        debug: debugEnabled,
+        runtimeMode: runtimeModeSelection,
+        lambdaFullMode: runtimeModeSelection === "lambda",
+        deploymentURL: persistedDeploymentUrl,
+        netlifyURL: persistedDeploymentUrl,
+        vercelURL: persistedDeploymentUrl,
+        lambdaConnection: persistedConnectionState,
+        connectionValidationMode: persistedValidationMode,
+      });
+
+      setSavedFormValues({
+        runtimeMode: runtimeModeSelection,
+        debugEnabled,
+      });
+
+      ctx.notice(
+        `Settings saved. Runtime mode: ${
+          runtimeModeSelection === "lambda" ? "Lambda-full (cron)" : "Lambda-less (on boot)"
+        }. Debug logging is ${debugEnabled ? "enabled" : "disabled"}.`,
+      );
+    } catch (error) {
+      debugLogger.error("Could not save plugin settings", error);
+      await ctx.alert("Could not save plugin settings.");
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -570,7 +793,10 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       return;
     }
 
-    debugLogger.log("Triggering backup now", { candidateUrl, environment: ctx.environment });
+    debugLogger.log("Triggering backup now", {
+      candidateUrl,
+      environment: ctx.environment,
+    });
     setIsTriggeringBackup(true);
     clearBackupNowErrorState();
 
@@ -590,6 +816,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       ctx.notice(
         `Backup triggered successfully via ${result.method} ${result.endpoint}.`,
       );
+      await refreshLambdaBackupOverview(result.normalizedBaseUrl);
     } catch (error) {
       if (error instanceof TriggerBackupNowError) {
         debugLogger.warn("All backup trigger attempts failed", {
@@ -600,7 +827,10 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         setBackupNowErrorDetails(getTriggerBackupNowErrorDetails(error));
         setShowBackupNowDetails(false);
       } else if (error instanceof LambdaHealthCheckError) {
-        debugLogger.warn("Backup trigger failed because URL normalization/validation failed", error);
+        debugLogger.warn(
+          "Backup trigger failed because URL normalization/validation failed",
+          error,
+        );
         setBackupNowErrorSummary("Could not trigger backup now.");
         setBackupNowErrorDetails([
           `Failure details: ${error.message}`,
@@ -622,6 +852,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     }
   };
 
+  const isLambdaFullModeEnabled = runtimeModeSelection === "lambda";
   const pingIndicator =
     isHealthChecking || isConnecting
       ? {
@@ -665,10 +896,9 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   const disconnectButtonLabel = isDisconnecting ? "Disconnecting..." : "Disconnect";
   const backupNowButtonLabel = isTriggeringBackup
     ? "Running test backup..."
-    : "Run lambda test Backup";
+    : "Run lambda test backup";
   const hasHealthyConnectedLambda =
-    connectionValidationMode === "health" &&
-    connectionState?.status === "connected";
+    connectionValidationMode === "health" && connectionState?.status === "connected";
   const backupNowButtonDisabled =
     isTriggeringBackup ||
     isConnecting ||
@@ -713,6 +943,76 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     fontSize: "var(--font-size-s)",
   };
 
+  const advancedSettingsStyle: CSSProperties = {
+    display: "flex",
+    flexDirection: "column",
+    gap: "var(--spacing-m)",
+  };
+
+  const overviewGridStyle: CSSProperties = {
+    display: "grid",
+    gap: "var(--spacing-s)",
+  };
+
+  const overviewRowStyle: CSSProperties = {
+    border: "1px solid var(--border-color)",
+    borderRadius: "6px",
+    padding: "var(--spacing-m)",
+    background: "#fff",
+  };
+
+  const overviewRowLabelStyle: CSSProperties = {
+    marginTop: 0,
+    marginBottom: "var(--spacing-xs)",
+    fontSize: "var(--font-size-m)",
+  };
+
+  const overviewRowInfoStyle: CSSProperties = {
+    margin: 0,
+    fontSize: "var(--font-size-s)",
+  };
+
+  const switchFieldNoHintGapStyle = {
+    "--spacing-s": "0",
+  } as CSSProperties;
+
+  const switchFieldNoHintGapStyleWithExtraSpacing = {
+    ...switchFieldNoHintGapStyle,
+    marginBottom: "0.25rem",
+  } as CSSProperties;
+
+  const lambdaSetupDisabled =
+    isConnecting || isDisconnecting || isHealthChecking || isLoading;
+
+  const hasUnsavedChanges =
+    debugEnabled !== savedFormValues.debugEnabled ||
+    runtimeModeSelection !== savedFormValues.runtimeMode;
+
+  const canSaveWithLambdaMode =
+    !isLambdaFullModeEnabled ||
+    (hasActiveDeploymentUrl &&
+      connectionState?.status === "connected" &&
+      connectionValidationMode === "health" &&
+      !isHealthChecking &&
+      !isConnecting);
+
+  const lambdaSaveBlockReason = !isLambdaFullModeEnabled
+    ? ""
+    : !hasActiveDeploymentUrl
+      ? "To save with cronjobs enabled, connect a Lambda URL first."
+      : isHealthChecking || isConnecting
+        ? "Wait for the Lambda ping check to finish."
+        : connectionState?.status !== "connected" || connectionValidationMode !== "health"
+          ? "To save with cronjobs enabled, Lambda status must be Connected (ping successful)."
+          : "";
+
+  const savedRuntimeMode = savedFormValues.runtimeMode;
+  const backupOverviewRows: BackupOverviewRow[] = buildBackupOverviewRows({
+    runtimeMode: savedRuntimeMode,
+    scheduleState: initialAutomaticBackupsScheduleState,
+    lambdaStatus: savedRuntimeMode === "lambda" ? lambdaBackupStatus : undefined,
+  });
+
   return (
     <Canvas ctx={ctx}>
       <div
@@ -721,76 +1021,77 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           margin: "0 auto",
         }}
       >
-        <div style={cardStyle}>
-          <h2
-            style={{
-              marginTop: 0,
-              marginBottom: "var(--spacing-s)",
-              fontSize: "var(--font-size-l)",
-            }}
-          >
-            Lambda setup
-          </h2>
-
-          <p style={infoTextStyle}>
-            <strong>Current URL:</strong>{" "}
-            <span style={{ wordBreak: "break-all" }}>
-              {activeDeploymentUrl || "No lambda function connected."}
-            </span>
-          </p>
-
-          <p
-            style={{
-              display: "flex",
-              justifyContent: "flex-start",
-              alignItems: "center",
-              gap: "var(--spacing-s)",
-              marginTop: 0,
-              marginBottom: "var(--spacing-s)",
-              fontSize: "var(--font-size-s)",
-              color: "var(--light-body-color)",
-            }}
-          >
-            <span
-              aria-hidden="true"
+        {isLambdaFullModeEnabled && (
+          <div style={cardStyle}>
+            <h2
               style={{
-                display: "inline-block",
-                width: "10px",
-                height: "10px",
-                borderRadius: "999px",
-                background: pingIndicator.color,
+                marginTop: 0,
+                marginBottom: "var(--spacing-s)",
+                fontSize: "var(--font-size-l)",
+              }}
+            >
+              Lambda setup
+            </h2>
+
+            <p style={infoTextStyle}>
+              <strong>Current URL:</strong>{" "}
+              <span style={{ wordBreak: "break-all" }}>
+                {activeDeploymentUrl || "No lambda function connected."}
+              </span>
+            </p>
+
+            <p
+              style={{
+                display: "flex",
+                justifyContent: "flex-start",
+                alignItems: "center",
+                gap: "var(--spacing-s)",
+                marginTop: 0,
+                marginBottom: "var(--spacing-s)",
+                fontSize: "var(--font-size-s)",
+                color: "var(--light-body-color)",
+              }}
+            >
+              <span
+                aria-hidden="true"
+                style={{
+                  display: "inline-block",
+                  width: "10px",
+                  height: "10px",
+                  borderRadius: "999px",
+                  background: pingIndicator.color,
+                }}
+              />
+              <span>{pingIndicator.label}</span>
+            </p>
+
+            <p style={{ ...subtleTextStyle, marginBottom: "var(--spacing-l)" }}>
+              Status is based on the `/api/datocms/plugin-health` ping.
+            </p>
+
+            <TextField
+              name="deploymentURL"
+              id="deploymentURL"
+              label="Lambda URL"
+              value={deploymentUrlInput}
+              placeholder="https://backups.example.com/"
+              onChange={(newValue) => {
+                setDeploymentUrlInput(newValue);
+                clearConnectionErrorState();
+                clearBackupNowErrorState();
               }}
             />
-            <span>{pingIndicator.label}</span>
-          </p>
 
-          <p style={{ ...subtleTextStyle, marginBottom: "var(--spacing-l)" }}>
-            Status is based on the `/api/datocms/plugin-health` ping.
-          </p>
-
-          <TextField
-            name="deploymentURL"
-            id="deploymentURL"
-            label="Lambda URL"
-            value={deploymentUrlInput}
-            placeholder="https://backups.example.com/"
-            onChange={(newValue) => {
-              setDeploymentUrlInput(newValue);
-              clearConnectionErrorState();
-              clearBackupNowErrorState();
-            }}
-          />
-
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              flexWrap: "nowrap",
-              width: "100%",
-              gap: "var(--spacing-s)",
-              marginTop: "var(--spacing-l)",
-            }}
-          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                flexWrap: "nowrap",
+                width: "100%",
+                gap: "var(--spacing-s)",
+                marginTop: "var(--spacing-l)",
+              }}
+            >
               <div style={{ flex: "1 1 0" }}>
                 <Dropdown
                   renderTrigger={({ onClick }) => (
@@ -822,49 +1123,49 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
                 </Dropdown>
               </div>
 
-            <Button
-              onClick={disconnectCurrentLambdaHandler}
-              buttonType="negative"
-              disabled={
-                isDisconnecting ||
-                isHealthChecking ||
-                isTriggeringBackup ||
-                !activeDeploymentUrl.trim()
-              }
-              style={lambdaActionButtonStyle}
-            >
-              {disconnectButtonLabel}
-            </Button>
+              <Button
+                onClick={disconnectCurrentLambdaHandler}
+                buttonType="negative"
+                disabled={
+                  isDisconnecting ||
+                  isHealthChecking ||
+                  isTriggeringBackup ||
+                  !activeDeploymentUrl.trim()
+                }
+                style={lambdaActionButtonStyle}
+              >
+                {disconnectButtonLabel}
+              </Button>
 
-            <Button
-              buttonType="primary"
-              onClick={connectLambdaHandler}
-              disabled={
-                isConnecting ||
-                isHealthChecking ||
-                isDisconnecting ||
-                isTriggeringBackup
-              }
-              style={lambdaActionButtonStyle}
-            >
-              {connectButtonLabel}
-            </Button>
+              <Button
+                buttonType="primary"
+                onClick={connectLambdaHandler}
+                disabled={
+                  isConnecting ||
+                  isHealthChecking ||
+                  isDisconnecting ||
+                  isTriggeringBackup
+                }
+                style={lambdaActionButtonStyle}
+              >
+                {connectButtonLabel}
+              </Button>
+            </div>
+
+            <div style={{ marginTop: "var(--spacing-s)" }}>
+              <Button
+                buttonType="muted"
+                onClick={triggerBackupNowHandler}
+                disabled={backupNowButtonDisabled}
+                style={lambdaActionButtonStyle}
+              >
+                {backupNowButtonLabel}
+              </Button>
+            </div>
           </div>
+        )}
 
-          <div style={{ marginTop: "var(--spacing-s)" }}>
-            <Button
-              buttonType="muted"
-              onClick={triggerBackupNowHandler}
-              disabled={backupNowButtonDisabled}
-              style={lambdaActionButtonStyle}
-            >
-              {backupNowButtonLabel}
-            </Button>
-          </div>
-
-        </div>
-
-        {legacyUpgradeWarning && (
+        {isLambdaFullModeEnabled && legacyUpgradeWarning && (
           <div
             style={{
               border: "1px solid var(--warning-color)",
@@ -878,7 +1179,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           </div>
         )}
 
-        {backupNowErrorSummary && (
+        {isLambdaFullModeEnabled && backupNowErrorSummary && (
           <div
             style={{
               border: "1px solid rgba(var(--alert-color-rgb-components), 0.5)",
@@ -903,24 +1204,26 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           </div>
         )}
 
-        {showBackupNowDetails && backupNowErrorDetails.length > 0 && (
-          <div
-            style={{
-              border: "1px solid rgba(var(--alert-color-rgb-components), 0.5)",
-              borderRadius: "6px",
-              background: "#fff",
-              padding: "var(--spacing-m)",
-              marginBottom: "var(--spacing-l)",
-              textAlign: "left",
-            }}
-          >
-            {backupNowErrorDetails.map((detail, index) => (
-              <p key={`config-backup-now-error-${index}`}>{detail}</p>
-            ))}
-          </div>
-        )}
+        {isLambdaFullModeEnabled &&
+          showBackupNowDetails &&
+          backupNowErrorDetails.length > 0 && (
+            <div
+              style={{
+                border: "1px solid rgba(var(--alert-color-rgb-components), 0.5)",
+                borderRadius: "6px",
+                background: "#fff",
+                padding: "var(--spacing-m)",
+                marginBottom: "var(--spacing-l)",
+                textAlign: "left",
+              }}
+            >
+              {backupNowErrorDetails.map((detail, index) => (
+                <p key={`config-backup-now-error-${index}`}>{detail}</p>
+              ))}
+            </div>
+          )}
 
-        {connectionErrorSummary && (
+        {isLambdaFullModeEnabled && connectionErrorSummary && (
           <div
             style={{
               border: "1px solid rgba(var(--alert-color-rgb-components), 0.5)",
@@ -945,22 +1248,24 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           </div>
         )}
 
-        {showConnectionDetails && connectionErrorDetails.length > 0 && (
-          <div
-            style={{
-              border: "1px solid rgba(var(--alert-color-rgb-components), 0.5)",
-              borderRadius: "6px",
-              background: "#fff",
-              padding: "var(--spacing-m)",
-              marginBottom: "var(--spacing-l)",
-              textAlign: "left",
-            }}
-          >
-            {connectionErrorDetails.map((detail, index) => (
-              <p key={`config-health-error-${index}`}>{detail}</p>
-            ))}
-          </div>
-        )}
+        {isLambdaFullModeEnabled &&
+          showConnectionDetails &&
+          connectionErrorDetails.length > 0 && (
+            <div
+              style={{
+                border: "1px solid rgba(var(--alert-color-rgb-components), 0.5)",
+                borderRadius: "6px",
+                background: "#fff",
+                padding: "var(--spacing-m)",
+                marginBottom: "var(--spacing-l)",
+                textAlign: "left",
+              }}
+            >
+              {connectionErrorDetails.map((detail, index) => (
+                <p key={`config-health-error-${index}`}>{detail}</p>
+              ))}
+            </div>
+          )}
 
         <div style={cardStyle}>
           <h2
@@ -970,29 +1275,166 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
               fontSize: "var(--font-size-l)",
             }}
           >
-            Debug
+            Backup overview
           </h2>
-          <p style={{ ...infoTextStyle, marginBottom: "var(--spacing-m)" }}>
-            Enable verbose console logs to help troubleshoot connection and backup
-            trigger issues.
+
+          <p style={infoTextStyle}>
+            Overview for the <strong>saved</strong> runtime mode. All timestamps are in UTC.
           </p>
-          <SwitchField
-            name="debugLogging"
-            id="debugLogging"
-            label="Enable debug logging"
-            hint="Logs appear in the browser console with the [automatic-backups] prefix."
-            value={debugEnabled}
-            switchInputProps={{
-              name: "debugLogging",
-              value: debugEnabled,
-              disabled: isUpdatingDebugSetting,
-            }}
-            onChange={(nextValue) => {
-              void updateDebugLoggingHandler(nextValue);
-            }}
-          />
+
+          <p style={{ ...subtleTextStyle, marginBottom: "var(--spacing-s)" }}>
+            <strong>Saved mode:</strong>{" "}
+            {savedRuntimeMode === "lambda" ? "Cronjobs (Lambda)" : "Lambdaless on boot"}
+          </p>
+
+          {savedRuntimeMode === "lambda" && isLoadingBackupOverview && (
+            <p style={{ ...subtleTextStyle, marginBottom: "var(--spacing-s)" }}>
+              Refreshing Lambda backup status...
+            </p>
+          )}
+
+          {savedRuntimeMode === "lambda" && backupOverviewError && (
+            <p
+              style={{
+                ...subtleTextStyle,
+                marginBottom: "var(--spacing-s)",
+                color: "var(--alert-color)",
+              }}
+            >
+              {backupOverviewError}
+            </p>
+          )}
+
+          <div style={overviewGridStyle}>
+            {backupOverviewRows.map((row) => (
+              <div key={`backup-overview-${row.scope}`} style={overviewRowStyle}>
+                <h3 style={overviewRowLabelStyle}>
+                  {row.scope === "daily" ? "Daily" : "Weekly"}
+                </h3>
+                <p style={overviewRowInfoStyle}>
+                  <strong>Last backup:</strong> {row.lastBackup}
+                </p>
+                <p style={overviewRowInfoStyle}>
+                  <strong>Next backup:</strong> {row.nextBackup}
+                </p>
+                <p style={overviewRowInfoStyle}>
+                  <strong>Source:</strong> {row.source}
+                </p>
+                {row.sourceDetails && (
+                  <p style={overviewRowInfoStyle}>
+                    <strong>Details:</strong> {row.sourceDetails}
+                  </p>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
 
+        <Form>
+          <Section
+            title="Advanced settings"
+            collapsible={{
+              isOpen: showAdvancedSettings,
+              onToggle: () => setShowAdvancedSettings((current) => !current),
+            }}
+          >
+            <div style={advancedSettingsStyle}>
+              <div style={switchFieldNoHintGapStyleWithExtraSpacing}>
+                <SwitchField
+                  name="debug"
+                  id="debug"
+                  label="Enable debug logs"
+                  hint="When enabled, plugin events and requests are logged to the browser console."
+                  value={debugEnabled}
+                  onChange={(newValue) => setDebugEnabled(newValue)}
+                />
+              </div>
+
+              <div style={switchFieldNoHintGapStyle}>
+                <SwitchField
+                  name="useCronjobs"
+                  id="useCronjobs"
+                  label="Use Cronjobs"
+                  hint="If enabled, backups rely on the external Lambda scheduler. If disabled, backups run on plugin boot."
+                  value={isLambdaFullModeEnabled}
+                  switchInputProps={{
+                    name: "useCronjobs",
+                    value: isLambdaFullModeEnabled,
+                    disabled: lambdaSetupDisabled,
+                  }}
+                  onChange={(newValue) => {
+                    setRuntimeModeSelection(newValue ? "lambda" : "lambdaless");
+                    clearConnectionErrorState();
+                    clearBackupNowErrorState();
+                    setLegacyUpgradeWarning("");
+                  }}
+                />
+              </div>
+
+              <p style={subtleTextStyle}>
+                <a
+                  href={`${PLUGIN_README_URL}#runtime-modes`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Runtime mode guide and tradeoffs
+                </a>
+              </p>
+
+              {isLambdaFullModeEnabled && (
+                <p style={subtleTextStyle}>
+                  Connect a Lambda URL above to save with cron mode enabled.
+                </p>
+              )}
+
+              {runtimeModeSelection === "lambdaless" && hasActiveDeploymentUrl && (
+                <p style={subtleTextStyle}>
+                  Lambda is currently connected. Click Save to complete the switch to
+                  Lambda-less and clear the connected URL.
+                </p>
+              )}
+
+              {lambdaSaveBlockReason && (
+                <p
+                  style={{
+                    ...subtleTextStyle,
+                    color: "var(--alert-color)",
+                  }}
+                >
+                  {lambdaSaveBlockReason}
+                </p>
+              )}
+            </div>
+          </Section>
+
+          {!showAdvancedSettings && lambdaSaveBlockReason && (
+            <p
+              style={{
+                ...subtleTextStyle,
+                marginTop: "var(--spacing-s)",
+                color: "var(--alert-color)",
+              }}
+            >
+              Open Advanced settings to configure cron mode before saving.
+            </p>
+          )}
+
+          <Button
+            onClick={saveSettingsHandler}
+            fullWidth
+            buttonType={isLoading ? "muted" : "primary"}
+            disabled={
+              isLoading ||
+              isDisconnecting ||
+              isConnecting ||
+              isTriggeringBackup ||
+              !canSaveWithLambdaMode ||
+              !hasUnsavedChanges
+            }
+          >
+            Save
+          </Button>
+        </Form>
       </div>
     </Canvas>
   );
