@@ -21,6 +21,7 @@ type BuildBackupOverviewRowsInput = {
   scheduleState: AutomaticBackupsScheduleState;
   scheduleConfig: BackupScheduleConfig;
   lambdaStatus?: LambdaBackupStatus;
+  availableEnvironmentIds?: readonly string[];
   now?: Date;
 };
 
@@ -138,9 +139,9 @@ const buildLambdalessRows = (
         });
     const nextDueDate = toUtcDateFromLocalDateKey(nextDueLocalDate);
     const nextBackup = dueNow
-      ? "Due now (on next dashboard login)"
+      ? "Due now"
       : nextDueDate
-        ? `${formatRelativeDateTime(nextDueDate, now)} (on next dashboard login)`
+        ? formatRelativeDateTime(nextDueDate, now)
         : "Unavailable";
     const managedEnvironmentId = toManagedEnvironmentIdForCadence(cadence, scheduleState);
 
@@ -189,16 +190,55 @@ const buildLambdaRows = (
   });
 };
 
+const toAvailableEnvironmentIdsSet = (
+  availableEnvironmentIds: readonly string[] | undefined,
+): Set<string> | undefined => {
+  if (!availableEnvironmentIds || availableEnvironmentIds.length === 0) {
+    return undefined;
+  }
+
+  const normalizedIds = availableEnvironmentIds
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+  return normalizedIds.length > 0 ? new Set(normalizedIds) : undefined;
+};
+
+const annotateMissingEnvironment = (
+  row: BackupOverviewRow,
+  availableEnvironmentIdsSet: Set<string> | undefined,
+): BackupOverviewRow => {
+  if (!availableEnvironmentIdsSet || !row.environmentLinked) {
+    return row;
+  }
+
+  if (availableEnvironmentIdsSet.has(row.environmentName)) {
+    return row;
+  }
+
+  return {
+    ...row,
+    environmentLinked: false,
+    environmentStatusNote: "Missing in current environments list (deleted or renamed).",
+  };
+};
+
 export const buildBackupOverviewRows = ({
   runtimeMode,
   scheduleState,
   scheduleConfig,
   lambdaStatus,
+  availableEnvironmentIds,
   now = new Date(),
 }: BuildBackupOverviewRowsInput): BackupOverviewRow[] => {
-  if (runtimeMode === "lambda") {
-    return buildLambdaRows(lambdaStatus, scheduleConfig, now);
-  }
+  const rows =
+    runtimeMode === "lambda"
+      ? buildLambdaRows(lambdaStatus, scheduleConfig, now)
+      : buildLambdalessRows(scheduleState, scheduleConfig, now);
+  const availableEnvironmentIdsSet = toAvailableEnvironmentIdsSet(
+    availableEnvironmentIds,
+  );
 
-  return buildLambdalessRows(scheduleState, scheduleConfig, now);
+  return rows.map((row) =>
+    annotateMissingEnvironment(row, availableEnvironmentIdsSet),
+  );
 };

@@ -2,16 +2,13 @@ import { OnBootCtx } from "datocms-plugin-sdk";
 import {
   AutomaticBackupsScheduleState,
   BackupCadence,
-  BackupScheduleConfig,
 } from "../types/types";
 import {
   getLastRunLocalDateForCadence,
   isBackupCadence,
   isCadenceDueNow,
   normalizeBackupScheduleConfig,
-  parseTimeToMinuteOfDay,
   toLocalDateKey,
-  toLocalMinuteOfDay,
 } from "./backupSchedule";
 import { createDebugLogger, isDebugEnabled } from "./debugLogger";
 import { getRuntimeMode } from "./getRuntimeMode";
@@ -228,19 +225,6 @@ export const toUtcIsoWeekKey = (date: Date): string => {
   return `${workingDate.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
 };
 
-const shouldRunInLambdalessTimeWindow = (
-  now: Date,
-  scheduleConfig: BackupScheduleConfig,
-): boolean => {
-  const minuteThreshold = parseTimeToMinuteOfDay(scheduleConfig.lambdalessTime);
-  if (minuteThreshold === null) {
-    return true;
-  }
-
-  const currentLocalMinute = toLocalMinuteOfDay(now, scheduleConfig.timezone);
-  return currentLocalMinute >= minuteThreshold;
-};
-
 const backupOnBoot = async (ctx: OnBootCtx) => {
   const pluginParameters = getCurrentPluginParameters(ctx);
   const debugLogger = createDebugLogger(
@@ -276,14 +260,6 @@ const backupOnBoot = async (ctx: OnBootCtx) => {
     } catch (error) {
       debugLogger.warn("Could not persist normalized backup schedule config", error);
     }
-  }
-
-  if (!shouldRunInLambdalessTimeWindow(initialNow, scheduleConfig)) {
-    debugLogger.log("Skipping on-boot backup because configured lambdaless time was not reached", {
-      timezone: scheduleConfig.timezone,
-      lambdalessTime: scheduleConfig.lambdalessTime,
-    });
-    return;
   }
 
   const initialScheduleState = getCurrentScheduleState(ctx);
@@ -350,14 +326,6 @@ const backupOnBoot = async (ctx: OnBootCtx) => {
     }
 
     const executionNow = new Date();
-    if (!shouldRunInLambdalessTimeWindow(executionNow, scheduleConfig)) {
-      debugLogger.log("Skipping on-boot backup after lock because configured time window is still not due", {
-        timezone: scheduleConfig.timezone,
-        lambdalessTime: scheduleConfig.lambdalessTime,
-      });
-      return;
-    }
-
     const scheduleAfterLock = getCurrentScheduleState(ctx);
     const currentLocalDate = toLocalDateKey(executionNow, scheduleConfig.timezone);
     const runAtByCadence: Partial<Record<BackupCadence, string>> = {

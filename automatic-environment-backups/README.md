@@ -1,6 +1,6 @@
 # Automatic environment backups
 
-This plugin creates daily and weekly backups of your DatoCMS primary environment.
+This plugin creates automatic backups of your DatoCMS primary environment.
 
 The plugin supports two runtime modes:
 
@@ -21,14 +21,22 @@ Default behavior:
 - Existing installs with a configured Lambda URL default to `Lambda-full`.
 - New installs with no URL configured default to `Lambda-less`.
 
+Backup scheduling is cadence-only. Users can enable any combination of:
+
+- Daily
+- Weekly
+- Bi-weekly
+- Monthly
+
+There is no configurable `HH:mm` run-time field.
+
 ## Capability matrix
 
 | Capability | Lambda-full (cron) | Lambda-less (on boot) |
 |---|---|---|
 | External scheduled execution (cron) | ✅ | ❌ |
 | Works without deploying serverless function | ❌ | ✅ |
-| Daily backup intent | ✅ | ✅ (best effort) |
-| Weekly backup intent | ✅ | ✅ (best effort) |
+| Daily/Weekly/Bi-weekly/Monthly cadence support | ✅ | ✅ (best effort) |
 | Exact execution time guarantees | ✅ (depends on scheduler) | ❌ |
 | Manual “Run lambda test backup” from UI | ✅ | ❌ |
 
@@ -37,10 +45,9 @@ Default behavior:
 In Lambda-less mode, backups are request-driven:
 
 - The plugin evaluates backup execution during `onBoot`.
-- Daily backup runs once per UTC day, tracked by `automaticBackupsSchedule.dailyLastRunDate`.
-- Weekly backup runs once per ISO week (UTC), tracked by `automaticBackupsSchedule.weeklyLastRunKey`.
+- Each cadence keeps its own watermark (for example in `automaticBackupsSchedule.lastRunLocalDateByCadence`).
 - If the plugin is not booted for some time, due backups run the next time it boots.
-- If one slot fails (daily/weekly), only successful slot watermarks are updated. Failed slots remain due for the next boot.
+- If one slot fails, only successful slot watermarks are updated. Failed slots remain due for the next boot.
 
 ### Concurrency safety (best effort lease lock)
 
@@ -57,10 +64,12 @@ This reduces duplicate execution risk across near-simultaneous boots, but it is 
 
 ### Managed backup environments (rolling slots)
 
-Lambda-less mode uses two managed environment IDs:
+Lambda-less mode uses four managed environment IDs:
 
 - `automatic-backups-daily`
 - `automatic-backups-weekly`
+- `automatic-backups-biweekly`
+- `automatic-backups-monthly`
 
 Each run refreshes the corresponding slot by forking the current primary environment into that ID. Existing managed slots are replaced.
 
@@ -97,9 +106,10 @@ Cons:
 
 1. Open the plugin config screen.
 2. Keep `Use Cronjobs` disabled.
-3. Click `Save`.
+3. Choose one or more backup cadences.
+4. Click `Save`.
 
-Backups will run during plugin boot and maintain rolling daily/weekly slots.
+Backups will run during plugin boot and maintain rolling cadence slots.
 
 ### Option 2: Lambda-full (cron mode)
 

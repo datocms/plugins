@@ -40,14 +40,12 @@ const createBackupSchedule = (
   overrides: Partial<{
     enabledCadences: ("daily" | "weekly" | "biweekly" | "monthly")[];
     timezone: string;
-    lambdalessTime: string;
     anchorLocalDate: string;
   }> = {},
 ) => ({
   version: 1 as const,
   enabledCadences: ["daily", "weekly"],
   timezone: "UTC",
-  lambdalessTime: "00:00",
   anchorLocalDate: new Date().toISOString().split("T")[0],
   updatedAt: new Date().toISOString(),
   ...overrides,
@@ -189,6 +187,50 @@ describe("backupOnBoot", () => {
       lastWeeklyExecutionMode: "lambdaless_on_boot",
     });
     expect(schedule.executionLockRunId).toBeUndefined();
+  });
+
+  it("runs due cadences even when legacy schedule includes lambdalessTime", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-02-26T08:10:00.000Z"));
+    vi.mocked(backupEnvironmentSlotWithoutLambda).mockResolvedValueOnce({
+      slot: "daily",
+      managedEnvironmentId: "automatic-backups-daily",
+      sourceEnvironmentId: "main",
+      replacedExistingEnvironment: false,
+      completedAt: "2026-02-26T08:10:01.000Z",
+    });
+
+    const { ctx, store } = createCtx({
+      initialParameters: {
+        runtimeMode: "lambdaless",
+        backupSchedule: {
+          version: 1,
+          enabledCadences: ["daily"],
+          timezone: "UTC",
+          lambdalessTime: "23:59",
+          anchorLocalDate: "2026-02-26",
+          updatedAt: "2026-02-25T08:00:00.000Z",
+        },
+      },
+    });
+
+    await runWithPropagationWindow(ctx);
+
+    expect(backupEnvironmentSlotWithoutLambda).toHaveBeenCalledTimes(1);
+    expect(backupEnvironmentSlotWithoutLambda).toHaveBeenCalledWith({
+      currentUserAccessToken: "token",
+      slot: "daily",
+    });
+
+    const backupSchedule = store.current.backupSchedule as Record<string, unknown>;
+    expect(backupSchedule).toMatchObject({
+      version: 1,
+      enabledCadences: ["daily"],
+      timezone: "UTC",
+      anchorLocalDate: "2026-02-26",
+      updatedAt: "2026-02-25T08:00:00.000Z",
+    });
+    expect("lambdalessTime" in backupSchedule).toBe(false);
   });
 
   it("skips execution when daily and weekly schedules are up to date", async () => {

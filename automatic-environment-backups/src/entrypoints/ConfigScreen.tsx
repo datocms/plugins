@@ -1,3 +1,4 @@
+import { buildClient } from "@datocms/cma-client-browser";
 import { RenderConfigScreenCtx } from "datocms-plugin-sdk";
 import {
   Button,
@@ -51,14 +52,15 @@ import {
   triggerBackupNow,
   TriggerBackupNowError,
 } from "../utils/triggerBackupNow";
+import { backupEnvironmentSlotWithoutLambda } from "../utils/lambdaLessBackup";
 import {
   BACKUP_CADENCES,
   getCadenceLabel,
   normalizeBackupScheduleConfig,
-  parseTimeToMinuteOfDay,
   toLocalDateKey,
 } from "../utils/backupSchedule";
 import { buildBackupOverviewRows } from "../utils/buildBackupOverviewRows";
+import backupOnBoot from "../utils/backupOnBoot";
 import { fetchLambdaBackupStatus } from "../utils/fetchLambdaBackupStatus";
 
 const DEFAULT_CONNECTION_ERROR_SUMMARY =
@@ -69,6 +71,24 @@ const LEGACY_CONNECTED_NOTICE =
   "Connected using legacy initialization fallback. Update the lambda function to support /api/datocms/plugin-health.";
 const SCHEDULER_DISABLE_WARNING_MESSAGE =
   "Could not disable the remote scheduler. This lambda deployment may still run cron backups. To avoid duplicate backups, manually disable or delete the lambda cron deployment.";
+
+const toUtcIsoWeekKey = (date: Date): string => {
+  const workingDate = new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
+  );
+  const day = workingDate.getUTCDay() || 7;
+  workingDate.setUTCDate(workingDate.getUTCDate() + 4 - day);
+
+  const yearStart = new Date(Date.UTC(workingDate.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil(
+    ((workingDate.getTime() - yearStart.getTime()) / 86400000 + 1) / 7,
+  );
+
+  return `${workingDate.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
+};
+
+const getErrorMessage = (error: unknown): string =>
+  error instanceof Error ? error.message : "Unknown error";
 
 type PluginParameters = Record<string, unknown> | undefined;
 
@@ -243,21 +263,23 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   const [enabledCadencesSelection, setEnabledCadencesSelection] = useState<
     BackupCadence[]
   >(initialBackupSchedule.enabledCadences);
-  const [lambdalessTimeSelection, setLambdalessTimeSelection] = useState(
-    initialBackupSchedule.lambdalessTime,
-  );
   const [debugEnabled, setDebugEnabled] = useState(initialDebugEnabled);
   const [savedFormValues, setSavedFormValues] = useState({
     runtimeMode: initialRuntimeMode,
     debugEnabled: initialDebugEnabled,
     backupSchedule: initialBackupSchedule,
   });
+  const [savedAutomaticBackupsScheduleState, setSavedAutomaticBackupsScheduleState] =
+    useState<AutomaticBackupsScheduleState>(initialAutomaticBackupsScheduleState);
 
   const [isLoading, setIsLoading] = useState(false);
   const [isHealthChecking, setIsHealthChecking] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [isTriggeringBackup, setIsTriggeringBackup] = useState(false);
+  const [activeRunNowCadence, setActiveRunNowCadence] = useState<
+    BackupCadence | undefined
+  >(undefined);
 
   const [deploymentUrlInput, setDeploymentUrlInput] = useState(
     fallbackInitialDeploymentUrl,
@@ -297,6 +319,9 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   >(undefined);
   const [isLoadingBackupOverview, setIsLoadingBackupOverview] = useState(false);
   const [backupOverviewError, setBackupOverviewError] = useState("");
+  const [availableEnvironmentIds, setAvailableEnvironmentIds] = useState<
+    string[] | undefined
+  >(undefined);
   const debugLogger = createDebugLogger(debugEnabled, "ConfigScreen");
 
   const persistPluginParameters = async (updates: Record<string, unknown>) => {
@@ -600,6 +625,83 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     void refreshLambdaBackupOverview();
   }, [refreshLambdaBackupOverview]);
 
+  useEffect(() => {
+    if (savedFormValues.runtimeMode !== "lambdaless") {
+      return;
+    }
+
+    let isCancelled = false;
+
+    const runDueLambdalessBackups = async () => {
+      debugLogger.log(
+        "Ensuring due lambdaless backups are executed from config flow",
+      );
+
+      try {
+        await backupOnBoot(ctx as never);
+        if (isCancelled) {
+          return;
+        }
+
+        const latestParameters = ctx.plugin.attributes.parameters as PluginParameters;
+        setSavedAutomaticBackupsScheduleState(
+          toAutomaticBackupsScheduleState(latestParameters?.automaticBackupsSchedule),
+        );
+      } catch (error) {
+        debugLogger.error(
+          "Could not execute lock-safe lambdaless backups from config flow",
+          error,
+        );
+      }
+    };
+
+    void runDueLambdalessBackups();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [
+    savedFormValues.backupSchedule.updatedAt,
+    savedFormValues.runtimeMode,
+  ]);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    const refreshAvailableEnvironments = async () => {
+      if (!ctx.currentUserAccessToken) {
+        setAvailableEnvironmentIds(undefined);
+        return;
+      }
+
+      try {
+        const client = buildClient({
+          apiToken: ctx.currentUserAccessToken,
+        });
+        const environments = await client.environments.list();
+        if (isCancelled) {
+          return;
+        }
+        setAvailableEnvironmentIds(
+          environments
+            .map((environment) => environment.id)
+            .filter((id) => typeof id === "string" && id.trim().length > 0),
+        );
+      } catch {
+        if (isCancelled) {
+          return;
+        }
+        setAvailableEnvironmentIds(undefined);
+      }
+    };
+
+    void refreshAvailableEnvironments();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [ctx.currentUserAccessToken]);
+
   const connectLambdaHandler = async () => {
     if (runtimeModeSelection !== "lambda") {
       await ctx.alert("Enable 'Use Cronjobs' before connecting a lambda deployment.");
@@ -838,15 +940,9 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     const normalizedEnabledCadences = BACKUP_CADENCES.filter((cadence) =>
       enabledCadencesSelection.includes(cadence),
     );
-    const normalizedLambdalessTime = lambdalessTimeSelection.trim();
 
     if (normalizedEnabledCadences.length === 0) {
       await ctx.alert("Select at least one backup cadence.");
-      return;
-    }
-
-    if (parseTimeToMinuteOfDay(normalizedLambdalessTime) === null) {
-      await ctx.alert("Use HH:mm format for Lambda-less time.");
       return;
     }
 
@@ -857,7 +953,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       connectionStatus: connectionState?.status,
       connectionValidationMode,
       enabledCadences: normalizedEnabledCadences,
-      lambdalessTime: normalizedLambdalessTime,
       timezone: projectTimezone,
     });
 
@@ -895,7 +990,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         version: 1,
         enabledCadences: normalizedEnabledCadences,
         timezone: projectTimezone,
-        lambdalessTime: normalizedLambdalessTime,
         anchorLocalDate: didCadencesChange
           ? toLocalDateKey(new Date(), projectTimezone)
           : savedFormValues.backupSchedule.anchorLocalDate,
@@ -989,7 +1083,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     await ctx.navigateTo("/project_settings/environments");
   };
 
-  const triggerBackupNowHandler = async () => {
+  const triggerLambdaBackupNow = async (scope?: BackupCadence) => {
     const candidateUrl = (activeDeploymentUrl || deploymentUrlInput).trim();
     if (!candidateUrl) {
       setBackupNowErrorSummary(
@@ -1003,14 +1097,17 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     debugLogger.log("Triggering backup now", {
       candidateUrl,
       environment: ctx.environment,
+      scope,
     });
     setIsTriggeringBackup(true);
+    setActiveRunNowCadence(scope);
     clearBackupNowErrorState();
 
     try {
       const result = await triggerBackupNow({
         baseUrl: candidateUrl,
         environment: ctx.environment,
+        scope,
       });
 
       setDeploymentUrlInput(result.normalizedBaseUrl);
@@ -1019,18 +1116,24 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         endpoint: result.endpoint,
         method: result.method,
         attemptName: result.attemptName,
+        scope,
       });
+      const backupLabel = scope ? `${getCadenceLabel(scope)} backup` : "Backup";
       ctx.notice(
-        `Backup triggered successfully via ${result.method} ${result.endpoint}.`,
+        `${backupLabel} triggered successfully via ${result.method} ${result.endpoint}.`,
       );
       await refreshLambdaBackupOverview(result.normalizedBaseUrl);
     } catch (error) {
+      const summary = scope
+        ? `Could not trigger ${getCadenceLabel(scope).toLowerCase()} backup now.`
+        : "Could not trigger backup now.";
       if (error instanceof TriggerBackupNowError) {
         debugLogger.warn("All backup trigger attempts failed", {
           normalizedBaseUrl: error.normalizedBaseUrl,
           failures: error.failures,
+          scope,
         });
-        setBackupNowErrorSummary("Could not trigger backup now.");
+        setBackupNowErrorSummary(summary);
         setBackupNowErrorDetails(getTriggerBackupNowErrorDetails(error));
         setShowBackupNowDetails(false);
       } else if (error instanceof LambdaHealthCheckError) {
@@ -1038,7 +1141,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           "Backup trigger failed because URL normalization/validation failed",
           error,
         );
-        setBackupNowErrorSummary("Could not trigger backup now.");
+        setBackupNowErrorSummary(summary);
         setBackupNowErrorDetails([
           `Failure details: ${error.message}`,
           `Endpoint attempted: ${error.endpoint}.`,
@@ -1046,7 +1149,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         setShowBackupNowDetails(false);
       } else {
         debugLogger.error("Unexpected error while triggering backup now", error);
-        setBackupNowErrorSummary("Could not trigger backup now.");
+        setBackupNowErrorSummary(summary);
         setBackupNowErrorDetails([
           `Failure details: ${
             error instanceof Error ? error.message : "Unknown error"
@@ -1056,6 +1159,118 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       }
     } finally {
       setIsTriggeringBackup(false);
+      setActiveRunNowCadence(undefined);
+    }
+  };
+
+  const triggerBackupNowHandler = async () => {
+    await triggerLambdaBackupNow();
+  };
+
+  const triggerBackupOverviewSlotNowHandler = async (cadence: BackupCadence) => {
+    if (savedFormValues.runtimeMode === "lambda") {
+      await triggerLambdaBackupNow(cadence);
+      return;
+    }
+
+    if (!ctx.currentUserAccessToken) {
+      await ctx.alert(
+        "Cannot run a Lambda-less backup right now because the current user token is unavailable.",
+      );
+      return;
+    }
+
+    setIsTriggeringBackup(true);
+    setActiveRunNowCadence(cadence);
+    clearBackupNowErrorState();
+
+    try {
+      const result = await backupEnvironmentSlotWithoutLambda({
+        currentUserAccessToken: ctx.currentUserAccessToken,
+        slot: cadence,
+      });
+      const completedAtDate = new Date(result.completedAt);
+      const safeCompletedAtDate = Number.isNaN(completedAtDate.getTime())
+        ? new Date()
+        : completedAtDate;
+      const completedAt = safeCompletedAtDate.toISOString();
+      const localDateKey = toLocalDateKey(
+        safeCompletedAtDate,
+        savedFormValues.backupSchedule.timezone,
+      );
+      const nextErrorByCadence = {
+        ...(savedAutomaticBackupsScheduleState.lastErrorByCadence ?? {}),
+      };
+      delete nextErrorByCadence[cadence];
+      const nextScheduleState: AutomaticBackupsScheduleState = {
+        ...savedAutomaticBackupsScheduleState,
+        lastRunLocalDateByCadence: {
+          ...(savedAutomaticBackupsScheduleState.lastRunLocalDateByCadence ?? {}),
+          [cadence]: localDateKey,
+        },
+        lastRunAtByCadence: {
+          ...(savedAutomaticBackupsScheduleState.lastRunAtByCadence ?? {}),
+          [cadence]: completedAt,
+        },
+        lastManagedEnvironmentIdByCadence: {
+          ...(savedAutomaticBackupsScheduleState.lastManagedEnvironmentIdByCadence ?? {}),
+          [cadence]: result.managedEnvironmentId,
+        },
+        lastExecutionModeByCadence: {
+          ...(savedAutomaticBackupsScheduleState.lastExecutionModeByCadence ?? {}),
+          [cadence]: "lambdaless_on_boot",
+        },
+        lastErrorByCadence:
+          Object.keys(nextErrorByCadence).length > 0 ? nextErrorByCadence : undefined,
+      };
+
+      if (cadence === "daily") {
+        nextScheduleState.dailyLastRunDate = localDateKey;
+        nextScheduleState.lastDailyRunAt = completedAt;
+        nextScheduleState.lastDailyManagedEnvironmentId = result.managedEnvironmentId;
+        nextScheduleState.lastDailyExecutionMode = "lambdaless_on_boot";
+        nextScheduleState.lastDailyError = undefined;
+      }
+
+      if (cadence === "weekly") {
+        nextScheduleState.weeklyLastRunKey = toUtcIsoWeekKey(safeCompletedAtDate);
+        nextScheduleState.lastWeeklyRunAt = completedAt;
+        nextScheduleState.lastWeeklyManagedEnvironmentId = result.managedEnvironmentId;
+        nextScheduleState.lastWeeklyExecutionMode = "lambdaless_on_boot";
+        nextScheduleState.lastWeeklyError = undefined;
+      }
+
+      await persistPluginParameters({
+        automaticBackupsSchedule: nextScheduleState,
+      });
+      setSavedAutomaticBackupsScheduleState(nextScheduleState);
+      setAvailableEnvironmentIds((current) => {
+        if (!result.managedEnvironmentId.trim()) {
+          return current;
+        }
+
+        if (!current || current.length === 0) {
+          return [result.managedEnvironmentId];
+        }
+
+        if (current.includes(result.managedEnvironmentId)) {
+          return current;
+        }
+
+        return [...current, result.managedEnvironmentId];
+      });
+      ctx.notice(`${getCadenceLabel(cadence)} backup completed now.`);
+    } catch (error) {
+      debugLogger.error(
+        `Unexpected error while triggering ${cadence} lambdaless backup now`,
+        error,
+      );
+      await ctx.alert(
+        `Could not run ${getCadenceLabel(cadence)} backup now: ${getErrorMessage(error)}.`,
+      );
+    } finally {
+      setIsTriggeringBackup(false);
+      setActiveRunNowCadence(undefined);
     }
   };
 
@@ -1102,7 +1317,9 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       : "Connect";
   const disconnectButtonLabel = isDisconnecting ? "Disconnecting..." : "Disconnect";
   const backupNowButtonLabel = isTriggeringBackup
-    ? "Running test backup..."
+    ? activeRunNowCadence
+      ? `Running ${getCadenceLabel(activeRunNowCadence).toLowerCase()} backup...`
+      : "Running test backup..."
     : "Run lambda test backup";
   const hasHealthyConnectedLambda =
     connectionValidationMode === "health" && connectionState?.status === "connected";
@@ -1150,6 +1367,31 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     fontSize: "var(--font-size-s)",
   };
 
+  const backupScheduleCardStyle: CSSProperties = {
+    ...cardStyle,
+    paddingTop: "var(--spacing-m)",
+    paddingBottom: "var(--spacing-m)",
+  };
+
+  const backupScheduleTitleStyle: CSSProperties = {
+    marginTop: 0,
+    marginBottom: "var(--spacing-m)",
+    fontSize: "var(--font-size-l)",
+  };
+
+  const backupScheduleInfoTextStyle: CSSProperties = {
+    marginTop: 0,
+    marginBottom: "var(--spacing-m)",
+    color: "var(--base-body-color)",
+    fontSize: "12px",
+    lineHeight: "1.35",
+  };
+
+  const backupScheduleCadenceGridStyle: CSSProperties = {
+    display: "grid",
+    gap: "var(--spacing-s)",
+  };
+
   const advancedSettingsStyle: CSSProperties = {
     display: "flex",
     flexDirection: "column",
@@ -1166,11 +1408,30 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     borderRadius: "6px",
     padding: "var(--spacing-m)",
     background: "#fff",
+    display: "grid",
+    gridTemplateColumns: "minmax(0, 1fr) auto",
+    columnGap: "var(--spacing-m)",
+    alignItems: "center",
+  };
+
+  const overviewRowHeaderStyle: CSSProperties = {
+    display: "flex",
+    alignItems: "center",
+    gap: "var(--spacing-s)",
+    marginBottom: "var(--spacing-xs)",
+  };
+
+  const overviewRowContentStyle: CSSProperties = {
+    minWidth: 0,
+  };
+
+  const overviewRowRunNowStyle: CSSProperties = {
+    alignSelf: "center",
   };
 
   const overviewRowLabelStyle: CSSProperties = {
     marginTop: 0,
-    marginBottom: "var(--spacing-xs)",
+    marginBottom: 0,
     fontSize: "var(--font-size-m)",
   };
 
@@ -1201,14 +1462,10 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       (cadence, index) =>
         cadence !== savedFormValues.backupSchedule.enabledCadences[index],
     );
-  const hasLambdalessTimeChanged =
-    lambdalessTimeSelection.trim() !==
-    savedFormValues.backupSchedule.lambdalessTime;
   const hasUnsavedChanges =
     debugEnabled !== savedFormValues.debugEnabled ||
     runtimeModeSelection !== savedFormValues.runtimeMode ||
-    hasCadenceSelectionChanged ||
-    hasLambdalessTimeChanged;
+    hasCadenceSelectionChanged;
 
   const canSaveWithLambdaMode =
     !isLambdaFullModeEnabled ||
@@ -1230,11 +1487,21 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
 
   const savedRuntimeMode = savedFormValues.runtimeMode;
   const savedBackupSchedule = savedFormValues.backupSchedule;
+  const backupOverviewRunNowDisabled =
+    isTriggeringBackup ||
+    isConnecting ||
+    isHealthChecking ||
+    isDisconnecting ||
+    isLoading ||
+    (savedRuntimeMode === "lambda"
+      ? !hasHealthyConnectedLambda
+      : !ctx.currentUserAccessToken);
   const backupOverviewRows: BackupOverviewRow[] = buildBackupOverviewRows({
     runtimeMode: savedRuntimeMode,
-    scheduleState: initialAutomaticBackupsScheduleState,
+    scheduleState: savedAutomaticBackupsScheduleState,
     scheduleConfig: savedBackupSchedule,
     lambdaStatus: savedRuntimeMode === "lambda" ? lambdaBackupStatus : undefined,
+    availableEnvironmentIds,
   });
 
   return (
@@ -1505,26 +1772,18 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
             </div>
           )}
 
-        <div style={cardStyle}>
-          <h2
-            style={{
-              marginTop: 0,
-              marginBottom: "var(--spacing-s)",
-              fontSize: "var(--font-size-l)",
-            }}
-          >
+        <div style={backupScheduleCardStyle}>
+          <h2 style={backupScheduleTitleStyle}>
             Backup schedule
           </h2>
 
-          <p style={infoTextStyle}>
-            Pick the backups you want to keep. The interface is intentionally simple.
+          <p style={backupScheduleInfoTextStyle}>
+            {runtimeModeSelection === "lambdaless"
+              ? "Backups automatically run during plugin boot when a selected cadence is due."
+              : "The scheduler runs once a day. The number of backups depends on your selected schedule options."}
           </p>
 
-          <p style={{ ...subtleTextStyle, marginBottom: "var(--spacing-s)" }}>
-            <strong>Project timezone:</strong> {projectTimezone}
-          </p>
-
-          <div style={{ display: "grid", gap: "var(--spacing-xs)" }}>
+          <div style={backupScheduleCadenceGridStyle}>
             {BACKUP_CADENCES.map((cadence) => (
               <div key={`cadence-toggle-${cadence}`} style={switchFieldNoHintGapStyle}>
                 <SwitchField
@@ -1537,25 +1796,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
               </div>
             ))}
           </div>
-
-          {runtimeModeSelection === "lambdaless" ? (
-            <div style={{ marginTop: "var(--spacing-s)" }}>
-              <TextField
-                name="lambdalessTime"
-                id="lambdalessTime"
-                label="Lambda-less run time"
-                hint="Format: HH:mm (project timezone). Runs on next dashboard login at or after this time."
-                value={lambdalessTimeSelection}
-                placeholder="00:00"
-                onChange={(newValue) => setLambdalessTimeSelection(newValue)}
-              />
-            </div>
-          ) : (
-            <p style={{ ...subtleTextStyle, marginTop: "var(--spacing-s)" }}>
-              Lambda mode runs once a day from provider cron. Custom time is only
-              applied in Lambda-less mode.
-            </p>
-          )}
         </div>
 
         <div style={cardStyle}>
@@ -1568,15 +1808,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           >
             Backup overview
           </h2>
-
-          <p style={infoTextStyle}>
-            Overview for the <strong>saved</strong> runtime mode. All timestamps are in UTC.
-          </p>
-
-          <p style={{ ...subtleTextStyle, marginBottom: "var(--spacing-s)" }}>
-            <strong>Saved mode:</strong>{" "}
-            {savedRuntimeMode === "lambda" ? "Cronjobs (Lambda)" : "Lambdaless on boot"}
-          </p>
 
           {savedRuntimeMode === "lambda" && isLoadingBackupOverview && (
             <p style={{ ...subtleTextStyle, marginBottom: "var(--spacing-s)" }}>
@@ -1599,26 +1830,48 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           <div style={overviewGridStyle}>
             {backupOverviewRows.map((row) => (
               <div key={`backup-overview-${row.scope}`} style={overviewRowStyle}>
-                <h3 style={overviewRowLabelStyle}>{getCadenceLabel(row.scope)}</h3>
-                <p style={overviewRowInfoStyle}>
-                  <strong>Last backup:</strong> {row.lastBackup}
-                </p>
-                <p style={overviewRowInfoStyle}>
-                  <strong>Next backup:</strong> {row.nextBackup}
-                </p>
-                <p style={overviewRowInfoStyle}>
-                  <strong>Environment:</strong>{" "}
-                  {row.environmentLinked ? (
-                    <a
-                      href="/project_settings/environments"
-                      onClick={openEnvironmentsSettings}
-                    >
-                      {row.environmentName}
-                    </a>
-                  ) : (
-                    row.environmentName
+                <div style={overviewRowContentStyle}>
+                  <div style={overviewRowHeaderStyle}>
+                    <h3 style={overviewRowLabelStyle}>{getCadenceLabel(row.scope)}</h3>
+                  </div>
+                  <p style={overviewRowInfoStyle}>
+                    <strong>Last backup:</strong> {row.lastBackup}
+                  </p>
+                  <p style={overviewRowInfoStyle}>
+                    <strong>Next backup:</strong> {row.nextBackup}
+                  </p>
+                  <p style={overviewRowInfoStyle}>
+                    <strong>Environment:</strong>{" "}
+                    {row.environmentLinked ? (
+                      <a
+                        href="/project_settings/environments"
+                        onClick={openEnvironmentsSettings}
+                      >
+                        {row.environmentName}
+                      </a>
+                    ) : (
+                      row.environmentName
+                    )}
+                  </p>
+                  {row.environmentStatusNote && (
+                    <p style={overviewRowInfoStyle}>
+                      <strong>Status:</strong> {row.environmentStatusNote}
+                    </p>
                   )}
-                </p>
+                </div>
+                <Button
+                  buttonType="muted"
+                  buttonSize="s"
+                  onClick={() => {
+                    void triggerBackupOverviewSlotNowHandler(row.scope);
+                  }}
+                  disabled={backupOverviewRunNowDisabled}
+                  style={overviewRowRunNowStyle}
+                >
+                  {isTriggeringBackup && activeRunNowCadence === row.scope
+                    ? "Running..."
+                    : "Run now"}
+                </Button>
               </div>
             ))}
           </div>

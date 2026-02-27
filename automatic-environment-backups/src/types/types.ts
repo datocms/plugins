@@ -39,7 +39,6 @@ export type BackupScheduleConfig = {
   version: 1;
   enabledCadences: BackupCadence[];
   timezone: string;
-  lambdalessTime: string;
   anchorLocalDate: string;
   updatedAt: string;
 };
@@ -99,4 +98,5 @@ export type BackupOverviewRow = {
   nextBackup: string;
   environmentName: string;
   environmentLinked: boolean;
+  environmentStatusNote?: string;
 };

@@ -5,7 +5,6 @@ const baseScheduleConfig = {
   version: 1 as const,
   enabledCadences: ["daily", "weekly"] as const,
   timezone: "UTC",
-  lambdalessTime: "00:00",
   anchorLocalDate: "2026-02-26",
   updatedAt: "2026-02-26T08:00:00.000Z",
 };
@@ -26,14 +25,14 @@ describe("buildBackupOverviewRows", () => {
     expect(rows[0]).toMatchObject({
       scope: "daily",
       lastBackup: "Never",
-      nextBackup: "Due now (on next dashboard login)",
+      nextBackup: "Due now",
       environmentName: "Not yet created",
       environmentLinked: false,
     });
     expect(rows[1]).toMatchObject({
       scope: "weekly",
       lastBackup: "Never",
-      nextBackup: "Due now (on next dashboard login)",
+      nextBackup: "Due now",
       environmentName: "Not yet created",
       environmentLinked: false,
     });
@@ -64,11 +63,11 @@ describe("buildBackupOverviewRows", () => {
     });
 
     expect(rows[0].lastBackup).toBe("1 second ago");
-    expect(rows[0].nextBackup).toBe("in 16 hours (on next dashboard login)");
+    expect(rows[0].nextBackup).toBe("in 16 hours");
     expect(rows[0].environmentName).toBe("automatic-backups-daily");
     expect(rows[0].environmentLinked).toBe(true);
     expect(rows[1].lastBackup).toBe("2 seconds ago");
-    expect(rows[1].nextBackup).toBe("in 7 days (on next dashboard login)");
+    expect(rows[1].nextBackup).toBe("in 7 days");
     expect(rows[1].environmentName).toBe("automatic-backups-weekly");
     expect(rows[1].environmentLinked).toBe(true);
   });
@@ -139,6 +138,38 @@ describe("buildBackupOverviewRows", () => {
       lastBackup: "Never",
       environmentName: "Not yet created",
       environmentLinked: false,
+    });
+  });
+
+  it("marks missing environments as deleted or renamed when absent from CMA list", () => {
+    const rows = buildBackupOverviewRows({
+      runtimeMode: "lambdaless",
+      scheduleState: {
+        lastRunLocalDateByCadence: {
+          daily: "2026-02-26",
+        },
+        lastRunAtByCadence: {
+          daily: "2026-02-26T08:09:59.000Z",
+        },
+        lastManagedEnvironmentIdByCadence: {
+          daily: "automatic-backups-daily",
+        },
+      },
+      scheduleConfig: {
+        ...baseScheduleConfig,
+        enabledCadences: ["daily"],
+      },
+      availableEnvironmentIds: ["main", "staging"],
+      now: new Date("2026-02-26T08:10:00.000Z"),
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      scope: "daily",
+      environmentName: "automatic-backups-daily",
+      environmentLinked: false,
+      environmentStatusNote:
+        "Missing in current environments list (deleted or renamed).",
     });
   });
 });

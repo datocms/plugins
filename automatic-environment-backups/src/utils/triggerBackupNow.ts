@@ -1,4 +1,5 @@
 import { normalizeBaseUrlForLegacyFallback } from "./verifyLambdaHealth";
+import type { BackupCadence } from "../types/types";
 
 const TRIGGER_TIMEOUT_MS = 10000;
 const RESPONSE_SNIPPET_MAX_LENGTH = 280;
@@ -19,6 +20,7 @@ type TriggerAttempt = {
 export type TriggerBackupNowInput = {
   baseUrl: string;
   environment: string;
+  scope?: BackupCadence;
 };
 
 export type TriggerBackupNowFailure = {
@@ -74,12 +76,75 @@ const truncateSnippet = (value: string): string => {
   return `${compact.slice(0, RESPONSE_SNIPPET_MAX_LENGTH)}...`;
 };
 
-const buildAttempts = (environment: string): TriggerAttempt[] => {
+const buildScopePayload = (
+  scope: BackupCadence | undefined,
+): Record<string, unknown> => {
+  if (!scope) {
+    return {};
+  }
+
+  return {
+    scope,
+  };
+};
+
+const buildLegacyFallbackAttempts = (
+  scope: BackupCadence | undefined,
+): TriggerAttempt[] => {
+  if (scope === "daily") {
+    return [
+      {
+        name: "/.netlify/functions/dailyBackup",
+        path: "/.netlify/functions/dailyBackup",
+        method: "GET",
+      },
+    ];
+  }
+
+  if (scope === "weekly") {
+    return [
+      {
+        name: "/.netlify/functions/weeklyBackup",
+        path: "/.netlify/functions/weeklyBackup",
+        method: "GET",
+      },
+    ];
+  }
+
+  if (scope) {
+    return [];
+  }
+
+  return [
+    {
+      name: "/.netlify/functions/dailyBackup",
+      path: "/.netlify/functions/dailyBackup",
+      method: "GET",
+    },
+    {
+      name: "/.netlify/functions/weeklyBackup",
+      path: "/.netlify/functions/weeklyBackup",
+      method: "GET",
+    },
+    {
+      name: "/.netlify/functions/initialization",
+      path: "/.netlify/functions/initialization",
+      method: "GET",
+    },
+  ];
+};
+
+const buildAttempts = (
+  environment: string,
+  scope: BackupCadence | undefined,
+): TriggerAttempt[] => {
+  const scopePayload = buildScopePayload(scope);
   const pluginPayload = {
     plugin: {
       name: PLUGIN_NAME,
       environment,
     },
+    ...scopePayload,
   };
 
   return [
@@ -113,6 +178,7 @@ const buildAttempts = (environment: string): TriggerAttempt[] => {
       buildBody: () => ({
         event_type: "backup_now",
         environment,
+        ...scopePayload,
       }),
     },
     {
@@ -122,6 +188,7 @@ const buildAttempts = (environment: string): TriggerAttempt[] => {
       buildBody: () => ({
         event_type: "manual_backup",
         environment,
+        ...scopePayload,
       }),
     },
     {
@@ -131,32 +198,20 @@ const buildAttempts = (environment: string): TriggerAttempt[] => {
       buildBody: () => ({
         event_type: "initialization",
         environment,
+        ...scopePayload,
       }),
     },
-    {
-      name: "/.netlify/functions/dailyBackup",
-      path: "/.netlify/functions/dailyBackup",
-      method: "GET",
-    },
-    {
-      name: "/.netlify/functions/weeklyBackup",
-      path: "/.netlify/functions/weeklyBackup",
-      method: "GET",
-    },
-    {
-      name: "/.netlify/functions/initialization",
-      path: "/.netlify/functions/initialization",
-      method: "GET",
-    },
+    ...buildLegacyFallbackAttempts(scope),
   ];
 };
 
 export const triggerBackupNow = async ({
   baseUrl,
   environment,
+  scope,
 }: TriggerBackupNowInput): Promise<TriggerBackupNowResult> => {
   const normalizedBaseUrl = normalizeBaseUrlForLegacyFallback(baseUrl);
-  const attempts = buildAttempts(environment);
+  const attempts = buildAttempts(environment, scope);
   const failures: TriggerBackupNowFailure[] = [];
 
   for (const attempt of attempts) {

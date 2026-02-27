@@ -12,10 +12,8 @@ export const BACKUP_CADENCES: BackupCadence[] = [
   "monthly",
 ];
 export const DEFAULT_ENABLED_CADENCES: BackupCadence[] = ["daily", "weekly"];
-export const DEFAULT_LAMBDALESS_TIME = "00:00";
 const FALLBACK_TIMEZONE = "UTC";
 const DATE_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 type LocalDateParts = {
   year: number;
@@ -55,14 +53,6 @@ const normalizeCadences = (value: unknown): BackupCadence[] => {
   }
 
   return BACKUP_CADENCES.filter((cadence) => set.has(cadence));
-};
-
-const normalizeTime = (value: unknown): string => {
-  if (typeof value === "string" && TIME_PATTERN.test(value.trim())) {
-    return value.trim();
-  }
-
-  return DEFAULT_LAMBDALESS_TIME;
 };
 
 const parseLocalDateKey = (value: string): LocalDateParts | null => {
@@ -134,34 +124,6 @@ export const toLocalDateKey = (date: Date, timezone: string): string => {
   return toLocalDateKeyFromParts(toLocalDateParts(date, timezone));
 };
 
-export const toLocalMinuteOfDay = (date: Date, timezone: string): number => {
-  const formatter = new Intl.DateTimeFormat("en-GB", {
-    timeZone: timezone,
-    hour12: false,
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  const parts = formatter.formatToParts(date);
-  const hour = Number(parts.find((part) => part.type === "hour")?.value);
-  const minute = Number(parts.find((part) => part.type === "minute")?.value);
-
-  if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
-    return date.getUTCHours() * 60 + date.getUTCMinutes();
-  }
-
-  return hour * 60 + minute;
-};
-
-export const parseTimeToMinuteOfDay = (value: string): number | null => {
-  const normalized = value.trim();
-  if (!TIME_PATTERN.test(normalized)) {
-    return null;
-  }
-
-  const [hour, minute] = normalized.split(":").map((part) => Number(part));
-  return hour * 60 + minute;
-};
-
 const isValidCadenceArray = (value: unknown): value is BackupCadence[] => {
   return (
     Array.isArray(value) &&
@@ -169,6 +131,14 @@ const isValidCadenceArray = (value: unknown): value is BackupCadence[] => {
     value.every((entry) => isBackupCadence(entry))
   );
 };
+
+const BACKUP_SCHEDULE_KEYS = new Set([
+  "version",
+  "enabledCadences",
+  "timezone",
+  "anchorLocalDate",
+  "updatedAt",
+]);
 
 export const normalizeBackupScheduleConfig = ({
   value,
@@ -189,7 +159,6 @@ export const normalizeBackupScheduleConfig = ({
         version: BACKUP_SCHEDULE_VERSION,
         enabledCadences: [...DEFAULT_ENABLED_CADENCES],
         timezone: fallbackTimezone,
-        lambdalessTime: DEFAULT_LAMBDALESS_TIME,
         anchorLocalDate: fallbackAnchor,
         updatedAt: fallbackUpdatedAt,
       },
@@ -207,7 +176,6 @@ export const normalizeBackupScheduleConfig = ({
     version: BACKUP_SCHEDULE_VERSION,
     enabledCadences: normalizeCadences(value.enabledCadences),
     timezone,
-    lambdalessTime: normalizeTime(value.lambdalessTime),
     anchorLocalDate,
     updatedAt:
       typeof value.updatedAt === "string" && value.updatedAt.trim()
@@ -219,15 +187,16 @@ export const normalizeBackupScheduleConfig = ({
   const rawAnchor =
     typeof value.anchorLocalDate === "string" ? value.anchorLocalDate.trim() : "";
   const rawUpdatedAt = typeof value.updatedAt === "string" ? value.updatedAt.trim() : "";
+  const hasUnexpectedKeys = Object.keys(value).some(
+    (key) => !BACKUP_SCHEDULE_KEYS.has(key),
+  );
   const requiresMigration =
     value.version !== BACKUP_SCHEDULE_VERSION ||
     !isValidCadenceArray(value.enabledCadences) ||
     rawTimezone.length === 0 ||
-    !TIME_PATTERN.test(
-      typeof value.lambdalessTime === "string" ? value.lambdalessTime.trim() : "",
-    ) ||
     !parseLocalDateKey(rawAnchor) ||
-    rawUpdatedAt.length === 0;
+    rawUpdatedAt.length === 0 ||
+    hasUnexpectedKeys;
 
   return { config, requiresMigration };
 };

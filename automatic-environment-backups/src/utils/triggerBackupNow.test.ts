@@ -38,6 +38,22 @@ describe("triggerBackupNow", () => {
     expect(String(requestInit?.body)).toContain("\"event_type\":\"backup_now\"");
   });
 
+  it("sends the selected scope in backup-now payloads", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    await triggerBackupNow({
+      baseUrl: "https://backups.vercel.app",
+      environment: "main",
+      scope: "monthly",
+    });
+
+    const typedCalls =
+      fetchMock.mock.calls as unknown as Array<[unknown, RequestInit | undefined]>;
+    const requestInit = typedCalls[0]?.[1];
+    expect(String(requestInit?.body)).toContain("\"scope\":\"monthly\"");
+  });
+
   it("falls back to legacy Netlify daily endpoint when modern routes fail", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = input.toString();
@@ -57,6 +73,30 @@ describe("triggerBackupNow", () => {
     expect(result.endpoint).toBe("https://backups.vercel.app/.netlify/functions/dailyBackup");
     expect(result.attemptName).toBe("/.netlify/functions/dailyBackup");
     expect(fetchMock).toHaveBeenCalledTimes(6);
+  });
+
+  it("uses only weekly legacy fallback for weekly scope", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = input.toString();
+      if (url.endsWith("/.netlify/functions/weeklyBackup")) {
+        return new Response("weekly backup triggered", { status: 200 });
+      }
+
+      return new Response("not found", { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+
+    const result = await triggerBackupNow({
+      baseUrl: "https://backups.vercel.app",
+      environment: "main",
+      scope: "weekly",
+    });
+
+    expect(result.endpoint).toBe("https://backups.vercel.app/.netlify/functions/weeklyBackup");
+    const calledUrls = fetchMock.mock.calls.map((call) => String(call[0]));
+    expect(
+      calledUrls.some((url) => url.endsWith("/.netlify/functions/dailyBackup")),
+    ).toBe(false);
   });
 
   it("returns detailed failure info when all attempts fail", async () => {
