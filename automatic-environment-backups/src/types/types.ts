@@ -6,6 +6,7 @@ export type LambdaConnectionPhase =
   | "config_connect";
 
 export type LambdaConnectionErrorCode =
+  | "MISSING_AUTH_SECRET"
   | "INVALID_URL"
   | "NETWORK"
   | "TIMEOUT"
@@ -24,7 +25,7 @@ export type LambdaConnectionState = {
   responseSnippet?: string;
 };
 
-export type ConnectionValidationMode = "health" | "legacy";
+export type ConnectionValidationMode = "health";
 
 export type RuntimeMode = "lambda" | "lambdaless";
 
@@ -62,7 +63,9 @@ export type AutomaticBackupsScheduleState = {
   executionLockRunId?: string;
   executionLockOwnerUserId?: string;
   executionLockAcquiredAt?: string;
+  executionLockHeartbeatAt?: string;
   executionLockExpiresAt?: string;
+  executionLockCadenceInFlight?: BackupCadence;
 } & Record<string, unknown>;
 
 export type LambdaSchedulerProvider =

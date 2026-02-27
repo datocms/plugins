@@ -11,7 +11,14 @@ import {
   SwitchField,
   TextField,
 } from "datocms-react-ui";
-import { CSSProperties, MouseEvent, useCallback, useEffect, useState } from "react";
+import {
+  CSSProperties,
+  MouseEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   AutomaticBackupsScheduleState,
   BackupCadence,
@@ -22,10 +29,6 @@ import {
   LambdaConnectionState,
   RuntimeMode,
 } from "../types/types";
-import {
-  attemptLegacyInitialization,
-  LegacyInitializationError,
-} from "../utils/attemptLegacyInitialization";
 import {
   DEPLOY_PROVIDER_OPTIONS,
   DeployProvider,
@@ -39,7 +42,6 @@ import {
   buildDisconnectedLambdaConnectionState,
   getLambdaConnectionErrorDetails,
   LambdaHealthCheckError,
-  shouldUseLegacyInitializationFallback,
   verifyLambdaHealth,
 } from "../utils/verifyLambdaHealth";
 import {
@@ -54,6 +56,7 @@ import {
 } from "../utils/triggerBackupNow";
 import { backupEnvironmentSlotWithoutLambda } from "../utils/lambdaLessBackup";
 import {
+  BACKUP_SCHEDULE_VERSION,
   BACKUP_CADENCES,
   getCadenceLabel,
   normalizeBackupScheduleConfig,
@@ -62,13 +65,16 @@ import {
 import { buildBackupOverviewRows } from "../utils/buildBackupOverviewRows";
 import backupOnBoot from "../utils/backupOnBoot";
 import { fetchLambdaBackupStatus } from "../utils/fetchLambdaBackupStatus";
+import { toAutomaticBackupsScheduleState } from "../utils/automaticBackupsScheduleState";
+import {
+  mergePluginParameterUpdates,
+  toPluginParameterRecord,
+} from "../utils/pluginParameterMerging";
 
 const DEFAULT_CONNECTION_ERROR_SUMMARY =
   "Could not validate the Automatic Backups deployment.";
-const LEGACY_WARNING_MESSAGE =
-  "This deployment does not expose /api/datocms/plugin-health yet. It was connected using the legacy initialization fallback. Update and redeploy the lambda function.";
-const LEGACY_CONNECTED_NOTICE =
-  "Connected using legacy initialization fallback. Update the lambda function to support /api/datocms/plugin-health.";
+const MISSING_AUTH_SECRET_MESSAGE =
+  "Enter Lambda auth secret before calling lambda endpoints.";
 const SCHEDULER_DISABLE_WARNING_MESSAGE =
   "Could not disable the remote scheduler. This lambda deployment may still run cron backups. To avoid duplicate backups, manually disable or delete the lambda cron deployment.";
 
@@ -95,7 +101,7 @@ type PluginParameters = Record<string, unknown> | undefined;
 const toConnectionValidationMode = (
   value: unknown,
 ): ConnectionValidationMode | undefined => {
-  return value === "health" || value === "legacy" ? value : undefined;
+  return value === "health" ? value : undefined;
 };
 
 const toLambdaConnectionState = (
@@ -120,12 +126,6 @@ const toLambdaConnectionState = (
   return undefined;
 };
 
-const isObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
-
-const asOptionalString = (value: unknown): string | undefined =>
-  typeof value === "string" && value.trim() ? value : undefined;
-
 const getProjectTimezone = (site: unknown): string => {
   if (
     site &&
@@ -140,68 +140,6 @@ const getProjectTimezone = (site: unknown): string => {
   return "UTC";
 };
 
-const toCadenceMap = (
-  value: unknown,
-): Partial<Record<BackupCadence, string>> | undefined => {
-  if (!isObject(value)) {
-    return undefined;
-  }
-
-  const next: Partial<Record<BackupCadence, string>> = {};
-  for (const [key, entry] of Object.entries(value)) {
-    if (!BACKUP_CADENCES.includes(key as BackupCadence)) {
-      continue;
-    }
-    const normalized = asOptionalString(entry);
-    if (normalized) {
-      next[key as BackupCadence] = normalized;
-    }
-  }
-
-  return Object.keys(next).length > 0 ? next : undefined;
-};
-
-const toAutomaticBackupsScheduleState = (
-  value: unknown,
-): AutomaticBackupsScheduleState => {
-  if (!isObject(value)) {
-    return {};
-  }
-
-  return {
-    ...value,
-    lastRunLocalDateByCadence: toCadenceMap(value.lastRunLocalDateByCadence),
-    lastRunAtByCadence: toCadenceMap(value.lastRunAtByCadence),
-    lastManagedEnvironmentIdByCadence: toCadenceMap(
-      value.lastManagedEnvironmentIdByCadence,
-    ),
-    lastExecutionModeByCadence: toCadenceMap(
-      value.lastExecutionModeByCadence,
-    ) as AutomaticBackupsScheduleState["lastExecutionModeByCadence"],
-    lastErrorByCadence: toCadenceMap(value.lastErrorByCadence),
-    dailyLastRunDate: asOptionalString(value.dailyLastRunDate),
-    weeklyLastRunKey: asOptionalString(value.weeklyLastRunKey),
-    lastDailyRunAt: asOptionalString(value.lastDailyRunAt),
-    lastWeeklyRunAt: asOptionalString(value.lastWeeklyRunAt),
-    lastDailyManagedEnvironmentId: asOptionalString(value.lastDailyManagedEnvironmentId),
-    lastWeeklyManagedEnvironmentId: asOptionalString(value.lastWeeklyManagedEnvironmentId),
-    lastDailyExecutionMode:
-      value.lastDailyExecutionMode === "lambdaless_on_boot"
-        ? "lambdaless_on_boot"
-        : undefined,
-    lastWeeklyExecutionMode:
-      value.lastWeeklyExecutionMode === "lambdaless_on_boot"
-        ? "lambdaless_on_boot"
-        : undefined,
-    lastDailyError: asOptionalString(value.lastDailyError),
-    lastWeeklyError: asOptionalString(value.lastWeeklyError),
-    executionLockRunId: asOptionalString(value.executionLockRunId),
-    executionLockOwnerUserId: asOptionalString(value.executionLockOwnerUserId),
-    executionLockAcquiredAt: asOptionalString(value.executionLockAcquiredAt),
-    executionLockExpiresAt: asOptionalString(value.executionLockExpiresAt),
-  };
-};
-
 const getConnectionErrorSummary = (
   connection?: LambdaConnectionState,
 ): string => {
@@ -212,23 +150,20 @@ const getConnectionErrorSummary = (
   return connection.errorMessage || DEFAULT_CONNECTION_ERROR_SUMMARY;
 };
 
+const getPluginIdFromCtx = (
+  ctx: RenderConfigScreenCtx,
+): string | undefined => {
+  const candidate = (ctx.plugin as { id?: unknown } | undefined)?.id;
+  return typeof candidate === "string" && candidate.trim() ? candidate.trim() : undefined;
+};
+
 export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   const pluginParameters = ctx.plugin.attributes.parameters as PluginParameters;
-  const legacyInstallationState =
-    typeof pluginParameters?.installationState === "string"
-      ? pluginParameters.installationState
-      : undefined;
-  const legacyHasBeenPrompted =
-    typeof pluginParameters?.hasBeenPrompted === "boolean"
-      ? pluginParameters.hasBeenPrompted
-      : undefined;
   const initialDeploymentUrl = getDeploymentUrlFromParameters(pluginParameters);
-  const initialLegacyNetlifyUrl =
-    typeof pluginParameters?.netlifyURL === "string"
-      ? pluginParameters.netlifyURL
+  const initialLambdaAuthSecret =
+    typeof pluginParameters?.lambdaAuthSecret === "string"
+      ? pluginParameters.lambdaAuthSecret
       : "";
-  const fallbackInitialDeploymentUrl =
-    initialDeploymentUrl.trim() || initialLegacyNetlifyUrl.trim();
   const initialDebugEnabled = isDebugEnabled(pluginParameters);
   const initialConnectionState = toLambdaConnectionState(
     pluginParameters?.lambdaConnection,
@@ -248,7 +183,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   );
 
   const hasInitialConnectionErrorDetails =
-    fallbackInitialDeploymentUrl.trim().length > 0 &&
+    initialDeploymentUrl.trim().length > 0 &&
     initialConnectionState?.status === "disconnected" &&
     Boolean(
       initialConnectionState.errorCode ||
@@ -267,6 +202,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   const [savedFormValues, setSavedFormValues] = useState({
     runtimeMode: initialRuntimeMode,
     debugEnabled: initialDebugEnabled,
+    lambdaAuthSecret: initialLambdaAuthSecret,
     backupSchedule: initialBackupSchedule,
   });
   const [savedAutomaticBackupsScheduleState, setSavedAutomaticBackupsScheduleState] =
@@ -282,10 +218,13 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   >(undefined);
 
   const [deploymentUrlInput, setDeploymentUrlInput] = useState(
-    fallbackInitialDeploymentUrl,
+    initialDeploymentUrl,
   );
   const [activeDeploymentUrl, setActiveDeploymentUrl] = useState(
-    fallbackInitialDeploymentUrl,
+    initialDeploymentUrl,
+  );
+  const [lambdaAuthSecretInput, setLambdaAuthSecretInput] = useState(
+    initialLambdaAuthSecret,
   );
   const [connectionState, setConnectionState] = useState<
     LambdaConnectionState | undefined
@@ -304,9 +243,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       : [],
   );
   const [showConnectionDetails, setShowConnectionDetails] = useState(false);
-  const [legacyUpgradeWarning, setLegacyUpgradeWarning] = useState(
-    initialValidationMode === "legacy" ? LEGACY_WARNING_MESSAGE : "",
-  );
   const [backupNowErrorSummary, setBackupNowErrorSummary] = useState("");
   const [backupNowErrorDetails, setBackupNowErrorDetails] = useState<string[]>(
     [],
@@ -323,13 +259,46 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     string[] | undefined
   >(undefined);
   const debugLogger = createDebugLogger(debugEnabled, "ConfigScreen");
+  const persistQueueRef = useRef<Promise<void>>(Promise.resolve());
 
-  const persistPluginParameters = async (updates: Record<string, unknown>) => {
-    await ctx.updatePluginParameters({
-      ...ctx.plugin.attributes.parameters,
-      ...updates,
-    });
-  };
+  const persistPluginParameters = useCallback(
+    async (updates: Record<string, unknown>) => {
+      const persistTask = async () => {
+        let latestParameters = toPluginParameterRecord(ctx.plugin.attributes.parameters);
+        const pluginId = getPluginIdFromCtx(ctx);
+
+        if (pluginId && ctx.currentUserAccessToken) {
+          try {
+            const client = buildClient({
+              apiToken: ctx.currentUserAccessToken,
+            });
+            const plugin = await client.plugins.find(pluginId);
+            latestParameters = toPluginParameterRecord(plugin.parameters);
+          } catch (error) {
+            debugLogger.warn(
+              "Falling back to local plugin parameters because authoritative read failed",
+              {
+                pluginId,
+                error: getErrorMessage(error),
+              },
+            );
+          }
+        }
+
+        await ctx.updatePluginParameters(
+          mergePluginParameterUpdates(latestParameters, updates),
+        );
+      };
+
+      const queuedPersist = persistQueueRef.current.then(persistTask, persistTask);
+      persistQueueRef.current = queuedPersist.then(
+        () => undefined,
+        () => undefined,
+      );
+      return queuedPersist;
+    },
+    [ctx, debugLogger],
+  );
 
   const clearConnectionErrorState = () => {
     setConnectionErrorSummary("");
@@ -347,6 +316,8 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     setSchedulerDisableWarning("");
   };
 
+  const getNormalizedLambdaAuthSecret = () => lambdaAuthSecretInput.trim();
+
   const applyDisconnectedState = (state: LambdaConnectionState) => {
     setConnectionState(state);
     setConnectionErrorSummary(getConnectionErrorSummary(state));
@@ -361,10 +332,19 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       return true;
     }
 
+    const normalizedLambdaAuthSecret = getNormalizedLambdaAuthSecret();
+    if (!normalizedLambdaAuthSecret) {
+      setSchedulerDisableWarning(
+        `${SCHEDULER_DISABLE_WARNING_MESSAGE} ${MISSING_AUTH_SECRET_MESSAGE}`,
+      );
+      return false;
+    }
+
     try {
       const result = await disconnectLambdaScheduler({
         baseUrl: candidateBaseUrl,
         environment: ctx.environment,
+        lambdaAuthSecret: normalizedLambdaAuthSecret,
       });
       debugLogger.log("Remote scheduler disabled", {
         endpoint: result.endpoint,
@@ -397,14 +377,19 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   const refreshLambdaBackupOverview = useCallback(
     async (baseUrl?: string) => {
       const candidateUrl = (baseUrl || activeDeploymentUrl).trim();
+      const normalizedLambdaAuthSecret = savedFormValues.lambdaAuthSecret.trim();
       const shouldFetch =
-        savedFormValues.runtimeMode === "lambda" && candidateUrl.length > 0;
+        savedFormValues.runtimeMode === "lambda" &&
+        candidateUrl.length > 0 &&
+        normalizedLambdaAuthSecret.length > 0;
 
       if (!shouldFetch) {
         setLambdaBackupStatus(undefined);
         if (savedFormValues.runtimeMode === "lambda") {
           setBackupOverviewError(
-            "Lambda status is unavailable until the saved Lambda URL is connected with a healthy ping.",
+            candidateUrl.length === 0
+              ? "Lambda status is unavailable until the saved Lambda URL is connected with a healthy ping."
+              : "Lambda status is unavailable until Lambda auth secret is configured and saved.",
           );
         } else {
           setBackupOverviewError("");
@@ -420,6 +405,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         const status = await fetchLambdaBackupStatus({
           baseUrl: candidateUrl,
           environment: ctx.environment,
+          lambdaAuthSecret: normalizedLambdaAuthSecret,
         });
         setLambdaBackupStatus(status);
       } catch (error) {
@@ -436,6 +422,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     [
       activeDeploymentUrl,
       ctx.environment,
+      savedFormValues.lambdaAuthSecret,
       savedFormValues.runtimeMode,
     ],
   );
@@ -468,27 +455,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         return;
       }
 
-      let configuredDeploymentUrl = fallbackInitialDeploymentUrl;
-
-      if (!initialDeploymentUrl.trim() && initialLegacyNetlifyUrl.trim()) {
-        configuredDeploymentUrl = initialLegacyNetlifyUrl.trim();
-        if (!isCancelled) {
-          setDeploymentUrlInput(configuredDeploymentUrl);
-          setActiveDeploymentUrl(configuredDeploymentUrl);
-        }
-
-        try {
-          await persistPluginParameters({
-            deploymentURL: configuredDeploymentUrl,
-            netlifyURL: configuredDeploymentUrl,
-            vercelURL: configuredDeploymentUrl,
-            runtimeMode: "lambda",
-            lambdaFullMode: true,
-          });
-        } catch {
-          // Best-effort migration. Continue with UI state even if persistence fails.
-        }
-      }
+      const configuredDeploymentUrl = initialDeploymentUrl;
 
       setIsHealthChecking(true);
 
@@ -522,11 +489,30 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         phase: "config_mount",
       });
 
+      const normalizedLambdaAuthSecret = initialLambdaAuthSecret.trim();
+      if (!normalizedLambdaAuthSecret) {
+        const mountHealthEndpoint = `${configuredDeploymentUrl.replace(/\/+$/, "")}/api/datocms/plugin-health`;
+        const disconnectedState = buildDisconnectedLambdaConnectionState(
+          new LambdaHealthCheckError({
+            code: "MISSING_AUTH_SECRET",
+            message: MISSING_AUTH_SECRET_MESSAGE,
+            phase: "config_mount",
+            endpoint: mountHealthEndpoint,
+          }),
+          configuredDeploymentUrl,
+          "config_mount",
+        );
+        applyDisconnectedState(disconnectedState);
+        setIsHealthChecking(false);
+        return;
+      }
+
       try {
         const verificationResult = await verifyLambdaHealth({
           baseUrl: configuredDeploymentUrl,
           environment: ctx.environment,
           phase: "config_mount",
+          lambdaAuthSecret: normalizedLambdaAuthSecret,
         });
 
         if (isCancelled) {
@@ -543,7 +529,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         setDeploymentUrlInput(verificationResult.normalizedBaseUrl);
         setActiveDeploymentUrl(verificationResult.normalizedBaseUrl);
         setConnectionValidationMode("health");
-        setLegacyUpgradeWarning("");
         clearConnectionErrorState();
 
         await persistPluginParameters({
@@ -554,32 +539,10 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           connectionValidationMode: "health",
           runtimeMode: "lambda",
           lambdaFullMode: true,
-          hasBeenPrompted: legacyHasBeenPrompted ?? true,
-          installationState:
-            legacyInstallationState === "installed"
-              ? legacyInstallationState
-              : "installed",
+          lambdaAuthSecret: normalizedLambdaAuthSecret,
         });
       } catch (error) {
         if (isCancelled) {
-          return;
-        }
-
-        const canKeepLegacyConnectedState =
-          initialValidationMode === "legacy" &&
-          initialConnectionState?.status === "connected" &&
-          shouldUseLegacyInitializationFallback(error);
-
-        if (canKeepLegacyConnectedState) {
-          debugLogger.warn(
-            "Mount health check failed but keeping legacy connected state",
-            error,
-          );
-          setConnectionState(initialConnectionState);
-          setConnectionValidationMode("legacy");
-          setLegacyUpgradeWarning(LEGACY_WARNING_MESSAGE);
-          clearConnectionErrorState();
-          setIsHealthChecking(false);
           return;
         }
 
@@ -591,14 +554,10 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         debugLogger.warn("Mount health check failed", disconnectedState);
         applyDisconnectedState(disconnectedState);
 
-        if (shouldUseLegacyInitializationFallback(error)) {
-          setLegacyUpgradeWarning(LEGACY_WARNING_MESSAGE);
-        }
-
         try {
           await persistPluginParameters({
             lambdaConnection: disconnectedState,
-            connectionValidationMode: initialValidationMode ?? null,
+            connectionValidationMode: null,
             runtimeMode: "lambda",
             lambdaFullMode: true,
           });
@@ -716,18 +675,29 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       return;
     }
 
+    const normalizedLambdaAuthSecret = getNormalizedLambdaAuthSecret();
+    if (!normalizedLambdaAuthSecret) {
+      setConnectionErrorSummary(MISSING_AUTH_SECRET_MESSAGE);
+      setConnectionErrorDetails([
+        MISSING_AUTH_SECRET_MESSAGE,
+        "Set the same value as DATOCMS_BACKUPS_SHARED_SECRET configured in the lambda deployment.",
+      ]);
+      setShowConnectionDetails(false);
+      return;
+    }
+
     debugLogger.log("Connecting lambda deployment", { candidateUrl });
     setIsConnecting(true);
     clearConnectionErrorState();
     clearBackupNowErrorState();
     clearSchedulerDisableWarning();
-    setLegacyUpgradeWarning("");
 
     try {
       const verificationResult = await verifyLambdaHealth({
         baseUrl: candidateUrl,
         environment: ctx.environment,
         phase: "config_connect",
+        lambdaAuthSecret: normalizedLambdaAuthSecret,
       });
 
       const connectedState = buildConnectedLambdaConnectionState(
@@ -750,11 +720,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         connectionValidationMode: "health",
         runtimeMode: runtimeModeSelection,
         lambdaFullMode: runtimeModeSelection === "lambda",
-        hasBeenPrompted: legacyHasBeenPrompted ?? true,
-        installationState:
-          legacyInstallationState === "installed"
-            ? legacyInstallationState
-            : "installed",
+        lambdaAuthSecret: normalizedLambdaAuthSecret,
       });
 
       debugLogger.log("Lambda connected successfully", {
@@ -766,85 +732,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       await refreshLambdaBackupOverview(verificationResult.normalizedBaseUrl);
       return;
     } catch (error) {
-      if (shouldUseLegacyInitializationFallback(error)) {
-        debugLogger.warn(
-          "Health endpoint unavailable, attempting legacy initialization fallback",
-          error,
-        );
-        setLegacyUpgradeWarning(LEGACY_WARNING_MESSAGE);
-
-        try {
-          const fallbackResult = await attemptLegacyInitialization(candidateUrl);
-
-          const legacyConnectedState: LambdaConnectionState = {
-            status: "connected",
-            endpoint: fallbackResult.endpoint,
-            lastCheckedAt: fallbackResult.initializedAt,
-            lastCheckPhase: "config_connect",
-          };
-
-          setConnectionState(legacyConnectedState);
-          setDeploymentUrlInput(fallbackResult.normalizedBaseUrl);
-          setActiveDeploymentUrl(fallbackResult.normalizedBaseUrl);
-          setConnectionValidationMode("legacy");
-          clearConnectionErrorState();
-
-          await persistPluginParameters({
-            deploymentURL: fallbackResult.normalizedBaseUrl,
-            netlifyURL: fallbackResult.normalizedBaseUrl,
-            vercelURL: fallbackResult.normalizedBaseUrl,
-            lambdaConnection: legacyConnectedState,
-            connectionValidationMode: "legacy",
-            runtimeMode: runtimeModeSelection,
-            lambdaFullMode: runtimeModeSelection === "lambda",
-            hasBeenPrompted: legacyHasBeenPrompted ?? true,
-            installationState:
-              legacyInstallationState === "installed"
-                ? legacyInstallationState
-                : "installed",
-          });
-
-          debugLogger.log("Lambda connected through legacy initialization fallback", {
-            endpoint: fallbackResult.endpoint,
-            normalizedBaseUrl: fallbackResult.normalizedBaseUrl,
-            mode: "legacy",
-          });
-          ctx.notice(LEGACY_CONNECTED_NOTICE);
-          return;
-        } catch (fallbackError) {
-          debugLogger.error("Legacy initialization fallback failed", fallbackError);
-          setConnectionState(undefined);
-          setConnectionValidationMode(undefined);
-          setConnectionErrorSummary("Could not connect the lambda deployment.");
-          setConnectionErrorDetails([
-            "Could not connect using the legacy initialization endpoint.",
-            fallbackError instanceof LegacyInitializationError
-              ? `Endpoint called: ${fallbackError.endpoint}.`
-              : "Endpoint called: unknown.",
-            `Failure details: ${
-              fallbackError instanceof Error
-                ? fallbackError.message
-                : "Unknown error"
-            }`,
-            "Update and redeploy the lambda function with /api/datocms/plugin-health and try again.",
-          ]);
-          setShowConnectionDetails(false);
-
-          try {
-            await persistPluginParameters({
-              lambdaConnection: null,
-              connectionValidationMode: null,
-              runtimeMode: runtimeModeSelection,
-              lambdaFullMode: runtimeModeSelection === "lambda",
-            });
-          } catch {
-            // Ignore persistence errors here.
-          }
-
-          return;
-        }
-      }
-
       if (error instanceof LambdaHealthCheckError) {
         debugLogger.warn("Lambda health check failed during connect", error);
         const disconnectedState = buildDisconnectedLambdaConnectionState(
@@ -888,7 +775,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     clearConnectionErrorState();
     clearBackupNowErrorState();
     clearSchedulerDisableWarning();
-    setLegacyUpgradeWarning("");
 
     try {
       const candidateBaseUrl =
@@ -940,6 +826,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     const normalizedEnabledCadences = BACKUP_CADENCES.filter((cadence) =>
       enabledCadencesSelection.includes(cadence),
     );
+    const normalizedLambdaAuthSecret = getNormalizedLambdaAuthSecret();
 
     if (normalizedEnabledCadences.length === 0) {
       await ctx.alert("Select at least one backup cadence.");
@@ -959,6 +846,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     const hasConnectedLambdaForSave =
       runtimeModeSelection !== "lambda" ||
       (activeDeploymentUrl.trim().length > 0 &&
+        normalizedLambdaAuthSecret.length > 0 &&
         connectionState?.status === "connected" &&
         connectionValidationMode === "health" &&
         !isHealthChecking &&
@@ -966,7 +854,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
 
     if (!hasConnectedLambdaForSave) {
       await ctx.alert(
-        "Cannot save while 'Use Cronjobs' is enabled unless the Lambda URL is connected and ping status is Connected.",
+        "Cannot save while 'Use Cronjobs' is enabled unless Lambda URL and Lambda auth secret are configured and ping status is Connected.",
       );
       return;
     }
@@ -987,7 +875,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           (cadence, index) => cadence !== normalizedEnabledCadences[index],
         );
       const persistedBackupSchedule: BackupScheduleConfig = {
-        version: 1,
+        version: BACKUP_SCHEDULE_VERSION,
         enabledCadences: normalizedEnabledCadences,
         timezone: projectTimezone,
         anchorLocalDate: didCadencesChange
@@ -1007,7 +895,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         setActiveDeploymentUrl("");
         setConnectionState(undefined);
         setConnectionValidationMode(undefined);
-        setLegacyUpgradeWarning("");
         clearConnectionErrorState();
         clearBackupNowErrorState();
         setLambdaBackupStatus(undefined);
@@ -1018,6 +905,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         debug: debugEnabled,
         runtimeMode: runtimeModeSelection,
         lambdaFullMode: runtimeModeSelection === "lambda",
+        lambdaAuthSecret: normalizedLambdaAuthSecret,
         deploymentURL: persistedDeploymentUrl,
         netlifyURL: persistedDeploymentUrl,
         vercelURL: persistedDeploymentUrl,
@@ -1029,6 +917,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       setSavedFormValues({
         runtimeMode: runtimeModeSelection,
         debugEnabled,
+        lambdaAuthSecret: normalizedLambdaAuthSecret,
         backupSchedule: persistedBackupSchedule,
       });
 
@@ -1094,6 +983,17 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       return;
     }
 
+    const normalizedLambdaAuthSecret = getNormalizedLambdaAuthSecret();
+    if (!normalizedLambdaAuthSecret) {
+      setBackupNowErrorSummary(MISSING_AUTH_SECRET_MESSAGE);
+      setBackupNowErrorDetails([
+        MISSING_AUTH_SECRET_MESSAGE,
+        "Set the same value as DATOCMS_BACKUPS_SHARED_SECRET configured in the lambda deployment.",
+      ]);
+      setShowBackupNowDetails(false);
+      return;
+    }
+
     debugLogger.log("Triggering backup now", {
       candidateUrl,
       environment: ctx.environment,
@@ -1107,6 +1007,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       const result = await triggerBackupNow({
         baseUrl: candidateUrl,
         environment: ctx.environment,
+        lambdaAuthSecret: normalizedLambdaAuthSecret,
         scope,
       });
 
@@ -1281,13 +1182,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           label: "Checking ping...",
           color: "var(--warning-color)",
         }
-      : connectionValidationMode === "legacy" &&
-          connectionState?.status === "connected"
-        ? {
-            label: "Connected (legacy fallback)",
-            color: "var(--warning-color)",
-          }
-        : connectionState?.status === "connected"
+      : connectionState?.status === "connected"
           ? {
               label: "Connected (ping successful)",
               color: "var(--notice-color)",
@@ -1328,7 +1223,8 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     isConnecting ||
     isHealthChecking ||
     isDisconnecting ||
-    !hasHealthyConnectedLambda;
+    !hasHealthyConnectedLambda ||
+    lambdaAuthSecretInput.trim().length === 0;
 
   const lambdaActionButtonStyle: CSSProperties = {
     width: "100%",
@@ -1462,14 +1358,19 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       (cadence, index) =>
         cadence !== savedFormValues.backupSchedule.enabledCadences[index],
     );
+  const hasLambdaAuthSecret = lambdaAuthSecretInput.trim().length > 0;
+  const hasLambdaAuthSecretChanged =
+    lambdaAuthSecretInput.trim() !== savedFormValues.lambdaAuthSecret.trim();
   const hasUnsavedChanges =
     debugEnabled !== savedFormValues.debugEnabled ||
     runtimeModeSelection !== savedFormValues.runtimeMode ||
+    hasLambdaAuthSecretChanged ||
     hasCadenceSelectionChanged;
 
   const canSaveWithLambdaMode =
     !isLambdaFullModeEnabled ||
     (hasActiveDeploymentUrl &&
+      hasLambdaAuthSecret &&
       connectionState?.status === "connected" &&
       connectionValidationMode === "health" &&
       !isHealthChecking &&
@@ -1479,6 +1380,8 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     ? ""
     : !hasActiveDeploymentUrl
       ? "To save with cronjobs enabled, connect a Lambda URL first."
+      : !hasLambdaAuthSecret
+        ? "To save with cronjobs enabled, provide the Lambda auth secret."
       : isHealthChecking || isConnecting
         ? "Wait for the Lambda ping check to finish."
         : connectionState?.status !== "connected" || connectionValidationMode !== "health"
@@ -1494,7 +1397,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     isDisconnecting ||
     isLoading ||
     (savedRuntimeMode === "lambda"
-      ? !hasHealthyConnectedLambda
+      ? !hasHealthyConnectedLambda || savedFormValues.lambdaAuthSecret.trim().length === 0
       : !ctx.currentUserAccessToken);
   const backupOverviewRows: BackupOverviewRow[] = buildBackupOverviewRows({
     runtimeMode: savedRuntimeMode,
@@ -1572,6 +1475,21 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
                 clearBackupNowErrorState();
               }}
             />
+
+            <div style={{ marginTop: "var(--spacing-s)" }}>
+              <TextField
+                name="lambdaAuthSecret"
+                id="lambdaAuthSecret"
+                label="Lambda auth secret"
+                value={lambdaAuthSecretInput}
+                placeholder="Shared secret configured in lambda env"
+                onChange={(newValue) => {
+                  setLambdaAuthSecretInput(newValue);
+                  clearConnectionErrorState();
+                  clearBackupNowErrorState();
+                }}
+              />
+            </div>
 
             <div
               style={{
@@ -1653,20 +1571,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
                 {backupNowButtonLabel}
               </Button>
             </div>
-          </div>
-        )}
-
-        {isLambdaFullModeEnabled && legacyUpgradeWarning && (
-          <div
-            style={{
-              border: "1px solid var(--warning-color)",
-              borderRadius: "6px",
-              background: "rgba(255, 184, 0, 0.12)",
-              padding: "var(--spacing-m)",
-              marginBottom: "var(--spacing-m)",
-            }}
-          >
-            <p style={{ margin: 0 }}>{legacyUpgradeWarning}</p>
           </div>
         )}
 
@@ -1914,7 +1818,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
                     clearConnectionErrorState();
                     clearBackupNowErrorState();
                     clearSchedulerDisableWarning();
-                    setLegacyUpgradeWarning("");
                   }}
                 />
               </div>

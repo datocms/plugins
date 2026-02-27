@@ -25,6 +25,7 @@ describe("triggerBackupNow", () => {
     const result = await triggerBackupNow({
       baseUrl: "backups.netlify.app",
       environment: "main",
+      lambdaAuthSecret: "shared-secret",
     });
 
     expect(result.endpoint).toBe("https://backups.netlify.app/api/datocms/backup-now");
@@ -35,6 +36,9 @@ describe("triggerBackupNow", () => {
       fetchMock.mock.calls as unknown as Array<[unknown, RequestInit | undefined]>;
     const requestInit = typedCalls[0]?.[1];
     expect(requestInit?.method).toBe("POST");
+    expect(requestInit?.headers).toMatchObject({
+      "X-Datocms-Backups-Auth": "shared-secret",
+    });
     expect(String(requestInit?.body)).toContain("\"event_type\":\"backup_now\"");
   });
 
@@ -45,6 +49,7 @@ describe("triggerBackupNow", () => {
     await triggerBackupNow({
       baseUrl: "https://backups.vercel.app",
       environment: "main",
+      lambdaAuthSecret: "shared-secret",
       scope: "monthly",
     });
 
@@ -52,51 +57,6 @@ describe("triggerBackupNow", () => {
       fetchMock.mock.calls as unknown as Array<[unknown, RequestInit | undefined]>;
     const requestInit = typedCalls[0]?.[1];
     expect(String(requestInit?.body)).toContain("\"scope\":\"monthly\"");
-  });
-
-  it("falls back to legacy Netlify daily endpoint when modern routes fail", async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = input.toString();
-      if (url.endsWith("/.netlify/functions/dailyBackup")) {
-        return new Response("daily backup triggered", { status: 200 });
-      }
-
-      return new Response("not found", { status: 404 });
-    });
-    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
-
-    const result = await triggerBackupNow({
-      baseUrl: "https://backups.vercel.app",
-      environment: "main",
-    });
-
-    expect(result.endpoint).toBe("https://backups.vercel.app/.netlify/functions/dailyBackup");
-    expect(result.attemptName).toBe("/.netlify/functions/dailyBackup");
-    expect(fetchMock).toHaveBeenCalledTimes(6);
-  });
-
-  it("uses only weekly legacy fallback for weekly scope", async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = input.toString();
-      if (url.endsWith("/.netlify/functions/weeklyBackup")) {
-        return new Response("weekly backup triggered", { status: 200 });
-      }
-
-      return new Response("not found", { status: 404 });
-    });
-    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
-
-    const result = await triggerBackupNow({
-      baseUrl: "https://backups.vercel.app",
-      environment: "main",
-      scope: "weekly",
-    });
-
-    expect(result.endpoint).toBe("https://backups.vercel.app/.netlify/functions/weeklyBackup");
-    const calledUrls = fetchMock.mock.calls.map((call) => String(call[0]));
-    expect(
-      calledUrls.some((url) => url.endsWith("/.netlify/functions/dailyBackup")),
-    ).toBe(false);
   });
 
   it("returns detailed failure info when all attempts fail", async () => {
@@ -107,13 +67,27 @@ describe("triggerBackupNow", () => {
       triggerBackupNow({
         baseUrl: "https://backups.vercel.app",
         environment: "main",
+        lambdaAuthSecret: "shared-secret",
       }),
     )) as TriggerBackupNowError;
 
     expect(error).toBeInstanceOf(TriggerBackupNowError);
-    expect(error.failures).toHaveLength(8);
+    expect(error.failures).toHaveLength(2);
     expect(error.failures[0].endpoint).toBe("https://backups.vercel.app/api/datocms/backup-now");
     expect(error.failures[0].httpStatus).toBe(404);
+  });
+
+  it("fails when lambda auth secret is missing", async () => {
+    const error = (await expectRejected(
+      triggerBackupNow({
+        baseUrl: "https://backups.vercel.app",
+        environment: "main",
+        lambdaAuthSecret: "",
+      }),
+    )) as TriggerBackupNowError;
+
+    expect(error).toBeInstanceOf(TriggerBackupNowError);
+    expect(error.failures).toHaveLength(1);
   });
 
   it("fails fast when URL is invalid", async () => {
@@ -121,6 +95,7 @@ describe("triggerBackupNow", () => {
       triggerBackupNow({
         baseUrl: "not-a-valid-url",
         environment: "main",
+        lambdaAuthSecret: "shared-secret",
       }),
     )) as LambdaHealthCheckError;
 

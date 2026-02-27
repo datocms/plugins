@@ -1,5 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { backupEnvironmentSlotWithoutLambda } from "./lambdaLessBackup";
+import {
+  backupEnvironmentSlotWithoutLambda,
+  getManagedBackupForkStatusWithoutLambda,
+} from "./lambdaLessBackup";
 
 const buildClientMock = vi.fn();
 
@@ -9,11 +12,18 @@ vi.mock("@datocms/cma-client-browser", () => ({
 
 const createEnvironment = (
   id: string,
-  { primary = false }: { primary?: boolean } = {},
+  {
+    primary = false,
+    status = "ready",
+  }: {
+    primary?: boolean;
+    status?: "creating" | "ready" | "destroying";
+  } = {},
 ) => ({
   id,
   meta: {
     primary,
+    status,
   },
 });
 
@@ -118,5 +128,59 @@ describe("backupEnvironmentSlotWithoutLambda", () => {
 
     expect(destroy).not.toHaveBeenCalled();
     expect(fork).not.toHaveBeenCalled();
+  });
+});
+
+describe("getManagedBackupForkStatusWithoutLambda", () => {
+  it("throws when currentUserAccessToken is missing", async () => {
+    await expect(
+      getManagedBackupForkStatusWithoutLambda({
+        currentUserAccessToken: undefined,
+      }),
+    ).rejects.toThrow("Missing currentUserAccessToken");
+  });
+
+  it("returns false when managed backup environments are ready", async () => {
+    const list = vi.fn().mockResolvedValue([
+      createEnvironment("main", { primary: true }),
+      createEnvironment("automatic-backups-daily", { status: "ready" }),
+      createEnvironment("automatic-backups-weekly", { status: "ready" }),
+    ]);
+    buildClientMock.mockReturnValue({
+      environments: { list },
+    });
+
+    const result = await getManagedBackupForkStatusWithoutLambda({
+      currentUserAccessToken: "token",
+    });
+
+    expect(result).toEqual({
+      hasInProgressManagedFork: false,
+      inProgressManagedEnvironmentIds: [],
+    });
+  });
+
+  it("returns true when any managed backup environment is creating or destroying", async () => {
+    const list = vi.fn().mockResolvedValue([
+      createEnvironment("main", { primary: true }),
+      createEnvironment("automatic-backups-daily", { status: "creating" }),
+      createEnvironment("automatic-backups-weekly", { status: "destroying" }),
+      createEnvironment("sandbox-1", { status: "creating" }),
+    ]);
+    buildClientMock.mockReturnValue({
+      environments: { list },
+    });
+
+    const result = await getManagedBackupForkStatusWithoutLambda({
+      currentUserAccessToken: "token",
+    });
+
+    expect(result).toEqual({
+      hasInProgressManagedFork: true,
+      inProgressManagedEnvironmentIds: [
+        "automatic-backups-daily",
+        "automatic-backups-weekly",
+      ],
+    });
   });
 });

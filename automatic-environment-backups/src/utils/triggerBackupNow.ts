@@ -1,4 +1,14 @@
-import { normalizeBaseUrlForLegacyFallback } from "./verifyLambdaHealth";
+import {
+  buildLambdaHttpErrorMessage,
+  buildLambdaJsonHeaders,
+  LambdaAuthSecretError,
+} from "./lambdaAuth";
+import {
+  createTimeoutController,
+  isAbortError,
+  truncateResponseSnippet,
+} from "./lambdaHttp";
+import { normalizeLambdaBaseUrl } from "./verifyLambdaHealth";
 import type { BackupCadence } from "../types/types";
 
 const TRIGGER_TIMEOUT_MS = 10000;
@@ -20,6 +30,7 @@ type TriggerAttempt = {
 export type TriggerBackupNowInput = {
   baseUrl: string;
   environment: string;
+  lambdaAuthSecret: string;
   scope?: BackupCadence;
 };
 
@@ -57,25 +68,6 @@ export class TriggerBackupNowError extends Error {
   }
 }
 
-const isAbortError = (error: unknown): boolean =>
-  typeof error === "object" &&
-  error !== null &&
-  "name" in error &&
-  (error as { name?: string }).name === "AbortError";
-
-const truncateSnippet = (value: string): string => {
-  if (!value) {
-    return "";
-  }
-
-  const compact = value.replace(/\s+/g, " ").trim();
-  if (compact.length <= RESPONSE_SNIPPET_MAX_LENGTH) {
-    return compact;
-  }
-
-  return `${compact.slice(0, RESPONSE_SNIPPET_MAX_LENGTH)}...`;
-};
-
 const buildScopePayload = (
   scope: BackupCadence | undefined,
 ): Record<string, unknown> => {
@@ -86,52 +78,6 @@ const buildScopePayload = (
   return {
     scope,
   };
-};
-
-const buildLegacyFallbackAttempts = (
-  scope: BackupCadence | undefined,
-): TriggerAttempt[] => {
-  if (scope === "daily") {
-    return [
-      {
-        name: "/.netlify/functions/dailyBackup",
-        path: "/.netlify/functions/dailyBackup",
-        method: "GET",
-      },
-    ];
-  }
-
-  if (scope === "weekly") {
-    return [
-      {
-        name: "/.netlify/functions/weeklyBackup",
-        path: "/.netlify/functions/weeklyBackup",
-        method: "GET",
-      },
-    ];
-  }
-
-  if (scope) {
-    return [];
-  }
-
-  return [
-    {
-      name: "/.netlify/functions/dailyBackup",
-      path: "/.netlify/functions/dailyBackup",
-      method: "GET",
-    },
-    {
-      name: "/.netlify/functions/weeklyBackup",
-      path: "/.netlify/functions/weeklyBackup",
-      method: "GET",
-    },
-    {
-      name: "/.netlify/functions/initialization",
-      path: "/.netlify/functions/initialization",
-      method: "GET",
-    },
-  ];
 };
 
 const buildAttempts = (
@@ -171,67 +117,54 @@ const buildAttempts = (
         ...pluginPayload,
       }),
     },
-    {
-      name: "/ (backup_now)",
-      path: "/",
-      method: "POST",
-      buildBody: () => ({
-        event_type: "backup_now",
-        environment,
-        ...scopePayload,
-      }),
-    },
-    {
-      name: "/ (manual_backup)",
-      path: "/",
-      method: "POST",
-      buildBody: () => ({
-        event_type: "manual_backup",
-        environment,
-        ...scopePayload,
-      }),
-    },
-    {
-      name: "/ (initialization)",
-      path: "/",
-      method: "POST",
-      buildBody: () => ({
-        event_type: "initialization",
-        environment,
-        ...scopePayload,
-      }),
-    },
-    ...buildLegacyFallbackAttempts(scope),
   ];
 };
 
 export const triggerBackupNow = async ({
   baseUrl,
   environment,
+  lambdaAuthSecret,
   scope,
 }: TriggerBackupNowInput): Promise<TriggerBackupNowResult> => {
-  const normalizedBaseUrl = normalizeBaseUrlForLegacyFallback(baseUrl);
+  const normalizedBaseUrl = normalizeLambdaBaseUrl(baseUrl);
   const attempts = buildAttempts(environment, scope);
   const failures: TriggerBackupNowFailure[] = [];
+  let requestHeaders: Record<string, string>;
+
+  try {
+    requestHeaders = buildLambdaJsonHeaders(lambdaAuthSecret);
+  } catch (error) {
+    if (error instanceof LambdaAuthSecretError) {
+      throw new TriggerBackupNowError(error.message, normalizedBaseUrl, [
+        {
+          name: "/api/datocms/backup-now",
+          endpoint: new URL("/api/datocms/backup-now", `${normalizedBaseUrl}/`).toString(),
+          method: "POST",
+          errorMessage: error.message,
+        },
+      ]);
+    }
+    throw error;
+  }
 
   for (const attempt of attempts) {
     const endpoint = new URL(attempt.path, `${normalizedBaseUrl}/`).toString();
     const requestBody = attempt.buildBody ? JSON.stringify(attempt.buildBody()) : undefined;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), TRIGGER_TIMEOUT_MS);
+    const timeoutController = createTimeoutController(TRIGGER_TIMEOUT_MS);
 
     try {
       const response = await fetch(endpoint, {
         method: attempt.method,
-        headers: requestBody
-          ? { Accept: "*/*", "Content-Type": "application/json" }
-          : { Accept: "*/*" },
+        headers: requestHeaders,
         body: requestBody,
-        signal: controller.signal,
+        signal: timeoutController.controller.signal,
       });
 
       const responsePayload = await response.text();
-      const responseSnippet = truncateSnippet(responsePayload);
+      const responseSnippet = truncateResponseSnippet(
+        responsePayload,
+        RESPONSE_SNIPPET_MAX_LENGTH,
+      );
 
       if (response.ok) {
         return {
@@ -248,7 +181,11 @@ export const triggerBackupNow = async ({
         name: attempt.name,
         endpoint,
         method: attempt.method,
-        errorMessage: `HTTP ${response.status}: endpoint returned a non-success status.`,
+        errorMessage: buildLambdaHttpErrorMessage(
+          response.status,
+          responsePayload,
+          "endpoint returned a non-success status",
+        ),
         httpStatus: response.status,
         responseSnippet,
       });
@@ -262,7 +199,7 @@ export const triggerBackupNow = async ({
           : "Could not reach this endpoint.",
       });
     } finally {
-      clearTimeout(timeoutId);
+      timeoutController.clear();
     }
   }
 

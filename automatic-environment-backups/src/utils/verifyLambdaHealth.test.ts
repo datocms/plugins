@@ -1,9 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  LambdaHealthCheckError,
-  shouldUseLegacyInitializationFallback,
-  verifyLambdaHealth,
-} from "./verifyLambdaHealth";
+import { LambdaHealthCheckError, verifyLambdaHealth } from "./verifyLambdaHealth";
 
 const expectRejected = async (
   promise: Promise<unknown>,
@@ -44,6 +40,7 @@ describe("verifyLambdaHealth", () => {
       baseUrl: "https://backups.vercel.app/",
       environment: "main",
       phase: "config_connect",
+      lambdaAuthSecret: "shared-secret",
     });
 
     expect(result.endpoint).toBe(
@@ -51,6 +48,11 @@ describe("verifyLambdaHealth", () => {
     );
     expect(result.normalizedBaseUrl).toBe("https://backups.vercel.app");
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    const typedCalls =
+      fetchMock.mock.calls as unknown as Array<[unknown, RequestInit | undefined]>;
+    expect(typedCalls[0]?.[1]?.headers).toMatchObject({
+      "X-Datocms-Backups-Auth": "shared-secret",
+    });
   });
 
   it("accepts a hostname-only URL by prepending https", async () => {
@@ -74,6 +76,7 @@ describe("verifyLambdaHealth", () => {
       baseUrl: "backups.netlify.app",
       environment: "main",
       phase: "config_connect",
+      lambdaAuthSecret: "shared-secret",
     });
 
     expect(result.endpoint).toBe(
@@ -87,6 +90,7 @@ describe("verifyLambdaHealth", () => {
         baseUrl: "not-a-valid-url",
         environment: "main",
         phase: "config_connect",
+        lambdaAuthSecret: "shared-secret",
       }),
     );
 
@@ -112,6 +116,7 @@ describe("verifyLambdaHealth", () => {
         baseUrl: "https://backups.vercel.app",
         environment: "main",
         phase: "config_mount",
+        lambdaAuthSecret: "shared-secret",
       }),
     );
 
@@ -141,6 +146,7 @@ describe("verifyLambdaHealth", () => {
         baseUrl: "https://backups.vercel.app",
         environment: "main",
         phase: "config_mount",
+        lambdaAuthSecret: "shared-secret",
       }),
     );
 
@@ -157,6 +163,7 @@ describe("verifyLambdaHealth", () => {
         baseUrl: "https://backups.vercel.app",
         environment: "main",
         phase: "config_mount",
+        lambdaAuthSecret: "shared-secret",
       }),
     );
 
@@ -185,36 +192,23 @@ describe("verifyLambdaHealth", () => {
         baseUrl: "https://backups.vercel.app",
         environment: "main",
         phase: "config_mount",
+        lambdaAuthSecret: "shared-secret",
       }),
     );
 
     expect(error.code).toBe("UNEXPECTED_RESPONSE");
   });
-});
 
-describe("shouldUseLegacyInitializationFallback", () => {
-  it("returns true when health endpoint is missing", () => {
-    const error = new LambdaHealthCheckError({
-      code: "HTTP",
-      message: "HTTP 404: Not Found",
-      phase: "config_connect",
-      endpoint: "https://backups.netlify.app/api/datocms/plugin-health",
-      httpStatus: 404,
-      responseSnippet: "Not Found",
-    });
+  it("fails when lambda auth secret is missing", async () => {
+    const error = await expectRejected(
+      verifyLambdaHealth({
+        baseUrl: "https://backups.vercel.app",
+        environment: "main",
+        phase: "config_connect",
+        lambdaAuthSecret: "",
+      }),
+    );
 
-    expect(shouldUseLegacyInitializationFallback(error)).toBe(true);
-  });
-
-  it("returns false for non-missing endpoint errors", () => {
-    const error = new LambdaHealthCheckError({
-      code: "HTTP",
-      message: "HTTP 400: INVALID_MPI_MESSAGE",
-      phase: "config_connect",
-      endpoint: "https://backups.netlify.app/api/datocms/plugin-health",
-      httpStatus: 400,
-    });
-
-    expect(shouldUseLegacyInitializationFallback(error)).toBe(false);
+    expect(error.code).toBe("MISSING_AUTH_SECRET");
   });
 });

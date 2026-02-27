@@ -1,13 +1,18 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import backupOnBoot, {
+  LOCK_HEARTBEAT_INTERVAL_MS,
   LOCK_PROPAGATION_WAIT_MS,
   toUtcDateKey,
   toUtcIsoWeekKey,
 } from "./backupOnBoot";
-import { backupEnvironmentSlotWithoutLambda } from "./lambdaLessBackup";
+import {
+  backupEnvironmentSlotWithoutLambda,
+  getManagedBackupForkStatusWithoutLambda,
+} from "./lambdaLessBackup";
 
 vi.mock("./lambdaLessBackup", () => ({
   backupEnvironmentSlotWithoutLambda: vi.fn(),
+  getManagedBackupForkStatusWithoutLambda: vi.fn(),
 }));
 
 type PluginParameters = Record<string, unknown>;
@@ -18,7 +23,7 @@ type Ctx = {
       parameters: PluginParameters;
     };
   };
-  currentUserAccessToken: string;
+  currentUserAccessToken: string | undefined;
   currentUser: {
     id: string;
   };
@@ -55,11 +60,13 @@ const createCtx = ({
   initialParameters = {},
   store,
   userId = "user-1",
+  accessToken = "token",
   onUpdate,
 }: {
   initialParameters?: PluginParameters;
   store?: ParameterStore;
   userId?: string;
+  accessToken?: string | undefined;
   onUpdate?: (
     nextParameters: PluginParameters,
     parameterStore: ParameterStore,
@@ -111,7 +118,7 @@ const createCtx = ({
       plugin: {
         attributes,
       },
-      currentUserAccessToken: "token",
+      currentUserAccessToken: accessToken,
       currentUser: {
         id: userId,
       },
@@ -187,6 +194,8 @@ describe("backupOnBoot", () => {
       lastWeeklyExecutionMode: "lambdaless_on_boot",
     });
     expect(schedule.executionLockRunId).toBeUndefined();
+    expect(schedule.executionLockHeartbeatAt).toBeUndefined();
+    expect(schedule.executionLockCadenceInFlight).toBeUndefined();
   });
 
   it("runs due cadences even when legacy schedule includes lambdalessTime", async () => {
@@ -304,6 +313,10 @@ describe("backupOnBoot", () => {
   it("skips execution when an active lock is present", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-02-26T08:10:00.000Z"));
+    vi.mocked(getManagedBackupForkStatusWithoutLambda).mockResolvedValue({
+      hasInProgressManagedFork: true,
+      inProgressManagedEnvironmentIds: ["automatic-backups-daily"],
+    });
     const { ctx } = createCtx({
       initialParameters: {
         runtimeMode: "lambdaless",
@@ -316,8 +329,175 @@ describe("backupOnBoot", () => {
 
     await backupOnBoot(ctx as never);
 
+    expect(getManagedBackupForkStatusWithoutLambda).toHaveBeenCalledWith({
+      currentUserAccessToken: "token",
+    });
     expect(backupEnvironmentSlotWithoutLambda).not.toHaveBeenCalled();
     expect(ctx.updatePluginParameters).not.toHaveBeenCalled();
+  });
+
+  it("keeps an active lock when it looks freshly acquired by a live execution", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-02-26T08:10:00.000Z"));
+    const { ctx } = createCtx({
+      initialParameters: {
+        runtimeMode: "lambdaless",
+        automaticBackupsSchedule: {
+          executionLockRunId: "existing-lock",
+          executionLockOwnerUserId: "user-1",
+          executionLockAcquiredAt: "2026-02-26T08:09:59.000Z",
+          executionLockHeartbeatAt: "2026-02-26T08:09:59.000Z",
+          executionLockExpiresAt: "2026-02-26T08:13:00.000Z",
+        },
+      },
+    });
+
+    await backupOnBoot(ctx as never);
+
+    expect(getManagedBackupForkStatusWithoutLambda).not.toHaveBeenCalled();
+    expect(backupEnvironmentSlotWithoutLambda).not.toHaveBeenCalled();
+    expect(ctx.updatePluginParameters).not.toHaveBeenCalled();
+  });
+
+  it("invalidates an active lock and runs backups when managed environments are ready", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-02-26T08:10:00.000Z"));
+    vi.mocked(getManagedBackupForkStatusWithoutLambda).mockResolvedValue({
+      hasInProgressManagedFork: false,
+      inProgressManagedEnvironmentIds: [],
+    });
+    vi.mocked(backupEnvironmentSlotWithoutLambda).mockResolvedValueOnce({
+      slot: "daily",
+      managedEnvironmentId: "automatic-backups-daily",
+      sourceEnvironmentId: "main",
+      replacedExistingEnvironment: false,
+      completedAt: "2026-02-26T08:10:01.000Z",
+    });
+    const { ctx, store } = createCtx({
+      initialParameters: {
+        runtimeMode: "lambdaless",
+        backupSchedule: createBackupSchedule({
+          enabledCadences: ["daily"],
+        }),
+        automaticBackupsSchedule: {
+          executionLockRunId: "existing-lock",
+          executionLockExpiresAt: "2026-02-26T08:30:00.000Z",
+        },
+      },
+    });
+
+    await runWithPropagationWindow(ctx);
+
+    expect(getManagedBackupForkStatusWithoutLambda).toHaveBeenCalledWith({
+      currentUserAccessToken: "token",
+    });
+    expect(backupEnvironmentSlotWithoutLambda).toHaveBeenCalledTimes(1);
+    const schedule = getSchedule(store.current);
+    expect(schedule.executionLockRunId).toBeUndefined();
+    expect(schedule.executionLockExpiresAt).toBeUndefined();
+  });
+
+  it("invalidates a bootstrap-stuck active lock and runs due backups", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-02-26T08:10:00.000Z"));
+    vi.mocked(getManagedBackupForkStatusWithoutLambda).mockResolvedValue({
+      hasInProgressManagedFork: false,
+      inProgressManagedEnvironmentIds: [],
+    });
+    vi.mocked(backupEnvironmentSlotWithoutLambda).mockResolvedValueOnce({
+      slot: "daily",
+      managedEnvironmentId: "automatic-backups-daily",
+      sourceEnvironmentId: "main",
+      replacedExistingEnvironment: false,
+      completedAt: "2026-02-26T08:10:01.000Z",
+    });
+    const { ctx, store } = createCtx({
+      initialParameters: {
+        runtimeMode: "lambdaless",
+        backupSchedule: createBackupSchedule({
+          enabledCadences: ["daily"],
+        }),
+        automaticBackupsSchedule: {
+          executionLockRunId: "existing-lock",
+          executionLockOwnerUserId: "user-1",
+          executionLockAcquiredAt: "2026-02-26T08:08:00.000Z",
+          executionLockHeartbeatAt: "2026-02-26T08:08:00.000Z",
+          executionLockExpiresAt: "2026-02-26T08:13:00.000Z",
+        },
+      },
+    });
+
+    await runWithPropagationWindow(ctx);
+
+    expect(getManagedBackupForkStatusWithoutLambda).toHaveBeenCalledWith({
+      currentUserAccessToken: "token",
+    });
+    expect(backupEnvironmentSlotWithoutLambda).toHaveBeenCalledTimes(1);
+    const schedule = getSchedule(store.current);
+    expect(schedule.executionLockRunId).toBeUndefined();
+  });
+
+  it("skips stale-lock takeover when managed backup fork is in progress", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-02-26T08:10:00.000Z"));
+    vi.mocked(getManagedBackupForkStatusWithoutLambda).mockResolvedValue({
+      hasInProgressManagedFork: true,
+      inProgressManagedEnvironmentIds: ["automatic-backups-daily"],
+    });
+    const { ctx } = createCtx({
+      initialParameters: {
+        runtimeMode: "lambdaless",
+        automaticBackupsSchedule: {
+          executionLockRunId: "stale-lock",
+          executionLockExpiresAt: "2026-02-26T08:09:00.000Z",
+        },
+      },
+    });
+
+    await backupOnBoot(ctx as never);
+
+    expect(getManagedBackupForkStatusWithoutLambda).toHaveBeenCalledWith({
+      currentUserAccessToken: "token",
+    });
+    expect(backupEnvironmentSlotWithoutLambda).not.toHaveBeenCalled();
+    expect(ctx.updatePluginParameters).not.toHaveBeenCalled();
+  });
+
+  it("takes over stale lock when managed backup forks are not in progress", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-02-26T08:10:00.000Z"));
+    vi.mocked(getManagedBackupForkStatusWithoutLambda).mockResolvedValue({
+      hasInProgressManagedFork: false,
+      inProgressManagedEnvironmentIds: [],
+    });
+    vi.mocked(backupEnvironmentSlotWithoutLambda).mockResolvedValueOnce({
+      slot: "daily",
+      managedEnvironmentId: "automatic-backups-daily",
+      sourceEnvironmentId: "main",
+      replacedExistingEnvironment: false,
+      completedAt: "2026-02-26T08:10:01.000Z",
+    });
+    const { ctx, store } = createCtx({
+      initialParameters: {
+        runtimeMode: "lambdaless",
+        backupSchedule: createBackupSchedule({
+          enabledCadences: ["daily"],
+        }),
+        automaticBackupsSchedule: {
+          executionLockRunId: "stale-lock",
+          executionLockExpiresAt: "2026-02-26T08:09:00.000Z",
+        },
+      },
+    });
+
+    await runWithPropagationWindow(ctx);
+
+    expect(getManagedBackupForkStatusWithoutLambda).toHaveBeenCalledWith({
+      currentUserAccessToken: "token",
+    });
+    expect(backupEnvironmentSlotWithoutLambda).toHaveBeenCalledTimes(1);
+    const schedule = getSchedule(store.current);
+    expect(schedule.executionLockRunId).toBeUndefined();
   });
 
   it("fails closed when lock write fails", async () => {
@@ -377,6 +557,82 @@ describe("backupOnBoot", () => {
     expect(schedule.dailyLastRunDate).toBe("2026-02-26");
     expect(schedule.executionLockRunId).toBe("other-run");
     expect(schedule.executionLockOwnerUserId).toBe("user-2");
+  });
+
+  it("renews lock heartbeat while cadence backup is still running", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-02-26T08:10:00.000Z"));
+
+    vi.mocked(backupEnvironmentSlotWithoutLambda).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          setTimeout(() => {
+            resolve({
+              slot: "daily",
+              managedEnvironmentId: "automatic-backups-daily",
+              sourceEnvironmentId: "main",
+              replacedExistingEnvironment: false,
+              completedAt: "2026-02-26T08:12:00.000Z",
+            });
+          }, LOCK_HEARTBEAT_INTERVAL_MS * 2 + 1000);
+        }),
+    );
+
+    const { ctx, store } = createCtx({
+      initialParameters: {
+        runtimeMode: "lambdaless",
+        backupSchedule: createBackupSchedule({
+          enabledCadences: ["daily"],
+        }),
+      },
+    });
+
+    const execution = backupOnBoot(ctx as never);
+    await vi.advanceTimersByTimeAsync(LOCK_PROPAGATION_WAIT_MS + 100);
+    const firstHeartbeat = getSchedule(store.current).executionLockHeartbeatAt;
+
+    await vi.advanceTimersByTimeAsync(LOCK_HEARTBEAT_INTERVAL_MS + 100);
+    const renewedHeartbeat = getSchedule(store.current).executionLockHeartbeatAt;
+    expect(renewedHeartbeat).not.toEqual(firstHeartbeat);
+    expect(getSchedule(store.current).executionLockCadenceInFlight).toBe("daily");
+
+    await vi.advanceTimersByTimeAsync(LOCK_HEARTBEAT_INTERVAL_MS + 1200);
+    await execution;
+  });
+
+  it("stops subsequent cadence execution when lease renewal fails", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-02-26T08:10:00.000Z"));
+    vi.mocked(backupEnvironmentSlotWithoutLambda).mockResolvedValue({
+      slot: "daily",
+      managedEnvironmentId: "automatic-backups-daily",
+      sourceEnvironmentId: "main",
+      replacedExistingEnvironment: false,
+      completedAt: "2026-02-26T08:10:01.000Z",
+    });
+
+    let updateCount = 0;
+    const { ctx, store } = createCtx({
+      initialParameters: { runtimeMode: "lambdaless" },
+      onUpdate: async (nextParameters, parameterStore) => {
+        updateCount += 1;
+        if (updateCount === 3) {
+          throw new Error("lease renewal failed");
+        }
+        parameterStore.current = nextParameters;
+      },
+    });
+
+    await runWithPropagationWindow(ctx);
+
+    expect(backupEnvironmentSlotWithoutLambda).toHaveBeenCalledTimes(1);
+    expect(backupEnvironmentSlotWithoutLambda).toHaveBeenCalledWith({
+      currentUserAccessToken: "token",
+      slot: "daily",
+    });
+    const schedule = getSchedule(store.current);
+    expect(schedule.dailyLastRunDate).toBe("2026-02-26");
+    expect(schedule.weeklyLastRunKey).toBeUndefined();
   });
 
   it("recomputes due state after lock acquisition", async () => {
@@ -465,5 +721,43 @@ describe("backupOnBoot", () => {
       toUtcIsoWeekKey(new Date("2026-02-26T08:10:00.000Z")),
     );
     expect(schedule.executionLockRunId).toBeUndefined();
+  });
+
+  it("coalesces concurrent invocations in the same browser context", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-02-26T08:10:00.000Z"));
+    vi.mocked(backupEnvironmentSlotWithoutLambda).mockResolvedValue({
+      slot: "daily",
+      managedEnvironmentId: "automatic-backups-daily",
+      sourceEnvironmentId: "main",
+      replacedExistingEnvironment: false,
+      completedAt: "2026-02-26T08:10:01.000Z",
+    });
+
+    const { ctx } = createCtx({
+      initialParameters: {
+        runtimeMode: "lambdaless",
+        backupSchedule: createBackupSchedule({
+          enabledCadences: ["daily"],
+        }),
+      },
+    });
+
+    const firstExecution = backupOnBoot(ctx as never);
+    const secondExecution = backupOnBoot(ctx as never);
+    await vi.advanceTimersByTimeAsync(LOCK_PROPAGATION_WAIT_MS + 200);
+    await Promise.all([firstExecution, secondExecution]);
+
+    const lockRunIds = ctx.updatePluginParameters.mock.calls
+      .map(([nextParameters]) => {
+        const schedule = getSchedule(nextParameters as PluginParameters);
+        const runId = schedule.executionLockRunId;
+        return typeof runId === "string" ? runId : undefined;
+      })
+      .filter((runId): runId is string => Boolean(runId));
+
+    expect(lockRunIds.length).toBeGreaterThan(0);
+    expect(new Set(lockRunIds).size).toBe(1);
+    expect(backupEnvironmentSlotWithoutLambda).toHaveBeenCalledTimes(1);
   });
 });

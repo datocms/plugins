@@ -1,4 +1,14 @@
-import { normalizeBaseUrlForLegacyFallback } from "./verifyLambdaHealth";
+import {
+  buildLambdaHttpErrorMessage,
+  buildLambdaJsonHeaders,
+  LambdaAuthSecretError,
+} from "./lambdaAuth";
+import {
+  createTimeoutController,
+  isAbortError,
+  truncateResponseSnippet,
+} from "./lambdaHttp";
+import { normalizeLambdaBaseUrl } from "./verifyLambdaHealth";
 
 const DISCONNECT_TIMEOUT_MS = 10000;
 const RESPONSE_SNIPPET_MAX_LENGTH = 280;
@@ -17,6 +27,7 @@ type DisconnectAttempt = {
 export type DisconnectLambdaSchedulerInput = {
   baseUrl: string;
   environment: string;
+  lambdaAuthSecret: string;
 };
 
 export type DisconnectLambdaSchedulerFailure = {
@@ -51,34 +62,11 @@ export class DisconnectLambdaSchedulerError extends Error {
   }
 }
 
-const isAbortError = (error: unknown): boolean =>
-  typeof error === "object" &&
-  error !== null &&
-  "name" in error &&
-  (error as { name?: string }).name === "AbortError";
-
-const truncateSnippet = (value: string): string => {
-  if (!value) {
-    return "";
-  }
-
-  const compact = value.replace(/\s+/g, " ").trim();
-  if (compact.length <= RESPONSE_SNIPPET_MAX_LENGTH) {
-    return compact;
-  }
-
-  return `${compact.slice(0, RESPONSE_SNIPPET_MAX_LENGTH)}...`;
-};
-
 const buildAttempts = (): DisconnectAttempt[] => {
   return [
     {
       name: "/api/datocms/scheduler-disconnect",
       path: "/api/datocms/scheduler-disconnect",
-    },
-    {
-      name: "/.netlify/functions/scheduler-disconnect",
-      path: "/.netlify/functions/scheduler-disconnect",
     },
   ];
 };
@@ -86,8 +74,9 @@ const buildAttempts = (): DisconnectAttempt[] => {
 export const disconnectLambdaScheduler = async ({
   baseUrl,
   environment,
+  lambdaAuthSecret,
 }: DisconnectLambdaSchedulerInput): Promise<DisconnectLambdaSchedulerResult> => {
-  const normalizedBaseUrl = normalizeBaseUrlForLegacyFallback(baseUrl);
+  const normalizedBaseUrl = normalizeLambdaBaseUrl(baseUrl);
   const attempts = buildAttempts();
   const requestBody = JSON.stringify({
     event_type: DISCONNECT_EVENT_TYPE,
@@ -101,24 +90,42 @@ export const disconnectLambdaScheduler = async ({
     },
   });
   const failures: DisconnectLambdaSchedulerFailure[] = [];
+  let requestHeaders: Record<string, string>;
+
+  try {
+    requestHeaders = buildLambdaJsonHeaders(lambdaAuthSecret);
+  } catch (error) {
+    if (error instanceof LambdaAuthSecretError) {
+      throw new DisconnectLambdaSchedulerError(error.message, normalizedBaseUrl, [
+        {
+          name: "/api/datocms/scheduler-disconnect",
+          endpoint: new URL(
+            "/api/datocms/scheduler-disconnect",
+            `${normalizedBaseUrl}/`,
+          ).toString(),
+          errorMessage: error.message,
+        },
+      ]);
+    }
+    throw error;
+  }
 
   for (const attempt of attempts) {
     const endpoint = new URL(attempt.path, `${normalizedBaseUrl}/`).toString();
-    const controller = new AbortController();
-    const timeoutId = setTimeout(
-      () => controller.abort(),
-      DISCONNECT_TIMEOUT_MS,
-    );
+    const timeoutController = createTimeoutController(DISCONNECT_TIMEOUT_MS);
 
     try {
       const response = await fetch(endpoint, {
         method: "POST",
-        headers: { Accept: "*/*", "Content-Type": "application/json" },
+        headers: requestHeaders,
         body: requestBody,
-        signal: controller.signal,
+        signal: timeoutController.controller.signal,
       });
       const responsePayload = await response.text();
-      const responseSnippet = truncateSnippet(responsePayload);
+      const responseSnippet = truncateResponseSnippet(
+        responsePayload,
+        RESPONSE_SNIPPET_MAX_LENGTH,
+      );
 
       if (response.ok) {
         return {
@@ -133,7 +140,11 @@ export const disconnectLambdaScheduler = async ({
       failures.push({
         name: attempt.name,
         endpoint,
-        errorMessage: `HTTP ${response.status}: endpoint returned a non-success status.`,
+        errorMessage: buildLambdaHttpErrorMessage(
+          response.status,
+          responsePayload,
+          "endpoint returned a non-success status",
+        ),
         httpStatus: response.status,
         responseSnippet,
       });
@@ -146,7 +157,7 @@ export const disconnectLambdaScheduler = async ({
           : "Could not reach this endpoint.",
       });
     } finally {
-      clearTimeout(timeoutId);
+      timeoutController.clear();
     }
   }
 

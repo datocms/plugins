@@ -3,6 +3,16 @@ import {
   LambdaConnectionPhase,
   LambdaConnectionState,
 } from "../types/types";
+import {
+  buildLambdaHttpErrorMessage,
+  buildLambdaJsonHeaders,
+  LambdaAuthSecretError,
+} from "./lambdaAuth";
+import {
+  createTimeoutController,
+  isAbortError,
+  truncateResponseSnippet,
+} from "./lambdaHttp";
 
 const HEALTH_CHECK_TIMEOUT_MS = 8000;
 export const HEALTH_ENDPOINT_PATH = "/api/datocms/plugin-health";
@@ -25,14 +35,6 @@ type LambdaHealthResponsePayload = {
   status?: string;
 };
 
-type LambdaHealthErrorPayload = {
-  error?: {
-    code?: string;
-    message?: string;
-  };
-  message?: string;
-};
-
 type LambdaHealthCheckErrorConstructorProps = {
   code: LambdaConnectionErrorCode;
   message: string;
@@ -46,6 +48,7 @@ export type VerifyLambdaHealthInput = {
   baseUrl: string;
   environment: string;
   phase: LambdaConnectionPhase;
+  lambdaAuthSecret: string;
 };
 
 export type VerifyLambdaHealthResult = {
@@ -157,19 +160,6 @@ const normalizeBaseUrl = (baseUrl: string, phase: LambdaConnectionPhase): string
   return parsed.origin;
 };
 
-const truncateSnippet = (value: string): string => {
-  if (!value) {
-    return "";
-  }
-
-  const compact = value.replace(/\s+/g, " ").trim();
-  if (compact.length <= SNIPPET_MAX_LENGTH) {
-    return compact;
-  }
-
-  return `${compact.slice(0, SNIPPET_MAX_LENGTH)}...`;
-};
-
 const parseJsonPayload = (payload: string): unknown => {
   if (!payload.trim()) {
     throw new Error("empty");
@@ -178,31 +168,12 @@ const parseJsonPayload = (payload: string): unknown => {
   return JSON.parse(payload);
 };
 
-const extractHttpErrorMessage = (payload: string, status: number): string => {
-  try {
-    const parsedPayload = parseJsonPayload(payload) as LambdaHealthErrorPayload;
-    const errorCode = parsedPayload.error?.code;
-    const errorMessage = parsedPayload.error?.message || parsedPayload.message || "";
-
-    if (errorCode && errorMessage) {
-      return `HTTP ${status}: ${errorCode} - ${errorMessage}`;
-    }
-
-    if (errorMessage) {
-      return `HTTP ${status}: ${errorMessage}`;
-    }
-  } catch {
-    // Ignore JSON parse error and fallback to generic status message.
-  }
-
-  return `HTTP ${status}: health endpoint returned an error status.`;
-};
-
-const isAbortError = (error: unknown): boolean =>
-  typeof error === "object" &&
-  error !== null &&
-  "name" in error &&
-  (error as { name?: string }).name === "AbortError";
+const extractHttpErrorMessage = (payload: string, status: number): string =>
+  buildLambdaHttpErrorMessage(
+    status,
+    payload,
+    "health endpoint returned an error status",
+  );
 
 const isExpectedResponse = (payload: LambdaHealthResponsePayload): boolean => {
   return (
@@ -227,7 +198,7 @@ const assertExpectedResponse = (
         "Health endpoint response did not match the expected Automatic Backups MPI PONG contract.",
       phase,
       endpoint,
-      responseSnippet: truncateSnippet(rawPayload),
+      responseSnippet: truncateResponseSnippet(rawPayload, SNIPPET_MAX_LENGTH),
     });
   }
 };
@@ -239,6 +210,7 @@ export const verifyLambdaHealth = async ({
   baseUrl,
   environment,
   phase,
+  lambdaAuthSecret,
 }: VerifyLambdaHealthInput): Promise<VerifyLambdaHealthResult> => {
   const normalizedBaseUrl = normalizeBaseUrl(baseUrl, phase);
   const endpoint = new URL(HEALTH_ENDPOINT_PATH, `${normalizedBaseUrl}/`).toString();
@@ -256,8 +228,22 @@ export const verifyLambdaHealth = async ({
     },
   });
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), HEALTH_CHECK_TIMEOUT_MS);
+  const timeoutController = createTimeoutController(HEALTH_CHECK_TIMEOUT_MS);
+
+  let requestHeaders: Record<string, string>;
+  try {
+    requestHeaders = buildLambdaJsonHeaders(lambdaAuthSecret);
+  } catch (error) {
+    if (error instanceof LambdaAuthSecretError) {
+      throw new LambdaHealthCheckError({
+        code: "MISSING_AUTH_SECRET",
+        message: error.message,
+        phase,
+        endpoint,
+      });
+    }
+    throw error;
+  }
 
   let response: Response;
 
@@ -265,8 +251,8 @@ export const verifyLambdaHealth = async ({
     response = await fetch(endpoint, {
       method: "POST",
       body: requestBody,
-      headers: { Accept: "*/*", "Content-Type": "application/json" },
-      signal: controller.signal,
+      headers: requestHeaders,
+      signal: timeoutController.controller.signal,
     });
   } catch (error) {
     if (isAbortError(error)) {
@@ -285,7 +271,7 @@ export const verifyLambdaHealth = async ({
       endpoint,
     });
   } finally {
-    clearTimeout(timeoutId);
+    timeoutController.clear();
   }
 
   const responsePayload = await response.text();
@@ -297,7 +283,7 @@ export const verifyLambdaHealth = async ({
       phase,
       endpoint,
       httpStatus: response.status,
-      responseSnippet: truncateSnippet(responsePayload),
+      responseSnippet: truncateResponseSnippet(responsePayload, SNIPPET_MAX_LENGTH),
     });
   }
 
@@ -311,7 +297,7 @@ export const verifyLambdaHealth = async ({
       message: "Health endpoint returned HTTP 200 with an invalid JSON payload.",
       phase,
       endpoint,
-      responseSnippet: truncateSnippet(responsePayload),
+      responseSnippet: truncateResponseSnippet(responsePayload, SNIPPET_MAX_LENGTH),
     });
   }
 
@@ -379,27 +365,10 @@ export const getLambdaConnectionErrorDetails = (
     connection.responseSnippet ? `Response snippet: ${connection.responseSnippet}` : "",
     buildUnexpectedResponseMessage(),
     "If this worked before, your deployment may be outdated or unhealthy.",
-    "Confirm /api/datocms/plugin-health exists and returns the expected MPI PONG payload.",
+    "Confirm /api/datocms/plugin-health exists, the lambda auth secret matches, and DATOCMS_BACKUPS_SHARED_SECRET is configured server-side.",
   ].filter(Boolean);
 };
 
-export const normalizeBaseUrlForLegacyFallback = (baseUrl: string): string => {
+export const normalizeLambdaBaseUrl = (baseUrl: string): string => {
   return normalizeBaseUrl(baseUrl, "config_connect");
-};
-
-export const shouldUseLegacyInitializationFallback = (error: unknown): boolean => {
-  if (!(error instanceof LambdaHealthCheckError)) {
-    return false;
-  }
-
-  if (error.code !== "HTTP") {
-    return false;
-  }
-
-  if (error.httpStatus === 404 || error.httpStatus === 405) {
-    return true;
-  }
-
-  const combinedText = `${error.message} ${error.responseSnippet || ""}`.toLowerCase();
-  return combinedText.includes("not found");
 };

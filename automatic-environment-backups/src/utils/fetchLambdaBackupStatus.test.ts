@@ -71,6 +71,7 @@ describe("fetchLambdaBackupStatus", () => {
     const result = await fetchLambdaBackupStatus({
       baseUrl: "backups.netlify.app",
       environment: "main",
+      lambdaAuthSecret: "shared-secret",
     });
 
     expect(result.scheduler.provider).toBe("vercel");
@@ -83,6 +84,9 @@ describe("fetchLambdaBackupStatus", () => {
     expect(typedCalls[0]?.[0]).toBe(
       "https://backups.netlify.app/api/datocms/backup-status",
     );
+    expect(typedCalls[0]?.[1]?.headers).toMatchObject({
+      "X-Datocms-Backups-Auth": "shared-secret",
+    });
   });
 
   it("throws INVALID_RESPONSE when payload contract is malformed", async () => {
@@ -93,6 +97,7 @@ describe("fetchLambdaBackupStatus", () => {
       fetchLambdaBackupStatus({
         baseUrl: "https://backups.vercel.app",
         environment: "main",
+        lambdaAuthSecret: "shared-secret",
       }),
     )) as LambdaBackupStatusError;
 
@@ -108,11 +113,24 @@ describe("fetchLambdaBackupStatus", () => {
       fetchLambdaBackupStatus({
         baseUrl: "https://backups.vercel.app",
         environment: "main",
+        lambdaAuthSecret: "shared-secret",
       }),
     )) as LambdaBackupStatusError;
 
     expect(error).toBeInstanceOf(LambdaBackupStatusError);
     expect(error.code).toBe("HTTP");
     expect(error.httpStatus).toBe(500);
+  });
+
+  it("fails when lambda auth secret is missing", async () => {
+    const error = (await expectRejected(
+      fetchLambdaBackupStatus({
+        baseUrl: "https://backups.vercel.app",
+        environment: "main",
+        lambdaAuthSecret: "",
+      }),
+    )) as LambdaBackupStatusError;
+
+    expect(error.code).toBe("MISSING_AUTH_SECRET");
   });
 });

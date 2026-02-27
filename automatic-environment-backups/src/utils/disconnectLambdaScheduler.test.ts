@@ -30,6 +30,7 @@ describe("disconnectLambdaScheduler", () => {
     const result = await disconnectLambdaScheduler({
       baseUrl: "backups.netlify.app",
       environment: "main",
+      lambdaAuthSecret: "shared-secret",
     });
 
     expect(result.endpoint).toBe(
@@ -37,32 +38,14 @@ describe("disconnectLambdaScheduler", () => {
     );
     expect(result.attemptName).toBe("/api/datocms/scheduler-disconnect");
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    const typedCalls =
+      fetchMock.mock.calls as unknown as Array<[unknown, RequestInit | undefined]>;
+    expect(typedCalls[0]?.[1]?.headers).toMatchObject({
+      "X-Datocms-Backups-Auth": "shared-secret",
+    });
   });
 
-  it("falls back to legacy Netlify endpoint when modern route fails", async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = input.toString();
-      if (url.endsWith("/.netlify/functions/scheduler-disconnect")) {
-        return new Response("scheduler disabled", { status: 200 });
-      }
-
-      return new Response("not found", { status: 404 });
-    });
-    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
-
-    const result = await disconnectLambdaScheduler({
-      baseUrl: "https://backups.vercel.app",
-      environment: "main",
-    });
-
-    expect(result.endpoint).toBe(
-      "https://backups.vercel.app/.netlify/functions/scheduler-disconnect",
-    );
-    expect(result.attemptName).toBe("/.netlify/functions/scheduler-disconnect");
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-  });
-
-  it("returns detailed failures when all attempts fail", async () => {
+  it("returns detailed failures when the endpoint fails", async () => {
     const fetchMock = vi.fn(
       async () => new Response("route not available", { status: 404 }),
     );
@@ -72,14 +55,28 @@ describe("disconnectLambdaScheduler", () => {
       disconnectLambdaScheduler({
         baseUrl: "https://backups.vercel.app",
         environment: "main",
+        lambdaAuthSecret: "shared-secret",
       }),
     )) as DisconnectLambdaSchedulerError;
 
     expect(error).toBeInstanceOf(DisconnectLambdaSchedulerError);
-    expect(error.failures).toHaveLength(2);
+    expect(error.failures).toHaveLength(1);
     expect(error.failures[0].endpoint).toBe(
       "https://backups.vercel.app/api/datocms/scheduler-disconnect",
     );
+  });
+
+  it("fails when lambda auth secret is missing", async () => {
+    const error = (await expectRejected(
+      disconnectLambdaScheduler({
+        baseUrl: "https://backups.vercel.app",
+        environment: "main",
+        lambdaAuthSecret: "",
+      }),
+    )) as DisconnectLambdaSchedulerError;
+
+    expect(error).toBeInstanceOf(DisconnectLambdaSchedulerError);
+    expect(error.failures).toHaveLength(1);
   });
 
   it("fails fast when URL is invalid", async () => {
@@ -87,6 +84,7 @@ describe("disconnectLambdaScheduler", () => {
       disconnectLambdaScheduler({
         baseUrl: "not-a-valid-url",
         environment: "main",
+        lambdaAuthSecret: "shared-secret",
       }),
     )) as LambdaHealthCheckError;
 

@@ -1,5 +1,15 @@
 import { LambdaBackupStatus } from "../types/types";
-import { normalizeBaseUrlForLegacyFallback } from "./verifyLambdaHealth";
+import {
+  buildLambdaHttpErrorMessage,
+  buildLambdaJsonHeaders,
+  LambdaAuthSecretError,
+} from "./lambdaAuth";
+import {
+  createTimeoutController,
+  isAbortError,
+  truncateResponseSnippet,
+} from "./lambdaHttp";
+import { normalizeLambdaBaseUrl } from "./verifyLambdaHealth";
 
 const STATUS_TIMEOUT_MS = 10000;
 const RESPONSE_SNIPPET_MAX_LENGTH = 280;
@@ -14,6 +24,7 @@ const EXPECTED_SERVICE_STATUS = "ready";
 export class LambdaBackupStatusError extends Error {
   readonly endpoint: string;
   readonly code:
+    | "MISSING_AUTH_SECRET"
     | "TIMEOUT"
     | "NETWORK"
     | "HTTP"
@@ -30,6 +41,7 @@ export class LambdaBackupStatusError extends Error {
     responseSnippet,
   }: {
     code:
+      | "MISSING_AUTH_SECRET"
       | "TIMEOUT"
       | "NETWORK"
       | "HTTP"
@@ -52,25 +64,7 @@ export class LambdaBackupStatusError extends Error {
 type FetchLambdaBackupStatusInput = {
   baseUrl: string;
   environment: string;
-};
-
-const isAbortError = (error: unknown): boolean =>
-  typeof error === "object" &&
-  error !== null &&
-  "name" in error &&
-  (error as { name?: string }).name === "AbortError";
-
-const truncateSnippet = (value: string): string => {
-  if (!value) {
-    return "";
-  }
-
-  const compact = value.replace(/\s+/g, " ").trim();
-  if (compact.length <= RESPONSE_SNIPPET_MAX_LENGTH) {
-    return compact;
-  }
-
-  return `${compact.slice(0, RESPONSE_SNIPPET_MAX_LENGTH)}...`;
+  lambdaAuthSecret: string;
 };
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
@@ -168,8 +162,9 @@ const toValidatedStatus = (payload: unknown): LambdaBackupStatus | null => {
 export const fetchLambdaBackupStatus = async ({
   baseUrl,
   environment,
+  lambdaAuthSecret,
 }: FetchLambdaBackupStatusInput): Promise<LambdaBackupStatus> => {
-  const normalizedBaseUrl = normalizeBaseUrlForLegacyFallback(baseUrl);
+  const normalizedBaseUrl = normalizeLambdaBaseUrl(baseUrl);
   const endpoint = new URL("/api/datocms/backup-status", `${normalizedBaseUrl}/`).toString();
   const body = JSON.stringify({
     event_type: STATUS_EVENT_TYPE,
@@ -183,16 +178,29 @@ export const fetchLambdaBackupStatus = async ({
     },
   });
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), STATUS_TIMEOUT_MS);
+  const timeoutController = createTimeoutController(STATUS_TIMEOUT_MS);
   let response: Response;
+  let requestHeaders: Record<string, string>;
+
+  try {
+    requestHeaders = buildLambdaJsonHeaders(lambdaAuthSecret);
+  } catch (error) {
+    if (error instanceof LambdaAuthSecretError) {
+      throw new LambdaBackupStatusError({
+        code: "MISSING_AUTH_SECRET",
+        endpoint,
+        message: error.message,
+      });
+    }
+    throw error;
+  }
 
   try {
     response = await fetch(endpoint, {
       method: "POST",
-      headers: { Accept: "*/*", "Content-Type": "application/json" },
+      headers: requestHeaders,
       body,
-      signal: controller.signal,
+      signal: timeoutController.controller.signal,
     });
   } catch (error) {
     if (isAbortError(error)) {
@@ -209,11 +217,14 @@ export const fetchLambdaBackupStatus = async ({
       message: "Could not reach backup status endpoint.",
     });
   } finally {
-    clearTimeout(timeoutId);
+    timeoutController.clear();
   }
 
   const payloadText = await response.text();
-  const responseSnippet = truncateSnippet(payloadText);
+  const responseSnippet = truncateResponseSnippet(
+    payloadText,
+    RESPONSE_SNIPPET_MAX_LENGTH,
+  );
 
   if (!response.ok) {
     throw new LambdaBackupStatusError({
@@ -221,7 +232,11 @@ export const fetchLambdaBackupStatus = async ({
       endpoint,
       httpStatus: response.status,
       responseSnippet,
-      message: `Backup status endpoint returned HTTP ${response.status}.`,
+      message: buildLambdaHttpErrorMessage(
+        response.status,
+        payloadText,
+        "backup status endpoint returned an error status",
+      ),
     });
   }
 

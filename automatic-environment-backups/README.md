@@ -49,13 +49,16 @@ In Lambda-less mode, backups are request-driven:
 
 ### Concurrency safety (best effort lease lock)
 
-Lambda-less `onBoot` now uses a lightweight lease lock in `automaticBackupsSchedule`:
+Lambda-less `onBoot` uses a lightweight renewable lease lock in `automaticBackupsSchedule`:
 
-- Lock fields: `executionLockRunId`, `executionLockOwnerUserId`, `executionLockAcquiredAt`, `executionLockExpiresAt`.
-- Lock TTL is 20 minutes.
+- Lock fields: `executionLockRunId`, `executionLockOwnerUserId`, `executionLockAcquiredAt`, `executionLockHeartbeatAt`, `executionLockExpiresAt`, `executionLockCadenceInFlight`.
+- Lease duration is 3 minutes and is renewed every 45 seconds while execution is alive.
 - After writing the lock, each runner waits 5.5 seconds before verifying lock ownership to account for parameter propagation.
-- If a lock is already active, contenders skip immediately (no wait/retry loop).
-- If lock write or verification is uncertain, execution fails closed (no backup run).
+- If a lock is active, managed backup environment statuses are checked:
+  - If any managed slot is `creating`/`destroying`, the lock is kept and contenders skip.
+  - If managed slots are `ready`, the active lock is invalidated and execution can continue immediately.
+- If a lock is stale, takeover is allowed only when managed backup environments are not currently `creating`/`destroying`.
+- If lock write, lease renewal, or stale-lock verification is uncertain, execution fails closed (no backup run).
 - Lock release happens only if the same run still owns the lock.
 
 This reduces duplicate execution risk across near-simultaneous boots, but it is still best effort and not strict exactly-once coordination.
@@ -114,13 +117,15 @@ Backups will run during plugin boot and maintain rolling cadence slots.
 1. Open the plugin config screen.
 2. Enable `Use Cronjobs`.
 3. In **Lambda setup**, click **Deploy lambda** and choose one option:
-   - Vercel: https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fmarcelofinamorvieira%2Fdatocms-backups-scheduled-function&env=DATOCMS_FULLACCESS_API_TOKEN&project-name=datocms-backups-scheduled-function&repo-name=datocms-backups-scheduled-function
+   - Vercel: https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fmarcelofinamorvieira%2Fdatocms-backups-scheduled-function&env=DATOCMS_FULLACCESS_API_TOKEN,DATOCMS_BACKUPS_SHARED_SECRET&project-name=datocms-backups-scheduled-function&repo-name=datocms-backups-scheduled-function
    - Netlify: https://app.netlify.com/start/deploy?repository=https://github.com/marcelofinamorvieira/datocms-backups-scheduled-function
    - Cloudflare: https://github.com/marcelofinamorvieira/datocms-backups-scheduled-function#deploying-on-cloudflare-workers
-4. Paste the deployed URL into **Lambda URL**.
-5. Click **Connect**.
-6. Confirm status shows **Connected (ping successful)**.
-7. Click **Save**.
+4. Configure `DATOCMS_BACKUPS_SHARED_SECRET` in the lambda deployment environment.
+5. Paste the deployed URL into **Lambda URL**.
+6. Paste the same secret into **Lambda auth secret**.
+7. Click **Connect**.
+8. Confirm status shows **Connected (ping successful)**.
+9. Click **Save**.
 
 ## Lambda health handshake contract (Lambda-full mode)
 
@@ -128,9 +133,10 @@ The plugin validates connectivity by calling:
 
 - `POST /api/datocms/plugin-health`
 - `POST /api/datocms/scheduler-disconnect` when disconnecting Lambda or saving Lambda-less mode with a connected URL
+- `POST /api/datocms/backup-status` when rendering backup overview in Lambda mode
+- `POST /api/datocms/backup-now` when running Lambda manual backups
 
-Legacy deployments that do not expose `/api/datocms/plugin-health` can still connect via legacy initialization fallback (`/.netlify/functions/initialization`), but should be upgraded.
-For scheduler disable, the plugin also falls back to `POST /.netlify/functions/scheduler-disconnect`.
+All requests include `X-Datocms-Backups-Auth`, and the value must match `DATOCMS_BACKUPS_SHARED_SECRET` in the lambda deployment.
 
 ## Migration and compatibility notes
 
