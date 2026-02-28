@@ -336,6 +336,98 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     setAvailableEnvironmentIds(environmentIds);
   }, [fetchAvailableEnvironmentIds]);
 
+  const ensureBackupsExistForCadences = useCallback(
+    async ({
+      baseUrl,
+      lambdaAuthSecret,
+      cadences,
+      reason,
+    }: {
+      baseUrl: string;
+      lambdaAuthSecret: string;
+      cadences: BackupCadence[];
+      reason: "connect" | "schedule";
+    }) => {
+      if (cadences.length === 0) {
+        return;
+      }
+
+      try {
+        const status = await fetchLambdaBackupStatus({
+          baseUrl,
+          environment: ctx.environment,
+          lambdaAuthSecret,
+        });
+
+        const cadencesMissingEnvironment = cadences.filter((cadence) => {
+          const slot = status.slots[cadence];
+          return !slot || !slot.lastBackupAt;
+        });
+
+        if (cadencesMissingEnvironment.length === 0) {
+          await refreshLambdaBackupOverview(baseUrl);
+          await refreshAvailableEnvironments();
+          return;
+        }
+
+        const createdEnvironmentIds: string[] = [];
+        const failedCadences: string[] = [];
+
+        for (const cadence of cadencesMissingEnvironment) {
+          try {
+            setBackupNowInFlightCadence(cadence);
+            const result = await triggerLambdaBackupNow({
+              baseUrl,
+              environment: ctx.environment,
+              scope: cadence,
+              lambdaAuthSecret,
+            });
+            createdEnvironmentIds.push(result.createdEnvironmentId);
+          } catch (error) {
+            failedCadences.push(
+              `${getCadenceLabel(cadence)}: ${
+                error instanceof Error ? error.message : "Unknown error"
+              }`,
+            );
+          }
+        }
+
+        if (createdEnvironmentIds.length > 0) {
+          const reasonLabel =
+            reason === "connect"
+              ? "after connecting Lambda"
+              : "for newly added schedule cadences";
+          const plural = createdEnvironmentIds.length > 1 ? "s" : "";
+          ctx.notice(
+            `Created ${createdEnvironmentIds.length} backup environment${plural} ${reasonLabel}.`,
+          );
+        }
+
+        if (failedCadences.length > 0) {
+          setBackupOverviewError(
+            `Some automatic backup creations failed: ${failedCadences.join(" | ")}`,
+          );
+        }
+
+        await refreshLambdaBackupOverview(baseUrl);
+        await refreshAvailableEnvironments();
+      } catch (error) {
+        setBackupOverviewError(
+          error instanceof Error
+            ? error.message
+            : "Could not automatically create missing backup environments.",
+        );
+      } finally {
+        setBackupNowInFlightCadence(null);
+      }
+    },
+    [
+      ctx,
+      refreshAvailableEnvironments,
+      refreshLambdaBackupOverview,
+    ],
+  );
+
   useEffect(() => {
     let isCancelled = false;
     debugLogger.log("Config screen mounted", {
@@ -556,7 +648,12 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         mode: "health",
       });
       ctx.notice("Lambda function connected successfully.");
-      await refreshLambdaBackupOverview(verificationResult.normalizedBaseUrl);
+      await ensureBackupsExistForCadences({
+        baseUrl: verificationResult.normalizedBaseUrl,
+        lambdaAuthSecret: normalizedLambdaAuthSecret,
+        cadences: savedFormValues.backupSchedule.enabledCadences,
+        reason: "connect",
+      });
       return;
     } catch (error) {
       if (error instanceof LambdaHealthCheckError) {
@@ -679,6 +776,9 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         savedCadences.some(
           (cadence, index) => cadence !== normalizedEnabledCadences[index],
         );
+      const addedCadences = normalizedEnabledCadences.filter(
+        (cadence) => !savedCadences.includes(cadence),
+      );
       const persistedBackupSchedule: BackupScheduleConfig = {
         version: BACKUP_SCHEDULE_VERSION,
         enabledCadences: normalizedEnabledCadences,
@@ -705,6 +805,15 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         lambdaAuthSecret: normalizedLambdaAuthSecret,
         backupSchedule: persistedBackupSchedule,
       });
+
+      if (addedCadences.length > 0) {
+        await ensureBackupsExistForCadences({
+          baseUrl: persistedDeploymentUrl,
+          lambdaAuthSecret: normalizedLambdaAuthSecret,
+          cadences: addedCadences,
+          reason: "schedule",
+        });
+      }
 
       ctx.notice(
         `Settings saved. Runtime mode: Lambda (cron). Debug logging is ${
@@ -943,7 +1052,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   };
 
   const overviewRowActionStyle: CSSProperties = {
-    alignSelf: "start",
+    alignSelf: "center",
     minWidth: "140px",
   };
 
