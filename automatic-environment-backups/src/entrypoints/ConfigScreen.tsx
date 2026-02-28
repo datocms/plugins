@@ -49,6 +49,7 @@ import {
 } from "../utils/backupSchedule";
 import { buildBackupOverviewRows } from "../utils/buildBackupOverviewRows";
 import { fetchLambdaBackupStatus } from "../utils/fetchLambdaBackupStatus";
+import { triggerLambdaBackupNow } from "../utils/triggerLambdaBackupNow";
 import {
   mergePluginParameterUpdates,
   toPluginParameterRecord,
@@ -206,6 +207,9 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   const [availableEnvironmentIds, setAvailableEnvironmentIds] = useState<
     string[] | undefined
   >(undefined);
+  const [backupNowInFlightCadence, setBackupNowInFlightCadence] = useState<
+    BackupCadence | null
+  >(null);
   const debugLogger = createDebugLogger(debugEnabled, "ConfigScreen");
   const persistQueueRef = useRef<Promise<void>>(Promise.resolve());
 
@@ -308,6 +312,29 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       savedFormValues.lambdaAuthSecret,
     ],
   );
+
+  const fetchAvailableEnvironmentIds = useCallback(async () => {
+    if (!ctx.currentUserAccessToken) {
+      return undefined;
+    }
+
+    try {
+      const client = buildClient({
+        apiToken: ctx.currentUserAccessToken,
+      });
+      const environments = await client.environments.list();
+      return environments
+        .map((environment) => environment.id)
+        .filter((id) => typeof id === "string" && id.trim().length > 0);
+    } catch {
+      return undefined;
+    }
+  }, [ctx.currentUserAccessToken]);
+
+  const refreshAvailableEnvironments = useCallback(async () => {
+    const environmentIds = await fetchAvailableEnvironmentIds();
+    setAvailableEnvironmentIds(environmentIds);
+  }, [fetchAvailableEnvironmentIds]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -455,39 +482,20 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   useEffect(() => {
     let isCancelled = false;
 
-    const refreshAvailableEnvironments = async () => {
-      if (!ctx.currentUserAccessToken) {
-        setAvailableEnvironmentIds(undefined);
+    const loadAvailableEnvironments = async () => {
+      const environmentIds = await fetchAvailableEnvironmentIds();
+      if (isCancelled) {
         return;
       }
-
-      try {
-        const client = buildClient({
-          apiToken: ctx.currentUserAccessToken,
-        });
-        const environments = await client.environments.list();
-        if (isCancelled) {
-          return;
-        }
-        setAvailableEnvironmentIds(
-          environments
-            .map((environment) => environment.id)
-            .filter((id) => typeof id === "string" && id.trim().length > 0),
-        );
-      } catch {
-        if (isCancelled) {
-          return;
-        }
-        setAvailableEnvironmentIds(undefined);
-      }
+      setAvailableEnvironmentIds(environmentIds);
     };
 
-    void refreshAvailableEnvironments();
+    void loadAvailableEnvironments();
 
     return () => {
       isCancelled = true;
     };
-  }, [ctx.currentUserAccessToken]);
+  }, [fetchAvailableEnvironmentIds]);
 
   const connectLambdaHandler = async () => {
     const candidateUrl = deploymentUrlInput.trim();
@@ -745,6 +753,53 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     await ctx.navigateTo("/project_settings/environments");
   };
 
+  const triggerBackupNowForCadence = async (scope: BackupCadence) => {
+    if (backupNowInFlightCadence) {
+      return;
+    }
+
+    const candidateUrl = activeDeploymentUrl.trim();
+    const normalizedLambdaAuthSecret = savedFormValues.lambdaAuthSecret.trim();
+
+    if (!candidateUrl) {
+      setBackupOverviewError("Connect a Lambda URL before running backup now.");
+      return;
+    }
+
+    if (!normalizedLambdaAuthSecret) {
+      setBackupOverviewError(
+        "Lambda auth secret is required before running backup now.",
+      );
+      return;
+    }
+
+    setBackupNowInFlightCadence(scope);
+    setBackupOverviewError("");
+
+    try {
+      const result = await triggerLambdaBackupNow({
+        baseUrl: candidateUrl,
+        environment: ctx.environment,
+        scope,
+        lambdaAuthSecret: normalizedLambdaAuthSecret,
+      });
+
+      ctx.notice(
+        `${getCadenceLabel(scope)} backup created: ${result.createdEnvironmentId}.`,
+      );
+      await refreshLambdaBackupOverview(candidateUrl);
+      await refreshAvailableEnvironments();
+    } catch (error) {
+      setBackupOverviewError(
+        error instanceof Error
+          ? error.message
+          : `Could not trigger ${getCadenceLabel(scope).toLowerCase()} backup.`,
+      );
+    } finally {
+      setBackupNowInFlightCadence(null);
+    }
+  };
+
   const pingIndicator =
     isHealthChecking || isConnecting
       ? {
@@ -887,6 +942,11 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     fontSize: "var(--font-size-s)",
   };
 
+  const overviewRowActionStyle: CSSProperties = {
+    alignSelf: "start",
+    minWidth: "140px",
+  };
+
   const switchFieldNoHintGapStyle = {
     "--spacing-s": "0",
   } as CSSProperties;
@@ -907,6 +967,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         cadence !== savedFormValues.backupSchedule.enabledCadences[index],
     );
   const hasLambdaAuthSecret = lambdaAuthSecretInput.trim().length > 0;
+  const hasSavedLambdaAuthSecret = savedFormValues.lambdaAuthSecret.trim().length > 0;
   const hasLambdaAuthSecretChanged =
     lambdaAuthSecretInput.trim() !== savedFormValues.lambdaAuthSecret.trim();
   const hasUnsavedChanges =
@@ -921,6 +982,15 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     connectionValidationMode === "health" &&
     !isHealthChecking &&
     !isConnecting;
+
+  const canTriggerBackupNow =
+    hasActiveDeploymentUrl &&
+    hasSavedLambdaAuthSecret &&
+    connectionState?.status === "connected" &&
+    connectionValidationMode === "health" &&
+    !isHealthChecking &&
+    !isConnecting &&
+    !isDisconnecting;
 
   const lambdaSaveBlockReason = !hasActiveDeploymentUrl
     ? "Connect a Lambda URL before saving."
@@ -1186,39 +1256,58 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           )}
 
           <div style={overviewGridStyle}>
-            {backupOverviewRows.map((row) => (
-              <div key={`backup-overview-${row.scope}`} style={overviewRowStyle}>
-                <div style={overviewRowContentStyle}>
-                  <div style={overviewRowHeaderStyle}>
-                    <h3 style={overviewRowLabelStyle}>{getCadenceLabel(row.scope)}</h3>
-                  </div>
-                  <p style={overviewRowInfoStyle}>
-                    <strong>Last backup:</strong> {row.lastBackup}
-                  </p>
-                  <p style={overviewRowInfoStyle}>
-                    <strong>Next backup:</strong> {row.nextBackup}
-                  </p>
-                  <p style={overviewRowInfoStyle}>
-                    <strong>Environment:</strong>{" "}
-                    {row.environmentLinked ? (
-                      <a
-                        href="/project_settings/environments"
-                        onClick={openEnvironmentsSettings}
-                      >
-                        {row.environmentName}
-                      </a>
-                    ) : (
-                      row.environmentName
-                    )}
-                  </p>
-                  {row.environmentStatusNote && (
+            {backupOverviewRows.map((row) => {
+              const isBackupNowLoading = backupNowInFlightCadence === row.scope;
+              const isBackupNowDisabled =
+                !canTriggerBackupNow || backupNowInFlightCadence !== null;
+
+              return (
+                <div key={`backup-overview-${row.scope}`} style={overviewRowStyle}>
+                  <div style={overviewRowContentStyle}>
+                    <div style={overviewRowHeaderStyle}>
+                      <h3 style={overviewRowLabelStyle}>{getCadenceLabel(row.scope)}</h3>
+                    </div>
                     <p style={overviewRowInfoStyle}>
-                      <strong>Status:</strong> {row.environmentStatusNote}
+                      <strong>Last backup:</strong> {row.lastBackup}
                     </p>
-                  )}
+                    <p style={overviewRowInfoStyle}>
+                      <strong>Next backup:</strong> {row.nextBackup}
+                    </p>
+                    <p style={overviewRowInfoStyle}>
+                      <strong>Environment:</strong>{" "}
+                      {row.environmentLinked ? (
+                        <a
+                          href="/project_settings/environments"
+                          onClick={openEnvironmentsSettings}
+                        >
+                          {row.environmentName}
+                        </a>
+                      ) : (
+                        row.environmentName
+                      )}
+                    </p>
+                    {row.environmentStatusNote && (
+                      <p style={overviewRowInfoStyle}>
+                        <strong>Status:</strong> {row.environmentStatusNote}
+                      </p>
+                    )}
+                  </div>
+                  <div style={overviewRowActionStyle}>
+                    <Button
+                      buttonType="muted"
+                      buttonSize="s"
+                      fullWidth
+                      onClick={() => {
+                        void triggerBackupNowForCadence(row.scope);
+                      }}
+                      disabled={isBackupNowDisabled}
+                    >
+                      {isBackupNowLoading ? "Backing up..." : "Backup now"}
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 

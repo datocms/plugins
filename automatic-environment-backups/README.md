@@ -7,6 +7,7 @@ This plugin manages automatic backups of your DatoCMS primary environment using 
 - Backup cadence is configured in the plugin (`daily`, `weekly`, `bi-weekly`, `monthly`).
 - The deployed scheduler calls the backup endpoints on your Lambda deployment.
 - The plugin validates Lambda connectivity using health checks.
+- The backup overview includes a per-slot **Backup now** action for on-demand execution.
 
 ## Setup
 
@@ -27,5 +28,6 @@ The plugin uses these Lambda endpoints:
 
 - `POST /api/datocms/plugin-health`
 - `POST /api/datocms/backup-status`
+- `POST /api/datocms/backup-now`
 
 All requests include `X-Datocms-Backups-Auth` and must match `DATOCMS_BACKUPS_SHARED_SECRET`.
