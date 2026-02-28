@@ -15,9 +15,9 @@ This plugin manages automatic backups of your DatoCMS primary environment using 
    - Vercel: https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fmarcelofinamorvieira%2Fdatocms-backups-scheduled-function&env=DATOCMS_FULLACCESS_API_TOKEN,DATOCMS_BACKUPS_SHARED_SECRET&project-name=datocms-backups-scheduled-function&repo-name=datocms-backups-scheduled-function
    - Netlify: https://app.netlify.com/start/deploy?repository=https://github.com/marcelofinamorvieira/datocms-backups-scheduled-function
    - Cloudflare: https://github.com/marcelofinamorvieira/datocms-backups-scheduled-function#deploying-on-cloudflare-workers
-3. Configure `DATOCMS_BACKUPS_SHARED_SECRET` in the Lambda deployment environment.
+3. Configure `DATOCMS_BACKUPS_SHARED_SECRET` in the Lambda deployment environment (`superSecretToken` is the default).
 4. Paste the deployed URL into **Lambda URL**.
-5. Paste the same secret into **Lambda auth secret**.
+5. Paste the same secret into **Lambda auth secret** (defaults to `superSecretToken` in the plugin UI).
 6. Click **Connect** and confirm status is **Connected (ping successful)**.
 7. Choose backup cadences and click **Save**.
 

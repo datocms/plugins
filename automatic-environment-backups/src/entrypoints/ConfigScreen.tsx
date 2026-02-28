@@ -58,6 +58,7 @@ const DEFAULT_CONNECTION_ERROR_SUMMARY =
   "Could not validate the Automatic Backups deployment.";
 const MISSING_AUTH_SECRET_MESSAGE =
   "Enter Lambda auth secret before calling lambda endpoints.";
+const DEFAULT_LAMBDA_AUTH_SECRET = "superSecretToken";
 
 const getErrorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : "Unknown error";
@@ -127,9 +128,10 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   const pluginParameters = ctx.plugin.attributes.parameters as PluginParameters;
   const initialDeploymentUrl = getDeploymentUrlFromParameters(pluginParameters);
   const initialLambdaAuthSecret =
-    typeof pluginParameters?.lambdaAuthSecret === "string"
+    typeof pluginParameters?.lambdaAuthSecret === "string" &&
+    pluginParameters.lambdaAuthSecret.trim().length > 0
       ? pluginParameters.lambdaAuthSecret
-      : "";
+      : DEFAULT_LAMBDA_AUTH_SECRET;
   const initialDebugEnabled = isDebugEnabled(pluginParameters);
   const initialConnectionState = toLambdaConnectionState(
     pluginParameters?.lambdaConnection,
@@ -1010,7 +1012,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
                 id="lambdaAuthSecret"
                 label="Lambda auth secret"
                 value={lambdaAuthSecretInput}
-                placeholder="Shared secret configured in lambda env"
+                placeholder={`Shared secret configured in lambda env (default: ${DEFAULT_LAMBDA_AUTH_SECRET})`}
                 onChange={(newValue) => {
                   setLambdaAuthSecretInput(newValue);
                   clearConnectionErrorState();
