@@ -8,7 +8,7 @@ describe("toAutomaticBackupsScheduleState", () => {
     expect(toAutomaticBackupsScheduleState("invalid")).toEqual({});
   });
 
-  it("normalizes and trims cadence maps and lock fields", () => {
+  it("normalizes and trims cadence maps and error fields", () => {
     const parsed = toAutomaticBackupsScheduleState({
       lastRunLocalDateByCadence: {
         daily: " 2026-02-27 ",
@@ -18,12 +18,6 @@ describe("toAutomaticBackupsScheduleState", () => {
       lastRunAtByCadence: {
         daily: " 2026-02-27T02:05:00.000Z ",
       },
-      executionLockRunId: " run-123 ",
-      executionLockOwnerUserId: " user-9 ",
-      executionLockAcquiredAt: " 2026-02-27T02:00:00.000Z ",
-      executionLockHeartbeatAt: " 2026-02-27T02:01:00.000Z ",
-      executionLockExpiresAt: " 2026-02-27T02:03:00.000Z ",
-      executionLockCadenceInFlight: "daily",
       lastDailyError: " failed ",
     });
 
@@ -33,12 +27,6 @@ describe("toAutomaticBackupsScheduleState", () => {
     expect(parsed.lastRunAtByCadence).toEqual({
       daily: "2026-02-27T02:05:00.000Z",
     });
-    expect(parsed.executionLockRunId).toBe("run-123");
-    expect(parsed.executionLockOwnerUserId).toBe("user-9");
-    expect(parsed.executionLockAcquiredAt).toBe("2026-02-27T02:00:00.000Z");
-    expect(parsed.executionLockHeartbeatAt).toBe("2026-02-27T02:01:00.000Z");
-    expect(parsed.executionLockExpiresAt).toBe("2026-02-27T02:03:00.000Z");
-    expect(parsed.executionLockCadenceInFlight).toBe("daily");
     expect(parsed.lastDailyError).toBe("failed");
   });
 });

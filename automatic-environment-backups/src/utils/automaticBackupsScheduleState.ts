@@ -1,5 +1,5 @@
 import { AutomaticBackupsScheduleState, BackupCadence } from "../types/types";
-import { BACKUP_CADENCES, isBackupCadence } from "./backupSchedule";
+import { BACKUP_CADENCES } from "./backupSchedule";
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
@@ -53,23 +53,7 @@ export const toAutomaticBackupsScheduleState = (
     lastWeeklyRunAt: asOptionalString(value.lastWeeklyRunAt),
     lastDailyManagedEnvironmentId: asOptionalString(value.lastDailyManagedEnvironmentId),
     lastWeeklyManagedEnvironmentId: asOptionalString(value.lastWeeklyManagedEnvironmentId),
-    lastDailyExecutionMode:
-      value.lastDailyExecutionMode === "lambdaless_on_boot"
-        ? "lambdaless_on_boot"
-        : undefined,
-    lastWeeklyExecutionMode:
-      value.lastWeeklyExecutionMode === "lambdaless_on_boot"
-        ? "lambdaless_on_boot"
-        : undefined,
     lastDailyError: asOptionalString(value.lastDailyError),
     lastWeeklyError: asOptionalString(value.lastWeeklyError),
-    executionLockRunId: asOptionalString(value.executionLockRunId),
-    executionLockOwnerUserId: asOptionalString(value.executionLockOwnerUserId),
-    executionLockAcquiredAt: asOptionalString(value.executionLockAcquiredAt),
-    executionLockHeartbeatAt: asOptionalString(value.executionLockHeartbeatAt),
-    executionLockExpiresAt: asOptionalString(value.executionLockExpiresAt),
-    executionLockCadenceInFlight: isBackupCadence(value.executionLockCadenceInFlight)
-      ? value.executionLockCadenceInFlight
-      : undefined,
   };
 };

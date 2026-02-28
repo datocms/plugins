@@ -20,23 +20,19 @@ import {
   useState,
 } from "react";
 import {
-  AutomaticBackupsScheduleState,
   BackupCadence,
   BackupScheduleConfig,
   BackupOverviewRow,
   ConnectionValidationMode,
   LambdaBackupStatus,
   LambdaConnectionState,
-  RuntimeMode,
 } from "../types/types";
 import {
   DEPLOY_PROVIDER_OPTIONS,
   DeployProvider,
-  PLUGIN_README_URL,
 } from "../utils/deployProviders";
 import { createDebugLogger, isDebugEnabled } from "../utils/debugLogger";
 import { getDeploymentUrlFromParameters } from "../utils/getDeploymentUrlFromParameters";
-import { getRuntimeMode } from "../utils/getRuntimeMode";
 import {
   buildConnectedLambdaConnectionState,
   buildDisconnectedLambdaConnectionState,
@@ -45,17 +41,6 @@ import {
   verifyLambdaHealth,
 } from "../utils/verifyLambdaHealth";
 import {
-  disconnectLambdaScheduler,
-  DisconnectLambdaSchedulerError,
-  getDisconnectLambdaSchedulerErrorDetails,
-} from "../utils/disconnectLambdaScheduler";
-import {
-  getTriggerBackupNowErrorDetails,
-  triggerBackupNow,
-  TriggerBackupNowError,
-} from "../utils/triggerBackupNow";
-import { backupEnvironmentSlotWithoutLambda } from "../utils/lambdaLessBackup";
-import {
   BACKUP_SCHEDULE_VERSION,
   BACKUP_CADENCES,
   getCadenceLabel,
@@ -63,9 +48,7 @@ import {
   toLocalDateKey,
 } from "../utils/backupSchedule";
 import { buildBackupOverviewRows } from "../utils/buildBackupOverviewRows";
-import backupOnBoot from "../utils/backupOnBoot";
 import { fetchLambdaBackupStatus } from "../utils/fetchLambdaBackupStatus";
-import { toAutomaticBackupsScheduleState } from "../utils/automaticBackupsScheduleState";
 import {
   mergePluginParameterUpdates,
   toPluginParameterRecord,
@@ -75,23 +58,6 @@ const DEFAULT_CONNECTION_ERROR_SUMMARY =
   "Could not validate the Automatic Backups deployment.";
 const MISSING_AUTH_SECRET_MESSAGE =
   "Enter Lambda auth secret before calling lambda endpoints.";
-const SCHEDULER_DISABLE_WARNING_MESSAGE =
-  "Could not disable the remote scheduler. This lambda deployment may still run cron backups. To avoid duplicate backups, manually disable or delete the lambda cron deployment.";
-
-const toUtcIsoWeekKey = (date: Date): string => {
-  const workingDate = new Date(
-    Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()),
-  );
-  const day = workingDate.getUTCDay() || 7;
-  workingDate.setUTCDate(workingDate.getUTCDate() + 4 - day);
-
-  const yearStart = new Date(Date.UTC(workingDate.getUTCFullYear(), 0, 1));
-  const weekNo = Math.ceil(
-    ((workingDate.getTime() - yearStart.getTime()) / 86400000 + 1) / 7,
-  );
-
-  return `${workingDate.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
-};
 
 const getErrorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : "Unknown error";
@@ -171,16 +137,12 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   const initialValidationMode = toConnectionValidationMode(
     pluginParameters?.connectionValidationMode,
   );
-  const initialRuntimeMode = getRuntimeMode(pluginParameters);
   const projectTimezone = getProjectTimezone(ctx.site);
   const initialScheduleNormalization = normalizeBackupScheduleConfig({
     value: pluginParameters?.backupSchedule,
     timezoneFallback: projectTimezone,
   });
   const initialBackupSchedule = initialScheduleNormalization.config;
-  const initialAutomaticBackupsScheduleState = toAutomaticBackupsScheduleState(
-    pluginParameters?.automaticBackupsSchedule,
-  );
 
   const hasInitialConnectionErrorDetails =
     initialDeploymentUrl.trim().length > 0 &&
@@ -192,30 +154,20 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         initialConnectionState.responseSnippet,
     );
 
-  const [runtimeModeSelection, setRuntimeModeSelection] = useState<RuntimeMode>(
-    initialRuntimeMode,
-  );
   const [enabledCadencesSelection, setEnabledCadencesSelection] = useState<
     BackupCadence[]
   >(initialBackupSchedule.enabledCadences);
   const [debugEnabled, setDebugEnabled] = useState(initialDebugEnabled);
   const [savedFormValues, setSavedFormValues] = useState({
-    runtimeMode: initialRuntimeMode,
     debugEnabled: initialDebugEnabled,
     lambdaAuthSecret: initialLambdaAuthSecret,
     backupSchedule: initialBackupSchedule,
   });
-  const [savedAutomaticBackupsScheduleState, setSavedAutomaticBackupsScheduleState] =
-    useState<AutomaticBackupsScheduleState>(initialAutomaticBackupsScheduleState);
 
   const [isLoading, setIsLoading] = useState(false);
   const [isHealthChecking, setIsHealthChecking] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
-  const [isTriggeringBackup, setIsTriggeringBackup] = useState(false);
-  const [activeRunNowCadence, setActiveRunNowCadence] = useState<
-    BackupCadence | undefined
-  >(undefined);
 
   const [deploymentUrlInput, setDeploymentUrlInput] = useState(
     initialDeploymentUrl,
@@ -243,12 +195,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       : [],
   );
   const [showConnectionDetails, setShowConnectionDetails] = useState(false);
-  const [backupNowErrorSummary, setBackupNowErrorSummary] = useState("");
-  const [backupNowErrorDetails, setBackupNowErrorDetails] = useState<string[]>(
-    [],
-  );
-  const [showBackupNowDetails, setShowBackupNowDetails] = useState(false);
-  const [schedulerDisableWarning, setSchedulerDisableWarning] = useState("");
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [lambdaBackupStatus, setLambdaBackupStatus] = useState<
     LambdaBackupStatus | undefined
@@ -306,16 +252,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     setShowConnectionDetails(false);
   };
 
-  const clearBackupNowErrorState = () => {
-    setBackupNowErrorSummary("");
-    setBackupNowErrorDetails([]);
-    setShowBackupNowDetails(false);
-  };
-
-  const clearSchedulerDisableWarning = () => {
-    setSchedulerDisableWarning("");
-  };
-
   const getNormalizedLambdaAuthSecret = () => lambdaAuthSecretInput.trim();
 
   const applyDisconnectedState = (state: LambdaConnectionState) => {
@@ -325,75 +261,20 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     setShowConnectionDetails(false);
   };
 
-  const disableRemoteSchedulerIfNeeded = async (
-    candidateBaseUrl: string,
-  ): Promise<boolean> => {
-    if (!candidateBaseUrl.trim()) {
-      return true;
-    }
-
-    const normalizedLambdaAuthSecret = getNormalizedLambdaAuthSecret();
-    if (!normalizedLambdaAuthSecret) {
-      setSchedulerDisableWarning(
-        `${SCHEDULER_DISABLE_WARNING_MESSAGE} ${MISSING_AUTH_SECRET_MESSAGE}`,
-      );
-      return false;
-    }
-
-    try {
-      const result = await disconnectLambdaScheduler({
-        baseUrl: candidateBaseUrl,
-        environment: ctx.environment,
-        lambdaAuthSecret: normalizedLambdaAuthSecret,
-      });
-      debugLogger.log("Remote scheduler disabled", {
-        endpoint: result.endpoint,
-        attemptName: result.attemptName,
-      });
-      clearSchedulerDisableWarning();
-      return true;
-    } catch (error) {
-      if (error instanceof DisconnectLambdaSchedulerError) {
-        debugLogger.warn(
-          "Could not disable remote scheduler before local disconnect",
-          {
-            normalizedBaseUrl: error.normalizedBaseUrl,
-            failures: error.failures,
-          },
-        );
-        debugLogger.warn(
-          "Remote scheduler disable failure details",
-          getDisconnectLambdaSchedulerErrorDetails(error),
-        );
-      } else {
-        debugLogger.error("Unexpected error while disabling remote scheduler", error);
-      }
-
-      setSchedulerDisableWarning(SCHEDULER_DISABLE_WARNING_MESSAGE);
-      return false;
-    }
-  };
-
   const refreshLambdaBackupOverview = useCallback(
     async (baseUrl?: string) => {
       const candidateUrl = (baseUrl || activeDeploymentUrl).trim();
       const normalizedLambdaAuthSecret = savedFormValues.lambdaAuthSecret.trim();
       const shouldFetch =
-        savedFormValues.runtimeMode === "lambda" &&
-        candidateUrl.length > 0 &&
-        normalizedLambdaAuthSecret.length > 0;
+        candidateUrl.length > 0 && normalizedLambdaAuthSecret.length > 0;
 
       if (!shouldFetch) {
         setLambdaBackupStatus(undefined);
-        if (savedFormValues.runtimeMode === "lambda") {
-          setBackupOverviewError(
-            candidateUrl.length === 0
-              ? "Lambda status is unavailable until the saved Lambda URL is connected with a healthy ping."
-              : "Lambda status is unavailable until Lambda auth secret is configured and saved.",
-          );
-        } else {
-          setBackupOverviewError("");
-        }
+        setBackupOverviewError(
+          candidateUrl.length === 0
+            ? "Lambda status is unavailable until the saved Lambda URL is connected with a healthy ping."
+            : "Lambda status is unavailable until Lambda auth secret is configured and saved.",
+        );
         setIsLoadingBackupOverview(false);
         return;
       }
@@ -423,7 +304,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       activeDeploymentUrl,
       ctx.environment,
       savedFormValues.lambdaAuthSecret,
-      savedFormValues.runtimeMode,
     ],
   );
 
@@ -432,7 +312,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     debugLogger.log("Config screen mounted", {
       initialDeploymentUrl,
       initialValidationMode,
-      initialRuntimeMode,
       hasInitialConnectionState: Boolean(initialConnectionState),
       debugEnabled,
     });
@@ -446,13 +325,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         } catch {
           // Best-effort schedule migration.
         }
-      }
-
-      if (initialRuntimeMode !== "lambda") {
-        debugLogger.log(
-          "Skipping mount health check because cron mode is disabled",
-        );
-        return;
       }
 
       const configuredDeploymentUrl = initialDeploymentUrl;
@@ -474,8 +346,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           await persistPluginParameters({
             lambdaConnection: null,
             connectionValidationMode: null,
-            runtimeMode: "lambda",
-            lambdaFullMode: true,
           });
         } catch {
           // Ignore persistence errors on mount.
@@ -537,8 +407,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           vercelURL: verificationResult.normalizedBaseUrl,
           lambdaConnection: connectedState,
           connectionValidationMode: "health",
-          runtimeMode: "lambda",
-          lambdaFullMode: true,
           lambdaAuthSecret: normalizedLambdaAuthSecret,
         });
       } catch (error) {
@@ -558,8 +426,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           await persistPluginParameters({
             lambdaConnection: disconnectedState,
             connectionValidationMode: null,
-            runtimeMode: "lambda",
-            lambdaFullMode: true,
           });
         } catch {
           // Ignore persistence failure on mount.
@@ -583,46 +449,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   useEffect(() => {
     void refreshLambdaBackupOverview();
   }, [refreshLambdaBackupOverview]);
-
-  useEffect(() => {
-    if (savedFormValues.runtimeMode !== "lambdaless") {
-      return;
-    }
-
-    let isCancelled = false;
-
-    const runDueLambdalessBackups = async () => {
-      debugLogger.log(
-        "Ensuring due lambdaless backups are executed from config flow",
-      );
-
-      try {
-        await backupOnBoot(ctx as never);
-        if (isCancelled) {
-          return;
-        }
-
-        const latestParameters = ctx.plugin.attributes.parameters as PluginParameters;
-        setSavedAutomaticBackupsScheduleState(
-          toAutomaticBackupsScheduleState(latestParameters?.automaticBackupsSchedule),
-        );
-      } catch (error) {
-        debugLogger.error(
-          "Could not execute lock-safe lambdaless backups from config flow",
-          error,
-        );
-      }
-    };
-
-    void runDueLambdalessBackups();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [
-    savedFormValues.backupSchedule.updatedAt,
-    savedFormValues.runtimeMode,
-  ]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -662,11 +488,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   }, [ctx.currentUserAccessToken]);
 
   const connectLambdaHandler = async () => {
-    if (runtimeModeSelection !== "lambda") {
-      await ctx.alert("Enable 'Use Cronjobs' before connecting a lambda deployment.");
-      return;
-    }
-
     const candidateUrl = deploymentUrlInput.trim();
     if (!candidateUrl) {
       setConnectionErrorSummary("Enter your lambda deployment URL.");
@@ -689,8 +510,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     debugLogger.log("Connecting lambda deployment", { candidateUrl });
     setIsConnecting(true);
     clearConnectionErrorState();
-    clearBackupNowErrorState();
-    clearSchedulerDisableWarning();
 
     try {
       const verificationResult = await verifyLambdaHealth({
@@ -718,8 +537,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         vercelURL: verificationResult.normalizedBaseUrl,
         lambdaConnection: connectedState,
         connectionValidationMode: "health",
-        runtimeMode: runtimeModeSelection,
-        lambdaFullMode: runtimeModeSelection === "lambda",
         lambdaAuthSecret: normalizedLambdaAuthSecret,
       });
 
@@ -745,8 +562,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           await persistPluginParameters({
             lambdaConnection: disconnectedState,
             connectionValidationMode: null,
-            runtimeMode: runtimeModeSelection,
-            lambdaFullMode: runtimeModeSelection === "lambda",
           });
         } catch {
           // Ignore persistence errors while showing errors in UI.
@@ -773,24 +588,14 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     });
     setIsDisconnecting(true);
     clearConnectionErrorState();
-    clearBackupNowErrorState();
-    clearSchedulerDisableWarning();
 
     try {
-      const candidateBaseUrl =
-        activeDeploymentUrl.trim() || deploymentUrlInput.trim();
-      const remoteDisableSucceeded = await disableRemoteSchedulerIfNeeded(
-        candidateBaseUrl,
-      );
-
       await persistPluginParameters({
         deploymentURL: "",
         netlifyURL: "",
         vercelURL: "",
         lambdaConnection: null,
         connectionValidationMode: null,
-        runtimeMode: runtimeModeSelection,
-        lambdaFullMode: runtimeModeSelection === "lambda",
       });
 
       setDeploymentUrlInput("");
@@ -799,16 +604,10 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       setConnectionValidationMode(undefined);
       setLambdaBackupStatus(undefined);
       setBackupOverviewError(
-        savedFormValues.runtimeMode === "lambda"
-          ? "Lambda status is unavailable until the saved Lambda URL is connected with a healthy ping."
-          : "",
+        "Lambda status is unavailable until the saved Lambda URL is connected with a healthy ping.",
       );
       debugLogger.log("Lambda disconnected");
-      ctx.notice(
-        remoteDisableSucceeded
-          ? "Current lambda function has been disconnected."
-          : "Current lambda function has been disconnected locally, but remote scheduler disable failed. To avoid duplicate backups, manually disable or delete the lambda cron deployment.",
-      );
+      ctx.notice("Current lambda function has been disconnected.");
     } catch (error) {
       debugLogger.error("Could not disconnect current lambda", error);
       setConnectionErrorSummary("Could not disconnect the current lambda.");
@@ -834,7 +633,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     }
 
     debugLogger.log("Saving plugin settings", {
-      runtimeModeSelection,
       debugEnabled,
       activeDeploymentUrl,
       connectionStatus: connectionState?.status,
@@ -844,30 +642,27 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     });
 
     const hasConnectedLambdaForSave =
-      runtimeModeSelection !== "lambda" ||
-      (activeDeploymentUrl.trim().length > 0 &&
-        normalizedLambdaAuthSecret.length > 0 &&
-        connectionState?.status === "connected" &&
-        connectionValidationMode === "health" &&
-        !isHealthChecking &&
-        !isConnecting);
+      activeDeploymentUrl.trim().length > 0 &&
+      normalizedLambdaAuthSecret.length > 0 &&
+      connectionState?.status === "connected" &&
+      connectionValidationMode === "health" &&
+      !isHealthChecking &&
+      !isConnecting;
 
     if (!hasConnectedLambdaForSave) {
       await ctx.alert(
-        "Cannot save while 'Use Cronjobs' is enabled unless Lambda URL and Lambda auth secret are configured and ping status is Connected.",
+        "Cannot save unless Lambda URL and Lambda auth secret are configured and ping status is Connected.",
       );
       return;
     }
 
     setIsLoading(true);
-    clearSchedulerDisableWarning();
 
     try {
-      let persistedDeploymentUrl = activeDeploymentUrl.trim();
-      let persistedConnectionState = connectionState ?? null;
-      let persistedValidationMode: ConnectionValidationMode | null =
+      const persistedDeploymentUrl = activeDeploymentUrl.trim();
+      const persistedConnectionState = connectionState ?? null;
+      const persistedValidationMode: ConnectionValidationMode | null =
         connectionValidationMode ?? null;
-      let remoteDisableSucceeded = true;
       const savedCadences = savedFormValues.backupSchedule.enabledCadences;
       const didCadencesChange =
         savedCadences.length !== normalizedEnabledCadences.length ||
@@ -884,27 +679,8 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         updatedAt: new Date().toISOString(),
       };
 
-      if (runtimeModeSelection === "lambdaless") {
-        remoteDisableSucceeded = await disableRemoteSchedulerIfNeeded(
-          persistedDeploymentUrl,
-        );
-        persistedDeploymentUrl = "";
-        persistedConnectionState = null;
-        persistedValidationMode = null;
-        setDeploymentUrlInput("");
-        setActiveDeploymentUrl("");
-        setConnectionState(undefined);
-        setConnectionValidationMode(undefined);
-        clearConnectionErrorState();
-        clearBackupNowErrorState();
-        setLambdaBackupStatus(undefined);
-        setBackupOverviewError("");
-      }
-
       await persistPluginParameters({
         debug: debugEnabled,
-        runtimeMode: runtimeModeSelection,
-        lambdaFullMode: runtimeModeSelection === "lambda",
         lambdaAuthSecret: normalizedLambdaAuthSecret,
         deploymentURL: persistedDeploymentUrl,
         netlifyURL: persistedDeploymentUrl,
@@ -915,20 +691,15 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       });
 
       setSavedFormValues({
-        runtimeMode: runtimeModeSelection,
         debugEnabled,
         lambdaAuthSecret: normalizedLambdaAuthSecret,
         backupSchedule: persistedBackupSchedule,
       });
 
       ctx.notice(
-        remoteDisableSucceeded
-          ? `Settings saved. Runtime mode: ${
-              runtimeModeSelection === "lambda"
-                ? "Lambda-full (cron)"
-                : "Lambda-less (on boot)"
-            }. Debug logging is ${debugEnabled ? "enabled" : "disabled"}.`
-          : "Settings saved, but remote scheduler disable failed. To avoid duplicate backups, manually disable or delete the lambda cron deployment.",
+        `Settings saved. Runtime mode: Lambda (cron). Debug logging is ${
+          debugEnabled ? "enabled" : "disabled"
+        }.`,
       );
     } catch (error) {
       debugLogger.error("Could not save plugin settings", error);
@@ -972,210 +743,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     await ctx.navigateTo("/project_settings/environments");
   };
 
-  const triggerLambdaBackupNow = async (scope?: BackupCadence) => {
-    const candidateUrl = (activeDeploymentUrl || deploymentUrlInput).trim();
-    if (!candidateUrl) {
-      setBackupNowErrorSummary(
-        "Enter or connect a lambda URL before triggering a backup.",
-      );
-      setBackupNowErrorDetails([]);
-      setShowBackupNowDetails(false);
-      return;
-    }
-
-    const normalizedLambdaAuthSecret = getNormalizedLambdaAuthSecret();
-    if (!normalizedLambdaAuthSecret) {
-      setBackupNowErrorSummary(MISSING_AUTH_SECRET_MESSAGE);
-      setBackupNowErrorDetails([
-        MISSING_AUTH_SECRET_MESSAGE,
-        "Set the same value as DATOCMS_BACKUPS_SHARED_SECRET configured in the lambda deployment.",
-      ]);
-      setShowBackupNowDetails(false);
-      return;
-    }
-
-    debugLogger.log("Triggering backup now", {
-      candidateUrl,
-      environment: ctx.environment,
-      scope,
-    });
-    setIsTriggeringBackup(true);
-    setActiveRunNowCadence(scope);
-    clearBackupNowErrorState();
-
-    try {
-      const result = await triggerBackupNow({
-        baseUrl: candidateUrl,
-        environment: ctx.environment,
-        lambdaAuthSecret: normalizedLambdaAuthSecret,
-        scope,
-      });
-
-      setDeploymentUrlInput(result.normalizedBaseUrl);
-      setActiveDeploymentUrl(result.normalizedBaseUrl);
-      debugLogger.log("Backup trigger request succeeded", {
-        endpoint: result.endpoint,
-        method: result.method,
-        attemptName: result.attemptName,
-        scope,
-      });
-      const backupLabel = scope ? `${getCadenceLabel(scope)} backup` : "Backup";
-      ctx.notice(
-        `${backupLabel} triggered successfully via ${result.method} ${result.endpoint}.`,
-      );
-      await refreshLambdaBackupOverview(result.normalizedBaseUrl);
-    } catch (error) {
-      const summary = scope
-        ? `Could not trigger ${getCadenceLabel(scope).toLowerCase()} backup now.`
-        : "Could not trigger backup now.";
-      if (error instanceof TriggerBackupNowError) {
-        debugLogger.warn("All backup trigger attempts failed", {
-          normalizedBaseUrl: error.normalizedBaseUrl,
-          failures: error.failures,
-          scope,
-        });
-        setBackupNowErrorSummary(summary);
-        setBackupNowErrorDetails(getTriggerBackupNowErrorDetails(error));
-        setShowBackupNowDetails(false);
-      } else if (error instanceof LambdaHealthCheckError) {
-        debugLogger.warn(
-          "Backup trigger failed because URL normalization/validation failed",
-          error,
-        );
-        setBackupNowErrorSummary(summary);
-        setBackupNowErrorDetails([
-          `Failure details: ${error.message}`,
-          `Endpoint attempted: ${error.endpoint}.`,
-        ]);
-        setShowBackupNowDetails(false);
-      } else {
-        debugLogger.error("Unexpected error while triggering backup now", error);
-        setBackupNowErrorSummary(summary);
-        setBackupNowErrorDetails([
-          `Failure details: ${
-            error instanceof Error ? error.message : "Unknown error"
-          }`,
-        ]);
-        setShowBackupNowDetails(false);
-      }
-    } finally {
-      setIsTriggeringBackup(false);
-      setActiveRunNowCadence(undefined);
-    }
-  };
-
-  const triggerBackupNowHandler = async () => {
-    await triggerLambdaBackupNow();
-  };
-
-  const triggerBackupOverviewSlotNowHandler = async (cadence: BackupCadence) => {
-    if (savedFormValues.runtimeMode === "lambda") {
-      await triggerLambdaBackupNow(cadence);
-      return;
-    }
-
-    if (!ctx.currentUserAccessToken) {
-      await ctx.alert(
-        "Cannot run a Lambda-less backup right now because the current user token is unavailable.",
-      );
-      return;
-    }
-
-    setIsTriggeringBackup(true);
-    setActiveRunNowCadence(cadence);
-    clearBackupNowErrorState();
-
-    try {
-      const result = await backupEnvironmentSlotWithoutLambda({
-        currentUserAccessToken: ctx.currentUserAccessToken,
-        slot: cadence,
-      });
-      const completedAtDate = new Date(result.completedAt);
-      const safeCompletedAtDate = Number.isNaN(completedAtDate.getTime())
-        ? new Date()
-        : completedAtDate;
-      const completedAt = safeCompletedAtDate.toISOString();
-      const localDateKey = toLocalDateKey(
-        safeCompletedAtDate,
-        savedFormValues.backupSchedule.timezone,
-      );
-      const nextErrorByCadence = {
-        ...(savedAutomaticBackupsScheduleState.lastErrorByCadence ?? {}),
-      };
-      delete nextErrorByCadence[cadence];
-      const nextScheduleState: AutomaticBackupsScheduleState = {
-        ...savedAutomaticBackupsScheduleState,
-        lastRunLocalDateByCadence: {
-          ...(savedAutomaticBackupsScheduleState.lastRunLocalDateByCadence ?? {}),
-          [cadence]: localDateKey,
-        },
-        lastRunAtByCadence: {
-          ...(savedAutomaticBackupsScheduleState.lastRunAtByCadence ?? {}),
-          [cadence]: completedAt,
-        },
-        lastManagedEnvironmentIdByCadence: {
-          ...(savedAutomaticBackupsScheduleState.lastManagedEnvironmentIdByCadence ?? {}),
-          [cadence]: result.managedEnvironmentId,
-        },
-        lastExecutionModeByCadence: {
-          ...(savedAutomaticBackupsScheduleState.lastExecutionModeByCadence ?? {}),
-          [cadence]: "lambdaless_on_boot",
-        },
-        lastErrorByCadence:
-          Object.keys(nextErrorByCadence).length > 0 ? nextErrorByCadence : undefined,
-      };
-
-      if (cadence === "daily") {
-        nextScheduleState.dailyLastRunDate = localDateKey;
-        nextScheduleState.lastDailyRunAt = completedAt;
-        nextScheduleState.lastDailyManagedEnvironmentId = result.managedEnvironmentId;
-        nextScheduleState.lastDailyExecutionMode = "lambdaless_on_boot";
-        nextScheduleState.lastDailyError = undefined;
-      }
-
-      if (cadence === "weekly") {
-        nextScheduleState.weeklyLastRunKey = toUtcIsoWeekKey(safeCompletedAtDate);
-        nextScheduleState.lastWeeklyRunAt = completedAt;
-        nextScheduleState.lastWeeklyManagedEnvironmentId = result.managedEnvironmentId;
-        nextScheduleState.lastWeeklyExecutionMode = "lambdaless_on_boot";
-        nextScheduleState.lastWeeklyError = undefined;
-      }
-
-      await persistPluginParameters({
-        automaticBackupsSchedule: nextScheduleState,
-      });
-      setSavedAutomaticBackupsScheduleState(nextScheduleState);
-      setAvailableEnvironmentIds((current) => {
-        if (!result.managedEnvironmentId.trim()) {
-          return current;
-        }
-
-        if (!current || current.length === 0) {
-          return [result.managedEnvironmentId];
-        }
-
-        if (current.includes(result.managedEnvironmentId)) {
-          return current;
-        }
-
-        return [...current, result.managedEnvironmentId];
-      });
-      ctx.notice(`${getCadenceLabel(cadence)} backup completed now.`);
-    } catch (error) {
-      debugLogger.error(
-        `Unexpected error while triggering ${cadence} lambdaless backup now`,
-        error,
-      );
-      await ctx.alert(
-        `Could not run ${getCadenceLabel(cadence)} backup now: ${getErrorMessage(error)}.`,
-      );
-    } finally {
-      setIsTriggeringBackup(false);
-      setActiveRunNowCadence(undefined);
-    }
-  };
-
-  const isLambdaFullModeEnabled = runtimeModeSelection === "lambda";
   const pingIndicator =
     isHealthChecking || isConnecting
       ? {
@@ -1211,20 +778,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       ? "Change Lambda URL"
       : "Connect";
   const disconnectButtonLabel = isDisconnecting ? "Disconnecting..." : "Disconnect";
-  const backupNowButtonLabel = isTriggeringBackup
-    ? activeRunNowCadence
-      ? `Running ${getCadenceLabel(activeRunNowCadence).toLowerCase()} backup...`
-      : "Running test backup..."
-    : "Run lambda test backup";
-  const hasHealthyConnectedLambda =
-    connectionValidationMode === "health" && connectionState?.status === "connected";
-  const backupNowButtonDisabled =
-    isTriggeringBackup ||
-    isConnecting ||
-    isHealthChecking ||
-    isDisconnecting ||
-    !hasHealthyConnectedLambda ||
-    lambdaAuthSecretInput.trim().length === 0;
 
   const lambdaActionButtonStyle: CSSProperties = {
     width: "100%",
@@ -1321,10 +874,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     minWidth: 0,
   };
 
-  const overviewRowRunNowStyle: CSSProperties = {
-    alignSelf: "center",
-  };
-
   const overviewRowLabelStyle: CSSProperties = {
     marginTop: 0,
     marginBottom: 0,
@@ -1345,9 +894,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     marginBottom: "0.25rem",
   } as CSSProperties;
 
-  const lambdaSetupDisabled =
-    isConnecting || isDisconnecting || isHealthChecking || isLoading;
-
   const normalizedCadenceSelection = BACKUP_CADENCES.filter((cadence) =>
     enabledCadencesSelection.includes(cadence),
   );
@@ -1363,47 +909,31 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     lambdaAuthSecretInput.trim() !== savedFormValues.lambdaAuthSecret.trim();
   const hasUnsavedChanges =
     debugEnabled !== savedFormValues.debugEnabled ||
-    runtimeModeSelection !== savedFormValues.runtimeMode ||
     hasLambdaAuthSecretChanged ||
     hasCadenceSelectionChanged;
 
   const canSaveWithLambdaMode =
-    !isLambdaFullModeEnabled ||
-    (hasActiveDeploymentUrl &&
-      hasLambdaAuthSecret &&
-      connectionState?.status === "connected" &&
-      connectionValidationMode === "health" &&
-      !isHealthChecking &&
-      !isConnecting);
+    hasActiveDeploymentUrl &&
+    hasLambdaAuthSecret &&
+    connectionState?.status === "connected" &&
+    connectionValidationMode === "health" &&
+    !isHealthChecking &&
+    !isConnecting;
 
-  const lambdaSaveBlockReason = !isLambdaFullModeEnabled
-    ? ""
-    : !hasActiveDeploymentUrl
-      ? "To save with cronjobs enabled, connect a Lambda URL first."
-      : !hasLambdaAuthSecret
-        ? "To save with cronjobs enabled, provide the Lambda auth secret."
+  const lambdaSaveBlockReason = !hasActiveDeploymentUrl
+    ? "Connect a Lambda URL before saving."
+    : !hasLambdaAuthSecret
+      ? "Provide the Lambda auth secret before saving."
       : isHealthChecking || isConnecting
         ? "Wait for the Lambda ping check to finish."
         : connectionState?.status !== "connected" || connectionValidationMode !== "health"
-          ? "To save with cronjobs enabled, Lambda status must be Connected (ping successful)."
+          ? "Lambda status must be Connected (ping successful) before saving."
           : "";
 
-  const savedRuntimeMode = savedFormValues.runtimeMode;
   const savedBackupSchedule = savedFormValues.backupSchedule;
-  const backupOverviewRunNowDisabled =
-    isTriggeringBackup ||
-    isConnecting ||
-    isHealthChecking ||
-    isDisconnecting ||
-    isLoading ||
-    (savedRuntimeMode === "lambda"
-      ? !hasHealthyConnectedLambda || savedFormValues.lambdaAuthSecret.trim().length === 0
-      : !ctx.currentUserAccessToken);
   const backupOverviewRows: BackupOverviewRow[] = buildBackupOverviewRows({
-    runtimeMode: savedRuntimeMode,
-    scheduleState: savedAutomaticBackupsScheduleState,
     scheduleConfig: savedBackupSchedule,
-    lambdaStatus: savedRuntimeMode === "lambda" ? lambdaBackupStatus : undefined,
+    lambdaStatus: lambdaBackupStatus,
     availableEnvironmentIds,
   });
 
@@ -1415,8 +945,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           margin: "0 auto",
         }}
       >
-        {isLambdaFullModeEnabled && (
-          <div style={cardStyle}>
+        <div style={cardStyle}>
             <h2
               style={{
                 marginTop: 0,
@@ -1472,7 +1001,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
               onChange={(newValue) => {
                 setDeploymentUrlInput(newValue);
                 clearConnectionErrorState();
-                clearBackupNowErrorState();
               }}
             />
 
@@ -1486,7 +1014,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
                 onChange={(newValue) => {
                   setLambdaAuthSecretInput(newValue);
                   clearConnectionErrorState();
-                  clearBackupNowErrorState();
                 }}
               />
             </div>
@@ -1510,8 +1037,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
                       disabled={
                         isConnecting ||
                         isHealthChecking ||
-                        isDisconnecting ||
-                        isTriggeringBackup
+                        isDisconnecting
                       }
                       style={lambdaActionButtonStyle}
                     >
@@ -1538,7 +1064,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
                 disabled={
                   isDisconnecting ||
                   isHealthChecking ||
-                  isTriggeringBackup ||
                   !activeDeploymentUrl.trim()
                 }
                 style={lambdaActionButtonStyle}
@@ -1552,87 +1077,16 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
                 disabled={
                   isConnecting ||
                   isHealthChecking ||
-                  isDisconnecting ||
-                  isTriggeringBackup
+                  isDisconnecting
                 }
                 style={lambdaActionButtonStyle}
               >
                 {connectButtonLabel}
               </Button>
             </div>
+        </div>
 
-            <div style={{ marginTop: "var(--spacing-s)" }}>
-              <Button
-                buttonType="muted"
-                onClick={triggerBackupNowHandler}
-                disabled={backupNowButtonDisabled}
-                style={lambdaActionButtonStyle}
-              >
-                {backupNowButtonLabel}
-              </Button>
-            </div>
-          </div>
-        )}
-
-        {schedulerDisableWarning && (
-          <div
-            style={{
-              border: "1px solid var(--warning-color)",
-              borderRadius: "6px",
-              background: "rgba(255, 184, 0, 0.12)",
-              padding: "var(--spacing-m)",
-              marginBottom: "var(--spacing-m)",
-            }}
-          >
-            <p style={{ margin: 0 }}>{schedulerDisableWarning}</p>
-          </div>
-        )}
-
-        {isLambdaFullModeEnabled && backupNowErrorSummary && (
-          <div
-            style={{
-              border: "1px solid rgba(var(--alert-color-rgb-components), 0.5)",
-              borderRadius: "6px",
-              background: "rgba(var(--alert-color-rgb-components), 0.08)",
-              padding: "var(--spacing-m)",
-              marginBottom: "var(--spacing-m)",
-            }}
-          >
-            <p style={{ marginTop: 0, marginBottom: "var(--spacing-s)" }}>
-              {backupNowErrorSummary}
-            </p>
-            {backupNowErrorDetails.length > 0 && (
-              <Button
-                buttonType="muted"
-                buttonSize="s"
-                onClick={() => setShowBackupNowDetails((current) => !current)}
-              >
-                {showBackupNowDetails ? "Hide details" : "Show details"}
-              </Button>
-            )}
-          </div>
-        )}
-
-        {isLambdaFullModeEnabled &&
-          showBackupNowDetails &&
-          backupNowErrorDetails.length > 0 && (
-            <div
-              style={{
-                border: "1px solid rgba(var(--alert-color-rgb-components), 0.5)",
-                borderRadius: "6px",
-                background: "#fff",
-                padding: "var(--spacing-m)",
-                marginBottom: "var(--spacing-l)",
-                textAlign: "left",
-              }}
-            >
-              {backupNowErrorDetails.map((detail, index) => (
-                <p key={`config-backup-now-error-${index}`}>{detail}</p>
-              ))}
-            </div>
-          )}
-
-        {isLambdaFullModeEnabled && connectionErrorSummary && (
+        {connectionErrorSummary && (
           <div
             style={{
               border: "1px solid rgba(var(--alert-color-rgb-components), 0.5)",
@@ -1657,8 +1111,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           </div>
         )}
 
-        {isLambdaFullModeEnabled &&
-          showConnectionDetails &&
+        {showConnectionDetails &&
           connectionErrorDetails.length > 0 && (
             <div
               style={{
@@ -1682,9 +1135,8 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           </h2>
 
           <p style={backupScheduleInfoTextStyle}>
-            {runtimeModeSelection === "lambdaless"
-              ? "Backups automatically run during plugin boot when a selected cadence is due."
-              : "The scheduler runs once a day. The number of backups depends on your selected schedule options."}
+            The scheduler runs once a day. The number of backups depends on your
+            selected schedule options.
           </p>
 
           <div style={backupScheduleCadenceGridStyle}>
@@ -1713,13 +1165,13 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
             Backup overview
           </h2>
 
-          {savedRuntimeMode === "lambda" && isLoadingBackupOverview && (
+          {isLoadingBackupOverview && (
             <p style={{ ...subtleTextStyle, marginBottom: "var(--spacing-s)" }}>
               Refreshing Lambda backup status...
             </p>
           )}
 
-          {savedRuntimeMode === "lambda" && backupOverviewError && (
+          {backupOverviewError && (
             <p
               style={{
                 ...subtleTextStyle,
@@ -1763,19 +1215,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
                     </p>
                   )}
                 </div>
-                <Button
-                  buttonType="muted"
-                  buttonSize="s"
-                  onClick={() => {
-                    void triggerBackupOverviewSlotNowHandler(row.scope);
-                  }}
-                  disabled={backupOverviewRunNowDisabled}
-                  style={overviewRowRunNowStyle}
-                >
-                  {isTriggeringBackup && activeRunNowCadence === row.scope
-                    ? "Running..."
-                    : "Run now"}
-                </Button>
               </div>
             ))}
           </div>
@@ -1801,49 +1240,9 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
                 />
               </div>
 
-              <div style={switchFieldNoHintGapStyle}>
-                <SwitchField
-                  name="useCronjobs"
-                  id="useCronjobs"
-                  label="Use Cronjobs"
-                  hint="If enabled, backups rely on the external Lambda scheduler. If disabled, backups run on plugin boot."
-                  value={isLambdaFullModeEnabled}
-                  switchInputProps={{
-                    name: "useCronjobs",
-                    value: isLambdaFullModeEnabled,
-                    disabled: lambdaSetupDisabled,
-                  }}
-                  onChange={(newValue) => {
-                    setRuntimeModeSelection(newValue ? "lambda" : "lambdaless");
-                    clearConnectionErrorState();
-                    clearBackupNowErrorState();
-                    clearSchedulerDisableWarning();
-                  }}
-                />
-              </div>
-
               <p style={subtleTextStyle}>
-                <a
-                  href={`${PLUGIN_README_URL}#runtime-modes`}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  Runtime mode guide and tradeoffs
-                </a>
+                This plugin runs in Lambda cron mode only.
               </p>
-
-              {isLambdaFullModeEnabled && (
-                <p style={subtleTextStyle}>
-                  Connect a Lambda URL above to save with cron mode enabled.
-                </p>
-              )}
-
-              {runtimeModeSelection === "lambdaless" && hasActiveDeploymentUrl && (
-                <p style={subtleTextStyle}>
-                  Lambda is currently connected. Click Save to complete the switch to
-                  Lambda-less and clear the connected URL.
-                </p>
-              )}
 
               {lambdaSaveBlockReason && (
                 <p
@@ -1866,7 +1265,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
                 color: "var(--alert-color)",
               }}
             >
-              Open Advanced settings to configure cron mode before saving.
+              Open Advanced settings to review save requirements.
             </p>
           )}
 
@@ -1878,7 +1277,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
               isLoading ||
               isDisconnecting ||
               isConnecting ||
-              isTriggeringBackup ||
               !canSaveWithLambdaMode ||
               !hasUnsavedChanges
             }

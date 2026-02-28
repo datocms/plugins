@@ -2,13 +2,12 @@ import { describe, expect, it } from "vitest";
 import { mergePluginParameterUpdates } from "./pluginParameterMerging";
 
 describe("mergePluginParameterUpdates", () => {
-  it("preserves unrelated automaticBackupsSchedule lock fields", () => {
+  it("preserves unrelated automaticBackupsSchedule fields", () => {
     const latestParameters = {
-      runtimeMode: "lambdaless",
       automaticBackupsSchedule: {
-        executionLockRunId: "run-123",
-        executionLockOwnerUserId: "user-9",
-        executionLockExpiresAt: "2026-02-27T02:03:00.000Z",
+        lastErrorByCadence: {
+          weekly: "Backup failed",
+        },
       },
     };
 

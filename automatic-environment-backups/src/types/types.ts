@@ -27,14 +27,9 @@ export type LambdaConnectionState = {
 
 export type ConnectionValidationMode = "health";
 
-export type RuntimeMode = "lambda" | "lambdaless";
-
 export type BackupCadence = "daily" | "weekly" | "biweekly" | "monthly";
 
-export type BackupExecutionMode =
-  | "lambdaless_on_boot"
-  | "lambda_cron"
-  | "lambda_manual";
+export type BackupExecutionMode = "lambda_cron";
 
 export type BackupScheduleConfig = {
   version: 1;
@@ -56,16 +51,8 @@ export type AutomaticBackupsScheduleState = {
   lastWeeklyRunAt?: string;
   lastDailyManagedEnvironmentId?: string;
   lastWeeklyManagedEnvironmentId?: string;
-  lastDailyExecutionMode?: "lambdaless_on_boot";
-  lastWeeklyExecutionMode?: "lambdaless_on_boot";
   lastDailyError?: string;
   lastWeeklyError?: string;
-  executionLockRunId?: string;
-  executionLockOwnerUserId?: string;
-  executionLockAcquiredAt?: string;
-  executionLockHeartbeatAt?: string;
-  executionLockExpiresAt?: string;
-  executionLockCadenceInFlight?: BackupCadence;
 } & Record<string, unknown>;
 
 export type LambdaSchedulerProvider =

@@ -22,16 +22,16 @@ describe("normalizeBackupScheduleConfig", () => {
       anchorLocalDate: "2026-02-26",
       updatedAt: "2026-02-26T08:10:00.000Z",
     });
-    expect("lambdalessTime" in config).toBe(false);
+    expect("legacyRunTime" in config).toBe(false);
   });
 
-  it("migrates legacy schedule objects that include lambdalessTime", () => {
+  it("migrates legacy schedule objects that include deprecated runtime keys", () => {
     const { config, requiresMigration } = normalizeBackupScheduleConfig({
       value: {
         version: 1,
         enabledCadences: ["daily", "monthly"],
         timezone: "UTC",
-        lambdalessTime: "23:59",
+        legacyRunTime: "23:59",
         anchorLocalDate: "2026-02-26",
         updatedAt: "2026-02-25T07:00:00.000Z",
       },
@@ -47,7 +47,7 @@ describe("normalizeBackupScheduleConfig", () => {
       anchorLocalDate: "2026-02-26",
       updatedAt: "2026-02-25T07:00:00.000Z",
     });
-    expect("lambdalessTime" in config).toBe(false);
+    expect("legacyRunTime" in config).toBe(false);
   });
 
   it("does not request migration for valid cadence-only schedule objects", () => {
