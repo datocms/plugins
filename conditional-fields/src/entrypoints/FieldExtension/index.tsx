@@ -42,7 +42,7 @@ function FieldExtensionWithValidParams({ ctx }: Props) {
   }, [ctx.fields, targetFieldsApiKey, sourceField]);
 
   const toggleFields = useCallback(
-    (show) => {
+    (show: boolean): void => {
       targetFields.forEach((targetField) => {
         const targetPath = ctx.parentField
           ? `${ctx.fieldPath.replace(/.[^.]*$/, "")}.${

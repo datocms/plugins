@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react';
 
 export function useScrollSelectedIntoView(
-  selectedRef: RefObject<HTMLElement>,
+  selectedRef: RefObject<HTMLElement | null>,
   selectedIndex: number
 ): void {
   useEffect(() => {
@@ -15,7 +15,7 @@ export function useScrollSelectedIntoView(
 }
 
 export function useClickOutside(
-  ref: RefObject<HTMLElement>,
+  ref: RefObject<HTMLElement | null>,
   onClickOutside: () => void
 ): void {
   const callbackRef = useRef(onClickOutside);

@@ -14,7 +14,7 @@ import { FieldArray } from 'react-final-form-arrays';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPlus, faTrash } from '@fortawesome/free-solid-svg-icons';
 import { GroupBase } from 'react-select';
-import { Config } from '../../types';
+import { AutoApplyRule, Config } from '../../types';
 import s from './styles.module.css';
 
 type Props = {
@@ -47,11 +47,11 @@ export default function ConfigScreen({ ctx }: Props) {
           ...arrayMutators,
         }}
         initialValues={ctx.plugin.attributes.parameters}
-        validate={(values) => {
+        validate={(values: Config) => {
           const errors: Errors = {};
 
           if ('autoApplyRules' in values) {
-            errors.autoApplyRules = values.autoApplyRules.map((rule) => {
+            errors.autoApplyRules = values.autoApplyRules.map((rule: AutoApplyRule) => {
               const ruleErrors: Record<string, string> = {};
 
               if (!rule.apiKeyRegexp) {
@@ -73,7 +73,7 @@ export default function ConfigScreen({ ctx }: Props) {
           ctx.notice('Settings updated successfully!');
         }}
       >
-        {({ handleSubmit, submitting, dirty }) => (
+        {({ handleSubmit, submitting, dirty }: any) => (
           <Form onSubmit={handleSubmit}>
             <Section
               title="Automatic apply rules"
@@ -83,12 +83,12 @@ export default function ConfigScreen({ ctx }: Props) {
               <FieldArray name="autoApplyRules">
                 {({ fields }) => (
                   <FieldGroup>
-                    {fields.map((name, index) => (
+                    {fields.map((name: string, index: number) => (
                       <FieldGroup key={name}>
                         <div className={s.grid}>
                           <div>
                             <Field name={`${name}.fieldTypes`}>
-                              {({ input, meta: { error } }) => (
+                              {({ input, meta: { error } }: any) => (
                                 <SelectField<Option, true, GroupBase<Option>>
                                   {...input}
                                   id="fieldTypes"
@@ -112,7 +112,7 @@ export default function ConfigScreen({ ctx }: Props) {
                           </div>
                           <div>
                             <Field name={`${name}.apiKeyRegexp`}>
-                              {({ input, meta: { error } }) => (
+                              {({ input, meta: { error } }: any) => (
                                 <TextField
                                   id="apiKeyRegexp"
                                   label="API key (regexp)"

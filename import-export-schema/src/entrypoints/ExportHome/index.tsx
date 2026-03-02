@@ -8,7 +8,7 @@
 import { ReactFlowProvider } from '@xyflow/react';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import { Canvas } from 'datocms-react-ui';
-import { useId, useState } from 'react';
+import { type ReactNode, useId, useState } from 'react';
 import { ExportLandingPanel } from '@/components/ExportLandingPanel';
 import { ExportSelectionPanel } from '@/components/ExportSelectionPanel';
 import { TaskOverlayStack } from '@/components/TaskOverlayStack';
@@ -212,7 +212,7 @@ export default function ExportHome({ ctx }: Props) {
 
   // The view map condenses our conditional rendering into a single lookup and
   // keeps each subview’s JSX colocated with the handlers it consumes.
-  const viewContent: Record<ExportView, JSX.Element> = {
+  const viewContent: Record<ExportView, ReactNode> = {
     landing: (
       <ExportLandingPanel
         onSelectModels={handleLandingSelect}

@@ -3,7 +3,7 @@
   "description": "Export one or multiple models/block models as JSON files for reimport into another DatoCMS project.",
   "homepage": "https://github.com/datocms/plugins",
   "private": false,
-  "version": "0.1.20",
+  "version": "0.1.23",
   "author": "Stefano Verna <s.verna@datocms.com>",
   "type": "module",
   "keywords": [
@@ -31,34 +31,41 @@
     "format": "npx @biomejs/biome check --unsafe --write ."
   },
   "dependencies": {
-    "@datocms/cma-client": "^3.4.5",
-    "@fortawesome/fontawesome-svg-core": "^6.7.2",
-    "@fortawesome/free-solid-svg-icons": "^6.7.2",
-    "@fortawesome/react-fontawesome": "^0.2.2",
+    "@datocms/cma-client": "^5.3.0",
+    "@fortawesome/fontawesome-svg-core": "^7.2.0",
+    "@fortawesome/free-solid-svg-icons": "^7.2.0",
+    "@fortawesome/react-fontawesome": "^3.2.0",
     "@types/d3-hierarchy": "^3.1.7",
-    "@xyflow/react": "^12.3.6",
+    "@xyflow/react": "^12.10.1",
     "classnames": "^2.5.1",
     "d3-hierarchy": "^3.1.2",
     "d3-timer": "^3.0.1",
-    "datocms-plugin-sdk": "^2.0.13",
-    "datocms-react-ui": "^2.0.13",
-    "emoji-regex": "^10.4.0",
-    "final-form": "^4.20.10",
-    "lodash-es": "^4.17.21",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-final-form": "^6.5.9"
+    "datocms-plugin-sdk": "^2.1.1",
+    "datocms-react-ui": "^2.1.4",
+    "emoji-regex": "^10.6.0",
+    "final-form": "^5.0.0",
+    "lodash-es": "^4.17.23",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-final-form": "^7.0.0"
   },
   "devDependencies": {
     "@types/lodash-es": "^4.17.12",
-    "@types/node": "^22.13.1",
-    "@types/react": "^18.3.3",
-    "@types/react-dom": "^18.3.0",
-    "@vitejs/plugin-react": "^4.3.1",
-    "postcss-preset-env": "^9.6.0",
-    "typescript": "^5.5.3",
-    "vite": "^5.4.1",
-    "vite-plugin-svgr": "^4.3.0"
+    "@types/node": "^25.3.3",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.4",
+    "postcss-preset-env": "^11.2.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1",
+    "vite-plugin-svgr": "^4.5.0"
   },
-  "packageManager": "pnpm@10.21.0+sha512.da3337267e400fdd3d479a6c68079ac6db01d8ca4f67572083e722775a796788a7a9956613749e000fac20d424b594f7a791a5f4e2e13581c5ef947f26968a40"
+  "packageManager": "npm@11.11.0",
+  "overrides": {
+    "datocms-react-ui": {
+      "react-intersection-observer": "^9.16.0",
+      "react": "$react",
+      "react-dom": "$react-dom"
+    }
+  }
 }

@@ -9,7 +9,7 @@ type MentionDropdownBaseProps<T> = {
   headerText: string;
   selectedIndex: number;
   onClose: () => void;
-  renderItem: (item: T, index: number, isSelected: boolean, selectedRef: React.RefObject<HTMLButtonElement>) => ReactNode;
+  renderItem: (item: T, index: number, isSelected: boolean, selectedRef: React.RefObject<HTMLButtonElement | null>) => ReactNode;
   keyExtractor: (item: T) => string;
   position?: 'above' | 'below';
   searchSlot?: ReactNode;

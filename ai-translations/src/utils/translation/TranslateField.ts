@@ -482,6 +482,9 @@ const BLOCK_METADATA_FIELDS = [
 /**
  * Extracts the single block model ID from a field validators object.
  * Returns the first item type when multiple are present.
+ *
+ * @param validators - Field validator object that may contain `single_block_blocks.item_types`
+ * @returns The first configured block model ID, if available
  */
 function getSingleBlockModelId(validators: unknown): string | undefined {
   if (!validators || typeof validators !== 'object') return undefined;
@@ -495,6 +498,10 @@ function getSingleBlockModelId(validators: unknown): string | undefined {
 
 /**
  * Resolves the exact-cased locale key in a localized map, falling back to the provided locale.
+ *
+ * @param obj - Localized value map keyed by locale codes
+ * @param locale - Requested locale code
+ * @returns The exact matching key from `obj`, or the input locale when no exact match exists
  */
 function resolveLocaleKey(obj: Record<string, unknown>, locale: string): string {
   return findExactLocaleKey(obj, locale) ?? locale;
@@ -502,6 +509,11 @@ function resolveLocaleKey(obj: Record<string, unknown>, locale: string): string 
 
 /**
  * Translates a frameless single block value by translating its nested fields.
+ *
+ * @param fieldValue - Raw field value that should contain a frameless block object
+ * @param fieldMeta - Field metadata used to resolve block model validators
+ * @param ctx - Translation execution context for nested field processing
+ * @returns The translated block object, or the original value when it is not translatable
  */
 async function translateFramelessSingleBlockValue(
   fieldValue: unknown,

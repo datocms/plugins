@@ -42,7 +42,7 @@ connect({
               id: id,
             })),
           })
-          .then((job) => {
+          .then(() => {
             ctx.notice(`${uploadIds.length} assets successfully deleted!`);
           });
       }, 5000);

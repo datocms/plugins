@@ -10,7 +10,7 @@ type ScrollState = {
  * When new content is added above the current view, adjusts scroll
  * to keep the same content visible.
  */
-export function useScrollCompensation<T extends HTMLElement>(containerRef: RefObject<T>) {
+export function useScrollCompensation<T extends HTMLElement>(containerRef: RefObject<T | null>) {
   const savedScrollState = useRef<ScrollState | null>(null);
 
   const onBeforeSync = useCallback(() => {

@@ -12,7 +12,7 @@ export type UseCommentEditorReturn = {
   setIsEditing: (editing: boolean) => void;
   segments: CommentSegment[];
   setSegments: (segments: CommentSegment[]) => void;
-  composerRef: React.RefObject<TipTapComposerRef>;
+  composerRef: React.RefObject<TipTapComposerRef | null>;
   handleStartEditing: () => void;
   resetToOriginal: () => void;
 };

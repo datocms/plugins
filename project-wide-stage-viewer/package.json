@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-project-wide-stage-viewer",
   "homepage": "https://github.com/datocms/plugins/tree/master/project-wide-stage-viewer#readme",
-  "version": "0.1.1",
+  "version": "0.1.4",
   "author": "DatoCMS <support@datocms.com>",
   "description": "A plugin that allows you to view all records (across multiple models) belonging to a workflow stage.",
   "keywords": [
@@ -29,19 +29,26 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@datocms/cma-client-browser": "^5.1.20",
+    "@datocms/cma-client-browser": "^5.3.0",
     "datocms-plugin-sdk": "*",
     "datocms-react-ui": "*",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
   },
   "devDependencies": {
-    "@types/react": "^18.3.3",
-    "@types/react-dom": "^18.3.0",
-    "@vitejs/plugin-react": "^4.3.1",
-    "globals": "^15.9.0",
-    "typescript": "^5.5.3",
-    "vite": "^5.4.1"
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.4",
+    "globals": "^17.4.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1"
   },
-  "packageManager": "pnpm@10.17.1+sha512.17c560fca4867ae9473a3899ad84a88334914f379be46d455cbf92e5cf4b39d34985d452d2583baf19967fa76cb5c17bc9e245529d0b98745721aa7200ecaf7a"
+  "packageManager": "npm@11.11.0",
+  "overrides": {
+    "datocms-react-ui": {
+      "react-intersection-observer": "^9.16.0",
+      "react": "$react",
+      "react-dom": "$react-dom"
+    }
+  }
 }

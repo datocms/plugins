@@ -1,11 +1,20 @@
 import { RenderAssetSourceCtx } from 'datocms-plugin-sdk';
 import { useCtx } from 'datocms-react-ui';
-import { ImagesResponse } from 'openai';
 import s from './styles.module.css';
 
-type Image = ImagesResponse['data'][0];
+export type GeneratedImage = {
+  b64_json?: string;
+  url?: string;
+  revised_prompt?: string;
+};
 
-const Cell = ({ image, onClick }: { image: Image; onClick: () => void }) => {
+const Cell = ({
+  image,
+  onClick,
+}: {
+  image: GeneratedImage;
+  onClick: () => void;
+}) => {
   const ctx = useCtx<RenderAssetSourceCtx>();
   return (
     <div className={s.cell} onClick={onClick}>

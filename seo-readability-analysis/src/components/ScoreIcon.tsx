@@ -1,4 +1,4 @@
-import * as interpreters from "yoastseo/src/interpreters";
+import * as interpreters from 'yoastseo/build/scoring/interpreters';
 
 // https://github.com/Yoast/javascript/blob/develop/packages/style-guide/src/colors.json
 const scoreRatingColorMapping: Partial<Record<string, string>> = {

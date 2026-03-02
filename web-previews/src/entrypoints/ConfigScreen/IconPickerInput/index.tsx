@@ -1,12 +1,15 @@
 import { findIconDefinition } from '@fortawesome/fontawesome-svg-core';
-import { type IconName, fas } from '@fortawesome/free-solid-svg-icons';
+import { fas } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { Dropdown, DropdownMenu, DropdownOption } from 'datocms-react-ui';
 import { snakeCase } from 'lodash-es';
+import type { IconName } from '@fortawesome/fontawesome-svg-core';
 import type { FieldInputProps } from 'react-final-form';
 import s from './styles.module.css';
 
-type Props = FieldInputProps<IconName>;
+type Props = FieldInputProps<IconName, HTMLElement> & {
+  error?: string;
+};
 
 export function IconPickerInput({ value, onChange, error }: Props) {
   return (

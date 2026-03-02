@@ -55,17 +55,19 @@ async function fetchUploadDefaultMetadata(
 
 /**
  * Translates metadata for file and gallery fields
- * 
+ *
  * This function handles both single file fields and gallery fields (arrays of files).
  * It extracts alt/title and metadata from each file object, translates text-based fields,
  * and reconstructs the file objects with the translated metadata while preserving
  * other properties like URLs, dimensions, etc.
- * 
+ *
  * @param fieldValue - The file or gallery field data to translate
  * @param pluginParams - Plugin configuration parameters
  * @param toLocale - Target locale code for translation
  * @param fromLocale - Source locale code for translation
  * @param provider - TranslationProvider instance used for translation
+ * @param apiToken - Optional CMA API token used to enrich metadata during translation
+ * @param environment - Optional environment identifier for CMA requests
  * @param _streamCallbacks - Optional callbacks for streaming progress updates
  * @param recordContext - Optional context about the record to improve translation quality
  * @returns Updated file field data with translated alt/title and metadata
@@ -136,17 +138,19 @@ export async function translateFileFieldValue(
 
 /**
  * Translates metadata for a single file object
- * 
+ *
  * This function extracts text-based alt/title and metadata fields from a file object,
  * translates them using the provider, and then merges the translated values
  * back into the original file object, preserving all non-text properties.
  * It only translates string-type values, leaving other types untouched.
- * 
+ *
  * @param fileValue - The file object containing metadata to translate
  * @param pluginParams - Plugin configuration parameters
  * @param toLocale - Target locale code for translation
  * @param fromLocale - Source locale code for translation
  * @param provider - TranslationProvider instance used for translation
+ * @param apiToken - Optional CMA API token used to fetch default metadata for uploads
+ * @param environment - Optional environment identifier for CMA requests
  * @param _streamCallbacks - Optional callbacks for streaming progress updates
  * @param recordContext - Optional context about the record to improve translation quality
  * @returns Updated file object with translated metadata

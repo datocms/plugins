@@ -38,10 +38,10 @@ import { HoverItemContext } from '../../context/HoverItemContext';
 import { weekStartLocale } from '../../utils/getWeekStart';
 import { useStickyState } from '../../hooks/useStickyState';
 import { buildClient, type SchemaTypes } from '@datocms/cma-client';
-import type { RenderPagePropertiesAndMethods } from 'datocms-plugin-sdk';
+import type { RenderPageCtx } from 'datocms-plugin-sdk';
 
 type PropTypes = {
-  ctx: RenderPagePropertiesAndMethods;
+  ctx: RenderPageCtx;
 };
 
 export default function Page({ ctx }: PropTypes) {

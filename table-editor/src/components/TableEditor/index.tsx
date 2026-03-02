@@ -82,8 +82,8 @@ export default function TableEditor({
         Header: EditableHeader,
         Cell: EditableCell,
         id: column,
-        accessor: (row) => row[column],
-      })),
+        accessor: (row: Row) => row[column],
+      })) as unknown as Column<Row>[],
     [value.columns],
   );
 

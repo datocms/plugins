@@ -1,5 +1,4 @@
 import { RenderItemFormSidebarPanelCtx } from 'datocms-plugin-sdk';
-import { Fieldset } from 'datocms-plugin-sdk/dist/types/SiteApiSchema';
 import { Canvas } from 'datocms-react-ui';
 import styles from './styles.module.css';
 
@@ -10,19 +9,19 @@ type PropTypes = {
 const FieldAnchorMenu = ({ ctx }: PropTypes) => {
   const allFieldsToShow = ctx.itemType.relationships.fields.data.map(
     ({ id }) => ctx.fields[id]!,
-  );
+  ) as Array<any>;
 
   const topLevelStuff = [
-    ...(Object.values(ctx.fieldsets) as Fieldset[]).filter(
+    ...Object.values(ctx.fieldsets).filter(Boolean).filter(
       (fieldset) =>
-        fieldset.relationships.item_type.data.id === ctx.itemType.id,
+        (fieldset as any).relationships.item_type.data.id === ctx.itemType.id,
     ),
     ...allFieldsToShow.filter((field) => !field.relationships.fieldset.data),
-  ].sort((a, b) => a.attributes.position - b.attributes.position);
+  ].sort((a: any, b: any) => a.attributes.position - b.attributes.position);
 
   return (
     <Canvas ctx={ctx}>
-      {topLevelStuff.map((fieldOrFieldset) =>
+      {topLevelStuff.map((fieldOrFieldset: any) =>
         fieldOrFieldset.type === 'field' ? (
           <div
             className={styles.link}
@@ -45,10 +44,10 @@ const FieldAnchorMenu = ({ ctx }: PropTypes) => {
             <div className={styles.groupChildren}>
               {allFieldsToShow
                 .filter(
-                  (f) =>
+                  (f: any) =>
                     f.relationships.fieldset.data?.id === fieldOrFieldset.id,
                 )
-                .map((fieldOrFieldset) => (
+                .map((fieldOrFieldset: any) => (
                   <div
                     className={styles.link}
                     onClick={() => {

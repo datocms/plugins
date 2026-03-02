@@ -1,19 +1,20 @@
 {
   "name": "datocms-plugin-dall-e-asset-source",
   "description": "Generate images using DALL-E, and insert them directly inside your DatoCMS project",
-  "version": "0.1.4",
+  "version": "0.1.8",
   "private": false,
   "dependencies": {
-    "@fortawesome/free-solid-svg-icons": "^6.2.1",
-    "@fortawesome/react-fontawesome": "^0.2.0",
-    "@types/react": "^18.0.25",
-    "@types/react-dom": "^18.0.9",
-    "datocms-plugin-sdk": "^0.6.15",
-    "datocms-react-ui": "^0.6.15",
-    "openai": "^3.1.0",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-final-form": "^6.5.9"
+    "@fortawesome/fontawesome-svg-core": "^7.2.0",
+    "@fortawesome/free-solid-svg-icons": "^7.2.0",
+    "@fortawesome/react-fontawesome": "^3.2.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "datocms-plugin-sdk": "^2.1.1",
+    "datocms-react-ui": "^2.1.4",
+    "openai": "^6.25.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-final-form": "^7.0.0"
   },
   "files": [
     "dist",
@@ -31,11 +32,11 @@
     "preview": "vite preview"
   },
   "devDependencies": {
-    "cross-env": "^7.0.3",
-    "@vitejs/plugin-react": "^4.3.1",
-    "globals": "^15.9.0",
-    "typescript": "^5.5.3",
-    "vite": "^5.4.1"
+    "@vitejs/plugin-react": "^5.1.4",
+    "cross-env": "^10.1.0",
+    "globals": "^17.4.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1"
   },
   "datoCmsPlugin": {
     "title": "DALL-E Asset Source",
@@ -43,5 +44,12 @@
     "coverImage": "docs/cover.png",
     "entryPoint": "dist/index.html"
   },
-  "type": "module"
+  "type": "module",
+  "overrides": {
+    "datocms-react-ui": {
+      "react-intersection-observer": "^9.16.0",
+      "react": "$react",
+      "react-dom": "$react-dom"
+    }
+  }
 }

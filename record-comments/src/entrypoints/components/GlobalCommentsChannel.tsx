@@ -57,7 +57,7 @@ type GlobalCommentsChannelProps = {
   isFiltering: boolean;
   onSyncAllowedChange: (isSyncAllowed: boolean) => void;
   /** Ref for the comments list scroll container (for scroll compensation during sync) */
-  commentsListRef: RefObject<HTMLDivElement>;
+  commentsListRef: RefObject<HTMLDivElement | null>;
 };
 
 const GlobalCommentsChannel = ({

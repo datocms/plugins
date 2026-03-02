@@ -8,7 +8,7 @@ interface ContainerSize {
 
 export function useIframeScaling(
   sizing: SizingStrategy,
-  containerRef: React.RefObject<HTMLDivElement>,
+  containerRef: React.RefObject<HTMLDivElement | null>,
 ) {
   const [containerSize, setContainerSize] = useState<ContainerSize>({
     width: 0,

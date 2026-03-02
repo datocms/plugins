@@ -1,13 +1,13 @@
 {
   "name": "datocms-plugin-seo-readability-analysis",
   "homepage": "https://github.com/datocms/plugins/tree/master/seo-readability-analysis#readme",
-  "version": "0.1.12",
+  "version": "0.1.15",
   "description": "Run SEO/Readability analysis using YoastSEO.js on your frontend everytime you make a change to the content of a record",
   "author": "DatoCMS <support@datocms.com>",
   "license": "GPLv3",
   "files": [
     "docs",
-    "build"
+    "dist"
   ],
   "keywords": [
     "datocms",
@@ -24,55 +24,51 @@
     "title": "SEO/Readability Analysis",
     "previewImage": "docs/video.mp4",
     "coverImage": "docs/cover.png",
-    "entryPoint": "build/index.html"
+    "entryPoint": "dist/index.html"
   },
   "dependencies": {
-    "@types/lodash-es": "4.17.5",
-    "@types/node": "16.11.10",
-    "@types/react": "17.0.36",
-    "@types/react-dom": "17.0.11",
-    "datocms-plugin-sdk": "0.3.10",
-    "datocms-react-ui": "0.3.11",
-    "final-form": "4.20.10",
-    "lodash-es": "4.17.21",
-    "react": "17.0.2",
-    "react-dom": "17.0.2",
-    "react-final-form": "6.5.7",
-    "react-scripts": "4.0.3",
-    "typescript": "4.5.2",
-    "use-debouncy": "4.2.1",
-    "yoastseo": "1.91.2"
+    "@types/lodash-es": "^4.17.12",
+    "datocms-plugin-sdk": "^2.1.1",
+    "datocms-react-ui": "^2.1.4",
+    "final-form": "^5.0.0",
+    "lodash-es": "^4.17.23",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-final-form": "^7.0.0",
+    "yoastseo": "^3.6.0"
   },
   "scripts": {
-    "start": "npm run build-worker && BROWSER='none' PUBLIC_URL='/' react-scripts start",
-    "build-worker": "webpack bundle ./workerSrc/index.js --mode production --target web -o public",
-    "build": "npm run build-worker && PUBLIC_URL='.' react-scripts build",
-    "test": "react-scripts test",
-    "eject": "react-scripts eject",
-    "prepublishOnly": "npm run build"
-  },
-  "eslintConfig": {
-    "extends": [
-      "react-app"
-    ]
-  },
-  "browserslist": {
-    "production": [
-      ">0.2%",
-      "not dead",
-      "not op_mini all"
-    ],
-    "development": [
-      "last 1 chrome version",
-      "last 1 firefox version",
-      "last 1 safari version"
-    ]
+    "build": "npm run build-worker && tsc -b && vite build",
+    "test": "vitest run --passWithNoTests",
+    "prepublishOnly": "npm run build",
+    "dev": "vite",
+    "build-worker": "esbuild workerSrc/index.js --bundle --format=iife --outfile=public/main.js",
+    "preview": "vite preview"
   },
   "devDependencies": {
-    "webpack": "4.44.2",
-    "webpack-cli": "4.9.1"
+    "@types/node": "^25.3.3",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.4",
+    "buffer": "^6.0.3",
+    "esbuild": "^0.27.3",
+    "events": "^3.3.0",
+    "globals": "^17.4.0",
+    "typescript": "^5.9.3",
+    "url": "^0.11.4",
+    "vite": "^7.3.1",
+    "vitest": "^4.0.18"
+  },
+  "overrides": {
+    "@babel/runtime": "^7.28.6",
+    "datocms-react-ui": {
+      "react-intersection-observer": "^9.16.0",
+      "react": "$react",
+      "react-dom": "$react-dom"
+    }
   },
   "engines": {
-    "node": "14.x"
-  }
+    "node": ">=20"
+  },
+  "type": "module"
 }

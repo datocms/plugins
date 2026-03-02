@@ -7,7 +7,7 @@
 import type { SchemaTypes } from '@datocms/cma-client';
 import classNames from 'classnames';
 import { Spinner, SwitchInput } from 'datocms-react-ui';
-import { useMemo, useState } from 'react';
+import { type ReactElement, useMemo, useState } from 'react';
 import type { ItemTypeNode } from '@/components/ItemTypeNodeRenderer';
 import type { PluginNode } from '@/components/PluginNodeRenderer';
 import Collapsible from '@/components/SchemaOverview/Collapsible';
@@ -178,10 +178,10 @@ function SchemaOverviewCategory({
   className,
 }: {
   title: string;
-  groups: Array<JSX.Element | null>;
+  groups: Array<ReactElement | null>;
   className?: string;
 }) {
-  const filteredGroups = groups.filter((group): group is JSX.Element =>
+  const filteredGroups = groups.filter((group): group is ReactElement =>
     Boolean(group),
   );
   if (filteredGroups.length === 0) {

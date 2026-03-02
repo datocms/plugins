@@ -1,12 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
-import AnalysisWorkerWrapper from 'yoastseo/src/worker/AnalysisWorkerWrapper';
-import createWorker from 'yoastseo/src/worker/createWorker';
-import Paper from 'yoastseo/src/values/Paper';
-import * as helpers from 'yoastseo/src/helpers';
+import { useCallback, useEffect, useState, type DependencyList } from 'react';
+import AnalysisWorkerWrapper from 'yoastseo/build/worker/AnalysisWorkerWrapper';
+import createWorker from 'yoastseo/build/worker/createWorker';
+import Paper from 'yoastseo/build/values/Paper';
+import * as helpers from 'yoastseo/build/helpers';
 import Results from './Results';
 import Seo from './Seo';
 import ScoreIcon from './ScoreIcon';
-import { useDebouncyEffect } from 'use-debouncy';
 import { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
 import { Button } from 'datocms-react-ui';
 import { Analysis, ValidParameters } from '../types';
@@ -14,7 +13,7 @@ import get from 'lodash-es/get';
 
 const worker = new AnalysisWorkerWrapper(
   createWorker(
-    process.env.NODE_ENV === 'production' ? './main.js' : '/main.js',
+    import.meta.env.PROD ? './main.js' : '/main.js',
   ),
 );
 
@@ -47,6 +46,19 @@ type Page = {
 type PropTypes = {
   ctx: RenderFieldExtensionCtx;
 };
+
+function useDebouncedEffect(
+  effect: () => void,
+  delayMs: number,
+  deps: DependencyList,
+): void {
+  useEffect(() => {
+    const timeoutId = window.setTimeout(effect, delayMs);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, deps);
+}
 
 const Main = ({ ctx }: PropTypes) => {
   const { htmlGeneratorUrl } = ctx.plugin.attributes
@@ -176,7 +188,7 @@ const Main = ({ ctx }: PropTypes) => {
     setPage,
   ]);
 
-  useDebouncyEffect(
+  useDebouncedEffect(
     () => {
       const run = async () => {
         if (!isWorkerReady || !page) {
@@ -217,7 +229,7 @@ const Main = ({ ctx }: PropTypes) => {
           const deserializedResult = {
             readability: removeResultsWithNoText(analyzeResult.readability),
             seo: removeResultsWithNoText(analyzeResult.seo['']),
-            relatedKeywordsSeo: relatedKeywords.map((related, i) =>
+            relatedKeywordsSeo: relatedKeywords.map((_, i) =>
               removeResultsWithNoText(relatedResults.seo[i]),
             ),
           };
@@ -245,7 +257,7 @@ const Main = ({ ctx }: PropTypes) => {
 
   const [activeTab, setActiveTab] = useState(tabs[0].key);
 
-  useDebouncyEffect(
+  useDebouncedEffect(
     () => {
       ctx.setFieldValue(
         ctx.fieldPath,
@@ -377,7 +389,7 @@ const Main = ({ ctx }: PropTypes) => {
                 }
                 onRemove={() => {
                   setRelatedKeywords((old) =>
-                    old.filter((related, j) => i !== j),
+                    old.filter((_, j) => i !== j),
                   );
                 }}
                 analysis={analysis?.relatedKeywordsSeo[i]}

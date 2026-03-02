@@ -1,4 +1,4 @@
-import type { FieldAttributes } from '@datocms/cma-client/dist/types/generated/SchemaTypes';
+import type { SchemaTypes } from '@datocms/cma-client';
 
 /** Utilities for resolving editor metadata used in field appearance exports/imports. */
 
@@ -92,7 +92,7 @@ export async function isHardcodedEditor(editor: string) {
 
 export async function defaultAppearanceForFieldType(
   fieldType: string,
-): Promise<FieldAttributes['appearance']> {
+): Promise<SchemaTypes.Field['attributes']['appearance']> {
   const info = (await fetchFieldTypeInfo())[fieldType];
   const defaultEditor = info?.default_editor ||
     FALLBACK_DEFAULT_EDITORS[fieldType] || {

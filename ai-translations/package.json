@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-ai-translations",
   "homepage": "https://github.com/datocms/plugins/tree/master/ai-translations#readme",
-  "version": "3.2.0",
+  "version": "3.2.4",
   "author": "DatoCMS <support@datocms.com>",
   "description": "Translate fields and records directly on DatoCMS using AI",
   "keywords": [
@@ -34,37 +34,44 @@
     "lint:fix": "eslint . --ext .ts,.tsx --fix"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.71.2",
-    "@datocms/cma-client-browser": "^5.2.2",
+    "@anthropic-ai/sdk": "^0.78.0",
+    "@datocms/cma-client-browser": "^5.3.0",
     "@google/generative-ai": "^0.24.1",
-    "datocms-plugin-sdk": "^2.0.9",
-    "datocms-react-ui": "^2.0.9",
-    "framer-motion": "^12.23.26",
+    "datocms-plugin-sdk": "^2.1.1",
+    "datocms-react-ui": "^2.1.4",
+    "framer-motion": "^12.34.3",
     "locale-codes": "^1.3.1",
-    "openai": "^6.15.0",
-    "react": "^19.2.3",
-    "react-dom": "^19.2.3",
-    "react-icons": "^5.4.0",
-    "react-textarea-autosize": "^8.5.6",
+    "openai": "^6.25.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-icons": "^5.5.0",
+    "react-textarea-autosize": "^8.5.9",
     "react-type-animation": "^3.2.0"
   },
   "devDependencies": {
-    "@testing-library/jest-dom": "^6.6.3",
-    "@testing-library/react": "^16.0.0",
-    "@types/node": "^25.0.3",
-    "@types/react": "^19.2.7",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^25.3.3",
+    "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "@typescript-eslint/eslint-plugin": "^8.12.2",
-    "@typescript-eslint/parser": "^8.12.2",
-    "@vitejs/plugin-react": "^5.1.2",
-    "@vitest/coverage-v8": "^4.0.16",
-    "eslint": "^9.14.0",
-    "eslint-plugin-jsdoc": "^61.5.0",
-    "eslint-plugin-tsdoc": "^0.5.0",
-    "globals": "^17.0.0",
-    "jsdom": "^27.4.0",
-    "typescript": "^5.5.3",
-    "vite": "^7.3.0",
-    "vitest": "^4.0.16"
+    "@typescript-eslint/eslint-plugin": "^8.56.1",
+    "@typescript-eslint/parser": "^8.56.1",
+    "@vitejs/plugin-react": "^5.1.4",
+    "@vitest/coverage-v8": "^4.0.18",
+    "eslint": "^10.0.2",
+    "eslint-plugin-jsdoc": "^62.7.1",
+    "eslint-plugin-tsdoc": "^0.5.2",
+    "globals": "^17.4.0",
+    "jsdom": "^28.1.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1",
+    "vitest": "^4.0.18"
+  },
+  "overrides": {
+    "datocms-react-ui": {
+      "react-intersection-observer": "^9.16.0",
+      "react": "$react",
+      "react-dom": "$react-dom"
+    }
   }
 }

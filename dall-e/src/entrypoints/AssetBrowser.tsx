@@ -18,10 +18,10 @@ import React, {
 import s from './styles.module.css';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSearch } from '@fortawesome/free-solid-svg-icons';
-import { Configuration, ImagesResponse, OpenAIApi } from 'openai';
-import Cell from '../components/Cell';
+import OpenAI from 'openai';
+import Cell, { GeneratedImage } from '../components/Cell';
 
-type Image = ImagesResponse['data'][0];
+type Image = GeneratedImage;
 type Size = '256x256' | '512x512' | '1024x1024';
 
 const sizeOptions = [
@@ -55,6 +55,10 @@ const AssetBrowser = () => {
 
   const handleSelect = useCallback(
     async (image: Image) => {
+      if (!image.b64_json) {
+        ctx.alert('Unable to import image: missing image data from OpenAI response');
+        return;
+      }
       ctx.select({
         resource: {
           base64: `data:image/png;base64,${image.b64_json}`,
@@ -100,13 +104,13 @@ const AssetBrowser = () => {
       ctx.alert('Please provide a valid OpenAI API key in plugin settings!');
     }
 
-    const client = new OpenAIApi(
-      new Configuration({
-        apiKey: ctx.plugin.attributes.parameters.apiKey as string,
-      }),
-    );
+    const client = new OpenAI({
+      apiKey: ctx.plugin.attributes.parameters.apiKey as string,
+      dangerouslyAllowBrowser: true,
+    });
 
-    const response = await client.createImage({
+    const response = await client.images.generate({
+      model: 'dall-e-2',
       prompt,
       n,
       size,
@@ -116,7 +120,7 @@ const AssetBrowser = () => {
     setLoading(false);
 
     return {
-      images: response.data.data,
+      images: response.data as Image[],
       prompt,
       size: parseInt(size.split('x')[0]),
     };
@@ -204,9 +208,9 @@ const AssetBrowser = () => {
                 } as CSSProperties
               }
             >
-              {imageRequest.images.map((image) => (
+              {imageRequest.images.map((image, index) => (
                 <Cell
-                  key={image.url}
+                  key={image.url || image.b64_json || `${imageRequest.prompt}-${index}`}
                   image={image}
                   onClick={handleSelect.bind(null, image)}
                 />

@@ -1,7 +1,7 @@
 import {
   connect,
-  InitPropertiesAndMethods,
-  ModelBlock,
+  ItemFormOutletsCtx,
+  ItemType,
   OnBootCtx,
   RenderConfigScreenCtx,
   RenderItemFormOutletCtx,
@@ -23,7 +23,7 @@ connect({
       parametersHaveBeenSet: true,
     });
   },
-  itemFormOutlets(itemType: ModelBlock, ctx: InitPropertiesAndMethods) {
+  itemFormOutlets(_itemType: ItemType, _ctx: ItemFormOutletsCtx) {
     return [
       {
         id: "auto_save",

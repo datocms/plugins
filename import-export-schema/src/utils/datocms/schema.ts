@@ -1,5 +1,4 @@
 import type { SchemaTypes } from '@datocms/cma-client';
-import type { FieldAttributes } from '@datocms/cma-client/dist/types/generated/SchemaTypes';
 import get from 'lodash-es/get';
 /**
  * Shared lookups and helper utilities for interpreting DatoCMS field metadata.
@@ -31,7 +30,7 @@ type SvgComponent = React.FunctionComponent<
 
 export const fieldTypeGroups: Array<{
   name: string;
-  types: FieldAttributes['field_type'][];
+  types: SchemaTypes.Field['attributes']['field_type'][];
 }> = [
   {
     name: 'text',
@@ -145,7 +144,7 @@ export const fieldGroupColors: Record<
 };
 
 export const fieldTypeDescriptions: Record<
-  FieldAttributes['field_type'],
+  SchemaTypes.Field['attributes']['field_type'],
   string
 > = {
   boolean: 'Boolean',
@@ -171,7 +170,7 @@ export const fieldTypeDescriptions: Record<
 };
 
 export const validatorsContainingLinks: Array<{
-  field_type: FieldAttributes['field_type'];
+  field_type: SchemaTypes.Field['attributes']['field_type'];
   validator: string;
 }> = [
   { field_type: 'link', validator: 'item_item_type.item_types' },
@@ -183,7 +182,7 @@ export const validatorsContainingLinks: Array<{
 ];
 
 export const validatorsContainingBlocks: Array<{
-  field_type: FieldAttributes['field_type'];
+  field_type: SchemaTypes.Field['attributes']['field_type'];
   validator: string;
 }> = [
   { field_type: 'rich_text', validator: 'rich_text_blocks.item_types' },

@@ -1,5 +1,4 @@
 import {
-  IntentCtx,
   RenderFieldExtensionCtx,
   connect,
 } from 'datocms-plugin-sdk';
@@ -40,7 +39,7 @@ connect({
       await ctx.updatePluginParameters({ installed: true });
     }
   },
-  manualFieldExtensions(ctx: IntentCtx) {
+  manualFieldExtensions() {
     return [
       {
         id: 'slugRedirects',
@@ -66,7 +65,11 @@ connect({
 
     (await ctx.loadFieldsUsingPlugin()).map((field) => {
       fieldUsingThisPlugin.push(field.attributes.api_key);
-      urlPrefix = field.attributes.appearance.parameters.url_prefix as string;
+      const appearanceParams = field.attributes.appearance
+        .parameters as Record<string, unknown>;
+      if (typeof appearanceParams.url_prefix === 'string') {
+        urlPrefix = appearanceParams.url_prefix;
+      }
     });
 
     if (!fieldUsingThisPlugin) {
@@ -125,7 +128,11 @@ connect({
 
     (await ctx.loadFieldsUsingPlugin()).map((field) => {
       fieldUsingThisPlugin.push(field.attributes.api_key);
-      urlPrefix = field.attributes.appearance.parameters.url_prefix as string;
+      const appearanceParams = field.attributes.appearance
+        .parameters as Record<string, unknown>;
+      if (typeof appearanceParams.url_prefix === 'string') {
+        urlPrefix = appearanceParams.url_prefix;
+      }
     });
 
     if (!fieldUsingThisPlugin) {

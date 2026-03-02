@@ -723,8 +723,9 @@ async function importField(
       validatorsContainer as typeof data.attributes.validators;
   }
 
-  const slugTitleFieldValidator = field.attributes.validators
-    .slug_title_field as undefined | { title_field_id: string };
+  const slugTitleFieldValidator = (
+    field.attributes.validators as Record<string, unknown>
+  ).slug_title_field as undefined | { title_field_id: string };
 
   if (slugTitleFieldValidator) {
     const mapped = getOrThrow(
@@ -747,7 +748,7 @@ async function importField(
     >;
     data.attributes.default_value = Object.fromEntries(
       locales.map((locale) => [locale, oldDefaultValues?.[locale] ?? null]),
-    );
+    ) as typeof data.attributes.default_value;
   }
 
   data.attributes.appearance = nextAppearance;

@@ -5,5 +5,6 @@ type PropTypes = {
 };
 
 export default function SlugExtension({ ctx }: PropTypes) {
+  void ctx;
   return <></>;
 }

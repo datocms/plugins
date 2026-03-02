@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { JSX } from 'react';
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import {
   Button,

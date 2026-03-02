@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-automatic-environment-backups",
   "homepage": "https://github.com/datocms/plugins/tree/master/automatic-environment-backups#readme",
-  "version": "0.6.0",
+  "version": "0.6.4",
   "author": "DatoCMS <support@datocms.com>",
   "description": "A plugin that creates daily and weekly backups of your main environment on DatoCMS automatically.",
   "keywords": [
@@ -22,14 +22,14 @@
   },
   "dependencies": {
     "@datocms/cma-client-browser": "^5.3.0",
-    "@types/node": "^25.3.1",
-    "@types/react": "^18.3.28",
-    "@types/react-dom": "^18.3.7",
+    "@types/node": "^25.3.3",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
     "date-fns": "^4.1.0",
     "datocms-plugin-sdk": "^2.1.1",
     "datocms-react-ui": "^2.1.4",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
     "typescript": "^5.9.3"
   },
   "scripts": {
@@ -59,9 +59,16 @@
     ]
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^5.1.0",
+    "@vitejs/plugin-react": "^5.1.4",
     "cross-env": "^10.1.0",
-    "vite": "^7.1.11",
-    "vitest": "^4.0.0"
+    "vite": "^7.3.1",
+    "vitest": "^4.0.18"
+  },
+  "overrides": {
+    "datocms-react-ui": {
+      "react-intersection-observer": "^9.16.0",
+      "react": "$react",
+      "react-dom": "$react-dom"
+    }
   }
 }
