@@ -49,7 +49,10 @@ import {
 } from "../utils/backupSchedule";
 import { buildBackupOverviewRows } from "../utils/buildBackupOverviewRows";
 import { fetchLambdaBackupStatus } from "../utils/fetchLambdaBackupStatus";
-import { triggerLambdaBackupNow } from "../utils/triggerLambdaBackupNow";
+import {
+  LambdaBackupNowError,
+  triggerLambdaBackupNow,
+} from "../utils/triggerLambdaBackupNow";
 import {
   mergePluginParameterUpdates,
   toPluginParameterRecord,
@@ -60,6 +63,7 @@ const DEFAULT_CONNECTION_ERROR_SUMMARY =
 const MISSING_AUTH_SECRET_MESSAGE =
   "Enter Lambda auth secret before calling lambda endpoints.";
 const DEFAULT_LAMBDA_AUTH_SECRET = "superSecretToken";
+const BACKUP_NOW_AFTER_SAVE_RETRY_DELAY_MS = 1200;
 
 const getErrorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : "Unknown error";
@@ -210,6 +214,9 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   const [backupNowInFlightCadence, setBackupNowInFlightCadence] = useState<
     BackupCadence | null
   >(null);
+  const [connectionActivityMessage, setConnectionActivityMessage] = useState<
+    string | null
+  >(null);
   const debugLogger = createDebugLogger(debugEnabled, "ConfigScreen");
   const persistQueueRef = useRef<Promise<void>>(Promise.resolve());
 
@@ -352,6 +359,11 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         return;
       }
 
+      const wait = (ms: number) =>
+        new Promise<void>((resolve) => {
+          setTimeout(resolve, ms);
+        });
+
       try {
         const status = await fetchLambdaBackupStatus({
           baseUrl,
@@ -370,11 +382,20 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           return;
         }
 
+        if (reason === "connect") {
+          setConnectionActivityMessage("Connected. Creating initial backups...");
+        }
+
         const createdEnvironmentIds: string[] = [];
         const failedCadences: string[] = [];
 
         for (const cadence of cadencesMissingEnvironment) {
           try {
+            if (reason === "connect") {
+              setConnectionActivityMessage(
+                `Connected. Creating ${getCadenceLabel(cadence).toLowerCase()} backup...`,
+              );
+            }
             setBackupNowInFlightCadence(cadence);
             const result = await triggerLambdaBackupNow({
               baseUrl,
@@ -384,6 +405,35 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
             });
             createdEnvironmentIds.push(result.createdEnvironmentId);
           } catch (error) {
+            const isCadenceNotEnabledRace =
+              reason === "schedule" &&
+              error instanceof LambdaBackupNowError &&
+              error.code === "HTTP" &&
+              error.httpStatus === 409;
+
+            if (isCadenceNotEnabledRace) {
+              try {
+                await wait(BACKUP_NOW_AFTER_SAVE_RETRY_DELAY_MS);
+                const retryResult = await triggerLambdaBackupNow({
+                  baseUrl,
+                  environment: ctx.environment,
+                  scope: cadence,
+                  lambdaAuthSecret,
+                });
+                createdEnvironmentIds.push(retryResult.createdEnvironmentId);
+                continue;
+              } catch (retryError) {
+                failedCadences.push(
+                  `${getCadenceLabel(cadence)}: ${
+                    retryError instanceof Error
+                      ? retryError.message
+                      : "Unknown error"
+                  }`,
+                );
+                continue;
+              }
+            }
+
             failedCadences.push(
               `${getCadenceLabel(cadence)}: ${
                 error instanceof Error ? error.message : "Unknown error"
@@ -418,6 +468,9 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
             : "Could not automatically create missing backup environments.",
         );
       } finally {
+        if (reason === "connect") {
+          setConnectionActivityMessage(null);
+        }
         setBackupNowInFlightCadence(null);
       }
     },
@@ -610,6 +663,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     }
 
     debugLogger.log("Connecting lambda deployment", { candidateUrl });
+    setConnectionActivityMessage(null);
     setIsConnecting(true);
     clearConnectionErrorState();
 
@@ -685,6 +739,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         setShowConnectionDetails(false);
       }
     } finally {
+      setConnectionActivityMessage(null);
       setIsConnecting(false);
     }
   };
@@ -710,6 +765,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       setConnectionState(undefined);
       setConnectionValidationMode(undefined);
       setLambdaBackupStatus(undefined);
+      setConnectionActivityMessage(null);
       setBackupOverviewError(
         "Lambda status is unavailable until the saved Lambda URL is connected with a healthy ping.",
       );
@@ -776,9 +832,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         savedCadences.some(
           (cadence, index) => cadence !== normalizedEnabledCadences[index],
         );
-      const addedCadences = normalizedEnabledCadences.filter(
-        (cadence) => !savedCadences.includes(cadence),
-      );
       const persistedBackupSchedule: BackupScheduleConfig = {
         version: BACKUP_SCHEDULE_VERSION,
         enabledCadences: normalizedEnabledCadences,
@@ -806,11 +859,11 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         backupSchedule: persistedBackupSchedule,
       });
 
-      if (addedCadences.length > 0) {
+      if (normalizedEnabledCadences.length > 0) {
         await ensureBackupsExistForCadences({
           baseUrl: persistedDeploymentUrl,
           lambdaAuthSecret: normalizedLambdaAuthSecret,
-          cadences: addedCadences,
+          cadences: normalizedEnabledCadences,
           reason: "schedule",
         });
       }
@@ -910,7 +963,12 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   };
 
   const pingIndicator =
-    isHealthChecking || isConnecting
+    connectionActivityMessage
+      ? {
+          label: connectionActivityMessage,
+          color: "var(--warning-color)",
+        }
+      : isHealthChecking || isConnecting
       ? {
           label: "Checking ping...",
           color: "var(--warning-color)",
@@ -1100,16 +1158,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     !isHealthChecking &&
     !isConnecting &&
     !isDisconnecting;
-
-  const lambdaSaveBlockReason = !hasActiveDeploymentUrl
-    ? "Connect a Lambda URL before saving."
-    : !hasLambdaAuthSecret
-      ? "Provide the Lambda auth secret before saving."
-      : isHealthChecking || isConnecting
-        ? "Wait for the Lambda ping check to finish."
-        : connectionState?.status !== "connected" || connectionValidationMode !== "health"
-          ? "Lambda status must be Connected (ping successful) before saving."
-          : "";
 
   const savedBackupSchedule = savedFormValues.backupSchedule;
   const backupOverviewRows: BackupOverviewRow[] = buildBackupOverviewRows({
@@ -1443,31 +1491,8 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
               <p style={subtleTextStyle}>
                 This plugin runs in Lambda cron mode only.
               </p>
-
-              {lambdaSaveBlockReason && (
-                <p
-                  style={{
-                    ...subtleTextStyle,
-                    color: "var(--alert-color)",
-                  }}
-                >
-                  {lambdaSaveBlockReason}
-                </p>
-              )}
             </div>
           </Section>
-
-          {!showAdvancedSettings && lambdaSaveBlockReason && (
-            <p
-              style={{
-                ...subtleTextStyle,
-                marginTop: "var(--spacing-s)",
-                color: "var(--alert-color)",
-              }}
-            >
-              Open Advanced settings to review save requirements.
-            </p>
-          )}
 
           <Button
             onClick={saveSettingsHandler}
