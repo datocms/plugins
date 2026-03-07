@@ -1,11 +1,102 @@
-.image {
-  width: 100%;
+.cell {
+  position: relative;
   display: block;
+  isolation: isolate;
+  width: 100%;
+  padding: 0;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
   cursor: pointer;
-  border-radius: 5px;
-  border: 1px solid transparent;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    background-color 140ms ease;
 }
 
-.image:hover {
-  outline: 3px solid var(--accent-color);
+.cellSelected {
+  border-color: var(--accent-color);
+  background: rgba(var(--accent-color-rgb-components), 0.08);
+  box-shadow: 0 0 0 2px rgba(var(--accent-color-rgb-components), 0.2);
+}
+
+.cellSelected::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: rgba(var(--accent-color-rgb-components), 0.12);
+  box-shadow: inset 0 0 0 1px rgba(var(--accent-color-rgb-components), 0.18);
+  pointer-events: none;
+}
+
+.cell:hover {
+  border-color: var(--darker-border-color);
+}
+
+.cell:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: -2px;
+}
+
+.selectionMark {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.selectionMarkSelected {
+  border-color: var(--accent-color);
+  background: #fff;
+}
+
+.selectionIcon {
+  position: relative;
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid rgba(0, 0, 0, 0.22);
+  border-radius: 3px;
+  background: #fff;
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease,
+    transform 140ms ease;
+}
+
+.selectionMarkSelected .selectionIcon {
+  border-color: var(--accent-color);
+  background: var(--accent-color);
+  transform: scale(1.1);
+}
+
+.selectionMarkSelected .selectionIcon::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 1px;
+  width: 4px;
+  height: 7px;
+  border-right: 2px solid #fff;
+  border-bottom: 2px solid #fff;
+  transform: rotate(40deg);
+}
+
+.image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--lighter-bg-color);
+  position: relative;
+  z-index: 0;
 }

@@ -1,7 +1,6 @@
-export type FirstInstallationParameters = {};
+import type { SupportedImageModel } from './utils/openaiImages';
 
-export type ValidParameters = {
-	apiKey: string;
+export type ConfigParameters = {
+  apiKey?: string;
+  model?: SupportedImageModel;
 };
-
-export type ConfigParameters = FirstInstallationParameters | ValidParameters;

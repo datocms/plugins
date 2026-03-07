@@ -1,223 +1,350 @@
+import { type FormEvent, useCallback, useMemo, useState } from 'react';
 import { RenderAssetSourceCtx } from 'datocms-plugin-sdk';
+import { Spinner, useCtx } from 'datocms-react-ui';
+import Cell from '../components/Cell';
+import type { ConfigParameters } from '../types';
 import {
-  Button,
-  SelectInput,
-  Spinner,
-  TextInput,
-  useCtx,
-  useElementLayout,
-} from 'datocms-react-ui';
-import classNames from 'classnames';
-import React, {
-  CSSProperties,
-  FormEvent,
-  useCallback,
-  useRef,
-  useState,
-} from 'react';
+  backgroundOptions,
+  buildGenerationNotes,
+  buildImportFilename,
+  defaultGenerateFormState,
+  generateImages,
+  getConfiguredModel,
+  normalizeFormState,
+  normalizeOpenAiError,
+  shapeOptions,
+  variationOptions,
+  type BackgroundMode,
+  type GenerateFormState,
+  type GeneratedImage,
+  type ImageRequestRecord,
+  type ImageShape,
+  type VariationCount,
+} from '../utils/openaiImages';
 import s from './styles.module.css';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faSearch } from '@fortawesome/free-solid-svg-icons';
-import OpenAI from 'openai';
-import Cell, { GeneratedImage } from '../components/Cell';
 
-type Image = GeneratedImage;
-type Size = '256x256' | '512x512' | '1024x1024';
-
-const sizeOptions = [
-  { value: '256x256', label: '256x256 px' },
-  { value: '512x512', label: '512x512 px' },
-  { value: '1024x1024', label: '1024x1024 px' },
-];
-
-const nOptions = [
-  { value: 1, label: '1' },
-  { value: 2, label: '2' },
-  { value: 3, label: '3' },
-  { value: 4, label: '4' },
-  { value: 5, label: '5' },
-  { value: 6, label: '6' },
-  { value: 7, label: '7' },
-  { value: 8, label: '8' },
-  { value: 9, label: '9' },
-  { value: 10, label: '10' },
-];
+const MAX_REQUESTS = 5;
 
 const AssetBrowser = () => {
   const ctx = useCtx<RenderAssetSourceCtx>();
-  const [prompt, setPrompt] = useState('');
-  const [imageRequests, setImageRequests] = useState<
-    { images: Image[]; prompt: string; size: number }[]
-  >([]);
-  const [n, setN] = useState<number>(1);
-  const [size, setSize] = useState<Size>('512x512');
+  const parameters = (ctx.plugin.attributes.parameters || {}) as ConfigParameters;
+  const trimmedApiKey = parameters.apiKey?.trim() || '';
+  const selectedModel = getConfiguredModel(parameters.model);
+  const [formState, setFormState] = useState<GenerateFormState>(
+    defaultGenerateFormState,
+  );
+  const [requests, setRequests] = useState<ImageRequestRecord[]>([]);
+  const [selectedImageIds, setSelectedImageIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const handleSelect = useCallback(
-    async (image: Image) => {
-      if (!image.b64_json) {
-        ctx.alert('Unable to import image: missing image data from OpenAI response');
-        return;
-      }
+  const hasApiKey = Boolean(trimmedApiKey);
+  const normalizedState = useMemo(
+    () => normalizeFormState(formState),
+    [formState],
+  );
+  const canGenerate = hasApiKey && Boolean(normalizedState.prompt) && !loading;
+  const shapePreviewClassNames: Record<ImageShape, string> = {
+    square: s.shapePreviewSquare,
+    portrait: s.shapePreviewPortrait,
+    landscape: s.shapePreviewLandscape,
+  };
+
+  const handleShapeChange = useCallback((shape: ImageShape) => {
+    setFormState((current) => ({ ...current, shape }));
+  }, []);
+
+  const handleVariationChange = useCallback((variations: VariationCount) => {
+    setFormState((current) => ({ ...current, variations }));
+  }, []);
+
+  const handleBackgroundChange = useCallback((background: BackgroundMode) => {
+    setFormState((current) => ({ ...current, background }));
+  }, []);
+
+  const toggleImageSelected = useCallback((imageId: string) => {
+    setSelectedImageIds((current) =>
+      current.includes(imageId)
+        ? current.filter((id) => id !== imageId)
+        : [...current, imageId],
+    );
+  }, []);
+
+  const uploadImage = useCallback(
+    (request: ImageRequestRecord, image: GeneratedImage) => {
       ctx.select({
         resource: {
-          base64: `data:image/png;base64,${image.b64_json}`,
-          filename: `${prompt.substring(0, 30)}.png`,
+          base64: image.previewSrc,
+          filename: buildImportFilename(
+            request.request.prompt,
+            request.createdAt,
+            request.images.length > 1 ? image.position : undefined,
+          ),
         },
-        notes: `Generated via DALL-E using prompt: "${prompt}"`,
-        tags: ['dall-e'],
+        notes: buildGenerationNotes(request.request),
+        tags: ['generated-image'],
         default_field_metadata: ctx.site.attributes.locales.reduce(
-          (acc, locale) => {
-            if (locale.startsWith('en')) {
-              return {
-                ...acc,
-                [locale]: {
-                  alt: prompt,
-                  title: null,
-                  custom_data: {},
-                },
-              };
-            }
-
-            return {
-              ...acc,
-              [locale]: { alt: null, title: null, custom_data: {} },
-            };
-          },
+          (acc, locale) => ({
+            ...acc,
+            [locale]: {
+              alt: request.request.prompt,
+              title: null,
+              custom_data: {},
+            },
+          }),
           {},
         ),
       });
     },
-    [prompt, ctx],
+    [ctx],
   );
 
-  const performRequest = useCallback(async (): Promise<{
-    images: Image[];
-    prompt: string;
-    size: number;
-  }> => {
-    setLoading(true);
+  const handleUploadSelected = useCallback(
+    (request: ImageRequestRecord) => {
+      const selectedImages = request.images.filter((image) =>
+        selectedImageIds.includes(image.id),
+      );
 
-    const { apiKey } = ctx.plugin.attributes.parameters;
-
-    if (!apiKey) {
-      ctx.alert('Please provide a valid OpenAI API key in plugin settings!');
-    }
-
-    const client = new OpenAI({
-      apiKey: ctx.plugin.attributes.parameters.apiKey as string,
-      dangerouslyAllowBrowser: true,
-    });
-
-    const response = await client.images.generate({
-      model: 'dall-e-2',
-      prompt,
-      n,
-      size,
-      response_format: 'b64_json',
-    });
-
-    setLoading(false);
-
-    return {
-      images: response.data as Image[],
-      prompt,
-      size: parseInt(size.split('x')[0]),
-    };
-  }, [size, n, prompt, setLoading, ctx]);
-
-  const handleSearch = useCallback(
-    async (e?: FormEvent<HTMLFormElement>) => {
-      if (e) {
-        e.preventDefault();
+      if (!selectedImages.length) {
+        return;
       }
+
+      selectedImages.forEach((image) => {
+        uploadImage(request, image);
+      });
+
+      setSelectedImageIds((current) =>
+        current.filter((id) => !selectedImages.some((image) => image.id === id)),
+      );
+    },
+    [selectedImageIds, uploadImage],
+  );
+
+  const handleGenerate = useCallback(
+    async (event?: FormEvent<HTMLFormElement>) => {
+      event?.preventDefault();
+
+      if (!hasApiKey) {
+        setErrorMessage(
+          'Add an OpenAI API key in plugin settings before generating images.',
+        );
+        return;
+      }
+
+      if (!normalizedState.prompt) {
+        setErrorMessage('Enter a prompt before generating images.');
+        return;
+      }
+
+      setLoading(true);
+      setErrorMessage(null);
+
       try {
-        const newImages = await performRequest();
-        setImageRequests((images) => [newImages, ...images]);
-      } catch (e) {
-        ctx.alert('Something went wrong!');
-        console.error('DALL-E plugin', e);
+        const result = await generateImages(
+          trimmedApiKey,
+          normalizedState,
+          selectedModel,
+        );
+        setRequests((current) => [result, ...current].slice(0, MAX_REQUESTS));
+      } catch (error) {
+        console.error('Image Generator plugin', error);
+        setErrorMessage(normalizeOpenAiError(error));
+      } finally {
+        setLoading(false);
       }
     },
-    [setImageRequests, performRequest, ctx],
+    [hasApiKey, normalizedState, selectedModel, trimmedApiKey],
   );
 
-  const rootRef = useRef<HTMLDivElement>(null);
-  const rect = useElementLayout(rootRef as React.MutableRefObject<Element>);
-
   return (
-    <div ref={rootRef}>
-      <form className={s.search} onSubmit={handleSearch}>
-        <div className={s.searchFirstRow}>
-          <TextInput
-            value={prompt}
-            placeholder={`Start with a detailed description, like "High quality photo of a monkey astronaut..."`}
-            onChange={(newValue) => setPrompt(newValue)}
-            className={s.search__input}
-          />
-          <Button
-            type="submit"
-            buttonSize="s"
-            buttonType="primary"
-            disabled={loading}
-            leftIcon={<FontAwesomeIcon icon={faSearch} />}
-          >
-            Generate
-          </Button>
-        </div>
-        <div className={s.searchFirstRow}>
-          <div className={s.searchFilter}>
-            <div className={s.searchFilterLabel}>Image size</div>
-            <SelectInput
-              options={sizeOptions}
-              value={sizeOptions.find((o) => o.value === size)}
-              isClearable={false}
-              onChange={(o) => {
-                setSize((o?.value as Size) || '512x512');
-              }}
-            />
+    <div className={s.page}>
+      <div className={s.panel}>
+        {!hasApiKey && (
+          <div className={s.message} role="status">
+            Add an OpenAI API key in plugin settings to start generating images.
           </div>
-          <div className={s.searchFilter}>
-            <div className={s.searchFilterLabel}>
-              Number of variants to generate
+        )}
+
+        <form className={s.generatorForm} onSubmit={handleGenerate}>
+          <div className={s.generatorLayout}>
+            <div className={s.promptColumn}>
+              <textarea
+                id="prompt"
+                aria-label="Prompt"
+                className={s.textarea}
+                rows={6}
+                value={formState.prompt}
+                onChange={(event) =>
+                  setFormState((current) => ({
+                    ...current,
+                    prompt: event.target.value,
+                  }))
+                }
+                placeholder="Describe the image you want to generate"
+              />
             </div>
-            <SelectInput
-              options={nOptions}
-              value={nOptions.find((o) => o.value === n)}
-              onChange={(o) => {
-                setN(o?.value || 1);
-              }}
-            />
-          </div>
-        </div>
-      </form>
-      <div className={s.container}>
-        {loading && <Spinner size={50} placement="centered" />}
-        {imageRequests.map((imageRequest) => (
-          <div className={s.imageRequest} key={imageRequest.prompt}>
-            <div className={s.imageRequestPrompt}>"{imageRequest.prompt}"</div>
-            <div
-              className={classNames(s.imageRequestMasonry, {
-                [s.imageRequestMasonryLoading]: loading,
-              })}
-              style={
-                {
-                  '--columns': Math.round(
-                    rect.width / Math.min(512, imageRequest.size),
-                  ),
-                } as CSSProperties
-              }
-            >
-              {imageRequest.images.map((image, index) => (
-                <Cell
-                  key={image.url || image.b64_json || `${imageRequest.prompt}-${index}`}
-                  image={image}
-                  onClick={handleSelect.bind(null, image)}
-                />
-              ))}
+
+            <div className={s.controlsColumn}>
+              <div className={s.controlsPanel}>
+                <div className={s.controlGroup}>
+                  <div className={s.groupLabel}>Aspect ratio</div>
+                  <div className={s.shapeList}>
+                    {shapeOptions.map((option) => {
+                      const checked = option.value === formState.shape;
+
+                      return (
+                        <label
+                          key={option.value}
+                          className={
+                            checked
+                              ? `${s.shapeOption} ${s.choiceButtonActive}`
+                              : s.shapeOption
+                          }
+                        >
+                          <input
+                            className={s.choiceInput}
+                            type="radio"
+                            name="shape"
+                            value={option.value}
+                            checked={checked}
+                            onChange={() => handleShapeChange(option.value)}
+                          />
+                          <span
+                            className={`${s.shapePreview} ${shapePreviewClassNames[option.value]}`}
+                            aria-hidden="true"
+                          />
+                          <span className={s.shapeCopy}>
+                            <span className={s.choiceTitle}>{option.label}</span>
+                            <span className={s.choiceMeta}>
+                              {option.description}
+                            </span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className={s.controlGroup}>
+                  <div className={s.groupLabel}>Variations</div>
+                  <div className={s.variationGrid}>
+                    {variationOptions.map((option) => {
+                      const checked = option.value === formState.variations;
+
+                      return (
+                        <label
+                          key={option.value}
+                          className={
+                            checked
+                              ? `${s.compactChoice} ${s.choiceButtonActive}`
+                              : s.compactChoice
+                          }
+                        >
+                          <input
+                            className={s.choiceInput}
+                            type="radio"
+                            name="variations"
+                            value={option.value}
+                            checked={checked}
+                            onChange={() => handleVariationChange(option.value)}
+                          />
+                          <span>{option.label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className={s.controlGroup}>
+                  <div className={s.groupLabel}>Background</div>
+                  <div className={s.backgroundGrid}>
+                    {backgroundOptions.map((option) => {
+                      const checked = option.value === formState.background;
+
+                      return (
+                        <label
+                          key={option.value}
+                          className={
+                            checked
+                              ? `${s.compactChoice} ${s.choiceButtonActive}`
+                              : s.compactChoice
+                          }
+                        >
+                          <input
+                            className={s.choiceInput}
+                            type="radio"
+                            name="background"
+                            value={option.value}
+                            checked={checked}
+                            onChange={() => handleBackgroundChange(option.value)}
+                          />
+                          <span>{option.label}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className={s.controlsFooter}>
+                  <button
+                    className={s.primaryButton}
+                    type="submit"
+                    disabled={!canGenerate}
+                  >
+                    {loading ? 'Generating…' : 'Generate'}
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
-        ))}
+
+          {errorMessage && (
+            <div className={s.errorMessage} role="alert">
+              {errorMessage}
+            </div>
+          )}
+        </form>
+      </div>
+
+      <div className={s.results}>
+        {loading && <Spinner size={40} placement="centered" />}
+
+        {!loading && requests.length === 0 && (
+          <div className={s.emptyState}>Generated images will appear here</div>
+        )}
+
+        {requests.map((request) => {
+          const selectedCount = request.images.filter((image) =>
+            selectedImageIds.includes(image.id),
+          ).length;
+
+          return (
+            <div className={s.resultGroup} key={request.id}>
+              <div className={s.resultGrid}>
+                {request.images.map((image) => (
+                  <Cell
+                    key={image.id}
+                    image={image}
+                    selected={selectedImageIds.includes(image.id)}
+                    onToggleSelected={() => toggleImageSelected(image.id)}
+                  />
+                ))}
+              </div>
+
+              {selectedCount > 0 && (
+                <div className={s.resultActions}>
+                  <button
+                    className={s.primaryButton}
+                    type="button"
+                    onClick={() => handleUploadSelected(request)}
+                  >
+                    Upload selected ({selectedCount})
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
