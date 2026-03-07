@@ -1,6 +1,7 @@
 import { connect } from 'datocms-plugin-sdk';
 import { Canvas } from 'datocms-react-ui';
 import 'datocms-react-ui/styles.css';
+import './styles/tailwind.css';
 import AssetBrowser from './entrypoints/AssetBrowser';
 import ConfigScreen from './entrypoints/ConfigScreen';
 import { render } from './utils/render';

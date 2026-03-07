@@ -1,15 +1,16 @@
-import OpenAI from 'openai';
-import type { ImageModel, ImagesResponse } from 'openai/resources/images';
+import { generateImage } from 'ai';
+import { createOpenAI } from '@ai-sdk/openai';
 
-export type SupportedImageModel = Extract<
-  ImageModel,
-  'gpt-image-1.5' | 'gpt-image-1' | 'gpt-image-1-mini'
->;
+export type SupportedImageModel =
+  | 'gpt-image-1.5'
+  | 'gpt-image-1'
+  | 'gpt-image-1-mini';
 
 export type ImageShape = 'square' | 'portrait' | 'landscape';
 export type ImageSize = '1024x1024' | '1024x1536' | '1536x1024';
 export type VariationCount = 1 | 2 | 3 | 4;
 export type BackgroundMode = 'auto' | 'transparent';
+export type GenerationStatus = 'idle' | 'submitted' | 'completed' | 'error';
 
 export type SelectOption<T extends string> = {
   value: T;
@@ -39,11 +40,17 @@ export type GenerateFormState = {
   background: BackgroundMode;
 };
 
-export type GeneratedImage = {
+export type GeneratedAssetImage = {
   id: string;
-  b64Json: string;
+  base64: string;
+  mediaType: string;
   previewSrc: string;
   position: number;
+  revisedPrompt?: string;
+  returnedBackground?: string;
+  returnedFormat?: string;
+  returnedQuality?: string;
+  returnedSize?: string;
 };
 
 export type GenerationRequest = {
@@ -55,12 +62,13 @@ export type GenerationRequest = {
   background: BackgroundMode;
 };
 
-export type ImageRequestRecord = {
+export type GenerationBatch = {
   id: string;
   createdAt: string;
   createdAtLabel: string;
   request: GenerationRequest;
-  images: GeneratedImage[];
+  images: GeneratedAssetImage[];
+  status: Extract<GenerationStatus, 'completed'>;
 };
 
 export const supportedModelIds: SupportedImageModel[] = [
@@ -128,13 +136,6 @@ const timestampFormatter = new Intl.DateTimeFormat(undefined, {
   timeStyle: 'short',
 });
 
-export function createOpenAiClient(apiKey: string) {
-  return new OpenAI({
-    apiKey,
-    dangerouslyAllowBrowser: true,
-  });
-}
-
 export function getConfiguredModel(model?: string): SupportedImageModel {
   return supportedModelIds.includes(model as SupportedImageModel)
     ? (model as SupportedImageModel)
@@ -156,7 +157,13 @@ export async function generateImages(
   apiKey: string,
   formState: GenerateFormState,
   model: SupportedImageModel,
-): Promise<ImageRequestRecord> {
+): Promise<GenerationBatch> {
+  const trimmedApiKey = apiKey.trim();
+
+  if (!trimmedApiKey) {
+    throw new Error('Add an OpenAI API key in plugin settings before generating images.');
+  }
+
   const normalized = normalizeFormState(formState);
   const request: GenerationRequest = {
     prompt: normalized.prompt,
@@ -167,53 +174,50 @@ export async function generateImages(
     background: normalized.background,
   };
 
-  const client = createOpenAiClient(apiKey);
-  const response = await client.images.generate({
+  const openai = createOpenAI({ apiKey: trimmedApiKey });
+  const result = await generateImage({
+    model: openai.image(request.model),
     prompt: request.prompt,
-    model: request.model,
     n: request.variations,
     size: request.size,
-    quality: 'auto',
-    output_format: 'png',
-    background: request.background,
-    moderation: 'auto',
+    providerOptions: {
+      openai: {
+        background: request.background,
+        moderation: 'auto',
+        output_format: 'png',
+        quality: 'auto',
+      },
+    },
   });
 
-  return normalizeGenerateResponse(request, response);
+  return normalizeGenerateResponse(request, result);
 }
 
 export function normalizeOpenAiError(error: unknown): string {
-  if (error instanceof Error) {
-    const apiError = error as Error & {
-      status?: number;
-      message?: string;
-      response?: { status?: number };
-    };
+  const { message, status } = readErrorDetails(error);
 
-    const status = apiError.status ?? apiError.response?.status;
+  if (status === 401) {
+    return 'OpenAI rejected the API key. Check the plugin settings and try again.';
+  }
 
-    if (status === 401) {
+  if (status === 429) {
+    return 'OpenAI rate limited this request. Wait a moment and try again.';
+  }
+
+  if (status === 400) {
+    return message || 'OpenAI rejected the prompt. Adjust it and try again.';
+  }
+
+  if (status && status >= 500) {
+    return 'OpenAI returned a server error. Try again in a moment.';
+  }
+
+  if (message) {
+    if (/api key/i.test(message)) {
       return 'OpenAI rejected the API key. Check the plugin settings and try again.';
     }
 
-    if (status === 429) {
-      return 'OpenAI rate limited this request. Wait a moment and try again.';
-    }
-
-    if (status === 400) {
-      return (
-        apiError.message ||
-        'OpenAI rejected the prompt. Adjust it and try again.'
-      );
-    }
-
-    if (status && status >= 500) {
-      return 'OpenAI returned a server error. Try again in a moment.';
-    }
-
-    if (apiError.message) {
-      return apiError.message;
-    }
+    return message;
   }
 
   return 'Something went wrong while generating images.';
@@ -234,17 +238,42 @@ export function buildImportFilename(
   return `image-${baseName}-${timestamp}${suffix}.png`;
 }
 
-export function buildGenerationNotes(request: GenerationRequest) {
-  return [
+export function buildGenerationNotes(
+  batch: GenerationBatch,
+  image?: GeneratedAssetImage,
+) {
+  const notes = [
     'Generated with OpenAI image generation',
-    `Prompt: ${request.prompt}`,
-    `Model: ${getModelLabel(request.model)}`,
-    `Aspect ratio: ${getShapeLabel(request.shape)}`,
-    `Size: ${request.size}`,
-    `Variations: ${request.variations}`,
-    `Background: ${getBackgroundLabel(request.background)}`,
+    `Prompt: ${batch.request.prompt}`,
+    `Model: ${getModelLabel(batch.request.model)}`,
+    `Aspect ratio: ${getShapeLabel(batch.request.shape)}`,
+    `Size: ${batch.request.size}`,
+    `Variations: ${batch.request.variations}`,
+    `Background: ${getBackgroundLabel(batch.request.background)}`,
     'Format: PNG',
-  ].join('\n');
+  ];
+
+  if (image?.revisedPrompt) {
+    notes.push(`Revised prompt: ${image.revisedPrompt}`);
+  }
+
+  if (image?.returnedSize && image.returnedSize !== batch.request.size) {
+    notes.push(`Returned size: ${image.returnedSize}`);
+  }
+
+  if (image?.returnedBackground && image.returnedBackground !== batch.request.background) {
+    notes.push(`Returned background: ${image.returnedBackground}`);
+  }
+
+  if (image?.returnedQuality) {
+    notes.push(`Quality: ${image.returnedQuality}`);
+  }
+
+  if (image?.returnedFormat && image.returnedFormat !== 'png') {
+    notes.push(`Returned format: ${image.returnedFormat}`);
+  }
+
+  return notes.join('\n');
 }
 
 export function getModelLabel(model: SupportedImageModel) {
@@ -259,19 +288,28 @@ export function getBackgroundLabel(background: BackgroundMode) {
   return labelByBackground[background];
 }
 
-function normalizeGenerateResponse(
+async function normalizeGenerateResponse(
   request: GenerationRequest,
-  response: ImagesResponse,
-): ImageRequestRecord {
+  result: Awaited<ReturnType<typeof generateImage>>,
+): Promise<GenerationBatch> {
   const createdAt = new Date().toISOString();
-  const images = (response.data || [])
-    .filter((image): image is { b64_json: string } => Boolean(image.b64_json))
-    .map((image, index) => ({
+  const providerImages = readProviderImages(result.providerMetadata);
+  const images = result.images.map((image, index) => {
+    const providerImage = providerImages[index];
+
+    return {
       id: `${createdAt}-${index}`,
-      b64Json: image.b64_json,
-      previewSrc: `data:image/png;base64,${image.b64_json}`,
+      base64: image.base64,
+      mediaType: image.mediaType,
+      previewSrc: `data:${image.mediaType};base64,${image.base64}`,
       position: index + 1,
-    }));
+      revisedPrompt: providerImage?.revisedPrompt,
+      returnedBackground: providerImage?.background,
+      returnedFormat: providerImage?.outputFormat,
+      returnedQuality: providerImage?.quality,
+      returnedSize: providerImage?.size,
+    } satisfies GeneratedAssetImage;
+  });
 
   if (!images.length) {
     throw new Error('OpenAI did not return image data for this request.');
@@ -283,6 +321,92 @@ function normalizeGenerateResponse(
     createdAtLabel: timestampFormatter.format(new Date(createdAt)),
     request,
     images,
+    status: 'completed',
+  };
+}
+
+type ProviderImageMetadata = {
+  revisedPrompt?: string;
+  background?: string;
+  outputFormat?: string;
+  quality?: string;
+  size?: string;
+};
+
+function readProviderImages(
+  providerMetadata: Awaited<ReturnType<typeof generateImage>>['providerMetadata'],
+): ProviderImageMetadata[] {
+  const openAiMetadata = providerMetadata?.openai;
+
+  if (!openAiMetadata || typeof openAiMetadata !== 'object') {
+    return [];
+  }
+
+  const images = (openAiMetadata as { images?: unknown }).images;
+
+  if (!Array.isArray(images)) {
+    return [];
+  }
+
+  return images.map((entry) => {
+    if (!entry || typeof entry !== 'object') {
+      return {};
+    }
+
+    const metadata = entry as Record<string, unknown>;
+
+    return {
+      revisedPrompt:
+        typeof metadata.revisedPrompt === 'string'
+          ? metadata.revisedPrompt
+          : undefined,
+      background:
+        typeof metadata.background === 'string' ? metadata.background : undefined,
+      outputFormat:
+        typeof metadata.outputFormat === 'string'
+          ? metadata.outputFormat
+          : undefined,
+      quality:
+        typeof metadata.quality === 'string' ? metadata.quality : undefined,
+      size: typeof metadata.size === 'string' ? metadata.size : undefined,
+    } satisfies ProviderImageMetadata;
+  });
+}
+
+function readErrorDetails(error: unknown): {
+  message?: string;
+  status?: number;
+} {
+  if (!(error instanceof Error)) {
+    return {};
+  }
+
+  const details = error as Error & {
+    status?: number;
+    statusCode?: number;
+    response?: { status?: number };
+    cause?: unknown;
+  };
+
+  const cause =
+    details.cause && typeof details.cause === 'object'
+      ? (details.cause as {
+          status?: number;
+          statusCode?: number;
+          response?: { status?: number };
+          message?: string;
+        })
+      : undefined;
+
+  return {
+    message: details.message || cause?.message,
+    status:
+      details.status ??
+      details.statusCode ??
+      details.response?.status ??
+      cause?.status ??
+      cause?.statusCode ??
+      cause?.response?.status,
   };
 }
 

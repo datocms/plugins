@@ -1,6 +1,7 @@
-import { RenderAssetSourceCtx } from 'datocms-plugin-sdk';
+import { type RenderAssetSourceCtx } from 'datocms-plugin-sdk';
 import { useCtx } from 'datocms-react-ui';
-import type { GeneratedImage } from '../../utils/openaiImages';
+import { Image } from '../../components/ai-elements/image';
+import type { GeneratedAssetImage } from '../../utils/openaiImages';
 import s from './styles.module.css';
 
 const Cell = ({
@@ -8,7 +9,7 @@ const Cell = ({
   selected,
   onToggleSelected,
 }: {
-  image: GeneratedImage;
+  image: GeneratedAssetImage;
   selected: boolean;
   onToggleSelected: () => void;
 }) => {
@@ -16,21 +17,22 @@ const Cell = ({
 
   return (
     <button
+      aria-pressed={selected}
       className={selected ? `${s.cell} ${s.cellSelected}` : s.cell}
       onClick={onToggleSelected}
       type="button"
-      aria-pressed={selected}
     >
       <span
-        className={selected ? `${s.selectionMark} ${s.selectionMarkSelected}` : s.selectionMark}
         aria-hidden="true"
+        className={selected ? `${s.selectionMark} ${s.selectionMarkSelected}` : s.selectionMark}
       >
         <span className={s.selectionIcon} />
       </span>
-      <img
-        className={s.image}
-        src={image.previewSrc}
+      <Image
         alt="Generated preview"
+        base64={image.base64}
+        className={s.image}
+        mediaType={image.mediaType}
         onLoad={() => {
           ctx.updateHeight();
         }}

@@ -6,81 +6,76 @@
 .resultGroup,
 .message,
 .errorMessage,
-.emptyState {
-  border: 1px solid var(--border-color);
+.emptyState,
+.loadingState,
+.promptPanel,
+.controlsPanel {
+  border: 1px solid var(--ig-border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--ig-surface);
 }
 
 .panel {
-  padding: 12px;
-  margin-bottom: 12px;
-}
-
-.generatorForm,
-.settingsForm {
-  display: block;
+  padding: 16px;
+  margin-bottom: 16px;
 }
 
 .generatorLayout {
   display: grid;
-  grid-template-columns: minmax(0, 1.85fr) minmax(0, 280px);
-  gap: 12px;
+  grid-template-columns: minmax(0, 1.8fr) minmax(0, 300px);
+  gap: 16px;
   align-items: stretch;
 }
 
 .promptColumn,
 .controlsColumn {
   min-width: 0;
-}
-
-.promptColumn {
   display: flex;
-  align-self: stretch;
 }
 
-.controlsColumn {
-  display: block;
-}
-
-.controlsFooter {
-  display: flex;
-  align-items: stretch;
-  padding: 6px;
-}
-
-.controlsFooter > button {
+.promptPanel,
+.controlsPanel {
   width: 100%;
 }
 
-.controlsPanel,
-.message,
-.errorMessage,
-.emptyState {
-  padding: 6px;
+.promptPanel {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.promptForm {
+  height: 100%;
+}
+
+.promptForm > div {
+  height: 100%;
+}
+
+.promptTextarea {
+  min-height: 0;
+}
+
+.promptFooter {
+  justify-content: flex-end;
 }
 
 .controlsPanel {
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  background: #fff;
   overflow: hidden;
 }
 
 .controlGroup {
-  padding: 10px;
+  padding: 12px;
 }
 
-.controlGroup + .controlGroup,
-.controlsFooter {
-  border-top: 1px solid var(--border-color);
+.controlGroup + .controlGroup {
+  border-top: 1px solid var(--ig-border);
 }
 
 .groupLabel {
   margin-bottom: 8px;
-  color: var(--light-body-color);
+  color: var(--ig-text-muted);
   font-size: var(--font-size-s);
   font-weight: 500;
 }
@@ -89,65 +84,6 @@
   position: absolute;
   opacity: 0;
   pointer-events: none;
-}
-
-.input,
-.select,
-.textarea {
-  width: 100%;
-  box-sizing: border-box;
-  border: 1px solid var(--border-color);
-  border-radius: 8px;
-  background: #fff;
-  color: var(--base-body-color);
-  font: inherit;
-}
-
-.input,
-.select {
-  height: 42px;
-  padding: 10px 12px;
-}
-
-.textarea {
-  flex: 1 1 auto;
-  height: 100%;
-  min-height: 112px;
-  padding: 10px 12px;
-  resize: none;
-  font-size: 24px;
-  line-height: 1.35;
-  background: #fcfcfc;
-  box-shadow: inset 0 1px 0 rgba(0, 0, 0, 0.03);
-}
-
-.input:focus,
-.select:focus,
-.textarea:focus {
-  outline: 2px solid rgba(var(--accent-color-rgb-components), 0.18);
-  outline-offset: 0;
-  border-color: var(--accent-color);
-}
-
-.helpText {
-  margin: 8px 0 0;
-  font-size: var(--font-size-s);
-  color: var(--light-body-color);
-}
-
-.fieldBlock {
-  margin-bottom: 14px;
-}
-
-.fieldBlock:last-of-type {
-  margin-bottom: 0;
-}
-
-.label {
-  display: block;
-  margin-bottom: 6px;
-  color: var(--light-body-color);
-  font-size: var(--font-size-s);
 }
 
 .shapeList {
@@ -167,37 +103,31 @@
   min-height: 52px;
   padding: 8px 10px;
   box-sizing: border-box;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--ig-border);
   border-radius: 6px;
-  background: #fafafa;
-  color: var(--base-body-color);
+  background: var(--ig-surface);
+  color: var(--ig-text);
   text-align: left;
   font: inherit;
   cursor: pointer;
 }
 
 .shapeOption:hover,
-.compactChoice:hover,
-.batchButton:hover {
-  background: #fff;
-  border-color: var(--darker-border-color);
+.compactChoice:hover {
+  border-color: var(--ig-border-strong);
 }
 
 .shapeOption:focus-within,
 .compactChoice:focus-within,
-.primaryButton:focus-visible,
-.batchButton:focus-visible,
-.input:focus-visible,
-.select:focus-visible,
-.textarea:focus-visible {
-  outline: 2px solid rgba(var(--accent-color-rgb-components), 0.18);
+.primaryButton:focus-visible {
+  outline: 2px solid var(--ig-focus);
   outline-offset: 0;
-  border-color: var(--accent-color);
+  border-color: var(--ig-accent);
 }
 
 .choiceButtonActive {
-  border-color: var(--accent-color);
-  background: rgba(var(--accent-color-rgb-components), 0.08);
+  border-color: var(--ig-accent);
+  background: color-mix(in srgb, var(--ig-accent) 8%, var(--ig-surface));
 }
 
 .shapePreview {
@@ -208,8 +138,8 @@
   align-items: center;
   justify-content: center;
   border-radius: 6px;
-  background: #fff;
-  border: 1px solid var(--border-color);
+  background: var(--ig-surface);
+  border: 1px solid var(--ig-border);
 }
 
 .shapePreview::before {
@@ -217,17 +147,17 @@
   display: block;
   border: 1px solid currentColor;
   border-radius: 4px;
-  color: var(--light-body-color);
+  color: var(--ig-text-muted);
   opacity: 0.8;
 }
 
 .choiceButtonActive .shapePreview {
-  border-color: rgba(var(--accent-color-rgb-components), 0.22);
-  background: rgba(var(--accent-color-rgb-components), 0.05);
+  border-color: color-mix(in srgb, var(--ig-accent) 22%, transparent);
+  background: color-mix(in srgb, var(--ig-accent) 5%, var(--ig-surface));
 }
 
 .choiceButtonActive .shapePreview::before {
-  color: var(--accent-color);
+  color: var(--ig-accent);
   opacity: 1;
 }
 
@@ -259,7 +189,7 @@
 }
 
 .choiceMeta {
-  color: var(--light-body-color);
+  color: var(--ig-text-muted);
   font-size: var(--font-size-xs);
 }
 
@@ -284,12 +214,12 @@
   justify-content: center;
   width: 100%;
   max-width: 100%;
-  min-height: 34px;
+  min-height: 36px;
   box-sizing: border-box;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--ig-border);
   border-radius: 6px;
-  background: #fafafa;
-  color: var(--base-body-color);
+  background: var(--ig-surface);
+  color: var(--ig-text);
   font: inherit;
   font-size: var(--font-size-s);
   font-weight: 500;
@@ -299,74 +229,64 @@
 .compactChoice.choiceButtonActive,
 .compactChoice.choiceButtonActive:hover,
 .compactChoice.choiceButtonActive:focus-within {
-  border-color: var(--accent-color);
-  background: rgba(var(--accent-color-rgb-components), 0.08);
+  border-color: var(--ig-accent);
+  background: color-mix(in srgb, var(--ig-accent) 8%, var(--ig-surface));
 }
 
-.actions {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 16px;
-}
-
-.primaryButton,
-.batchButton {
+.primaryButton {
   height: 40px;
   padding: 0 14px;
+  border: 1px solid var(--ig-accent);
   border-radius: 6px;
+  background: var(--ig-accent);
+  color: var(--ig-accent-contrast);
   font: inherit;
   font-weight: 600;
   cursor: pointer;
 }
 
-.primaryButton {
-  border: 1px solid var(--accent-color);
-  background: var(--accent-color);
-  color: #fff;
-}
-
-.batchButton {
-  border: 1px solid rgba(var(--accent-color-rgb-components), 0.3);
-  background: rgba(var(--accent-color-rgb-components), 0.16);
-  color: var(--base-body-color);
-}
-
-.batchButton:hover:not(:disabled) {
-  border-color: rgba(var(--accent-color-rgb-components), 0.38);
-  background: rgba(var(--accent-color-rgb-components), 0.22);
-}
-
-.primaryButton:disabled,
-.batchButton:disabled {
+.primaryButton:disabled {
   cursor: not-allowed;
   opacity: 0.55;
 }
 
 .message,
-.emptyState {
-  color: var(--light-body-color);
-  background: var(--lighter-bg-color);
+.emptyState,
+.loadingState {
+  color: var(--ig-text-muted);
+  background: var(--ig-surface-muted);
 }
 
-.emptyState {
-  min-height: 560px;
+.message {
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+
+.emptyState,
+.loadingState {
+  min-height: 320px;
   display: flex;
   align-items: center;
   justify-content: center;
   text-align: center;
-  font-size: var(--font-size-xl);
+  font-size: 18px;
+}
+
+.loadingState {
+  gap: 10px;
 }
 
 .errorMessage {
   margin-top: 16px;
-  border-color: var(--alert-color);
-  color: var(--alert-color);
-  background: rgba(var(--alert-color-rgb-components), 0.08);
+  padding: 10px 12px;
+  border-color: var(--ig-danger);
+  color: var(--ig-danger);
+  background: var(--ig-danger-soft);
 }
 
 .results {
   position: relative;
-  min-height: 560px;
+  min-height: 320px;
 }
 
 .resultGroup {
@@ -390,11 +310,6 @@
   margin-top: 12px;
 }
 
-.resultActions .primaryButton {
-  width: auto;
-  min-width: 160px;
-}
-
 .settings {
   max-width: 720px;
   padding: 24px 0;
@@ -404,10 +319,6 @@
   .generatorLayout {
     grid-template-columns: 1fr;
   }
-
-  .textarea {
-    min-height: 108px;
-  }
 }
 
 @media (max-width: 720px) {
@@ -415,13 +326,7 @@
     padding: 16px;
   }
 
-  .panel,
-  .resultGroup {
-    padding: 16px;
-  }
-
   .variationGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-
 }

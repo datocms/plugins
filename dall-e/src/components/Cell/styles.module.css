@@ -4,10 +4,10 @@
   isolation: isolate;
   width: 100%;
   padding: 0;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--ig-border);
   border-radius: 8px;
   overflow: hidden;
-  background: #fff;
+  background: var(--ig-surface);
   cursor: pointer;
   transition:
     border-color 140ms ease,
@@ -16,9 +16,9 @@
 }
 
 .cellSelected {
-  border-color: var(--accent-color);
-  background: rgba(var(--accent-color-rgb-components), 0.08);
-  box-shadow: 0 0 0 2px rgba(var(--accent-color-rgb-components), 0.2);
+  border-color: var(--ig-accent);
+  background: color-mix(in srgb, var(--ig-accent) 8%, var(--ig-surface));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ig-accent) 18%, transparent);
 }
 
 .cellSelected::after {
@@ -26,17 +26,17 @@
   position: absolute;
   inset: 0;
   z-index: 1;
-  background: rgba(var(--accent-color-rgb-components), 0.12);
-  box-shadow: inset 0 0 0 1px rgba(var(--accent-color-rgb-components), 0.18);
+  background: color-mix(in srgb, var(--ig-accent) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ig-accent) 18%, transparent);
   pointer-events: none;
 }
 
 .cell:hover {
-  border-color: var(--darker-border-color);
+  border-color: var(--ig-border-strong);
 }
 
 .cell:focus-visible {
-  outline: 2px solid var(--accent-color);
+  outline: 2px solid var(--ig-focus);
   outline-offset: -2px;
 }
 
@@ -57,7 +57,7 @@
 }
 
 .selectionMarkSelected {
-  border-color: var(--accent-color);
+  border-color: var(--ig-accent);
   background: #fff;
 }
 
@@ -75,8 +75,8 @@
 }
 
 .selectionMarkSelected .selectionIcon {
-  border-color: var(--accent-color);
-  background: var(--accent-color);
+  border-color: var(--ig-accent);
+  background: var(--ig-accent);
   transform: scale(1.1);
 }
 
@@ -95,8 +95,8 @@
 .image {
   display: block;
   width: 100%;
-  height: 100%;
-  background: var(--lighter-bg-color);
+  height: auto;
+  background: var(--ig-surface-muted);
   position: relative;
   z-index: 0;
 }
