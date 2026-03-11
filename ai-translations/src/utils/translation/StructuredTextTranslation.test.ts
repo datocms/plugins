@@ -164,6 +164,47 @@ describe('StructuredTextTranslation', () => {
     });
 
     describe('nested structure handling', () => {
+      it('should translate span.value leaves without touching link metadata', async () => {
+        vi.mocked(translateArray).mockResolvedValue(['Clicca qui']);
+
+        const structuredText = [
+          {
+            type: 'paragraph',
+            children: [
+              {
+                type: 'link',
+                url: 'https://example.com',
+                meta: [{ id: 'target', value: '_blank' }],
+                children: [{ type: 'span', value: 'Click here' }],
+              },
+            ],
+          },
+        ];
+
+        const result = await translateStructuredTextValue(
+          structuredText,
+          mockPluginParams,
+          'it',
+          'en',
+          mockProvider,
+          'api-token',
+          'main'
+        );
+
+        expect(translateArray).toHaveBeenCalledWith(
+          mockProvider,
+          mockPluginParams,
+          ['Click here'],
+          'en',
+          'it',
+          expect.any(Object)
+        );
+
+        const link = (result as Array<{ children: Array<{ meta: Array<{ value: string }>; children: Array<{ value: string }> }> }>)[0].children[0];
+        expect(link.children[0].value).toBe('Clicca qui');
+        expect(link.meta[0].value).toBe('_blank');
+      });
+
       it('should translate text in nested links', async () => {
         vi.mocked(translateArray).mockResolvedValue([
           'Klicken Sie ',
@@ -275,6 +316,22 @@ describe('StructuredTextTranslation', () => {
 
         expect(translateFieldValue).toHaveBeenCalled();
         expect(Array.isArray(result)).toBe(true);
+        expect(translateFieldValue).toHaveBeenCalledWith(
+          expect.any(Array),
+          mockPluginParams,
+          'de',
+          'en',
+          'rich_text',
+          mockProvider,
+          '',
+          'api-token',
+          '',
+          'main',
+          undefined,
+          '',
+          undefined,
+          { bypassFieldTypeAllowlist: true }
+        );
       });
     });
 
@@ -531,7 +588,8 @@ describe('StructuredTextTranslation', () => {
           'main',
           callbacks,
           '',
-          undefined // schemaRepository
+          undefined,
+          { bypassFieldTypeAllowlist: true }
         );
       });
     });

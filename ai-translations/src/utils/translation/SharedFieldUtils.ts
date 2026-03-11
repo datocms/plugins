@@ -11,6 +11,31 @@ import { fieldPrompt } from '../../prompts/FieldPrompts';
 export type FieldTypeDictionary = Record<string, { editor: string; id: string; isLocalized: boolean }>;
 
 /**
+ * Normalizes a list of exclusion entries to support both current field IDs
+ * and legacy API-key/path based values.
+ *
+ * @param excludedFields - Raw exclusion values from plugin settings.
+ * @returns A normalized set of exclusion tokens.
+ */
+function normalizeExcludedFieldEntries(excludedFields: string[]): Set<string> {
+  const normalized = new Set<string>();
+
+  for (const raw of excludedFields) {
+    const value = String(raw ?? '').trim();
+    if (!value) continue;
+
+    normalized.add(value);
+
+    const lastPathSegment = value.split('.').filter(Boolean).pop();
+    if (lastPathSegment) {
+      normalized.add(lastPathSegment);
+    }
+  }
+
+  return normalized;
+}
+
+/**
  * Helper function to find the exact case-sensitive locale key in an object.
  * This is essential for properly handling hyphenated locales (e.g., "pt-BR", "pt-br")
  * as DatoCMS requires exact case matches for locale keys.
@@ -62,6 +87,34 @@ export function isFieldTranslatable(
 }
 
 /**
+ * Returns true when a field matches one of the plugin exclusion entries.
+ * Supports matching by field ID, API key, or legacy dot-notation path.
+ *
+ * @param excludedFields - Raw exclusion values from plugin settings.
+ * @param identifiers - Possible identifiers for the field being processed.
+ * @returns True if any identifier matches an exclusion entry.
+ */
+export function isFieldExcluded(
+  excludedFields: string[],
+  identifiers: Array<string | undefined>
+): boolean {
+  if (!Array.isArray(excludedFields) || excludedFields.length === 0) {
+    return false;
+  }
+
+  const normalized = normalizeExcludedFieldEntries(excludedFields);
+
+  return identifiers.some((identifier) => {
+    const value = String(identifier ?? '').trim();
+    if (!value) return false;
+    if (normalized.has(value)) return true;
+
+    const lastPathSegment = value.split('.').filter(Boolean).pop();
+    return !!lastPathSegment && normalized.has(lastPathSegment);
+  });
+}
+
+/**
  * Builds the field-type specific prompt snippet used to instruct the model
  * on the expected return format.
  *
@@ -77,6 +130,24 @@ export function prepareFieldTypePrompt(fieldType: string): string {
     fieldTypePrompt += fieldPrompt[fieldType as keyof typeof fieldPrompt] || '';
   }
   return fieldTypePrompt;
+}
+
+/**
+ * Normalizes a translated slug to a deterministic, Dato-safe value.
+ *
+ * @param value - The translated slug candidate.
+ * @returns A normalized slug or an empty string when no valid content remains.
+ */
+export function normalizeTranslatedSlug(value: unknown): string {
+  const slug = String(value ?? '')
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  return slug;
 }
 
 /**

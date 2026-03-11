@@ -49,7 +49,7 @@ import AIBulkTranslationsPage from './entrypoints/CustomPage/AIBulkTranslationsP
 // Import refactored utility functions and types
 import { parseActionId } from './utils/translation/ItemsDropdownUtils';
 import { isProviderConfigured, getProvider } from './utils/translation/ProviderFactory';
-import { isFieldTranslatable } from './utils/translation/SharedFieldUtils';
+import { isFieldExcluded, isFieldTranslatable } from './utils/translation/SharedFieldUtils';
 import { isEmptyStructuredText } from './utils/translation/utils';
 import { normalizeProviderError, formatErrorForUser, handleUIError } from './utils/translation/ProviderErrors';
 
@@ -416,8 +416,10 @@ connect({
     const isRoleExcluded =
       pluginParams.rolesToBeExcludedFromThisPlugin.includes(ctx.currentRole.id);
 
-    const isFieldExcluded =
-      pluginParams.apiKeysToBeExcludedFromThisPlugin.includes(ctx.field.id);
+    const fieldExcluded = isFieldExcluded(
+      pluginParams.apiKeysToBeExcludedFromThisPlugin,
+      [ctx.field.id, ctx.field.attributes.api_key, ctx.fieldPath]
+    );
 
     const fieldTranslatable = isFieldTranslatable(
       ctx.field.attributes.appearance.editor,
@@ -428,7 +430,7 @@ connect({
     if (
       isModelExcluded ||
       isRoleExcluded ||
-      isFieldExcluded ||
+      fieldExcluded ||
       !fieldTranslatable
     ) {
       return [];

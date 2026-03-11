@@ -134,7 +134,7 @@ export default function ExclusionRulesSection({
             <SelectField
               name="apiKeysToBeExcludedFromTranslation"
               id="apiKeysToBeExcludedFromTranslation"
-              label="Field API keys to be excluded from using this plugin"
+              label="Fields to be excluded from translation"
               value={apiKeysToBeExcluded.map((apiKey) => ({
                 label: `${
                   listOfFields.find((field) => field.id === apiKey)?.name
@@ -161,5 +161,4 @@ export default function ExclusionRulesSection({
     </>
   );
 }
-
 

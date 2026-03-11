@@ -74,6 +74,7 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
       locale: string;
       status: 'pending' | 'done' | 'error';
       fieldPath: string;
+      baseFieldPath: string;
       streamingContent?: string;
       startedAt?: number;
       errorMessage?: string;
@@ -94,7 +95,7 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
   function showSuccessNoticeOnce() {
     if (successShownRef.current) return;
     successShownRef.current = true;
-    ctx.notice('All fields translated successfully');
+    ctx.notice('Translations were applied to the form. Review them and click Save to persist the changes.');
     setShowTimer(true);
     setProgress(100);
   }
@@ -196,16 +197,24 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
         selectedLocales,
         selectedLocale,
         {
-          onStart: (fieldLabel, locale, fieldPath) => {
+          onStart: (fieldLabel, locale, fieldPath, baseFieldPath) => {
             setTranslationBubbles((prev) => {
               if (prev.some((b) => b.id === fieldPath)) return prev;
               return [
                 ...prev,
-                { id: fieldPath, fieldLabel, locale, status: 'pending', fieldPath, startedAt: Date.now() },
+                {
+                  id: fieldPath,
+                  fieldLabel,
+                  locale,
+                  status: 'pending',
+                  fieldPath,
+                  baseFieldPath,
+                  startedAt: Date.now(),
+                },
               ];
             });
           },
-          onStream: (_fieldLabel, _locale, fieldPath, content) => {
+          onStream: (_fieldLabel, _locale, fieldPath, _baseFieldPath, content) => {
             setTranslationBubbles((prev) =>
               prev.map((bubble) =>
                 bubble.id === fieldPath
@@ -223,7 +232,7 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
               )
             );
           },
-          onError: (fieldLabel, locale, fieldPath, errorMessage) => {
+          onError: (fieldLabel, locale, fieldPath, _baseFieldPath, errorMessage) => {
             setTranslationBubbles((prev) =>
               prev.map((bubble) =>
                 bubble.id === fieldPath
@@ -387,7 +396,7 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
                 <button
                   key={bubble.id}
                   onClick={() => {
-                    ctx.scrollToField(bubble.fieldPath, bubble.locale);
+                    ctx.scrollToField(bubble.baseFieldPath, bubble.locale);
                   }}
                   aria-label={`Go to field: ${bubble.fieldLabel} (${bubble.locale}) - ${bubble.status === 'done' ? 'completed' : 'in progress'}`}
                   style={{
@@ -446,7 +455,7 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
                     >
                       <MdCelebration size={20} />
                     </motion.div>
-                    All fields translated successfully
+                    Translations were applied to the form. Review them and click Save.
                     <motion.div
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}

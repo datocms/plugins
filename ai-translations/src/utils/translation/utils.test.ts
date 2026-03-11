@@ -25,6 +25,22 @@ describe('utils.ts', () => {
       expect(isEmptyStructuredText(emptyStructuredText)).toBe(true);
     });
 
+    it('should return true for wrapped documents with whitespace-only span nodes', () => {
+      expect(
+        isEmptyStructuredText({
+          document: {
+            type: 'root',
+            children: [
+              {
+                type: 'paragraph',
+                children: [{ type: 'span', value: '   ' }],
+              },
+            ],
+          },
+        })
+      ).toBe(true);
+    });
+
     it('should return false for non-empty paragraph', () => {
       const nonEmpty = [
         {
@@ -35,26 +51,33 @@ describe('utils.ts', () => {
       expect(isEmptyStructuredText(nonEmpty)).toBe(false);
     });
 
-    it('should return false for multiple paragraphs', () => {
+    it('should return true for multiple empty structural nodes', () => {
       const multiple = [
         { type: 'paragraph', children: [{ text: '' }] },
         { type: 'paragraph', children: [{ text: '' }] },
       ];
-      expect(isEmptyStructuredText(multiple)).toBe(false);
+      expect(isEmptyStructuredText(multiple)).toBe(true);
     });
 
-    it('should return false for non-paragraph types', () => {
+    it('should return true for non-paragraph types without visible content', () => {
       const heading = [
         { type: 'heading', children: [{ text: '' }] },
       ];
-      expect(isEmptyStructuredText(heading)).toBe(false);
+      expect(isEmptyStructuredText(heading)).toBe(true);
     });
 
-    it('should return false for multiple children', () => {
+    it('should return true for multiple empty children', () => {
       const multipleChildren = [
         { type: 'paragraph', children: [{ text: '' }, { text: '' }] },
       ];
-      expect(isEmptyStructuredText(multipleChildren)).toBe(false);
+      expect(isEmptyStructuredText(multipleChildren)).toBe(true);
+    });
+
+    it('should return false when there are embedded blocks', () => {
+      const withBlock = [
+        { type: 'block', item: 'block-1' },
+      ];
+      expect(isEmptyStructuredText(withBlock)).toBe(false);
     });
 
     it('should return false for non-array values', () => {
@@ -64,8 +87,8 @@ describe('utils.ts', () => {
       expect(isEmptyStructuredText({})).toBe(false);
     });
 
-    it('should return false for empty array', () => {
-      expect(isEmptyStructuredText([])).toBe(false);
+    it('should return true for empty array', () => {
+      expect(isEmptyStructuredText([])).toBe(true);
     });
   });
 

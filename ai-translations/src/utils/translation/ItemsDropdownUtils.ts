@@ -8,6 +8,7 @@ import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 // no specific ctx type required here; we accept a minimal ctx shape
 import { translateFieldValue, generateRecordContext } from './TranslateField';
 import { prepareFieldTypePrompt, getExactSourceValue, type FieldTypeDictionary } from './SharedFieldUtils';
+import { hasTranslatableSourceValue, shouldProcessField } from './TranslationCore';
 import {
   type SchemaRepository,
   buildFieldTypeDictionaryFromRepo,
@@ -206,6 +207,15 @@ export type TranslateBatchOptions = {
   abortSignal?: AbortSignal;
 };
 
+/**
+ * Result of building a translated update payload for a record.
+ */
+export interface BuildTranslatedUpdatePayloadResult {
+  payload: Record<string, unknown>;
+  translatedFieldCount: number;
+  warnings: string[];
+}
+
 
 /**
  * Safely extracts error candidates from various error object shapes.
@@ -384,18 +394,36 @@ export async function translateAndUpdateRecords(
         schemaRepository
       );
 
-      updateProgress({ recordIndex: i, recordId: record.id, status: 'processing', message: `Saving "${recordLabel}" (#${record.id})…` });
+      if (Object.keys(translatedFields.payload).length > 0) {
+        updateProgress({ recordIndex: i, recordId: record.id, status: 'processing', message: `Saving "${recordLabel}" (#${record.id})…` });
+        await client.items.update(record.id, {
+          ...translatedFields.payload
+        });
+      }
 
-      await client.items.update(record.id, {
-        ...translatedFields
-      });
+      const warningSuffix = translatedFields.warnings.length > 0
+        ? ` Warnings: ${translatedFields.warnings.join(' ')}`
+        : '';
+
+      if (translatedFields.translatedFieldCount === 0 && translatedFields.warnings.length > 0) {
+        updateProgress({
+          recordIndex: i,
+          recordId: record.id,
+          status: 'error',
+          message: `No fields were updated for "${recordLabel}" (#${record.id}).${warningSuffix}`,
+        });
+        continue;
+      }
 
       // Provide a message including the record label so the UI shows useful text
       updateProgress({ 
         recordIndex: i, 
         recordId: record.id, 
         status: 'completed', 
-        message: `Translated "${recordLabel}" (#${record.id}).`
+        message:
+          translatedFields.translatedFieldCount === 0
+            ? `No eligible fields to translate for "${recordLabel}" (#${record.id}).`
+            : `Translated "${recordLabel}" (#${record.id}).${warningSuffix}`
       });
     } catch (error) {
       // Try to detect DatoCMS-specific error codes for clearer UX
@@ -445,18 +473,10 @@ export async function buildTranslatedUpdatePayload(
   environment: string,
   opts: { abortSignal?: AbortSignal; checkCancellation?: () => boolean } = {},
   schemaRepository?: SchemaRepository
-): Promise<Record<string, unknown>> {
+): Promise<BuildTranslatedUpdatePayloadResult> {
   const updatePayload: Record<string, Record<string, unknown>> = {};
-  const excludedFieldIds = new Set(pluginParams.apiKeysToBeExcludedFromThisPlugin ?? []);
-
-  // Initialize payload with all localized fields from the record's schema
-  // to ensure they are all considered.
-  for (const fieldApiKey in fieldTypeDictionary) {
-    if (fieldTypeDictionary[fieldApiKey].isLocalized) {
-      // Start with existing localized data for this field from the record, or empty object.
-      updatePayload[fieldApiKey] = (record[fieldApiKey] as Record<string, unknown>) || {};
-    }
-  }
+  const warnings: string[] = [];
+  let translatedFieldCount = 0;
 
   // Process fields that are present on the record and should be translated
   for (const field in record) {
@@ -467,33 +487,9 @@ export async function buildTranslatedUpdatePayload(
       continue;
     }
 
-    // Ensure the field is initialized in updatePayload if it wasn't caught by the first loop
-    // (e.g. fieldTypeDictionary might be from a slightly different source than live record keys)
-    if (!updatePayload[field]) {
-      updatePayload[field] = (record[field] as Record<string, unknown>) || {};
-    }
-
-    // Respect field exclusion list configured in the plugin settings
-    if (excludedFieldIds.has(fieldMeta.id)) {
-      // Preserve existing target locale value when present and skip translation
-      const existing = (record[field] as Record<string, unknown>) || {};
-      if (existing && toLocale in existing) {
-        updatePayload[field][toLocale] = existing[toLocale];
-      }
+    if (!shouldTranslateField(field, record, fromLocale, fieldTypeDictionary, pluginParams)) {
       continue;
     }
-
-    if (!shouldTranslateField(field, record, fromLocale, fieldTypeDictionary)) {
-      // If not translatable (e.g., source empty), but is localized, ensure toLocale: null is set
-      // if it's not already present.
-      if (!(toLocale in updatePayload[field])) {
-         updatePayload[field][toLocale] = null;
-      }
-      continue;
-    }
-
-    // At this point, field is localized and should be translated.
-    // updatePayload[field] already contains other locales from the initialization loop or record.
 
     // Handle hyphenated locales by finding the exact field key that matches the fromLocale
     const sourceValue = getExactSourceValue(record[field] as Record<string, unknown>, fromLocale);
@@ -502,65 +498,46 @@ export async function buildTranslatedUpdatePayload(
     const fieldTypePrompt = prepareFieldTypePrompt(fieldType);
 
     try {
-      if (sourceValue === null || sourceValue === undefined || sourceValue === '') {
-        updatePayload[field][toLocale] = null;
-      } else {
-        const translatedValue = await translateFieldValue(
-          sourceValue,
-          pluginParams,
-          toLocale,
-          fromLocale,
-          fieldType,
-          provider,
-          fieldTypePrompt,
-          accessToken,
-          fieldTypeDictionary[field].id,
-          environment,
-          { abortSignal: opts.abortSignal, checkCancellation: opts.checkCancellation },
-          generateRecordContext(record, fromLocale),
-          schemaRepository
-        );
-        // Ensure we use the exact case-sensitive toLocale key as expected by DatoCMS
-        updatePayload[field][toLocale] = translatedValue;
+      if (!hasTranslatableSourceValue(fieldType, sourceValue)) {
+        continue;
       }
+
+      const translatedValue = await translateFieldValue(
+        sourceValue,
+        pluginParams,
+        toLocale,
+        fromLocale,
+        fieldType,
+        provider,
+        fieldTypePrompt,
+        accessToken,
+        fieldTypeDictionary[field].id,
+        environment,
+        { abortSignal: opts.abortSignal, checkCancellation: opts.checkCancellation },
+        generateRecordContext(record, fromLocale),
+        schemaRepository,
+        {
+          fieldApiKey: field,
+        }
+      );
+
+      updatePayload[field] = {
+        ...((record[field] as Record<string, unknown>) || {}),
+        [toLocale]: translatedValue,
+      };
+      translatedFieldCount += 1;
     } catch (error) {
-      // DESIGN DECISION: On field-level translation errors, we set the target locale
-      // to null and continue with other fields. This approach was chosen because:
-      // 1. A single field failure shouldn't block the entire record translation
-      // 2. The user can manually translate failed fields after the batch completes
-      // 3. Record-level errors (like ITEM_LOCKED) are still surfaced via progress updates
-      //
-      // Alternative approaches considered but rejected:
-      // - Collecting all field errors and re-throwing: Would stop the entire batch
-      // - Returning a partial success object: Would complicate the API significantly
-      // - Per-field retry logic: Would add complexity without clear benefit
-      updatePayload[field][toLocale] = null;
       const norm = normalizeProviderError(error, provider.vendor);
       console.error(`Error translating field ${field} for record ${record.id}: ${norm.message}`);
+      warnings.push(`Field "${field}" was skipped: ${norm.message}.`);
     }
   }
-  
-  // Final check: Ensure all localized fields defined in the schema have the toLocale key.
-  // This catches localized fields that might not have been on the original `record` object
-  // or were not processed in the loop above for any reason.
-  for (const fieldApiKey in fieldTypeDictionary) {
-    const fieldMeta = fieldTypeDictionary[fieldApiKey];
-    if (fieldMeta.isLocalized) {
-      if (!updatePayload[fieldApiKey]) {
-        // Localized field from schema not yet in payload (e.g., was not on 'record' object)
-        updatePayload[fieldApiKey] = {}; // Initialize as empty object
-      }
-      // If toLocale is still not set for this localized field, default it to null.
-      if (
-        !excludedFieldIds.has(fieldMeta.id) &&
-        !(toLocale in updatePayload[fieldApiKey])
-      ) {
-        updatePayload[fieldApiKey][toLocale] = null;
-      }
-    }
-  }
-  
-  return updatePayload;
+
+  return {
+    payload: updatePayload,
+    translatedFieldCount,
+    warnings,
+  };
 }
 
 /**
@@ -577,7 +554,8 @@ export function shouldTranslateField(
   field: string,
   record: DatoCMSRecordFromAPI,
   fromLocale: string,
-  fieldTypeDictionary: FieldTypeDictionary
+  fieldTypeDictionary: FieldTypeDictionary,
+  pluginParams: ctxParamsType
 ): boolean {
   // Skip system fields that shouldn't be translated
   if (
@@ -588,9 +566,14 @@ export function shouldTranslateField(
     return false;
   }
 
+  const fieldMeta = fieldTypeDictionary[field];
+  if (!shouldProcessField(fieldMeta.editor, fieldMeta.id, pluginParams, field)) {
+    return false;
+  }
+
   // Check for the source locale in the field data with proper hyphenated locale support
   const sourceVal = getExactSourceValue(record[field] as Record<string, unknown>, fromLocale);
-  if (sourceVal === undefined || sourceVal === null || sourceVal === '') {
+  if (!hasTranslatableSourceValue(fieldMeta.editor, sourceVal)) {
     return false;
   }
 

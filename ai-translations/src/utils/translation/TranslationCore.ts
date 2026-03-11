@@ -12,7 +12,8 @@
 
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import { modularContentVariations } from '../../entrypoints/Config/ConfigScreen';
-import { isFieldTranslatable } from './SharedFieldUtils';
+import { isFieldExcluded, isFieldTranslatable } from './SharedFieldUtils';
+import { isEmptyStructuredText } from './utils';
 import {
   DEFAULT_REQUEST_SPACING_MS,
   GEMINI_REQUEST_SPACING_MS,
@@ -32,7 +33,8 @@ import {
 export function shouldProcessField(
   fieldType: string,
   fieldId: string,
-  pluginParams: ctxParamsType
+  pluginParams: ctxParamsType,
+  fieldApiKey?: string
 ): boolean {
   const isTranslatable = isFieldTranslatable(
     fieldType,
@@ -40,9 +42,39 @@ export function shouldProcessField(
     modularContentVariations
   );
 
-  const isExcluded = pluginParams.apiKeysToBeExcludedFromThisPlugin.includes(fieldId);
+  const isExcluded = isFieldExcluded(
+    pluginParams.apiKeysToBeExcludedFromThisPlugin,
+    [fieldId, fieldApiKey]
+  );
 
   return isTranslatable && !isExcluded;
+}
+
+/**
+ * Determines whether a localized source value contains meaningful content for
+ * the given field type.
+ *
+ * @param fieldType - The field editor type.
+ * @param sourceValue - The source-locale value to inspect.
+ * @returns True when the value should be sent to translation.
+ */
+export function hasTranslatableSourceValue(
+  fieldType: string,
+  sourceValue: unknown
+): boolean {
+  if (sourceValue === undefined || sourceValue === null || sourceValue === '') {
+    return false;
+  }
+
+  if (fieldType === 'structured_text') {
+    return !isEmptyStructuredText(sourceValue);
+  }
+
+  if (Array.isArray(sourceValue) && sourceValue.length === 0) {
+    return false;
+  }
+
+  return true;
 }
 
 /**

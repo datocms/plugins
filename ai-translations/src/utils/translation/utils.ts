@@ -2,19 +2,71 @@
 
 /**
  * Checks if a structured text field value is effectively empty.
- * A structured text is considered empty if it contains only a single paragraph
- * node with an empty text child.
+ * A structured text is considered empty when it has no visible text content
+ * and no embedded block nodes.
  *
  * @param value - The structured text value to check.
  * @returns True if the value represents an empty structured text field.
  */
 export function isEmptyStructuredText(value: unknown): boolean {
-  if (!Array.isArray(value) || value.length !== 1) return false;
-  const node = value[0] as Record<string, unknown> | null;
-  if (typeof node !== 'object' || node === null) return false;
-  if (!('type' in node) || node.type !== 'paragraph') return false;
-  const children = node.children as Array<{ text?: string }> | undefined;
-  return children?.length === 1 && children[0]?.text === '';
+  const extractChildren = (input: unknown): unknown[] | null => {
+    if (Array.isArray(input)) return input;
+    if (input && typeof input === 'object') {
+      const document = (input as Record<string, unknown>).document;
+      if (document && typeof document === 'object') {
+        const children = (document as Record<string, unknown>).children;
+        if (Array.isArray(children)) return children;
+      }
+    }
+    return null;
+  };
+
+  const children = extractChildren(value);
+  if (!children) return false;
+  if (children.length === 0) return true;
+
+  let hasVisibleText = false;
+  let hasBlocks = false;
+
+  const visit = (node: unknown): void => {
+    if (hasVisibleText || hasBlocks) return;
+
+    if (Array.isArray(node)) {
+      node.forEach(visit);
+      return;
+    }
+
+    if (!node || typeof node !== 'object') return;
+
+    const typedNode = node as Record<string, unknown>;
+    const nodeType = typeof typedNode.type === 'string' ? typedNode.type : undefined;
+
+    if (nodeType === 'block') {
+      hasBlocks = true;
+      return;
+    }
+
+    if (typeof typedNode.text === 'string' && typedNode.text.trim().length > 0) {
+      hasVisibleText = true;
+      return;
+    }
+
+    if (
+      nodeType === 'span' &&
+      typeof typedNode.value === 'string' &&
+      typedNode.value.trim().length > 0
+    ) {
+      hasVisibleText = true;
+      return;
+    }
+
+    if (Array.isArray(typedNode.children)) {
+      typedNode.children.forEach(visit);
+    }
+  };
+
+  visit(children);
+  return !hasVisibleText && !hasBlocks;
 }
 
 /**

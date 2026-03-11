@@ -5,6 +5,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
+  hasTranslatableSourceValue,
   shouldProcessField,
   getMaxConcurrency,
   getRequestSpacingMs,
@@ -46,6 +47,15 @@ describe('TranslationCore.ts', () => {
       expect(shouldProcessField('single_line', 'excluded-field', paramsWithExclusions)).toBe(false);
     });
 
+    it('should return false for legacy exclusions stored as API keys', () => {
+      const paramsWithExclusions = {
+        ...baseParams,
+        apiKeysToBeExcludedFromThisPlugin: ['slug'],
+      };
+
+      expect(shouldProcessField('single_line', 'field-id', paramsWithExclusions, 'slug')).toBe(false);
+    });
+
     it('should return false for non-translatable field types', () => {
       expect(shouldProcessField('boolean', 'field1', baseParams)).toBe(false);
       expect(shouldProcessField('integer', 'field2', baseParams)).toBe(false);
@@ -69,6 +79,36 @@ describe('TranslationCore.ts', () => {
 
       expect(shouldProcessField('structured_text', 'field1', paramsWithModular)).toBe(true);
       expect(shouldProcessField('rich_text', 'field2', paramsWithModular)).toBe(true);
+    });
+  });
+
+  describe('hasTranslatableSourceValue', () => {
+    it('returns false for empty primitive values', () => {
+      expect(hasTranslatableSourceValue('single_line', '')).toBe(false);
+      expect(hasTranslatableSourceValue('single_line', null)).toBe(false);
+      expect(hasTranslatableSourceValue('single_line', undefined)).toBe(false);
+    });
+
+    it('returns false for empty structured text arrays and wrapped docs', () => {
+      expect(
+        hasTranslatableSourceValue('structured_text', [
+          { type: 'paragraph', children: [{ text: '' }] },
+        ])
+      ).toBe(false);
+
+      expect(
+        hasTranslatableSourceValue('structured_text', {
+          document: {
+            type: 'root',
+            children: [{ type: 'paragraph', children: [{ type: 'span', value: '   ' }] }],
+          },
+        })
+      ).toBe(false);
+    });
+
+    it('returns false for empty arrays and true for populated values', () => {
+      expect(hasTranslatableSourceValue('rich_text', [])).toBe(false);
+      expect(hasTranslatableSourceValue('single_line', 'Hello')).toBe(true);
     });
   });
 

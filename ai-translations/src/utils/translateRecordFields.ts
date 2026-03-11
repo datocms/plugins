@@ -24,13 +24,21 @@ import type { TranslationProvider } from './translation/types';
 import { getProvider } from './translation/ProviderFactory';
 import {
   type ctxParamsType,
-  modularContentVariations,
 } from '../entrypoints/Config/ConfigScreen';
-import { prepareFieldTypePrompt, getExactSourceValue, isFieldTranslatable } from './translation/SharedFieldUtils';
+import { prepareFieldTypePrompt, getExactSourceValue } from './translation/SharedFieldUtils';
 import { translateFieldValue, generateRecordContext } from './translation/TranslateField';
 import { createLogger } from './logging/Logger';
 import { normalizeProviderError, formatErrorForUser } from './translation/ProviderErrors';
-import { getMaxConcurrency, getRequestSpacingMs, calculateRateLimitBackoff, isRateLimitError, isAbortError, delay } from './translation/TranslationCore';
+import {
+  getMaxConcurrency,
+  getRequestSpacingMs,
+  calculateRateLimitBackoff,
+  hasTranslatableSourceValue,
+  isAbortError,
+  isRateLimitError,
+  shouldProcessField,
+  delay,
+} from './translation/TranslationCore';
 import { FIELD_TRANSLATION_TIMEOUT_MS, STREAM_THROTTLE_MS, RATE_LIMIT_MAX_RETRIES } from './constants';
 
 // Options for the translation process. Provides callback hooks that allow the
@@ -39,13 +47,14 @@ import { FIELD_TRANSLATION_TIMEOUT_MS, STREAM_THROTTLE_MS, RATE_LIMIT_MAX_RETRIE
 // Uses the same CancellationOptions naming convention as TranslateBatchOptions
 // in ItemsDropdownUtils.ts and StreamCallbacks in types.ts.
 type TranslateOptions = {
-  onStart?: (fieldLabel: string, locale: string, fieldPath: string) => void;
-  onComplete?: (fieldLabel: string, locale: string, fieldPath: string) => void;
-  onError?: (fieldLabel: string, locale: string, fieldPath: string, errorMessage: string) => void;
+  onStart?: (fieldLabel: string, locale: string, fieldPath: string, baseFieldPath: string) => void;
+  onComplete?: (fieldLabel: string, locale: string, fieldPath: string, baseFieldPath: string) => void;
+  onError?: (fieldLabel: string, locale: string, fieldPath: string, baseFieldPath: string, errorMessage: string) => void;
   onStream?: (
     fieldLabel: string,
     locale: string,
     fieldPath: string,
+    baseFieldPath: string,
     content: string
   ) => void;
   checkCancellation?: () => boolean;
@@ -66,12 +75,6 @@ function hasSingleBlockBlocks(
   if (!obj.single_block_blocks || typeof obj.single_block_blocks !== 'object') return false;
   const sbb = obj.single_block_blocks as Record<string, unknown>;
   return Array.isArray(sbb.item_types);
-}
-
-// Represents a map where keys are locale codes and values are the field
-// content in that specific locale.
-interface LocalizedField {
-  [locale: string]: unknown;
 }
 
 /**
@@ -136,7 +139,14 @@ export async function translateRecordFields(
     new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 
   // Build job list
-  type Job = { id: string; fieldLabel: string; locale: string; run: () => Promise<void>; retries: number };
+  type Job = {
+    id: string;
+    fieldLabel: string;
+    locale: string;
+    baseFieldPath: string;
+    run: () => Promise<void>;
+    retries: number;
+  };
   const jobs: Job[] = [];
   let fatalAbort = false;
   let fatalError: Error | null = null;
@@ -236,13 +246,6 @@ export async function translateRecordFields(
       continue;
     }
 
-    // Determine if this field is eligible for translation
-    const fieldTranslatable = isFieldTranslatable(
-      fieldType,
-      pluginParams.translationFields,
-      modularContentVariations
-    );
-
     // Check if this field is part of a frameless block
     // If so, check if any frameless block field in the form is localized
     let isFieldLocalized = field.attributes.localized;
@@ -269,9 +272,8 @@ export async function translateRecordFields(
     
     // Skip fields that are not translatable, not localized, or explicitly excluded
     if (
-      !fieldTranslatable ||
       !isFieldLocalized ||
-      pluginParams.apiKeysToBeExcludedFromThisPlugin.includes(field.id)
+      !shouldProcessField(fieldType, field.id, pluginParams, fieldApiKey)
     ) {
       continue;
     }
@@ -295,16 +297,7 @@ export async function translateRecordFields(
       sourceLocale
     );
 
-    // Skip if source locale missing or empty
-    if (sourceLocaleValue === undefined || sourceLocaleValue === null || sourceLocaleValue === '') {
-      continue;
-    }
-
-    // Skip empty modular content arrays
-    if (
-      Array.isArray(sourceLocaleValue) &&
-      (sourceLocaleValue as unknown[]).length === 0
-    ) {
+    if (!hasTranslatableSourceValue(fieldType, sourceLocaleValue)) {
       continue;
     }
 
@@ -316,14 +309,17 @@ export async function translateRecordFields(
       const fieldPath = isFramelessField && framelessParentKey
         ? `${framelessParentKey}.${locale}.${basePath}`
         : `${basePath}.${locale}`;
+      const baseFieldPath = isFramelessField && framelessParentKey
+        ? `${framelessParentKey}.${basePath}`
+        : basePath;
       const fieldTypePrompt = prepareFieldTypePrompt(fieldType);
 
-      jobs.push({ id: fieldPath, fieldLabel, locale, retries: 0, run: async () => {
+      jobs.push({ id: fieldPath, fieldLabel, locale, baseFieldPath, retries: 0, run: async () => {
         // Cancellation check before starting
         if (fatalAbort || options.checkCancellation?.()) return;
 
         const start = performance.now?.() ?? Date.now();
-        options.onStart?.(fieldLabel, locale, fieldPath);
+        options.onStart?.(fieldLabel, locale, fieldPath, baseFieldPath);
 
         // Set up streaming callbacks
         const streamCallbacks = {
@@ -332,7 +328,7 @@ export async function translateRecordFields(
             const last = lastStreamAt.get(fieldPath) ?? 0;
             if (now - last >= STREAM_THROTTLE_MS) {
               lastStreamAt.set(fieldPath, now);
-              options.onStream?.(fieldLabel, locale, fieldPath, chunk);
+              options.onStream?.(fieldLabel, locale, fieldPath, baseFieldPath, chunk);
             }
           },
           checkCancellation: options.checkCancellation,
@@ -345,7 +341,7 @@ export async function translateRecordFields(
           // Note: timeoutMs is passed to providers via StreamOptions internally,
           // but the overall field timeout is handled by Promise.race below
           const translationPromise = translateFieldValue(
-            (fieldValue as LocalizedField)[sourceLocale],
+            sourceLocaleValue,
             pluginParams,
             locale,
             sourceLocale,
@@ -356,7 +352,11 @@ export async function translateRecordFields(
             field.id,
             ctx.environment,
             streamCallbacks,
-            recordContext
+            recordContext,
+            undefined,
+            {
+              fieldApiKey,
+            }
           );
 
           const timeoutPromise = new Promise<never>((_, reject) => {
@@ -373,7 +373,7 @@ export async function translateRecordFields(
           if (fatalAbort || options.checkCancellation?.()) return;
           
           await ctx.setFieldValue(fieldPath, translatedFieldValue);
-          options.onComplete?.(fieldLabel, locale, fieldPath);
+          options.onComplete?.(fieldLabel, locale, fieldPath, baseFieldPath);
           const end = performance.now?.() ?? Date.now();
           logger.info('Task finished', { fieldPath, ms: Math.round(end - start) });
         } catch (e) {
@@ -467,7 +467,7 @@ export async function translateRecordFields(
             const norm = normalizeProviderError(err, provider.vendor);
             const errorMessage = formatErrorForUser(norm);
             logger.error('Job failed', { job: job.id, err, errorMessage });
-            options.onError?.(job.fieldLabel, job.locale, job.id, errorMessage);
+            options.onError?.(job.fieldLabel, job.locale, job.id, job.baseFieldPath, errorMessage);
           }
         })
         .finally(() => {

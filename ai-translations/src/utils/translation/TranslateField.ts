@@ -49,12 +49,18 @@ import {
   modularContentVariations,
 } from '../../entrypoints/Config/ConfigScreen';
 import { fieldPrompt } from '../../prompts/FieldPrompts';
-import { findExactLocaleKey, getExactSourceValue, isFieldTranslatable, prepareFieldTypePrompt } from './SharedFieldUtils';
+import {
+  findExactLocaleKey,
+  getExactSourceValue,
+  isFieldExcluded,
+  isFieldTranslatable,
+  normalizeTranslatedSlug,
+  prepareFieldTypePrompt,
+} from './SharedFieldUtils';
 import { translateDefaultFieldValue } from './DefaultTranslation';
 import { type SeoObject, translateSeoFieldValue } from './SeoTranslation';
 import { translateStructuredTextValue } from './StructuredTextTranslation';
 import { translateFileFieldValue } from './FileFieldTranslation';
-import { deleteItemIdKeys } from './utils';
 import { createLogger, type Logger } from '../logging/Logger';
 import { getProvider } from './ProviderFactory';
 import { handleTranslationError } from './ProviderErrors';
@@ -157,6 +163,58 @@ interface ConcurrencyResult<T> {
 }
 
 /**
+ * Internal options used to fine-tune translation behavior for special cases.
+ */
+interface TranslateFieldValueOptions {
+  bypassFieldTypeAllowlist?: boolean;
+  fieldApiKey?: string;
+}
+
+/**
+ * Creates a deep clone of a JSON-like value while preserving nested identifiers.
+ *
+ * @param value - The value to clone.
+ * @returns A deep clone of the provided value.
+ */
+function deepCloneValue<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((entry) => deepCloneValue(entry)) as T;
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
+        key,
+        deepCloneValue(entry),
+      ])
+    ) as T;
+  }
+
+  return value;
+}
+
+/**
+ * Removes only wrapper-level identifiers from a block payload.
+ *
+ * @param block - The block payload to sanitize.
+ * @returns A cloned block with wrapper identifiers removed.
+ */
+function stripBlockWrapperIdentifiers(block: DatoCMSBlock): DatoCMSBlock {
+  const clonedBlock = deepCloneValue(block);
+  const wrapper = clonedBlock as Record<string, unknown>;
+
+  delete wrapper.id;
+  delete wrapper.itemId;
+
+  if (wrapper.item && typeof wrapper.item === 'object') {
+    delete (wrapper.item as Record<string, unknown>).id;
+    delete (wrapper.item as Record<string, unknown>).itemId;
+  }
+
+  return clonedBlock;
+}
+
+/**
  * Executes an array of async tasks with a maximum concurrency limit.
  * Uses a worker-pool pattern where workers pull tasks from a shared queue.
  *
@@ -240,6 +298,7 @@ export type { StreamCallbacks } from './types';
  * @param streamCallbacks - Optional callbacks for streaming translations
  * @param recordContext - Additional context about the record being translated
  * @param schemaRepository - Optional SchemaRepository for cached schema lookups
+ * @param options - Internal options for special-case translation flows
  * @returns The translated field value
  */
 export async function translateFieldValue(
@@ -255,16 +314,19 @@ export async function translateFieldValue(
   environment: string,
   streamCallbacks?: StreamCallbacks,
   recordContext = '',
-  schemaRepository?: SchemaRepository
+  schemaRepository?: SchemaRepository,
+  options: TranslateFieldValueOptions = {}
 ): Promise<unknown> {
   const logger = createLogger(pluginParams, 'translateFieldValue');
   
   logger.info(`Translating field of type: ${fieldType}`, { fromLocale, toLocale });
   
-  // Convert fieldId to a string to handle the undefined case
-  const safeFieldId = fieldId || '';
-
-  if (pluginParams.apiKeysToBeExcludedFromThisPlugin.includes(safeFieldId)) {
+  if (
+    isFieldExcluded(
+      pluginParams.apiKeysToBeExcludedFromThisPlugin,
+      [fieldId, options.fieldApiKey]
+    )
+  ) {
     return fieldValue;
   }
 
@@ -275,13 +337,15 @@ export async function translateFieldValue(
     modularContentVariations
   );
 
-  if (!fieldTranslatable || !fieldValue) {
+  if ((!fieldTranslatable && !options.bypassFieldTypeAllowlist) || !fieldValue) {
     return fieldValue;
   }
 
+  let translatedValue: unknown;
+
   switch (fieldType) {
     case 'seo':
-      return translateSeoFieldValue(
+      translatedValue = await translateSeoFieldValue(
         fieldValue as SeoObject,
         pluginParams,
         toLocale,
@@ -291,8 +355,9 @@ export async function translateFieldValue(
         streamCallbacks,
         recordContext
       );
+      break;
     case 'structured_text':
-      return translateStructuredTextValue(
+      translatedValue = await translateStructuredTextValue(
         fieldValue,
         pluginParams,
         toLocale,
@@ -304,10 +369,11 @@ export async function translateFieldValue(
         recordContext,
         schemaRepository
       );
+      break;
     case 'rich_text':
     case 'framed_single_block':
     case 'frameless_single_block':
-      return translateBlockValue(
+      translatedValue = await translateBlockValue(
         fieldValue,
         pluginParams,
         toLocale,
@@ -320,9 +386,10 @@ export async function translateFieldValue(
         recordContext,
         schemaRepository
       );
+      break;
     case 'file':
     case 'gallery':
-      return translateFileFieldValue(
+      translatedValue = await translateFileFieldValue(
         fieldValue,
         pluginParams,
         toLocale,
@@ -333,8 +400,9 @@ export async function translateFieldValue(
         streamCallbacks,
         recordContext
       );
+      break;
     default:
-      return translateDefaultFieldValue(
+      translatedValue = await translateDefaultFieldValue(
         fieldValue,
         pluginParams,
         toLocale,
@@ -343,7 +411,18 @@ export async function translateFieldValue(
         streamCallbacks,
         recordContext
       );
+      break;
   }
+
+  if (fieldType === 'slug') {
+    const normalizedSlug = normalizeTranslatedSlug(translatedValue);
+    if (!normalizedSlug) {
+      throw new Error('Translated slug is empty after normalization');
+    }
+    return normalizedSlug;
+  }
+
+  return translatedValue;
 }
 
 /**
@@ -537,7 +616,9 @@ async function translateFramelessSingleBlockValue(
     ctx.schemaRepository
   );
 
-  const cleanedValue = deleteItemIdKeys(fieldValue) as Record<string, unknown>;
+  const cleanedValue = deepCloneValue(fieldValue) as Record<string, unknown>;
+  delete cleanedValue.id;
+  delete cleanedValue.itemId;
   await processBlockFields(cleanedValue, nestedFieldTypes, ctx);
   return cleanedValue;
 }
@@ -631,7 +712,10 @@ async function processBlockFields(
         ctx.environment,
         ctx.streamCallbacks,
         ctx.recordContext,
-        ctx.schemaRepository
+        ctx.schemaRepository,
+        {
+          fieldApiKey: field,
+        }
       );
     }
 
@@ -701,10 +785,8 @@ async function translateBlockValue(
   logger.info('Translating block value');
 
   const isSingleBlock = fieldType === 'framed_single_block' || fieldType === 'frameless_single_block';
-  // Clean block array from any leftover item IDs
-  const cleanedFieldValue = deleteItemIdKeys(
-    isSingleBlock ? [fieldValue] : fieldValue
-  ) as Array<DatoCMSBlock>;
+  const rawBlocks = (isSingleBlock ? [fieldValue] : fieldValue) as Array<DatoCMSBlock>;
+  const cleanedFieldValue = rawBlocks.map(stripBlockWrapperIdentifiers);
 
   // Create processing context with all translation configuration
   const processingContext: BlockFieldProcessingContext = {
@@ -877,8 +959,8 @@ async function TranslateField(
     }
 
     // Get the field API key and ensure it's always a string
-    // Using nullish coalescing operator to handle undefined value
-    const fieldApiKey = ctx.fieldPath ?? '';
+    const fieldApiKey = ctx.field.attributes.api_key ?? '';
+    const fieldIdentifier = ctx.field.id ?? ctx.fieldPath ?? '';
 
     let fieldTypePrompt = 'Return the response in the format of ';
     const fieldPromptObject = fieldPrompt;
@@ -900,10 +982,14 @@ async function TranslateField(
       provider,
       fieldTypePrompt,
       apiToken as string,
-      fieldApiKey, // This is already a string because of the nullish coalescing operator
+      fieldIdentifier,
       environment,
       streamCallbacks,
-      contextToUse
+      contextToUse,
+      undefined,
+      {
+        fieldApiKey,
+      }
     );
 
     logger.info('Field translation completed');
