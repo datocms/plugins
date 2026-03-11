@@ -1,9 +1,11 @@
 import { connect } from 'datocms-plugin-sdk';
 import { Canvas } from 'datocms-react-ui';
 import 'datocms-react-ui/styles.css';
-import './styles/tailwind.css';
+import './styles/theme.css';
 import AssetBrowser from './entrypoints/AssetBrowser';
 import ConfigScreen from './entrypoints/ConfigScreen';
+import EditUploadModal from './entrypoints/EditUploadModal';
+import UploadSidebarPanel from './entrypoints/UploadSidebarPanel';
 import { render } from './utils/render';
 
 connect({
@@ -27,11 +29,45 @@ connect({
       },
     ];
   },
-  renderAssetSource(_sourceId, ctx) {
-    render(
-      <Canvas ctx={ctx}>
-        <AssetBrowser />
-      </Canvas>,
-    );
+  uploadSidebarPanels() {
+    return [
+      {
+        id: 'edit-upload',
+        label: 'Edit image',
+        placement: ['after', 'defaultMetadata'],
+        initialHeight: 110,
+      },
+    ];
+  },
+  renderAssetSource(assetSourceId, ctx) {
+    switch (assetSourceId) {
+      case 'dall-e':
+        render(
+          <Canvas ctx={ctx}>
+            <AssetBrowser />
+          </Canvas>,
+        );
+        return;
+      default:
+        return;
+    }
+  },
+  renderUploadSidebarPanel(sidebarPaneId, ctx) {
+    switch (sidebarPaneId) {
+      case 'edit-upload':
+        render(<UploadSidebarPanel ctx={ctx} />);
+        return;
+      default:
+        return;
+    }
+  },
+  renderModal(modalId, ctx) {
+    switch (modalId) {
+      case 'edit-upload':
+        render(<EditUploadModal ctx={ctx} />);
+        return;
+      default:
+        return;
+    }
   },
 });

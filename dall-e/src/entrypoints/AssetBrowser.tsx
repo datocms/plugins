@@ -1,66 +1,79 @@
-import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { type NewUpload, type RenderAssetSourceCtx } from 'datocms-plugin-sdk';
-import { Spinner, useCtx } from 'datocms-react-ui';
-import Cell from '../components/Cell';
 import {
-  PromptInput,
-  PromptInputBody,
-  PromptInputFooter,
-  PromptInputSubmit,
-  PromptInputTextarea,
-} from '../components/ai-elements/prompt-input';
+  type ChangeEvent,
+  type FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { type NewUpload, type RenderAssetSourceCtx } from 'datocms-plugin-sdk';
+import { Button, Spinner, useCtx } from 'datocms-react-ui';
+import Cell from '../components/Cell';
 import type { ConfigParameters } from '../types';
 import {
+  getDefaultModelForProvider,
+  getInitialProvider,
+  getProviderApiKey,
+  normalizeConfigParameters,
+} from '../utils/config';
+import {
+  aspectRatioOptions,
   backgroundOptions,
   buildGenerationNotes,
   buildImportFilename,
-  defaultGenerateFormState,
-  generateImages,
-  getConfiguredModel,
-  normalizeFormState,
-  normalizeOpenAiError,
-  shapeOptions,
+  generateOrEditImages,
+  getProviderCapabilities,
+  normalizeProviderError,
   variationOptions,
+  type AspectRatio,
   type BackgroundMode,
-  type GenerateFormState,
-  type GeneratedAssetImage,
-  type GenerationBatch,
   type GenerationStatus,
-  type ImageShape,
+  type ImageOperationRequest,
+  type InputImage,
+  type NormalizedGenerationBatch,
   type VariationCount,
-} from '../utils/openaiImages';
+} from '../utils/imageService';
 import s from './styles.module.css';
 
 const MAX_REQUESTS = 5;
+const EMPTY_SOURCE_IMAGES: InputImage[] = [];
+
+const shapePreviewClassNames: Record<AspectRatio, string> = {
+  '1:1': s.shapePreviewSquare,
+  '2:3': s.shapePreviewPortrait,
+  '3:2': s.shapePreviewLandscape,
+};
 
 const AssetBrowser = () => {
   const ctx = useCtx<RenderAssetSourceCtx>();
-  const parameters = (ctx.plugin.attributes.parameters || {}) as ConfigParameters;
-  const trimmedApiKey = parameters.apiKey?.trim() || '';
-  const selectedModel = getConfiguredModel(parameters.model);
-  const [formState, setFormState] = useState<GenerateFormState>(
-    defaultGenerateFormState,
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const parameters = useMemo(
+    () =>
+      normalizeConfigParameters(
+        (ctx.plugin.attributes.parameters || {}) as ConfigParameters,
+      ),
+    [ctx.plugin.attributes.parameters],
   );
-  const [requests, setRequests] = useState<GenerationBatch[]>([]);
+
+  const provider = getInitialProvider(parameters);
+  const model = getDefaultModelForProvider(parameters, provider);
+  const providerApiKey = getProviderApiKey(parameters, provider);
+  const hasProviderApiKey = Boolean(providerApiKey);
+
+  const [prompt, setPrompt] = useState('');
+  const [aspectRatio, setAspectRatio] = useState<AspectRatio>('1:1');
+  const [variationCount, setVariationCount] = useState<VariationCount>(1);
+  const [background, setBackground] = useState<BackgroundMode>('auto');
+  const [requests, setRequests] = useState<NormalizedGenerationBatch[]>([]);
   const [selectedImageIds, setSelectedImageIds] = useState<string[]>([]);
   const [status, setStatus] = useState<GenerationStatus>('idle');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const rootRef = useRef<HTMLDivElement | null>(null);
 
-  const hasApiKey = Boolean(trimmedApiKey);
-  const normalizedState = useMemo(
-    () => normalizeFormState(formState),
-    [formState],
+  const capabilities = useMemo(
+    () => getProviderCapabilities(provider, 'generate', model),
+    [model, provider],
   );
-  const canGenerate =
-    hasApiKey && Boolean(normalizedState.prompt) && status !== 'submitted';
-  const activePromptStatus =
-    status === 'submitted' ? 'submitted' : errorMessage ? 'error' : undefined;
-  const shapePreviewClassNames: Record<ImageShape, string> = {
-    square: s.shapePreviewSquare,
-    portrait: s.shapePreviewPortrait,
-    landscape: s.shapePreviewLandscape,
-  };
 
   useEffect(() => {
     if (!rootRef.current) {
@@ -82,25 +95,66 @@ const AssetBrowser = () => {
     ctx.updateHeight();
   }, [ctx, errorMessage, requests.length, selectedImageIds.length, status]);
 
-  const handleShapeChange = useCallback((shape: ImageShape) => {
-    setFormState((current) => ({ ...current, shape }));
-  }, []);
+  useEffect(() => {
+    if (!capabilities.supportsVariationCount && variationCount !== 1) {
+      setVariationCount(1);
+    }
 
-  const handleVariationChange = useCallback((variations: VariationCount) => {
-    setFormState((current) => ({ ...current, variations }));
-  }, []);
+    if (!capabilities.supportsTransparentBackground && background !== 'auto') {
+      setBackground('auto');
+    }
+  }, [
+    background,
+    capabilities.supportsTransparentBackground,
+    capabilities.supportsVariationCount,
+    variationCount,
+  ]);
 
-  const handleBackgroundChange = useCallback((background: BackgroundMode) => {
-    setFormState((current) => ({ ...current, background }));
-  }, []);
+  const normalizedRequest = useMemo<ImageOperationRequest>(
+    () => ({
+      provider,
+      mode: 'generate',
+      model,
+      prompt: prompt.trim(),
+      aspectRatio,
+      variationCount: capabilities.supportsVariationCount ? variationCount : 1,
+      background: capabilities.supportsTransparentBackground ? background : 'auto',
+      sourceImages: EMPTY_SOURCE_IMAGES,
+    }),
+    [
+      aspectRatio,
+      background,
+      capabilities.supportsTransparentBackground,
+      capabilities.supportsVariationCount,
+      model,
+      prompt,
+      provider,
+      variationCount,
+    ],
+  );
+
+  const canSubmit =
+    hasProviderApiKey && Boolean(normalizedRequest.prompt) && status !== 'submitted';
 
   const handlePromptChange = useCallback(
-    (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-      const nextPrompt = event.target.value;
-      setFormState((current) => ({ ...current, prompt: nextPrompt }));
+    (event: ChangeEvent<HTMLTextAreaElement>) => {
+      setPrompt(event.target.value);
+      setErrorMessage(null);
     },
     [],
   );
+
+  const handleAspectRatioChange = useCallback((nextValue: AspectRatio) => {
+    setAspectRatio(nextValue);
+  }, []);
+
+  const handleVariationChange = useCallback((nextValue: VariationCount) => {
+    setVariationCount(nextValue);
+  }, []);
+
+  const handleBackgroundChange = useCallback((nextValue: BackgroundMode) => {
+    setBackground(nextValue);
+  }, []);
 
   const toggleImageSelected = useCallback((imageId: string) => {
     setSelectedImageIds((current) =>
@@ -111,7 +165,7 @@ const AssetBrowser = () => {
   }, []);
 
   const buildUpload = useCallback(
-    (request: GenerationBatch, image: GeneratedAssetImage): NewUpload => ({
+    (request: NormalizedGenerationBatch, image: NormalizedGenerationBatch['images'][number]): NewUpload => ({
       resource: {
         base64: image.previewSrc,
         filename: buildImportFilename(
@@ -138,7 +192,7 @@ const AssetBrowser = () => {
   );
 
   const handleUploadSelected = useCallback(
-    (request: GenerationBatch) => {
+    (request: NormalizedGenerationBatch) => {
       const selectedImages = request.images.filter((image) =>
         selectedImageIds.includes(image.id),
       );
@@ -165,26 +219,17 @@ const AssetBrowser = () => {
     [buildUpload, ctx, selectedImageIds],
   );
 
-  const handleGenerate = useCallback(
-    async (submittedPrompt?: string, event?: FormEvent) => {
+  const handleSubmit = useCallback(
+    async (event?: FormEvent) => {
       event?.preventDefault();
 
-      const nextState = normalizeFormState({
-        ...formState,
-        prompt: submittedPrompt ?? formState.prompt,
-      });
-
-      setFormState(nextState);
-
-      if (!hasApiKey) {
-        setErrorMessage(
-          'Add an OpenAI API key in plugin settings before generating images.',
-        );
+      if (!providerApiKey) {
+        setErrorMessage('Add a provider API key in plugin settings before generating images.');
         setStatus('error');
         return;
       }
 
-      if (!nextState.prompt) {
+      if (!normalizedRequest.prompt) {
         setErrorMessage('Enter a prompt before generating images.');
         setStatus('error');
         return;
@@ -194,157 +239,131 @@ const AssetBrowser = () => {
       setErrorMessage(null);
 
       try {
-        const result = await generateImages(trimmedApiKey, nextState, selectedModel);
+        const result = await generateOrEditImages(providerApiKey, normalizedRequest);
         setRequests((current) => [result, ...current].slice(0, MAX_REQUESTS));
         setStatus('completed');
       } catch (error) {
         console.error('Image Generator plugin', error);
-        setErrorMessage(normalizeOpenAiError(error));
+        setErrorMessage(normalizeProviderError(provider, error));
         setStatus('error');
       }
     },
-    [formState, hasApiKey, selectedModel, trimmedApiKey],
+    [normalizedRequest, provider, providerApiKey],
   );
 
   return (
     <div className={`image-generator-theme ${s.page}`} ref={rootRef}>
-      <div className={s.panel}>
-        {!hasApiKey && (
-          <div className={s.message} role="status">
-            Add an OpenAI API key in plugin settings to start generating images.
-          </div>
-        )}
-
-        <div className={s.generatorLayout}>
-          <div className={s.promptColumn}>
-            <div className={s.promptPanel}>
-              <PromptInput
-                className={s.promptForm}
-                onSubmit={({ text }, event) => handleGenerate(text, event)}
-              >
-                <PromptInputBody>
-                  <PromptInputTextarea
-                    aria-label="Prompt"
-                    className={s.promptTextarea}
-                    name="prompt"
-                    onChange={handlePromptChange}
-                    placeholder="Describe the image you want to generate"
-                    value={formState.prompt}
-                  />
-                </PromptInputBody>
-                <PromptInputFooter className={s.promptFooter}>
-                  <PromptInputSubmit
-                    disabled={!canGenerate}
-                    status={activePromptStatus}
-                  >
-                    {status === 'submitted' ? 'Generating…' : 'Generate'}
-                  </PromptInputSubmit>
-                </PromptInputFooter>
-              </PromptInput>
-            </div>
-          </div>
-
-          <div className={s.controlsColumn}>
-            <div className={s.controlsPanel}>
-              <div className={s.controlGroup}>
-                <div className={s.groupLabel}>Aspect ratio</div>
-                <div className={s.shapeList}>
-                  {shapeOptions.map((option) => {
-                    const checked = option.value === formState.shape;
-
-                    return (
-                      <label
-                        key={option.value}
-                        className={
-                          checked
-                            ? `${s.shapeOption} ${s.choiceButtonActive}`
-                            : s.shapeOption
-                        }
-                      >
-                        <input
-                          checked={checked}
-                          className={s.choiceInput}
-                          name="shape"
-                          onChange={() => handleShapeChange(option.value)}
-                          type="radio"
-                          value={option.value}
-                        />
-                        <span
-                          aria-hidden="true"
-                          className={`${s.shapePreview} ${shapePreviewClassNames[option.value]}`}
-                        />
-                        <span className={s.shapeCopy}>
-                          <span className={s.choiceTitle}>{option.label}</span>
-                          <span className={s.choiceMeta}>{option.description}</span>
-                        </span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className={s.controlGroup}>
-                <div className={s.groupLabel}>Variations</div>
-                <div className={s.variationGrid}>
-                  {variationOptions.map((option) => {
-                    const checked = option.value === formState.variations;
-
-                    return (
-                      <label
-                        key={option.value}
-                        className={
-                          checked
-                            ? `${s.compactChoice} ${s.choiceButtonActive}`
-                            : s.compactChoice
-                        }
-                      >
-                        <input
-                          checked={checked}
-                          className={s.choiceInput}
-                          name="variations"
-                          onChange={() => handleVariationChange(option.value)}
-                          type="radio"
-                          value={option.value}
-                        />
-                        <span>{option.label}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className={s.controlGroup}>
-                <div className={s.groupLabel}>Background</div>
-                <div className={s.backgroundGrid}>
-                  {backgroundOptions.map((option) => {
-                    const checked = option.value === formState.background;
-
-                    return (
-                      <label
-                        key={option.value}
-                        className={
-                          checked
-                            ? `${s.compactChoice} ${s.choiceButtonActive}`
-                            : s.compactChoice
-                        }
-                      >
-                        <input
-                          checked={checked}
-                          className={s.choiceInput}
-                          name="background"
-                          onChange={() => handleBackgroundChange(option.value)}
-                          type="radio"
-                          value={option.value}
-                        />
-                        <span>{option.label}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          </div>
+      {!hasProviderApiKey && (
+        <div className={s.message} role="status">
+          Add a provider API key in plugin settings before generating images.
         </div>
+      )}
+
+      <div className={s.panel}>
+        <form className={s.generatorLayout} onSubmit={handleSubmit}>
+          <div className={s.promptPanel}>
+            <textarea
+              id="prompt"
+              name="prompt"
+              className={s.promptTextarea}
+              placeholder="Describe the image you want to create…"
+              value={prompt}
+              onChange={handlePromptChange}
+            />
+            <div className={s.promptActions}>
+              <Button buttonType="primary" type="submit" disabled={!canSubmit}>
+                {status === 'submitted' ? (
+                  <span className={s.buttonContent}>
+                    <Spinner
+                      size={16}
+                      style={{ marginLeft: 0, transform: 'none' }}
+                    />
+                    <span>Generating…</span>
+                  </span>
+                ) : (
+                  'Generate'
+                )}
+              </Button>
+            </div>
+          </div>
+
+          <div className={s.controlsPanel}>
+            <div className={s.controlGroup}>
+              <div className={s.groupLabel}>Aspect ratio</div>
+              <div className={s.shapeList}>
+                {aspectRatioOptions.map((option) => {
+                  const checked = option.value === aspectRatio;
+
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={checked ? `${s.shapeOption} ${s.choiceButtonActive}` : s.shapeOption}
+                      onClick={() => handleAspectRatioChange(option.value)}
+                    >
+                      <span
+                        className={`${s.shapePreview} ${shapePreviewClassNames[option.value]}`}
+                        aria-hidden="true"
+                      />
+                      <span className={s.shapeCopy}>
+                        <span className={s.choiceTitle}>{option.label}</span>
+                        <span className={s.choiceMeta}>{option.description}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className={s.controlGroup}>
+              <div className={s.groupLabel}>Background</div>
+              {capabilities.supportsTransparentBackground ? (
+                <div className={s.compactGrid}>
+                  {backgroundOptions.map((option) => {
+                    const checked = option.value === background;
+
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        className={checked ? `${s.compactChoice} ${s.choiceButtonActive}` : s.compactChoice}
+                        onClick={() => handleBackgroundChange(option.value)}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className={s.helperText}>The selected model uses its default background handling.</div>
+              )}
+            </div>
+
+            <div className={s.controlGroup}>
+              <div className={s.groupLabel}>Variations</div>
+              {capabilities.supportsVariationCount ? (
+                <div className={s.compactGrid}>
+                  {variationOptions.map((option) => {
+                    const checked = option.value === variationCount;
+
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        className={checked ? `${s.compactChoice} ${s.choiceButtonActive}` : s.compactChoice}
+                        onClick={() => handleVariationChange(option.value)}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className={s.helperText}>This provider returns one image per request.</div>
+              )}
+            </div>
+          </div>
+        </form>
 
         {errorMessage && (
           <div className={s.errorMessage} role="alert">
@@ -354,49 +373,55 @@ const AssetBrowser = () => {
       </div>
 
       <div className={s.results}>
-        {status === 'submitted' && (
-          <div className={s.loadingState}>
+        {status === 'submitted' && requests.length > 0 && (
+          <div className={s.loadingInline} role="status">
             <Spinner size={18} style={{ marginLeft: 0, transform: 'none' }} />
             <span>Generating images…</span>
           </div>
         )}
 
-        {status !== 'submitted' && requests.length === 0 && (
-          <div className={s.emptyState}>Generated images will appear here.</div>
-        )}
+        {!requests.length && status === 'submitted' ? (
+          <div className={s.loadingState} role="status">
+            <Spinner size={22} style={{ marginLeft: 0, transform: 'none' }} />
+            <span>Generating images…</span>
+          </div>
+        ) : !requests.length ? (
+          <div className={s.emptyState}>
+            <span className={s.emptyStateTitle}>No images yet</span>
+            <span className={s.emptyStateSubtitle}>Describe what you'd like to see, then click Generate</span>
+          </div>
+        ) : (
+          requests.map((request) => {
+            const selectedCount = request.images.filter((image) =>
+              selectedImageIds.includes(image.id),
+            ).length;
 
-        {requests.map((request) => {
-          const selectedCount = request.images.filter((image) =>
-            selectedImageIds.includes(image.id),
-          ).length;
-
-          return (
-            <div className={s.resultGroup} key={request.id}>
-              <div className={s.resultGrid}>
-                {request.images.map((image) => (
-                  <Cell
-                    image={image}
-                    key={image.id}
-                    onToggleSelected={() => toggleImageSelected(image.id)}
-                    selected={selectedImageIds.includes(image.id)}
-                  />
-                ))}
-              </div>
-
-              {selectedCount > 0 && (
-                <div className={s.resultActions}>
-                  <button
-                    className={s.primaryButton}
-                    onClick={() => handleUploadSelected(request)}
-                    type="button"
-                  >
-                    Upload selected ({selectedCount})
-                  </button>
+            return (
+              <section className={s.resultGroup} key={request.id}>
+                <div className={s.resultGrid}>
+                  {request.images.map((image) => (
+                    <Cell
+                      key={image.id}
+                      image={image}
+                      selected={selectedImageIds.includes(image.id)}
+                      onToggleSelected={() => toggleImageSelected(image.id)}
+                    />
+                  ))}
                 </div>
-              )}
-            </div>
-          );
-        })}
+                {selectedCount > 0 && (
+                  <div className={s.resultActions}>
+                    <span className={s.selectionSummary}>
+                      {selectedCount} selected
+                    </span>
+                    <Button buttonType="primary" onClick={() => handleUploadSelected(request)}>
+                      Upload selected
+                    </Button>
+                  </div>
+                )}
+              </section>
+            );
+          })
+        )}
       </div>
     </div>
   );

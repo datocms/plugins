@@ -1,12 +1,14 @@
 import { useMemo, useState } from 'react';
-import { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
+import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import { Button, Canvas, SelectField, TextField } from 'datocms-react-ui';
-import type { ConfigParameters } from '../types';
+import type { ConfigParameters, NormalizedConfigParameters } from '../types';
+import { normalizeConfigParameters } from '../utils/config';
 import {
-  getConfiguredModel,
-  modelOptions,
+  getModelOptions,
+  providerOptions,
+  type ProviderId,
   type SupportedImageModel,
-} from '../utils/openaiImages';
+} from '../utils/imageService';
 import s from './styles.module.css';
 
 type Props = {
@@ -14,46 +16,51 @@ type Props = {
 };
 
 export default function ConfigScreen({ ctx }: Props) {
-  const initialValues = useMemo(() => {
-    const parameters = (ctx.plugin.attributes.parameters || {}) as ConfigParameters;
+  const initialValues = useMemo(
+    () =>
+      normalizeConfigParameters(
+        (ctx.plugin.attributes.parameters || {}) as ConfigParameters,
+      ),
+    [ctx.plugin.attributes.parameters],
+  );
 
-    return {
-      apiKey: parameters.apiKey?.trim() || '',
-      model: getConfiguredModel(parameters.model),
-    };
-  }, [ctx.plugin.attributes.parameters]);
-
-  const [apiKey, setApiKey] = useState(initialValues.apiKey);
-  const [model, setModel] = useState<SupportedImageModel>(initialValues.model);
-  const [savedValues, setSavedValues] = useState(initialValues);
+  const [values, setValues] = useState<NormalizedConfigParameters>(initialValues);
+  const [savedValues, setSavedValues] = useState<NormalizedConfigParameters>(
+    initialValues,
+  );
+  const [editingProvider, setEditingProvider] = useState<ProviderId>(
+    initialValues.defaultProvider,
+  );
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const trimmedApiKey = apiKey.trim();
-  const isDirty =
-    trimmedApiKey !== savedValues.apiKey || model !== savedValues.model;
+  const modelOptions = useMemo(
+    () => getModelOptions(editingProvider, 'generate'),
+    [editingProvider],
+  );
+  const isDirty = serializeConfig(values) !== serializeConfig(savedValues);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!trimmedApiKey) {
-      setErrorMessage('Add an OpenAI API key before saving.');
+    const nextValues = normalizeForSave(values);
+    const hasAnyKey = Boolean(
+      nextValues.providers.openai.apiKey || nextValues.providers.google.apiKey,
+    );
+
+    if (!hasAnyKey) {
+      setErrorMessage('Add at least one provider key before saving.');
       return;
     }
-
-    const nextValues = {
-      apiKey: trimmedApiKey,
-      model,
-    };
 
     setSaving(true);
     setErrorMessage(null);
 
     try {
       await ctx.updatePluginParameters(nextValues);
-      setApiKey(nextValues.apiKey);
+      setValues(nextValues);
       setSavedValues(nextValues);
-      ctx.notice('Settings updated successfully!');
+      ctx.notice('Settings updated successfully.');
     } catch (error) {
       console.error('Image Generator plugin', error);
       setErrorMessage('Unable to save settings right now.');
@@ -66,38 +73,92 @@ export default function ConfigScreen({ ctx }: Props) {
     <Canvas ctx={ctx}>
       <div className={s.settings}>
         <form className={s.settingsForm} onSubmit={handleSubmit}>
-          <div className={s.fieldBlock}>
-            <TextField
-              id="apiKey"
-              name="apiKey"
-              label="OpenAI API key"
-              placeholder="sk-..."
-              value={apiKey}
-              onChange={(value) => setApiKey(value)}
-              required={true}
-              textInputProps={{ type: 'password', autoComplete: 'off' }}
-            />
-          </div>
+          <div className={s.settingsSection}>
+            <div className={s.settingsGrid}>
+              <div className={s.fieldBlock}>
+                <SelectField
+                  id="provider"
+                  name="provider"
+                  label="Provider"
+                  value={
+                    providerOptions.find(
+                      (option) => option.value === editingProvider,
+                    ) || null
+                  }
+                  onChange={(selectedOption) => {
+                    if (selectedOption) {
+                      const nextProvider = (selectedOption as { value: ProviderId }).value;
+                      setEditingProvider(nextProvider);
+                      setValues((current) => ({
+                        ...current,
+                        defaultProvider: nextProvider,
+                      }));
+                    }
+                  }}
+                  selectInputProps={{
+                    options: providerOptions,
+                    getOptionLabel: (option) => option.label,
+                    getOptionValue: (option) => option.value,
+                  }}
+                />
+              </div>
 
-          <div className={s.fieldBlock}>
-            <SelectField
-              id="model"
-              name="model"
-              label="Generation model"
-              value={
-                modelOptions.find((option) => option.value === model) || null
-              }
-              onChange={(selectedOption) => {
-                if (selectedOption) {
-                  setModel((selectedOption as typeof modelOptions[number]).value);
-                }
-              }}
-              selectInputProps={{
-                options: modelOptions,
-                getOptionLabel: (option) => option.label,
-                getOptionValue: (option) => option.value,
-              }}
-            />
+              <div className={s.fieldBlock}>
+                <TextField
+                  id={`${editingProvider}ApiKey`}
+                  name={`${editingProvider}ApiKey`}
+                  label="API key"
+                  placeholder={editingProvider === 'openai' ? 'sk-...' : 'AIza...'}
+                  value={values.providers[editingProvider].apiKey}
+                  onChange={(value) => {
+                    setValues((current) => ({
+                      ...current,
+                      providers: {
+                        ...current.providers,
+                        [editingProvider]: {
+                          ...current.providers[editingProvider],
+                          apiKey: value.trim(),
+                        },
+                      },
+                    }));
+                  }}
+                  textInputProps={{ type: 'password', autoComplete: 'off' }}
+                />
+              </div>
+
+              <div className={s.fieldBlock}>
+                <SelectField
+                  id={`${editingProvider}DefaultModel`}
+                  name={`${editingProvider}DefaultModel`}
+                  label="Model"
+                  value={
+                    modelOptions.find(
+                      (option) =>
+                        option.value === values.providers[editingProvider].defaultModel,
+                    ) || null
+                  }
+                  onChange={(selectedOption) => {
+                    if (selectedOption) {
+                      setValues((current) => ({
+                        ...current,
+                        providers: {
+                          ...current.providers,
+                          [editingProvider]: {
+                            ...current.providers[editingProvider],
+                            defaultModel: (selectedOption as { value: SupportedImageModel }).value,
+                          },
+                        },
+                      }));
+                    }
+                  }}
+                  selectInputProps={{
+                    options: modelOptions,
+                    getOptionLabel: (option) => option.label,
+                    getOptionValue: (option) => option.value,
+                  }}
+                />
+              </div>
+            </div>
           </div>
 
           {errorMessage && (
@@ -120,4 +181,26 @@ export default function ConfigScreen({ ctx }: Props) {
       </div>
     </Canvas>
   );
+}
+
+function normalizeForSave(
+  values: NormalizedConfigParameters,
+): NormalizedConfigParameters {
+  return {
+    defaultProvider: values.defaultProvider,
+    providers: {
+      openai: {
+        apiKey: values.providers.openai.apiKey.trim(),
+        defaultModel: values.providers.openai.defaultModel,
+      },
+      google: {
+        apiKey: values.providers.google.apiKey.trim(),
+        defaultModel: values.providers.google.defaultModel,
+      },
+    },
+  };
+}
+
+function serializeConfig(values: NormalizedConfigParameters) {
+  return JSON.stringify(normalizeForSave(values));
 }
