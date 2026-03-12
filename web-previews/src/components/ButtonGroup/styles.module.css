@@ -1,0 +1,36 @@
+.buttonGroup {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.buttonGroup > button,
+.buttonGroup > a {
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+  color: var(--light-body-color);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  border-right: 1px solid var(--border-color);
+  width: 38px;
+  aspect-ratio: 1.1;
+}
+
+.buttonGroup > button:last-child,
+.buttonGroup > a:last-child {
+  border-right: 0;
+}
+
+.buttonGroup > button:hover,
+.buttonGroup > a:hover {
+  background: var(--light-bg-color);
+  color: var(--base-body-color);
+}

@@ -1,5 +1,5 @@
 import { DropdownGroup } from 'datocms-react-ui';
-import type { Frontend, PreviewLink } from '../../../../types';
+import type { Frontend, PreviewLinkWithFrontend } from '../../../../types';
 import type { FrontendStatus } from '../../../../utils/common';
 import { FrontendPreviewLinks } from '../FrontendPreviewLinks';
 
@@ -10,15 +10,15 @@ export const FrontendGroup = ({
   onSelectPreviewLink,
   currentPreviewLink,
 }: {
-  status: FrontendStatus;
+  status: FrontendStatus | undefined;
   frontend: Frontend;
   hideIfNoLinks?: boolean;
-  currentPreviewLink: PreviewLink | undefined;
-  onSelectPreviewLink: (previewLink: PreviewLink) => void;
+  currentPreviewLink: PreviewLinkWithFrontend | undefined;
+  onSelectPreviewLink: (previewLink: PreviewLinkWithFrontend) => void;
 }) => {
   if (
-    'previewLinks' in status &&
-    status.previewLinks.length === 0 &&
+    (!status ||
+      ('previewLinks' in status && status.previewLinks.length === 0)) &&
     hideIfNoLinks
   ) {
     return null;
@@ -28,6 +28,7 @@ export const FrontendGroup = ({
     <DropdownGroup name={frontend.name}>
       <FrontendPreviewLinks
         status={status}
+        frontend={frontend}
         onSelectPreviewLink={onSelectPreviewLink}
         currentPreviewLink={currentPreviewLink}
       />

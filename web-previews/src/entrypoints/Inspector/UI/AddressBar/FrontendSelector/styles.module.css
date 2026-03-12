@@ -1,0 +1,26 @@
+.trigger {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: 0 var(--spacing-m);
+  height: 100%;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: var(--font-size-s);
+  border-left: 1px solid var(--border-color);
+  border-right: 1px solid var(--border-color);
+}
+
+.trigger:hover {
+  background: var(--light-bg-color);
+}
+
+.label {
+  font-weight: 500;
+}
+
+.arrow {
+  opacity: 0.6;
+  font-size: 10px;
+}

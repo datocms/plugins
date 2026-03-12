@@ -9,9 +9,18 @@ type CustomHeader = {
 
 export type RawFrontend = {
   name: string;
-  previewWebhook: string;
+  previewWebhook?: string;
   customHeaders?: CustomHeader[];
   disabled?: boolean;
+  visualEditing?: {
+    enableDraftModeUrl: string;
+    initialPath?: string;
+  };
+};
+
+export type RawVisualEditingSettings = {
+  enableDraftModeUrl: string;
+  initialPath?: string;
 };
 
 export type RawViewport = {
@@ -25,6 +34,8 @@ export type Parameters = {
   frontends?: RawFrontend[];
   startOpen?: boolean;
   defaultSidebarWidth?: string;
+  previewLinksSidebarDisabled?: boolean;
+  previewLinksSidebarPanelDisabled?: boolean;
   iframeAllowAttribute?: string;
   defaultViewports?: RawViewport[];
 };
@@ -38,15 +49,26 @@ export type Viewport = {
 
 export type Frontend = {
   name: string;
-  previewWebhook: string;
-  customHeaders: CustomHeader[];
   disabled: boolean;
+  previewLinks?: {
+    apiEndpointUrl: string;
+    customHeaders: CustomHeader[];
+  };
+  visualEditing?: {
+    enableDraftModeUrl: string;
+    initialPath?: string;
+  };
+};
+
+export type VisualEditingSettings = {
+  enableDraftModeUrl: string;
+  initialPath?: string;
 };
 
 export type NormalizedParameters = {
   frontends: Frontend[];
-  startOpen: boolean;
-  defaultSidebarWidth: number;
+  previewLinksSidebarPanel?: { startOpen: boolean };
+  previewLinksSidebar?: { defaultWidth: number };
   iframeAllowAttribute: string | undefined;
   defaultViewports: Viewport[];
 };
@@ -64,20 +86,43 @@ export function normalizeParameters({
   frontends,
   startOpen,
   defaultSidebarWidth,
+  previewLinksSidebarDisabled,
+  previewLinksSidebarPanelDisabled,
   iframeAllowAttribute,
   defaultViewports,
 }: Parameters): NormalizedParameters {
   return {
     frontends:
       frontends?.map((frontend) => ({
-        ...frontend,
-        customHeaders: frontend.customHeaders || [],
+        name: frontend.name,
         disabled: Boolean(frontend.disabled),
+        previewLinks: frontend.previewWebhook
+          ? {
+              apiEndpointUrl: frontend.previewWebhook,
+              customHeaders: frontend.customHeaders || [],
+            }
+          : undefined,
+        visualEditing: frontend.visualEditing
+          ? {
+              enableDraftModeUrl: frontend.visualEditing.enableDraftModeUrl,
+              initialPath: frontend.visualEditing.initialPath || undefined,
+            }
+          : undefined,
       })) || [],
-    startOpen: Boolean(startOpen),
-    defaultSidebarWidth: defaultSidebarWidth
-      ? Number.parseInt(defaultSidebarWidth)
-      : 900,
+    // If not explicitly disabled (backwards compatible), create the sidebar panel config
+    previewLinksSidebarPanel: previewLinksSidebarPanelDisabled
+      ? undefined
+      : {
+          startOpen: Boolean(startOpen),
+        },
+    // If not explicitly disabled (backwards compatible), create the sidebar config
+    previewLinksSidebar: previewLinksSidebarDisabled
+      ? undefined
+      : {
+          defaultWidth: defaultSidebarWidth
+            ? Number.parseInt(defaultSidebarWidth)
+            : 900,
+        },
     iframeAllowAttribute,
     defaultViewports: defaultViewports?.map((viewport) => ({
       name: viewport.name,
@@ -91,6 +136,56 @@ export function normalizeParameters({
           : Number.parseInt(viewport.height),
       icon: viewport.icon as IconName,
     })) || [...DEFAULT_VIEWPORTS],
+  };
+}
+
+export function denormalizeParameters({
+  frontends,
+  previewLinksSidebarPanel,
+  previewLinksSidebar,
+  iframeAllowAttribute,
+  defaultViewports,
+}: NormalizedParameters): Parameters {
+  return {
+    frontends: frontends.map((frontend) => {
+      const rawFrontend: RawFrontend = {
+        name: frontend.name,
+      };
+
+      if (frontend.disabled) {
+        rawFrontend.disabled = true;
+      }
+
+      if (frontend.previewLinks) {
+        rawFrontend.previewWebhook = frontend.previewLinks.apiEndpointUrl;
+        if (frontend.previewLinks.customHeaders.length > 0) {
+          rawFrontend.customHeaders = frontend.previewLinks.customHeaders;
+        }
+      }
+
+      if (frontend.visualEditing) {
+        rawFrontend.visualEditing = {
+          enableDraftModeUrl: frontend.visualEditing.enableDraftModeUrl,
+        };
+        if (frontend.visualEditing.initialPath) {
+          rawFrontend.visualEditing.initialPath =
+            frontend.visualEditing.initialPath;
+        }
+      }
+
+      return rawFrontend;
+    }),
+    startOpen: previewLinksSidebarPanel?.startOpen,
+    defaultSidebarWidth: previewLinksSidebar?.defaultWidth.toString(),
+    previewLinksSidebarDisabled: !previewLinksSidebar,
+    previewLinksSidebarPanelDisabled: !previewLinksSidebarPanel,
+    iframeAllowAttribute,
+    defaultViewports: defaultViewports.map((viewport) => ({
+      name: viewport.name,
+      width: viewport.width,
+      height: viewport.height,
+      icon: viewport.icon,
+    })),
   };
 }
 
@@ -123,3 +218,15 @@ export function isValidResponse(data: unknown): data is Response {
 
   return previewLinks.every(isValidPreviewLink);
 }
+
+export function getVisualEditingFrontends(
+  params: NormalizedParameters,
+): Frontend[] {
+  return params.frontends.filter(
+    (f) => !f.disabled && f.visualEditing?.enableDraftModeUrl,
+  );
+}
+
+export type PreviewLinkWithFrontend = PreviewLink & {
+  frontendName: string;
+};

@@ -19,30 +19,38 @@ import {
 export type FrontendStatus = { previewLinks: PreviewLink[] } | { error: any };
 
 export async function makeRequest(
-  { previewWebhook, name, customHeaders }: Frontend,
+  frontend: Frontend,
   payload: string,
 ): Promise<[string, FrontendStatus]> {
   try {
-    if (!previewWebhook) {
-      throw new Error(`Missing "Preview Webhook URL" option!`);
+    if (!frontend.previewLinks) {
+      throw new Error(`Missing "Preview Links API endpoint" option!`);
     }
 
-    const url = new URL(previewWebhook);
+    const { apiEndpointUrl, customHeaders } = frontend.previewLinks;
+    const url = new URL(apiEndpointUrl);
+    const { hostname } = url;
 
     const headers = new Headers({ 'Content-Type': 'application/json' });
     for (const { name, value } of customHeaders) {
       headers.set(name, value);
     }
 
+    const isLoopback: boolean =
+      hostname === 'localhost' || hostname === '127.0.0.1';
+
     const request = await fetch(url.toString(), {
       method: 'POST',
       headers,
       body: payload,
+      //@ts-expect-error targetAddressSpace is a Chromium thing
+      // See https://github.com/WICG/local-network-access/blob/main/explainer.md
+      targetAddressSpace: isLoopback ? 'loopback' : undefined, // e.g. localhost or 127.0.0.1
     });
 
     if (request.status !== 200) {
       throw new Error(
-        `[Web Previews] Webhook for frontend "${name}" returned a ${request.status} status!`,
+        `[Web Previews] API endpoint for frontend "${frontend.name}" returned a ${request.status} status!`,
       );
     }
 
@@ -50,13 +58,13 @@ export async function makeRequest(
 
     if (!isValidResponse(response)) {
       throw new Error(
-        `[Web Previews] Webhook for frontend "${name}" returned an invalid payload!`,
+        `[Web Previews] API endpoint for frontend "${frontend.name}" returned an invalid payload!`,
       );
     }
 
-    return [name, { previewLinks: response.previewLinks }];
+    return [frontend.name, { previewLinks: response.previewLinks }];
   } catch (error) {
-    return [name, { error }];
+    return [frontend.name, { error }];
   }
 }
 
@@ -64,14 +72,14 @@ export function useStatusByFrontend(
   ctx: RenderItemFormSidebarCtx | RenderItemFormSidebarPanelCtx,
 ) {
   const [statusByFrontend, setStatusByFrontend] = useState<
-    Record<string, FrontendStatus> | undefined
+    Record<string, FrontendStatus | undefined> | undefined
   >();
 
   const { frontends: rawFrontends } = normalizeParameters(
     ctx.plugin.attributes.parameters as Parameters,
   );
 
-  const frontends = rawFrontends.filter((f) => !f.disabled);
+  const frontends = rawFrontends.filter((f) => !f.disabled && f.previewLinks);
 
   const {
     item,
