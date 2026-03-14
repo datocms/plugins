@@ -1,12 +1,18 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
-import { Button, Canvas, SelectField, TextField } from 'datocms-react-ui';
+import { Button, SelectField, TextField } from 'datocms-react-ui';
 import type { ConfigParameters, NormalizedConfigParameters } from '../types';
-import { normalizeConfigParameters } from '../utils/config';
+import {
+  normalizeConfigParameters,
+  sanitizeConfigParameters,
+  serializeConfigParameters,
+  updateProviderSettings,
+} from '../utils/config';
 import {
   getModelOptions,
   providerOptions,
   type ProviderId,
+  type SelectOption,
   type SupportedImageModel,
 } from '../utils/imageService';
 import s from './styles.module.css';
@@ -16,6 +22,7 @@ type Props = {
 };
 
 export default function ConfigScreen({ ctx }: Props) {
+  // Settings still support older parameter keys, so normalize them once at the boundary.
   const initialValues = useMemo(
     () =>
       normalizeConfigParameters(
@@ -28,179 +35,180 @@ export default function ConfigScreen({ ctx }: Props) {
   const [savedValues, setSavedValues] = useState<NormalizedConfigParameters>(
     initialValues,
   );
-  const [editingProvider, setEditingProvider] = useState<ProviderId>(
+  const [activeProvider, setActiveProvider] = useState<ProviderId>(
     initialValues.defaultProvider,
   );
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  const activeProviderValues = values.providers[activeProvider];
   const modelOptions = useMemo(
-    () => getModelOptions(editingProvider, 'generate'),
-    [editingProvider],
+    () => getModelOptions(activeProvider),
+    [activeProvider],
   );
-  const isDirty = serializeConfig(values) !== serializeConfig(savedValues);
+  const isDirty =
+    serializeConfigParameters(values) !== serializeConfigParameters(savedValues);
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  const handleProviderChange = useCallback((selectedOption: unknown) => {
+    const nextProvider = getSelectOptionValue<ProviderId>(selectedOption);
 
-    const nextValues = normalizeForSave(values);
-    const hasAnyKey = Boolean(
-      nextValues.providers.openai.apiKey || nextValues.providers.google.apiKey,
-    );
-
-    if (!hasAnyKey) {
-      setErrorMessage('Add at least one provider key before saving.');
+    if (!nextProvider) {
       return;
     }
 
-    setSaving(true);
-    setErrorMessage(null);
+    setActiveProvider(nextProvider);
+    setValues((current) => ({
+      ...current,
+      defaultProvider: nextProvider,
+    }));
+  }, []);
 
-    try {
-      await ctx.updatePluginParameters(nextValues);
-      setValues(nextValues);
-      setSavedValues(nextValues);
-      ctx.notice('Settings updated successfully.');
-    } catch (error) {
-      console.error('Image Generator plugin', error);
-      setErrorMessage('Unable to save settings right now.');
-    } finally {
-      setSaving(false);
-    }
-  }
+  const handleApiKeyChange = useCallback(
+    (nextValue: string) => {
+      setValues((current) =>
+        updateProviderSettings(current, activeProvider, {
+          apiKey: nextValue.trim(),
+        }),
+      );
+    },
+    [activeProvider],
+  );
+
+  const handleModelChange = useCallback(
+    (selectedOption: unknown) => {
+      const nextModel = getSelectOptionValue<SupportedImageModel>(selectedOption);
+
+      if (!nextModel) {
+        return;
+      }
+
+      setValues((current) =>
+        updateProviderSettings(current, activeProvider, {
+          defaultModel: nextModel,
+        }),
+      );
+    },
+    [activeProvider],
+  );
+
+  const handleSubmit = useCallback(
+    async (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+
+      const nextValues = sanitizeConfigParameters(values);
+      const hasAnyKey = Boolean(
+        nextValues.providers.openai.apiKey || nextValues.providers.google.apiKey,
+      );
+
+      if (!hasAnyKey) {
+        setErrorMessage('Add at least one provider key before saving.');
+        return;
+      }
+
+      setSaving(true);
+      setErrorMessage(null);
+
+      try {
+        await ctx.updatePluginParameters(nextValues);
+        setValues(nextValues);
+        setSavedValues(nextValues);
+        ctx.notice('Settings updated successfully.');
+      } catch (error) {
+        console.error('Image Generator plugin', error);
+        setErrorMessage('Unable to save settings right now.');
+      } finally {
+        setSaving(false);
+      }
+    },
+    [ctx, values],
+  );
 
   return (
-    <Canvas ctx={ctx}>
-      <div className={s.settings}>
-        <form className={s.settingsForm} onSubmit={handleSubmit}>
-          <div className={s.settingsSection}>
-            <div className={s.settingsGrid}>
-              <div className={s.fieldBlock}>
-                <SelectField
-                  id="provider"
-                  name="provider"
-                  label="Provider"
-                  value={
-                    providerOptions.find(
-                      (option) => option.value === editingProvider,
-                    ) || null
-                  }
-                  onChange={(selectedOption) => {
-                    if (selectedOption) {
-                      const nextProvider = (selectedOption as { value: ProviderId }).value;
-                      setEditingProvider(nextProvider);
-                      setValues((current) => ({
-                        ...current,
-                        defaultProvider: nextProvider,
-                      }));
-                    }
-                  }}
-                  selectInputProps={{
-                    options: providerOptions,
-                    getOptionLabel: (option) => option.label,
-                    getOptionValue: (option) => option.value,
-                  }}
-                />
-              </div>
+    <div className={`image-generator-theme ${s.settings}`}>
+      <form className={s.settingsForm} onSubmit={handleSubmit}>
+        <div className={s.settingsSection}>
+          <div className={s.settingsGrid}>
+            <div className={s.fieldBlock} style={{ marginTop: 0 }}>
+              <SelectField
+                id="provider"
+                name="provider"
+                label="Provider"
+                value={findSelectedOption(providerOptions, activeProvider)}
+                onChange={handleProviderChange}
+                selectInputProps={{
+                  options: providerOptions,
+                  getOptionLabel: (option) => option.label,
+                  getOptionValue: (option) => option.value,
+                }}
+              />
+            </div>
 
-              <div className={s.fieldBlock}>
-                <TextField
-                  id={`${editingProvider}ApiKey`}
-                  name={`${editingProvider}ApiKey`}
-                  label="API key"
-                  placeholder={editingProvider === 'openai' ? 'sk-...' : 'AIza...'}
-                  value={values.providers[editingProvider].apiKey}
-                  onChange={(value) => {
-                    setValues((current) => ({
-                      ...current,
-                      providers: {
-                        ...current.providers,
-                        [editingProvider]: {
-                          ...current.providers[editingProvider],
-                          apiKey: value.trim(),
-                        },
-                      },
-                    }));
-                  }}
-                  textInputProps={{ type: 'password', autoComplete: 'off' }}
-                />
-              </div>
+            <div className={s.fieldBlock}>
+              <TextField
+                id={`${activeProvider}ApiKey`}
+                name={`${activeProvider}ApiKey`}
+                label="API key"
+                placeholder={activeProvider === 'openai' ? 'sk-...' : 'AIza...'}
+                value={activeProviderValues.apiKey}
+                onChange={handleApiKeyChange}
+                textInputProps={{ type: 'password', autoComplete: 'off' }}
+              />
+            </div>
 
-              <div className={s.fieldBlock}>
-                <SelectField
-                  id={`${editingProvider}DefaultModel`}
-                  name={`${editingProvider}DefaultModel`}
-                  label="Model"
-                  value={
-                    modelOptions.find(
-                      (option) =>
-                        option.value === values.providers[editingProvider].defaultModel,
-                    ) || null
-                  }
-                  onChange={(selectedOption) => {
-                    if (selectedOption) {
-                      setValues((current) => ({
-                        ...current,
-                        providers: {
-                          ...current.providers,
-                          [editingProvider]: {
-                            ...current.providers[editingProvider],
-                            defaultModel: (selectedOption as { value: SupportedImageModel }).value,
-                          },
-                        },
-                      }));
-                    }
-                  }}
-                  selectInputProps={{
-                    options: modelOptions,
-                    getOptionLabel: (option) => option.label,
-                    getOptionValue: (option) => option.value,
-                  }}
-                />
-              </div>
+            <div className={s.fieldBlock}>
+              <SelectField
+                id={`${activeProvider}DefaultModel`}
+                name={`${activeProvider}DefaultModel`}
+                label="Model"
+                value={findSelectedOption(
+                  modelOptions,
+                  activeProviderValues.defaultModel,
+                )}
+                onChange={handleModelChange}
+                selectInputProps={{
+                  options: modelOptions,
+                  getOptionLabel: (option) => option.label,
+                  getOptionValue: (option) => option.value,
+                }}
+              />
             </div>
           </div>
+        </div>
 
-          {errorMessage && (
-            <div className={s.errorMessage} role="alert">
-              {errorMessage}
-            </div>
-          )}
-
-          <div className={s.actions}>
-            <Button
-              buttonType="primary"
-              fullWidth
-              type="submit"
-              disabled={saving || !isDirty}
-            >
-              {saving ? 'Saving…' : 'Save settings'}
-            </Button>
+        {errorMessage && (
+          <div className={s.errorMessage} role="alert">
+            {errorMessage}
           </div>
-        </form>
-      </div>
-    </Canvas>
+        )}
+
+        <div className={s.actions}>
+          <Button
+            buttonType="primary"
+            fullWidth
+            type="submit"
+            disabled={saving || !isDirty}
+          >
+            {saving ? 'Saving…' : 'Save settings'}
+          </Button>
+        </div>
+      </form>
+    </div>
   );
 }
 
-function normalizeForSave(
-  values: NormalizedConfigParameters,
-): NormalizedConfigParameters {
-  return {
-    defaultProvider: values.defaultProvider,
-    providers: {
-      openai: {
-        apiKey: values.providers.openai.apiKey.trim(),
-        defaultModel: values.providers.openai.defaultModel,
-      },
-      google: {
-        apiKey: values.providers.google.apiKey.trim(),
-        defaultModel: values.providers.google.defaultModel,
-      },
-    },
-  };
+function findSelectedOption<T extends string>(
+  options: Array<SelectOption<T>>,
+  value: T,
+): SelectOption<T> | null {
+  return options.find((option) => option.value === value) || null;
 }
 
-function serializeConfig(values: NormalizedConfigParameters) {
-  return JSON.stringify(normalizeForSave(values));
+function getSelectOptionValue<T extends string>(option: unknown): T | null {
+  if (!option || typeof option !== 'object') {
+    return null;
+  }
+
+  const value = (option as { value?: unknown }).value;
+
+  return typeof value === 'string' ? (value as T) : null;
 }

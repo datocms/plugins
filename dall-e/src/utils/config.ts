@@ -1,17 +1,14 @@
-import {
-  getModelOptions,
-  googleGenerateModels,
-  openAiGenerateModels,
-} from './imageService';
-import type {
-  GoogleGenerateModel,
-  OpenAiGenerateModel,
-  ProviderId,
-  SupportedImageModel,
-} from './imageService';
+import { getSupportedModels, googleGenerateModels, openAiGenerateModels } from './imageService';
+import type { ProviderId, SupportedImageModel } from './imageService';
 import type { ConfigParameters, NormalizedConfigParameters } from '../types';
 
-export const defaultConfigParameters: NormalizedConfigParameters = {
+const providerFallbackOrder: ProviderId[] = ['openai', 'google'];
+
+type ProviderConfigMap = NormalizedConfigParameters['providers'];
+type ProviderConfig<P extends ProviderId> = ProviderConfigMap[P];
+type ProviderModel<P extends ProviderId> = ProviderConfig<P>['defaultModel'];
+
+const defaultConfigParameters: NormalizedConfigParameters = {
   defaultProvider: 'openai',
   providers: {
     openai: {
@@ -25,37 +22,81 @@ export const defaultConfigParameters: NormalizedConfigParameters = {
   },
 };
 
+/**
+ * Normalizes current and legacy plugin parameters into the shape used by the UI.
+ */
 export function normalizeConfigParameters(
-  parameters?: ConfigParameters,
+  parameters: ConfigParameters = {},
 ): NormalizedConfigParameters {
-  const raw = parameters || {};
   const openAiApiKey =
-    raw.providers?.openai?.apiKey?.trim() || raw.apiKey?.trim() || '';
-  const legacyModel =
-    raw.model && isOpenAiGenerateModel(raw.model) ? raw.model : undefined;
-  const defaultProvider =
-    raw.defaultProvider === 'google'
-      ? 'google'
-      : raw.defaultProvider === 'openai'
-        ? 'openai'
-        : openAiApiKey
-          ? 'openai'
-          : raw.providers?.google?.apiKey?.trim()
-            ? 'google'
-            : defaultConfigParameters.defaultProvider;
+    getTrimmedValue(parameters.providers?.openai?.apiKey) ||
+    getTrimmedValue(parameters.apiKey);
 
   return {
-    defaultProvider,
+    defaultProvider: resolveDefaultProvider(parameters, openAiApiKey),
     providers: {
       openai: {
         apiKey: openAiApiKey,
-        defaultModel: getOpenAiDefaultModel(raw, legacyModel),
+        defaultModel: resolveProviderModel('openai', [
+          parameters.providers?.openai?.defaultModel,
+          parameters.providers?.openai?.defaultGenerateModel,
+          parameters.model,
+        ]),
       },
       google: {
-        apiKey: raw.providers?.google?.apiKey?.trim() || '',
-        defaultModel: getGoogleDefaultModel(raw),
+        apiKey: getTrimmedValue(parameters.providers?.google?.apiKey),
+        defaultModel: resolveProviderModel('google', [
+          parameters.providers?.google?.defaultModel,
+          parameters.providers?.google?.defaultGenerateModel,
+        ]),
       },
     },
+  };
+}
+
+/**
+ * Trims persisted values so saved payloads and dirty-state checks use the same shape.
+ */
+export function sanitizeConfigParameters(
+  values: NormalizedConfigParameters,
+): NormalizedConfigParameters {
+  return {
+    defaultProvider: values.defaultProvider,
+    providers: {
+      openai: {
+        apiKey: getTrimmedValue(values.providers.openai.apiKey),
+        defaultModel: values.providers.openai.defaultModel,
+      },
+      google: {
+        apiKey: getTrimmedValue(values.providers.google.apiKey),
+        defaultModel: values.providers.google.defaultModel,
+      },
+    },
+  };
+}
+
+export function serializeConfigParameters(
+  values: NormalizedConfigParameters,
+): string {
+  return JSON.stringify(sanitizeConfigParameters(values));
+}
+
+export function updateProviderSettings<P extends ProviderId>(
+  values: NormalizedConfigParameters,
+  provider: P,
+  updates: Partial<ProviderConfig<P>>,
+): NormalizedConfigParameters {
+  const nextProviders = {
+    ...values.providers,
+    [provider]: {
+      ...values.providers[provider],
+      ...updates,
+    },
+  } as ProviderConfigMap;
+
+  return {
+    ...values,
+    providers: nextProviders,
   };
 }
 
@@ -63,84 +104,66 @@ export function getProviderApiKey(
   parameters: NormalizedConfigParameters,
   provider: ProviderId,
 ): string {
-  return parameters.providers[provider].apiKey.trim();
+  return getTrimmedValue(parameters.providers[provider].apiKey);
 }
 
 export function getDefaultModelForProvider(
   parameters: NormalizedConfigParameters,
   provider: ProviderId,
 ): SupportedImageModel {
-  const configuredModel = parameters.providers[provider].defaultModel;
-  const optionValues = getModelOptions(provider, 'generate').map(
-    (option) => option.value,
-  );
-
-  return optionValues.includes(configuredModel)
-    ? configuredModel
-    : optionValues[0];
+  return resolveProviderModel(provider, [parameters.providers[provider].defaultModel]);
 }
 
 export function getInitialProvider(
   parameters: NormalizedConfigParameters,
 ): ProviderId {
-  const defaultProvider = parameters.defaultProvider;
-
-  if (getProviderApiKey(parameters, defaultProvider)) {
-    return defaultProvider;
+  if (getProviderApiKey(parameters, parameters.defaultProvider)) {
+    return parameters.defaultProvider;
   }
 
-  if (getProviderApiKey(parameters, 'openai')) {
-    return 'openai';
-  }
+  return (
+    providerFallbackOrder.find((provider) => getProviderApiKey(parameters, provider)) ||
+    parameters.defaultProvider
+  );
+}
 
-  if (getProviderApiKey(parameters, 'google')) {
+function resolveDefaultProvider(
+  parameters: ConfigParameters,
+  openAiApiKey: string,
+): ProviderId {
+  if (parameters.defaultProvider === 'google') {
     return 'google';
   }
 
-  return defaultProvider;
+  if (parameters.defaultProvider === 'openai') {
+    return 'openai';
+  }
+
+  if (openAiApiKey) {
+    return 'openai';
+  }
+
+  if (getTrimmedValue(parameters.providers?.google?.apiKey)) {
+    return 'google';
+  }
+
+  return defaultConfigParameters.defaultProvider;
 }
 
-function getOpenAiDefaultModel(
-  raw: ConfigParameters,
-  legacyModel?: OpenAiGenerateModel,
-): OpenAiGenerateModel {
-  const configuredModel = raw.providers?.openai?.defaultModel;
-
-  if (isOpenAiGenerateModel(configuredModel)) {
-    return configuredModel;
-  }
-
-  if (isOpenAiGenerateModel(raw.providers?.openai?.defaultGenerateModel)) {
-    return raw.providers.openai.defaultGenerateModel;
-  }
-
-  return legacyModel || defaultConfigParameters.providers.openai.defaultModel;
-}
-
-function getGoogleDefaultModel(raw: ConfigParameters): GoogleGenerateModel {
-  const configuredModel = raw.providers?.google?.defaultModel;
-
-  if (isGoogleGenerateModel(configuredModel)) {
-    return configuredModel;
-  }
-
-  if (isGoogleGenerateModel(raw.providers?.google?.defaultGenerateModel)) {
-    return raw.providers.google.defaultGenerateModel;
-  }
-
-  return defaultConfigParameters.providers.google.defaultModel;
-}
-
-function isOpenAiGenerateModel(value: unknown): value is OpenAiGenerateModel {
-  return (
-    typeof value === 'string' &&
-    openAiGenerateModels.includes(value as OpenAiGenerateModel)
+function resolveProviderModel<P extends ProviderId>(
+  provider: P,
+  candidates: readonly unknown[],
+): ProviderModel<P> {
+  const supportedModels = getSupportedModels(provider) as ProviderModel<P>[];
+  const model = candidates.find(
+    (candidate): candidate is ProviderModel<P> =>
+      typeof candidate === 'string' &&
+      supportedModels.includes(candidate as ProviderModel<P>),
   );
+
+  return model || defaultConfigParameters.providers[provider].defaultModel;
 }
 
-function isGoogleGenerateModel(value: unknown): value is GoogleGenerateModel {
-  return (
-    typeof value === 'string' &&
-    googleGenerateModels.includes(value as GoogleGenerateModel)
-  );
+function getTrimmedValue(value?: string): string {
+  return value?.trim() || '';
 }

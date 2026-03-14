@@ -1,19 +1,17 @@
 {
   "name": "datocms-plugin-dall-e-asset-source",
-  "description": "Generate and edit images with configured providers and insert them directly inside your DatoCMS project",
-  "version": "0.1.8",
+  "description": "Generate images with configured providers and insert them directly inside your DatoCMS project",
+  "version": "0.2.0",
   "private": false,
   "dependencies": {
     "@ai-sdk/google": "^2.0.60",
     "@ai-sdk/openai": "^3.0.41",
-    "@datocms/cma-client-browser": "^5.3.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "ai": "^6.0.116",
     "datocms-plugin-sdk": "^2.1.1",
     "datocms-react-ui": "^2.1.4",
     "react": "^19.2.4",
-    "react-canvas-masker": "^1.2.0",
     "react-dom": "^19.2.4"
   },
   "files": [
@@ -23,8 +21,7 @@
   "keywords": [
     "datocms",
     "datocms-plugin",
-    "image-generation",
-    "image-editing"
+    "image-generation"
   ],
   "scripts": {
     "build": "tsc -b && vite build",
@@ -35,19 +32,13 @@
   "devDependencies": {
     "@types/node": "^25.3.5",
     "@vitejs/plugin-react": "^5.1.4",
-    "cross-env": "^10.1.0",
-    "globals": "^17.4.0",
     "typescript": "^5.9.3",
     "vite": "^7.3.1"
   },
   "datoCmsPlugin": {
     "title": "Image Generator",
-    "previewImage": "docs/demo.mp4",
     "coverImage": "docs/cover.png",
-    "entryPoint": "dist/index.html",
-    "permissions": [
-      "currentUserAccessToken"
-    ]
+    "entryPoint": "dist/index.html"
   },
   "type": "module",
   "overrides": {

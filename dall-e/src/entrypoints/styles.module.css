@@ -1,31 +1,21 @@
 .page {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 24px;
+  gap: 12px;
+  padding: 10px 12px 12px;
 }
 
-.panel,
-.promptPanel,
-.controlsPanel,
-.resultGroup,
 .message,
+.panel,
 .errorMessage,
-.emptyState,
-.loadingState,
 .loadingInline,
+.loadingState,
+.emptyState,
+.resultGroup,
 .settingsSection {
   border: 1px solid var(--ig-border);
   border-radius: 8px;
   background: var(--ig-surface);
-}
-
-.message,
-.errorMessage,
-.loadingInline,
-.emptyState,
-.loadingState {
-  margin-bottom: 16px;
 }
 
 .message,
@@ -39,120 +29,48 @@
   background: var(--ig-surface-muted);
 }
 
-.errorMessage {
-  border-color: var(--ig-danger);
-  color: var(--ig-danger);
-  background: var(--ig-danger-soft);
-}
-
 .panel {
-  padding: 12px;
-  border-color: var(--ig-border);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-}
-
-.toolbar {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.toolbarField,
-.fieldLabel {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.toolbarLabel,
-.fieldLabel,
-.groupLabel,
-.groupMeta,
-.sectionTitle {
-  font-size: var(--font-size-s);
-  font-weight: 600;
-}
-
-.toolbarLabel,
-.groupLabel,
-.groupMeta {
-  color: var(--ig-text-muted);
-  font-weight: 500;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-  font-size: 11px;
-}
-
-.toolbarSelect,
-.fileInput,
-.promptTextarea,
-.removeButton {
-  font: inherit;
-}
-
-.toolbarSelect,
-.fileInput,
-.promptTextarea,
-.shapeOption,
-.compactChoice,
-.removeButton {
-  border: 1px solid var(--ig-border);
-  border-radius: 6px;
-  background: var(--ig-surface);
-  color: var(--ig-text);
-}
-
-.toolbarSelect,
-.fileInput {
-  width: 100%;
-  min-height: 38px;
-  padding: 8px 10px;
+  overflow: hidden;
 }
 
 .generatorLayout {
   display: grid;
-  grid-template-columns: minmax(0, 1.8fr) minmax(0, 300px);
-  gap: 0;
+  grid-template-columns: minmax(0, 1fr) 280px;
   align-items: stretch;
-}
-
-.promptPanel,
-.controlsPanel {
-  min-width: 0;
 }
 
 .promptPanel {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  min-height: 220px;
   padding: 12px;
-  min-height: 280px;
-  border-color: transparent;
-  background: transparent;
+  border-right: 1px solid var(--ig-border);
+}
+
+.promptTextarea,
+.shapeOption,
+.compactChoice {
+  font: inherit;
+  color: var(--ig-text);
+  background: var(--ig-surface);
+  border: 1px solid var(--ig-border);
+  border-radius: 8px;
 }
 
 .promptTextarea {
-  flex: 1;
   width: 100%;
   min-height: 0;
+  flex: 1;
   resize: none;
-  padding: 14px;
-  line-height: 1.55;
-  font-size: 14px;
-  border-color: var(--ig-border);
-  border-radius: 8px;
+  padding: 12px;
+  line-height: 1.45;
 }
 
 .promptTextarea::placeholder {
   color: var(--ig-text-muted);
-  opacity: 0.6;
 }
 
 .promptTextarea:focus,
-.toolbarSelect:focus,
-.fileInput:focus,
-.removeButton:focus,
 .shapeOption:focus,
 .compactChoice:focus {
   outline: 2px solid var(--ig-focus);
@@ -160,11 +78,9 @@
   border-color: var(--ig-accent);
 }
 
-.promptActions {
-  display: flex;
-  justify-content: flex-end;
+.generateButton {
+  justify-content: center;
 }
-
 
 .buttonContent {
   display: inline-flex;
@@ -173,51 +89,37 @@
 }
 
 .controlsPanel {
-  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   background: var(--ig-surface-muted);
-  border: none;
-  border-left: 1px solid var(--ig-border);
-  border-radius: 0;
 }
 
 .controlGroup {
-  padding: 10px 12px;
+  padding: 12px;
 }
 
 .controlGroup + .controlGroup {
   border-top: 1px solid var(--ig-border);
 }
 
-.groupHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 8px;
+.controlsActions {
+  margin-top: auto;
+  padding: 12px;
+  border-top: 1px solid var(--ig-border);
 }
 
 .groupLabel {
-  margin-bottom: 6px;
-}
-
-.groupHeader .groupLabel {
-  margin-bottom: 0;
-}
-
-.helperText,
-.choiceMeta,
-.selectionSummary,
-.batchMeta,
-.imageMeta,
-.imageName {
-  font-size: var(--font-size-s);
+  margin-bottom: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ig-text);
 }
 
 .helperText,
 .choiceMeta,
 .selectionSummary,
-.batchMeta,
-.imageMeta {
+.emptyStateSubtitle {
+  font-size: 13px;
   color: var(--ig-text-muted);
 }
 
@@ -229,19 +131,30 @@
 
 .shapeOption {
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr);
+  grid-template-columns: 40px minmax(0, 1fr);
   align-items: center;
   gap: 8px;
   width: 100%;
-  min-height: 44px;
-  padding: 6px 8px;
+  min-height: 42px;
+  padding: 7px 9px;
   text-align: left;
   cursor: pointer;
 }
 
+.compactGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(56px, 1fr));
+  gap: 6px;
+}
+
+.compactChoice {
+  min-height: 30px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
 .shapeOption:hover,
-.compactChoice:hover,
-.removeButton:hover {
+.compactChoice:hover {
   border-color: var(--ig-border-strong);
 }
 
@@ -251,33 +164,21 @@
 }
 
 .shapePreview {
-  width: 36px;
-  height: 28px;
+  width: 40px;
+  height: 26px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
   border: 1px solid var(--ig-border);
+  border-radius: 6px;
   background: var(--ig-surface);
 }
 
 .shapePreview::before {
   content: '';
   display: block;
-  border: 1px solid currentColor;
+  border: 1px solid var(--ig-text-muted);
   border-radius: 4px;
-  color: var(--ig-text-muted);
-  opacity: 0.85;
-}
-
-.choiceButtonActive .shapePreview {
-  border-color: color-mix(in srgb, var(--ig-accent) 22%, transparent);
-  background: color-mix(in srgb, var(--ig-accent) 5%, var(--ig-surface));
-}
-
-.choiceButtonActive .shapePreview::before {
-  color: var(--ig-accent);
-  opacity: 1;
 }
 
 .shapePreviewSquare::before {
@@ -286,8 +187,8 @@
 }
 
 .shapePreviewPortrait::before {
-  width: 13px;
-  height: 20px;
+  width: 12px;
+  height: 19px;
 }
 
 .shapePreviewLandscape::before {
@@ -303,202 +204,92 @@
 }
 
 .choiceTitle,
-.imageName {
-  font-weight: 600;
-}
-
-.compactGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(56px, 1fr));
-  gap: 6px;
-}
-
-.compactChoice {
-  min-height: 32px;
-  padding: 6px 10px;
-  cursor: pointer;
-  font-size: 13px;
-}
-
-.fileInputRow {
-  margin-bottom: 8px;
-}
-
-.imageList {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.imageListItem {
-  display: grid;
-  grid-template-columns: 48px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 10px;
-  padding: 8px;
-  border: 1px solid var(--ig-border);
-  border-radius: 6px;
-  background: var(--ig-surface-muted);
-}
-
-.imageThumb {
-  display: block;
-  width: 48px;
-  height: 48px;
-  object-fit: cover;
-  border-radius: 4px;
-  background: var(--ig-surface);
-}
-
-.imageDetails {
-  min-width: 0;
-}
-
-.imageName,
-.imageMeta {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.removeButton {
-  padding: 6px 10px;
-  cursor: pointer;
-}
-
-.loadingInline,
-.loadingState {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.loadingInline {
-  color: var(--ig-text-muted);
-}
-
-.loadingState {
-  min-height: 280px;
-  justify-content: center;
-  text-align: center;
-  color: var(--ig-text-muted);
-  background: var(--ig-surface-muted);
-}
-
-.emptyState {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  min-height: 280px;
-  text-align: center;
-  color: var(--ig-text-muted);
-  background: var(--ig-surface-muted);
-  border-style: dashed;
-}
-
 .emptyStateTitle {
   font-weight: 600;
-  font-size: 15px;
   color: var(--ig-text);
 }
 
-.emptyStateSubtitle {
-  font-size: var(--font-size-s);
+.errorMessage {
+  margin-top: 10px;
+  padding: 10px 12px;
+  color: var(--ig-danger);
+  border-color: var(--ig-danger);
+  background: var(--ig-danger-soft);
+}
+
+.loadingInline,
+.loadingState,
+.emptyState {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 160px;
+  text-align: center;
+}
+
+.loadingInline {
+  min-height: auto;
+  justify-content: flex-start;
+  margin-bottom: 12px;
   color: var(--ig-text-muted);
 }
 
+.loadingState,
+.emptyState {
+  flex-direction: column;
+  background: var(--ig-surface-muted);
+}
+
 .results {
-  min-height: 280px;
+  min-height: 0;
+  padding-top: 8px;
 }
 
 .resultGroup {
-  padding: 16px;
-  margin-bottom: 16px;
+  position: relative;
+  padding: 12px;
+  margin-bottom: 12px;
 }
 
 .resultGroup:last-child {
   margin-bottom: 0;
 }
 
-.batchMeta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 12px;
+.resultHeader {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 3;
+  transform: none;
+  pointer-events: none;
 }
 
 .resultGrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 12px;
-}
-
-.resultActions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
-  margin-top: 12px;
-}
-
-
-.sidebarPanel {
-  display: flex;
-  flex-direction: column;
   gap: 10px;
 }
 
-.modalPage {
-  padding: 8px 0;
-}
-
-.modalLayout {
-  display: grid;
-  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
-  gap: 16px;
-}
-
-.modalFormColumn,
-.modalPreviewColumn {
-  min-width: 0;
-}
-
-.modalForm {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.modalSection {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.modalActions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-}
-
-.previewFrame {
-  display: flex;
+.resultActions {
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  min-height: 320px;
-  padding: 12px;
-  border: 1px solid var(--ig-border);
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  padding: 6px 8px;
   border-radius: 8px;
   background: var(--ig-surface);
+  box-shadow:
+    0 0 0 6px var(--ig-surface),
+    0 0 0 7px var(--ig-border),
+    0 2px 8px rgba(15, 23, 42, 0.08);
+  pointer-events: auto;
 }
 
-.previewImage {
-  display: block;
-  max-width: 100%;
-  max-height: 560px;
-  border-radius: 6px;
+.selectionSummary {
+  color: var(--ig-text);
+  font-weight: 500;
 }
 
 .settings {
@@ -514,11 +305,6 @@
 
 .settingsSection {
   padding: 16px;
-}
-
-.sectionTitle {
-  margin-bottom: 12px;
-  color: var(--ig-text);
 }
 
 .settingsGrid {
@@ -537,621 +323,39 @@
 }
 
 @media (max-width: 900px) {
-  .toolbar,
-  .generatorLayout,
-  .settingsGrid,
-  .modalLayout {
+  .generatorLayout {
     grid-template-columns: 1fr;
+  }
+
+  .promptPanel {
+    border-right: 0;
+    border-bottom: 1px solid var(--ig-border);
   }
 }
 
 @media (max-width: 720px) {
   .page,
   .settings {
-    padding: 16px 0;
+    padding: 10px 0;
   }
 
   .page {
-    padding-inline: 16px;
+    padding-inline: 10px;
   }
 
   .compactGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .resultActions,
-  .modalActions {
-    flex-direction: column;
-    align-items: stretch;
+  .resultHeader {
+    right: 8px;
+  }
+
+  .resultActions {
+    justify-content: flex-end;
   }
 
   .selectionSummary {
-    text-align: right;
-  }
-}
-
-.modalEditorPage {
-  padding: 0;
-}
-
-.modalEditor {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.editorHeader {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 16px;
-  align-items: end;
-}
-
-.promptBlock {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-}
-
-.editorPrompt {
-  width: 100%;
-  min-height: 112px;
-  resize: vertical;
-  padding: 12px;
-  border: 1px solid var(--ig-border);
-  border-radius: 6px;
-  background: var(--ig-surface);
-  color: var(--ig-text);
-  font: inherit;
-  line-height: 1.5;
-}
-
-.editorPrompt:focus,
-.smallChoice:focus,
-.stageTab:focus,
-.rangeInput:focus {
-  outline: 2px solid var(--ig-focus);
-  outline-offset: 0;
-  border-color: var(--ig-accent);
-}
-
-.headerActions {
-  display: flex;
-  align-items: flex-end;
-  justify-content: flex-end;
-}
-
-.editorBody {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 280px;
-  gap: 16px;
-  align-items: stretch;
-}
-
-.stagePanel,
-.sideRail {
-  border: 1px solid var(--ig-border);
-  border-radius: 8px;
-  background: var(--ig-surface);
-}
-
-.stagePanel {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.stageHeader {
-  display: flex;
-  justify-content: flex-start;
-  padding: 12px 12px 0;
-}
-
-.stageTabs {
-  display: inline-flex;
-  gap: 6px;
-}
-
-.stageTab,
-.smallChoice {
-  border: 1px solid var(--ig-border);
-  border-radius: 6px;
-  background: var(--ig-surface);
-  color: var(--ig-text);
-  font: inherit;
-}
-
-.stageTab {
-  padding: 8px 12px;
-  cursor: pointer;
-}
-
-.stageTabActive,
-.smallChoiceActive {
-  border-color: var(--ig-accent);
-  background: color-mix(in srgb, var(--ig-accent) 8%, var(--ig-surface));
-}
-
-.stageFrame {
-  position: relative;
-  min-height: 560px;
-  flex: 1;
-}
-
-.stageView {
-  display: none;
-  width: 100%;
-  height: 100%;
-}
-
-.stageViewActive {
-  display: block;
-}
-
-.resultStage {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-  padding: 16px;
-  background: var(--ig-surface-muted);
-}
-
-.resultStageImage {
-  display: block;
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-  border-radius: 6px;
-}
-
-.sideRail {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.railSection {
-  padding: 12px;
-}
-
-.railSection + .railSection {
-  border-top: 1px solid var(--ig-border);
-}
-
-.scopeRow,
-.maskToolRow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.smallChoice {
-  min-height: 36px;
-  padding: 8px 10px;
-  cursor: pointer;
-}
-
-.smallChoice:hover:not(:disabled),
-.stageTab:hover:not(:disabled) {
-  border-color: var(--ig-border-strong);
-}
-
-.smallChoice:disabled,
-.stageTab:disabled {
-  cursor: not-allowed;
-  color: var(--ig-text-muted);
-  opacity: 0.65;
-}
-
-.maskToolbar {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.rangeField {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.rangeLabel,
-.rangeValue {
-  font-size: var(--font-size-s);
-  color: var(--ig-text-muted);
-}
-
-.rangeRow {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 10px;
-  align-items: center;
-}
-
-.rangeInput {
-  width: 100%;
-  margin: 0;
-}
-
-.maskStageRoot,
-.maskStageViewport {
-  width: 100%;
-  height: 100%;
-}
-
-.maskStageRoot {
-  min-height: 560px;
-}
-
-.maskStageViewport {
-  position: relative;
-  overflow: hidden;
-  background: var(--ig-surface-muted);
-}
-
-.maskStageSurface {
-  position: absolute;
-}
-
-.maskStageBaseCanvas,
-.maskStageMaskCanvas,
-.maskStageCursorCanvas {
-  position: absolute;
-  inset: 0;
-  display: block;
-}
-
-.maskStageBaseCanvas {
-  z-index: 1;
-}
-
-.maskStageMaskCanvas {
-  z-index: 2;
-  opacity: 0;
-  transition: opacity 120ms ease;
-}
-
-.maskStageMaskVisible {
-  opacity: 1;
-}
-
-.maskStageCursorCanvas {
-  z-index: 3;
-}
-
-@media (max-width: 1100px) {
-  .editorBody {
-    grid-template-columns: 1fr;
-  }
-
-  .stageFrame,
-  .maskStageRoot {
-    min-height: 460px;
-  }
-}
-
-@media (max-width: 720px) {
-  .editorHeader {
-    grid-template-columns: 1fr;
-  }
-
-  .headerActions {
-    justify-content: stretch;
-  }
-
-  .headerActions :global(button) {
-    width: 100%;
-  }
-
-  .stageFrame,
-  .maskStageRoot {
-    min-height: 360px;
-  }
-}
-
-
-.editorHeaderCompact {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 14px;
-  align-items: end;
-}
-
-.editorHeaderMain {
-  min-width: 0;
-}
-
-.editorPromptCompact {
-  width: 100%;
-  min-height: 96px;
-  resize: vertical;
-  padding: 10px;
-  border: 1px solid var(--ig-border);
-  border-radius: 6px;
-  background: var(--ig-surface);
-  color: var(--ig-text);
-  font: inherit;
-  line-height: 1.5;
-}
-
-.editorPromptCompact:focus,
-.choiceRow:focus,
-.stageTab:focus {
-  outline: 2px solid var(--ig-focus);
-  outline-offset: 0;
-  border-color: var(--ig-accent);
-}
-
-.headerActionsCompact {
-  display: flex;
-  align-items: flex-end;
-  justify-content: flex-end;
-}
-
-.editorBodyTight {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 280px;
-  gap: 0;
-  align-items: stretch;
-}
-
-.stagePanelClean,
-.sideRailClean {
-  border: 1px solid var(--ig-border);
-  border-radius: 8px;
-  background: var(--ig-surface);
-}
-
-.stagePanelClean {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  border-radius: 8px 0 0 8px;
-}
-
-.stageTopBar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--ig-border);
-  background: var(--ig-surface-muted);
-}
-
-.stageTabsCompact {
-  display: inline-flex;
-  gap: 6px;
-}
-
-.stageMetaText {
-  font-size: var(--font-size-s);
-  color: var(--ig-text-muted);
-  white-space: nowrap;
-}
-
-.stageFrameClean {
-  min-height: 340px;
-  padding: 12px;
-  background: var(--ig-surface-muted);
-}
-
-.resultStageClean {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-}
-
-.sideRailClean {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  border-left: none;
-  border-radius: 0 8px 8px 0;
-  background: var(--ig-surface-muted);
-}
-
-.railSectionClean {
-  padding: 12px;
-}
-
-.railSectionClean + .railSectionClean {
-  border-top: 1px solid var(--ig-border);
-}
-
-.railFooter {
-  margin-top: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.railLabel {
-  margin-bottom: 10px;
-  font-size: var(--font-size-s);
-  font-weight: 600;
-  color: var(--ig-text-muted);
-}
-
-.scopeRowStacked {
-  display: flex;
-  gap: 6px;
-}
-
-.choiceRow {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  width: 100%;
-  padding: 10px 12px;
-  text-align: left;
-  border: 1px solid var(--ig-border);
-  border-radius: 6px;
-  background: var(--ig-surface);
-  color: var(--ig-text);
-  font: inherit;
-  cursor: pointer;
-}
-
-.choiceRow:hover {
-  border-color: var(--ig-border-strong);
-}
-
-.choiceRowActive {
-  border-color: var(--ig-accent);
-  background: color-mix(in srgb, var(--ig-accent) 8%, var(--ig-surface));
-}
-
-.choiceRowTitle {
-  font-weight: 600;
-}
-
-.choiceRowMeta {
-  font-size: var(--font-size-s);
-  color: var(--ig-text-muted);
-}
-
-.selectionCard {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 12px;
-  border: 1px solid var(--ig-border);
-  border-radius: 6px;
-  background: var(--ig-surface);
-}
-
-.selectionCardText {
-  font-size: var(--font-size-s);
-  color: var(--ig-text);
-  line-height: 1.4;
-}
-
-.selectionRowInline {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.maskStageCanvasWrap {
-  position: relative;
-  display: inline-flex;
-  max-width: 100%;
-  max-height: 100%;
-  margin: 0 auto;
-}
-
-.maskStageRoot {
-  min-height: 320px;
-}
-
-.maskStageViewport {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-  min-height: 320px;
-  position: relative;
-  overflow: auto;
-  background-image:
-    linear-gradient(45deg, #ececec 25%, transparent 25%),
-    linear-gradient(-45deg, #ececec 25%, transparent 25%),
-    linear-gradient(45deg, transparent 75%, #ececec 75%),
-    linear-gradient(-45deg, transparent 75%, #ececec 75%);
-  background-size: 20px 20px;
-  background-position: 0 0, 0 10px, 10px -10px, -10px 0;
-}
-
-.maskStageImage {
-  display: block;
-  max-width: 100%;
-  max-height: 400px;
-  object-fit: contain;
-  border-radius: 6px;
-  box-shadow: 0 1px 0 rgba(0,0,0,0.04);
-}
-
-.maskStageOverlay {
-  position: absolute;
-  inset: 0;
-  border-radius: 6px;
-  pointer-events: none;
-}
-
-.maskStageOverlayActive {
-  pointer-events: auto;
-  cursor: crosshair;
-}
-
-.selectionRect {
-  position: absolute;
-  border: 2px solid var(--ig-accent);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--ig-accent) 12%, transparent);
-  box-shadow: 0 0 0 9999px rgba(17, 24, 39, 0.42);
-}
-
-.selectionRectLabel {
-  position: absolute;
-  top: -30px;
-  left: 0;
-  padding: 4px 8px;
-  border-radius: 4px;
-  background: #ffffff;
-  border: 1px solid var(--ig-border);
-  font-size: 12px;
-  color: var(--ig-text);
-  white-space: nowrap;
-}
-
-.maskStageHint {
-  position: absolute;
-  left: 18px;
-  bottom: 18px;
-  padding: 7px 10px;
-  border: 1px solid var(--ig-border);
-  border-radius: 6px;
-  background: rgba(255,255,255,0.96);
-  font-size: var(--font-size-s);
-  color: var(--ig-text-muted);
-}
-
-@media (max-width: 600px) {
-  .editorBodyTight {
-    grid-template-columns: 1fr;
-  }
-
-  .stagePanelClean {
-    border-radius: 8px 8px 0 0;
-  }
-
-  .sideRailClean {
-    border-left: 1px solid var(--ig-border);
-    border-radius: 0 0 8px 8px;
-  }
-
-  .stageTopBar {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .stageFrameClean,
-  .maskStageRoot,
-  .maskStageViewport {
-    min-height: 280px;
-  }
-
-  .maskStageImage {
-    max-height: 240px;
+    text-align: left;
   }
 }

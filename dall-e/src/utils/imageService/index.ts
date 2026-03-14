@@ -1,38 +1,36 @@
-import { backgroundOptions, getAspectRatioLabel, getBackgroundLabel, getCapabilities, getModelLabel } from './catalog';
+import { getAspectRatioLabel, getModelLabel } from './catalog';
 import { googleAdapter } from './adapters/google';
 import { openAiAdapter } from './adapters/openai';
 import type {
-  BackgroundMode,
   ImageOperationRequest,
   ImageProviderAdapter,
   NormalizedGeneratedImage,
   NormalizedGenerationBatch,
-  ProviderCapabilities,
   ProviderId,
   SupportedImageModel,
 } from './types';
 
 export * from './catalog';
 export * from './types';
+export * from './shared';
 
 const adapters: Record<ProviderId, ImageProviderAdapter> = {
   openai: openAiAdapter,
   google: googleAdapter,
 };
 
-export function getProviderAdapter(provider: ProviderId): ImageProviderAdapter {
+function getProviderAdapter(provider: ProviderId): ImageProviderAdapter {
   return adapters[provider];
 }
 
 export function getProviderCapabilities(
   provider: ProviderId,
-  mode: ImageOperationRequest['mode'],
   model: SupportedImageModel,
-): ProviderCapabilities {
-  return getCapabilities(provider, mode, model);
+) {
+  return getProviderAdapter(provider).getCapabilities(model);
 }
 
-export async function generateOrEditImages(
+export async function generateImages(
   apiKey: string,
   request: ImageOperationRequest,
 ): Promise<NormalizedGenerationBatch> {
@@ -50,7 +48,7 @@ export function buildImportFilename(
   prompt: string,
   createdAt: string,
   position?: number,
-) {
+): string {
   const baseName = slugifyPrompt(prompt);
   const timestamp = createdAt
     .replace(/[-:]/g, '')
@@ -64,24 +62,13 @@ export function buildImportFilename(
 export function buildGenerationNotes(
   batch: NormalizedGenerationBatch,
   image?: NormalizedGeneratedImage,
-) {
+): string {
   const notes = [
     `Generated with provider: ${batch.request.provider}`,
-    `Mode: ${batch.request.mode}`,
     `Prompt: ${batch.request.prompt}`,
     `Model: ${getModelLabel(batch.request.model)}`,
     `Aspect ratio: ${getAspectRatioLabel(batch.request.aspectRatio)}`,
-    `Source images: ${batch.request.sourceImages.length}`,
   ];
-
-  if (batch.request.mode === 'edit') {
-    notes.push(`Edit scope: ${batch.request.editScope || 'full'}`);
-    notes.push(`Mask used: ${batch.request.maskImage ? 'yes' : 'no'}`);
-  }
-
-  if (supportsTransparent(batch.request.background, batch.request.provider)) {
-    notes.push(`Background: ${getBackgroundLabel(batch.request.background)}`);
-  }
 
   if (batch.request.provider === 'openai') {
     notes.push(`Variations: ${batch.request.variationCount}`);
@@ -95,10 +82,6 @@ export function buildGenerationNotes(
     notes.push(`Returned size: ${image.returnedSize}`);
   }
 
-  if (image?.returnedBackground) {
-    notes.push(`Returned background: ${image.returnedBackground}`);
-  }
-
   if (image?.returnedQuality) {
     notes.push(`Quality: ${image.returnedQuality}`);
   }
@@ -110,11 +93,7 @@ export function buildGenerationNotes(
   return notes.join('\n');
 }
 
-function supportsTransparent(background: BackgroundMode, provider: ProviderId) {
-  return provider === 'openai' || background !== backgroundOptions[0].value;
-}
-
-function slugifyPrompt(prompt: string) {
+function slugifyPrompt(prompt: string): string {
   const normalized = prompt
     .toLowerCase()
     .trim()

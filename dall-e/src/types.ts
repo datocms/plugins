@@ -5,6 +5,9 @@ import type {
   SupportedImageModel,
 } from './utils/imageService';
 
+/**
+ * Raw plugin settings, including legacy single-provider fields kept for backward compatibility.
+ */
 export type ConfigParameters = {
   apiKey?: string;
   model?: OpenAiGenerateModel;
@@ -23,6 +26,9 @@ export type ConfigParameters = {
   };
 };
 
+/**
+ * Settings shape consumed by the config screen and asset source.
+ */
 export type NormalizedConfigParameters = {
   defaultProvider: ProviderId;
   providers: {
