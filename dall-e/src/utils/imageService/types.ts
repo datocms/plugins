@@ -9,6 +9,7 @@ export type GoogleGenerateModel = 'gemini-2.5-flash-image';
 export type SupportedImageModel = OpenAiGenerateModel | GoogleGenerateModel;
 
 export type AspectRatio = '1:1' | '2:3' | '3:2';
+export type ImageSize = 'native' | '512' | '1k' | '2k' | '4k';
 export type VariationCount = 1 | 2 | 3 | 4;
 export type GenerationStatus = 'idle' | 'submitted' | 'completed' | 'error';
 
@@ -23,6 +24,11 @@ export type AspectRatioOption = {
   description: string;
 };
 
+export type ImageSizeOption = {
+  value: ImageSize;
+  label: string;
+};
+
 export type VariationOption = {
   value: VariationCount;
   label: string;
@@ -33,11 +39,13 @@ export type ImageOperationRequest = {
   model: SupportedImageModel;
   prompt: string;
   aspectRatio: AspectRatio;
+  imageSize: ImageSize;
   variationCount: VariationCount;
 };
 
 export type ProviderCapabilities = {
   supportsVariationCount: boolean;
+  imageSizeOptionsByAspectRatio: Record<AspectRatio, ImageSizeOption[]>;
 };
 
 export type NormalizedGeneratedImage = {

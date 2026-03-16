@@ -1,4 +1,8 @@
-import { getAspectRatioLabel, getModelLabel } from './catalog';
+import {
+  getAspectRatioLabel,
+  getImageSizeLabel,
+  getModelLabel,
+} from './catalog';
 import { googleAdapter } from './adapters/google';
 import { openAiAdapter } from './adapters/openai';
 import type {
@@ -68,6 +72,12 @@ export function buildGenerationNotes(
     `Prompt: ${batch.request.prompt}`,
     `Model: ${getModelLabel(batch.request.model)}`,
     `Aspect ratio: ${getAspectRatioLabel(batch.request.aspectRatio)}`,
+    `Image size: ${getImageSizeLabel(
+      batch.request.provider,
+      batch.request.model,
+      batch.request.aspectRatio,
+      batch.request.imageSize,
+    )}`,
   ];
 
   if (batch.request.provider === 'openai') {

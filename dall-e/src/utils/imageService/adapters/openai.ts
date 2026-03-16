@@ -1,24 +1,17 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import { generateImage } from 'ai';
-import { getCapabilities } from '../catalog';
+import { getCapabilities, getOpenAiRequestSize } from '../catalog';
 import {
   createGenerationBatch,
   normalizeGeneratedImages,
   readProviderErrorDetails,
 } from '../shared';
 import type {
-  AspectRatio,
   ImageOperationRequest,
   ImageProviderAdapter,
   NormalizedProviderError,
   SupportedImageModel,
 } from '../types';
-
-const sizeByAspectRatio: Record<AspectRatio, `${number}x${number}`> = {
-  '1:1': '1024x1024',
-  '2:3': '1024x1536',
-  '3:2': '1536x1024',
-};
 
 export const openAiAdapter: ImageProviderAdapter = {
   provider: 'openai',
@@ -31,7 +24,7 @@ export const openAiAdapter: ImageProviderAdapter = {
       model: client.image(request.model),
       prompt: request.prompt,
       n: request.variationCount,
-      size: sizeByAspectRatio[request.aspectRatio],
+      size: getOpenAiRequestSize(request.aspectRatio),
       providerOptions: {
         openai: {
           moderation: 'auto',

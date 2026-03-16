@@ -24,13 +24,14 @@ import {
   createFailedGenerationBatch,
   buildImportFilename,
   generateImages,
+  getDefaultImageSize,
   getProviderCapabilities,
   normalizeProviderError,
   variationOptions,
   type AspectRatio,
   type GenerationStatus,
-  type NormalizedGeneratedImage,
   type ImageOperationRequest,
+  type NormalizedGeneratedImage,
   type NormalizedGenerationBatch,
   type VariationCount,
 } from '../utils/imageService';
@@ -144,6 +145,7 @@ const AssetBrowser = () => {
       model,
       prompt: prompt.trim(),
       aspectRatio,
+      imageSize: getDefaultImageSize(provider, model, aspectRatio),
       variationCount: capabilities.supportsVariationCount ? variationCount : 1,
     }),
     [
@@ -163,7 +165,7 @@ const AssetBrowser = () => {
   const canSubmit = !submitValidationError && !isSubmitting;
 
   const handlePromptChange = useCallback(
-    (event: ChangeEvent<HTMLTextAreaElement>) => {
+    (event: ChangeEvent<HTMLInputElement>) => {
       setPrompt(event.target.value);
       setErrorMessage(null);
     },
@@ -249,22 +251,40 @@ const AssetBrowser = () => {
       )}
 
       <div className={s.panel}>
-        <form className={s.generatorLayout} onSubmit={handleSubmit}>
-          <div className={s.promptPanel}>
-            <textarea
+        <form className={s.generatorForm} onSubmit={handleSubmit}>
+          <div className={s.promptRow}>
+            <input
               id="prompt"
               name="prompt"
-              className={s.promptTextarea}
-              placeholder="Describe the image you want to create…"
+              type="text"
+              aria-label="Prompt"
+              className={s.promptInput}
+              placeholder="Start with a detailed description, like &quot;High-quality photo of a monkey astronaut...&quot;"
               value={prompt}
               onChange={handlePromptChange}
             />
+
+            <Button
+              buttonType="primary"
+              type="submit"
+              className={s.generateButton}
+              disabled={!canSubmit}
+            >
+              {isSubmitting ? (
+                <span className={s.buttonContent}>
+                  <Spinner size={16} style={INLINE_SPINNER_STYLE} />
+                  <span>{GENERATING_LABEL}</span>
+                </span>
+              ) : (
+                'Generate'
+              )}
+            </Button>
           </div>
 
-          <div className={s.controlsPanel}>
-            <div className={s.controlGroup}>
-              <div className={s.groupLabel}>Aspect ratio</div>
-              <div className={s.shapeList}>
+          <div className={s.controlsRow}>
+            <div className={s.inlineControl}>
+              <div className={s.groupLabel}>Image ratio</div>
+              <div className={`${s.choiceRow} ${s.choiceRowNoWrap}`}>
                 {aspectRatioOptions.map((option) => {
                   const checked = option.value === aspectRatio;
 
@@ -272,8 +292,10 @@ const AssetBrowser = () => {
                     <button
                       key={option.value}
                       type="button"
+                      aria-label={`${option.label} (${option.description})`}
+                      title={`${option.label} (${option.description})`}
                       className={getChoiceClassName(
-                        s.shapeOption,
+                        `${s.compactChoice} ${s.iconChoice}`,
                         s.choiceButtonActive,
                         checked,
                       )}
@@ -283,63 +305,44 @@ const AssetBrowser = () => {
                         className={`${s.shapePreview} ${shapePreviewClassNames[option.value]}`}
                         aria-hidden="true"
                       />
-                      <span className={s.shapeCopy}>
-                        <span className={s.choiceTitle}>{option.label}</span>
-                        <span className={s.choiceMeta}>{option.description}</span>
-                      </span>
                     </button>
                   );
                 })}
               </div>
             </div>
 
-            <div className={s.controlGroup}>
+            <div className={s.inlineControl}>
               <div className={s.groupLabel}>Variations</div>
-              {capabilities.supportsVariationCount ? (
-                <div className={s.compactGrid}>
-                  {variationOptions.map((option) => {
-                    const checked = option.value === variationCount;
+              <div className={`${s.choiceRow} ${s.choiceRowNoWrap}`}>
+                {(capabilities.supportsVariationCount
+                  ? variationOptions
+                  : variationOptions.filter((option) => option.value === 1)
+                ).map((option) => {
+                  const checked = option.value === variationCount;
+                  const locked = !capabilities.supportsVariationCount;
 
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        className={getChoiceClassName(
-                          s.compactChoice,
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={[
+                        getChoiceClassName(
+                          `${s.compactChoice} ${s.squareChoice}`,
                           s.choiceButtonActive,
                           checked,
-                        )}
-                        onClick={() => handleVariationChange(option.value)}
-                      >
-                        {option.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className={s.helperText}>
-                  This provider returns one image per request.
-                </div>
-              )}
-            </div>
-
-            <div className={s.controlsActions}>
-              <Button
-                buttonType="primary"
-                fullWidth
-                type="submit"
-                className={s.generateButton}
-                disabled={!canSubmit}
-              >
-                {isSubmitting ? (
-                  <span className={s.buttonContent}>
-                    <Spinner size={16} style={INLINE_SPINNER_STYLE} />
-                    <span>{GENERATING_LABEL}</span>
-                  </span>
-                ) : (
-                  'Generate'
-                )}
-              </Button>
+                        ),
+                        locked ? s.choiceButtonLocked : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' ')}
+                      disabled={locked}
+                      onClick={() => handleVariationChange(option.value)}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
         </form>

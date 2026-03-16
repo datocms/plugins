@@ -1,6 +1,9 @@
 import type {
+  AspectRatio,
   AspectRatioOption,
   GoogleGenerateModel,
+  ImageSize,
+  ImageSizeOption,
   OpenAiGenerateModel,
   ProviderCapabilities,
   ProviderId,
@@ -58,6 +61,24 @@ const providerModels = {
   google: GoogleGenerateModel[];
 };
 
+const openAiImageSizeOptionsByAspectRatio = {
+  '1:1': [{ value: 'native', label: '1024×1024 px' }],
+  '2:3': [{ value: 'native', label: '1024×1536 px' }],
+  '3:2': [{ value: 'native', label: '1536×1024 px' }],
+} satisfies Record<AspectRatio, ImageSizeOption[]>;
+
+const googleImageSizeOptionsByAspectRatio = {
+  '1:1': [{ value: 'native', label: '1024×1024 px' }],
+  '2:3': [{ value: 'native', label: '832×1248 px' }],
+  '3:2': [{ value: 'native', label: '1248×832 px' }],
+} satisfies Record<AspectRatio, ImageSizeOption[]>;
+
+const openAiRequestSizeByAspectRatio: Record<AspectRatio, `${number}x${number}`> = {
+  '1:1': '1024x1024',
+  '2:3': '1024x1536',
+  '3:2': '1536x1024',
+};
+
 export function getModelLabel(model: SupportedImageModel): string {
   return labelByModel[model];
 }
@@ -88,10 +109,47 @@ export function getCapabilities(
   if (provider === 'openai') {
     return {
       supportsVariationCount: modelSupported,
+      imageSizeOptionsByAspectRatio: openAiImageSizeOptionsByAspectRatio,
     };
   }
 
   return {
     supportsVariationCount: false,
+    imageSizeOptionsByAspectRatio: googleImageSizeOptionsByAspectRatio,
   };
+}
+
+export function getImageSizeOptions(
+  provider: ProviderId,
+  model: SupportedImageModel,
+  aspectRatio: AspectRatio,
+): ImageSizeOption[] {
+  return getCapabilities(provider, model).imageSizeOptionsByAspectRatio[aspectRatio];
+}
+
+export function getDefaultImageSize(
+  provider: ProviderId,
+  model: SupportedImageModel,
+  aspectRatio: AspectRatio,
+): ImageSize {
+  return getImageSizeOptions(provider, model, aspectRatio)[0].value;
+}
+
+export function getImageSizeLabel(
+  provider: ProviderId,
+  model: SupportedImageModel,
+  aspectRatio: AspectRatio,
+  imageSize: ImageSize,
+): string {
+  return (
+    getImageSizeOptions(provider, model, aspectRatio).find(
+      (option) => option.value === imageSize,
+    )?.label || getImageSizeOptions(provider, model, aspectRatio)[0].label
+  );
+}
+
+export function getOpenAiRequestSize(
+  aspectRatio: AspectRatio,
+): `${number}x${number}` {
+  return openAiRequestSizeByAspectRatio[aspectRatio];
 }

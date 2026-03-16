@@ -19,7 +19,6 @@
 }
 
 .message,
-.errorMessage,
 .loadingInline {
   padding: 10px 12px;
 }
@@ -33,22 +32,13 @@
   overflow: hidden;
 }
 
-.generatorLayout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 280px;
-  align-items: stretch;
-}
-
-.promptPanel {
+.generatorForm {
   display: flex;
   flex-direction: column;
-  min-height: 220px;
-  padding: 12px;
-  border-right: 1px solid var(--ig-border);
+  gap: 0;
 }
 
-.promptTextarea,
-.shapeOption,
+.promptInput,
 .compactChoice {
   font: inherit;
   color: var(--ig-text);
@@ -57,29 +47,39 @@
   border-radius: 8px;
 }
 
-.promptTextarea {
-  width: 100%;
-  min-height: 0;
-  flex: 1;
-  resize: none;
-  padding: 12px;
-  line-height: 1.45;
-}
-
-.promptTextarea::placeholder {
-  color: var(--ig-text-muted);
-}
-
-.promptTextarea:focus,
-.shapeOption:focus,
+.promptInput:focus,
 .compactChoice:focus {
   outline: 2px solid var(--ig-focus);
   outline-offset: 0;
   border-color: var(--ig-accent);
 }
 
+.promptRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  padding: 12px;
+  align-items: center;
+}
+
+.promptInput {
+  width: 100%;
+  min-width: 0;
+  height: 46px;
+  padding: 0 14px;
+  line-height: 1.4;
+}
+
+.promptInput::placeholder {
+  color: var(--ig-text-muted);
+}
+
 .generateButton {
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
+  min-width: 128px;
+  height: 46px;
 }
 
 .buttonContent {
@@ -88,72 +88,56 @@
   gap: 8px;
 }
 
-.controlsPanel {
+.controlsRow {
   display: flex;
-  flex-direction: column;
-  background: var(--ig-surface-muted);
-}
-
-.controlGroup {
-  padding: 12px;
-}
-
-.controlGroup + .controlGroup {
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 16px;
+  padding: 0 12px 12px;
   border-top: 1px solid var(--ig-border);
 }
 
-.controlsActions {
-  margin-top: auto;
-  padding: 12px;
-  border-top: 1px solid var(--ig-border);
+.inlineControl {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-width: 0;
+  padding-top: 12px;
 }
 
 .groupLabel {
-  margin-bottom: 8px;
+  width: auto;
+  flex: 0 0 auto;
+  padding-top: 0;
   font-size: 13px;
   font-weight: 600;
   color: var(--ig-text);
 }
 
-.helperText,
-.choiceMeta,
-.selectionSummary,
-.emptyStateSubtitle {
-  font-size: 13px;
-  color: var(--ig-text-muted);
-}
-
-.shapeList {
+.choiceRow {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
+  justify-content: center;
   gap: 6px;
+  min-width: 0;
 }
 
-.shapeOption {
-  display: grid;
-  grid-template-columns: 40px minmax(0, 1fr);
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  min-height: 42px;
-  padding: 7px 9px;
-  text-align: left;
-  cursor: pointer;
-}
-
-.compactGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(56px, 1fr));
-  gap: 6px;
+.choiceRowNoWrap {
+  flex-wrap: nowrap;
 }
 
 .compactChoice {
-  min-height: 30px;
-  padding: 4px 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  padding: 6px 10px;
+  text-align: center;
   cursor: pointer;
 }
 
-.shapeOption:hover,
 .compactChoice:hover {
   border-color: var(--ig-border-strong);
 }
@@ -163,44 +147,61 @@
   background: color-mix(in srgb, var(--ig-accent) 8%, var(--ig-surface));
 }
 
+.choiceButtonLocked,
+.choiceButtonLocked:hover,
+.choiceButtonLocked:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.iconChoice {
+  width: 42px;
+  min-width: 42px;
+  min-height: 42px;
+  padding: 0;
+}
+
+.squareChoice {
+  width: 34px;
+  min-width: 34px;
+  padding: 0;
+}
+
 .shapePreview {
-  width: 40px;
-  height: 26px;
+  width: 18px;
+  height: 18px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--ig-border);
-  border-radius: 6px;
-  background: var(--ig-surface);
 }
 
 .shapePreview::before {
   content: '';
   display: block;
-  border: 1px solid var(--ig-text-muted);
-  border-radius: 4px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
 }
 
 .shapePreviewSquare::before {
-  width: 16px;
-  height: 16px;
-}
-
-.shapePreviewPortrait::before {
-  width: 12px;
-  height: 19px;
-}
-
-.shapePreviewLandscape::before {
-  width: 22px;
+  width: 14px;
   height: 14px;
 }
 
-.shapeCopy {
-  display: flex;
+.shapePreviewPortrait::before {
+  width: 10px;
+  height: 15px;
+}
+
+.shapePreviewLandscape::before {
+  width: 15px;
+  height: 10px;
+}
+
+.choiceText {
+  display: inline-flex;
   flex-direction: column;
   gap: 2px;
-  min-width: 0;
+  line-height: 1.2;
 }
 
 .choiceTitle,
@@ -209,8 +210,15 @@
   color: var(--ig-text);
 }
 
+.choiceMeta,
+.selectionSummary,
+.emptyStateSubtitle {
+  font-size: 13px;
+  color: var(--ig-text-muted);
+}
+
 .errorMessage {
-  margin-top: 10px;
+  margin: 0 12px 12px;
   padding: 10px 12px;
   color: var(--ig-danger);
   border-color: var(--ig-danger);
@@ -323,13 +331,8 @@
 }
 
 @media (max-width: 900px) {
-  .generatorLayout {
-    grid-template-columns: 1fr;
-  }
-
-  .promptPanel {
-    border-right: 0;
-    border-bottom: 1px solid var(--ig-border);
+  .inlineControl {
+    flex-basis: auto;
   }
 }
 
@@ -343,8 +346,23 @@
     padding-inline: 10px;
   }
 
-  .compactGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .promptRow {
+    grid-template-columns: 1fr;
+  }
+
+  .generateButton {
+    width: 100%;
+  }
+
+  .inlineControl {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .groupLabel {
+    width: auto;
+    flex-basis: auto;
+    padding-top: 0;
   }
 
   .resultHeader {
