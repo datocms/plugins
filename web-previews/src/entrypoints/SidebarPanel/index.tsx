@@ -9,7 +9,7 @@ import { Canvas, Spinner, useCtx } from 'datocms-react-ui';
 import { ButtonGroup, ButtonGroupButton } from '../../components/ButtonGroup';
 import type { Frontend } from '../../types';
 import { type FrontendStatus, useStatusByFrontend } from '../../utils/common';
-import { inspectorUrl } from '../../utils/urls';
+import { extractRedirectFromDraftModePreviewUrl, inspectorUrl } from '../../utils/urls';
 import styles from './styles.module.css';
 
 type PropTypes = {
@@ -51,10 +51,7 @@ const FrontendResult = ({
 }) => {
   const ctx = useCtx();
 
-  const hasVisualEditing = !!frontend.visualEditing?.enableDraftModeUrl;
-  const visualEditingOrigin = hasVisualEditing
-    ? new URL(frontend.visualEditing!.enableDraftModeUrl).origin
-    : undefined;
+  const draftModeUrl = frontend.visualEditing?.enableDraftModeUrl;
 
   if ('error' in status) {
     return <div>API endpoint error: check the console for more info!</div>;
@@ -67,25 +64,26 @@ const FrontendResult = ({
       ) : (
         status.previewLinks.map(({ url: urlString, label }) => {
           const url = new URL(urlString);
-          const canOpenInVisual =
-            hasVisualEditing && visualEditingOrigin === url.origin;
+          const visualEditingPath = draftModeUrl
+            ? extractRedirectFromDraftModePreviewUrl(urlString, draftModeUrl)
+            : undefined;
 
           return (
             <div key={`${url}`} className={styles.previewLink}>
               <div className={styles.previewLink__body}>
                 <div className={styles.previewLink__label}>{label}</div>
                 <div className={styles.previewLink__pathname} title={urlString}>
-                  {url.pathname + url.search}
+                  {visualEditingPath ?? url.pathname + url.search}
                 </div>
               </div>
               <ButtonGroup>
-                {canOpenInVisual && (
+                {visualEditingPath && (
                   <ButtonGroupButton
                     tooltip="Open in Visual"
                     onClick={() => {
                       ctx.navigateTo(
                         inspectorUrl(ctx, {
-                          path: url.pathname + url.search,
+                          path: visualEditingPath,
                           frontend: frontend.name,
                         }),
                       );

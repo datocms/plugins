@@ -27,7 +27,7 @@ import {
 } from '../../types';
 import { useStatusByFrontend } from '../../utils/common';
 import { usePersistedSidebarWidth } from '../../utils/persistedWidth';
-import { inspectorUrl } from '../../utils/urls';
+import { extractRedirectFromDraftModePreviewUrl, inspectorUrl } from '../../utils/urls';
 import { PreviewLinkSelector } from './PreviewLinkSelector';
 
 type PropTypes = {
@@ -150,21 +150,21 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
                       if (!frontend?.visualEditing?.enableDraftModeUrl)
                         return null;
 
-                      const frontendOrigin = new URL(
-                        frontend.visualEditing.enableDraftModeUrl,
-                      ).origin;
-                      const linkOrigin = new URL(currentPreviewLink.url).origin;
+                      const visualEditingPath =
+                        extractRedirectFromDraftModePreviewUrl(
+                          currentPreviewLink.url,
+                          frontend.visualEditing.enableDraftModeUrl,
+                        );
 
-                      if (frontendOrigin !== linkOrigin) return null;
+                      if (!visualEditingPath) return null;
 
                       return (
                         <ButtonGroupButton
                           tooltip="Open in Visual"
                           onClick={() => {
-                            const url = new URL(currentPreviewLink.url);
                             ctx.navigateTo(
                               inspectorUrl(ctx, {
-                                path: url.pathname + url.search,
+                                path: visualEditingPath,
                                 frontend: currentPreviewLink.frontendName,
                               }),
                             );
