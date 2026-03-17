@@ -30,6 +30,7 @@
   },
   "scripts": {
     "build": "tsc -b && vite build",
+    "test": "vitest run",
     "prepublishOnly": "npm run build",
     "dev": "vite",
     "preview": "vite preview"
@@ -43,7 +44,8 @@
     "cross-env": "^10.1.0",
     "globals": "^17.4.0",
     "typescript": "^5.9.3",
-    "vite": "^7.3.1"
+    "vite": "^7.3.1",
+    "vitest": "^4.0.18"
   },
   "overrides": {
     "datocms-react-ui": {

@@ -1,1 +1,1 @@
-{"root":["./src/main.tsx","./src/entrypoints/fieldextension.tsx","./src/utils/render.tsx"],"version":"5.9.3"}
+{"root":["./src/main.tsx","./src/entrypoints/fieldextension.tsx","./src/lib/analyzetext.test.ts","./src/lib/analyzetext.ts","./src/utils/render.tsx"],"version":"5.9.3"}
