@@ -39,6 +39,21 @@ export type QueryResult = {
   }>;
 };
 
+function normalizeParsedComment(comment: CommentType): CommentType {
+  const normalizedReplies = comment.replies?.map(normalizeParsedComment);
+  const isTopLevelComment = comment.parentCommentId == null;
+
+  return {
+    ...comment,
+    ...(normalizedReplies ? { replies: normalizedReplies } : {}),
+    ...(isTopLevelComment ? { replies: normalizedReplies ?? [] } : {}),
+  };
+}
+
+function normalizeParsedComments(comments: CommentType[]): CommentType[] {
+  return comments.map(normalizeParsedComment);
+}
+
 export const COMMENTS_QUERY = `
   query CommentsQuery($modelId: String!, $recordId: String!) {
     allProjectComments(filter: { modelId: { eq: $modelId }, recordId: { eq: $recordId } }, first: 1) {
@@ -61,7 +76,7 @@ export function parseComments(content: unknown): CommentType[] {
       });
       return [];
     }
-    return content as CommentType[];
+    return normalizeParsedComments(content as CommentType[]);
   }
 
   if (typeof content === 'string') {
@@ -78,7 +93,7 @@ export function parseComments(content: unknown): CommentType[] {
         return [];
       }
 
-      return parsed as CommentType[];
+      return normalizeParsedComments(parsed as CommentType[]);
     } catch (error) {
       logError('parseComments: JSON parsing failed', error, {
         contentLength: content.length,

@@ -10,7 +10,6 @@ import { CommentErrorBoundary } from '@components/shared/CommentErrorBoundary';
 import { TipTapComposer, type TipTapComposerRef } from '@components/tiptap/TipTapComposer';
 
 import { useOperationQueue } from '@hooks/useOperationQueue';
-import { useMentionStateQueue } from '@hooks/useMentionStateQueue';
 import { useProjectData } from '@hooks/useProjectData';
 import { useToolbarHandlers } from '@hooks/useToolbarHandlers';
 import { useCommentsData } from '@hooks/useCommentsData';
@@ -29,12 +28,16 @@ import { createRecordMention } from '@utils/recordPickerHelpers';
 import { insertMentionWithRetry } from '@utils/textareaUtils';
 import { createAssetMention } from '@utils/composerHelpers';
 import { isContentEmpty } from '@ctypes/comments';
-import { parsePluginParams } from '@utils/pluginParams';
+import {
+  getCommentsModelIdForEnvironment,
+  parsePluginParams,
+} from '@utils/pluginParams';
 import { findCommentsModel } from '@utils/itemTypeUtils';
 import { SUBSCRIPTION_STATUS } from '@hooks/useCommentsSubscription';
 import { COMMENTS_PAGE_SIZE, ERROR_MESSAGES } from '@/constants';
-import { logError, logWarn } from '@/utils/errorLogger';
+import { logDebug, logError, logWarn } from '@/utils/errorLogger';
 import { categorizeGeneralError } from '@utils/errorCategorization';
+import { ensureCommentsModelExistsWithClient } from '@/utils/commentsStorage';
 import styles from '@styles/commentbar.module.css';
 
 // Uses props (not context) due to shallow tree. Reply picker logic shared via useReplyPicker hook.
@@ -56,10 +59,30 @@ const CommentsBar = ({ ctx }: Props) => {
 
   const cmaToken = ctx.currentUserAccessToken;
   const pluginParams = parsePluginParams(ctx.plugin.attributes.parameters);
-  const realTimeRequested = pluginParams.realTimeUpdatesEnabled ?? true;
+  const realTimeRequested = pluginParams.realTimeUpdatesEnabled;
   const cdaToken = pluginParams.cdaToken;
   const realTimeEnabled = realTimeRequested && !!cdaToken;
-  const notificationsEndpoint = pluginParams.notificationsEndpoint;
+  const storedCommentsModelId = getCommentsModelIdForEnvironment(
+    pluginParams,
+    ctx.environment
+  );
+
+  useEffect(() => {
+    logDebug('Comments sidebar initialized', {
+      hasCdaToken: !!cdaToken,
+      mode: realTimeEnabled ? 'realtime' : 'cma-fallback',
+      modelId: ctx.itemType.id,
+      realTimeEnabled,
+      realTimeRequested,
+      recordId: ctx.item?.id ?? null,
+    });
+  }, [
+    cdaToken,
+    ctx.item?.id,
+    ctx.itemType.id,
+    realTimeEnabled,
+    realTimeRequested,
+  ]);
 
   const client = useMemo(() => createApiClient(cmaToken), [cmaToken]);
   const { projectUsers, projectModels, modelFields, typedUsers } = useProjectData(ctx, { loadFields: true });
@@ -75,10 +98,107 @@ const CommentsBar = ({ ctx }: Props) => {
     mainLocale,
   });
 
-  const commentsModelId = useMemo(() => {
+  const [commentsModelId, setCommentsModelId] = useState<string | null>(() => {
     const model = findCommentsModel(ctx.itemTypes);
-    return model?.id ?? null;
-  }, [ctx.itemTypes]);
+    return model?.id ?? storedCommentsModelId;
+  });
+
+  useEffect(() => {
+    const nextCommentsModelId =
+      findCommentsModel(ctx.itemTypes)?.id ?? storedCommentsModelId;
+
+    if (nextCommentsModelId && nextCommentsModelId !== commentsModelId) {
+      setCommentsModelId(nextCommentsModelId);
+    }
+  }, [commentsModelId, ctx.itemTypes, storedCommentsModelId]);
+
+  useEffect(() => {
+    logDebug('Comments model resolution state', {
+      activeCommentsModelId: commentsModelId,
+      contextCommentsModelId: findCommentsModel(ctx.itemTypes)?.id ?? null,
+      hasClient: !!client,
+      storedCommentsModelId,
+    });
+  }, [client, commentsModelId, ctx.itemTypes, storedCommentsModelId]);
+
+  const resolveCommentsModelId = useCallback(async (): Promise<string | null> => {
+    const contextCommentsModelId = findCommentsModel(ctx.itemTypes)?.id;
+    if (contextCommentsModelId) {
+      logDebug('Using comments model ID from loaded item types', {
+        commentsModelId: contextCommentsModelId,
+      });
+      if (contextCommentsModelId !== commentsModelId) {
+        setCommentsModelId(contextCommentsModelId);
+      }
+      return contextCommentsModelId;
+    }
+
+    if (client) {
+      try {
+        logDebug('Ensuring comments model via CMA client', {
+          environment: ctx.environment,
+        });
+        const ensuredCommentsModelId = await ensureCommentsModelExistsWithClient(client);
+        setCommentsModelId((previous) =>
+          previous === ensuredCommentsModelId ? previous : ensuredCommentsModelId
+        );
+
+        logDebug('Ensured comments model via CMA client', {
+          commentsModelId: ensuredCommentsModelId,
+          environment: ctx.environment,
+        });
+        return ensuredCommentsModelId;
+      } catch (error) {
+        if (!storedCommentsModelId) {
+          throw error;
+        }
+
+        logDebug('Falling back to stored comments model ID in sidebar', {
+          environment: ctx.environment,
+          errorMessage: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+
+    if (storedCommentsModelId) {
+      logDebug('Using stored comments model ID from plugin parameters', {
+        commentsModelId: storedCommentsModelId,
+        environment: ctx.environment,
+      });
+      if (storedCommentsModelId !== commentsModelId) {
+        setCommentsModelId(storedCommentsModelId);
+      }
+      return storedCommentsModelId;
+    }
+
+    logDebug('Comments model ID could not be resolved', {
+      environment: ctx.environment,
+      hasClient: !!client,
+    });
+    return null;
+  }, [client, commentsModelId, ctx.environment, ctx.itemTypes, storedCommentsModelId]);
+
+  useEffect(() => {
+    if (commentsModelId || !client) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void resolveCommentsModelId().catch((error) => {
+      if (cancelled) {
+        return;
+      }
+
+      logError('Failed to resolve comments model in sidebar', error, {
+        environment: ctx.environment,
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [client, commentsModelId, ctx.environment, resolveCommentsModelId]);
 
   // Updated by subscription (existing) or queue (new). 8-second cooldown prevents race conditions.
   const [commentRecordId, setCommentRecordId] = useState<string | null>(null);
@@ -92,11 +212,7 @@ const CommentsBar = ({ ctx }: Props) => {
     recordId: ctx.item?.id,
     ctx,
     onRecordCreated: setCommentRecordId,
-  });
-
-  const mentionStateQueue = useMentionStateQueue({
-    client,
-    commentsModelId,
+    resolveCommentsModelId,
   });
 
   const handleOrphanedDraft = useCallback(() => {
@@ -113,11 +229,11 @@ const CommentsBar = ({ ctx }: Props) => {
     retry: retrySubscription,
     isAutoReconnecting,
   } = useCommentsData({
-    context: 'record',
     ctx,
     realTimeEnabled,
     cdaToken,
     client,
+    commentsModelId,
     isSyncAllowed,
     onCommentRecordIdChange: setCommentRecordId,
     currentUserId,
@@ -160,14 +276,6 @@ const CommentsBar = ({ ctx }: Props) => {
     comments,
     setComments,
     enqueue,
-    enqueueMentionState: mentionStateQueue.enqueue,
-    mentionContext: {
-      modelId: ctx.itemType.id,
-      recordId: ctx.item?.id ?? '',
-    },
-    notificationsEndpoint,
-    currentUserAccessToken: ctx.currentUserAccessToken,
-    projectUsers,
     composerSegments,
     setComposerSegments,
     pendingNewReplies,
@@ -189,16 +297,13 @@ const CommentsBar = ({ ctx }: Props) => {
     }
   }, [ctx, canMentionAssets]);
 
-  const activeReplyComposerRef = useRef<TipTapComposerRef | null>(null);
-
   const handleRecordTrigger = useCallback(() => {
     setIsRecordModelSelectorOpen(true);
   }, []);
 
   const handleRecordModelSelectorClose = useCallback(() => {
     setIsRecordModelSelectorOpen(false);
-    (activeReplyComposerRef.current || composerRef.current)?.focus();
-    activeReplyComposerRef.current = null;
+    composerRef.current?.focus();
   }, []);
 
   const {
@@ -214,11 +319,10 @@ const CommentsBar = ({ ctx }: Props) => {
   const handleRecordModelSelectForReply = useCallback(
     async (model: { id: string; apiKey: string; name: string; isBlockModel: boolean }) => {
       setIsRecordModelSelectorOpen(false);
-      const targetComposer = activeReplyComposerRef.current || composerRef.current;
+      const targetComposer = composerRef.current;
 
       if (!targetComposer) {
         logWarn('No valid composer target for record mention, aborting');
-        activeReplyComposerRef.current = null;
         return;
       }
 
@@ -255,8 +359,6 @@ const CommentsBar = ({ ctx }: Props) => {
       } catch (error) {
         logError('Record picker error:', error);
         ctx.alert(ERROR_MESSAGES.RECORD_PICKER_FAILED);
-      } finally {
-        activeReplyComposerRef.current = null;
       }
     },
     [ctx, client]
@@ -416,7 +518,6 @@ const CommentsBar = ({ ctx }: Props) => {
             canMentionModels={canMentionModels}
             ctx={ctx}
             isPickerActive={isPickerInProgress}
-            typedUsers={typedUsers}
           />
         </div>
         </MentionPermissionsProvider>

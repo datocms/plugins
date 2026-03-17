@@ -45,7 +45,6 @@ export function BlockPickerView({
           justClickedInsideRef.current = true;
           onSelectEntireField();
         }}
-        onClick={onSelectEntireField}
         onMouseEnter={() => onHover(0)}
       >
         <span className={styles.mentionFieldLabel}>Select entire field</span>
@@ -74,7 +73,6 @@ export function BlockPickerView({
                 justClickedInsideRef.current = true;
                 onSelectBlock(block);
               }}
-              onClick={() => onSelectBlock(block)}
               onMouseEnter={() => onHover(itemIndex)}
             >
               <span className={styles.mentionFieldLabel}>

@@ -57,12 +57,8 @@
 }
 
 /* Spinner animation keyframe.
- * NOTE: This keyframe is also defined in dashboard.module.css.
- * This duplication is INTENTIONAL and correct for CSS Modules:
- * - CSS Modules scope keyframe names locally (spin → SyncStatusIndicator_spin_xyz789)
- * - Each module needs its own copy to reference the locally-scoped name
- * - The `composes` feature only works for class names, not keyframes
- * If modifying this animation, update dashboard.module.css to match. */
+ * CSS Modules scope keyframe names locally, so the animation is defined here
+ * instead of relying on a shared global name. */
 @keyframes spin {
   to {
     transform: rotate(360deg);

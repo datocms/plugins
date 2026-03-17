@@ -1,8 +1,6 @@
 import { useCallback } from 'react';
-import type { RenderItemFormSidebarCtx, RenderPageCtx } from 'datocms-plugin-sdk';
+import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
 import { openUsersPage, openModelPage, type NavigableUserType } from '@utils/navigationHelpers';
-
-type NavigationContext = RenderItemFormSidebarCtx | RenderPageCtx;
 
 export type BaseNavigationCallbacks = {
   handleNavigateToUsers: (userType?: NavigableUserType) => void;
@@ -10,8 +8,7 @@ export type BaseNavigationCallbacks = {
   handleOpenAsset: (assetId: string) => Promise<void>;
 };
 
-/** Shared navigation callbacks for sidebar and page contexts. */
-export function useNavigationCallbacksBase(ctx: NavigationContext): BaseNavigationCallbacks {
+export function useNavigationCallbacksBase(ctx: RenderItemFormSidebarCtx): BaseNavigationCallbacks {
   const handleNavigateToUsers = useCallback((userType: NavigableUserType = 'user') => {
     openUsersPage(ctx, userType);
   }, [ctx]);

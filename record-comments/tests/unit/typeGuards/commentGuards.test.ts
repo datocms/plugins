@@ -276,6 +276,13 @@ describe('isValidComment', () => {
       expect(isValidComment(comment)).toBe(false);
     });
 
+    it('rejects mention segment with invalid stored mention shape', () => {
+      const comment = createBaseComment({
+        content: [{ type: 'mention', mention: { type: 'record', id: 'record-1' } }] as any,
+      });
+      expect(isValidComment(comment)).toBe(false);
+    });
+
     it('rejects unknown segment type', () => {
       const comment = createBaseComment({
         content: [{ type: 'unknown', data: {} }] as any,

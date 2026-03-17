@@ -1,12 +1,26 @@
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import { buildClient } from '@datocms/cma-client-browser';
-import { Button, Canvas, TextField, Spinner, SwitchField } from 'datocms-react-ui';
-import { useState, useCallback } from 'react';
+import {
+  Button,
+  Canvas,
+  Section,
+  Spinner,
+  SwitchField,
+  TextField,
+} from 'datocms-react-ui';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import styles from '@styles/configscreen.module.css';
 import { COMMENTS_MODEL_API_KEY } from '@/constants';
-import { parsePluginParams } from '@utils/pluginParams';
-import { logWarn } from '@/utils/errorLogger';
-import { normalizeComment, migrateCommentsToUuid, type LegacyComment } from '@utils/migrations';
+import { buildPluginParams, parsePluginParams } from '@utils/pluginParams';
+import {
+  logDebug,
+  logWarn,
+  setDebugLoggingEnabled,
+} from '@/utils/errorLogger';
+import {
+  migrateCommentsToUuid,
+  normalizeCommentIfValid,
+} from '@utils/migrations';
 
 type PropTypes = {
   ctx: RenderConfigScreenCtx;
@@ -34,30 +48,40 @@ type MigrationResults = {
   skipped: number;
   failed: number;
   errors: string[];
+  warnings: MigrationWarning[];
 };
 
 type ScanProgress = {
-  phase: 'fetching-models' | 'scanning-fields';
+  phase: 'scanning-fields';
   currentModel?: string;
   scannedModels: number;
   totalModels: number;
   foundCount: number;
 };
 
+type MigrationWarning = {
+  recordId: string;
+  modelName: string;
+  message: string;
+};
+
 const ConfigScreen = ({ ctx }: PropTypes) => {
   const pluginParams = parsePluginParams(ctx.plugin.attributes.parameters);
   const initialSettings = {
-    cdaToken: pluginParams.cdaToken ?? '',
-    realTimeEnabled: pluginParams.realTimeUpdatesEnabled ?? true,
-    dashboardEnabled: pluginParams.dashboardEnabled ?? true,
-    notificationsEndpoint: pluginParams.notificationsEndpoint ?? '',
+    cdaToken: pluginParams.cdaToken,
+    debugLoggingEnabled: pluginParams.debugLoggingEnabled,
+    realTimeEnabled: pluginParams.realTimeUpdatesEnabled,
   };
   const [cdaToken, setCdaToken] = useState(initialSettings.cdaToken);
+  const [debugLoggingEnabled, setDebugLoggingEnabledState] = useState(
+    initialSettings.debugLoggingEnabled
+  );
   const [realTimeEnabled, setRealTimeEnabled] = useState(initialSettings.realTimeEnabled);
-  const [dashboardEnabled, setDashboardEnabled] = useState(initialSettings.dashboardEnabled);
-  const [notificationsEndpoint, setNotificationsEndpoint] = useState(initialSettings.notificationsEndpoint);
   const [savedSettings, setSavedSettings] = useState(initialSettings);
   const [isSaving, setIsSaving] = useState(false);
+  const [migrationCompleted, setMigrationCompleted] = useState(
+    pluginParams.migrationCompleted
+  );
 
   const [migrationStatus, setMigrationStatus] = useState<MigrationStatus>(
     pluginParams.migrationCompleted ? 'completed' : 'idle'
@@ -68,37 +92,85 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
   const [migrationError, setMigrationError] = useState<string | null>(null);
   const [isCleaningUp, setIsCleaningUp] = useState(false);
   const [showCleanupConfirm, setShowCleanupConfirm] = useState(false);
+  const [isAdvancedSettingsOpen, setIsAdvancedSettingsOpen] = useState(false);
   const [scanProgress, setScanProgress] = useState<ScanProgress | null>(null);
+  const [scanErrors, setScanErrors] = useState<string[]>([]);
+  const isMountedRef = useRef(false);
+  const hasMigrationUiState =
+    migrationStatus === 'scanning' ||
+    migrationStatus === 'migrating' ||
+    migrationStatus === 'error' ||
+    migrationResults !== null ||
+    modelsWithComments.length > 0 ||
+    scanErrors.length > 0 ||
+    showCleanupConfirm;
+
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (hasMigrationUiState) {
+      setIsAdvancedSettingsOpen(true);
+    }
+  }, [hasMigrationUiState]);
+
+  useEffect(() => {
+    setDebugLoggingEnabled(debugLoggingEnabled);
+  }, [debugLoggingEnabled]);
+
+  const trimmedCdaToken = cdaToken.trim();
 
   const hasChanges =
-    savedSettings.cdaToken !== cdaToken ||
-    savedSettings.realTimeEnabled !== realTimeEnabled ||
-    savedSettings.dashboardEnabled !== dashboardEnabled ||
-    savedSettings.notificationsEndpoint !== notificationsEndpoint;
+    savedSettings.cdaToken !== trimmedCdaToken ||
+    savedSettings.debugLoggingEnabled !== debugLoggingEnabled ||
+    savedSettings.realTimeEnabled !== realTimeEnabled;
 
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      await ctx.updatePluginParameters({
-        ...pluginParams,
-        cdaToken,
-        realTimeUpdatesEnabled: realTimeEnabled,
-        dashboardEnabled,
-        notificationsEndpoint,
-      });
-      setSavedSettings({
-        cdaToken,
+      logDebug('Saving plugin settings', {
+        debugLoggingEnabled,
+        hasCdaToken: !!trimmedCdaToken,
+        migrationCompleted,
         realTimeEnabled,
-        dashboardEnabled,
-        notificationsEndpoint,
+      });
+      await ctx.updatePluginParameters(
+        buildPluginParams({
+          cdaToken: trimmedCdaToken,
+          commentsModelIdsByEnvironment: pluginParams.commentsModelIdsByEnvironment,
+          debugLoggingEnabled,
+          realTimeUpdatesEnabled: realTimeEnabled,
+          migrationCompleted,
+        })
+      );
+      if (!isMountedRef.current) return;
+      setSavedSettings({
+        cdaToken: trimmedCdaToken,
+        debugLoggingEnabled,
+        realTimeEnabled,
+      });
+      setCdaToken(trimmedCdaToken);
+      logDebug('Plugin settings saved', {
+        debugLoggingEnabled,
+        hasCdaToken: !!trimmedCdaToken,
+        migrationCompleted,
+        realTimeEnabled,
       });
       ctx.notice('Settings saved successfully!');
     } catch (error) {
+      if (!isMountedRef.current) return;
       ctx.alert(
         `Failed to save settings: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     } finally {
-      setIsSaving(false);
+      if (isMountedRef.current) {
+        setIsSaving(false);
+      }
     }
   };
 
@@ -108,13 +180,25 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
   }, [ctx.currentUserAccessToken]);
 
   const handleScan = useCallback(async () => {
+    logDebug('Scanning models for legacy comments', {
+      totalModels: Object.values(ctx.itemTypes).filter(
+        (model): model is NonNullable<typeof model> =>
+          model !== undefined &&
+          model.attributes.api_key !== COMMENTS_MODEL_API_KEY
+      ).length,
+    });
     setMigrationStatus('scanning');
     setMigrationError(null);
     setModelsWithComments([]);
+    setScanErrors([]);
     setScanProgress({
-      phase: 'fetching-models',
+      phase: 'scanning-fields',
       scannedModels: 0,
-      totalModels: 0,
+      totalModels: Object.values(ctx.itemTypes).filter(
+        (model): model is NonNullable<typeof model> =>
+          model !== undefined &&
+          model.attributes.api_key !== COMMENTS_MODEL_API_KEY
+      ).length,
       foundCount: 0,
     });
 
@@ -123,18 +207,14 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
         (model): model is NonNullable<typeof model> => model !== undefined
       );
       const foundModels: ModelWithCommentLog[] = [];
+      const failedModels: string[] = [];
       const modelsToScan = models.filter((m) => m.attributes.api_key !== COMMENTS_MODEL_API_KEY);
-
-      setScanProgress({
-        phase: 'scanning-fields',
-        scannedModels: 0,
-        totalModels: modelsToScan.length,
-        foundCount: 0,
-      });
 
       let scannedCount = 0;
 
       for (const model of modelsToScan) {
+        if (!isMountedRef.current) return;
+
         setScanProgress({
           phase: 'scanning-fields',
           currentModel: model.attributes.name,
@@ -156,10 +236,14 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
             });
           }
         } catch (fieldLoadError) {
+          failedModels.push(
+            `${model.attributes.name} (${model.attributes.api_key}) could not be inspected`
+          );
           logWarn(`Failed to load fields for model ${model.attributes.name}`, { modelId: model.id, error: fieldLoadError });
         }
 
         scannedCount++;
+        if (!isMountedRef.current) return;
         setScanProgress({
           phase: 'scanning-fields',
           currentModel: model.attributes.name,
@@ -169,10 +253,21 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
         });
       }
 
+      if (!isMountedRef.current) return;
       setModelsWithComments(foundModels);
+      setScanErrors(failedModels);
       setScanProgress(null);
+      logDebug('Legacy comment scan completed', {
+        foundModels: foundModels.length,
+        inspectionErrors: failedModels.length,
+      });
 
-      if (foundModels.length === 0) {
+      if (failedModels.length > 0) {
+        setMigrationStatus('idle');
+        await ctx.notice(
+          `Scan completed with ${failedModels.length} inspection error(s). Review the details below before migrating.`
+        );
+      } else if (foundModels.length === 0) {
         setMigrationStatus('idle');
         await ctx.notice('No legacy comment_log fields found. Nothing to migrate!');
       } else {
@@ -180,6 +275,10 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
         await ctx.notice(`Found ${foundModels.length} model(s) with comment_log fields.`);
       }
     } catch (error) {
+      if (!isMountedRef.current) return;
+      logDebug('Legacy comment scan failed', {
+        message: error instanceof Error ? error.message : 'Unknown error during scan',
+      });
       setMigrationStatus('error');
       setScanProgress(null);
       setMigrationError(error instanceof Error ? error.message : 'Unknown error during scan');
@@ -207,9 +306,13 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
       skipped: 0,
       failed: 0,
       errors: [],
+      warnings: [],
     };
 
     try {
+      logDebug('Starting legacy comment migration', {
+        modelsToMigrate: modelsWithComments.length,
+      });
       const commentsModel = Object.values(ctx.itemTypes).find(
         (model) => model?.attributes.api_key === COMMENTS_MODEL_API_KEY
       );
@@ -223,6 +326,8 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
       let processedModels = 0;
 
       for (const modelInfo of modelsWithComments) {
+        if (!isMountedRef.current) return;
+
         setMigrationProgress({
           currentModel: modelInfo.modelName,
           currentRecord: 0,
@@ -246,6 +351,8 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
         const totalRecords = allRecords.length;
 
         for (const record of allRecords) {
+          if (!isMountedRef.current) return;
+
           currentRecord++;
           setMigrationProgress({
             currentModel: modelInfo.modelName,
@@ -276,7 +383,35 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
 
           if (commentsArray.length === 0) continue;
 
-          const normalizedComments = (commentsArray as LegacyComment[]).map(normalizeComment);
+          const normalizedComments = commentsArray.flatMap((comment) => {
+            const normalizedComment = normalizeCommentIfValid(comment);
+            if (!normalizedComment) {
+              return [];
+            }
+
+            return [normalizedComment];
+          });
+
+          const skippedInvalidComments = commentsArray.length - normalizedComments.length;
+          if (skippedInvalidComments > 0) {
+            results.warnings.push({
+              recordId: record.id,
+              modelName: modelInfo.modelName,
+              message:
+                skippedInvalidComments === commentsArray.length
+                  ? 'All legacy comments were malformed and were skipped.'
+                  : `${skippedInvalidComments} malformed legacy comment(s) were skipped during migration.`,
+            });
+          }
+
+          if (normalizedComments.length === 0) {
+            results.failed++;
+            results.errors.push(
+              `Record ${record.id} in ${modelInfo.modelName}: all legacy comments were malformed`
+            );
+            continue;
+          }
+
           const { comments: migratedComments } = migrateCommentsToUuid(normalizedComments);
 
           const existing = await client.items.list({
@@ -319,12 +454,35 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
         processedModels++;
       }
 
+      if (!isMountedRef.current) return;
       setMigrationResults(results);
       setMigrationProgress(null);
+      logDebug('Legacy comment migration completed', {
+        failed: results.failed,
+        skipped: results.skipped,
+        success: results.success,
+        warnings: results.warnings.length,
+      });
 
       if (results.failed === 0) {
         setMigrationStatus('completed');
-        await ctx.updatePluginParameters({ ...pluginParams, migrationCompleted: true });
+        await ctx.updatePluginParameters(
+          buildPluginParams({
+            cdaToken: trimmedCdaToken,
+            commentsModelIdsByEnvironment: pluginParams.commentsModelIdsByEnvironment,
+            debugLoggingEnabled,
+            realTimeUpdatesEnabled: realTimeEnabled,
+            migrationCompleted: true,
+          })
+        );
+        if (!isMountedRef.current) return;
+        setMigrationCompleted(true);
+        setSavedSettings({
+          cdaToken: trimmedCdaToken,
+          debugLoggingEnabled,
+          realTimeEnabled,
+        });
+        setCdaToken(trimmedCdaToken);
         await ctx.notice('Migration completed successfully!');
       } else {
         setMigrationStatus('completed');
@@ -333,11 +491,22 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
         );
       }
     } catch (error) {
+      if (!isMountedRef.current) return;
+      logDebug('Legacy comment migration failed', {
+        message: error instanceof Error ? error.message : 'Unknown error during migration',
+      });
       setMigrationStatus('error');
       setMigrationError(error instanceof Error ? error.message : 'Unknown error during migration');
       setMigrationProgress(null);
     }
-  }, [ctx, getClient, modelsWithComments, pluginParams]);
+  }, [
+    ctx,
+    debugLoggingEnabled,
+    getClient,
+    modelsWithComments,
+    realTimeEnabled,
+    trimmedCdaToken,
+  ]);
 
   const handleCleanup = useCallback(async () => {
     const client = getClient();
@@ -350,25 +519,37 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
     setShowCleanupConfirm(false);
 
     try {
+      logDebug('Deleting legacy comment_log fields', {
+        fieldsToDelete: modelsWithComments.length,
+      });
       for (const modelInfo of modelsWithComments) {
+        if (!isMountedRef.current) return;
         await client.fields.destroy(modelInfo.fieldId);
       }
 
+      if (!isMountedRef.current) return;
       setModelsWithComments([]);
+      logDebug('Legacy comment_log field cleanup completed');
       await ctx.notice('Old comment_log fields have been deleted successfully!');
     } catch (error) {
+      if (!isMountedRef.current) return;
+      logDebug('Legacy comment_log field cleanup failed', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+      });
       ctx.alert(
         `Error deleting fields: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
     } finally {
-      setIsCleaningUp(false);
+      if (isMountedRef.current) {
+        setIsCleaningUp(false);
+      }
     }
   }, [ctx, getClient, modelsWithComments]);
 
   const renderMigrationSection = () => {
     return (
-      <div className={styles.section}>
-        <h2 className={styles.sectionTitle}>Migration from Legacy System</h2>
+      <div>
+        <h3 className={styles.migrationSubtitle}>Migration from Legacy System</h3>
         <p className={styles.description}>
           If you were using an older version of this plugin that stored comments in a{' '}
           <code className={styles.code}>comment_log</code> field on each model, you can
@@ -409,43 +590,47 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
         {migrationStatus === 'scanning' && scanProgress && (
           <div className={styles.scanProgressContainer}>
             <div className={styles.scanProgressHeader}>
-              <span className={styles.scanPhaseLabel}>
-                {scanProgress.phase === 'fetching-models'
-                  ? 'Loading models list...'
-                  : 'Checking model fields...'}
+              <span className={styles.scanPhaseLabel}>Checking model fields...</span>
+              <span className={styles.scanProgressCount}>
+                {scanProgress.scannedModels} / {scanProgress.totalModels}
               </span>
-              {scanProgress.phase === 'scanning-fields' && (
-                <span className={styles.scanProgressCount}>
-                  {scanProgress.scannedModels} / {scanProgress.totalModels}
-                </span>
-              )}
             </div>
-            {scanProgress.phase === 'scanning-fields' && (
-              <>
-                <div className={styles.progressBar}>
-                  <div
-                    className={styles.progressFill}
-                    style={{
-                      width: `${
-                        scanProgress.totalModels > 0
-                          ? (scanProgress.scannedModels / scanProgress.totalModels) * 100
-                          : 0
-                      }%`,
-                    }}
-                  />
-                </div>
-                <div className={styles.scanDetails}>
-                  {scanProgress.currentModel && (
-                    <span className={styles.scanCurrentModel}>
-                      Checking: <strong>{scanProgress.currentModel}</strong>
-                    </span>
-                  )}
-                  <span className={styles.scanFoundCounter}>
-                    {scanProgress.foundCount} legacy field{scanProgress.foundCount !== 1 ? 's' : ''} found
+            <>
+              <div className={styles.progressBar}>
+                <div
+                  className={styles.progressFill}
+                  style={{
+                    width: `${
+                      scanProgress.totalModels > 0
+                        ? (scanProgress.scannedModels / scanProgress.totalModels) * 100
+                        : 0
+                    }%`,
+                  }}
+                />
+              </div>
+              <div className={styles.scanDetails}>
+                {scanProgress.currentModel && (
+                  <span className={styles.scanCurrentModel}>
+                    Checking: <strong>{scanProgress.currentModel}</strong>
                   </span>
-                </div>
-              </>
-            )}
+                )}
+                <span className={styles.scanFoundCounter}>
+                  {scanProgress.foundCount} legacy field
+                  {scanProgress.foundCount !== 1 ? 's' : ''} found
+                </span>
+              </div>
+            </>
+          </div>
+        )}
+
+        {scanErrors.length > 0 && (
+          <div className={styles.errorList}>
+            <h4>Models not inspected</h4>
+            <ul>
+              {scanErrors.map((scanError) => (
+                <li key={scanError}>{scanError}</li>
+              ))}
+            </ul>
           </div>
         )}
 
@@ -479,8 +664,8 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
           <div className={styles.progressContainer}>
             <div className={styles.progressHeader}>
               <span>
-                Migrating: {migrationProgress.currentModel} ({migrationProgress.processedModels + 1}
-                /{migrationProgress.totalModels} models)
+                Migrating: {migrationProgress.currentModel} (
+                {migrationProgress.processedModels + 1}/{migrationProgress.totalModels} models)
               </span>
               <span>
                 Record {migrationProgress.currentRecord}/{migrationProgress.totalRecords}
@@ -492,7 +677,8 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
                 style={{
                   width: `${
                     migrationProgress.totalRecords > 0
-                      ? (migrationProgress.currentRecord / migrationProgress.totalRecords) * 100
+                      ? (migrationProgress.currentRecord / migrationProgress.totalRecords) *
+                        100
                       : 0
                   }%`,
                 }}
@@ -543,6 +729,22 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
                 </ul>
               </div>
             )}
+
+            {migrationResults.warnings.length > 0 && (
+              <div className={styles.errorList}>
+                <h4>Warnings:</h4>
+                <ul>
+                  {migrationResults.warnings.slice(0, 10).map((warning) => (
+                    <li key={`${warning.modelName}-${warning.recordId}-${warning.message}`}>
+                      {warning.modelName} / {warning.recordId}: {warning.message}
+                    </li>
+                  ))}
+                  {migrationResults.warnings.length > 10 && (
+                    <li>...and {migrationResults.warnings.length - 10} more warnings</li>
+                  )}
+                </ul>
+              </div>
+            )}
           </div>
         )}
 
@@ -551,15 +753,15 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
           <div className={styles.cleanupSection}>
             <h3 className={styles.migrationSubtitle}>Cleanup Old Fields</h3>
             <p className={styles.description}>
-              After verifying the migration was successful, you can optionally delete the old{' '}
-              <code className={styles.code}>comment_log</code> fields from your models.
+              After verifying the migration was successful, you can optionally delete the
+              old <code className={styles.code}>comment_log</code> fields from your models.
             </p>
 
             <div className={styles.dangerBox}>
               <div className={styles.dangerIcon}>⚠️</div>
               <div>
-                <strong>Warning:</strong> This action is irreversible. Only proceed if you have
-                verified that all comments were migrated successfully.
+                <strong>Warning:</strong> This action is irreversible. Only proceed if you
+                have verified that all comments were migrated successfully.
               </div>
             </div>
 
@@ -576,7 +778,8 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
             ) : (
               <div className={styles.confirmDialog}>
                 <p>
-                  Are you sure you want to delete {modelsWithComments.length} comment_log field(s)?
+                  Are you sure you want to delete {modelsWithComments.length} comment_log
+                  field(s)?
                 </p>
                 <div className={styles.confirmActions}>
                   <Button
@@ -610,8 +813,8 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
           <div className={styles.successBox}>
             <div className={styles.successIcon}>✓</div>
             <div>
-              <strong>Migration complete!</strong> All comments have been migrated to the new
-              system and old fields have been cleaned up.
+              <strong>Migration complete!</strong> All comments have been migrated to the
+              new system and old fields have been cleaned up.
             </div>
           </div>
         )}
@@ -623,18 +826,15 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
     <Canvas ctx={ctx}>
       <div className={styles.container}>
         <p className={styles.intro}>
-          This plugin enables team collaboration through comments in two ways: a{' '}
-          <strong>sidebar panel</strong> on every record for record-specific discussions, and a{' '}
-          <strong>project-wide Comments Dashboard</strong> for general team conversations. Use rich
-          mentions to reference users, fields, records, assets, and models directly in your comments
-          using slash commands (type / to see all options). The dashboard also shows your mentions
-          and recent activity across the project.
+          This plugin adds a <strong>sidebar panel</strong> to every record for threaded
+          discussions. Use rich mentions to reference users, fields, records, assets, and
+          models directly in your comments with slash commands (type / to see all options).
         </p>
 
         <div className={styles.section}>
           <h2 className={styles.sectionTitle}>Configuration</h2>
           <p className={styles.description}>
-            Configure how comments are synchronized across users. Real-time updates are
+            Configure how record comments synchronize across users. Real-time updates are
             recommended for the best collaborative experience.
           </p>
 
@@ -655,50 +855,51 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
                 id="cda-token"
                 name="cda-token"
                 label="Content Delivery API Token"
-                hint="You can find this in Project Settings → API Tokens. Use a token with read access."
-                value={cdaToken}
-                onChange={(newValue) => setCdaToken(newValue)}
-                textInputProps={{ monospaced: true }}
-              />
+              hint="You can find this in Project Settings → API Tokens. Use a token with read access."
+              value={cdaToken}
+              onChange={(newValue) => setCdaToken(newValue)}
+              textInputProps={{ monospaced: true }}
+            />
             </div>
           )}
 
-          <div className={styles.formField}>
-            <SwitchField
-              id="dashboard-toggle"
-              name="dashboard-toggle"
-              label="Enable Comments Dashboard"
-              hint="When enabled, users can access the project-wide Comments Dashboard from the sidebar navigation. Disabling this hides the dashboard for all users."
-              value={dashboardEnabled}
-              onChange={(newValue) => setDashboardEnabled(newValue)}
-            />
-          </div>
+          <div className={styles.advancedSettings}>
+            <Section
+              title="Advanced settings"
+              collapsible={{
+                isOpen: isAdvancedSettingsOpen,
+                onToggle: () => setIsAdvancedSettingsOpen((isOpen) => !isOpen),
+              }}
+            >
+              <div className={styles.advancedSettingsContent}>
+                <div className={styles.formField}>
+                  <SwitchField
+                    id="debug-logging-toggle"
+                    name="debug-logging-toggle"
+                    label="Enable Debug logging"
+                    hint="When enabled, the plugin writes detailed browser-console diagnostics for troubleshooting."
+                    value={debugLoggingEnabled}
+                    onChange={(newValue) => setDebugLoggingEnabledState(newValue)}
+                  />
+                </div>
 
-          <div className={styles.formField}>
-            <TextField
-              id="notifications-endpoint"
-              name="notifications-endpoint"
-              label="Notifications Endpoint URL"
-              hint="Endpoint that receives comment mention payloads."
-              value={notificationsEndpoint}
-              onChange={(newValue) => setNotificationsEndpoint(newValue)}
-              textInputProps={{ monospaced: true }}
-            />
+                <div className={styles.nestedSection}>
+                  {renderMigrationSection()}
+                </div>
+              </div>
+            </Section>
           </div>
 
           <div className={styles.buttonRow}>
             <Button
               buttonType="primary"
               onClick={handleSave}
-              disabled={isSaving || !hasChanges || (realTimeEnabled && !cdaToken)}
+              disabled={isSaving || !hasChanges || (realTimeEnabled && !trimmedCdaToken)}
             >
               {isSaving ? 'Saving...' : 'Save Settings'}
             </Button>
           </div>
         </div>
-
-        {/* Migration Section */}
-        {renderMigrationSection()}
       </div>
     </Canvas>
   );

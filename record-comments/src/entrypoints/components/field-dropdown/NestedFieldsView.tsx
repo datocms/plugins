@@ -55,7 +55,6 @@ export function NestedFieldsView({
               justClickedInsideRef.current = true;
               onSelect(field);
             }}
-            onClick={() => onSelect(field)}
             onMouseEnter={() => onHover(index)}
           >
             <span className={styles.mentionFieldLabel}>{field.label}</span>

@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { RenderItemFormSidebarCtx, RenderPageCtx } from 'datocms-plugin-sdk';
-import { useQuerySubscription } from 'react-datocms';
+import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
+import { useQuerySubscription } from 'react-datocms/use-query-subscription';
 import type { Client } from '@datocms/cma-client-browser';
 import { COMMENTS_MODEL_API_KEY, CMA_FETCH, TIMING } from '@/constants';
 import { findCommentsModel } from '@utils/itemTypeUtils';
 import { type CommentType, type QueryResult, parseComments, isContentEmpty } from '@ctypes/comments';
-import { logError } from '@/utils/errorLogger';
+import { logDebug, logError } from '@/utils/errorLogger';
 import {
   type SubscriptionErrorType,
   categorizeSubscriptionError,
@@ -94,13 +94,12 @@ export type SubscriptionErrorInfo = {
   message: string;
 };
 
-type SubscriptionContext = RenderItemFormSidebarCtx | RenderPageCtx;
-
 type UseCommentsSubscriptionParams = {
-  ctx: SubscriptionContext;
+  ctx: RenderItemFormSidebarCtx;
   realTimeEnabled: boolean;
   cdaToken: string | undefined;
   client: Client | null;
+  commentsModelId: string | null;
   isSyncAllowed: boolean;
   query: string;
   variables: Record<string, string>;
@@ -144,6 +143,7 @@ export function useCommentsSubscription({
   realTimeEnabled,
   cdaToken,
   client,
+  commentsModelId,
   isSyncAllowed,
   query,
   variables,
@@ -156,7 +156,6 @@ export function useCommentsSubscription({
   onAfterSync,
 }: UseCommentsSubscriptionParams): UseCommentsSubscriptionReturn {
   const [comments, setComments] = useState<CommentType[]>([]);
-  const [commentsModelId, setCommentsModelId] = useState<string | null>(null);
   const [commentRecordId, setCommentRecordIdInternal] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -172,6 +171,12 @@ export function useCommentsSubscription({
   const autoReconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isRealtimeSubscriptionEnabled = subscriptionEnabled && !!cdaToken && realTimeEnabled;
+  const requestContext = {
+    modelId: filterParams.modelId,
+    recordId: filterParams.recordId,
+  };
+  const effectiveCommentsModelId =
+    commentsModelId ?? findCommentsModel(ctx.itemTypes)?.id ?? null;
 
   // Track when subscription data was received to detect stale data
   const dataReceivedAtRef = useRef<number>(0);
@@ -191,16 +196,44 @@ export function useCommentsSubscription({
 
   useEffect(() => {
     if (!isRealtimeSubscriptionEnabled) return;
+
+    logDebug('Comments subscription status changed', {
+      modelId: requestContext.modelId,
+      recordId: requestContext.recordId,
+      status,
+      subscriptionKey,
+    });
+  }, [
+    isRealtimeSubscriptionEnabled,
+    requestContext.modelId,
+    requestContext.recordId,
+    status,
+    subscriptionKey,
+  ]);
+
+  useEffect(() => {
+    if (!isRealtimeSubscriptionEnabled) return;
     if (status === 'connected') {
       consecutiveErrorCount.current = 0;
       setIsAutoReconnecting(false);
+      logDebug('Comments subscription connected', {
+        modelId: requestContext.modelId,
+        recordId: requestContext.recordId,
+        subscriptionKey,
+      });
       // Clear any pending auto-reconnect timeout
       if (autoReconnectTimeoutRef.current) {
         clearTimeout(autoReconnectTimeoutRef.current);
         autoReconnectTimeoutRef.current = null;
       }
     }
-  }, [status, isRealtimeSubscriptionEnabled]);
+  }, [
+    isRealtimeSubscriptionEnabled,
+    requestContext.modelId,
+    requestContext.recordId,
+    status,
+    subscriptionKey,
+  ]);
 
   // Auto-reconnect when connection is closed
   useEffect(() => {
@@ -220,9 +253,19 @@ export function useCommentsSubscription({
       const delayMs = Math.min(1000 * Math.pow(2, errorCount), 30000);
 
       setIsAutoReconnecting(true);
+      logDebug('Comments subscription auto-reconnect scheduled', {
+        consecutiveErrorCount: errorCount,
+        delayMs,
+        modelId: requestContext.modelId,
+        recordId: requestContext.recordId,
+      });
 
       autoReconnectTimeoutRef.current = setTimeout(() => {
         autoReconnectTimeoutRef.current = null;
+        logDebug('Comments subscription auto-reconnect triggered', {
+          modelId: requestContext.modelId,
+          recordId: requestContext.recordId,
+        });
         setSubscriptionKey((prev) => prev + 1);
       }, delayMs);
     }
@@ -233,7 +276,12 @@ export function useCommentsSubscription({
         autoReconnectTimeoutRef.current = null;
       }
     };
-  }, [status, isRealtimeSubscriptionEnabled]);
+  }, [
+    isRealtimeSubscriptionEnabled,
+    requestContext.modelId,
+    requestContext.recordId,
+    status,
+  ]);
 
   // Track when isSyncAllowed transitions to false (operation started)
   useEffect(() => {
@@ -270,8 +318,21 @@ export function useCommentsSubscription({
 
   const retry = useCallback(async () => {
     if (isRealtimeSubscriptionEnabled) {
+      if (autoReconnectTimeoutRef.current) {
+        clearTimeout(autoReconnectTimeoutRef.current);
+        autoReconnectTimeoutRef.current = null;
+      }
+      setIsAutoReconnecting(false);
+
       const errorCount = consecutiveErrorCount.current;
       const delayMs = Math.min(1000 * Math.pow(2, errorCount), 30000); // 1s, 2s, 4s... max 30s
+      logDebug('Manual comments retry requested', {
+        delayMs,
+        errorCount,
+        mode: 'realtime',
+        modelId: requestContext.modelId,
+        recordId: requestContext.recordId,
+      });
 
       if (errorCount > 0) {
         await new Promise((resolve) => setTimeout(resolve, delayMs));
@@ -279,11 +340,20 @@ export function useCommentsSubscription({
 
       setSubscriptionKey((prev) => prev + 1);
     } else {
+      logDebug('Manual comments retry requested', {
+        mode: 'cma-fallback',
+        modelId: requestContext.modelId,
+        recordId: requestContext.recordId,
+      });
       cmaRetryCountRef.current = 0;
       setCmaFetchError(null);
       setCmaRetryKey((prev) => prev + 1);
     }
-  }, [isRealtimeSubscriptionEnabled]);
+  }, [
+    isRealtimeSubscriptionEnabled,
+    requestContext.modelId,
+    requestContext.recordId,
+  ]);
 
   // Track when tab was hidden and refresh subscription when tab becomes visible after long inactivity
   // This handles stale WebSocket connections in long-running tabs
@@ -305,6 +375,11 @@ export function useCommentsSubscription({
           // If tab was hidden for longer than threshold, force subscription refresh
           // This ensures we get fresh data after long periods of inactivity
           if (hiddenDuration > TIMING.VISIBILITY_REFRESH_THRESHOLD_MS) {
+            logDebug('Refreshing comments subscription after tab visibility change', {
+              hiddenDurationMs: hiddenDuration,
+              modelId: requestContext.modelId,
+              recordId: requestContext.recordId,
+            });
             setSubscriptionKey((prev) => prev + 1);
           }
         }
@@ -315,12 +390,11 @@ export function useCommentsSubscription({
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [isRealtimeSubscriptionEnabled]);
-
-  useEffect(() => {
-    const commentsModel = findCommentsModel(ctx.itemTypes);
-    if (commentsModel) setCommentsModelId(commentsModel.id);
-  }, [ctx.itemTypes]);
+  }, [
+    isRealtimeSubscriptionEnabled,
+    requestContext.modelId,
+    requestContext.recordId,
+  ]);
 
   // WARNING: Real-time API can be 5-10s delayed - don't overwrite optimistic updates
   // Critical: We must check if subscription data was received AFTER our last operation started
@@ -354,6 +428,13 @@ export function useCommentsSubscription({
       // Data is stale - it was received before our operation started.
       // Skip this sync and wait for fresh subscription data.
       // The subscription should eventually deliver updated data.
+      logDebug('Skipped stale realtime sync update', {
+        commentRecordId: record.id,
+        dataReceivedAt,
+        modelId: requestContext.modelId,
+        recordId: requestContext.recordId,
+        syncBlockedAt,
+      });
       return;
     }
 
@@ -391,7 +472,10 @@ export function useCommentsSubscription({
 
   useEffect(() => {
     if (isRealtimeSubscriptionEnabled) return;
-    if (!client || !commentsModelId || !filterParams.recordId) {
+    if (!client || !effectiveCommentsModelId || !filterParams.recordId) {
+      setCommentRecordId(null);
+      setComments((prevComments) => (prevComments.length === 0 ? prevComments : []));
+      setCmaFetchError(null);
       setIsLoading(false);
       return;
     }
@@ -405,6 +489,11 @@ export function useCommentsSubscription({
 
       setIsLoading(true);
       if (attempt === 0) setCmaFetchError(null);
+      logDebug('Fetching comments via CMA fallback', {
+        attempt: attempt + 1,
+        modelId: requestContext.modelId,
+        recordId: requestContext.recordId,
+      });
 
       // Note: DatoCMS client doesn't support AbortController, so we rely on
       // isMounted checks to discard stale responses after timeout/unmount
@@ -436,6 +525,13 @@ export function useCommentsSubscription({
         if (!isMounted) return;
 
         cmaRetryCountRef.current = 0;
+        logDebug('Comments fetched via CMA fallback', {
+          attempt: attempt + 1,
+          commentRecordId: records[0]?.id ?? null,
+          modelId: requestContext.modelId,
+          recordId: requestContext.recordId,
+          recordsFound: records.length,
+        });
         if (records.length > 0) {
           const firstRecord = records[0];
           if (typeof firstRecord.id === 'string') {
@@ -489,6 +585,13 @@ export function useCommentsSubscription({
             modelId: filterParams.modelId,
             recordId: filterParams.recordId,
           });
+          logDebug('CMA fallback retry scheduled', {
+            attempt: attempt + 1,
+            delayMs,
+            errorMessage: normalizedErr.message,
+            modelId: requestContext.modelId,
+            recordId: requestContext.recordId,
+          });
 
           retryTimeoutId = setTimeout(() => {
             if (isMounted) {
@@ -502,6 +605,12 @@ export function useCommentsSubscription({
           modelId: filterParams.modelId,
           recordId: filterParams.recordId,
           attempts: attempt + 1,
+        });
+        logDebug('CMA fallback retries exhausted', {
+          attempts: attempt + 1,
+          errorMessage: normalizedErr.message,
+          modelId: requestContext.modelId,
+          recordId: requestContext.recordId,
         });
         setCmaFetchError(normalizedErr);
         setIsLoading(false);
@@ -521,7 +630,7 @@ export function useCommentsSubscription({
         retryTimeoutId = null;
       }
     };
-  }, [isRealtimeSubscriptionEnabled, client, filterParams.modelId, filterParams.recordId, commentsModelId, cmaRetryKey, setCommentRecordId, setComments, currentUserId, onOrphanedDraft, onBeforeSync, onAfterSync]);
+  }, [isRealtimeSubscriptionEnabled, client, filterParams.modelId, filterParams.recordId, effectiveCommentsModelId, cmaRetryKey, setCommentRecordId, setComments, currentUserId, onOrphanedDraft, onBeforeSync, onAfterSync]);
 
   const normalizedError = error ? normalizeError(error) : cmaFetchError;
   const errorInfo: SubscriptionErrorInfo | null = normalizedError
@@ -535,7 +644,7 @@ export function useCommentsSubscription({
   return {
     comments,
     setComments,
-    commentsModelId,
+    commentsModelId: effectiveCommentsModelId,
     commentRecordId,
     setCommentRecordId,
     isLoading,

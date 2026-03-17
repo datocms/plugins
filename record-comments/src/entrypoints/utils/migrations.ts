@@ -21,12 +21,49 @@ export type NormalizedComment = {
 };
 
 /** Normalizes legacy upvoter format to email strings. */
-function normalizeUpvoters(upvoters: (string | LegacyUpvoter)[]): string[] {
-  if (!upvoters || !Array.isArray(upvoters)) return [];
-  return upvoters.map((upvoter) => {
+function normalizeUpvoters(upvoters: unknown): string[] {
+  if (!Array.isArray(upvoters)) return [];
+
+  return upvoters.flatMap((upvoter) => {
     if (typeof upvoter === 'string') return upvoter;
-    return upvoter.email;
+    if (
+      upvoter &&
+      typeof upvoter === 'object' &&
+      typeof (upvoter as LegacyUpvoter).email === 'string'
+    ) {
+      return (upvoter as LegacyUpvoter).email;
+    }
+
+    return [];
   });
+}
+
+function isLegacyCommentRecord(value: unknown): value is LegacyComment {
+  if (!value || typeof value !== 'object') return false;
+
+  const comment = value as Partial<LegacyComment>;
+  const hasAuthor =
+    !!comment.author &&
+    typeof comment.author === 'object' &&
+    typeof comment.author.email === 'string';
+
+  if (!hasAuthor || typeof comment.dateISO !== 'string') {
+    return false;
+  }
+
+  if (
+    comment.usersWhoUpvoted !== undefined &&
+    !Array.isArray(comment.usersWhoUpvoted)
+  ) {
+    return false;
+  }
+
+  if (comment.replies !== undefined) {
+    if (!Array.isArray(comment.replies)) return false;
+    return comment.replies.every((reply) => isLegacyCommentRecord(reply));
+  }
+
+  return true;
 }
 
 export function normalizeComment(comment: LegacyComment): NormalizedComment {
@@ -40,6 +77,16 @@ export function normalizeComment(comment: LegacyComment): NormalizedComment {
   };
 }
 
+export function normalizeCommentIfValid(
+  comment: unknown
+): NormalizedComment | null {
+  if (!isLegacyCommentRecord(comment)) {
+    return null;
+  }
+
+  return normalizeComment(comment);
+}
+
 type CommentWithId = NormalizedComment & { id?: string };
 type MigratedComment = NormalizedComment & { id: string };
 
@@ -50,6 +97,13 @@ function isLegacyIdFormat(comment: CommentWithId): boolean {
 
   const isoPattern = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/;
   return isoPattern.test(comment.id);
+}
+
+function treeNeedsMigration(comment: CommentWithId): boolean {
+  return (
+    isLegacyIdFormat(comment) ||
+    comment.replies?.some((reply) => treeNeedsMigration(reply)) === true
+  );
 }
 
 /** Migrates legacy IDs to UUIDs and updates parentCommentId references. */
@@ -90,11 +144,7 @@ export function migrateCommentsToUuid(comments: CommentWithId[]): {
   comments: MigratedComment[];
   wasMigrated: boolean;
 } {
-  const needsMigration = comments.some(
-    (comment) =>
-      isLegacyIdFormat(comment) ||
-      comment.replies?.some(isLegacyIdFormat)
-  );
+  const needsMigration = comments.some((comment) => treeNeedsMigration(comment));
 
   if (!needsMigration) {
     return { comments: comments as MigratedComment[], wasMigrated: false };

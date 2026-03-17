@@ -7,7 +7,12 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    include: ['tests/unit/**/*.test.ts'],
+    setupFiles: ['tests/unit/setup.ts'],
+    environmentMatchGlobs: [
+      ['tests/unit/components/**/*.test.tsx', 'jsdom'],
+      ['tests/unit/hooks/**/*.test.tsx', 'jsdom'],
+    ],
+    include: ['tests/unit/**/*.test.ts', 'tests/unit/**/*.test.tsx'],
     exclude: ['tests/e2e/**/*', 'node_modules/**/*'],
     coverage: {
       provider: 'v8',

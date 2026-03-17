@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, type RefObject } from 'react';
-import type { RenderItemFormSidebarCtx, RenderPageCtx } from 'datocms-plugin-sdk';
+import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
 import type { Client } from '@datocms/cma-client-browser';
 import type { TipTapComposerRef } from '@components/tiptap/TipTapComposer';
 import type { ModelInfo } from './useMentions';
@@ -9,10 +9,8 @@ import { insertMentionWithRetry } from '@utils/textareaUtils';
 import { ERROR_MESSAGES } from '@/constants';
 import { logError, logWarn } from '@/utils/errorLogger';
 
-type PickerContext = RenderItemFormSidebarCtx | RenderPageCtx;
-
 export type UseReplyPickerParams = {
-  ctx: PickerContext;
+  ctx: RenderItemFormSidebarCtx;
   client: Client | null;
   canMentionAssets: boolean;
 };
@@ -31,7 +29,6 @@ type UseReplyPickerReturn = {
 
 /**
  * Shared hook for handling asset and record picker requests from reply composers.
- * Eliminates duplication between CommentsBar and GlobalCommentsChannel.
  */
 export function useReplyPicker({
   ctx,

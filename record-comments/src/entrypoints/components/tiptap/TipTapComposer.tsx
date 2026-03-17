@@ -127,11 +127,8 @@ export const TipTapComposer = forwardRef<TipTapComposerRef, TipTapComposerProps>
     const onRecordTriggerRef = useRef(onRecordTrigger);
     const onSegmentsChangeRef = useRef(onSegmentsChange);
 
-    const isMountedRef = useRef(true);
-
     useEffect(() => {
       return () => {
-        isMountedRef.current = false;
         activeSlashCommandRef.current = null;
         editorRef.current = null;
         fieldKeyHandlerRef.current = null;

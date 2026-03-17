@@ -25,11 +25,11 @@
  *
  * 1. CSS Modules automatically scope class names at build time
  *    - .container in commentbar.module.css becomes something like .commentbar_container_a1b2c3
- *    - .container in dashboard.module.css becomes .dashboard_container_x4y5z6
+ *    - .container in configscreen.module.css becomes something like .configscreen_container_x4y5z6
  *
  * 2. There is no global namespace collision
  *    - Each component imports only the classes from its own module
- *    - styles.container in CommentsBar refers to a different class than dashboard styles
+ *    - styles.container in CommentsBar refers only to the imported module
  *
  * 3. This is an intentional design pattern
  *    - Allows intuitive class naming within each module's context
@@ -339,9 +339,9 @@
    *
    * Current usage in the codebase:
    * - 10: Comment action buttons (hover overlays within comments)
-   * - 50: New comments indicator (floating notification button)
-   * - 100: Sidebars, filter columns, inline tooltips (sticky positioned panels)
-   * - 1000: Dropdowns (mention dropdowns, filter menus, FABs)
+   * - 50: Floating indicators inside the sidebar
+   * - 100: Sticky headers and inline tooltips
+   * - 1000: Dropdowns and mention menus
    * - 9999: Tooltips (should appear above most UI elements)
    * - 10000: Critical tooltips (absolute highest layer)
    */
@@ -349,7 +349,7 @@
   /* Base level - elements that need to stack above siblings */
   --z-above: 10;
 
-  /* Floating indicators and notifications */
+  /* Floating indicators */
   --z-float: 50;
 
   /* Sticky headers, sidebars, and positioned panels */

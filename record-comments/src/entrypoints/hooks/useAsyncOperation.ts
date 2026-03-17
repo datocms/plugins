@@ -51,6 +51,7 @@ export function useAsyncOperation<T>(
 
   useEffect(() => {
     if (!enabled) {
+      setIsLoading(false);
       return;
     }
 

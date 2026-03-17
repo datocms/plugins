@@ -140,6 +140,47 @@ function isValidUpvoterIds(upvoterIds: unknown): upvoterIds is string[] {
   return upvoterIds.every((id) => isStringAttr(id));
 }
 
+function isValidStoredUserMention(mention: Record<string, unknown>): boolean {
+  return mention.type === 'user' && isStringAttr(mention.id);
+}
+
+function isValidStoredFieldMention(mention: Record<string, unknown>): boolean {
+  return (
+    mention.type === 'field' &&
+    isStringAttr(mention.fieldPath) &&
+    isStringAttr(mention.modelId) &&
+    isOptionalStringAttr(mention.locale)
+  );
+}
+
+function isValidStoredAssetMention(mention: Record<string, unknown>): boolean {
+  return mention.type === 'asset' && isStringAttr(mention.id);
+}
+
+function isValidStoredRecordMention(mention: Record<string, unknown>): boolean {
+  return (
+    mention.type === 'record' &&
+    isStringAttr(mention.id) &&
+    isStringAttr(mention.modelId)
+  );
+}
+
+function isValidStoredModelMention(mention: Record<string, unknown>): boolean {
+  return mention.type === 'model' && isStringAttr(mention.id);
+}
+
+export function isValidStoredMention(mention: unknown): boolean {
+  if (!isNonNullObject(mention)) return false;
+
+  return (
+    isValidStoredUserMention(mention) ||
+    isValidStoredFieldMention(mention) ||
+    isValidStoredAssetMention(mention) ||
+    isValidStoredRecordMention(mention) ||
+    isValidStoredModelMention(mention)
+  );
+}
+
 function isValidCommentSegment(segment: unknown): boolean {
   if (!isNonNullObject(segment)) return false;
 
@@ -148,7 +189,7 @@ function isValidCommentSegment(segment: unknown): boolean {
   }
 
   if (segment.type === 'mention') {
-    return segment.mention !== null && typeof segment.mention === 'object';
+    return isValidStoredMention(segment.mention);
   }
 
   return false;

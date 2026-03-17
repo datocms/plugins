@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from 'react';
-import type { RenderItemFormSidebarCtx, RenderPageCtx } from 'datocms-plugin-sdk';
+import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
 import { loadAllFields } from '@utils/fieldLoader';
 import {
   ownerToUserInfo,
@@ -13,8 +13,6 @@ import { getValidItemTypes } from '@utils/itemTypeUtils';
 import { logError } from '@/utils/errorLogger';
 import { useAsyncOperation } from './useAsyncOperation';
 import type { TypedUserInfo } from '@utils/userDisplayResolver';
-
-type ProjectDataContext = RenderItemFormSidebarCtx | RenderPageCtx;
 
 type UseProjectDataOptions = {
   loadFields?: boolean;
@@ -35,12 +33,8 @@ type UseProjectDataReturn = {
   typedUsers: TypedUserInfo[];
 };
 
-function isSidebarContext(ctx: ProjectDataContext): ctx is RenderItemFormSidebarCtx {
-  return 'itemType' in ctx;
-}
-
 export function useProjectData(
-  ctx: ProjectDataContext,
+  ctx: RenderItemFormSidebarCtx,
   options: UseProjectDataOptions = {}
 ): UseProjectDataReturn {
   const { loadFields = false } = options;
@@ -58,26 +52,29 @@ export function useProjectData(
       name: itemType.attributes.name,
       isBlockModel: itemType.attributes.modular_block,
     }));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [itemTypesStableKey]);
 
-  const itemTypeId = isSidebarContext(ctx) ? ctx.itemType.id : null;
+  const itemTypeId = ctx.itemType.id;
   const siteId = ctx.site.id;
+  const localesStableKey = useMemo(
+    () => ctx.site.attributes.locales.join(','),
+    [ctx.site.attributes.locales]
+  );
+  const formValuesStableKey = useMemo(
+    () => JSON.stringify(ctx.formValues ?? {}),
+    [ctx.formValues]
+  );
 
   const loadFieldsAsync = useCallback(async () => {
-    if (!isSidebarContext(ctx)) {
-      return [];
-    }
     return loadAllFields(ctx);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itemTypeId]);
+  }, [ctx, formValuesStableKey, localesStableKey]);
 
   const {
     data: modelFields,
     error: fieldError,
     retry: retryFields,
-  } = useAsyncOperation(loadFieldsAsync, [itemTypeId], {
-    enabled: loadFields && isSidebarContext(ctx) && itemTypeId !== null,
+  } = useAsyncOperation(loadFieldsAsync, [itemTypeId, formValuesStableKey, localesStableKey], {
+    enabled: loadFields,
     operationName: 'load fields',
     errorContext: { itemTypeId },
   });
@@ -136,7 +133,6 @@ export function useProjectData(
     const allUsers = typedUsers.map((tu) => tu.user);
 
     return { allUsers, typedUsers };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [siteId, currentUserId]);
 
   const {

@@ -8,7 +8,6 @@ import {
   SendIcon,
 } from './Icons';
 import styles from '@styles/commentbar.module.css';
-import dashboardStyles from '@styles/dashboard.module.css';
 import ToolbarButton from './shared/ToolbarButton';
 
 type ComposerToolbarProps = {
@@ -22,8 +21,6 @@ type ComposerToolbarProps = {
   canMentionAssets?: boolean;
   canMentionModels?: boolean;
   canMentionFields?: boolean;
-  large?: boolean;
-  accentColor?: string;
 };
 
 // Module-scope icons for reference stability
@@ -45,23 +42,16 @@ const ComposerToolbar = ({
   canMentionAssets = true,
   canMentionModels = true,
   canMentionFields = true,
-  large = false,
-  accentColor,
 }: ComposerToolbarProps) => {
-  const s = large ? dashboardStyles : styles;
-
-  // Use inline style for accent color when provided (for page context where CSS vars may not be available)
-  const sendButtonStyle = accentColor ? { backgroundColor: accentColor } : undefined;
-
   return (
-    <div className={s.composerToolbar}>
-      <div className={s.toolbarMentions}>
+    <div className={styles.composerToolbar}>
+      <div className={styles.toolbarMentions}>
         <ToolbarButton
           icon={UserIcon}
           tooltipText="User"
           onClick={onUserClick}
           ariaLabel="Mention user"
-          buttonClassName={cn(s.toolbarButton, styles.toolbarButtonUser)}
+          buttonClassName={cn(styles.toolbarButton, styles.toolbarButtonUser)}
         />
 
         {canMentionFields && (
@@ -70,7 +60,7 @@ const ComposerToolbar = ({
             tooltipText="Field"
             onClick={onFieldClick}
             ariaLabel="Mention field"
-            buttonClassName={cn(s.toolbarButton, styles.toolbarButtonField)}
+            buttonClassName={cn(styles.toolbarButton, styles.toolbarButtonField)}
           />
         )}
 
@@ -79,7 +69,7 @@ const ComposerToolbar = ({
           tooltipText="Record"
           onClick={onRecordClick}
           ariaLabel="Mention record"
-          buttonClassName={cn(s.toolbarButton, styles.toolbarButtonRecord)}
+          buttonClassName={cn(styles.toolbarButton, styles.toolbarButtonRecord)}
         />
 
         <ToolbarButton
@@ -88,7 +78,7 @@ const ComposerToolbar = ({
           onClick={onAssetClick}
           disabled={!canMentionAssets}
           ariaLabel={canMentionAssets ? 'Mention asset' : 'Asset mentions unavailable - no upload permissions'}
-          buttonClassName={cn(s.toolbarButton, styles.toolbarButtonAsset)}
+          buttonClassName={cn(styles.toolbarButton, styles.toolbarButtonAsset)}
         />
 
         <ToolbarButton
@@ -97,15 +87,14 @@ const ComposerToolbar = ({
           onClick={onModelClick}
           disabled={!canMentionModels}
           ariaLabel={canMentionModels ? 'Mention model' : 'Model mentions unavailable - no schema access'}
-          buttonClassName={cn(s.toolbarButton, styles.toolbarButtonModel)}
+          buttonClassName={cn(styles.toolbarButton, styles.toolbarButtonModel)}
         />
       </div>
 
       <span className={styles.toolbarButtonWrapper}>
         <button
           type="button"
-          className={s.sendButton}
-          style={sendButtonStyle}
+          className={styles.sendButton}
           onClick={onSendClick}
           disabled={isSendDisabled}
           aria-label="Send comment"

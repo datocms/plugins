@@ -1,7 +1,5 @@
-import type { RefObject } from 'react';
 import type { CommentSegment } from '@ctypes/mentions';
 import type { CommentType } from '@ctypes/comments';
-import type { CommentOperation } from '@ctypes/operations';
 import { segmentsToStoredSegments } from '@utils/tipTapSerializer';
 
 // LOCAL/OPTIMISTIC state updates (fast, assumes success).
@@ -144,29 +142,10 @@ export function createComment(
   };
 }
 
-export function handlePendingReplyDelete(
-  pendingNewReplies: RefObject<Set<string> | null>,
-  id: string,
-  parentCommentId: string | undefined,
-  enqueue: (operation: CommentOperation) => void
-): void {
-  const isUnsavedNewReply = pendingNewReplies.current?.has(id) ?? false;
-
-  if (isUnsavedNewReply) {
-    pendingNewReplies.current?.delete(id);
-  } else {
-    enqueue({
-      type: 'DELETE_COMMENT',
-      id,
-      parentCommentId,
-    });
-  }
-}
-
 export type CommentActionsReturn = {
-  submitNewComment: () => void;
-  deleteComment: (id: string, parentCommentId?: string) => void;
-  editComment: (id: string, newContent: CommentSegment[], parentCommentId?: string) => void;
-  upvoteComment: (id: string, userUpvoted: boolean, parentCommentId?: string) => void;
-  replyComment: (parentCommentId: string) => void;
+  submitNewComment: () => boolean;
+  deleteComment: (id: string, parentCommentId?: string) => boolean;
+  editComment: (id: string, newContent: CommentSegment[], parentCommentId?: string) => boolean;
+  upvoteComment: (id: string, userUpvoted: boolean, parentCommentId?: string) => boolean;
+  replyComment: (parentCommentId: string) => boolean;
 };

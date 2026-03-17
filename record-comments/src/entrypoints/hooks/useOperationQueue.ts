@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { RenderItemFormSidebarCtx, RenderPageCtx } from 'datocms-plugin-sdk';
+import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
 import { ApiError, type Client } from '@datocms/cma-client-browser';
 import type { CommentOperation } from '@ctypes/operations';
 import { parseComments } from '@ctypes/comments';
 import { applyOperation } from '@utils/operationApplicators';
 import { delay, calculateBackoffDelay } from '@utils/backoff';
 import { TIMING, ERROR_MESSAGES, RETRY_LIMITS } from '@/constants';
-import { logError } from '@/utils/errorLogger';
+import { logDebug, logError } from '@/utils/errorLogger';
 
 function sanitizeOperationForLogging(op: CommentOperation): Record<string, unknown> {
   const base = { type: op.type };
@@ -36,16 +36,15 @@ export type RetryState = {
   terminationReason: 'max_attempts' | 'timeout' | null;
 };
 
-type OperationQueueContext = RenderItemFormSidebarCtx | RenderPageCtx;
-
 type UseOperationQueueParams = {
   client: Client | null;
   commentRecordId: string | null;
   commentsModelId: string | null;
   modelId: string;
   recordId: string | undefined;
-  ctx: OperationQueueContext;
+  ctx: RenderItemFormSidebarCtx;
   onRecordCreated: (recordId: string) => void;
+  resolveCommentsModelId: () => Promise<string | null>;
 };
 
 export function useOperationQueue({
@@ -56,10 +55,12 @@ export function useOperationQueue({
   recordId,
   ctx,
   onRecordCreated,
+  resolveCommentsModelId,
 }: UseOperationQueueParams) {
   const queue = useRef<CommentOperation[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
+  const isMountedRef = useRef(true);
 
   const [retryState, setRetryState] = useState<RetryState>({
     isRetrying: false,
@@ -71,6 +72,8 @@ export function useOperationQueue({
   });
 
   const clearRetryState = useCallback(() => {
+    if (!isMountedRef.current) return;
+
     setRetryState({
       isRetrying: false,
       operationType: null,
@@ -82,6 +85,8 @@ export function useOperationQueue({
   }, []);
 
   const updateRetryState = useCallback((opType: string, count: number) => {
+    if (!isMountedRef.current) return;
+
     setRetryState({
       isRetrying: true,
       operationType: opType,
@@ -96,9 +101,15 @@ export function useOperationQueue({
   const cooldownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const commentRecordIdRef = useRef(commentRecordId);
   commentRecordIdRef.current = commentRecordId;
+  const commentsModelIdRef = useRef(commentsModelId);
+  commentsModelIdRef.current = commentsModelId;
 
   useEffect(() => {
+    isMountedRef.current = true;
+
     return () => {
+      isMountedRef.current = false;
+      queue.current = [];
       if (cooldownTimerRef.current) {
         clearTimeout(cooldownTimerRef.current);
       }
@@ -110,31 +121,118 @@ export function useOperationQueue({
       clearTimeout(cooldownTimerRef.current);
     }
 
+    if (!isMountedRef.current) return;
     setIsInCooldown(true);
+    logDebug('Comment sync cooldown started', {
+      durationMs: TIMING.SYNC_COOLDOWN_MS,
+      modelId,
+      recordId,
+    });
 
     cooldownTimerRef.current = setTimeout(() => {
+      if (!isMountedRef.current) return;
       setIsInCooldown(false);
       cooldownTimerRef.current = null;
+      logDebug('Comment sync cooldown ended', {
+        modelId,
+        recordId,
+      });
     }, TIMING.SYNC_COOLDOWN_MS);
+  }, [modelId, recordId]);
+
+  const alertIfMounted = useCallback(
+    (message: string) => {
+      if (isMountedRef.current) {
+        ctx.alert(message);
+      }
+    },
+    [ctx]
+  );
+
+  const setPendingCountIfMounted = useCallback((nextPendingCount: number) => {
+    if (isMountedRef.current) {
+      setPendingCount(nextPendingCount);
+    }
   }, []);
 
+  const setIsProcessingIfMounted = useCallback((nextValue: boolean) => {
+    if (isMountedRef.current) {
+      setIsProcessing(nextValue);
+    }
+  }, []);
+
+  const canEnqueueOperation = useCallback((): boolean => {
+    if (!client || !recordId) {
+      alertIfMounted(ERROR_MESSAGES.SAVE_FAILED);
+      clearRetryState();
+      return false;
+    }
+
+    return true;
+  }, [alertIfMounted, clearRetryState, client, recordId]);
+
   const executeWithRetry = useCallback(
-    async (op: CommentOperation): Promise<void> => {
-      if (!client || !recordId) return;
+    async (op: CommentOperation): Promise<boolean> => {
+      if (!client || !recordId || !isMountedRef.current) {
+        logDebug('Skipped queued comment operation before execution', {
+          hasClient: !!client,
+          isMounted: isMountedRef.current,
+          modelId,
+          op: sanitizeOperationForLogging(op),
+          recordId,
+        });
+        return false;
+      }
 
       let attempt = 0;
       const operationStartTime = Date.now();
 
       while (true) {
         try {
+          if (!isMountedRef.current) return false;
           const currentRecordId = commentRecordIdRef.current;
+          let currentCommentsModelId = commentsModelIdRef.current;
+
+          if (!currentCommentsModelId) {
+            logDebug('Resolving comments model ID for queued operation', {
+              modelId,
+              op: sanitizeOperationForLogging(op),
+              recordId,
+            });
+            currentCommentsModelId = await resolveCommentsModelId();
+            commentsModelIdRef.current = currentCommentsModelId;
+            logDebug('Resolved comments model ID for queued operation', {
+              commentsModelId: currentCommentsModelId,
+              modelId,
+              op: sanitizeOperationForLogging(op),
+              recordId,
+            });
+          }
+
+          if (!currentCommentsModelId) {
+            logError('Failed to resolve comments model ID before saving comment operation', undefined, {
+              modelId,
+              op: sanitizeOperationForLogging(op),
+              recordId,
+            });
+            alertIfMounted(ERROR_MESSAGES.SAVE_FAILED);
+            clearRetryState();
+            return false;
+          }
+
+          logDebug('Executing queued comment operation', {
+            attempt: attempt + 1,
+            commentRecordId: currentRecordId,
+            commentsModelId: currentCommentsModelId,
+            modelId,
+            op: sanitizeOperationForLogging(op),
+            recordId,
+          });
 
           if (!currentRecordId) {
-            if (!commentsModelId) return;
-
             const existingRecords = await client.items.list({
               filter: {
-                type: commentsModelId,
+                type: currentCommentsModelId,
                 fields: {
                   model_id: { eq: modelId },
                   record_id: { eq: recordId },
@@ -145,13 +243,25 @@ export function useOperationQueue({
 
             if (existingRecords.length > 0) {
               const existingRecord = existingRecords[0];
+              logDebug('Using existing comments record for queued operation', {
+                commentRecordId: existingRecord.id,
+                modelId,
+                op: sanitizeOperationForLogging(op),
+                recordId,
+              });
               const existingComments = parseComments(existingRecord.content);
               const result = applyOperation(existingComments, op);
 
               if (result.status === 'failed_parent_missing' || result.status === 'failed_target_missing') {
-                if (result.failureReason) ctx.alert(result.failureReason);
+                logDebug('Skipping queued comment operation due to missing target', {
+                  modelId,
+                  op: sanitizeOperationForLogging(op),
+                  recordId,
+                  status: result.status,
+                });
+                if (result.failureReason) alertIfMounted(result.failureReason);
                 clearRetryState();
-                return;
+                return false;
               }
 
               await client.items.update(existingRecord.id, {
@@ -159,25 +269,37 @@ export function useOperationQueue({
                 meta: { current_version: existingRecord.meta.current_version },
               });
 
+              logDebug('Queued comment operation saved', {
+                commentRecordId: existingRecord.id,
+                modelId,
+                op: sanitizeOperationForLogging(op),
+                recordId,
+              });
               onRecordCreated(existingRecord.id);
               startCooldown();
               clearRetryState();
-              return;
+              return true;
             }
 
             const result = applyOperation([], op);
 
             const newRecord = await client.items.create({
-              item_type: { type: 'item_type', id: commentsModelId },
+              item_type: { type: 'item_type', id: currentCommentsModelId },
               model_id: modelId,
               record_id: recordId,
               content: JSON.stringify(result.comments),
             });
 
+            logDebug('Created comments record for queued operation', {
+              commentRecordId: newRecord.id,
+              modelId,
+              op: sanitizeOperationForLogging(op),
+              recordId,
+            });
             onRecordCreated(newRecord.id);
             startCooldown();
             clearRetryState();
-            return;
+            return true;
           }
 
           const serverRecord = await client.items.find(currentRecordId);
@@ -185,9 +307,16 @@ export function useOperationQueue({
           const result = applyOperation(serverComments, op);
 
           if (result.status === 'failed_parent_missing' || result.status === 'failed_target_missing') {
-            if (result.failureReason) ctx.alert(result.failureReason);
+            logDebug('Skipping queued comment operation due to missing target', {
+              commentRecordId: currentRecordId,
+              modelId,
+              op: sanitizeOperationForLogging(op),
+              recordId,
+              status: result.status,
+            });
+            if (result.failureReason) alertIfMounted(result.failureReason);
             clearRetryState();
-            return;
+            return false;
           }
 
           await client.items.update(currentRecordId, {
@@ -195,40 +324,52 @@ export function useOperationQueue({
             meta: { current_version: serverRecord.meta.current_version },
           });
 
+          logDebug('Queued comment operation saved', {
+            commentRecordId: currentRecordId,
+            modelId,
+            op: sanitizeOperationForLogging(op),
+            recordId,
+          });
           startCooldown();
           clearRetryState();
-          return;
+          return true;
 
         } catch (e) {
+          if (!isMountedRef.current) return false;
+
           if (e instanceof ApiError && e.findError('STALE_ITEM_VERSION')) {
             attempt++;
 
             if (attempt >= RETRY_LIMITS.MAX_ATTEMPTS) {
               logError('Retry terminated: max attempts reached for version conflict:', sanitizeOperationForLogging(op), { attempt });
-              ctx.alert(ERROR_MESSAGES.MAX_RETRIES_EXCEEDED);
-              setRetryState({
-                isRetrying: false,
-                operationType: op.type,
-                retryCount: attempt,
-                message: ERROR_MESSAGES.MAX_RETRIES_EXCEEDED,
-                wasTerminated: true,
-                terminationReason: 'max_attempts',
-              });
-              return;
+              alertIfMounted(ERROR_MESSAGES.MAX_RETRIES_EXCEEDED);
+              if (isMountedRef.current) {
+                setRetryState({
+                  isRetrying: false,
+                  operationType: op.type,
+                  retryCount: attempt,
+                  message: ERROR_MESSAGES.MAX_RETRIES_EXCEEDED,
+                  wasTerminated: true,
+                  terminationReason: 'max_attempts',
+                });
+              }
+              return false;
             }
 
             if (Date.now() - operationStartTime >= RETRY_LIMITS.MAX_DURATION_MS) {
               logError('Retry terminated: timeout reached for version conflict:', sanitizeOperationForLogging(op), { attempt, durationMs: Date.now() - operationStartTime });
-              ctx.alert(ERROR_MESSAGES.OPERATION_TIMEOUT);
-              setRetryState({
-                isRetrying: false,
-                operationType: op.type,
-                retryCount: attempt,
-                message: ERROR_MESSAGES.OPERATION_TIMEOUT,
-                wasTerminated: true,
-                terminationReason: 'timeout',
-              });
-              return;
+              alertIfMounted(ERROR_MESSAGES.OPERATION_TIMEOUT);
+              if (isMountedRef.current) {
+                setRetryState({
+                  isRetrying: false,
+                  operationType: op.type,
+                  retryCount: attempt,
+                  message: ERROR_MESSAGES.OPERATION_TIMEOUT,
+                  wasTerminated: true,
+                  terminationReason: 'timeout',
+                });
+              }
+              return false;
             }
 
             updateRetryState(op.type, attempt);
@@ -238,18 +379,36 @@ export function useOperationQueue({
               TIMING.VERSION_CONFLICT_BACKOFF_BASE,
               TIMING.VERSION_CONFLICT_BACKOFF_MAX
             );
+            logDebug('Retrying queued comment operation after version conflict', {
+              attempt,
+              backoffDelayMs: backoffDelay,
+              modelId,
+              op: sanitizeOperationForLogging(op),
+              recordId,
+            });
             await delay(backoffDelay);
+            if (!isMountedRef.current) return false;
             continue;
           }
 
           logError('Failed to save comment operation:', e, { op: sanitizeOperationForLogging(op) });
-          ctx.alert(ERROR_MESSAGES.SAVE_FAILED);
+          alertIfMounted(ERROR_MESSAGES.SAVE_FAILED);
           clearRetryState();
-          return;
+          return false;
         }
       }
     },
-    [client, commentsModelId, modelId, recordId, ctx, onRecordCreated, startCooldown, clearRetryState, updateRetryState]
+    [
+      alertIfMounted,
+      client,
+      modelId,
+      recordId,
+      onRecordCreated,
+      startCooldown,
+      clearRetryState,
+      updateRetryState,
+      resolveCommentsModelId,
+    ]
   );
 
   const isProcessingRef = useRef(false);
@@ -259,32 +418,66 @@ export function useOperationQueue({
     }
 
     isProcessingRef.current = true;
-    setIsProcessing(true);
+    setIsProcessingIfMounted(true);
 
     try {
+      logDebug('Processing queued comment operations', {
+        modelId,
+        pendingCount: queue.current.length,
+        recordId,
+      });
       while (queue.current.length > 0) {
         const operation = queue.current[0];
-        await executeWithRetry(operation);
+        const didPersist = await executeWithRetry(operation);
+        logDebug('Finished queued comment operation', {
+          modelId,
+          op: sanitizeOperationForLogging(operation),
+          persisted: didPersist,
+          recordId,
+          remainingQueueLength: Math.max(queue.current.length - 1, 0),
+        });
         queue.current.shift();
-        setPendingCount(queue.current.length);
+        setPendingCountIfMounted(queue.current.length);
+
+        if (!isMountedRef.current) {
+          return;
+        }
       }
     } catch (e) {
       logError('Unexpected error in processQueue - operation removed from queue:', e);
       queue.current.shift();
-      setPendingCount(queue.current.length);
+      setPendingCountIfMounted(queue.current.length);
     } finally {
       isProcessingRef.current = false;
-      setIsProcessing(false);
+      setIsProcessingIfMounted(false);
     }
-  }, [client, executeWithRetry]);
+  }, [
+    client,
+    executeWithRetry,
+    modelId,
+    recordId,
+    setIsProcessingIfMounted,
+    setPendingCountIfMounted,
+  ]);
 
   const enqueue = useCallback(
-    (op: CommentOperation) => {
+    (op: CommentOperation): boolean => {
+      if (!canEnqueueOperation()) {
+        return false;
+      }
+
       queue.current.push(op);
-      setPendingCount(queue.current.length);
+      logDebug('Queued comment operation', {
+        modelId,
+        op: sanitizeOperationForLogging(op),
+        pendingCount: queue.current.length,
+        recordId,
+      });
+      setPendingCountIfMounted(queue.current.length);
       processQueue();
+      return true;
     },
-    [processQueue]
+    [canEnqueueOperation, modelId, processQueue, recordId, setPendingCountIfMounted]
   );
 
   const isSyncAllowed = pendingCount === 0 && !isInCooldown;

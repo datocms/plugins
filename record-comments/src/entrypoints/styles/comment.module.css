@@ -82,6 +82,32 @@
   position: relative;
 }
 
+.composerBox {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  background-color: var(--lighter-bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  transition: background-color var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+  overflow: visible;
+}
+
+.composerBox:hover {
+  background-color: var(--light-bg-color);
+  border-color: var(--darker-border-color);
+}
+
+.composerBox:focus-within {
+  background-color: var(--bg-primary);
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px var(--accent-color-a20);
+}
+
+.composerBoxCompact {
+  border-radius: var(--radius-md);
+}
+
 .textarea {
   width: 100%;
   padding: 8px 10px;

@@ -1,7 +1,7 @@
-import type { RenderItemFormSidebarCtx, RenderPageCtx } from 'datocms-plugin-sdk';
+import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
 import type { ModelInfo } from '@hooks/useMentions';
 
-export type PermissionContext = RenderItemFormSidebarCtx | RenderPageCtx;
+export type PermissionContext = RenderItemFormSidebarCtx;
 
 type Permission = {
   environment: string;

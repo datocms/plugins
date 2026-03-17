@@ -33,7 +33,7 @@ function arePropsEqual(prev: CommentActionsProps, next: CommentActionsProps): bo
   );
 }
 
-// CSS-based hover menu; aria-expanded static since visibility is CSS-controlled
+// CSS controls visibility; expose the revealed controls as a normal labeled action group.
 const CommentActions = memo(function CommentActions({
   onUpvote,
   onReply,
@@ -49,17 +49,14 @@ const CommentActions = memo(function CommentActions({
       <button
         type="button"
         className={styles.actionsTrigger}
-        aria-label="Comment actions menu"
-        aria-haspopup="menu"
-        aria-expanded="false"
+        aria-label="Show comment actions"
       >
-        <MoreVerticalIcon />
+        <MoreVerticalIcon aria-hidden="true" />
       </button>
-      <div className={styles.actions} role="menu" aria-label="Comment actions">
+      <div className={styles.actions} role="group" aria-label="Comment actions">
         {!hasUpvotes && (
           <button
             type="button"
-            role="menuitem"
             className={cn(styles.actionBtn, userUpvoted && styles.actionBtnActive)}
             onClick={onUpvote}
             aria-label={userUpvoted ? 'Remove upvote' : 'Upvote'}
@@ -71,7 +68,6 @@ const CommentActions = memo(function CommentActions({
         {isTopLevel && onReply && (
           <button
             type="button"
-            role="menuitem"
             className={styles.actionBtn}
             onClick={onReply}
             aria-label="Reply to comment"
@@ -84,7 +80,6 @@ const CommentActions = memo(function CommentActions({
           <>
             <button
               type="button"
-              role="menuitem"
               className={styles.actionBtn}
               onClick={onEdit}
               aria-label="Edit comment"
@@ -93,7 +88,6 @@ const CommentActions = memo(function CommentActions({
             </button>
             <button
               type="button"
-              role="menuitem"
               className={cn(styles.actionBtn, styles.actionBtnDanger)}
               onClick={onDelete}
               aria-label="Delete comment"

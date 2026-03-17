@@ -6,7 +6,6 @@ import type { ResolvedCommentType } from '@ctypes/comments';
 import type { CommentSegment } from '@ctypes/mentions';
 import type { FieldInfo, UserInfo, ModelInfo } from '@hooks/useMentions';
 import type { TipTapComposerRef } from './tiptap/TipTapComposer';
-import type { TypedUserInfo } from '@utils/userDisplayResolver';
 import styles from '@styles/commentbar.module.css';
 
 type CommentsListProps = {
@@ -17,10 +16,10 @@ type CommentsListProps = {
   modelFields: FieldInfo[];
   projectUsers: UserInfo[];
   projectModels: ModelInfo[];
-  deleteComment: (id: string, parentCommentId?: string) => void;
-  editComment: (id: string, newContent: CommentSegment[], parentCommentId?: string) => void;
-  upvoteComment: (id: string, userUpvoted: boolean, parentCommentId?: string) => void;
-  replyComment: (parentCommentId: string) => void;
+  deleteComment: (id: string, parentCommentId?: string) => boolean;
+  editComment: (id: string, newContent: CommentSegment[], parentCommentId?: string) => boolean;
+  upvoteComment: (id: string, userUpvoted: boolean, parentCommentId?: string) => boolean;
+  replyComment: (parentCommentId: string) => boolean;
   onPickerRequest?: (type: 'asset' | 'record', composerRef: RefObject<TipTapComposerRef | null>) => void;
   /** Callback when a model is selected for record mention - opens record picker */
   onRecordModelSelect?: (
@@ -34,8 +33,6 @@ type CommentsListProps = {
   ctx: RenderItemFormSidebarCtx;
   /** When true, prevents empty replies from being auto-deleted on blur */
   isPickerActive?: boolean;
-  /** Users with type information for upvoter name resolution */
-  typedUsers?: TypedUserInfo[];
 };
 
 const CommentsListComponent = ({
@@ -57,7 +54,6 @@ const CommentsListComponent = ({
   canMentionModels,
   ctx,
   isPickerActive,
-  typedUsers,
 }: CommentsListProps) => {
   if (comments.length === 0) {
     return (
@@ -89,7 +85,6 @@ const CommentsListComponent = ({
             canMentionModels={canMentionModels}
             ctx={ctx}
             isPickerActive={isPickerActive}
-            typedUsers={typedUsers}
           />
         </CommentErrorBoundary>
       ))}

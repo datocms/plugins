@@ -1,8 +1,13 @@
 # Repository Guidelines
 
+## Agent Orchestration
+- Use subagents by default whenever work can be split, explored, implemented, or verified in parallel.
+- Spawn as many subagents as are useful for the task, provided each one has a clear, bounded responsibility that materially advances the result.
+- Keep the main thread focused on critical-path decisions, integration, and final validation; only avoid delegation when it would add overhead or block progress.
+
 ## Project Structure & Module Organization
-- `src/` contains the TypeScript/React source. Key entry points live in `src/entrypoints/` (e.g., `CommentsBar.tsx`, `CommentsDashboard.tsx`, `ConfigScreen.tsx`). Shared helpers live under `src/entrypoints/utils/`, `hooks/`, `contexts/`, and `styles/`.
-- `src/main.tsx` wires the DatoCMS plugin lifecycle and registers the sidebar/dashboard screens.
+- `src/` contains the TypeScript/React source. Key entry points live in `src/entrypoints/` (for example `CommentsBar.tsx` and `ConfigScreen.tsx`). Shared helpers live under `src/entrypoints/utils/`, `hooks/`, `contexts/`, and `styles/`.
+- `src/main.tsx` wires the DatoCMS plugin lifecycle and registers the record sidebar screen.
 - `tests/unit/` holds Vitest unit tests, with fixtures in `tests/unit/fixtures/`.
 - `docs/` stores plugin media (e.g., `docs/cover.png`, `docs/demo.mp4`).
 - `dist/` is the built plugin output referenced by the plugin manifest; do not edit by hand; rebuild instead.

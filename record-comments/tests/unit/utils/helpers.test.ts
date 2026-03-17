@@ -39,6 +39,13 @@ describe('getGravatarUrl', () => {
       expect(url1).toBe(url2);
     });
 
+    it('normalizes email casing and whitespace before hashing', () => {
+      const normalized = getGravatarUrl('user@test.com');
+      const withWhitespaceAndCase = getGravatarUrl('  USER@test.com  ');
+
+      expect(withWhitespaceAndCase).toBe(normalized);
+    });
+
     it('produces different hash for different emails', () => {
       const url1 = getGravatarUrl('user1@test.com');
       const url2 = getGravatarUrl('user2@test.com');

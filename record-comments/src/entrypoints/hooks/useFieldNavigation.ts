@@ -101,7 +101,7 @@ function buildBreadcrumb(stack: NavigationStep[]): string {
   return parts.join(' > ');
 }
 
-function handleListKeyNav(
+export function handleListKeyNav(
   key: string,
   setIndex: Dispatch<SetStateAction<number>>,
   listLength: number,
@@ -128,7 +128,7 @@ function handleListKeyNav(
       onBack();
       return true;
     default:
-      return true;
+      return false;
   }
 }
 

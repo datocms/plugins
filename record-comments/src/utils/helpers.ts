@@ -4,7 +4,8 @@ import md5 from 'md5';
 // URL validation would add complexity without security benefit and risk breaking CDN changes.
 
 export function getGravatarUrl(email: string, size = 64): string {
-  return `https://www.gravatar.com/avatar/${md5(email)}?d=mp&s=${size}`;
+  const normalizedEmail = email.trim().toLowerCase();
+  return `https://www.gravatar.com/avatar/${md5(normalizedEmail)}?d=mp&s=${size}`;
 }
 
 export function getThumbnailUrl(

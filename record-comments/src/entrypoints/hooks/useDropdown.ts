@@ -5,7 +5,7 @@ export function useScrollSelectedIntoView(
   selectedIndex: number
 ): void {
   useEffect(() => {
-    if (selectedRef.current) {
+    if (selectedRef.current && typeof selectedRef.current.scrollIntoView === 'function') {
       selectedRef.current.scrollIntoView({
         block: 'nearest',
         behavior: 'smooth',

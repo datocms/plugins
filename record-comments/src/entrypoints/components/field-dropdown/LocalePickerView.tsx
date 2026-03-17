@@ -34,7 +34,6 @@ export function LocalePickerView({
             justClickedInsideRef.current = true;
             onSelect(locale);
           }}
-          onClick={() => onSelect(locale)}
           onMouseEnter={() => onHover(index)}
         >
           <span className={styles.mentionLocaleBadge}>{locale.toUpperCase()}</span>

@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import type { RenderItemFormSidebarCtx, RenderPageCtx } from 'datocms-plugin-sdk';
+import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
 import ReactTimeAgo from 'react-time-ago';
 
 // Components
@@ -27,28 +27,27 @@ import {
 import { cn } from '@/utils/cn';
 import { TIMING, UI } from '@/constants';
 import styles from '@styles/comment.module.css';
-import type { TypedUserInfo } from '@utils/userDisplayResolver';
 
 type CommentProps = {
-  deleteComment: (id: string, parentCommentId?: string) => void;
+  deleteComment: (id: string, parentCommentId?: string) => boolean;
   editComment: (
     id: string,
     newContent: CommentSegment[],
     parentCommentId?: string
-  ) => void;
+  ) => boolean;
   upvoteComment: (
     id: string,
     userUpvotedThisComment: boolean,
     parentCommentId?: string
-  ) => void;
-  replyComment: (parentCommentId: string) => void;
+  ) => boolean;
+  replyComment: (parentCommentId: string) => boolean;
   commentObject: ResolvedCommentType;
   currentUserId: string;
   isReply?: boolean;
   modelFields?: FieldInfo[];
   projectUsers: UserInfo[];
   projectModels: ModelInfo[];
-  ctx?: RenderItemFormSidebarCtx | RenderPageCtx;
+  ctx: RenderItemFormSidebarCtx;
   canMentionFields?: boolean;
   // Picker request callback for asset mentions in edit mode
   onPickerRequest?: (
@@ -66,8 +65,6 @@ type CommentProps = {
   canMentionModels?: boolean;
   /** When true, prevents empty comments from being auto-deleted on blur */
   isPickerActive?: boolean;
-  /** Users with type information for upvoter name resolution */
-  typedUsers?: TypedUserInfo[];
   /** Position of mention dropdowns: 'above' or 'below' the input */
   dropdownPosition?: 'above' | 'below';
 };
@@ -132,7 +129,6 @@ const Comment = memo(function Comment({
   canMentionAssets = false,
   canMentionModels = true,
   isPickerActive = false,
-  typedUsers = [],
   dropdownPosition = 'below',
 }: CommentProps) {
   const [isRecordSelectorOpen, setIsRecordSelectorOpen] = useState(false);
@@ -141,7 +137,7 @@ const Comment = memo(function Comment({
   );
 
   const isNewComment = isContentEmpty(commentObject.content);
-  const isTopLevel = 'replies' in commentObject;
+  const isTopLevel = commentObject.parentCommentId == null;
   const parentId = isTopLevel ? undefined : commentObject.parentCommentId;
   const userIsAuthor = commentObject.author.id === currentUserId;
 
@@ -240,12 +236,14 @@ const Comment = memo(function Comment({
       return;
     }
 
-    setIsEditing(false);
-    editComment(commentObject.id, segments, parentId);
+    const didSave = editComment(commentObject.id, segments, parentId);
+    if (didSave) {
+      setIsEditing(false);
+    }
   };
 
   const handleDelete = async () => {
-    const confirmed = await ctx?.openConfirm({
+    const confirmed = await ctx.openConfirm({
       title: 'Delete comment',
       content: 'Are you sure you want to delete this comment?',
       choices: [{ label: 'Delete', value: true, intent: 'negative' }],
@@ -262,6 +260,20 @@ const Comment = memo(function Comment({
   };
 
   const commentRef = useRef<HTMLDivElement>(null);
+  const repliesRef = useRef<HTMLDivElement>(null);
+  const replyScrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const blurTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (replyScrollTimeoutRef.current) {
+        clearTimeout(replyScrollTimeoutRef.current);
+      }
+      if (blurTimeoutRef.current) {
+        clearTimeout(blurTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleReply = () => {
     setRepliesExpanded(true);
@@ -269,10 +281,14 @@ const Comment = memo(function Comment({
 
     // Scroll to ensure the new reply composer is visible
     // Uses setTimeout to wait for React to render the new reply
-    setTimeout(() => {
+    if (replyScrollTimeoutRef.current) {
+      clearTimeout(replyScrollTimeoutRef.current);
+    }
+
+    replyScrollTimeoutRef.current = setTimeout(() => {
       if (commentRef.current) {
         // Find the last reply element (the newly created one)
-        const repliesContainer = commentRef.current.querySelector('[class*="replies"]');
+        const repliesContainer = repliesRef.current;
         if (repliesContainer) {
           const lastReply = repliesContainer.lastElementChild;
           if (lastReply) {
@@ -283,6 +299,7 @@ const Comment = memo(function Comment({
         // Fallback: scroll the whole comment into view
         commentRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
       }
+      replyScrollTimeoutRef.current = null;
     }, TIMING.SCROLL_AFTER_REPLY_DELAY_MS);
   };
 
@@ -299,11 +316,16 @@ const Comment = memo(function Comment({
   // Uses refs to check current values, avoiding stale closure issues when
   // the user types quickly after blur fires
   const handleBlur = () => {
-    setTimeout(() => {
+    if (blurTimeoutRef.current) {
+      clearTimeout(blurTimeoutRef.current);
+    }
+
+    blurTimeoutRef.current = setTimeout(() => {
       if (isSegmentsEmptyRef.current && isNewCommentRef.current && !isPickerActiveRef.current) {
         // For empty new comments, just delete without confirmation
         deleteComment(commentObject.id, parentId);
       }
+      blurTimeoutRef.current = null;
     }, TIMING.COMMENT_BLUR_DELAY_MS);
   };
 
@@ -390,9 +412,6 @@ const Comment = memo(function Comment({
           {isEditing ? (
             <div className={styles.editContainer}>
               <ComposerBox compact>
-{/* ctx is only passed for sidebar context because TipTapComposer uses it
-    for field mention navigation, which requires sidebar-specific APIs like
-    formValues. The dashboard (RenderPageCtx) doesn't support field mentions. */}
                 <TipTapComposer
                   ref={composerRef}
                   segments={segments}
@@ -411,7 +430,7 @@ const Comment = memo(function Comment({
                   onRecordTrigger={handleRecordToolbarClick}
                   autoFocus
                   dropdownPosition={dropdownPosition}
-                  ctx={ctx?.mode === 'renderItemFormSidebar' ? ctx : undefined}
+                  ctx={ctx}
                 />
                 {isRecordSelectorOpen && readableModels.length > 0 && (
                   <RecordModelSelectorDropdown
@@ -446,13 +465,17 @@ const Comment = memo(function Comment({
           <div className={styles.footer}>
             {commentObject.upvoters.length > 0 && !isEditing && (
               <div className={styles.reactionWrapper}>
-                <button
-                  type="button"
-                  className={cn(styles.reaction, userUpvotedThisComment && styles.reactionActive)}
-                  onClick={handleUpvote}
-                >
-                  <UpvoteIcon role="img" aria-labelledby="upvoteIconTitle" />
-                  <title id="upvoteIconTitle">Upvote</title>
+                  <button
+                    type="button"
+                    className={cn(styles.reaction, userUpvotedThisComment && styles.reactionActive)}
+                    onClick={handleUpvote}
+                    aria-label={
+                      userUpvotedThisComment
+                        ? `Remove upvote from comment. ${commentObject.upvoters.length} upvote${commentObject.upvoters.length === 1 ? '' : 's'}`
+                        : `Upvote comment. ${commentObject.upvoters.length} upvote${commentObject.upvoters.length === 1 ? '' : 's'}`
+                    }
+                  >
+                  <UpvoteIcon aria-hidden="true" />
                   <span>{commentObject.upvoters.length}</span>
                 </button>
                 <div className={styles.tooltip}>
@@ -493,10 +516,8 @@ const Comment = memo(function Comment({
                 </div>
                 <ChevronDownIcon
                   className={cn(styles.chevron, repliesExpanded && styles.chevronExpanded)}
-                  role="img"
-                  aria-labelledby="chevronTitle"
+                  aria-hidden="true"
                 />
-                <title id="chevronTitle">{repliesExpanded ? 'Collapse' : 'Expand'}</title>
               </button>
             )}
           </div>
@@ -504,7 +525,7 @@ const Comment = memo(function Comment({
       </div>
 
       {isTopLevel && replyCount > 0 && repliesExpanded && (
-        <div className={styles.replies}>
+        <div ref={repliesRef} className={styles.replies}>
           {replies.map((reply) => (
             <Comment
               key={reply.id}
@@ -526,7 +547,6 @@ const Comment = memo(function Comment({
               canMentionAssets={canMentionAssets}
               canMentionModels={canMentionModels}
               isPickerActive={isPickerActive}
-              typedUsers={typedUsers}
               dropdownPosition={dropdownPosition}
             />
           ))}

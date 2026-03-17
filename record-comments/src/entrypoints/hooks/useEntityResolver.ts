@@ -327,7 +327,7 @@ export function useEntityResolver(params: UseEntityResolverParams): UseEntityRes
           if (segment.mention.type === 'record') {
             const cached = cacheRef.current.records.get(segment.mention.id);
             if (
-              !cached &&
+              (!cached || cached === 'error') &&
               !pendingRecordsRef.current.has(segment.mention.id) &&
               !seenRecordIds.has(segment.mention.id)
             ) {
@@ -340,7 +340,7 @@ export function useEntityResolver(params: UseEntityResolverParams): UseEntityRes
           } else if (segment.mention.type === 'asset') {
             const cached = cacheRef.current.assets.get(segment.mention.id);
             if (
-              !cached &&
+              (!cached || cached === 'error') &&
               !pendingAssetsRef.current.has(segment.mention.id) &&
               !seenAssetIds.has(segment.mention.id)
             ) {
@@ -441,6 +441,19 @@ export function useEntityResolver(params: UseEntityResolverParams): UseEntityRes
         await Promise.all(assetPromises);
       } catch (error) {
         logError('Failed to fetch async entities', error);
+        for (const record of recordsToFetch) {
+          pendingRecordsRef.current.delete(record.id);
+          if (cacheRef.current.records.get(record.id) === 'loading') {
+            cacheRef.current.records.set(record.id, 'error');
+          }
+        }
+
+        for (const assetId of assetsToFetch) {
+          pendingAssetsRef.current.delete(assetId);
+          if (cacheRef.current.assets.get(assetId) === 'loading') {
+            cacheRef.current.assets.set(assetId, 'error');
+          }
+        }
       } finally {
         setIsResolving(false);
         setCacheVersion((n) => n + 1);

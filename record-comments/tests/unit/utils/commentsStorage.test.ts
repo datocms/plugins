@@ -1,0 +1,116 @@
+import { describe, expect, it, vi } from 'vitest';
+import {
+  ensureCommentsModelExists,
+  ensureCommentsModelExistsWithClient,
+} from '@/utils/commentsStorage';
+import { COMMENTS_MODEL_API_KEY, COMMENT_FIELDS } from '@/constants';
+
+function createClientMock() {
+  return {
+    itemTypes: {
+      list: vi.fn(),
+      create: vi.fn(),
+    },
+    fields: {
+      list: vi.fn(),
+      create: vi.fn(),
+    },
+  };
+}
+
+describe('ensureCommentsModelExists', () => {
+  it('returns null when no CMA token is available', async () => {
+    const result = await ensureCommentsModelExists({
+      currentUserAccessToken: null,
+    } as never);
+
+    expect(result).toBeNull();
+  });
+});
+
+describe('ensureCommentsModelExistsWithClient', () => {
+  it('repairs missing required fields on an existing model', async () => {
+    const client = createClientMock();
+    client.itemTypes.list.mockResolvedValue([
+      { id: 'comments-model', api_key: COMMENTS_MODEL_API_KEY },
+    ]);
+    client.fields.list.mockResolvedValue([{ id: 'field-model', api_key: COMMENT_FIELDS.MODEL_ID }]);
+    client.fields.create.mockImplementation(async (_itemTypeId, body) => ({
+      id: `created-${body.api_key}`,
+      api_key: body.api_key,
+    }));
+
+    const result = await ensureCommentsModelExistsWithClient(client);
+
+    expect(result).toBe('comments-model');
+    expect(client.itemTypes.create).not.toHaveBeenCalled();
+    expect(client.fields.create).toHaveBeenCalledTimes(2);
+    expect(client.fields.create).toHaveBeenNthCalledWith(
+      1,
+      'comments-model',
+      expect.objectContaining({ api_key: COMMENT_FIELDS.RECORD_ID })
+    );
+    expect(client.fields.create).toHaveBeenNthCalledWith(
+      2,
+      'comments-model',
+      expect.objectContaining({ api_key: COMMENT_FIELDS.CONTENT })
+    );
+  });
+
+  it('recovers from a concurrent model creation race by re-fetching the model', async () => {
+    const client = createClientMock();
+    client.itemTypes.list
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 'comments-model', api_key: COMMENTS_MODEL_API_KEY }]);
+    client.itemTypes.create.mockRejectedValue(new Error('duplicate model'));
+    client.fields.list.mockResolvedValue([
+      { id: 'field-model', api_key: COMMENT_FIELDS.MODEL_ID },
+      { id: 'field-record', api_key: COMMENT_FIELDS.RECORD_ID },
+      { id: 'field-content', api_key: COMMENT_FIELDS.CONTENT },
+    ]);
+
+    const result = await ensureCommentsModelExistsWithClient(client);
+
+    expect(result).toBe('comments-model');
+    expect(client.itemTypes.create).toHaveBeenCalledWith({
+      name: 'Project Comment',
+      api_key: COMMENTS_MODEL_API_KEY,
+      draft_mode_active: false,
+    });
+  });
+
+  it('recovers from a concurrent field creation race by re-fetching fields', async () => {
+    const client = createClientMock();
+    client.itemTypes.list.mockResolvedValue([
+      { id: 'comments-model', api_key: COMMENTS_MODEL_API_KEY },
+    ]);
+    client.fields.list
+      .mockResolvedValueOnce([{ id: 'field-model', api_key: COMMENT_FIELDS.MODEL_ID }])
+      .mockResolvedValueOnce([
+        { id: 'field-model', api_key: COMMENT_FIELDS.MODEL_ID },
+        { id: 'field-record', api_key: COMMENT_FIELDS.RECORD_ID },
+      ])
+      .mockResolvedValueOnce([
+        { id: 'field-model', api_key: COMMENT_FIELDS.MODEL_ID },
+        { id: 'field-record', api_key: COMMENT_FIELDS.RECORD_ID },
+      ]);
+    client.fields.create
+      .mockRejectedValueOnce(new Error('duplicate field'))
+      .mockResolvedValueOnce({ id: 'field-content', api_key: COMMENT_FIELDS.CONTENT });
+
+    const result = await ensureCommentsModelExistsWithClient(client);
+
+    expect(result).toBe('comments-model');
+    expect(client.fields.create).toHaveBeenCalledTimes(2);
+    expect(client.fields.create).toHaveBeenNthCalledWith(
+      1,
+      'comments-model',
+      expect.objectContaining({ api_key: COMMENT_FIELDS.RECORD_ID })
+    );
+    expect(client.fields.create).toHaveBeenNthCalledWith(
+      2,
+      'comments-model',
+      expect.objectContaining({ api_key: COMMENT_FIELDS.CONTENT })
+    );
+  });
+});

@@ -6,9 +6,9 @@ type ContextWithSite = {
   };
 };
 
-function getBaseUrl(ctx: ContextWithSite) {
+function getBaseUrl(ctx: ContextWithSite): string | null {
   const domain = ctx.site.attributes.internal_domain;
-  return domain ? `https://${domain}` : '';
+  return domain ? `https://${domain}` : null;
 }
 
 function buildModelPath(modelId: string, isBlockModel: boolean) {
@@ -26,6 +26,7 @@ export type NavigableUserType = 'user' | 'sso' | 'owner';
 
 export function openUsersPage(ctx: ContextWithSite, userType: NavigableUserType): void {
   const baseUrl = getBaseUrl(ctx);
+  if (!baseUrl) return;
 
   if (userType === 'sso') {
     window.open(`${baseUrl}/project_settings/sso-users`, '_blank');
@@ -40,6 +41,7 @@ export function openModelPage(
   isBlockModel: boolean
 ): void {
   const baseUrl = getBaseUrl(ctx);
+  if (!baseUrl) return;
   const path = buildModelPath(modelId, isBlockModel);
   window.open(`${baseUrl}${path}`, '_blank');
 }

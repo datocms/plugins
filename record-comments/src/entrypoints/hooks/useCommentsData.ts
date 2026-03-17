@@ -1,6 +1,5 @@
-import type { RenderItemFormSidebarCtx, RenderPageCtx } from 'datocms-plugin-sdk';
+import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
 import type { Client } from '@datocms/cma-client-browser';
-import { GLOBAL_MODEL_ID, GLOBAL_RECORD_ID } from '@/constants';
 import type { CommentType } from '@ctypes/comments';
 import { COMMENTS_QUERY } from '@ctypes/comments';
 import {
@@ -10,10 +9,11 @@ import {
   type UseCommentsSubscriptionReturn,
 } from './useCommentsSubscription';
 
-type BaseParams = {
+type UseCommentsDataParams = {
   realTimeEnabled: boolean;
   cdaToken: string | undefined;
   client: Client | null;
+  commentsModelId: string | null;
   isSyncAllowed: boolean;
   /** Current user's ID for identifying their drafts */
   currentUserId: string;
@@ -23,20 +23,9 @@ type BaseParams = {
   onBeforeSync?: () => void;
   /** Called after sync updates are applied - use to restore scroll position */
   onAfterSync?: () => void;
-};
-
-type RecordCommentsParams = BaseParams & {
-  context: 'record';
   ctx: RenderItemFormSidebarCtx;
   onCommentRecordIdChange: (id: string | null) => void;
 };
-
-type GlobalCommentsParams = BaseParams & {
-  context: 'global';
-  ctx: RenderPageCtx;
-};
-
-type UseCommentsDataParams = RecordCommentsParams | GlobalCommentsParams;
 
 type UseCommentsDataReturn = {
   comments: CommentType[];
@@ -50,42 +39,25 @@ type UseCommentsDataReturn = {
   fullResult: UseCommentsSubscriptionReturn;
 };
 
-function isRecordParams(params: UseCommentsDataParams): params is RecordCommentsParams {
-  return params.context === 'record';
-}
-
 export function useCommentsData(params: UseCommentsDataParams): UseCommentsDataReturn {
-  const { realTimeEnabled, cdaToken, client, isSyncAllowed, currentUserId, onOrphanedDraft, onBeforeSync, onAfterSync } = params;
-  const isRecordContext = isRecordParams(params);
+  const { realTimeEnabled, cdaToken, client, commentsModelId, isSyncAllowed, currentUserId, onOrphanedDraft, onBeforeSync, onAfterSync } = params;
 
-  let modelId: string;
-  let recordId: string;
-  let subscriptionEnabled: boolean;
-  let onCommentRecordIdChange: ((id: string | null) => void) | undefined;
-
-  if (isRecordContext) {
-    modelId = params.ctx.itemType.id;
-    recordId = params.ctx.item?.id ?? '';
-    subscriptionEnabled = !!params.ctx.item?.id;
-    onCommentRecordIdChange = params.onCommentRecordIdChange;
-  } else {
-    modelId = GLOBAL_MODEL_ID;
-    recordId = GLOBAL_RECORD_ID;
-    subscriptionEnabled = true;
-    onCommentRecordIdChange = undefined;
-  }
+  const modelId = params.ctx.itemType.id;
+  const recordId = params.ctx.item?.id ?? '';
+  const subscriptionEnabled = !!params.ctx.item?.id;
 
   const result = useCommentsSubscription({
     ctx: params.ctx,
     realTimeEnabled,
     cdaToken,
     client,
+    commentsModelId,
     isSyncAllowed,
     query: COMMENTS_QUERY,
     variables: { modelId, recordId },
     filterParams: { modelId, recordId },
     subscriptionEnabled,
-    onCommentRecordIdChange,
+    onCommentRecordIdChange: params.onCommentRecordIdChange,
     currentUserId,
     onOrphanedDraft,
     onBeforeSync,

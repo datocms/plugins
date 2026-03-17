@@ -1,22 +1,16 @@
 # Record Comments
 
-A DatoCMS plugin for team collaboration through threaded comments on records and a project-wide Comments Dashboard.
+A DatoCMS plugin for threaded comments directly in the record sidebar.
 
 ## Features
 
-### Record Sidebar
 - Threaded comments on any record
-- Upvote system
-- Edit & delete your comments
+- Replies, upvotes, editing, and deletion
 - Realtime updates
+- Rich mentions for users, fields, records, assets, and models
 
-### Comments Dashboard
-- Global project-wide discussions
-- My Mentions — see where you've been tagged
-- Recent Comments — latest activity across the project
-- Search and filter by author, date, records, assets, models, or users
+## Mention commands
 
-### Mentions (Slash Commands)
 | Command | Type | Description |
 |---------|------|-------------|
 | `/user` | User | Mention a team member |
@@ -25,43 +19,46 @@ A DatoCMS plugin for team collaboration through threaded comments on records and
 | `/asset` | Asset | Link to an asset |
 | `/model` | Model | Reference a model |
 
-Type `/` to see all available commands, or type the full command (e.g., `/user john`) to search directly.
+Type `/` to open the command menu, or type a full command directly (for example `/user john`) to search inline.
 
 ## Installation
 
 1. Go to **Settings → Plugins** in your DatoCMS project
-2. Search for "Record Comments" and click **Install**
+2. Search for **Record Comments**
+3. Install the plugin
+
+> The first time the plugin boots, it creates or verifies an internal
+> `project_comment` model used to store comments. Make sure the current user has
+> enough permissions to manage models and fields during that initial setup.
 
 ## Configuration
 
 To enable realtime updates:
 
 1. Go to **Settings → API Tokens**
-2. Copy your **Read-only API token**
-3. Go to **Settings → Plugins → Record Comments**
-4. Paste the token and click **Save**
+2. Copy a **read-only API token**
+3. Open **Settings → Plugins → Record Comments**
+4. Paste the token and save
 
 ## Usage
 
-### Record Comments
-1. Open any record and expand the **Comments** panel in the sidebar
-2. Type your message and press **Enter** to send
+1. Open any record and expand the **Comments** sidebar panel
+2. Write a comment and press **Enter** to send
+3. Use `/` or the toolbar buttons to insert mentions
 
-> Note: Save the record at least once before adding comments.
-
-### Dashboard
-Click **Comments** in the left sidebar to access project-wide discussions, your mentions, and recent activity.
-
-### Mentions
-Type `/` to open the command menu, then select a mention type. You can also type the full command directly (e.g., `/user john` to search for "john"). Use the toolbar buttons for quick access.
+> Save the record at least once before adding comments.
 
 ## Troubleshooting
 
-**Comments not syncing in realtime?**
+**Comments are not syncing in realtime**
 - Check that a CDA token is configured in plugin settings
 
-**Can't add comments?**
+**Comments cannot be added**
 - Save the record at least once first
+
+**Initialization warning about comment storage**
+- Ensure the current user can create and inspect models/fields in the project
+- Reload the plugin after permissions are fixed so it can verify the internal `project_comment` model
 
 ## Support
 

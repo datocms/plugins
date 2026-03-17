@@ -41,7 +41,6 @@ export function FieldListView({
                 justClickedInsideRef.current = true;
                 onSelect(field);
               }}
-              onClick={() => onSelect(field)}
             >
               <span className={styles.mentionFieldLabel}>
                 {isNested ? field.displayLabel : field.label}

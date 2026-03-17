@@ -1,18 +1,15 @@
 import { createContext, useContext, type ReactNode } from 'react';
-import type { RenderItemFormSidebarCtx, RenderPageCtx } from 'datocms-plugin-sdk';
+import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
 import { useNavigationCallbacks } from '@hooks/useNavigationCallbacks';
-import { usePageNavigationCallbacks } from '@hooks/usePageNavigationCallbacks';
 
 import type { NavigableUserType } from '@utils/navigationHelpers';
 
-// handleScrollToField: sidebar only. handleNavigateToRecordComments: page only.
 export type NavigationCallbacks = {
   handleScrollToField?: (fieldPath: string, localized: boolean, locale?: string) => Promise<void>;
   handleNavigateToUsers: (userType?: NavigableUserType) => void;
   handleNavigateToModel: (modelId: string, isBlockModel: boolean) => void;
   handleOpenAsset: (assetId: string) => Promise<void>;
   handleOpenRecord: (recordId: string, modelId: string) => Promise<void>;
-  handleNavigateToRecordComments?: (modelId: string, recordId: string) => Promise<void>;
 };
 
 const NavigationCallbacksContext = createContext<NavigationCallbacks | null>(null);
@@ -32,21 +29,6 @@ type SidebarProviderProps = {
 
 export function SidebarNavigationProvider({ ctx, children }: SidebarProviderProps) {
   const callbacks = useNavigationCallbacks(ctx);
-
-  return (
-    <NavigationCallbacksContext.Provider value={callbacks}>
-      {children}
-    </NavigationCallbacksContext.Provider>
-  );
-}
-
-type PageProviderProps = {
-  ctx: RenderPageCtx;
-  children: ReactNode;
-};
-
-export function PageNavigationProvider({ ctx, children }: PageProviderProps) {
-  const callbacks = usePageNavigationCallbacks(ctx);
 
   return (
     <NavigationCallbacksContext.Provider value={callbacks}>

@@ -100,6 +100,18 @@
   margin-bottom: 2rem;
 }
 
+.advancedSettings {
+  margin: 1.5rem 0;
+}
+
+.advancedSettingsContent {
+  padding-top: 0.25rem;
+}
+
+.nestedSection {
+  margin-top: 1.5rem;
+}
+
 .sectionTitle {
   font-size: 1.15rem;
   font-weight: 600;
