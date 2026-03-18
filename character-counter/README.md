@@ -4,6 +4,10 @@ A DatoCMS plugin that automatically adds a compact text analytics addon to field
 
 By default, the addon stays quiet and shows a one-line summary with the most important metrics. Editors can expand it when they want more detail.
 
+## Credit
+
+This plugin interface is heavily inspired by [datocms-plugin-word-counter](https://github.com/voorhoede/datocms-plugin-word-counter). Credit to the original work by Voorhoede for the inspiration.
+
 ## What it shows
 
 ### In the collapsed summary
