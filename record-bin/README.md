@@ -28,21 +28,6 @@ If no explicit runtime has ever been saved yet, the plugin falls back to legacy 
 | Capture dashboard deletions | ✅ | ✅ |
 | Capture API deletions | ✅ | ❌ |
 | Restore from Record Bin | ✅ | ✅ |
-| Daily cleanup check of old bin entries (on plugin boot, no cron jobs) | ✅ | ✅ |
-
-## Cleanup trigger model (no CronJobs)
-
-Cleanup is request-driven in both runtimes, not background-scheduled:
-
-- The plugin runs a daily cleanup check on `onBoot`.
-- The check is throttled to once per day using `automaticBinCleanup.timeStamp`.
-- In `Lambda-full` mode, the plugin sends `POST /` to your lambda URL with `event_type: "cleanup"`.
-- In `Lambda-less` mode, the plugin performs cleanup directly through the CMA API.
-- If the plugin is not booted for some time, cleanup runs the next time it boots.
-
-### Why we do not ship cron jobs
-
-We intentionally opted out of built-in cron jobs. On serverless platforms, scheduled invocations add recurring compute cost, while storage reduction versus boot-triggered cleanup is usually small. For this plugin, that tradeoff was not worth the extra cost and operational complexity.
 
 ## Setup
 

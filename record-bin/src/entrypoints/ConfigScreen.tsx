@@ -12,7 +12,6 @@ import {
 } from "datocms-react-ui";
 import { CSSProperties, useEffect, useState } from "react";
 import {
-  automaticBinCleanupObject,
   LambdaConnectionState,
 } from "../types/types";
 import {
@@ -60,10 +59,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     ctx.plugin.attributes.parameters
   );
   const initialDebugEnabled = isDebugEnabled(ctx.plugin.attributes.parameters);
-  const initialNumberOfDays = String(
-    (ctx.plugin.attributes.parameters?.automaticBinCleanup as automaticBinCleanupObject)
-      ?.numberOfDays ?? "30"
-  );
   const hasInitialConnectionErrorDetails =
     initialDeploymentUrl.trim().length > 0 &&
     initialConnectionState?.status === "disconnected" &&
@@ -74,22 +69,17 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         initialConnectionState.responseSnippet
     );
 
-  const [numberOfDays, setNumberOfDays] = useState(
-    initialNumberOfDays
-  );
   const [debugEnabled, setDebugEnabled] = useState(initialDebugEnabled);
   const [runtimeModeSelection, setRuntimeModeSelection] = useState<RuntimeMode>(
     initialRuntimeMode
   );
   const [savedFormValues, setSavedFormValues] = useState({
-    numberOfDays: initialNumberOfDays,
     debugEnabled: initialDebugEnabled,
     runtimeMode: initialRuntimeMode,
   });
   const [isLoading, setLoading] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
-  const [error, setError] = useState("");
   const [isHealthChecking, setIsHealthChecking] = useState(false);
   const [deploymentUrlInput, setDeploymentUrlInput] = useState(
     initialDeploymentUrl
@@ -114,11 +104,20 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const debugLogger = createDebugLogger(debugEnabled, "ConfigScreen");
 
-  const persistPluginParameters = async (updates: Record<string, unknown>) => {
-    await ctx.updatePluginParameters({
+  const persistPluginParameters = async (
+    updates: Record<string, unknown>,
+    options?: { dropAutomaticBinCleanup?: boolean }
+  ) => {
+    const nextParameters = {
       ...ctx.plugin.attributes.parameters,
       ...updates,
-    });
+    } as Record<string, unknown>;
+
+    if (options?.dropAutomaticBinCleanup) {
+      delete nextParameters.automaticBinCleanup;
+    }
+
+    await ctx.updatePluginParameters(nextParameters);
   };
 
   const clearConnectionErrorState = () => {
@@ -517,20 +516,11 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     window.open(option.url, "_blank", "noreferrer");
   };
 
-  const deletionHandler = async () => {
-    const userInput = parseInt(numberOfDays as string, 10);
+  const saveSettingsHandler = async () => {
     debugLogger.log("Saving plugin settings", {
-      numberOfDays,
-      parsedNumberOfDays: userInput,
       debugEnabled,
       runtimeModeSelection,
     });
-
-    if (isNaN(userInput)) {
-      setError("Days must be an integer number");
-      debugLogger.warn("Cannot save settings: numberOfDays is not a number");
-      return;
-    }
 
     const hasConnectedLambdaForSave =
       runtimeModeSelection !== "lambda" ||
@@ -568,25 +558,25 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         clearConnectionErrorState();
       }
 
-      await persistPluginParameters({
-        debug: debugEnabled,
-        automaticBinCleanup: { numberOfDays: userInput, timeStamp: "" },
-        runtimeMode: runtimeModeSelection,
-        lambdaFullMode: runtimeModeSelection === "lambda",
-        deploymentURL: persistedDeploymentUrl,
-        vercelURL: persistedDeploymentUrl,
-        lambdaConnection: persistedConnectionState,
-      });
+      await persistPluginParameters(
+        {
+          debug: debugEnabled,
+          runtimeMode: runtimeModeSelection,
+          lambdaFullMode: runtimeModeSelection === "lambda",
+          deploymentURL: persistedDeploymentUrl,
+          vercelURL: persistedDeploymentUrl,
+          lambdaConnection: persistedConnectionState,
+        },
+        { dropAutomaticBinCleanup: true }
+      );
       debugLogger.log("Plugin settings saved", {
-        numberOfDays: userInput,
         runtimeModeSelection,
       });
 
       ctx.notice(
-        `Settings saved. Runtime mode: ${runtimeModeSelection === "lambda" ? "Lambda-full" : "Lambda-less"}. All records older than ${numberOfDays} days in the bin will be daily deleted. Debug logging is ${debugEnabled ? "enabled" : "disabled"}.`
+        `Settings saved. Runtime mode: ${runtimeModeSelection === "lambda" ? "Lambda-full" : "Lambda-less"}. Debug logging is ${debugEnabled ? "enabled" : "disabled"}.`
       );
       setSavedFormValues({
-        numberOfDays: String(userInput),
         debugEnabled,
         runtimeMode: runtimeModeSelection,
       });
@@ -680,7 +670,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   const lambdaSetupDisabled =
     isConnecting || isDisconnecting || isHealthChecking || isLoading;
   const hasUnsavedChanges =
-    numberOfDays !== savedFormValues.numberOfDays ||
     debugEnabled !== savedFormValues.debugEnabled ||
     runtimeModeSelection !== savedFormValues.runtimeMode;
   const canSaveWithLambdaMode =
@@ -866,28 +855,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           </div>
         )}
 
-        <h2
-          style={{
-            marginTop: 0,
-            marginBottom: "var(--spacing-s)",
-            fontSize: "var(--font-size-l)",
-          }}
-        >
-          Bin cleanup settings
-        </h2>
         <Form>
-          <TextField
-            error={error}
-            required
-            name="numberOfDays"
-            id="numberOfDays"
-            label="Delete trashed records older than (days)"
-            value={numberOfDays}
-            onChange={(event) => {
-              setNumberOfDays(event);
-              setError("");
-            }}
-          />
           <Section
             title="Advanced settings"
             collapsible={{
@@ -966,7 +934,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
             </p>
           )}
           <Button
-            onClick={deletionHandler}
+            onClick={saveSettingsHandler}
             fullWidth
             buttonType={isLoading ? "muted" : "primary"}
             disabled={

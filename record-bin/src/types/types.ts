@@ -16,11 +16,6 @@ export type errorObject = {
   fullErrorPayload: string;
 };
 
-export type automaticBinCleanupObject = {
-  numberOfDays: number;
-  timeStamp: string;
-};
-
 export type LambdaConnectionStatus = "connected" | "disconnected";
 
 export type LambdaConnectionPhase =

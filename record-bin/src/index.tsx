@@ -10,24 +10,11 @@ import ConfigScreen from "./entrypoints/ConfigScreen";
 import "datocms-react-ui/styles.css";
 import BinOutlet from "./entrypoints/BinOutlet";
 import ErrorModal from "./entrypoints/ErrorModal";
-import binCleanup from "./utils/binCleanup";
 import { createDebugLogger, isDebugEnabled } from "./utils/debugLogger";
 import { getRuntimeMode } from "./utils/getRuntimeMode";
 import { captureDeletedItemsWithoutLambda } from "./utils/lambdaLessCapture";
 
 connect({
-  async onBoot(ctx) {
-    const pluginParameters = ctx.plugin.attributes.parameters;
-    const debugLogger = createDebugLogger(
-      isDebugEnabled(pluginParameters),
-      "index.onBoot"
-    );
-    debugLogger.log("Plugin boot started");
-
-    debugLogger.log("Running daily cleanup check");
-    await binCleanup(ctx);
-    debugLogger.log("Plugin boot completed");
-  },
   async onBeforeItemsDestroy(items, ctx) {
     const debugLogger = createDebugLogger(
       isDebugEnabled(ctx.plugin.attributes.parameters),
