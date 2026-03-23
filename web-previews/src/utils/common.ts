@@ -45,7 +45,7 @@ export async function makeRequest(
       body: payload,
       //@ts-expect-error targetAddressSpace is a Chromium thing
       // See https://github.com/WICG/local-network-access/blob/main/explainer.md
-      targetAddressSpace: isLoopback ? 'loopback' : undefined, // e.g. localhost or 127.0.0.1
+      targetAddressSpace: isLoopback ? 'local' : undefined, // e.g. localhost or 127.0.0.1
     });
 
     if (request.status !== 200) {
