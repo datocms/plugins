@@ -57,6 +57,7 @@ export default function OpenAIConfig({
         onChange={setGptModel}
         models={listOfModels}
       />
+      <p className={s.hint}>Recommended: gpt-5.4-mini</p>
     </>
   );
 }

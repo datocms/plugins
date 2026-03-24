@@ -46,6 +46,7 @@ export default function AnthropicConfig({
         models={listOfAnthropicModels}
         useStyledWrapper={false}
       />
+      <p className={s.hint}>Recommended: claude-haiku-4-5-latest</p>
     </>
   );
 }

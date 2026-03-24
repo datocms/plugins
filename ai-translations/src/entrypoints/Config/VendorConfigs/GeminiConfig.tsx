@@ -45,6 +45,7 @@ export default function GeminiConfig({
         onChange={setGeminiModel}
         models={listOfGeminiModels}
       />
+      <p className={s.hint}>Recommended: gemini-2.5-flash</p>
     </>
   );
 }

@@ -180,7 +180,7 @@ connect({
       defaults.apiKeysToBeExcludedFromThisPlugin = [];
     }
     if (!pluginParams.gptModel) {
-      defaults.gptModel = 'gpt-4o-mini';
+      defaults.gptModel = 'gpt-5.4-mini';
     }
     
     // Apply all defaults in a single update call if any are needed

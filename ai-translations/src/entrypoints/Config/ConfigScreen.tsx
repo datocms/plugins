@@ -385,9 +385,9 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       apiKey !== (pluginParams.apiKey ?? '') ||
     vendor !== (pluginParams.vendor ?? 'openai') ||
     googleApiKey !== (pluginParams.googleApiKey ?? '') ||
-    geminiModel !== (pluginParams.geminiModel ?? 'gemini-1.5-flash') ||
+    geminiModel !== (pluginParams.geminiModel ?? 'gemini-2.5-flash') ||
     anthropicApiKey !== (pluginParams.anthropicApiKey ?? '') ||
-    anthropicModel !== (pluginParams.anthropicModel ?? 'claude-3.5-haiku-latest') ||
+    anthropicModel !== (pluginParams.anthropicModel ?? 'claude-haiku-4-5-latest') ||
     deeplUseFree !== (pluginParams.deeplUseFree ?? false) ||
     deeplFormality !== (pluginParams.deeplFormality ?? 'default') ||
     deeplPreserveFormatting !== (pluginParams.deeplPreserveFormatting ?? true) ||

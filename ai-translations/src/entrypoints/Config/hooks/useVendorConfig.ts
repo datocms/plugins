@@ -61,9 +61,9 @@ export function useVendorConfig(pluginParams: ctxParamsType): [VendorConfigState
   const [apiKey, setApiKey] = useState(pluginParams.apiKey ?? '');
   const [gptModel, setGptModel] = useState(pluginParams.gptModel ?? 'None');
   const [googleApiKey, setGoogleApiKey] = useState(pluginParams.googleApiKey ?? '');
-  const [geminiModel, setGeminiModel] = useState(pluginParams.geminiModel ?? 'gemini-1.5-flash');
+  const [geminiModel, setGeminiModel] = useState(pluginParams.geminiModel ?? 'gemini-2.5-flash');
   const [anthropicApiKey, setAnthropicApiKey] = useState(pluginParams.anthropicApiKey ?? '');
-  const [anthropicModel, setAnthropicModel] = useState(pluginParams.anthropicModel ?? 'claude-3.5-haiku-latest');
+  const [anthropicModel, setAnthropicModel] = useState(pluginParams.anthropicModel ?? 'claude-haiku-4-5-latest');
   const [deeplApiKey, setDeeplApiKey] = useState(pluginParams.deeplApiKey ?? '');
   const [deeplUseFree, setDeeplUseFree] = useState(pluginParams.deeplUseFree ?? false);
   const [deeplFormality, setDeeplFormality] = useState<'default' | 'more' | 'less'>(pluginParams.deeplFormality ?? 'default');
