@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-bulk-change-author",
   "homepage": "https://github.com/datocms/plugins/tree/master/bulk-change-author#readme",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "author": "DatoCMS <support@datocms.com>",
   "description": "A plugin that allow you to change the author of multiple records at a time on tabular view.",
   "keywords": [

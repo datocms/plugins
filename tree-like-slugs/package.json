@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-tree-like-slugs",
   "homepage": "https://github.com/datocms/plugins/tree/master/tree-like-slugs#readme",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "author": "DatoCMS <support@datocms.com>",
   "description": "A plugin that makes it so the slugs in models with Hierarchical Sorting (tree-like models) are passed down to child records",
   "keywords": [
