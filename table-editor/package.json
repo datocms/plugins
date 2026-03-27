@@ -2,24 +2,24 @@
   "name": "datocms-plugin-table-editor",
   "description": "A table editor that outputs JSON objects",
   "homepage": "https://github.com/datocms/plugins/tree/master/table-editor#readme",
-  "version": "0.2.8",
+  "version": "0.2.3",
   "dependencies": {
-    "@fortawesome/fontawesome-svg-core": "^7.2.0",
-    "@fortawesome/free-solid-svg-icons": "^7.2.0",
-    "@fortawesome/react-fontawesome": "^3.2.0",
-    "@types/react": "^18.3.12",
-    "@types/react-dom": "^18.3.1",
-    "classnames": "^2.5.1",
-    "datocms-plugin-sdk": "^2.1.1",
-    "datocms-react-ui": "^2.1.4",
-    "dequal": "^2.0.3",
+    "@fortawesome/fontawesome-svg-core": "^1.2.36",
+    "@fortawesome/free-solid-svg-icons": "^5.15.4",
+    "@fortawesome/react-fontawesome": "^0.1.16",
+    "@types/react": "^17.0.38",
+    "@types/react-dom": "^17.0.11",
+    "classnames": "^2.3.1",
+    "datocms-plugin-sdk": "^0.5.1",
+    "datocms-react-ui": "^0.5.1",
+    "dequal": "^2.0.2",
     "fast-deep-equal": "^3.1.3",
-    "lodash-es": "^4.17.23",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-table": "7.8.0",
-    "react-textarea-autosize": "^8.5.9",
-    "use-deep-compare": "^1.3.0"
+    "lodash-es": "^4.17.21",
+    "react": "^17.0.2",
+    "react-dom": "^17.0.2",
+    "react-table": "7.7.0",
+    "react-textarea-autosize": "^8.3.3",
+    "use-deep-compare": "^1.1.0"
   },
   "keywords": [
     "datocms",
@@ -36,13 +36,13 @@
     "preview": "vite preview"
   },
   "devDependencies": {
-    "@types/lodash-es": "^4.17.12",
-    "@types/react-table": "7.7.20",
-    "cross-env": "^10.1.0",
-    "@vitejs/plugin-react": "^5.1.4",
-    "globals": "^17.4.0",
-    "typescript": "^5.9.3",
-    "vite": "^7.3.1"
+    "@types/lodash-es": "^4.17.5",
+    "@types/react-table": "7.7.9",
+    "cross-env": "^7.0.3",
+    "@vitejs/plugin-react": "^4.3.1",
+    "globals": "^15.9.0",
+    "typescript": "^5.5.3",
+    "vite": "^5.4.1"
   },
   "datoCmsPlugin": {
     "title": "Table Editor",
@@ -50,12 +50,5 @@
     "coverImage": "docs/cover.png",
     "entryPoint": "dist/index.html"
   },
-  "type": "module",
-  "overrides": {
-    "datocms-react-ui": {
-      "react-intersection-observer": "^9.16.0",
-      "react": "$react",
-      "react-dom": "$react-dom"
-    }
-  }
+  "type": "module"
 }

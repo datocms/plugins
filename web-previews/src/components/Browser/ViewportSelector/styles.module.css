@@ -1,5 +1,0 @@
-.root,
-.root > * {
-  display: flex;
-  align-items: stretch;
-}

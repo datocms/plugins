@@ -9,10 +9,11 @@
   border-color: var(--darker-border-color);
 }
 
-.deletableItemAction {
-  padding-top: var(--spacing-l);
-  display: flex;
-  justify-content: flex-end;
+.grid {
+  display: grid;
+  align-items: flex-start;
+  grid-template-columns: 1fr 48px;
+  column-gap: var(--spacing-m);
 }
 
 .headerGrid {
@@ -44,19 +45,6 @@
 .viewportGrid {
   display: grid;
   align-items: flex-start;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
   gap: var(--spacing-m);
-}
-
-.featureSection {
-  margin-top: var(--spacing-l);
-  padding: var(--spacing-l);
-  border-radius: 3px;
-  border: 1px solid var(--border-color);
-}
-
-.indentFields {
-  padding-left: var(--spacing-xl);
-  margin-left: var(--spacing-m);
-  border-left: 4px solid var(--border-color);
 }

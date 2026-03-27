@@ -1,15 +1,9 @@
-import {
-  faCopy,
-  faExternalLinkAlt,
-  faEye,
-} from '@fortawesome/free-solid-svg-icons';
+import { faCopy } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import type { RenderItemFormSidebarPanelCtx } from 'datocms-plugin-sdk';
 import { Canvas, Spinner, useCtx } from 'datocms-react-ui';
-import { ButtonGroup, ButtonGroupButton } from '../../components/ButtonGroup';
 import type { Frontend } from '../../types';
 import { type FrontendStatus, useStatusByFrontend } from '../../utils/common';
-import { inspectorUrl } from '../../utils/urls';
 import styles from './styles.module.css';
 
 type PropTypes = {
@@ -21,15 +15,14 @@ const FrontendGroup = ({
   frontend,
   hideIfNoLinks,
 }: {
-  status: FrontendStatus | undefined;
+  status: FrontendStatus;
   frontend: Frontend;
   hideIfNoLinks?: boolean;
 }) => {
   if (
-    !status ||
-    ('previewLinks' in status &&
-      status.previewLinks.length === 0 &&
-      hideIfNoLinks)
+    'previewLinks' in status &&
+    status.previewLinks.length === 0 &&
+    hideIfNoLinks
   ) {
     return null;
   }
@@ -37,27 +30,16 @@ const FrontendGroup = ({
   return (
     <div className={styles.group}>
       <div className={styles.groupName}>{frontend.name}</div>
-      <FrontendResult status={status} frontend={frontend} />
+      <FrontendResult status={status} />
     </div>
   );
 };
 
-const FrontendResult = ({
-  status,
-  frontend,
-}: {
-  status: FrontendStatus;
-  frontend: Frontend;
-}) => {
+const FrontendResult = ({ status }: { status: FrontendStatus }) => {
   const ctx = useCtx();
 
-  const hasVisualEditing = !!frontend.visualEditing?.enableDraftModeUrl;
-  const visualEditingOrigin = hasVisualEditing
-    ? new URL(frontend.visualEditing!.enableDraftModeUrl).origin
-    : undefined;
-
   if ('error' in status) {
-    return <div>API endpoint error: check the console for more info!</div>;
+    return <div>Webhook error: check the console for more info!</div>;
   }
 
   return (
@@ -65,54 +47,28 @@ const FrontendResult = ({
       {status.previewLinks.length === 0 ? (
         <div>No preview links available.</div>
       ) : (
-        status.previewLinks.map(({ url: urlString, label }) => {
-          const url = new URL(urlString);
-          const canOpenInVisual =
-            hasVisualEditing && visualEditingOrigin === url.origin;
-
+        status.previewLinks.map(({ url, label }) => {
           return (
-            <div key={`${url}`} className={styles.previewLink}>
-              <div className={styles.previewLink__body}>
-                <div className={styles.previewLink__label}>{label}</div>
-                <div className={styles.previewLink__pathname} title={urlString}>
-                  {url.pathname + url.search}
-                </div>
-              </div>
-              <ButtonGroup>
-                {canOpenInVisual && (
-                  <ButtonGroupButton
-                    tooltip="Open in Visual"
-                    onClick={() => {
-                      ctx.navigateTo(
-                        inspectorUrl(ctx, {
-                          path: url.pathname + url.search,
-                          frontend: frontend.name,
-                        }),
-                      );
-                    }}
-                  >
-                    <FontAwesomeIcon icon={faEye} />
-                  </ButtonGroupButton>
-                )}
-                <ButtonGroupButton
-                  tooltip="Copy URL to clipboard"
-                  onClick={() => {
-                    navigator.clipboard.writeText(urlString);
-                    ctx.notice('URL saved in clipboard!');
-                  }}
-                >
-                  <FontAwesomeIcon icon={faCopy} />
-                </ButtonGroupButton>
-                <ButtonGroupButton
-                  as="a"
-                  href={urlString}
-                  target="_blank"
-                  rel="noreferrer"
-                  tooltip="Visit URL"
-                >
-                  <FontAwesomeIcon icon={faExternalLinkAlt} />
-                </ButtonGroupButton>
-              </ButtonGroup>
+            <div key={`${url}`} className={styles.grid}>
+              <a
+                href={url}
+                className={styles.link}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {label}
+              </a>
+              <button
+                type="button"
+                className={styles.copy}
+                title="Copy URL to clipboard"
+                onClick={() => {
+                  navigator.clipboard.writeText(url);
+                  ctx.notice('URL saved in clipboard!');
+                }}
+              >
+                <FontAwesomeIcon icon={faCopy} />
+              </button>
             </div>
           );
         })
@@ -123,7 +79,6 @@ const FrontendResult = ({
 
 const PreviewUrl = ({ ctx }: PropTypes) => {
   const [frontends, statusByFrontend] = useStatusByFrontend(ctx);
-  const firstStatus = statusByFrontend && Object.values(statusByFrontend)[0];
 
   return (
     <Canvas ctx={ctx}>
@@ -131,12 +86,11 @@ const PreviewUrl = ({ ctx }: PropTypes) => {
         <>
           {frontends.length === 0 ? (
             <div>No frontends configured!</div>
-          ) : frontends.length === 1 && firstStatus ? (
-            <FrontendResult status={firstStatus} frontend={frontends[0]} />
+          ) : frontends.length === 1 ? (
+            <FrontendResult status={Object.values(statusByFrontend)[0]} />
           ) : Object.values(statusByFrontend).every(
               (status) =>
-                !status ||
-                ('previewLinks' in status && status.previewLinks.length === 0),
+                'previewLinks' in status && status.previewLinks.length === 0,
             ) ? (
             <div>No preview links available.</div>
           ) : (
