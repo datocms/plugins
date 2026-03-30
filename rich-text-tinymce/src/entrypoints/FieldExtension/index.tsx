@@ -20,7 +20,6 @@ import 'tinymce/plugins/emoticons';
 import 'tinymce/plugins/emoticons/js/emojis';
 import 'tinymce/plugins/link';
 import 'tinymce/plugins/lists';
-import 'tinymce/plugins/paste';
 import 'tinymce/plugins/table';
 import 'tinymce/plugins/autoresize';
 
@@ -174,7 +173,7 @@ export default function FieldExtension({ ctx }: Props) {
         disabled={ctx.disabled}
         init={{
           plugins:
-            'image advlist code emoticons link lists table autoresize paste',
+            'image advlist code emoticons link lists table autoresize',
           toolbar:
             'undo redo | formatselect | ' +
             'bold italic backcolor | link customimage |' +
@@ -186,7 +185,7 @@ export default function FieldExtension({ ctx }: Props) {
           setup: initialize,
           autoresize_bottom_margin: 10,
           paste_data_images: true,
-          async images_upload_handler(blobInfo, success, failure, progress) {
+          async images_upload_handler(blobInfo, progress) {
             try {
               const client = buildClient({
                 // biome-ignore lint/style/noNonNullAssertion: We're sure we have currentUserAccessToken
@@ -199,14 +198,14 @@ export default function FieldExtension({ ctx }: Props) {
                 filename: blobInfo.filename(),
                 onProgress(info) {
                   if (info.type === 'UPLOADING_FILE') {
-                    progress?.(Math.round(info.payload.progress * 0.99));
+                    progress(Math.round(info.payload.progress * 100));
                   }
                 },
               });
 
-              success?.(upload.url);
+              return upload.url;
             } catch (_e) {
-              failure('Could not upload image');
+              throw new Error('Could not upload image');
             }
           },
         }}

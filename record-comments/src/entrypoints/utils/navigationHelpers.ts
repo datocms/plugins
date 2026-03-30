@@ -1,0 +1,47 @@
+type ContextWithSite = {
+  site: {
+    attributes: {
+      internal_domain: string | null;
+    };
+  };
+};
+
+function getBaseUrl(ctx: ContextWithSite): string | null {
+  const domain = ctx.site.attributes.internal_domain;
+  return domain ? `https://${domain}` : null;
+}
+
+function buildModelPath(modelId: string, isBlockModel: boolean) {
+  return isBlockModel
+    ? `/schema/blocks_library/${modelId}`
+    : `/schema/item_types/${modelId}`;
+}
+
+export function buildRecordEditPath(modelId: string, recordId: string): string {
+  return `/editor/item_types/${modelId}/items/${recordId}/edit`;
+}
+
+/** 'user' -> /project_settings/users, 'sso' -> /project_settings/sso-users, 'owner' -> not navigable */
+export type NavigableUserType = 'user' | 'sso' | 'owner';
+
+export function openUsersPage(ctx: ContextWithSite, userType: NavigableUserType): void {
+  const baseUrl = getBaseUrl(ctx);
+  if (!baseUrl) return;
+
+  if (userType === 'sso') {
+    window.open(`${baseUrl}/project_settings/sso-users`, '_blank');
+  } else if (userType === 'user') {
+    window.open(`${baseUrl}/project_settings/users`, '_blank');
+  }
+}
+
+export function openModelPage(
+  ctx: ContextWithSite,
+  modelId: string,
+  isBlockModel: boolean
+): void {
+  const baseUrl = getBaseUrl(ctx);
+  if (!baseUrl) return;
+  const path = buildModelPath(modelId, isBlockModel);
+  window.open(`${baseUrl}${path}`, '_blank');
+}

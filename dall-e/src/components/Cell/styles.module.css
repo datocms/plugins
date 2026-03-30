@@ -1,11 +1,135 @@
-.image {
-  width: 100%;
+.cell {
+  position: relative;
   display: block;
+  isolation: isolate;
+  width: 100%;
+  padding: 0;
+  border: 1px solid var(--ig-border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--ig-surface);
   cursor: pointer;
-  border-radius: 5px;
-  border: 1px solid transparent;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    background-color 140ms ease;
 }
 
-.image:hover {
-  outline: 3px solid var(--accent-color);
+.cell:disabled {
+  cursor: default;
+}
+
+.cellSelected {
+  border-color: var(--ig-accent);
+  background: color-mix(in srgb, var(--ig-accent) 8%, var(--ig-surface));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ig-accent) 18%, transparent);
+}
+
+.cellSelected::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: color-mix(in srgb, var(--ig-accent) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ig-accent) 18%, transparent);
+  pointer-events: none;
+}
+
+.cell:hover {
+  border-color: var(--ig-border-strong);
+}
+
+.cellError {
+  cursor: default;
+}
+
+.cell:focus-visible {
+  outline: 2px solid var(--ig-focus);
+  outline-offset: -2px;
+}
+
+.selectionMark {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+
+.selectionMarkSelected {
+  border-color: var(--ig-accent);
+  background: #fff;
+}
+
+.selectionIcon {
+  position: relative;
+  display: block;
+  width: 12px;
+  height: 12px;
+  border: 1.5px solid rgba(0, 0, 0, 0.22);
+  border-radius: 3px;
+  background: #fff;
+  transition:
+    border-color 140ms ease,
+    background-color 140ms ease;
+}
+
+.selectionMarkSelected .selectionIcon {
+  border-color: var(--ig-accent);
+  background: var(--ig-accent);
+}
+
+.selectionMarkSelected .selectionIcon::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 4px;
+  height: 7px;
+  border-right: 2px solid #fff;
+  border-bottom: 2px solid #fff;
+  transform: translate(-50%, -62%) rotate(45deg);
+}
+
+.image {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: var(--ig-surface-muted);
+  position: relative;
+  z-index: 0;
+}
+
+.errorState {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  min-height: 220px;
+  padding: 16px;
+  background: var(--ig-surface-muted);
+}
+
+.errorPosition {
+  font-size: 13px;
+  color: var(--ig-text-muted);
+}
+
+.errorTitle {
+  font-weight: 600;
+  color: var(--ig-text);
+}
+
+.errorMessage {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ig-text-muted);
 }

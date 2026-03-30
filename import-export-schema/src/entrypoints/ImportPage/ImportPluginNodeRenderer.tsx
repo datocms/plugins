@@ -1,12 +1,12 @@
+import type { NodeProps } from '@xyflow/react';
+import classNames from 'classnames';
+import { useContext } from 'react';
 import {
   type PluginNode,
   PluginNodeRenderer,
 } from '@/components/PluginNodeRenderer';
+import { SelectedEntityContext } from '@/components/SchemaOverview/SelectedEntityContext';
 import { ConflictsContext } from '@/entrypoints/ImportPage/ConflictsManager/ConflictsContext';
-import { SelectedEntityContext } from '@/entrypoints/ImportPage/SelectedEntityContext';
-import type { NodeProps } from '@xyflow/react';
-import classNames from 'classnames';
-import { useContext } from 'react';
 import { useResolutionStatusForPlugin } from './ResolutionsForm';
 
 export function ImportPluginNodeRenderer(props: NodeProps<PluginNode>) {
@@ -21,8 +21,8 @@ export function ImportPluginNodeRenderer(props: NodeProps<PluginNode>) {
       {...props}
       className={classNames(
         conflict && resolution?.invalid && 'app-node--conflict',
-        conflict && !resolution?.invalid && 'app-node__excluded-from-export',
-        selectedEntityContext.entity === plugin && 'app-node__focused',
+        conflict && !resolution?.invalid && 'app-node--excluded',
+        selectedEntityContext.entity === plugin && 'app-node--focused',
       )}
     />
   );

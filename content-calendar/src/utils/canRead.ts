@@ -1,5 +1,5 @@
 import type { SchemaTypes } from '@datocms/cma-client';
-import type { ModelBlock, Role } from 'datocms-plugin-sdk';
+import type { Role } from 'datocms-plugin-sdk';
 import { isEqual, omit, uniq } from 'lodash-es';
 
 const action = 'read' as const;
@@ -76,7 +76,7 @@ const byItemType = (
 
 export function canReadAtLeastSomeItem(
   permissions: Permissions,
-  itemType: ModelBlock,
+  itemType: SchemaTypes.ItemType,
 ): boolean {
   const rules = itemRules(permissions)
     .filter((rule) => byAction(action, rule))

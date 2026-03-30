@@ -59,7 +59,7 @@ export function generateGraph({
     fontname: 'Arial',
     fontsize: 13,
     labelloc: 't',
-    pad: '%0.4,%0.4',
+    pad: 0.4,
     rankdir: 'LR',
     nodesep: 1,
     compound: true,
@@ -68,7 +68,7 @@ export function generateGraph({
   graph.attributes.node.apply({
     fontsize: 10,
     fontname: 'Arial',
-    margin: '%0.07,%0.05',
+    margin: 0.07,
     penwidth: 1.0,
   });
 

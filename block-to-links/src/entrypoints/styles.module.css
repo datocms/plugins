@@ -1,0 +1,484 @@
+/**
+ * Block-to-Links Converter Styles
+ * 
+ * Styles for the plugin configuration screen UI.
+ */
+
+.container {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: var(--spacing-xl) var(--spacing-l);
+  font-family: colfax-web, "Roboto", "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+.header {
+  margin-bottom: var(--spacing-xl);
+  text-align: center;
+}
+
+.title {
+  font-size: 1.75rem;
+  font-weight: 700;
+  margin: 0 0 var(--spacing-s) 0;
+  color: var(--base-body-color);
+}
+
+.description {
+  font-size: 1.1rem;
+  color: var(--light-body-color);
+  margin: 0 auto;
+  max-width: 600px;
+  line-height: 1.5;
+}
+
+.card {
+  background: white;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-m);
+  padding: var(--spacing-l);
+  margin-bottom: var(--spacing-l);
+  box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+}
+
+.loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-xl);
+  gap: var(--spacing-m);
+  color: var(--light-body-color);
+}
+
+.loadingText {
+  color: var(--light-body-color);
+  font-size: 1rem;
+  margin-top: var(--spacing-s);
+  text-align: center;
+}
+
+.percentageText {
+  color: var(--light-body-color);
+  font-size: 0.9rem;
+  font-family: var(--font-family-mono);
+  margin-top: -8px; /* Pull closer to the text above */
+}
+
+.empty {
+  text-align: center;
+  padding: var(--spacing-xl);
+  background: var(--light-bg-color);
+  border-radius: var(--border-radius-m);
+  color: var(--light-body-color);
+}
+
+/* Analysis Section */
+.analysis h2 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin: 0 0 var(--spacing-l) 0;
+  padding-bottom: var(--spacing-m);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.analysisGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: var(--spacing-l);
+  margin-bottom: var(--spacing-l);
+}
+
+.analysisItem {
+  background: var(--light-bg-color);
+  padding: var(--spacing-m);
+  border-radius: var(--border-radius-m);
+  display: flex;
+  flex-direction: column;
+}
+
+/* .analysisSection - no extra styles needed, uses default block layout */
+
+.analysisItem h3,
+.analysisSection h3 {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--light-body-color);
+  margin: 0 0 var(--spacing-m) 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  line-height: 1;
+}
+
+.analysisStat {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-xs);
+  gap: var(--spacing-m);
+}
+
+.analysisStat:last-child {
+  margin-bottom: 0;
+}
+
+.statLabel {
+  font-size: 0.9rem;
+  color: var(--base-body-color);
+  flex-shrink: 0;
+}
+
+.statValueMain {
+  font-weight: 600;
+  color: var(--base-body-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  text-align: right;
+}
+
+.statValueCode {
+  font-family: var(--font-family-mono);
+  font-size: 0.85rem;
+  color: var(--base-body-color);
+  background: rgba(0,0,0,0.05);
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  text-align: right;
+}
+
+.iconWrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--light-body-color);
+  opacity: 0.8;
+  transform: translateY(-1px);
+}
+
+.warningIcon {
+  display: inline-flex;
+  margin-left: var(--spacing-xs);
+  vertical-align: middle;
+}
+
+.emptyFieldsNote {
+  color: var(--light-body-color);
+  font-style: italic;
+  padding: var(--spacing-m);
+  background: var(--light-bg-color);
+  border-radius: var(--border-radius-m);
+  text-align: center;
+  margin: 0;
+}
+
+.fieldList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius-m);
+  overflow: hidden;
+}
+
+.fieldList li {
+  padding: var(--spacing-s) var(--spacing-m);
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: white;
+  transition: background 0.1s ease;
+}
+
+.fieldList li:last-child {
+  border-bottom: none;
+}
+
+.fieldList li:hover {
+  background: var(--light-bg-color);
+}
+
+/* Use higher specificity to override .fieldList li padding */
+.fieldList li.fieldListItemClickable {
+  padding: 0;
+}
+
+.fieldListLink {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-s) var(--spacing-m);
+  text-decoration: none;
+  color: inherit;
+  width: 100%;
+  cursor: pointer;
+  transition: background 0.1s ease;
+}
+
+.fieldListLink:hover {
+  background: #f0f4ff;
+}
+
+.fieldInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fieldInfo strong {
+  font-size: 0.95rem;
+  color: var(--base-body-color);
+}
+
+/* Hover state for field label - defined after base .fieldInfo strong */
+.fieldListLink:hover .fieldInfo strong {
+  color: var(--accent-color);
+}
+
+.fieldApiKey {
+  font-size: 0.8rem;
+  color: var(--light-body-color);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-family-mono);
+}
+
+.fieldMeta {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+}
+
+.fieldType {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  color: var(--light-body-color);
+  background: var(--light-bg-color);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  background: var(--accent-color);
+  color: white;
+  border-radius: 100px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.conversionOptions {
+  margin-top: var(--spacing-l);
+  padding: var(--spacing-m);
+  background: var(--light-bg-color);
+  border-radius: var(--border-radius-m);
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-m);
+}
+
+.labelWithTooltip {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+}
+
+.tooltipContainer {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: help;
+  color: var(--light-body-color);
+  pointer-events: auto;
+}
+
+.tooltipContainer:hover {
+  color: var(--accent-color);
+}
+
+.tooltip {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--base-body-color);
+  color: white;
+  padding: var(--spacing-s);
+  border-radius: 4px;
+  font-size: 0.8rem;
+  white-space: normal;
+  width: max-content;
+  max-width: 250px;
+  visibility: hidden;
+  opacity: 0;
+  transition: opacity 0.2s, visibility 0.2s;
+  z-index: 1000;
+  pointer-events: none;
+  margin-bottom: 8px;
+  text-align: center;
+  line-height: 1.4;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  font-weight: normal;
+}
+
+.tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -5px;
+  border-width: 5px;
+  border-style: solid;
+  border-color: var(--base-body-color) transparent transparent transparent;
+}
+
+.tooltipContainer:hover .tooltip {
+  visibility: visible;
+  opacity: 1;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-m);
+  margin-top: var(--spacing-xl);
+  padding-top: var(--spacing-l);
+  border-top: 1px solid var(--border-color);
+}
+
+/* Converting State */
+.converting {
+  text-align: center;
+  padding: var(--spacing-xl) 0;
+}
+
+.progressContainer {
+  max-width: 400px;
+  margin: var(--spacing-xl) auto;
+}
+
+.progressBar {
+  width: 100%;
+  height: 8px;
+  background: var(--light-bg-color);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: var(--spacing-s);
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--accent-color);
+  border-radius: 4px;
+  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.progressSteps {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  color: var(--light-body-color);
+  margin-bottom: var(--spacing-xs);
+}
+
+.currentStep {
+  font-weight: 600;
+  color: var(--base-body-color);
+  margin-bottom: var(--spacing-xs);
+}
+
+/* Success State */
+.success {
+  text-align: center;
+  padding: var(--spacing-l) 0;
+}
+
+.successIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: #e6f7e6;
+  color: var(--positive-color);
+  margin-bottom: var(--spacing-m);
+}
+
+.checkIcon {
+  width: 32px;
+  height: 32px;
+}
+
+.successTitle {
+  font-size: 1.75rem;
+  margin: 0 0 var(--spacing-xl) 0;
+  color: var(--base-body-color);
+  font-weight: 700;
+}
+
+.successStats {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--light-bg-color);
+  padding: var(--spacing-l) var(--spacing-xl);
+  border-radius: var(--border-radius-l);
+  margin-bottom: var(--spacing-xl);
+}
+
+.statDivider {
+  width: 1px;
+  height: 40px;
+  background: var(--border-color);
+  margin: 0 var(--spacing-xl);
+}
+
+.statItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.statValue {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--base-body-color);
+  line-height: 1;
+  margin-bottom: var(--spacing-xs);
+}
+
+.statLabel {
+  font-size: 0.75rem;
+  color: var(--light-body-color);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+
+.successDetails {
+  margin-bottom: var(--spacing-xl);
+}
+
+.successDetails code {
+  background: var(--light-bg-color);
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-family: var(--font-family-mono);
+  color: var(--base-body-color);
+}

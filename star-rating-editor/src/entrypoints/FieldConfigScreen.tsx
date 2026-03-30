@@ -57,8 +57,10 @@ const FieldConfigScreen = ({ ctx }: PropTypes) => {
     normalizeFieldParams(ctx.parameters as FieldParams, globalParams),
   );
 
+  type EditableField = 'maxRating' | 'starsColor';
+
   const update = useCallback(
-    (field, value) => {
+    (field: EditableField, value: string | number | null) => {
       const newParameters = { ...formValues, [field]: value };
       setFormValues(newParameters);
       ctx.setParameters(newParameters);

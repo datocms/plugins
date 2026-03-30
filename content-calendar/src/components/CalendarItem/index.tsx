@@ -1,5 +1,4 @@
 import { format } from 'date-fns';
-import type { ModelBlock } from 'datocms-plugin-sdk';
 import { useCtx } from 'datocms-react-ui';
 import { type CSSProperties, useContext, useEffect, useMemo } from 'react';
 import { HoverItemContext } from '../../context/HoverItemContext';
@@ -18,7 +17,7 @@ export default function CalendarItem({ item, criteria }: PropTypes) {
   const { setModelId } = useContext(HoverItemContext);
   const itemType = ctx.itemTypes[
     item.relationships.item_type.data.id
-  ] as ModelBlock;
+  ] as SchemaTypes.ItemType;
   const titleFieldId = itemType.relationships.title_field.data?.id;
 
   const color = useMemo(() => colorForModel(itemType.id), [itemType.id]);

@@ -1,4 +1,4 @@
-import { RenderPagePropertiesAndMethods } from 'datocms-plugin-sdk';
+import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import { Button, Canvas, Spinner } from 'datocms-react-ui';
 import s from './styles.module.css';
 import {
@@ -11,20 +11,19 @@ import {
   promiseAllWithProgress,
   useAsyncEffect,
 } from '../utils/useAsyncEffect';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { encode } from 'universal-base64';
 import {
   TransformWrapper,
   TransformComponent,
   ReactZoomPanPinchContentRef,
 } from 'react-zoom-pan-pinch';
-import { useElementSize } from 'usehooks-ts';
 import { Scheduler } from 'async-scheduler';
 
 const queue = new Scheduler(10);
 
 type Props = {
-  ctx: RenderPagePropertiesAndMethods;
+  ctx: RenderPageCtx;
 };
 
 function toIds(entities: Partial<Record<string, { id: string }>>) {
@@ -71,6 +70,8 @@ export default function Graphviz({ ctx }: Props) {
   const [dot, setDot] = useState<undefined | string>();
   const [svg, setSvg] = useState<undefined | string>();
   const [size, setSize] = useState<undefined | [number, number]>();
+  const [containerElement, setContainerElement] = useState<HTMLDivElement | null>(null);
+  const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
   useAsyncEffect(async () => {
     if (!firstRun.current) {
@@ -159,10 +160,26 @@ export default function Graphviz({ ctx }: Props) {
     download('schema.svg', `data:image/svg+xml;base64,${encode(svg)}`);
   }
 
-  const [setRef, elementSize] = useElementSize();
+  useEffect(() => {
+    if (!containerElement) {
+      return;
+    }
 
-  const minScale = size && elementSize.width && elementSize.height
-    ? Math.min(elementSize.width / size[0], elementSize.height / size[1])
+    const observer = new ResizeObserver(() => {
+      const rect = containerElement.getBoundingClientRect();
+      setContainerSize({ width: rect.width, height: rect.height });
+    });
+
+    observer.observe(containerElement);
+
+    const rect = containerElement.getBoundingClientRect();
+    setContainerSize({ width: rect.width, height: rect.height });
+
+    return () => observer.disconnect();
+  }, [containerElement]);
+
+  const minScale = size && containerSize.width && containerSize.height
+    ? Math.min(containerSize.width / size[0], containerSize.height / size[1])
     : undefined;
 
   return (
@@ -182,7 +199,7 @@ export default function Graphviz({ ctx }: Props) {
             </div>
           </div>
         </div>
-        <div className={s.wrapper} ref={setRef}>
+        <div className={s.wrapper} ref={setContainerElement}>
           {svg && minScale && (
             <TransformWrapper
               initialScale={minScale}

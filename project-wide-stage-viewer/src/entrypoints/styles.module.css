@@ -1,0 +1,99 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xl);
+}
+
+.section {
+  display: block;
+}
+
+.form {
+  display: grid;
+  gap: var(--spacing-m);
+  width: 100%;
+}
+
+.instructions {
+  margin: 0 0 var(--spacing-m);
+  color: var(--light-body-color);
+  font-size: 0.9rem;
+}
+
+.actions {
+  display: flex;
+  gap: var(--spacing-s);
+  justify-content: flex-end;
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+}
+
+.loadingLabel {
+  color: var(--light-body-color);
+}
+
+.error {
+  color: var(--alert-color);
+}
+
+.notice {
+  color: var(--placeholder-body-color);
+  margin: 0;
+}
+
+.empty {
+  color: var(--light-body-color);
+  margin: 0;
+}
+
+.menuItems {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+}
+
+.menuItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-m);
+  padding: var(--spacing-s) var(--spacing-m);
+  background: var(--lighter-bg-color);
+  border: 1px solid var(--border-color);
+}
+
+.menuItemDetails {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.menuItemLabel {
+  font-weight: 600;
+}
+
+.menuItemMeta {
+  color: var(--light-body-color);
+  font-size: 0.85rem;
+}
+
+.iconOption {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-s);
+}
+
+.iconPreview {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5em;
+  color: var(--accent-color);
+}

@@ -1,0 +1,178 @@
+import { useCallback, useMemo } from 'react';
+import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
+import { loadAllFields } from '@utils/fieldLoader';
+import {
+  ownerToUserInfo,
+  regularUserToUserInfo,
+  ssoUserToUserInfo,
+  currentUserToUserInfo,
+  type UserInfo,
+} from '@utils/userTransformers';
+import type { FieldInfo, ModelInfo } from './useMentions';
+import { getValidItemTypes } from '@utils/itemTypeUtils';
+import { logError } from '@/utils/errorLogger';
+import { useAsyncOperation } from './useAsyncOperation';
+import type { TypedUserInfo } from '@utils/userDisplayResolver';
+
+type UseProjectDataOptions = {
+  loadFields?: boolean;
+};
+
+type LoadError = {
+  source: string;
+  message: string;
+};
+
+type UseProjectDataReturn = {
+  projectUsers: UserInfo[];
+  projectModels: ModelInfo[];
+  modelFields: FieldInfo[];
+  loadError: LoadError | null;
+  retry: () => void;
+  /** Users with type information for upvoter name resolution */
+  typedUsers: TypedUserInfo[];
+};
+
+export function useProjectData(
+  ctx: RenderItemFormSidebarCtx,
+  options: UseProjectDataOptions = {}
+): UseProjectDataReturn {
+  const { loadFields = false } = options;
+
+  const itemTypesStableKey = useMemo(() => {
+    const itemTypes = getValidItemTypes(ctx.itemTypes);
+    return itemTypes.map((it) => it.id).sort().join(',');
+  }, [ctx.itemTypes]);
+
+  const projectModels = useMemo(() => {
+    const itemTypes = getValidItemTypes(ctx.itemTypes);
+    return itemTypes.map((itemType): ModelInfo => ({
+      id: itemType.id,
+      apiKey: itemType.attributes.api_key,
+      name: itemType.attributes.name,
+      isBlockModel: itemType.attributes.modular_block,
+    }));
+  }, [itemTypesStableKey]);
+
+  const itemTypeId = ctx.itemType.id;
+  const siteId = ctx.site.id;
+  const localesStableKey = useMemo(
+    () => ctx.site.attributes.locales.join(','),
+    [ctx.site.attributes.locales]
+  );
+  const formValuesStableKey = useMemo(
+    () => JSON.stringify(ctx.formValues ?? {}),
+    [ctx.formValues]
+  );
+
+  const loadFieldsAsync = useCallback(async () => {
+    return loadAllFields(ctx);
+  }, [ctx, formValuesStableKey, localesStableKey]);
+
+  const {
+    data: modelFields,
+    error: fieldError,
+    retry: retryFields,
+  } = useAsyncOperation(loadFieldsAsync, [itemTypeId, formValuesStableKey, localesStableKey], {
+    enabled: loadFields,
+    operationName: 'load fields',
+    errorContext: { itemTypeId },
+  });
+
+  const currentUserId = ctx.currentUser.id;
+
+  const loadUsersAsync = useCallback(async (): Promise<{
+    allUsers: UserInfo[];
+    typedUsers: TypedUserInfo[];
+  }> => {
+    const results = await Promise.allSettled([
+      ctx.loadUsers(),
+      ctx.loadSsoUsers(),
+    ]);
+
+    const regularUsersRaw = results[0].status === 'fulfilled' ? results[0].value : [];
+    const ssoUsersRaw = results[1].status === 'fulfilled' ? results[1].value : [];
+
+    if (results[0].status === 'rejected') {
+      logError('Failed to load regular users', results[0].reason, { siteId });
+    }
+    if (results[1].status === 'rejected') {
+      logError('Failed to load SSO users', results[1].reason, { siteId });
+    }
+
+    if (results[0].status === 'rejected' && results[1].status === 'rejected') {
+      throw new Error('Failed to load users. Please check your connection and try again.');
+    }
+
+    const typedUsers: TypedUserInfo[] = [];
+
+    for (const user of regularUsersRaw) {
+      const userInfo = regularUserToUserInfo(user, 48);
+      typedUsers.push({ user: userInfo, userType: 'user' });
+    }
+
+    for (const user of ssoUsersRaw) {
+      const userInfo = ssoUserToUserInfo(user, 48);
+      typedUsers.push({ user: userInfo, userType: 'sso' });
+    }
+
+    const ownerInfo = ownerToUserInfo(ctx.owner, 48);
+    const ownerType = ctx.owner.type === 'organization' ? 'org' : 'account' as const;
+    const ownerAlreadyIncluded = typedUsers.some((tu) => tu.user.id === ownerInfo.id);
+    if (!ownerAlreadyIncluded) {
+      typedUsers.unshift({ user: ownerInfo, userType: ownerType });
+    }
+
+    // Include current user if not already in the list (e.g., org owners without email)
+    const currentUserAlreadyIncluded = typedUsers.some((tu) => tu.user.id === ctx.currentUser.id);
+    if (!currentUserAlreadyIncluded) {
+      const currentUserInfo = currentUserToUserInfo(ctx.currentUser, 48);
+      typedUsers.unshift({ user: currentUserInfo, userType: 'user' });
+    }
+
+    const allUsers = typedUsers.map((tu) => tu.user);
+
+    return { allUsers, typedUsers };
+  }, [siteId, currentUserId]);
+
+  const {
+    data: userData,
+    error: userError,
+    retry: retryUsers,
+  } = useAsyncOperation(loadUsersAsync, [siteId], {
+    enabled: true,
+    operationName: 'load users',
+    errorContext: { siteId },
+  });
+
+  const retry = useCallback(() => {
+    retryFields();
+    retryUsers();
+  }, [retryFields, retryUsers]);
+
+  const currentLoadError = fieldError || userError;
+
+  const stableProjectUsers = useMemo(
+    () => userData?.allUsers ?? [],
+    [userData]
+  );
+
+  const stableTypedUsers = useMemo(
+    () => userData?.typedUsers ?? [],
+    [userData]
+  );
+
+  const stableModelFields = useMemo(
+    () => modelFields ?? [],
+    [modelFields]
+  );
+
+  return {
+    projectUsers: stableProjectUsers,
+    projectModels,
+    modelFields: stableModelFields,
+    loadError: currentLoadError,
+    retry,
+    typedUsers: stableTypedUsers,
+  };
+}

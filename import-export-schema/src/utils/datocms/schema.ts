@@ -1,3 +1,8 @@
+import type { SchemaTypes } from '@datocms/cma-client';
+import get from 'lodash-es/get';
+/**
+ * Shared lookups and helper utilities for interpreting DatoCMS field metadata.
+ */
 import boolean from '@/icons/fieldgroup-boolean.svg?react';
 import color from '@/icons/fieldgroup-color.svg?react';
 import datetime from '@/icons/fieldgroup-datetime.svg?react';
@@ -9,10 +14,10 @@ import reference from '@/icons/fieldgroup-reference.svg?react';
 import richText from '@/icons/fieldgroup-rich_text.svg?react';
 import seo from '@/icons/fieldgroup-seo.svg?react';
 import structuredText from '@/icons/fieldgroup-structured_text.svg?react';
-import type { SchemaTypes } from '@datocms/cma-client';
-import type { FieldAttributes } from '@datocms/cma-client/dist/types/generated/SchemaTypes';
-import { get } from 'lodash-es';
-import { isHardcodedEditor } from './fieldTypeInfo';
+
+// Note: Avoid network requests when resolving plugin dependencies.
+// Call sites should pass the set of installed plugin IDs to determine
+// whether an editor/addon refers to a plugin.
 
 type SvgComponent = React.FunctionComponent<
   React.ComponentProps<'svg'> & {
@@ -25,7 +30,7 @@ type SvgComponent = React.FunctionComponent<
 
 export const fieldTypeGroups: Array<{
   name: string;
-  types: FieldAttributes['field_type'][];
+  types: SchemaTypes.Field['attributes']['field_type'][];
 }> = [
   {
     name: 'text',
@@ -139,7 +144,7 @@ export const fieldGroupColors: Record<
 };
 
 export const fieldTypeDescriptions: Record<
-  FieldAttributes['field_type'],
+  SchemaTypes.Field['attributes']['field_type'],
   string
 > = {
   boolean: 'Boolean',
@@ -165,7 +170,7 @@ export const fieldTypeDescriptions: Record<
 };
 
 export const validatorsContainingLinks: Array<{
-  field_type: FieldAttributes['field_type'];
+  field_type: SchemaTypes.Field['attributes']['field_type'];
   validator: string;
 }> = [
   { field_type: 'link', validator: 'item_item_type.item_types' },
@@ -177,7 +182,7 @@ export const validatorsContainingLinks: Array<{
 ];
 
 export const validatorsContainingBlocks: Array<{
-  field_type: FieldAttributes['field_type'];
+  field_type: SchemaTypes.Field['attributes']['field_type'];
   validator: string;
 }> = [
   { field_type: 'rich_text', validator: 'rich_text_blocks.item_types' },
@@ -192,6 +197,7 @@ export const validatorsContainingBlocks: Array<{
   },
 ];
 
+// Collect all item type IDs referenced by validators for the given field.
 export function findLinkedItemTypeIds(field: SchemaTypes.Field) {
   const fieldLinkedItemTypeIds = new Set<string>();
 
@@ -217,15 +223,28 @@ export function findLinkedItemTypeIds(field: SchemaTypes.Field) {
   return fieldLinkedItemTypeIds;
 }
 
-export async function findLinkedPluginIds(field: SchemaTypes.Field) {
+// Collect plugin IDs referenced via appearance editors/addons, filtering by installed list when available.
+export function findLinkedPluginIds(
+  field: SchemaTypes.Field,
+  installedPluginIds?: Set<string>,
+) {
   const fieldLinkedPluginIds = new Set<string>();
+  // Some fields may have no appearance set (older exports or defaults)
+  const editorId = field.attributes.appearance?.editor;
+  const hasInstalledList = !!installedPluginIds && installedPluginIds.size > 0;
 
-  if (!(await isHardcodedEditor(field.attributes.appearance.editor))) {
-    fieldLinkedPluginIds.add(field.attributes.appearance.editor);
+  // If we have a list of installed plugins, only collect editors that match.
+  // If not, skip editor to avoid false-positives for built-in editors.
+  if (editorId && hasInstalledList && installedPluginIds!.has(editorId)) {
+    fieldLinkedPluginIds.add(editorId);
   }
 
-  for (const addon of field.attributes.appearance.addons) {
-    fieldLinkedPluginIds.add(addon.id);
+  for (const addon of field.attributes.appearance?.addons ?? []) {
+    // If we don't have the installed list yet, include addons optimistically;
+    // otherwise include only if installed.
+    if (!hasInstalledList || installedPluginIds!.has(addon.id)) {
+      fieldLinkedPluginIds.add(addon.id);
+    }
   }
 
   return fieldLinkedPluginIds;

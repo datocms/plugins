@@ -1,5 +1,5 @@
 import classNames from 'classnames';
-import type { ModelBlock } from 'datocms-plugin-sdk';
+import type { SchemaTypes } from '@datocms/cma-client';
 import { Button, useCtx } from 'datocms-react-ui';
 import { type CSSProperties, useCallback, useMemo } from 'react';
 import { useHoverModelId } from '../../context/HoverItemContext';
@@ -50,7 +50,7 @@ export function ActiveModelsPanel({
     [ctx.currentRole, ctx.environment],
   );
 
-  const allSortedModels = (Object.values(ctx.itemTypes) as ModelBlock[])
+  const allSortedModels = (Object.values(ctx.itemTypes) as SchemaTypes.ItemType[])
     .filter((model) => !model.attributes.modular_block)
     .filter((model) => canReadAtLeastSomeItem(permissions, model))
     .sort((a, b) => a.attributes.name.localeCompare(b.attributes.name));

@@ -1,14 +1,17 @@
+import type { NodeProps } from '@xyflow/react';
+import classNames from 'classnames';
+import { useContext } from 'react';
 import {
   type ItemTypeNode,
   ItemTypeNodeRenderer,
 } from '@/components/ItemTypeNodeRenderer';
+import { SelectedEntityContext } from '@/components/SchemaOverview/SelectedEntityContext';
 import { ConflictsContext } from '@/entrypoints/ImportPage/ConflictsManager/ConflictsContext';
 import { useResolutionStatusForItemType } from '@/entrypoints/ImportPage/ResolutionsForm';
-import { SelectedEntityContext } from '@/entrypoints/ImportPage/SelectedEntityContext';
-import type { NodeProps } from '@xyflow/react';
-import classNames from 'classnames';
-import { useContext } from 'react';
 
+/**
+ * Renders import graph item-type nodes, overlaying conflict and resolution state styling.
+ */
 export function ImportItemTypeNodeRenderer(props: NodeProps<ItemTypeNode>) {
   const { itemType } = props.data;
 
@@ -36,8 +39,8 @@ export function ImportItemTypeNodeRenderer(props: NodeProps<ItemTypeNode>) {
       apiKey={resolutionNewApiKey || itemType.attributes.api_key}
       className={classNames(
         unresolvedConflict && 'app-node--conflict',
-        resolutionStrategyIsReuseExisting && 'app-node__excluded-from-export',
-        selectedEntityContext.entity === itemType && 'app-node__focused',
+        resolutionStrategyIsReuseExisting && 'app-node--excluded',
+        selectedEntityContext.entity === itemType && 'app-node--focused',
       )}
     />
   );

@@ -21,7 +21,7 @@ export default function FieldExtension({ ctx }: Props) {
     try {
       setIsTranslating(true);
       const format =
-        ctx.field.attributes.appeareance.editor === 'wysiwyg'
+        ctx.field.attributes.appearance?.editor === 'wysiwyg'
           ? 'html'
           : 'plain';
 

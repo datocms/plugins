@@ -3,7 +3,7 @@ import { render } from './utils/render';
 import FieldExtension from './entrypoints/FieldExtension';
 import 'datocms-react-ui/styles.css';
 
-const FIELDS_TYPES: FieldType[] = ['string', 'text', 'structured_text'];
+const FIELDS_TYPES: FieldType[] = ['slug', 'string', 'text', 'structured_text'];
 
 connect({
   overrideFieldExtensions(field) {

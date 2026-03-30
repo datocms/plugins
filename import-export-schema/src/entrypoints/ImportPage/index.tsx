@@ -1,256 +1,349 @@
-import { ProjectSchema } from '@/utils/ProjectSchema';
-import type { ExportDoc } from '@/utils/types';
-import { buildClient } from '@datocms/cma-client';
-import { faXmark } from '@fortawesome/free-solid-svg-icons';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { ReactFlowProvider } from '@xyflow/react';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
+import { Canvas } from 'datocms-react-ui';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { TaskOverlayStack } from '@/components/TaskOverlayStack';
+import { useConflictsBuilder } from '@/shared/hooks/useConflictsBuilder';
+import { useProjectSchema } from '@/shared/hooks/useProjectSchema';
 import {
-  Button,
-  Canvas,
-  Spinner,
-  Toolbar,
-  ToolbarStack,
-  ToolbarTitle,
-} from 'datocms-react-ui';
-import { useEffect, useMemo, useState } from 'react';
+  type UseLongTaskResult,
+  useLongTask,
+} from '@/shared/tasks/useLongTask';
+import type { ProjectSchema } from '@/utils/ProjectSchema';
+import type { ExportDoc } from '@/utils/types';
 import { ExportSchema } from '../ExportPage/ExportSchema';
-import { ConflictsContext } from './ConflictsManager/ConflictsContext';
-import buildConflicts, {
-  type Conflicts,
-} from './ConflictsManager/buildConflicts';
-import FileDropZone from './FileDropZone';
-import { Inner } from './Inner';
-import ResolutionsForm, { type Resolutions } from './ResolutionsForm';
 import { buildImportDoc } from './buildImportDoc';
-import importSchema, { type ImportProgress } from './importSchema';
+import { ImportWorkflow } from './ImportWorkflow';
+import importSchema from './importSchema';
+import type { Resolutions } from './ResolutionsForm';
+import { useRecipeLoader } from './useRecipeLoader';
+
 type Props = {
   ctx: RenderPageCtx;
 };
 
-export function ImportPage({ ctx }: Props) {
-  const params = new URLSearchParams(ctx.location.search);
-  const recipeUrl = params.get('recipe_url');
-  const recipeTitle = params.get('recipe_title');
-  const [loadingRecipeByUrl, setLoadingRecipeByUrl] = useState(false);
+type ImportModeState = {
+  exportSchema: [string, ExportSchema] | undefined;
+  conflicts: ReturnType<typeof useConflictsBuilder>['conflicts'];
+  loadingRecipe: boolean;
+  handleDrop: (filename: string, doc: ExportDoc) => Promise<void>;
+  handleImport: (resolutions: Resolutions) => Promise<void>;
+  importTask: UseLongTaskResult;
+  conflictsTask: UseLongTaskResult;
+};
 
-  useEffect(() => {
-    async function run() {
-      if (!recipeUrl) {
-        return;
-      }
-
-      try {
-        setLoadingRecipeByUrl(true);
-        const uri = new URL(recipeUrl);
-
-        const response = await fetch(recipeUrl);
-        const body = await response.json();
-
-        const schema = new ExportSchema(body as ExportDoc);
-        setExportSchema([
-          recipeTitle || uri.pathname.split('/').pop()!,
-          schema,
-        ]);
-      } finally {
-        setLoadingRecipeByUrl(false);
-      }
-    }
-
-    run();
-  }, [recipeUrl]);
-
+/**
+ * Encapsulates the import tab lifecycle: loading shared recipes, reacting to file drops,
+ * resolving conflicts, and driving the long-running CMA import task.
+ */
+function useImportMode({
+  ctx,
+  projectSchema,
+}: {
+  ctx: RenderPageCtx;
+  projectSchema: ProjectSchema;
+}): ImportModeState {
+  const importTask = useLongTask();
+  const conflictsTask = useLongTask();
   const [exportSchema, setExportSchema] = useState<
     [string, ExportSchema] | undefined
   >();
 
-  const [importProgress, setImportProgress] = useState<
-    ImportProgress | undefined
-  >(undefined);
+  const { conflicts, setConflicts } = useConflictsBuilder({
+    exportSchema: exportSchema?.[1],
+    projectSchema,
+    task: conflictsTask.controller,
+  });
 
-  async function handleDrop(filename: string, doc: ExportDoc) {
-    try {
-      const schema = new ExportSchema(doc);
-      setExportSchema([filename, schema]);
-    } catch (e) {
-      console.error(e);
-      ctx.alert(e instanceof Error ? e.message : 'Invalid export file!');
-    }
-  }
+  const client = projectSchema.client;
 
-  const client = useMemo(
-    () =>
-      buildClient({
-        apiToken: ctx.currentUserAccessToken!,
-        environment: ctx.environment,
-      }),
-    [ctx.currentUserAccessToken, ctx.environment],
+  const handleRecipeLoaded = useCallback(
+    ({ label, schema }: { label: string; schema: ExportSchema }) => {
+      setExportSchema([label, schema]);
+    },
+    [],
   );
 
-  const projectSchema = useMemo(() => new ProjectSchema(client), [client]);
+  const handleRecipeError = useCallback(
+    (error: unknown) => {
+      console.error('Failed to load shared export recipe', error);
+      ctx.alert('Could not load the shared export recipe.');
+    },
+    [ctx],
+  );
 
-  const [conflicts, setConflicts] = useState<Conflicts | undefined>();
+  const { loading: loadingRecipe } = useRecipeLoader(ctx, handleRecipeLoaded, {
+    onError: handleRecipeError,
+  });
+
+  const handleDrop = useCallback(
+    async (filename: string, doc: ExportDoc) => {
+      try {
+        const schema = new ExportSchema(doc);
+        setExportSchema([filename, schema]);
+      } catch (error) {
+        console.error(error);
+        ctx.alert(
+          error instanceof Error ? error.message : 'Invalid export file!',
+        );
+      }
+    },
+    [ctx],
+  );
+
+  const handleImport = useCallback(
+    async (resolutions: Resolutions) => {
+      if (!exportSchema || !conflicts) {
+        throw new Error('Invariant');
+      }
+
+      try {
+        importTask.controller.start({
+          done: 0,
+          total: 1,
+          label: 'Preparing import…',
+        });
+
+        const importDoc = await buildImportDoc(
+          exportSchema[1],
+          conflicts,
+          resolutions,
+        );
+
+        await importSchema(
+          importDoc,
+          client,
+          (progress) => {
+            if (!importTask.controller.isCancelRequested()) {
+              importTask.controller.setProgress({
+                done: progress.finished,
+                total: progress.total,
+                label: progress.label,
+              });
+            }
+          },
+          {
+            shouldCancel: () => importTask.controller.isCancelRequested(),
+          },
+        );
+
+        if (importTask.controller.isCancelRequested()) {
+          throw new Error('Import cancelled');
+        }
+
+        importTask.controller.complete({
+          done: importTask.state.progress.total,
+          total: importTask.state.progress.total,
+          label: 'Import completed',
+        });
+        ctx.notice('Import completed successfully.');
+        setExportSchema(undefined);
+        setConflicts(undefined);
+      } catch (error) {
+        console.error(error);
+        if (error instanceof Error && error.message === 'Import cancelled') {
+          importTask.controller.complete({ label: 'Import cancelled' });
+          ctx.notice('Import canceled');
+        } else {
+          importTask.controller.fail(error);
+          ctx.alert('Import could not be completed successfully.');
+        }
+      } finally {
+        importTask.controller.reset();
+      }
+    },
+    [
+      client,
+      conflicts,
+      ctx,
+      exportSchema,
+      importTask,
+      setConflicts,
+      setExportSchema,
+    ],
+  );
 
   useEffect(() => {
-    async function run() {
-      if (!exportSchema) {
-        return;
+    const handleCancelRequest = async () => {
+      if (!exportSchema) return;
+      const result = await ctx.openConfirm({
+        title: 'Cancel the import?',
+        content: `Do you really want to cancel the import process of "${exportSchema[0]}"?`,
+        choices: [
+          {
+            label: 'Yes, cancel the import',
+            value: 'yes',
+            intent: 'negative',
+          },
+        ],
+        cancel: {
+          label: 'Nevermind',
+          value: false,
+          intent: 'positive',
+        },
+      });
+
+      if (result === 'yes') {
+        setExportSchema(undefined);
       }
-      setConflicts(await buildConflicts(exportSchema[1], projectSchema));
-    }
+    };
 
-    run();
-  }, [exportSchema, projectSchema]);
-
-  async function handleImport(resolutions: Resolutions) {
-    if (!exportSchema || !conflicts) {
-      throw new Error('Invariant');
-    }
-
-    try {
-      setImportProgress({ finished: 0, total: 1 });
-
-      const importDoc = await buildImportDoc(
-        exportSchema[1],
-        conflicts,
-        resolutions,
+    window.addEventListener(
+      'import:request-cancel',
+      handleCancelRequest as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'import:request-cancel',
+        handleCancelRequest as unknown as EventListener,
       );
+    };
+  }, [ctx, exportSchema, setExportSchema]);
 
-      await importSchema(importDoc, client, setImportProgress);
+  return {
+    exportSchema,
+    conflicts,
+    loadingRecipe,
+    handleDrop,
+    handleImport,
+    importTask,
+    conflictsTask,
+  };
+}
 
-      ctx.notice('Import completed successfully!');
-      ctx.navigateTo(
-        `${ctx.isEnvironmentPrimary ? '' : `/environments/${ctx.environment}`}/configuration/p/${ctx.plugin.id}/pages/import-export`,
-      );
+type OverlayItemsArgs = {
+  ctx: RenderPageCtx;
+  exportSchema: [string, ExportSchema] | undefined;
+  importTask: UseLongTaskResult;
+  conflictsTask: UseLongTaskResult;
+};
 
-      setImportProgress(undefined);
-      setExportSchema(undefined);
-    } catch (e) {
-      console.error(e);
-      ctx.alert('Import could not be completed successfully.');
-    }
-  }
+/**
+ * Coalesces the overlay stack configuration used by `TaskOverlayStack`. Keeping the builder
+ * in one place clarifies which long tasks participate in the UI at any moment.
+ */
+function useOverlayItems({
+  ctx,
+  exportSchema,
+  importTask,
+  conflictsTask,
+}: OverlayItemsArgs) {
+  return useMemo(
+    () => [
+      buildImportOverlay(ctx, importTask, exportSchema),
+      buildConflictsOverlay(conflictsTask),
+    ],
+    [ctx, exportSchema, importTask, conflictsTask],
+  );
+}
+
+/**
+ * Unified import entrypoint rendered inside the Schema sidebar page. Handles file drops
+ * and conflict resolution for schema imports.
+ */
+export function ImportPage({ ctx }: Props) {
+  const projectSchema = useProjectSchema(ctx);
+  const importMode = useImportMode({ ctx, projectSchema });
+
+  const overlayItems = useOverlayItems({
+    ctx,
+    exportSchema: importMode.exportSchema,
+    importTask: importMode.importTask,
+    conflictsTask: importMode.conflictsTask,
+  });
 
   return (
     <Canvas ctx={ctx}>
-      {importProgress ? (
+      <ReactFlowProvider>
         <div className="page">
-          <Toolbar className="page__toolbar">
-            <ToolbarStack stackSize="l">
-              <ToolbarTitle>Import in progress</ToolbarTitle>
-              <div style={{ flex: '1' }} />
-            </ToolbarStack>
-          </Toolbar>
           <div className="page__content">
-            <div className="progress">
-              <div className="progress__meter">
-                <div
-                  className="progress__meter__track"
-                  style={{
-                    width: `${(importProgress.finished / importProgress.total) * 100}%`,
-                  }}
-                />
-              </div>
-              <div className="progress__content">
-                <Spinner size={25} />
-                Import in progress: please do not close the window or change
-                section! 🙏
-              </div>
-            </div>
+            <ImportWorkflow
+              ctx={ctx}
+              projectSchema={projectSchema}
+              exportSchema={importMode.exportSchema}
+              loadingRecipe={importMode.loadingRecipe}
+              conflicts={importMode.conflicts}
+              onDrop={importMode.handleDrop}
+              onImport={importMode.handleImport}
+            />
           </div>
         </div>
-      ) : (
-        <ReactFlowProvider>
-          <div className="page">
-            {exportSchema ? (
-              <Toolbar className="page__toolbar">
-                <ToolbarStack stackSize="l">
-                  <ToolbarTitle>📄 Import "{exportSchema[0]}"</ToolbarTitle>
-                  <div style={{ flex: '1' }} />
-                  <Button
-                    leftIcon={<FontAwesomeIcon icon={faXmark} />}
-                    buttonSize="s"
-                    buttonType="negative"
-                    onClick={async () => {
-                      const result = await ctx.openConfirm({
-                        title: 'Cancel the import?',
-                        content: `Do you really want to cancel the import process of "${exportSchema[0]}"?`,
-                        choices: [
-                          {
-                            label: 'Yes, cancel the import',
-                            value: 'yes',
-                            intent: 'negative',
-                          },
-                        ],
-                        cancel: {
-                          label: 'Nevermind',
-                          value: false,
-                          intent: 'positive',
-                        },
-                      });
+      </ReactFlowProvider>
 
-                      if (result === 'yes') {
-                        setExportSchema(undefined);
-                      }
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                </ToolbarStack>
-              </Toolbar>
-            ) : (
-              <Toolbar className="page__toolbar">
-                <ToolbarStack stackSize="l">
-                  <ToolbarTitle>Schema Import/Export</ToolbarTitle>
-                  <div style={{ flex: '1' }} />
-                </ToolbarStack>
-              </Toolbar>
-            )}
-            <div className="page__content">
-              <FileDropZone onJsonDrop={handleDrop}>
-                {(button) =>
-                  exportSchema ? (
-                    conflicts ? (
-                      <ConflictsContext.Provider value={conflicts}>
-                        <ResolutionsForm
-                          schema={projectSchema}
-                          onSubmit={handleImport}
-                        >
-                          <Inner exportSchema={exportSchema[1]} />
-                        </ResolutionsForm>
-                      </ConflictsContext.Provider>
-                    ) : (
-                      <Spinner placement="centered" size={60} />
-                    )
-                  ) : loadingRecipeByUrl ? (
-                    <Spinner placement="centered" size={60} />
-                  ) : (
-                    <div className="blank-slate">
-                      <div className="blank-slate__body">
-                        <div className="blank-slate__body__title">
-                          Upload your schema export file
-                        </div>
-
-                        <div className="blank-slate__body__content">
-                          <p>
-                            Drag and drop your exported JSON file here, or click
-                            the button to select one from your computer.
-                          </p>
-                          {button}
-                        </div>
-                      </div>
-                      <div className="blank-slate__body__outside">
-                        💡 Need to export your schema? Go to one of your models
-                        or blocks and choose "Export as JSON".
-                      </div>
-                    </div>
-                  )
-                }
-              </FileDropZone>
-            </div>
-          </div>
-        </ReactFlowProvider>
-      )}
+      <TaskOverlayStack items={overlayItems} />
     </Canvas>
   );
+}
+
+type OverlayConfig = Parameters<typeof TaskOverlayStack>[0]['items'][number];
+
+/**
+ * Overlay shown while the CMA import runs. Allows cancelling with a confirmation when an
+ * export recipe is currently loaded.
+ */
+function buildImportOverlay(
+  ctx: RenderPageCtx,
+  importTask: UseLongTaskResult,
+  exportSchema: [string, ExportSchema] | undefined,
+): OverlayConfig {
+  return {
+    id: 'import',
+    task: importTask,
+    title: 'Import in progress',
+    subtitle: (state) =>
+      state.cancelRequested
+        ? 'Cancelling import…'
+        : 'Sit tight, we’re applying models, fields, and plugins…',
+    ariaLabel: 'Import in progress',
+    progressLabel: (progress, state) =>
+      state.cancelRequested
+        ? 'Stopping at next safe point…'
+        : (progress.label ?? ''),
+    cancel: () => ({
+      label: 'Cancel import',
+      intent: importTask.state.cancelRequested ? 'muted' : 'negative',
+      disabled: importTask.state.cancelRequested,
+      onCancel: async () => {
+        if (!exportSchema) return;
+        const result = await ctx.openConfirm({
+          title: 'Cancel import in progress?',
+          content:
+            'Stopping now can leave partial changes in your project. Some models or blocks may be created without relationships, some fields or fieldsets may already exist, and plugin installations or editor settings may be incomplete. You can run the import again to finish or manually clean up. Are you sure you want to cancel?',
+          choices: [
+            {
+              label: 'Yes, cancel the import',
+              value: 'yes',
+              intent: 'negative',
+            },
+          ],
+          cancel: {
+            label: 'Nevermind',
+            value: false,
+            intent: 'positive',
+          },
+        });
+
+        if (result === 'yes') {
+          importTask.controller.requestCancel();
+        }
+      },
+    }),
+  };
+}
+
+/**
+ * Overlay used while conflicts between project and recipe are resolved.
+ */
+function buildConflictsOverlay(
+  conflictsTask: UseLongTaskResult,
+): OverlayConfig {
+  return {
+    id: 'conflicts',
+    task: conflictsTask,
+    title: 'Preparing import',
+    subtitle: 'Sit tight, we’re scanning your export against the project…',
+    ariaLabel: 'Preparing import',
+    progressLabel: (progress) => progress.label ?? 'Preparing import…',
+    overlayZIndex: 9998,
+  };
 }

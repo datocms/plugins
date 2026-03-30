@@ -1,0 +1,379 @@
+/* Container for sidebar content */
+.container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: visible;
+  padding: var(--space-3);
+}
+
+/* Loading state */
+.loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: var(--space-5);
+}
+
+/* Error state */
+.error {
+  padding: var(--space-3);
+  text-align: center;
+  color: var(--alert-color);
+}
+
+.error p {
+  margin: 0 0 4px 0;
+  font-size: var(--font-size-s);
+  font-weight: 500;
+}
+
+.error span {
+  font-size: var(--font-size-xs);
+  opacity: 0.8;
+}
+
+/* Header with sync status */
+.header {
+  display: flex;
+  justify-content: flex-end;
+  min-height: 0;
+  margin-bottom: var(--space-1);
+}
+
+.header:empty {
+  display: none;
+}
+
+/* Warning banner */
+.warning {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  margin-bottom: var(--space-3);
+  font-size: var(--font-size-xs);
+  color: var(--color-warning);
+  background-color: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
+  border-radius: var(--radius-lg);
+}
+
+.warning svg {
+  flex-shrink: 0;
+}
+
+/* Composer - Inline textarea style */
+.composer {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding-bottom: var(--space-2);
+  margin-bottom: var(--space-1);
+  border-bottom: 1px solid var(--border-color);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.composerAvatar {
+  width: var(--avatar-lg);
+  height: var(--avatar-lg);
+  border-radius: var(--radius-md);
+  object-fit: cover;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* Integrated input + toolbar container (Slack-style) */
+.composerInputWrapper {
+  flex: 1;
+  min-width: 0;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  background-color: var(--lighter-bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-xl);
+  transition: all var(--transition-fast);
+  overflow: visible;
+  box-sizing: border-box;
+}
+
+.composerInputWrapper:hover {
+  background-color: var(--light-bg-color);
+  border-color: var(--darker-border-color);
+}
+
+.composerInputWrapper:focus-within {
+  background-color: var(--base-body-bg-color);
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px var(--accent-color-a20);
+}
+
+.composerInput {
+  width: 100%;
+  padding: var(--space-2);
+  font-family: inherit;
+  font-size: var(--font-size-s);
+  line-height: 1.5;
+  color: var(--base-body-color);
+  background-color: transparent;
+  border: none;
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  resize: none;
+  box-sizing: border-box;
+}
+
+.composerInput::placeholder {
+  color: var(--light-body-color);
+}
+
+.composerInput:focus {
+  outline: none;
+}
+
+.composerHint {
+  font-size: var(--font-size-xxs);
+  color: var(--light-body-color);
+  padding: 0 var(--space-2) var(--space-1);
+}
+
+/* Comments list */
+.commentsList {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Empty state */
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-5) var(--space-3);
+  text-align: center;
+}
+
+.empty p {
+  margin: 0 0 4px 0;
+  font-size: var(--font-size-s);
+  font-weight: 500;
+  color: var(--base-body-color);
+}
+
+.empty span {
+  font-size: var(--font-size-xs);
+  color: var(--light-body-color);
+}
+
+/* ============================================
+   Composer Toolbar - Slack-style mention toolbar
+   ============================================ */
+
+.composerToolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-1);
+  border-top: 1px solid var(--border-color);
+  background-color: transparent;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.toolbarMentions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+/* Wrapper for tooltip positioning */
+.toolbarButtonWrapper {
+  position: relative;
+  display: inline-flex;
+}
+
+.toolbarButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--light-body-color);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.toolbarButton:hover {
+  color: var(--base-body-color);
+  background-color: var(--light-bg-color);
+}
+
+.toolbarButton:active {
+  background-color: var(--border-color);
+}
+
+.toolbarButton:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-color-a30);
+}
+
+.toolbarButton svg {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+/* Specific toolbar button colors on hover */
+.toolbarButtonUser:hover {
+  color: var(--mention-user);
+  background-color: var(--mention-user-bg);
+}
+
+.toolbarButtonField:hover {
+  color: var(--mention-field);
+  background-color: var(--mention-field-bg);
+}
+
+.toolbarButtonRecord:hover {
+  color: var(--mention-record);
+  background-color: var(--mention-record-bg);
+}
+
+.toolbarButtonAsset:hover {
+  color: var(--mention-asset);
+  background-color: var(--mention-asset-bg);
+}
+
+.toolbarButtonModel:hover {
+  color: var(--mention-model);
+  background-color: var(--mention-model-bg);
+}
+
+/* Disabled toolbar button */
+.toolbarButtonDisabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.toolbarButtonDisabled:hover {
+  color: var(--light-body-color);
+  background-color: transparent;
+}
+
+/* Toolbar tooltip styles */
+.toolbarTooltip {
+  position: absolute;
+  bottom: calc(100% + var(--space-1));
+  left: 50%;
+  transform: translateX(-50%);
+  padding: var(--radius-md) var(--space-1);
+  font-size: var(--font-size-xxs);
+  font-weight: 500;
+  color: var(--tooltip-text);
+  background-color: var(--tooltip-bg);
+  border-radius: var(--radius-md);
+  white-space: nowrap;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity var(--transition-fast), visibility var(--transition-fast);
+  pointer-events: none;
+  z-index: var(--z-sticky);
+}
+
+.toolbarTooltipArrow {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: var(--radius-md) solid transparent;
+  border-top-color: var(--tooltip-bg);
+}
+
+.toolbarButtonWrapper:hover .toolbarTooltip {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Send button */
+.sendButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--text-inverse);
+  background-color: var(--accent-color);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.sendButton:hover {
+  background-color: var(--accent-color-hover);
+}
+
+.sendButton:active {
+  background-color: var(--accent-color-active);
+}
+
+.sendButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sendButton:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--accent-color-a30);
+}
+
+.sendButton svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* ============================================
+   Load More Button - Pagination
+   ============================================ */
+
+.loadMoreButton {
+  display: block;
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  margin-top: var(--space-1);
+  font-family: inherit;
+  font-size: var(--font-size-xs);
+  font-weight: 500;
+  color: var(--accent-color);
+  background-color: var(--lighter-bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.loadMoreButton:hover {
+  background-color: var(--light-bg-color);
+  border-color: var(--accent-color);
+}
+
+.loadMoreButton:active {
+  background-color: var(--border-color);
+}
+
+.loadMoreButton:focus-visible {
+  outline: none;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 2px var(--accent-color-a30);
+}

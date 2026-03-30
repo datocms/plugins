@@ -11,6 +11,7 @@ type Props = {
 type TagValue = {
   id: string;
   text: string;
+  className: string;
 };
 
 function isValidJson(value: any): value is string[] {
@@ -34,6 +35,7 @@ function deserialize(value: any, fieldType: 'json' | 'string'): TagValue[] {
     return parsed.map((tag: string) => ({
       id: tag,
       text: tag,
+      className: '',
     }));
   }
 
@@ -41,7 +43,7 @@ function deserialize(value: any, fieldType: 'json' | 'string'): TagValue[] {
     return value
       .trim()
       .split(/\s*,\s*/)
-      .map((tag) => ({ id: tag, text: tag }));
+      .map((tag) => ({ id: tag, text: tag, className: '' }));
   }
 
   throw new Error('Incompatible value!');
@@ -107,11 +109,11 @@ export default function FieldExtension({ ctx }: Props) {
     <Canvas ctx={ctx}>
       {tags ? (
         <ReactTags
-          tags={tags}
+          tags={tags as any}
           autofocus={false}
           placeholder="Add new string"
-          handleAddition={handleAddition}
-          handleDrag={handleDrag}
+          handleAddition={handleAddition as any}
+          handleDrag={handleDrag as any}
           handleDelete={handleDelete}
           classNames={{
             tags: s.tags,

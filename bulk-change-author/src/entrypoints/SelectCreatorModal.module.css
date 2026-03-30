@@ -1,0 +1,40 @@
+.form {
+	display: flex;
+	flex-direction: column;
+	gap: var(--spacing-xs);
+}
+
+.form :global(.Form__item) {
+	margin: 0;
+}
+
+.form :global(.Form__item--default) {
+	margin: 0;
+}
+
+.form :global(.Form__item + .Form__item) {
+	margin-top: var(--spacing-xs);
+}
+
+.header {
+	display: flex;
+	flex-direction: column;
+	gap: var(--spacing-s);
+}
+
+.heading {
+	margin: 0;
+	font-size: 1.5rem;
+	line-height: 1.3;
+}
+
+.subheading {
+	margin: 0;
+	color: var(--light-body-color);
+}
+
+.footer {
+	display: flex;
+	justify-content: flex-end;
+	gap: var(--spacing-s);
+}

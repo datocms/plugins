@@ -9,13 +9,13 @@ connect({
       {
         label: 'ERD generator',
         items: [
-          { label: 'Schema ERD', icon: 'project-diagram', pointsTo: { pageId: 'svg' } }
+          { label: 'Schema ERD', icon: 'project-diagram', pointsTo: { pageId: 'svg' } },
         ],
-        placement: ['after', 'environment']
-      }
-    ]
+        placement: ['after', 'properties'],
+      },
+    ];
   },
   renderPage(_pageId, ctx) {
     return render(<Graphviz ctx={ctx} />);
-  }
+  },
 });

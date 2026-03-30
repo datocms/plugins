@@ -1,5 +1,5 @@
 import { AnalysisAssessment, AnalysisResult } from '../types';
-import * as interpreters from "yoastseo/src/interpreters";
+import * as interpreters from 'yoastseo/build/scoring/interpreters';
 import ResultGroup, { Group } from './ResultGroup';
 
 const scoreKeyToTitle: Partial<Record<string, string>> = {

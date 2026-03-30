@@ -1,6 +1,5 @@
 import { connect, OnBootCtx } from 'datocms-plugin-sdk';
 import { render } from './utils/render';
-import { PluginAttributes } from 'datocms-plugin-sdk/dist/types/SiteApiSchema';
 import FieldExtension from './entrypoints/FieldExtension';
 import 'datocms-react-ui/styles.css';
 
@@ -41,7 +40,7 @@ connect({
         id: 'tinymce',
         name: 'TinyMCE',
         type: 'editor',
-        fieldTypes: ['text'] as NonNullable<PluginAttributes['field_types']>,
+        fieldTypes: ['text'],
       },
     ];
   },

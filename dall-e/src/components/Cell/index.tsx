@@ -1,24 +1,90 @@
-import { RenderAssetSourceCtx } from 'datocms-plugin-sdk';
+import { useEffect, useState } from 'react';
+import { type RenderAssetSourceCtx } from 'datocms-plugin-sdk';
 import { useCtx } from 'datocms-react-ui';
-import { ImagesResponse } from 'openai';
+import type { NormalizedGenerationImage } from '../../utils/imageService';
 import s from './styles.module.css';
 
-type Image = ImagesResponse['data'][0];
+type Props = {
+  image: NormalizedGenerationImage;
+  selected: boolean;
+  onToggleSelected: () => void;
+};
 
-const Cell = ({ image, onClick }: { image: Image; onClick: () => void }) => {
+export default function Cell({
+  image,
+  selected,
+  onToggleSelected,
+}: Props) {
   const ctx = useCtx<RenderAssetSourceCtx>();
+  const [previewFailed, setPreviewFailed] = useState(false);
+
+  useEffect(() => {
+    setPreviewFailed(false);
+  }, [image.id]);
+
+  const isSelectable = image.kind === 'success' && !previewFailed;
+  const hasInlineError = image.kind === 'error' || previewFailed;
+  const cellClassName = [
+    s.cell,
+    selected && isSelectable ? s.cellSelected : '',
+    hasInlineError ? s.cellError : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+  const selectionMarkClassName = selected
+    ? `${s.selectionMark} ${s.selectionMarkSelected}`
+    : s.selectionMark;
+  const inlineErrorTitle =
+    image.kind === 'error'
+      ? `Image ${image.position} unavailable`
+      : 'Preview unavailable';
+  const inlineErrorMessage =
+    image.kind === 'error'
+      ? image.errorMessage
+      : 'The preview could not be displayed for this generated image.';
+
+  if (hasInlineError) {
+    return (
+      <div
+        aria-label={`${inlineErrorTitle}. ${inlineErrorMessage}`}
+        className={cellClassName}
+        role="img"
+      >
+        <div className={s.errorState}>
+          <div className={s.errorPosition}>Image {image.position}</div>
+          <div className={s.errorTitle}>{inlineErrorTitle}</div>
+          <div className={s.errorMessage}>{inlineErrorMessage}</div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className={s.cell} onClick={onClick}>
+    <button
+      aria-pressed={selected}
+      className={cellClassName}
+      disabled={!isSelectable}
+      onClick={onToggleSelected}
+      type="button"
+    >
+      <span
+        aria-hidden="true"
+        className={selectionMarkClassName}
+      >
+        <span className={s.selectionIcon} />
+      </span>
       <img
+        alt="Generated preview"
         className={s.image}
-        src={`data:image/png;base64,${image.b64_json}`}
-        alt=""
+        src={image.previewSrc}
+        onError={() => {
+          setPreviewFailed(true);
+          ctx.updateHeight();
+        }}
         onLoad={() => {
           ctx.updateHeight();
         }}
       />
-    </div>
+    </button>
   );
-};
-
-export default Cell;
+}

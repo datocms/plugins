@@ -74,7 +74,7 @@ connect({
       };
     }
   },
-  renderFieldExtension(id, ctx) {
+  renderFieldExtension(_id, ctx) {
     return render(<FieldExtension ctx={ctx} />);
   },
 });

@@ -1,4 +1,119 @@
 .wrapper {
-  font-size: var(--font-size-s);
+  color: var(--base-body-color);
+  display: grid;
+  gap: var(--spacing-m);
+  font-size: var(--font-size-m);
+}
+
+.summaryBar {
+  align-items: center;
+  background: var(--lighter-bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  display: flex;
+  gap: var(--spacing-m);
+  justify-content: space-between;
+  padding: 10px 12px;
+}
+
+.summaryMetrics {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-s);
+  min-width: 0;
+}
+
+.summaryMetric {
   color: var(--light-body-color);
+  font-size: var(--font-size-s);
+  line-height: 1.3;
+  white-space: nowrap;
+}
+
+.summaryDivider {
+  margin-right: var(--spacing-s);
+}
+
+.summaryValue {
+  color: var(--base-body-color);
+  font-weight: var(--font-weight-bold);
+}
+
+.summaryLabel {
+  color: var(--light-body-color);
+}
+
+.details {
+  display: grid;
+  gap: var(--spacing-m);
+}
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-m) var(--spacing-l);
+}
+
+.toggleRow {
+  align-items: center;
+  display: inline-flex;
+  gap: var(--spacing-m);
+}
+
+.toggleLabel {
+  color: var(--base-body-color);
+  font-size: var(--font-size-s);
+  line-height: 20px;
+}
+
+.wordSection {
+  display: grid;
+  gap: var(--spacing-m);
+  padding-top: var(--spacing-m);
+  border-top: 1px solid var(--border-color);
+}
+
+.sectionTitle {
+  color: var(--base-body-color);
+  font-size: var(--font-size-m);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.3;
+}
+
+.wordList {
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.wordRow {
+  align-items: center;
+  background: var(--lighter-bg-color);
+  display: grid;
+  gap: var(--spacing-m);
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 10px 12px;
+}
+
+.wordRow + .wordRow {
+  border-top: 1px solid var(--border-color);
+}
+
+.word {
+  color: var(--base-body-color);
+  font-size: var(--font-size-s);
+  font-weight: var(--font-weight-bold);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.wordCount {
+  color: var(--light-body-color);
+  font-size: var(--font-size-s);
+}
+
+.emptyState {
+  color: var(--light-body-color);
+  font-size: var(--font-size-s);
 }

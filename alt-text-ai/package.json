@@ -1,0 +1,60 @@
+{
+  "name": "datocms-plugin-alt-text-ai",
+  "homepage": "https://github.com/datocms/plugins/blob/addMarceloPlugins/alt-text-ai/README.md",
+  "version": "0.5.11",
+  "author": "DatoCMS <support@datocms.com>",
+  "description": "Generate alt texts for your assets in a single click",
+  "keywords": [
+    "datocms",
+    "datocms-plugin",
+    "ai",
+    "alt",
+    "media",
+    "assets"
+  ],
+  "type": "module",
+  "datoCmsPlugin": {
+    "title": "Alt Text AI",
+    "previewImage": "docs/demo.mp4",
+    "coverImage": "docs/cover.png",
+    "entryPoint": "dist/index.html",
+    "permissions": [
+      "currentUserAccessToken"
+    ]
+  },
+  "files": [
+    "dist",
+    "docs"
+  ],
+  "dependencies": {
+    "@datocms/cma-client-browser": "^5.3.0",
+    "datocms-plugin-sdk": "^2.1.1",
+    "datocms-react-ui": "^2.1.4",
+    "lodash": "^4.17.23",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
+  },
+  "scripts": {
+    "start": "vite",
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@types/lodash": "^4.17.24",
+    "@types/node": "^25.3.3",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.4",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1"
+  },
+  "overrides": {
+    "datocms-react-ui": {
+      "react-intersection-observer": "^9.16.0",
+      "react": "$react",
+      "react-dom": "$react-dom"
+    }
+  }
+}
