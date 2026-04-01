@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildClient, SchemaTypes } from "@datocms/cma-client-browser";
+import { buildClient, type SchemaTypes } from "@datocms/cma-client-browser";
 import { captureDeletedItemsWithoutLambda } from "./lambdaLessCapture";
 
 vi.mock("@datocms/cma-client-browser", () => ({

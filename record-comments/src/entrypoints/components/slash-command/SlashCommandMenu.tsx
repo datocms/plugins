@@ -35,7 +35,7 @@ export const SlashCommandMenu = memo(function SlashCommandMenu({
         selected.scrollIntoView({ block: 'nearest' });
       }
     }
-  }, [selectedIndex]);
+  }, []);
 
   // Handle click outside
   useEffect(() => {

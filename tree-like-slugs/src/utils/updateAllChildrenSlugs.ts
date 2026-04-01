@@ -1,4 +1,4 @@
-import { buildClient, Client } from "@datocms/cma-client-browser";
+import { buildClient, type Client } from "@datocms/cma-client-browser";
 
 /**
  * Recursively updates slugs for all descendant records in a tree hierarchy.
@@ -41,7 +41,7 @@ async function updateChildrenRecursively(
     // Extract the child's own slug segment (last part after splitting by "/")
     const slugParts = existingSlug.split("/");
     const childOwnSlug = slugParts[slugParts.length - 1];
-    const newChildSlug = updatedSlug + "/" + childOwnSlug;
+    const newChildSlug = `${updatedSlug}/${childOwnSlug}`;
 
     await client.items.update(record.id, {
       [slugFieldKey]: newChildSlug,

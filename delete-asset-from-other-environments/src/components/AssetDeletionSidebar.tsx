@@ -106,7 +106,7 @@ export const AssetDeletionSidebar = ({
       const otherEnvs = discoveredEnvs.filter((env) => env.id !== currentEnv);
       setAllOtherEnvsInProject(otherEnvs);
     })();
-  }, [client]);
+  }, [client, currentEnv]);
 
   useEffect(() => {
     if (
@@ -121,7 +121,7 @@ export const AssetDeletionSidebar = ({
       setLoadingMessage(
         `Checking ${allOtherEnvsInProject.length} environment(s) for this asset...`,
       );
-      let envsWithUpload: EnvironmentInstancesTargetSchema = [];
+      const envsWithUpload: EnvironmentInstancesTargetSchema = [];
       const lookups = allOtherEnvsInProject.map(async (env) => {
         const client = buildClient({
           apiToken: currentUserAccessToken,
@@ -158,7 +158,7 @@ export const AssetDeletionSidebar = ({
       setEnvsWithUpload(envsWithUpload.sort(sortByEnvUpdateTime));
       setLoadingMessage(null);
     })();
-  }, [allOtherEnvsInProject, currentUserAccessToken, uploadId]);
+  }, [allOtherEnvsInProject, currentUserAccessToken, uploadId, ctx.alert]);
 
   // TODO permissions
   // Exit early if missing permissions

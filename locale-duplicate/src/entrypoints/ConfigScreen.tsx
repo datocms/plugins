@@ -3,15 +3,15 @@
  * Allows users to select which fields should display copy buttons
  * in the record editing interface.
  */
-import { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
+import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import { Canvas, Button, SelectField, Form, FieldGroup, Section, Spinner } from 'datocms-react-ui';
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { buildClient } from '@datocms/cma-client-browser';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { 
-  FieldCopyConfig, 
-  ModelOption, 
-  FieldOption, 
+  type FieldCopyConfig, 
+  type ModelOption, 
+  type FieldOption, 
   getErrorMessage
 } from '../types';
 

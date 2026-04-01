@@ -1,4 +1,4 @@
-import { BackupCadence } from "../types/types";
+import type { BackupCadence } from "../types/types";
 import {
   buildLambdaHttpErrorMessage,
   buildLambdaJsonHeaders,

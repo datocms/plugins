@@ -1,5 +1,5 @@
-import { Field } from 'datocms-plugin-sdk';
-import { Node } from 'datocms-structured-text-slate-utils';
+import type { Field } from 'datocms-plugin-sdk';
+import type { Node } from 'datocms-structured-text-slate-utils';
 import { loremIpsum } from 'lorem-ipsum';
 
 import {
@@ -13,7 +13,7 @@ import {
   url,
   toMarkdown,
   toStructuredText,
-  Tag,
+  type Tag,
 } from './text';
 
 /**

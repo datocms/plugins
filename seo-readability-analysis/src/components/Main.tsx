@@ -6,9 +6,9 @@ import * as helpers from 'yoastseo/build/helpers';
 import Results from './Results';
 import Seo from './Seo';
 import ScoreIcon from './ScoreIcon';
-import { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
+import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
 import { Button } from 'datocms-react-ui';
-import { Analysis, ValidParameters } from '../types';
+import type { Analysis, ValidParameters } from '../types';
 import get from 'lodash-es/get';
 
 const worker = new AnalysisWorkerWrapper(
@@ -139,7 +139,7 @@ const Main = ({ ctx }: PropTypes) => {
 
       try {
         response = await request.json();
-      } catch (e) {
+      } catch (_e) {
         throw new Error(`Endpoint response is not JSON!`);
       }
 
@@ -159,15 +159,12 @@ const Main = ({ ctx }: PropTypes) => {
       setPageFetchingInProgress(false);
     }
   }, [
-    htmlGeneratorUrl,
-    item?.id,
-    itemType.id,
-    itemType.attributes.api_key,
-    environmentId,
-    locale,
-    setPage,
-    setPageFetchingInProgress,
-    setPageError,
+    htmlGeneratorUrl, 
+    item?.id, 
+    itemType.id, 
+    itemType.attributes.api_key, 
+    environmentId, 
+    locale
   ]);
 
   useEffect(() => {
@@ -177,15 +174,9 @@ const Main = ({ ctx }: PropTypes) => {
 
     refetchPage();
   }, [
-    htmlGeneratorUrl,
-    refetchPage,
-    item?.id,
-    itemType.id,
-    itemType.attributes.api_key,
-    environmentId,
-    locale,
-    isSubmitting,
-    setPage,
+    refetchPage, 
+    item?.id, 
+    isSubmitting
   ]);
 
   useDebouncedEffect(
@@ -215,12 +206,8 @@ const Main = ({ ctx }: PropTypes) => {
               ? (
                   await worker.analyzeRelatedKeywords(
                     paper,
-                    relatedKeywords.reduce(
-                      (acc, related, i) => ({
-                        ...acc,
-                        [i]: related,
-                      }),
-                      {},
+                    Object.fromEntries(
+                      relatedKeywords.map((related, i) => [i, related]),
                     ),
                   )
                 ).result

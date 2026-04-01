@@ -93,7 +93,7 @@ const FieldMentionDropdown = ({
       block: 'nearest',
       behavior: 'smooth',
     });
-  }, [localSelectedIndex, selectedIndex]);
+  }, []);
 
   // Register keyboard handler with parent
   useEffect(() => {

@@ -6,7 +6,7 @@ function filterBySearchableStrings<T>(
   const lowerQuery = query.toLowerCase();
   return items.filter((item) =>
     getSearchableStrings(item).some(
-      (str) => str && str.toLowerCase().includes(lowerQuery)
+      (str) => str?.toLowerCase().includes(lowerQuery)
     )
   );
 }

@@ -1,6 +1,6 @@
 import { json2csv } from 'json-2-csv';
 import jsontoxml from 'jsontoxml';
-import { AvailableFormats } from '../entrypoints/ConfigScreen';
+import type { AvailableFormats } from '../entrypoints/ConfigScreen';
 import { flatten } from 'flat';
 import { Workbook } from 'exceljs';
 

@@ -3,11 +3,11 @@ import {
   useTable,
   useFlexLayout,
   useResizeColumns,
-  Column,
-  TableOptions,
+  type Column,
+  type TableOptions,
 } from 'react-table';
 import { useDeepCompareMemo } from 'use-deep-compare';
-import { Actions, Row, Value } from '../../types';
+import type { Actions, Row, Value } from '../../types';
 import EditableCell from '../EditableCell';
 import { Button, useCtx } from 'datocms-react-ui';
 import omit from 'lodash-es/omit';
@@ -179,9 +179,8 @@ export default function TableEditor({
   };
 
   const onAddRow: Actions['onAddRow'] = (row, toTheBottom) => {
-    const newRow = value.columns.reduce<Row>(
-      (acc, column) => ({ ...acc, [column]: '' }),
-      {},
+    const newRow = Object.fromEntries(
+      value.columns.map((column) => [column, '']),
     );
 
     const newData = [...value.data];
@@ -220,9 +219,8 @@ export default function TableEditor({
 
     const newData = [...value.data];
 
-    const newRow = value.columns.reduce<Row>(
-      (acc, column) => ({ ...acc, [column]: '' }),
-      {},
+    const newRow = Object.fromEntries(
+      value.columns.map((column) => [column, '']),
     );
 
     for (const row of table) {
@@ -316,10 +314,10 @@ export default function TableEditor({
     <div>
       <div {...getTableProps()} className={s.table}>
         <div className={s.thead} ref={theadRef} style={{ overflowX: 'hidden' }}>
-          {headerGroups.map((headerGroup) => (
-            <div {...headerGroup.getHeaderGroupProps()} className={s.tr}>
+          {headerGroups.map((headerGroup, headerGroupIndex) => (
+            <div key={headerGroupIndex} {...headerGroup.getHeaderGroupProps()} className={s.tr}>
               {headerGroup.headers.map((column) => (
-                <div {...column.getHeaderProps()} className={s.th}>
+                <div key={column.id} {...column.getHeaderProps()} className={s.th}>
                   {column.render('Header')}
                   <div
                     {...column.getResizerProps()}
@@ -341,7 +339,7 @@ export default function TableEditor({
           {rows.map((row, i) => {
             prepareRow(row);
             return (
-              <div {...row.getRowProps()} className={s.tr}>
+              <div key={row.id} {...row.getRowProps()} className={s.tr}>
                 <div className={s.dropdownWrapper}>
                   <Dropdown
                     renderTrigger={({ onClick }) => (
@@ -384,7 +382,7 @@ export default function TableEditor({
                 </div>
                 {row.cells.map((cell) => {
                   return (
-                    <div {...cell.getCellProps()} className={s.td}>
+                    <div key={cell.column.id} {...cell.getCellProps()} className={s.td}>
                       {cell.render('Cell')}
                     </div>
                   );

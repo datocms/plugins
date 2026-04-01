@@ -7,7 +7,7 @@ export function calculateBackoffDelay(
   maxDelay: number,
   jitter = false
 ) {
-  const exponentialDelay = baseDelay * Math.pow(2, attempt);
+  const exponentialDelay = baseDelay * 2 ** attempt;
   const jitterAmount = jitter ? Math.random() * 100 : 0;
   return Math.min(exponentialDelay + jitterAmount, maxDelay);
 }

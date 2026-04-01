@@ -1,4 +1,4 @@
-import { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
+import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import {
   Button,
   Canvas,

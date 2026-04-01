@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react';
 
 export function useScrollSelectedIntoView(
   selectedRef: RefObject<HTMLElement | null>,
-  selectedIndex: number
+  _selectedIndex: number
 ): void {
   useEffect(() => {
     if (selectedRef.current && typeof selectedRef.current.scrollIntoView === 'function') {
@@ -11,7 +11,7 @@ export function useScrollSelectedIntoView(
         behavior: 'smooth',
       });
     }
-  }, [selectedIndex]);
+  }, [selectedRef.current]);
 }
 
 export function useClickOutside(

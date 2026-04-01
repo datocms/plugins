@@ -32,7 +32,7 @@ export function useDebouncedEffect(
       clearTimeout(handler);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [delay, ...deps]);
+  }, [delay, ...deps, callback]);
 }
 
 export default useDebouncedEffect;

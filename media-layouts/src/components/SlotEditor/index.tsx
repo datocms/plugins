@@ -176,7 +176,7 @@ export default function SlotEditor({
     const observer = new ResizeObserver(() => computeMetrics());
     observer.observe(element);
     return () => observer.disconnect();
-  }, [layoutConfig.columns, isMasonry]);
+  }, [layoutConfig.columns]);
 
   const getMasonryRowSpan = useCallback(
     (slot: LayoutSlot) => {

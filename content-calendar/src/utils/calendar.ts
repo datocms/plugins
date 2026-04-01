@@ -17,9 +17,9 @@ export function generateMatrix({
   month,
   weekStartsOn,
 }: GenerateMatrixArgs): Date[][] {
-  let date = new Date(year, month);
-  let startDay = startOfMonth(date);
-  let lastDay = endOfMonth(date);
+  const date = new Date(year, month);
+  const startDay = startOfMonth(date);
+  const lastDay = endOfMonth(date);
 
   const startDate = startOfWeek(startDay, { weekStartsOn });
   const rows =
@@ -27,11 +27,14 @@ export function generateMatrix({
   const cols = 7;
   const totalDays = rows * cols;
 
-  return Array.from({ length: totalDays })
-    .map((_, index) => addDays(startDate, index))
-    .reduce<Date[][]>((matrix, _current, index, days) => {
-      return index % cols === 0
-        ? [...matrix, days.slice(index, index + cols)]
-        : matrix;
-    }, []);
+  const allDays = Array.from({ length: totalDays }).map((_, index) =>
+    addDays(startDate, index),
+  );
+
+  const matrix: Date[][] = [];
+  for (let i = 0; i < allDays.length; i += cols) {
+    matrix.push(allDays.slice(i, i + cols));
+  }
+
+  return matrix;
 }

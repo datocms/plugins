@@ -1,4 +1,4 @@
-import { RenderItemFormSidebarPanelCtx, connect } from "datocms-plugin-sdk";
+import { type RenderItemFormSidebarPanelCtx, connect } from "datocms-plugin-sdk";
 import { render } from "./utils/render";
 import ConfigScreen from "./entrypoints/ConfigScreen";
 import "datocms-react-ui/styles.css";
@@ -18,7 +18,7 @@ connect({
     ];
   },
   renderItemFormSidebarPanel(
-    sidebarPanelId,
+    _sidebarPanelId,
     ctx: RenderItemFormSidebarPanelCtx
   ) {
     render(<RecordDownloaderSidebar ctx={ctx} />);

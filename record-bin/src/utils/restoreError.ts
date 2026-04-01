@@ -1,4 +1,4 @@
-import { errorObject } from "../types/types";
+import type { errorObject } from "../types/types";
 
 const UNKNOWN_ERROR_CODE = "UNKNOWN";
 const DEFAULT_FALLBACK_MESSAGE = "Could not parse restoration error payload.";

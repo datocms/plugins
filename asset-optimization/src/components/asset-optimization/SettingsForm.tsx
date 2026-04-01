@@ -97,7 +97,7 @@ const SettingsForm = ({ settings, onSettingsChange, onStartOptimization, onPrevi
     return () => {
       // Cancel any pending debounced calls when component unmounts
       if (debouncedSaveSettings.current) {
-        // @ts-ignore - debounce cancel method is not in types
+        // @ts-expect-error - debounce cancel method is not in types
         debouncedSaveSettings.current.cancel();
       }
     };

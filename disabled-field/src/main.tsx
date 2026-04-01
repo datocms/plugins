@@ -1,8 +1,8 @@
 import {
   connect,
-  FieldAppearanceChange,
-  OnBootCtx,
-  RenderFieldExtensionCtx,
+  type FieldAppearanceChange,
+  type OnBootCtx,
+  type RenderFieldExtensionCtx,
 } from 'datocms-plugin-sdk';
 import 'datocms-react-ui/styles.css';
 

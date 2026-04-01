@@ -65,9 +65,9 @@ function deriveRecordLabel(record: DatoCMSRecordFromAPI, preferredLocale: string
   for (const key of candidates) {
     if (record[key] !== undefined) {
       const s = coerceToString(record[key]);
-      if (s && s.trim()) {
+      if (s?.trim()) {
         const trimmed = s.trim();
-        return trimmed.length > 80 ? trimmed.slice(0, 77) + '…' : trimmed;
+        return trimmed.length > 80 ? `${trimmed.slice(0, 77)}…` : trimmed;
       }
     }
   }
@@ -306,7 +306,7 @@ function getFriendlyDatoErrorMessage(error: unknown, recordId: string): string |
     }
 
     const msg = extractErrorMessage(error);
-    if (msg && msg.includes('ITEM_LOCKED')) {
+    if (msg?.includes('ITEM_LOCKED')) {
       return `Cannot save translations for record ${recordId}: the record is locked because it is being edited. Please ensure no one is editing the record, then try again.`;
     }
   } catch {

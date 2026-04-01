@@ -1,7 +1,8 @@
 import { produce } from 'immer';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import ShopifyClient, { Product } from './ShopifyClient';
+import type ShopifyClient from './ShopifyClient';
+import type { Product } from './ShopifyClient';
 
 export type Status = 'loading' | 'success' | 'error';
 
@@ -74,7 +75,7 @@ const useStore = create(
               state.products[handle].result = product;
               state.products[handle].status = 'success';
             });
-          } catch (e) {
+          } catch (_e) {
             set((state) => {
               state.products[handle].result = null;
               state.products[handle].status = 'error';
@@ -101,7 +102,7 @@ const useStore = create(
                 state.products[product.handle].result = product;
               });
             });
-          } catch (e) {
+          } catch (_e) {
             set((state) => {
               state.searches[query].status = 'error';
               state.searches[query].result = null;

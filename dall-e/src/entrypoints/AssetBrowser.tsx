@@ -8,7 +8,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { type NewUpload, type RenderAssetSourceCtx } from 'datocms-plugin-sdk';
+import type { NewUpload, RenderAssetSourceCtx } from 'datocms-plugin-sdk';
 import { Button, Spinner, useCtx } from 'datocms-react-ui';
 import Cell from '../components/Cell';
 import type { ConfigParameters } from '../types';
@@ -131,7 +131,7 @@ const AssetBrowser = () => {
 
   useEffect(() => {
     ctx.updateHeight();
-  }, [ctx, errorMessage, requests.length, selectedImageIds.length, status]);
+  }, [ctx]);
 
   useEffect(() => {
     if (!capabilities.supportsVariationCount && variationCount !== 1) {

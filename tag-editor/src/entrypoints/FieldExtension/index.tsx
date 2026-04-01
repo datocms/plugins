@@ -1,4 +1,4 @@
-import { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
+import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
 import { Canvas } from 'datocms-react-ui';
 import get from 'lodash-es/get';
 import { WithContext as ReactTags } from 'react-tag-input';
@@ -65,7 +65,7 @@ export default function FieldExtension({ ctx }: Props) {
 
   try {
     tags = deserialize(value, fieldType);
-  } catch (e) {
+  } catch (_e) {
     tags = undefined;
   }
 

@@ -7,7 +7,7 @@
  * @module utils/client
  */
 
-import { buildClient, LogLevel } from '@datocms/cma-client-browser';
+import { buildClient, type LogLevel } from '@datocms/cma-client-browser';
 import type { CMAClient } from '../types';
 
 // =============================================================================

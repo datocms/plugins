@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Basic as Photo } from 'unsplash-js/dist/methods/photos/types';
+import type { Basic as Photo } from 'unsplash-js/dist/methods/photos/types';
 import { BlurhashCanvas } from 'react-blurhash';
 import s from './styles.module.css';
 

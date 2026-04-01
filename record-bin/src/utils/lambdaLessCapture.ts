@@ -1,5 +1,5 @@
-import { buildClient, SchemaTypes } from "@datocms/cma-client-browser";
-import { OnBeforeItemsDestroyCtx } from "datocms-plugin-sdk";
+import { buildClient, type SchemaTypes } from "@datocms/cma-client-browser";
+import type { OnBeforeItemsDestroyCtx } from "datocms-plugin-sdk";
 import { createDebugLogger, isDebugEnabled } from "./debugLogger";
 import { ensureRecordBinModel } from "./recordBinModel";
 import {

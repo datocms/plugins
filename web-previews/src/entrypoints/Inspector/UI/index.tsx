@@ -98,7 +98,6 @@ const UI: React.FC = () => {
     );
   };
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional
   useEffect(() => {
     if (contentLink.type !== 'error') {
       return;

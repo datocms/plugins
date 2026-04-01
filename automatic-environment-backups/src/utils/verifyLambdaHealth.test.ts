@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { LambdaHealthCheckError, verifyLambdaHealth } from "./verifyLambdaHealth";
+import { type LambdaHealthCheckError, verifyLambdaHealth } from "./verifyLambdaHealth";
 
 const expectRejected = async (
   promise: Promise<unknown>,

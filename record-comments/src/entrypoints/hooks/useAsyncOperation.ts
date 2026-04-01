@@ -27,7 +27,7 @@ type UseAsyncOperationReturn<T> = {
 
 export function useAsyncOperation<T>(
   asyncFn: () => Promise<T>,
-  deps: readonly unknown[],
+  _deps: readonly unknown[],
   options: UseAsyncOperationOptions<T>
 ): UseAsyncOperationReturn<T> {
   const {
@@ -41,7 +41,7 @@ export function useAsyncOperation<T>(
   const [data, setData] = useState<T | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<AsyncOperationError | null>(null);
-  const [retryCount, setRetryCount] = useState(0);
+  const [_retryCount, setRetryCount] = useState(0);
   const operationCounterRef = useRef(0);
 
   const retry = useCallback(() => {
@@ -101,7 +101,7 @@ export function useAsyncOperation<T>(
       isMounted = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, retryCount, ...deps]);
+  }, [enabled, asyncFn, errorContext, onError, onSuccess, operationName]);
 
   return {
     data,

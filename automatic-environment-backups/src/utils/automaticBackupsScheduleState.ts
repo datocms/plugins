@@ -1,4 +1,4 @@
-import { AutomaticBackupsScheduleState, BackupCadence } from "../types/types";
+import type { AutomaticBackupsScheduleState, BackupCadence } from "../types/types";
 import { BACKUP_CADENCES } from "./backupSchedule";
 
 const isObject = (value: unknown): value is Record<string, unknown> =>

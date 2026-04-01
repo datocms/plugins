@@ -144,7 +144,7 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
       }, 100); // allow final bubble animation to commit
       return () => clearTimeout(t);
     }
-  }, [translationBubbles, isLoading, isCancelling, showTimer, ctx]);
+  }, [translationBubbles, isLoading, isCancelling, showTimer, showSuccessNoticeOnce]);
 
   // If not configured, prompt user to fix configuration
   if (!isProviderConfigured(pluginParams)) {

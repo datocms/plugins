@@ -1,5 +1,5 @@
 import { Button } from "datocms-react-ui";
-import { Value } from "../../types";
+import type { Value } from "../../types";
 import s from "./style.module.css";
 
 type Props = {

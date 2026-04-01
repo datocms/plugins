@@ -48,11 +48,10 @@
     "prepublishOnly": "npm run build",
     "dev": "vite --port 3000",
     "preview": "vite preview",
-    "format": "biome check --write --unsafe",
+    "format": "biome check --write --unsafe ./src",
     "typecheck": "tsc -b"
   },
   "devDependencies": {
-    "@biomejs/biome": "1.9.4",
     "@types/react": "^18.0.25",
     "@types/react-dom": "^18.0.9",
     "@vitejs/plugin-react": "^4.3.1",

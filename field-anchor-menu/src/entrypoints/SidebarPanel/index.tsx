@@ -1,4 +1,4 @@
-import { RenderItemFormSidebarPanelCtx } from 'datocms-plugin-sdk';
+import type { RenderItemFormSidebarPanelCtx } from 'datocms-plugin-sdk';
 import { Canvas } from 'datocms-react-ui';
 import styles from './styles.module.css';
 

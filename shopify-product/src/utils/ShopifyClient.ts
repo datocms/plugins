@@ -1,4 +1,4 @@
-import { ValidConfig } from '../types';
+import type { ValidConfig } from '../types';
 
 export type Product = {
   id: string;

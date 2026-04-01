@@ -10,14 +10,12 @@ const useMethodProxy = <Method extends (...args: any) => any>(
   method: Method,
   depsList: Array<unknown>,
 ) => {
-  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional
   const methodCb = useMemo(() => {
     return method;
   }, depsList);
 
   const methodRef = useRef<Method>(method);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional
   useEffect(() => {
     methodRef.current = methodCb;
   }, [method]);

@@ -1,7 +1,7 @@
 import { Button, useCtx } from 'datocms-react-ui';
 import s from './styles.module.css';
-import { Product } from '../../utils/ShopifyClient';
-import { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
+import type { Product } from '../../utils/ShopifyClient';
+import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSearch } from '@fortawesome/free-solid-svg-icons';
 
@@ -25,8 +25,8 @@ export default function Empty({ onSelect }: EmptyProps) {
   };
 
   return (
-    <div className={s['empty']}>
-      <div className={s['empty__label']}>No product selected!</div>
+    <div className={s.empty}>
+      <div className={s.empty__label}>No product selected!</div>
       <Button
         onClick={handleOpenModal}
         buttonSize="s"

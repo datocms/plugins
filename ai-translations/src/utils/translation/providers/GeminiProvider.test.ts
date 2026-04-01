@@ -18,7 +18,6 @@ vi.mock('@google/generative-ai', () => {
   return {
     GoogleGenerativeAI: class MockGoogleGenerativeAI {
       getGenerativeModel = mockGetGenerativeModel;
-      constructor(_apiKey: string) {}
     },
   };
 });

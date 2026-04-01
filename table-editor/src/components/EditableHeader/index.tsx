@@ -1,5 +1,5 @@
-import { Column } from 'react-table';
-import { Actions, Row } from '../../types';
+import type { Column } from 'react-table';
+import type { Actions, Row } from '../../types';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faCog,
@@ -42,7 +42,7 @@ export default function EditableHeader({
 
   useEffect(() => {
     setNameValue(id!);
-  }, [id, setNameValue]);
+  }, [id]);
 
   const handleChangeName = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -62,8 +62,7 @@ export default function EditableHeader({
   const columnIndex = columns.findIndex((c) => c.id === id);
 
   return (
-    <>
-      <Dropdown
+    <Dropdown
         renderTrigger={({ onClick }) => (
           <button onClick={onClick} className={s.button}>
             <span>{id}</span>
@@ -141,6 +140,5 @@ export default function EditableHeader({
           )}
         </DropdownMenu>
       </Dropdown>
-    </>
   );
 }

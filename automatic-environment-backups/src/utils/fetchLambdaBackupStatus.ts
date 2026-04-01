@@ -1,4 +1,4 @@
-import { LambdaBackupStatus } from "../types/types";
+import type { LambdaBackupStatus } from "../types/types";
 import {
   buildLambdaHttpErrorMessage,
   buildLambdaJsonHeaders,

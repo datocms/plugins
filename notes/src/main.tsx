@@ -1,7 +1,7 @@
 import {
   connect,
-  OnBootCtx,
-  RenderFieldExtensionCtx,
+  type OnBootCtx,
+  type RenderFieldExtensionCtx,
 } from "datocms-plugin-sdk";
 import { render } from "./utils/render";
 import "datocms-react-ui/styles.css";

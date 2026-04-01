@@ -19,17 +19,17 @@ export function useMentionPermissions(
 ): MentionPermissions {
   const canMentionAssets = useMemo(
     () => hasUploadReadPermission(ctx),
-    [ctx.currentRole, ctx.environment]
+    [ctx.currentRole, ctx.environment, ctx]
   );
 
   const canMentionModels = useMemo(
     () => canEditSchema(ctx),
-    [ctx.currentRole]
+    [ctx.currentRole, ctx]
   );
 
   const readableModels = useMemo(
     () => filterReadableModels(ctx, projectModels),
-    [ctx.currentRole, ctx.environment, projectModels]
+    [ctx.currentRole, ctx.environment, projectModels, ctx]
   );
 
   return {

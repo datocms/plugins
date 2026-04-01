@@ -134,7 +134,7 @@ export function mergeLocaleData(
   const fallbackData = effectiveFallback ? localeData[effectiveFallback] : null;
   
   // Check for __default__ data (non-localized context marked as localized)
-  const defaultData = localeData['__default__'] || null;
+  const defaultData = localeData.__default__ || null;
   
   for (const fieldKey of fieldKeys) {
     const localizedValue: LocalizedValue = {};

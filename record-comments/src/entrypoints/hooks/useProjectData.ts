@@ -39,7 +39,7 @@ export function useProjectData(
 ): UseProjectDataReturn {
   const { loadFields = false } = options;
 
-  const itemTypesStableKey = useMemo(() => {
+  const _itemTypesStableKey = useMemo(() => {
     const itemTypes = getValidItemTypes(ctx.itemTypes);
     return itemTypes.map((it) => it.id).sort().join(',');
   }, [ctx.itemTypes]);
@@ -52,7 +52,7 @@ export function useProjectData(
       name: itemType.attributes.name,
       isBlockModel: itemType.attributes.modular_block,
     }));
-  }, [itemTypesStableKey]);
+  }, [ctx.itemTypes]);
 
   const itemTypeId = ctx.itemType.id;
   const siteId = ctx.site.id;
@@ -67,7 +67,7 @@ export function useProjectData(
 
   const loadFieldsAsync = useCallback(async () => {
     return loadAllFields(ctx);
-  }, [ctx, formValuesStableKey, localesStableKey]);
+  }, [ctx]);
 
   const {
     data: modelFields,
@@ -79,7 +79,7 @@ export function useProjectData(
     errorContext: { itemTypeId },
   });
 
-  const currentUserId = ctx.currentUser.id;
+  const _currentUserId = ctx.currentUser.id;
 
   const loadUsersAsync = useCallback(async (): Promise<{
     allUsers: UserInfo[];
@@ -133,7 +133,7 @@ export function useProjectData(
     const allUsers = typedUsers.map((tu) => tu.user);
 
     return { allUsers, typedUsers };
-  }, [siteId, currentUserId]);
+  }, [siteId, ctx.currentUser, ctx.loadSsoUsers, ctx.loadUsers, ctx.owner]);
 
   const {
     data: userData,

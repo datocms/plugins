@@ -1,5 +1,5 @@
 import { buildClient } from "@datocms/cma-client-browser";
-import { errorObject } from "../types/types";
+import type { errorObject } from "../types/types";
 import { normalizeRecordBinPayload } from "./recordBinPayload";
 import { buildRestoreErrorPayload } from "./restoreError";
 
@@ -22,7 +22,7 @@ const recursivelyDeleteAllBlockIDs = (
   }
 
   if (
-    Object.prototype.hasOwnProperty.call(recursiveObject, "id") &&
+    Object.hasOwn(recursiveObject, "id") &&
     previousKey !== "data"
   ) {
     delete recursiveObject.id;

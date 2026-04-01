@@ -203,7 +203,6 @@
 .streamingContent {
   line-height: 1.5;
   height: 100%;
-  overflow-y: auto;
   scroll-behavior: smooth;
   padding: 0;
   padding-right: 12px;

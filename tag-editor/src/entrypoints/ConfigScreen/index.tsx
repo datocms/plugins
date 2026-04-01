@@ -1,4 +1,4 @@
-import { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
+import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import {
   Button,
   Canvas,
@@ -13,8 +13,8 @@ import arrayMutators from 'final-form-arrays';
 import { FieldArray } from 'react-final-form-arrays';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPlus, faTrash } from '@fortawesome/free-solid-svg-icons';
-import { GroupBase } from 'react-select';
-import { AutoApplyRule, Config } from '../../types';
+import type { GroupBase } from 'react-select';
+import type { AutoApplyRule, Config } from '../../types';
 import s from './styles.module.css';
 
 type Props = {

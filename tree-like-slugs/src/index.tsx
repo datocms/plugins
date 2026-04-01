@@ -6,7 +6,7 @@
  * the updated path prefix.
  */
 import {
-  RenderFieldExtensionCtx,
+  type RenderFieldExtensionCtx,
   connect,
 } from 'datocms-plugin-sdk';
 import { render } from './utils/render';

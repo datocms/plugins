@@ -41,8 +41,6 @@ const CommentContentRenderer = memo(function CommentContentRenderer({
           return 'user';
         case 'sso':
           return 'sso';
-        case 'org':
-        case 'account':
         default:
           return 'owner';
       }

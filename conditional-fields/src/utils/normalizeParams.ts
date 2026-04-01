@@ -1,4 +1,4 @@
-import {
+import type {
   LegacyManualExtensionParameters,
   ValidManualExtensionParameters,
 } from "../types";

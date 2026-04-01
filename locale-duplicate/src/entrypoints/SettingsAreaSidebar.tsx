@@ -22,7 +22,7 @@ import type { ProgressUpdate } from '../components/ProgressView/ProgressView';
 import { SummaryView } from '../components/SummaryView/SummaryView';
 import { useDuplicationStats } from '../hooks/useDuplicationStats';
 import { getLocaleLabel } from '../utils/localeHelpers';
-import { getErrorMessage, LocalizedField, ModelOption } from '../types';
+import { getErrorMessage, type LocalizedField, type ModelOption } from '../types';
 import { formatErrorMessage } from '../utils/errorMessages';
 import { removeBlockItemIdsMutable } from '../utils/fieldUtils';
 
@@ -100,7 +100,7 @@ async function duplicateLocaleContent(
     });
 
     // Track total records processed and records to publish
-    let totalRecordsProcessed = 0;
+    let _totalRecordsProcessed = 0;
     const recordsToPublish: Array<{ type: 'item'; id: string }> = [];
     
     // Step 2: Process each content model
@@ -120,7 +120,7 @@ async function duplicateLocaleContent(
       // Calculate progress range for this model
       const modelStartProgress = 5 + Math.round((i / models.length) * 90);
       const modelEndProgress = 5 + Math.round(((i + 1) / models.length) * 90);
-      let recordsInModel = 0;
+      let _recordsInModel = 0;
       
       onProgress({
         message: `Processing model: ${model.name}`,
@@ -212,8 +212,8 @@ async function duplicateLocaleContent(
                   recordsToPublish.push({ type: 'item', id: record.id });
                 }
                 
-                totalRecordsProcessed++;
-                recordsInModel++;
+                _totalRecordsProcessed++;
+                _recordsInModel++;
                 const currentProgress = modelStartProgress + Math.round(((j + 1) / recordsToProcess.length) * (modelEndProgress - modelStartProgress));
                 onProgress({
                   message: `Updated record ${record.id} in ${model.name}`,
@@ -225,8 +225,8 @@ async function duplicateLocaleContent(
                   progress: currentProgress
                 });
               } catch (updateError: unknown) {
-                totalRecordsProcessed++;
-                recordsInModel++;
+                _totalRecordsProcessed++;
+                _recordsInModel++;
                 const currentProgress = modelStartProgress + Math.round(((j + 1) / recordsToProcess.length) * (modelEndProgress - modelStartProgress));
                 const errorMessage = formatErrorMessage('RECORD_UPDATE_FAILED', {
                   recordId: record.id,
@@ -247,7 +247,7 @@ async function duplicateLocaleContent(
                 throw updateError;
               }
             }
-          } catch (error) {
+          } catch (_error) {
             // Error handling for the current record is complete, moving to next record
             // Individual record errors don't halt the entire process
           }

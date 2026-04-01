@@ -113,7 +113,6 @@ export function ItemTypeNodeRenderer({
             : 'app-node--model',
           className,
         )}
-        role="group"
         onMouseEnter={() => setTooltipVisible(true)}
         onMouseLeave={() => setTooltipVisible(false)}
       >

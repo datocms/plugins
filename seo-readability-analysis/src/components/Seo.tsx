@@ -1,4 +1,4 @@
-import { AnalysisAssessment } from '../types';
+import type { AnalysisAssessment } from '../types';
 import Results from './Results';
 import { TextField, Button } from 'datocms-react-ui';
 

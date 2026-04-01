@@ -1,4 +1,4 @@
-import { RenderFieldExtensionCtx } from "datocms-plugin-sdk";
+import type { RenderFieldExtensionCtx } from "datocms-plugin-sdk";
 
 type PropTypes = {
   ctx: RenderFieldExtensionCtx;
@@ -6,5 +6,5 @@ type PropTypes = {
 
 export default function SlugExtension({ ctx }: PropTypes) {
   void ctx;
-  return <></>;
+  return null;
 }

@@ -311,7 +311,7 @@ function enforceBoundarySpaces(originalValues: string[], processed: string[]): s
     const leftHas = /[\s\u00A0]$/.test(pL);
     const rightHas = /^[\s\u00A0]/.test(pR);
     if (!leftHas && !rightHas) {
-      out[i] = pL + ' ';
+      out[i] = `${pL} `;
     }
   }
   return out;
@@ -333,15 +333,15 @@ function enforcePunctuationBoundarySpaces(originalValues: string[], processed: s
   for (let i = 0; i < originalValues.length - 1; i++) {
     const oL = String(originalValues[i] ?? '');
     const oR = String(originalValues[i + 1] ?? '');
-    const endsPunctLeft = /[\.,;:!?]$/.test(oL.trimEnd());
-    const startsPunctRight = /^[\.,;:!?]/.test(oR.trimStart());
+    const endsPunctLeft = /[.,;:!?]$/.test(oL.trimEnd());
+    const startsPunctRight = /^[.,;:!?]/.test(oR.trimStart());
     if (!endsPunctLeft && !startsPunctRight) continue;
     const pL = String(out[i] ?? '');
     const pR = String(out[i + 1] ?? '');
     const boundaryHasSpace = /[\s\u00A0]$/.test(pL) || /^[\s\u00A0]/.test(pR);
-    const boundaryHasPunct = /[\.,;:!?]$/.test(pL) || /^[\.,;:!?]/.test(pR);
+    const boundaryHasPunct = /[.,;:!?]$/.test(pL) || /^[.,;:!?]/.test(pR);
     if (!boundaryHasSpace && !boundaryHasPunct) {
-      out[i] = pL + ' ';
+      out[i] = `${pL} `;
     }
   }
   return out;

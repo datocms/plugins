@@ -1,4 +1,4 @@
-import { RenderConfigScreenCtx } from "datocms-plugin-sdk";
+import type { RenderConfigScreenCtx } from "datocms-plugin-sdk";
 import {
   Button,
   Canvas,
@@ -10,25 +10,25 @@ import {
   SwitchField,
   TextField,
 } from "datocms-react-ui";
-import { CSSProperties, useEffect, useState } from "react";
-import {
+import { type CSSProperties, useEffect, useState } from "react";
+import type {
   LambdaConnectionState,
 } from "../types/types";
 import {
   DEPLOY_PROVIDER_OPTIONS,
-  DeployProvider,
+  type DeployProvider,
   PLUGIN_README_URL,
 } from "../utils/deployProviders";
 import { createDebugLogger, isDebugEnabled } from "../utils/debugLogger";
 import { getDeploymentUrlFromParameters } from "../utils/getDeploymentUrlFromParameters";
-import { getRuntimeMode, RuntimeMode } from "../utils/getRuntimeMode";
+import { getRuntimeMode, type RuntimeMode } from "../utils/getRuntimeMode";
 import {
   ensureRecordBinWebhook,
   getRecordBinWebhookSyncErrorDetails,
   isRecordBinWebhookSyncError,
   removeAllManagedRecordBinWebhooks,
   removeRecordBinWebhook,
-  RecordBinWebhookSyncError,
+  type RecordBinWebhookSyncError,
 } from "../utils/recordBinWebhook";
 import {
   buildConnectedLambdaConnectionState,
@@ -317,7 +317,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       isCancelled = true;
       debugLogger.log("Config screen unmounted");
     };
-  }, []);
+  }, [applyDisconnectedState, clearConnectionErrorState, ctx.environment, ctx.plugin.attributes.parameters, debugEnabled, debugLogger.log, debugLogger.warn, initialConnectionState, initialDebugEnabled, initialRuntimeMode, persistPluginParameters, removeManagedWebhooksForLambdaLessMode, runtimeModeSelection]);
 
   const connectLambdaHandler = async () => {
     if (runtimeModeSelection !== "lambda") {

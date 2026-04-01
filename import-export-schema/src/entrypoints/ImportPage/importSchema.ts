@@ -448,16 +448,16 @@ async function finalizeItemTypesPhase(
             type: 'item_type',
             id,
             attributes: pick(t.entity.attributes, attributesToUpdate),
-            relationships: relationshipsToUpdate.reduce(
-              (acc, relationshipName) => {
+            relationships: Object.fromEntries(
+              relationshipsToUpdate.map((relationshipName) => {
                 const handle = get(
                   t.entity,
                   `relationships.${relationshipName}.data`,
                 );
 
-                return {
-                  ...acc,
-                  [relationshipName]: {
+                return [
+                  relationshipName,
+                  {
                     data: handle
                       ? {
                           type: 'field',
@@ -469,12 +469,11 @@ async function finalizeItemTypesPhase(
                         }
                       : null,
                   },
-                };
-              },
-              {} as NonNullable<
-                SchemaTypes.ItemTypeUpdateSchema['data']['relationships']
-              >,
-            ),
+                ];
+              }),
+            ) as NonNullable<
+              SchemaTypes.ItemTypeUpdateSchema['data']['relationships']
+            >,
           };
 
           try {

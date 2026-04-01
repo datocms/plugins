@@ -1,4 +1,4 @@
-import { RenderFieldExtensionCtx } from "datocms-plugin-sdk";
+import type { RenderFieldExtensionCtx } from "datocms-plugin-sdk";
 import { Canvas } from "datocms-react-ui";
 import { useEffect, useState } from "react";
 import Note from "./Note";
@@ -68,8 +68,7 @@ const Notes = ({ ctx }: PropTypes) => {
 
   return (
     <Canvas ctx={ctx}>
-      {savedNotes &&
-        savedNotes.map((note) => {
+      {savedNotes?.map((note) => {
           return (
             <Note
               key={note.timestamp}

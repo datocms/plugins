@@ -2,7 +2,7 @@
  * API Service for centralized DatoCMS API operations
  */
 
-import { buildClient, Client } from '@datocms/cma-client-browser';
+import { buildClient, type Client } from '@datocms/cma-client-browser';
 import type { Item, ItemType, Field } from '../types';
 
 export interface PaginationOptions {

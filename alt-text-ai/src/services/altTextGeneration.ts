@@ -1,7 +1,7 @@
-import { Client, buildClient } from '@datocms/cma-client-browser';
-import {
-  type ExecuteFieldDropdownActionCtx,
-  type FileFieldValue,
+import { type Client, buildClient } from '@datocms/cma-client-browser';
+import type {
+  ExecuteFieldDropdownActionCtx,
+  FileFieldValue,
 } from 'datocms-plugin-sdk';
 import get from 'lodash/get';
 

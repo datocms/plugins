@@ -1,7 +1,7 @@
 import {
   connect,
-  Field,
-  RenderItemFormSidebarPanelCtx,
+  type Field,
+  type RenderItemFormSidebarPanelCtx,
 } from 'datocms-plugin-sdk';
 import 'datocms-react-ui/styles.css';
 import ConfigScreen from './entrypoints/ConfigScreen';

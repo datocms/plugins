@@ -1,8 +1,8 @@
 import {
   connect,
-  OnBootCtx,
-  RenderFieldExtensionCtx,
-  RenderManualFieldExtensionConfigScreenCtx,
+  type OnBootCtx,
+  type RenderFieldExtensionCtx,
+  type RenderManualFieldExtensionConfigScreenCtx,
 } from 'datocms-plugin-sdk';
 import { render } from './utils/render';
 import 'datocms-react-ui/styles.css';
@@ -13,7 +13,7 @@ import {
   normalizeGlobalParams,
 } from './utils/globalParams';
 import {
-  FieldParams,
+  type FieldParams,
   isValidFieldParams,
   normalizeFieldParams,
 } from './utils/fieldParams';

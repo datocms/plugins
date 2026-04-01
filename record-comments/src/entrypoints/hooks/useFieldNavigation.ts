@@ -175,7 +175,7 @@ export function useFieldNavigation({
   onSelect,
   pendingFieldForLocale,
   onClearPendingField,
-  selectedIndex,
+  selectedIndex: _selectedIndex,
   onPathChange,
 }: UseFieldNavigationParams): UseFieldNavigationReturn {
   const [navigationStack, setNavigationStack] = useState<NavigationStep[]>([]);
@@ -234,7 +234,7 @@ export function useFieldNavigation({
     setCurrentBlocks(blocks);
     setLocalSelectedIndex(0);
     setIsLoadingBlocks(false);
-  }, [navigationStack, ctx, currentField, viewMode, selectedLocale]);
+  }, [ctx, currentField, viewMode, selectedLocale]);
 
   useEffect(() => {
     if (viewMode !== 'nestedFields' || !ctx) {
@@ -484,9 +484,9 @@ export function useFieldNavigation({
 
     return false;
   }, [
-    viewMode, localSelectedIndex, currentBlocks, currentNestedFields, currentField,
-    handleSelectEntireField, handleBlockClick, handleFieldClick, handleLocaleClick, handleBack,
-    pendingFieldForLocale, navigationStack, selectedIndex, onClearPendingField, handlePendingLocaleSelection
+    viewMode, localSelectedIndex, currentBlocks, currentNestedFields, currentField, 
+    handleSelectEntireField, handleBlockClick, handleFieldClick, handleLocaleClick, handleBack, 
+    pendingFieldForLocale, navigationStack, onClearPendingField, handlePendingLocaleSelection
   ]);
 
   return {

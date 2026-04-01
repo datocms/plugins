@@ -1,4 +1,4 @@
-import { RenderFieldExtensionCtx, Upload } from "datocms-plugin-sdk";
+import type { RenderFieldExtensionCtx, Upload } from "datocms-plugin-sdk";
 import queryString from "qs";
 
 // imageishThing can be:

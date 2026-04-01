@@ -21,8 +21,7 @@ connect({
     if (pluginParams && Array.isArray(pluginParams.autoApplyRules)) {
       for (const rule of pluginParams.autoApplyRules) {
         if (
-          rule.fieldTypes &&
-          rule.fieldTypes.includes(field.attributes.field_type)
+          rule.fieldTypes?.includes(field.attributes.field_type)
         ) {
           try {
             const regex = new RegExp(rule.apiKeyRegexp);
@@ -35,7 +34,7 @@ connect({
                 },
               ];
             }
-          } catch (e) {
+          } catch (_e) {
             // If regex is invalid, skip this rule
           }
         }

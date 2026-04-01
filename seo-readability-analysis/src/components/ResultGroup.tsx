@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import ScoreIcon from './ScoreIcon';
-import { AnalysisResult } from '../types';
+import type { AnalysisResult } from '../types';
 import { Button } from 'datocms-react-ui';
 
 export type Group = {

@@ -2,7 +2,7 @@
  * Field extension component that adds copy buttons to configured fields
  * in the record editing interface.
  */
-import { RenderFieldExtensionCtx } from "datocms-plugin-sdk";
+import type { RenderFieldExtensionCtx } from "datocms-plugin-sdk";
 import { Canvas, Button } from "datocms-react-ui";
 import { useCallback } from 'react';
 import { ErrorBoundary } from '../components/ErrorBoundary';
@@ -28,12 +28,12 @@ export default function FieldExtension({ ctx }: FieldExtensionProps) {
 
   // Don't show copy buttons if there's only one locale
   if(!(Array.isArray(availableLocales) && availableLocales.length > 1)) {
-    return <></>
+    return null;
   }
 
   // The first locale is considered the main/default locale
   const mainLocale = availableLocales[0];
-  const isAtMainLocale = mainLocale == ctx.locale;
+  const isAtMainLocale = mainLocale === ctx.locale;
 
   /**
    * Copy field value from main locale to all other locales
@@ -49,7 +49,7 @@ export default function FieldExtension({ ctx }: FieldExtensionProps) {
     const mainLocaleValue = fieldValue[mainLocale];
 
     for (const locale of availableLocales.slice(1)) {
-      await ctx.setFieldValue(ctx.field.attributes.api_key + `.${locale}`, removeBlockItemIdsImmutable(mainLocaleValue));
+      await ctx.setFieldValue(`${ctx.field.attributes.api_key}.${locale}`, removeBlockItemIdsImmutable(mainLocaleValue));
     }
     ctx.notice("Value copied to all locales")
   }, [ctx, mainLocale, availableLocales]);
@@ -66,7 +66,7 @@ export default function FieldExtension({ ctx }: FieldExtensionProps) {
     }
     
     const mainLocaleValue = fieldValue[mainLocale];
-    await ctx.setFieldValue(ctx.field.attributes.api_key + `.${ctx.locale}`, removeBlockItemIdsImmutable(mainLocaleValue));
+    await ctx.setFieldValue(`${ctx.field.attributes.api_key}.${ctx.locale}`, removeBlockItemIdsImmutable(mainLocaleValue));
     ctx.notice(`Value copied from ${mainLocale}`)
   }, [ctx, mainLocale]);
 

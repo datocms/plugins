@@ -1,5 +1,5 @@
 import { buildClient } from '@datocms/cma-client-browser';
-import { AvailableFormats } from '../entrypoints/ConfigScreen';
+import type { AvailableFormats } from '../entrypoints/ConfigScreen';
 import downloadRecordsFile from './downloadRecordsFile';
 import {
   buildRecordExportEnvelope,
@@ -50,7 +50,7 @@ export default async function downloadAllRecords(
     );
 
     const responseData = await response.json();
-    if (responseData.meta && responseData.meta.total_count) {
+    if (responseData.meta?.total_count) {
       totalCount = responseData.meta.total_count;
     }
   } catch (e) {

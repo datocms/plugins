@@ -40,13 +40,13 @@ export function parseGlossaryMap(input?: string): Record<string, string> {
     // Split into pair and id
     const m = line.match(/^(.*?)\s*(?:=|:|\s)\s*((?:gls-)?[A-Za-z0-9_-]+)\s*$/i);
     if (!m) continue;
-    let pair = m[1].replace(/\s/g, '');
+    const pair = m[1].replace(/\s/g, '');
     const id = m[2];
     // Normalize arrow separators
     let arrow = pair.replace(/–|—|→|⇒/g, '->');
     // Shorthand: if only a single token (assume target-only), rewrite as *->TOKEN
     if (!arrow.includes('->')) arrow = `*->${arrow}`;
-    const [rawSrc, rawTgt] = arrow.split(/-\>/);
+    const [rawSrc, rawTgt] = arrow.split(/->/);
     if (!rawSrc || !rawTgt) continue;
     // Store both raw key and uppercased DeepL-code key for robustness.
     const keyRaw = `${rawSrc}:${rawTgt}`.toUpperCase();

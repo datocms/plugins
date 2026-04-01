@@ -125,7 +125,7 @@ export default function TranslationProgressModal({ ctx, parameters }: Translatio
     };
     // Intentionally run only on mount - hasStartedTranslation ref prevents re-execution
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [accessToken, addProgressUpdate, ctx, fromLocale, isCancelled, itemIds, pluginParams, toLocale]);
   
   // Translation handled by shared translateAndUpdateRecords utility
   
@@ -162,7 +162,7 @@ export default function TranslationProgressModal({ ctx, parameters }: Translatio
     if (el.scrollTop <= 8) {
       el.scrollTop = 0;
     }
-  }, [progress.length]);
+  }, []);
   
   const handleClose = () => {
     ctx.resolve({ completed: isCompleted, progress });
@@ -203,7 +203,7 @@ export default function TranslationProgressModal({ ctx, parameters }: Translatio
         {/* Progress list */}
         <div className="TranslationProgressModal__updates" ref={updatesRef} aria-live="polite">
           {progress.length > 0 ? (
-            <ul className="TranslationProgressModal__update-list" role="list">
+            <ul className="TranslationProgressModal__update-list" >
               {progress
                 .slice()
                 // Newest updates first so the most recent work is visible
@@ -211,7 +211,6 @@ export default function TranslationProgressModal({ ctx, parameters }: Translatio
                 .map((update) => (
                 <li 
                   key={update.recordId}
-                  role="listitem"
                   className={`TranslationProgressModal__update-item TranslationProgressModal__update-item--${update.status}`}
                 >
                   <span className="TranslationProgressModal__update-status">

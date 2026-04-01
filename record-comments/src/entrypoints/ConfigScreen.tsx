@@ -500,12 +500,12 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
       setMigrationProgress(null);
     }
   }, [
-    ctx,
-    debugLoggingEnabled,
-    getClient,
-    modelsWithComments,
-    realTimeEnabled,
-    trimmedCdaToken,
+    ctx, 
+    debugLoggingEnabled, 
+    getClient, 
+    modelsWithComments, 
+    realTimeEnabled, 
+    trimmedCdaToken, pluginParams.commentsModelIdsByEnvironment
   ]);
 
   const handleCleanup = useCallback(async () => {
@@ -595,7 +595,7 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
                 {scanProgress.scannedModels} / {scanProgress.totalModels}
               </span>
             </div>
-            <>
+            
               <div className={styles.progressBar}>
                 <div
                   className={styles.progressFill}
@@ -619,7 +619,7 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
                   {scanProgress.foundCount !== 1 ? 's' : ''} found
                 </span>
               </div>
-            </>
+            
           </div>
         )}
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo } from "react";
-import { RenderFieldExtensionCtx } from "datocms-plugin-sdk";
-import { isValidParameters, ValidManualExtensionParameters } from "../../types";
+import type { RenderFieldExtensionCtx } from "datocms-plugin-sdk";
+import { isValidParameters, type ValidManualExtensionParameters } from "../../types";
 import get from 'lodash-es/get';
 import { isDefined } from "../../utils/isDefined";
 

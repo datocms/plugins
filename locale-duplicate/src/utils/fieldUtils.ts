@@ -2,7 +2,7 @@
  * Field utility functions for the Locale Duplicate plugin
  */
 
-import { LocalizedField, isLocalizedField } from '../types';
+import { type LocalizedField, isLocalizedField } from '../types';
 
 /**
  * Checks if a field type is supported for locale duplication
@@ -82,7 +82,7 @@ export function removeBlockItemIdsImmutable(value: unknown): unknown {
   
   // Handle 'block' type objects in structured text (which have 'id' directly on the block)
   if (typedObj.type === 'block' && 'id' in typedObj) {
-    const { id, ...blockWithoutId } = typedObj;
+    const { id: _id, ...blockWithoutId } = typedObj;
     // Recursively process all properties of the block
     for (const [key, val] of Object.entries(blockWithoutId)) {
       result[key] = removeBlockItemIdsImmutable(val);
@@ -99,7 +99,7 @@ export function removeBlockItemIdsImmutable(value: unknown): unknown {
   ) {
     const itemObj = typedObj.item as Record<string, unknown>;
     // Create a new item object without the 'id' field
-    const { id, ...itemWithoutId } = itemObj;
+    const { id: _id, ...itemWithoutId } = itemObj;
     
     result.type = typedObj.type;
     result.item = removeBlockItemIdsImmutable(itemWithoutId);
@@ -116,7 +116,7 @@ export function removeBlockItemIdsImmutable(value: unknown): unknown {
 
   // Handle 'item' type objects which have direct IDs
   if (typedObj.type === 'item' && 'id' in typedObj) {
-    const { id, ...itemWithoutId } = typedObj;
+    const { id: _id, ...itemWithoutId } = typedObj;
     return removeBlockItemIdsImmutable(itemWithoutId);
   }
 

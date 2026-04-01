@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { errorObject } from "../types/types";
+import type { errorObject } from "../types/types";
 import {
   buildRestoreErrorPayload,
   isRestoreSuccessResponse,

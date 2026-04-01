@@ -92,7 +92,6 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
     }
   }, [allPreviewLinksWithFrontend]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional
   useEffect(() => {
     const reloadSettings = currentPreviewLink?.reloadPreviewOnRecordUpdate;
 

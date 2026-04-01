@@ -14,7 +14,7 @@ export function ViewportCustomizer({ size, onChange }: Props) {
     type: 'width' | 'height',
   ) => {
     const rawValue = e.target.value.replace(/\D/g, '');
-    const numericValue = Number.parseInt(rawValue) || 0;
+    const numericValue = Number.parseInt(rawValue, 10) || 0;
 
     // Clamp value between min and max dimensions
     const clampedValue = Math.max(numericValue, 0);

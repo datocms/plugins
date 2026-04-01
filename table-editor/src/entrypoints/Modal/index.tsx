@@ -1,9 +1,9 @@
-import { RenderModalCtx } from 'datocms-plugin-sdk';
+import type { RenderModalCtx } from 'datocms-plugin-sdk';
 import { Button, Canvas } from 'datocms-react-ui';
 import { useState } from 'react';
 import { Empty } from '../../components/Empty';
 import TableEditor from '../../components/TableEditor';
-import { Value } from '../../types';
+import type { Value } from '../../types';
 import s from './style.module.css';
 
 type Props = {

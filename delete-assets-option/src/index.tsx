@@ -1,4 +1,4 @@
-import { connect, RenderModalCtx } from 'datocms-plugin-sdk';
+import { connect, type RenderModalCtx } from 'datocms-plugin-sdk';
 import 'datocms-react-ui/styles.css';
 import { render } from './utils/render';
 import { buildClient } from '@datocms/cma-client-browser';

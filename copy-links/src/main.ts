@@ -11,7 +11,7 @@ connect({
     // We need to differentiate between single-link fields (strings) and multi-link fields (arrays)
     switch (field.attributes.field_type) {
       // Single-link fields
-      case "link":
+      case "link": {
         const singleLinkActions: DropdownAction[] = [
           {
             id: "copySingleLink",
@@ -26,9 +26,10 @@ connect({
         ];
 
         return singleLinkActions;
+      }
 
       // Multi-link fields
-      case "links":
+      case "links": {
         const multiLinkActions: DropdownAction[] = [
           {
             id: "copyMultiLinks",
@@ -43,6 +44,7 @@ connect({
         ];
 
         return multiLinkActions;
+      }
 
       // Ignore other field types
       default:

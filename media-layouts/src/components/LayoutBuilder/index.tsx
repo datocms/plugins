@@ -209,7 +209,7 @@ export default function LayoutBuilder({ config, onChange, widthOptions }: Props)
     const observer = new ResizeObserver(() => computeMetrics());
     observer.observe(element);
     return () => observer.disconnect();
-  }, [config.columns, isMasonry]);
+  }, [config.columns]);
 
   const getMasonryRowSpan = useCallback(
     (slot: LayoutSlot) => {
@@ -294,8 +294,8 @@ export default function LayoutBuilder({ config, onChange, widthOptions }: Props)
   const handleUpdateSlot = useCallback(
     (slotId: string, updates: Partial<LayoutSlot>) => {
       const manualSpanChange =
-        Object.prototype.hasOwnProperty.call(updates, 'rowSpan') ||
-        Object.prototype.hasOwnProperty.call(updates, 'colSpan');
+        Object.hasOwn(updates, 'rowSpan') ||
+        Object.hasOwn(updates, 'colSpan');
 
       const newSlots = config.slots.map((slot) => {
         if (slot.id !== slotId) return slot;
@@ -772,7 +772,7 @@ export default function LayoutBuilder({ config, onChange, widthOptions }: Props)
       setSlotCustomWidthActive(false);
       setSlotCustomWidthInput('');
     }
-  }, [presetWidthValues, selectedSlot, selectedSlotId]);
+  }, [presetWidthValues, selectedSlot]);
 
   return (
     <div className={s.container}>

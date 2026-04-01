@@ -1,6 +1,6 @@
-import { AnalysisAssessment, AnalysisResult } from '../types';
+import type { AnalysisAssessment, AnalysisResult } from '../types';
 import * as interpreters from 'yoastseo/build/scoring/interpreters';
-import ResultGroup, { Group } from './ResultGroup';
+import ResultGroup, { type Group } from './ResultGroup';
 
 const scoreKeyToTitle: Partial<Record<string, string>> = {
   feedback: 'Feedback',

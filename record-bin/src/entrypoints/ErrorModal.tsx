@@ -1,4 +1,4 @@
-import { RenderModalCtx } from "datocms-plugin-sdk";
+import type { RenderModalCtx } from "datocms-plugin-sdk";
 import { Button, Canvas } from "datocms-react-ui";
 import { createDebugLogger, isDebugEnabled } from "../utils/debugLogger";
 

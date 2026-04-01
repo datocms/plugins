@@ -1,4 +1,4 @@
-export type EmptyParameters = {};
+export type EmptyParameters = Record<string, never>;
 
 export type ValidManualExtensionParameters = {
   targetFieldsApiKey: string[];

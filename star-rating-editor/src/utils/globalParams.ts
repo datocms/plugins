@@ -7,9 +7,9 @@ export type ValidGlobalParams = {
 
 export const defaultStarsColor = '#FFB400';
 
-export type LegacyGlobalParams = {};
+export type LegacyGlobalParams = Record<string, never>;
 
-export type EmptyParams = {};
+export type EmptyParams = Record<string, never>;
 
 export type GlobalParams = ValidGlobalParams | LegacyGlobalParams | EmptyParams;
 

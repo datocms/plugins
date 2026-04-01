@@ -1,5 +1,5 @@
-import { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
-import { normalizeGlobalParams, ValidGlobalParams } from './globalParams';
+import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
+import { normalizeGlobalParams, type ValidGlobalParams } from './globalParams';
 
 export type ValidFieldParams = {
   paramsVersion: '2';
@@ -16,7 +16,7 @@ export type LegacyFieldParams = {
   };
 };
 
-export type FieldParams = ValidFieldParams | LegacyFieldParams | {};
+export type FieldParams = ValidFieldParams | LegacyFieldParams | Record<string, never>;
 
 export function isValidFieldParams(
   params: FieldParams,
@@ -26,7 +26,7 @@ export function isValidFieldParams(
 
 function rgbToHex({ red, blue, green }: LegacyFieldParams['starsColor']) {
   return (
-    '#' + ((1 << 24) + (red << 16) + (green << 8) + blue).toString(16).slice(1).toUpperCase()
+    `#${((1 << 24) + (red << 16) + (green << 8) + blue).toString(16).slice(1).toUpperCase()}`
   );
 }
 

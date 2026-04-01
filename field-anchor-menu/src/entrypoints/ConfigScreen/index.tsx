@@ -1,4 +1,4 @@
-import { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
+import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import {
   Button,
   Canvas,
@@ -10,7 +10,7 @@ import {
 import { Form as FormHandler, Field } from 'react-final-form';
 import {
   normalizeGlobalParams,
-  ValidGlobalParams,
+  type ValidGlobalParams,
 } from '../../utils/globalParams';
 
 type Props = {

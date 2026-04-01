@@ -1,4 +1,4 @@
-import { Client } from "@datocms/cma-client-browser";
+import type { Client } from "@datocms/cma-client-browser";
 
 export default async function updateSlugRedirects(
   urlPrefix: string,

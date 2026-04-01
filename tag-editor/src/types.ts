@@ -10,7 +10,7 @@ export type ValidConfig = {
   paramsVersion: '2';
 };
 
-export type Config = {} | ValidConfig;
+export type Config = Record<string, never> | ValidConfig;
 
 export function isValidParams(params: Config): params is ValidConfig {
   return (

@@ -1,4 +1,4 @@
-import { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
+import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
 import { Canvas } from 'datocms-react-ui';
 import { useState, useCallback, useEffect } from 'react';
 import get from 'lodash-es/get';
@@ -51,11 +51,9 @@ export default function FieldExtension({ ctx }: Props) {
       setIsTranslating(false);
     }
   }, [
-    setIsTranslating,
-    setPageError,
-    ctx,
-    mainLocale,
-    configParameters.yandexApiKey,
+    ctx, 
+    mainLocale, 
+    configParameters.yandexApiKey
   ]);
 
   useEffect(() => {
@@ -63,7 +61,7 @@ export default function FieldExtension({ ctx }: Props) {
       ctx.setHeight(0);
     }
   // eslint-disable-next-line
-  }, []);
+  }, [ctx.field.attributes.localized, ctx.locale, ctx.setHeight, mainLocale]);
 
   if (ctx.locale !== mainLocale || !ctx.field.attributes.localized) {
     return null;

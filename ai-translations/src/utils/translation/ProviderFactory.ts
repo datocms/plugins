@@ -75,8 +75,6 @@ function extractVendorCredentials(pluginParams: ctxParamsType): VendorCredential
       const baseUrl = shouldUseFree ? 'https://api-free.deepl.com' : 'https://api.deepl.com';
       return { vendor, apiKey, baseUrl };
     }
-
-    case 'openai':
     default: {
       const apiKey = pluginParams.apiKey ?? '';
       const model = pluginParams.gptModel ?? '';
@@ -102,7 +100,6 @@ function getMissingCredentialsMessage(vendor: VendorId): string {
       return 'Anthropic API key and Claude model must be configured in settings.';
     case 'deepl':
       return 'DeepL API key must be configured in settings.';
-    case 'openai':
     default:
       return 'OpenAI API key and model must be configured in settings.';
   }
@@ -137,7 +134,6 @@ export function getProvider(pluginParams: ctxParamsType): TranslationProvider {
     case 'deepl':
       cacheKey = `deepl:${safeCacheKey(credentials.apiKey)}:${credentials.baseUrl}`;
       break;
-    case 'openai':
     default:
       cacheKey = `openai:${safeCacheKey(credentials.apiKey)}:${credentials.model}`;
   }
@@ -157,7 +153,6 @@ export function getProvider(pluginParams: ctxParamsType): TranslationProvider {
     case 'deepl':
       provider = new DeepLProvider({ apiKey: credentials.apiKey, baseUrl: credentials.baseUrl });
       break;
-    case 'openai':
     default:
       provider = new OpenAIProvider({ apiKey: credentials.apiKey, model: credentials.model });
   }

@@ -189,8 +189,8 @@ async function translateSingleFileMetadata(
   const titleFromMetadata = typeof metadata?.title === 'string' ? metadata.title : undefined;
 
   const pickNonEmpty = (primary?: string, fallback?: string) => {
-    if (primary && primary.trim()) return primary;
-    if (fallback && fallback.trim()) return fallback;
+    if (primary?.trim()) return primary;
+    if (fallback?.trim()) return fallback;
     return undefined;
   };
 

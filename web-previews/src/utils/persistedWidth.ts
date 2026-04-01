@@ -13,13 +13,12 @@ function saveSidebarWidth(site: Site, width: number) {
 export function readSidebarWidth(site: Site) {
   const value = localStorage.getItem(keyForSidebarWidth(site));
 
-  return value ? Number.parseInt(value) : undefined;
+  return value ? Number.parseInt(value, 10) : undefined;
 }
 
 export function usePersistedSidebarWidth(site: Site) {
   const { width } = useWindowSize();
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional
   useEffect(() => {
     saveSidebarWidth(site, width);
   }, [site.id, width]);

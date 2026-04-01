@@ -1,4 +1,4 @@
-import { RenderFieldExtensionCtx } from "datocms-plugin-sdk";
+import type { RenderFieldExtensionCtx } from "datocms-plugin-sdk";
 
 type PropTypes = {
   ctx: RenderFieldExtensionCtx;
@@ -9,6 +9,6 @@ type PropTypes = {
  * Renders nothing visible - serves as an anchor point for the plugin
  * to register itself with the field, enabling the onBeforeItemUpsert hook.
  */
-export default function SlugExtension({}: PropTypes) {
-  return <></>;
+export default function SlugExtension(_props: PropTypes) {
+  return null;
 }

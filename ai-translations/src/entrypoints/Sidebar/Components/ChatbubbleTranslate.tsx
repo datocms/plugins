@@ -202,11 +202,11 @@ export function ChatBubble({ bubble, theme }: Props) {
 
           <div className={styles.bubbleContent}>
             <span className={styles.bubbleText}>
-              <>
+              
                 “<strong>{bubble.fieldLabel}</strong>” to{' '}
                 <strong>{localeSelect(bubble.locale)?.name}</strong>{' '}
                 [<code>{bubble.locale}</code>]
-              </>
+              
             </span>
           </div>
           {bubble.status === 'done' && (

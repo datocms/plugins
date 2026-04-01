@@ -1,15 +1,15 @@
 import {
   connect,
-  ItemFormOutletsCtx,
-  ItemType,
-  OnBootCtx,
-  RenderConfigScreenCtx,
-  RenderItemFormOutletCtx,
+  type ItemFormOutletsCtx,
+  type ItemType,
+  type OnBootCtx,
+  type RenderConfigScreenCtx,
+  type RenderItemFormOutletCtx,
 } from "datocms-plugin-sdk";
 import { render } from "./utils/render";
 import "datocms-react-ui/styles.css";
 import AutoSave from "./entrypoints/AutoSave";
-import ConfigScreen, { PluginParametersType } from "./entrypoints/ConfigScreen";
+import ConfigScreen, { type PluginParametersType } from "./entrypoints/ConfigScreen";
 
 connect({
   async onBoot(ctx: OnBootCtx) {

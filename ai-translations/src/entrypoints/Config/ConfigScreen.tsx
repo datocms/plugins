@@ -300,7 +300,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         setGptModel('None');
       }
     }
-  }, [apiKey, vendor]);
+  }, [apiKey, vendor, gptModel, setGptModel]);
 
   // Load Gemini models dynamically when Google vendor + key
   useEffect(() => {
@@ -323,7 +323,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       }
     }
     loadGemini();
-  }, [vendor, googleApiKey, pluginParams.geminiModel]);
+  }, [vendor, googleApiKey, pluginParams.geminiModel, setGeminiModel]);
 
   // Load Anthropic models dynamically when Anthropic vendor + key
   useEffect(() => {
@@ -346,7 +346,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       }
     }
     loadClaude();
-  }, [vendor, anthropicApiKey, pluginParams.anthropicModel]);
+  }, [vendor, anthropicApiKey, pluginParams.anthropicModel, setAnthropicModel]);
 
   const normalizeList = useCallback((list?: string[]) => {
     return Array.isArray(list) ? [...list].sort().join(',') : '';
@@ -595,7 +595,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
             />
             {/* Tooltip container with image for sidebar translation */}
             <div className={s.tooltipContainer}>
-              <span role="img" aria-label="Information about sidebar translation" tabIndex={0}>ⓘ</span>
+              <span role="img" aria-label="Information about sidebar translation" >ⓘ</span>
               <div className={`${s.tooltipText} ${s.imageTooltip}`}>
                 <img
                   src="/public/assets/sidebar-translation-example.png"
@@ -621,7 +621,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
             />
             {/* Tooltip container with image for bulk translation */}
             <div className={s.tooltipContainer}>
-              <span role="img" aria-label="Information about bulk translation" tabIndex={0}>ⓘ</span>
+              <span role="img" aria-label="Information about bulk translation" >ⓘ</span>
               <div className={`${s.tooltipText} ${s.imageTooltip}`}>
                 <img
                   src="/public/assets/bulk-translation-example.png"

@@ -1,7 +1,7 @@
-import { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
+import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import { Button, Canvas, TextField, Form, FieldGroup } from 'datocms-react-ui';
 import { Form as FormHandler, Field } from 'react-final-form';
-import { Parameters } from '../types';
+import type { Parameters } from '../types';
 
 type PropTypes = {
   ctx: RenderConfigScreenCtx;

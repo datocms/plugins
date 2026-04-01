@@ -1,7 +1,7 @@
-import { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
+import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
 import { Canvas } from 'datocms-react-ui';
 import Main from '../components/Main';
-import { Parameters } from '../types';
+import type { Parameters } from '../types';
 
 type PropTypes = {
   ctx: RenderFieldExtensionCtx;

@@ -1,4 +1,4 @@
-export type FirstInstallationParameters = {};
+export type FirstInstallationParameters = Record<string, never>;
 
 export type ValidConfig = {
   shopifyDomain: string;

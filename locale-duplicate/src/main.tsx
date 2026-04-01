@@ -5,7 +5,7 @@
  * 1. Mass locale duplication - bulk copy content between locales
  * 2. Field-level copying - copy individual field values between locales
  */
-import { connect,  Field, OverrideFieldExtensionsCtx } from "datocms-plugin-sdk";
+import { connect,  type Field, type OverrideFieldExtensionsCtx } from "datocms-plugin-sdk";
 import "datocms-react-ui/styles.css";
 import ConfigScreen from "./entrypoints/ConfigScreen";
 import SettingsAreaSidebar from "./entrypoints/SettingsAreaSidebar";

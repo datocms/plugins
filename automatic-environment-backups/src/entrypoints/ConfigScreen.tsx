@@ -1,5 +1,5 @@
 import { buildClient } from "@datocms/cma-client-browser";
-import { RenderConfigScreenCtx } from "datocms-plugin-sdk";
+import type { RenderConfigScreenCtx } from "datocms-plugin-sdk";
 import {
   Button,
   Canvas,
@@ -12,14 +12,14 @@ import {
   TextField,
 } from "datocms-react-ui";
 import {
-  CSSProperties,
-  MouseEvent,
+  type CSSProperties,
+  type MouseEvent,
   useCallback,
   useEffect,
   useRef,
   useState,
 } from "react";
-import {
+import type {
   BackupCadence,
   BackupScheduleConfig,
   BackupOverviewRow,
@@ -29,7 +29,7 @@ import {
 } from "../types/types";
 import {
   DEPLOY_PROVIDER_OPTIONS,
-  DeployProvider,
+  type DeployProvider,
 } from "../utils/deployProviders";
 import { createDebugLogger, isDebugEnabled } from "../utils/debugLogger";
 import { getDeploymentUrlFromParameters } from "../utils/getDeploymentUrlFromParameters";
@@ -618,7 +618,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       isCancelled = true;
       debugLogger.log("Config screen unmounted");
     };
-  }, []);
+  }, [applyDisconnectedState, clearConnectionErrorState, ctx.environment, debugEnabled, debugLogger.log, debugLogger.warn, initialBackupSchedule, initialConnectionState, initialDeploymentUrl, initialLambdaAuthSecret.trim, initialScheduleNormalization.requiresMigration, initialValidationMode, persistPluginParameters]);
 
   useEffect(() => {
     void refreshLambdaBackupOverview();

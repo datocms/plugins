@@ -1,7 +1,7 @@
-import { RenderItemFormSidebarPanelCtx } from 'datocms-plugin-sdk';
+import type { RenderItemFormSidebarPanelCtx } from 'datocms-plugin-sdk';
 import { Button, Canvas } from 'datocms-react-ui';
 import downloadRecordsFile from '../utils/downloadRecordsFile';
-import { AvailableFormats } from './ConfigScreen';
+import type { AvailableFormats } from './ConfigScreen';
 import { buildClient } from '@datocms/cma-client-browser';
 import { useState } from 'react';
 import {

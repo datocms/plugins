@@ -1,4 +1,4 @@
-import { RenderConfigScreenCtx } from "datocms-plugin-sdk";
+import type { RenderConfigScreenCtx } from "datocms-plugin-sdk";
 import {
   Button,
   Canvas,
@@ -9,7 +9,7 @@ import {
   TextField,
 } from "datocms-react-ui";
 import { useEffect, useState } from "react";
-import { ActionMeta, GroupBase, MultiValue } from "react-select";
+import type { ActionMeta, GroupBase, MultiValue } from "react-select";
 
 type PropTypes = {
   ctx: RenderConfigScreenCtx;
@@ -45,14 +45,14 @@ function ConfigScreen({ ctx }: PropTypes) {
 
   const allModels: ModelOptionType[] = [];
 
-  Object.keys(ctx.itemTypes).map((key) => {
-    if (!ctx.itemTypes[key]?.attributes.modular_block) {
+  Object.keys(ctx.itemTypes).forEach((key) => {
+    const itemType = ctx.itemTypes[key];
+    if (itemType && !itemType.attributes.modular_block) {
       allModels.push({
-        label: ctx.itemTypes[key]?.attributes.name!,
-        value: ctx.itemTypes[key]?.attributes.api_key!,
+        label: itemType.attributes.name,
+        value: itemType.attributes.api_key,
       });
     }
-    return null;
   });
 
   const modelSelectHandler = (
@@ -88,7 +88,7 @@ function ConfigScreen({ ctx }: PropTypes) {
   };
 
   const submitHandler = async () => {
-    if (isNaN(+autoSaveInterval) || +autoSaveInterval < 1) {
+    if (Number.isNaN(+autoSaveInterval) || +autoSaveInterval < 1) {
       setHasAValidationError(true);
       return;
     }
@@ -108,11 +108,11 @@ function ConfigScreen({ ctx }: PropTypes) {
 
   useEffect(() => {
     setHasAValidationError(false);
-  }, [autoSaveInterval]);
+  }, []);
 
   useEffect(() => {
     setFormIsSubmited(false);
-  }, [selectedModels, autoSaveInterval, showNotification]);
+  }, []);
 
   return (
     <Canvas ctx={ctx}>

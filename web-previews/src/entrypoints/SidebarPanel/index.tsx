@@ -126,8 +126,7 @@ const PreviewUrl = ({ ctx }: PropTypes) => {
   return (
     <Canvas ctx={ctx}>
       {statusByFrontend ? (
-        <>
-          {frontends.length === 0 ? (
+        frontends.length === 0 ? (
             <div>No frontends configured!</div>
           ) : frontends.length === 1 && firstStatus ? (
             <FrontendResult status={firstStatus} frontend={frontends[0]} />
@@ -146,8 +145,7 @@ const PreviewUrl = ({ ctx }: PropTypes) => {
                 hideIfNoLinks
               />
             ))
-          )}
-        </>
+          )
       ) : (
         <Spinner />
       )}

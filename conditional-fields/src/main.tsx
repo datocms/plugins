@@ -1,7 +1,7 @@
 import {
   connect,
-  FieldAppearanceChange,
-  RenderManualFieldExtensionConfigScreenCtx,
+  type FieldAppearanceChange,
+  type RenderManualFieldExtensionConfigScreenCtx,
 } from "datocms-plugin-sdk";
 import "datocms-react-ui/styles.css";
 import { PerFieldConfigScreen } from "./entrypoints/PerFieldConfigScreen";
@@ -9,7 +9,7 @@ import { FieldExtension } from "./entrypoints/FieldExtension";
 import {
   isValidGlobalParameters,
   isValidParameters,
-  ValidGlobalParameters,
+  type ValidGlobalParameters,
 } from "./types";
 import { render } from "./utils/render";
 import normalizeParams from "./utils/normalizeParams";

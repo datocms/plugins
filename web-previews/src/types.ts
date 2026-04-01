@@ -120,7 +120,7 @@ export function normalizeParameters({
       ? undefined
       : {
           defaultWidth: defaultSidebarWidth
-            ? Number.parseInt(defaultSidebarWidth)
+            ? Number.parseInt(defaultSidebarWidth, 10)
             : 900,
         },
     iframeAllowAttribute,
@@ -129,11 +129,11 @@ export function normalizeParameters({
       width:
         typeof viewport.width === 'number'
           ? viewport.width
-          : Number.parseInt(viewport.width),
+          : Number.parseInt(viewport.width, 10),
       height:
         typeof viewport.height === 'number'
           ? viewport.height
-          : Number.parseInt(viewport.height),
+          : Number.parseInt(viewport.height, 10),
       icon: viewport.icon as IconName,
     })) || [...DEFAULT_VIEWPORTS],
   };

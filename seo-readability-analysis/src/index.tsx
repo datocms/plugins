@@ -1,6 +1,6 @@
-import { connect, FieldAppearanceChange } from 'datocms-plugin-sdk';
+import { connect, type FieldAppearanceChange } from 'datocms-plugin-sdk';
 import { render } from './utils/render';
-import { Parameters } from './types';
+import type { Parameters } from './types';
 import ConfigScreen from './entrypoints/ConfigScreen';
 import FieldExtension from './entrypoints/FieldExtension';
 import 'datocms-react-ui/styles.css';

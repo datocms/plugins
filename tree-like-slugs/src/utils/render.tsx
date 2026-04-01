@@ -1,4 +1,5 @@
-import React, { StrictMode } from 'react';
+import type React from 'react';
+import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 /** Cached React 18 root instance for the plugin container */

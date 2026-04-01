@@ -2,7 +2,7 @@ import { loremIpsum } from 'lorem-ipsum';
 import intersperse from 'intersperse';
 import names from './names';
 import { emailDomains, domainSuffixes } from './domains';
-import {
+import type {
   Blockquote,
   Heading,
   Link,
@@ -178,7 +178,7 @@ export function toStructuredText(tree: Tag | Tag[] | string): Node[] | Node {
   }
 
   if (Array.isArray(tree)) {
-    return tree.map(toStructuredText).flat();
+    return tree.flatMap(toStructuredText);
   }
 
   const content = toStructuredText(tree.children);

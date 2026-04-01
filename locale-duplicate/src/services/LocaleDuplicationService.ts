@@ -2,7 +2,7 @@
  * Service for handling locale duplication logic
  */
 
-import { buildClient, Client } from '@datocms/cma-client-browser';
+import { buildClient, type Client } from '@datocms/cma-client-browser';
 import type { Item, ItemType, LocalizedField } from '../types';
 import { removeBlockItemIdsMutable } from '../utils/fieldUtils';
 import { formatErrorMessage } from '../utils/errorMessages';
@@ -274,7 +274,7 @@ export class LocaleDuplicationService {
       // Analyze each field in the record
       const recordData = { ...record };
       // Remove system fields
-      const { id, type, item_type, creator, meta, ...fields } = recordData;
+      const { id: _id, type: _type, item_type: _itemType, creator: _creator, meta: _meta, ...fields } = recordData;
       
       for (const [fieldKey, fieldValue] of Object.entries(fields)) {
         // Skip non-localizable or system fields
@@ -327,7 +327,7 @@ export class LocaleDuplicationService {
       
       return { success: true };
       
-    } catch (updateError) {
+    } catch (_updateError) {
       const errorMessage = formatErrorMessage('RECORD_UPDATE_FAILED', {
         recordId: record.id,
         modelName: model.name,

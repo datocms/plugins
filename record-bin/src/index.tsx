@@ -1,9 +1,9 @@
 import {
   connect,
-  ItemFormOutletsCtx,
-  ItemType,
-  RenderItemFormOutletCtx,
-  RenderModalCtx,
+  type ItemFormOutletsCtx,
+  type ItemType,
+  type RenderItemFormOutletCtx,
+  type RenderModalCtx,
 } from "datocms-plugin-sdk";
 import { render } from "./utils/render";
 import ConfigScreen from "./entrypoints/ConfigScreen";

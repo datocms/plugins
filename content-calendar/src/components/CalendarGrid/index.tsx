@@ -25,11 +25,11 @@ export default function CalendarGrid({
   return (
     <>
       <div
-        className={s['calendarGrid']}
+        className={s.calendarGrid}
         style={{ gridTemplateRows: `50px repeat(${matrix.length}, 1fr)` }}
       >
         {matrix[0].map((day, i) => (
-          <div className={s['calendarWeekDay']} key={i}>
+          <div className={s.calendarWeekDay} key={i}>
             {format(day, 'EEEE')}
           </div>
         ))}
@@ -38,7 +38,7 @@ export default function CalendarGrid({
             {week.map((day) => (
               <div
                 key={day.toISOString()}
-                className={classNames(s['calendarDayCell'], {
+                className={classNames(s.calendarDayCell, {
                   [s['calendarDayCell--isToday']]: isToday(day),
                   [s['calendarDayCell--inAdjacentMonth']]: !isSameMonth(
                     day,
@@ -46,8 +46,8 @@ export default function CalendarGrid({
                   ),
                 })}
               >
-                <div className={s['calendarDayCellHeader']}>
-                  <div className={s['calendarDayCellHeaderDay']}>
+                <div className={s.calendarDayCellHeader}>
+                  <div className={s.calendarDayCellHeaderDay}>
                     <span>{format(day, 'd')}</span>
                   </div>
                 </div>

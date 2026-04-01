@@ -81,7 +81,6 @@ export const AssetLocalizationChecker = ({
   const isTitleRequired: boolean = !!typedValidators?.required_alt_title?.title;
   const isAltRequired: boolean = !!typedValidators?.required_alt_title?.alt;
   const isReady =
-    fetchedImageData &&
     fetchedImageData?.default_field_metadata &&
     localesInThisRecord;
 
@@ -151,7 +150,7 @@ export const AssetLocalizationChecker = ({
   // Initial metadata fetch
   useEffect(() => {
     fetchAsset();
-  }, [upload_id]);
+  }, [fetchAsset]);
 
   const displayText = ({
     text,
@@ -236,7 +235,7 @@ export const AssetLocalizationChecker = ({
             const locName = metadataByLocale[loc].label;
 
             return (
-              <tr>
+              <tr key={loc}>
                 <th scope="row">
                   {locName}
                   {loc === currentLocale && (

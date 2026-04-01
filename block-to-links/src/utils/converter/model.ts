@@ -85,7 +85,7 @@ async function generateUniqueModelIdentifiers(
   
   // DatoCMS requires model API keys to be plural
   if (!sanitizedBlockApiKey.endsWith('s')) {
-    sanitizedBlockApiKey = sanitizedBlockApiKey + 's';
+    sanitizedBlockApiKey = `${sanitizedBlockApiKey}s`;
   }
   
   // Calculate space for base api_key
@@ -260,7 +260,7 @@ export async function renameModelToOriginal(
       .replace(/_+/g, '_')
       .replace(/^_|_$/g, '');
     
-    let finalName = originalName;
+    const finalName = originalName;
     let finalApiKey = targetApiKey;
     let partialError: string | undefined;
     
@@ -277,7 +277,7 @@ export async function renameModelToOriginal(
       // Try with 's' suffix if it's a plural requirement error
       if (errorMessage.toLowerCase().includes('api_key') || errorMessage.toLowerCase().includes('plural')) {
         if (!targetApiKey.endsWith('s')) {
-          const pluralApiKey = targetApiKey + 's';
+          const pluralApiKey = `${targetApiKey}s`;
           
           try {
             await client.itemTypes.update(modelId, {

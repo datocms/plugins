@@ -13,4 +13,4 @@ export type ValidConfig = {
 };
 
 // The plugin config can be either empty or valid
-export type Config = {} | ValidConfig;
+export type Config = Record<string, never> | ValidConfig;

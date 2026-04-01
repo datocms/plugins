@@ -1,4 +1,4 @@
-import { ChangeEvent, KeyboardEvent, useCallback, useEffect, useMemo, useState } from 'react';
+import { type ChangeEvent, type KeyboardEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import { Canvas, Section, Spinner } from 'datocms-react-ui';
 import { buildCmaClient } from '../utils/cma';
@@ -210,7 +210,7 @@ export default function StagePage({ ctx, menuItem }: Props) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
-  const [reloadIndex] = useState(0);
+  const [_reloadIndex] = useState(0);
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
   const [selectedModelId, setSelectedModelId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -344,7 +344,7 @@ export default function StagePage({ ctx, menuItem }: Props) {
                 const apiKey = fieldRecord?.api_key ?? fieldRecord?.attributes?.api_key ?? null;
                 fieldApiKeyCache.set(presentationFieldId, apiKey);
                 presentationTitleFieldApiKey = apiKey;
-              } catch (lookupError) {
+              } catch (_lookupError) {
                 fieldApiKeyCache.set(presentationFieldId, null);
               }
             }
@@ -366,7 +366,7 @@ export default function StagePage({ ctx, menuItem }: Props) {
                 const apiKey = fieldRecord?.api_key ?? fieldRecord?.attributes?.api_key ?? null;
                 fieldApiKeyCache.set(titleFieldId, apiKey);
                 titleFieldApiKey = apiKey;
-              } catch (lookupError) {
+              } catch (_lookupError) {
                 fieldApiKeyCache.set(titleFieldId, null);
               }
             }
@@ -456,7 +456,7 @@ export default function StagePage({ ctx, menuItem }: Props) {
     return () => {
       isMounted = false;
     };
-  }, [ctx, localePriority, menuItem, reloadIndex]);
+  }, [ctx, localePriority, menuItem]);
 
   const handleNavigate = useCallback(
     (itemTypeId: string, itemId: string) => {
@@ -534,7 +534,7 @@ export default function StagePage({ ctx, menuItem }: Props) {
 
   useEffect(() => {
     setPageIndex(0);
-  }, [selectedModelId, searchTerm, rows.length]);
+  }, []);
 
   useEffect(() => {
     const totalPages = sortedRows.length > 0 ? Math.ceil(sortedRows.length / PAGE_SIZE) : 0;

@@ -1,5 +1,5 @@
 import { formatDistanceStrict } from "date-fns";
-import {
+import type {
   BackupCadence,
   BackupOverviewRow,
   BackupScheduleConfig,

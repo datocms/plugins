@@ -22,8 +22,8 @@
 import type { RenderItemFormSidebarPanelCtx } from 'datocms-plugin-sdk';
 import type { TranslationProvider } from './translation/types';
 import { getProvider } from './translation/ProviderFactory';
-import {
-  type ctxParamsType,
+import type {
+  ctxParamsType,
 } from '../entrypoints/Config/ConfigScreen';
 import { prepareFieldTypePrompt, getExactSourceValue } from './translation/SharedFieldUtils';
 import { translateFieldValue, generateRecordContext } from './translation/TranslateField';

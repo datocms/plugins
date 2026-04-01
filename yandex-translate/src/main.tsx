@@ -1,4 +1,4 @@
-import { connect, FieldAppearanceChange } from 'datocms-plugin-sdk';
+import { connect, type FieldAppearanceChange } from 'datocms-plugin-sdk';
 import { render } from './utils/render';
 import ConfigScreen from './entrypoints/ConfigScreen';
 import FieldExtension from './entrypoints/FieldExtension';

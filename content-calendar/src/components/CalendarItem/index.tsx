@@ -50,7 +50,7 @@ export default function CalendarItem({ item, criteria }: PropTypes) {
   return (
     <button
       type="button"
-      className={s['item']}
+      className={s.item}
       onClick={() =>
         ctx.navigateTo(
           `/editor/item_types/${itemType.id}/items/${item.id}/edit`,
@@ -64,11 +64,11 @@ export default function CalendarItem({ item, criteria }: PropTypes) {
         setModelId(null);
       }}
     >
-      <div className={s['title']}>
+      <div className={s.title}>
         {title}
-        <span className={s['type']}>{itemType.attributes.name}</span>
+        <span className={s.type}>{itemType.attributes.name}</span>
       </div>
-      <div className={s['hour']}>
+      <div className={s.hour}>
         {format(new Date(item.meta[criteria] as string), 'HH:mm')}
       </div>
     </button>

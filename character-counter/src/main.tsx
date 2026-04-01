@@ -1,4 +1,4 @@
-import { FieldType, connect } from 'datocms-plugin-sdk';
+import { type FieldType, connect } from 'datocms-plugin-sdk';
 import { render } from './utils/render';
 import FieldExtension from './entrypoints/FieldExtension';
 import 'datocms-react-ui/styles.css';

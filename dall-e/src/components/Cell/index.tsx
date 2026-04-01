@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { type RenderAssetSourceCtx } from 'datocms-plugin-sdk';
+import type { RenderAssetSourceCtx } from 'datocms-plugin-sdk';
 import { useCtx } from 'datocms-react-ui';
 import type { NormalizedGenerationImage } from '../../utils/imageService';
 import s from './styles.module.css';
@@ -20,7 +20,7 @@ export default function Cell({
 
   useEffect(() => {
     setPreviewFailed(false);
-  }, [image.id]);
+  }, []);
 
   const isSelectable = image.kind === 'success' && !previewFailed;
   const hasInlineError = image.kind === 'error' || previewFailed;

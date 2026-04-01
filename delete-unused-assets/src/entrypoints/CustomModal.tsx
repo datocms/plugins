@@ -1,5 +1,5 @@
 import { buildClient } from '@datocms/cma-client-browser';
-import { RenderModalCtx } from 'datocms-plugin-sdk';
+import type { RenderModalCtx } from 'datocms-plugin-sdk';
 import { Button, Canvas, Spinner } from 'datocms-react-ui';
 import { useEffect, useState } from 'react';
 import s from './styles.module.css';
@@ -29,7 +29,8 @@ export default function CustomModal({ ctx }: PropTypes) {
         setUnusedAssets(result);
         setIsLoading(false);
       });
-  }, []);
+  }, [client.uploads
+      .list]);
 
   return (
     <Canvas ctx={ctx}>

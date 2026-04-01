@@ -1,5 +1,6 @@
-import React, { StrictMode } from 'react';
-import { createRoot, Root } from 'react-dom/client';
+import type React from 'react';
+import { StrictMode } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
 
 let root: Root | undefined;
 

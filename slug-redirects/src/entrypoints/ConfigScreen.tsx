@@ -1,4 +1,4 @@
-import { RenderConfigScreenCtx } from "datocms-plugin-sdk";
+import type { RenderConfigScreenCtx } from "datocms-plugin-sdk";
 import { Canvas, FieldGroup, Form, SwitchField } from "datocms-react-ui";
 import { useEffect, useState } from "react";
 import "datocms-react-ui/styles.css";
@@ -13,7 +13,7 @@ export default function ConfigScreen({ ctx }: Props) {
   );
   useEffect(() => {
     ctx.updatePluginParameters({ installed: true, onPublish });
-  }, [onPublish]);
+  }, [onPublish, ctx.updatePluginParameters]);
   return (
     <Canvas ctx={ctx}>
       <p>

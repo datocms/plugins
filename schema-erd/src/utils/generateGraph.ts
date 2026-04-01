@@ -1,4 +1,4 @@
-import { Field, ItemType } from 'datocms-plugin-sdk';
+import type { Field, ItemType } from 'datocms-plugin-sdk';
 import { Digraph, Edge, Node, Subgraph, toDot } from 'ts-graphviz';
 import Viz from 'viz.js';
 import { Module, render } from 'viz.js/full.render.js';

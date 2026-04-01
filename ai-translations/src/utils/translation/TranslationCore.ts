@@ -138,7 +138,7 @@ export function getRequestSpacingMs(pluginParams: ctxParamsType): number {
  * @returns Delay in milliseconds before the next retry.
  */
 export function calculateRateLimitBackoff(retryCount: number): number {
-  const exponentialDelay = RATE_LIMIT_BASE_DELAY_MS * Math.pow(2, retryCount - 1);
+  const exponentialDelay = RATE_LIMIT_BASE_DELAY_MS * 2 ** (retryCount - 1);
   return Math.min(exponentialDelay, RATE_LIMIT_MAX_DELAY_MS);
 }
 

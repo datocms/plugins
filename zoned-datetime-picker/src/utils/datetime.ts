@@ -91,7 +91,7 @@ export type DatoZonedOutput = {
  * ```
  */
 export function ensureSeconds(dt: string): string {
-  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(dt)) return dt + ":00";
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(dt)) return `${dt}:00`;
   return dt;
 }
 
@@ -199,7 +199,7 @@ export function parseDatoValue(input: unknown): ZonedValue {
  * // }
  * ```
  */
-export function buildDatoOutput(value: ZonedValue): DatoZonedOutput | {} {
+export function buildDatoOutput(value: ZonedValue): DatoZonedOutput | Record<string, never> {
   const { dateTime, timeZone } = value;
   if (!dateTime || !timeZone) return {};
   const dt = DateTime.fromISO(dateTime, { zone: timeZone });

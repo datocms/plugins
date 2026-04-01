@@ -1,11 +1,11 @@
-import { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
+import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import { Canvas, SwitchField } from 'datocms-react-ui';
 
 type Props = {
   ctx: RenderConfigScreenCtx;
 };
 
-type EmptyParameters = {};
+type EmptyParameters = Record<string, never>;
 
 type ValidParameters = {
   showPage: boolean;

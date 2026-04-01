@@ -1,10 +1,10 @@
-import { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
+import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
 import { Canvas } from 'datocms-react-ui';
 import get from 'lodash/get';
 import tinymce from 'tinymce/tinymce';
 import { Editor as ReactEditor } from '@tinymce/tinymce-react';
 import imgixThumbUrl from '../../utils/imgixThumbUrl';
-import { Editor } from 'tinymce';
+import type { Editor } from 'tinymce';
 import { useEffect, useRef, useState } from 'react';
 import { buildClient } from '@datocms/cma-client-browser';
 
@@ -72,7 +72,7 @@ export default function FieldExtension({ ctx }: Props) {
       log('resetExpectedValue');
       expectedValue.current = null;
     }
-  }, [expectedValue, externalValue]);
+  }, [externalValue]);
 
   useEffect(() => {
     log('BEFORE setValueToExternalValue', {
@@ -93,7 +93,7 @@ export default function FieldExtension({ ctx }: Props) {
     });
 
     setValue(externalValue || '');
-  }, [expectedValue, externalValue, value]);
+  }, [externalValue, value]);
 
   const handleChange = (newValue: string) => {
     log('handleChange setValue', {
@@ -116,8 +116,7 @@ export default function FieldExtension({ ctx }: Props) {
     const handleDatoImages = () => {
       // Handles inserting Dato image in the HTML editor
       ctx.selectUpload({ multiple: true }).then((files) => {
-        files &&
-          files.forEach((file) => {
+        files?.forEach((file) => {
             const metadata = file.attributes.default_field_metadata[ctx.locale];
 
             let text = '<img ';
@@ -188,7 +187,6 @@ export default function FieldExtension({ ctx }: Props) {
           async images_upload_handler(blobInfo, progress) {
             try {
               const client = buildClient({
-                // biome-ignore lint/style/noNonNullAssertion: We're sure we have currentUserAccessToken
                 apiToken: ctx.currentUserAccessToken!,
                 environment: ctx.environment,
               });

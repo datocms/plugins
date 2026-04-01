@@ -1,6 +1,6 @@
 /// <reference types="vitest" />
 
-import { buildRecordExportEnvelope, SiteManifestInfo } from './recordExport';
+import { buildRecordExportEnvelope, type SiteManifestInfo } from './recordExport';
 
 const siteInfo: SiteManifestInfo = {
   sourceProjectId: 'project-1',

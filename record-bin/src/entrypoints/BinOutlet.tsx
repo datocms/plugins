@@ -1,7 +1,7 @@
-import { RenderItemFormOutletCtx } from "datocms-plugin-sdk";
+import type { RenderItemFormOutletCtx } from "datocms-plugin-sdk";
 import { Button, Canvas, FieldGroup, Form } from "datocms-react-ui";
 import { useState } from "react";
-import { errorObject } from "../types/types";
+import type { errorObject } from "../types/types";
 import { createDebugLogger, isDebugEnabled } from "../utils/debugLogger";
 import { getDeploymentUrlFromParameters } from "../utils/getDeploymentUrlFromParameters";
 import { getRuntimeMode } from "../utils/getRuntimeMode";

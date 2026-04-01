@@ -1,5 +1,5 @@
 import {
-  RenderFieldExtensionCtx,
+  type RenderFieldExtensionCtx,
   connect,
 } from 'datocms-plugin-sdk';
 import { render } from './utils/render';
@@ -60,10 +60,10 @@ connect({
       return true;
     }
 
-    let fieldUsingThisPlugin: Array<string> = [];
+    const fieldUsingThisPlugin: Array<string> = [];
     let urlPrefix = '';
 
-    (await ctx.loadFieldsUsingPlugin()).map((field) => {
+    (await ctx.loadFieldsUsingPlugin()).forEach((field) => {
       fieldUsingThisPlugin.push(field.attributes.api_key);
       const appearanceParams = field.attributes.appearance
         .parameters as Record<string, unknown>;
@@ -80,7 +80,7 @@ connect({
       createOrUpdateItemPayload.data.attributes as object
     );
 
-    let updatedFieldKey;
+    let updatedFieldKey: string | undefined;
 
     (fieldUsingThisPlugin as Array<string>).forEach((field) => {
       if (updatedFields.includes(field)) {
@@ -123,10 +123,10 @@ connect({
       return true;
     }
 
-    let fieldUsingThisPlugin: Array<string> = [];
+    const fieldUsingThisPlugin: Array<string> = [];
     let urlPrefix = '';
 
-    (await ctx.loadFieldsUsingPlugin()).map((field) => {
+    (await ctx.loadFieldsUsingPlugin()).forEach((field) => {
       fieldUsingThisPlugin.push(field.attributes.api_key);
       const appearanceParams = field.attributes.appearance
         .parameters as Record<string, unknown>;
@@ -143,7 +143,7 @@ connect({
       publishItemPayload[0].attributes as object
     );
 
-    let updatedFieldKey;
+    let updatedFieldKey: string | undefined;
 
     (fieldUsingThisPlugin as Array<string>).forEach((field) => {
       if (updatedFields.includes(field)) {

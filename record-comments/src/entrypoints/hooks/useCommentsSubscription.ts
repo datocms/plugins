@@ -250,7 +250,7 @@ export function useCommentsSubscription({
     if (status === 'closed') {
       const errorCount = consecutiveErrorCount.current;
       // Exponential backoff: 1s, 2s, 4s, 8s... max 30s
-      const delayMs = Math.min(1000 * Math.pow(2, errorCount), 30000);
+      const delayMs = Math.min(1000 * 2 ** errorCount, 30000);
 
       setIsAutoReconnecting(true);
       logDebug('Comments subscription auto-reconnect scheduled', {
@@ -325,7 +325,7 @@ export function useCommentsSubscription({
       setIsAutoReconnecting(false);
 
       const errorCount = consecutiveErrorCount.current;
-      const delayMs = Math.min(1000 * Math.pow(2, errorCount), 30000); // 1s, 2s, 4s... max 30s
+      const delayMs = Math.min(1000 * 2 ** errorCount, 30000); // 1s, 2s, 4s... max 30s
       logDebug('Manual comments retry requested', {
         delayMs,
         errorCount,
@@ -464,10 +464,10 @@ export function useCommentsSubscription({
     if (onAfterSync) {
       requestAnimationFrame(onAfterSync);
     }
-  }, [data, isSyncAllowed, isRealtimeSubscriptionEnabled, setCommentRecordId, currentUserId, onOrphanedDraft, onBeforeSync, onAfterSync]);
+  }, [data, isSyncAllowed, isRealtimeSubscriptionEnabled, setCommentRecordId, currentUserId, onOrphanedDraft, onBeforeSync, onAfterSync, requestContext.modelId, requestContext.recordId]);
 
   const [cmaFetchError, setCmaFetchError] = useState<Error | null>(null);
-  const [cmaRetryKey, setCmaRetryKey] = useState(0);
+  const [_cmaRetryKey, setCmaRetryKey] = useState(0);
   const cmaRetryCountRef = useRef(0);
 
   useEffect(() => {
@@ -579,7 +579,7 @@ export function useCommentsSubscription({
 
         if (attempt < CMA_FETCH.MAX_RETRIES) {
           cmaRetryCountRef.current = attempt + 1;
-          const delayMs = Math.min(1000 * Math.pow(2, attempt), 8000);
+          const delayMs = Math.min(1000 * 2 ** attempt, 8000);
 
           logError(`CMA fetch failed (attempt ${attempt + 1}/${CMA_FETCH.MAX_RETRIES + 1}), retrying in ${delayMs}ms`, normalizedErr, {
             modelId: filterParams.modelId,
@@ -630,7 +630,7 @@ export function useCommentsSubscription({
         retryTimeoutId = null;
       }
     };
-  }, [isRealtimeSubscriptionEnabled, client, filterParams.modelId, filterParams.recordId, effectiveCommentsModelId, cmaRetryKey, setCommentRecordId, setComments, currentUserId, onOrphanedDraft, onBeforeSync, onAfterSync]);
+  }, [isRealtimeSubscriptionEnabled, client, filterParams.modelId, filterParams.recordId, effectiveCommentsModelId, setCommentRecordId, currentUserId, onOrphanedDraft, onBeforeSync, onAfterSync, requestContext.modelId, requestContext.recordId]);
 
   const normalizedError = error ? normalizeError(error) : cmaFetchError;
   const errorInfo: SubscriptionErrorInfo | null = normalizedError

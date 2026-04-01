@@ -30,8 +30,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "coverage": "vitest run --coverage",
-    "lint": "eslint . --ext .ts,.tsx",
-    "lint:fix": "eslint . --ext .ts,.tsx --fix"
+    "lint": "biome lint ./src",
+    "lint:fix": "biome lint --write ./src"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",
@@ -54,13 +54,8 @@
     "@types/node": "^25.3.3",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "@typescript-eslint/eslint-plugin": "^8.56.1",
-    "@typescript-eslint/parser": "^8.56.1",
     "@vitejs/plugin-react": "^5.1.4",
     "@vitest/coverage-v8": "^4.0.18",
-    "eslint": "^10.0.2",
-    "eslint-plugin-jsdoc": "^62.7.1",
-    "eslint-plugin-tsdoc": "^0.5.2",
     "globals": "^17.4.0",
     "jsdom": "^28.1.0",
     "typescript": "^5.9.3",

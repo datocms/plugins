@@ -8,7 +8,7 @@ import {
 } from 'datocms-react-ui';
 import { useMemo } from 'react';
 import styles from './ConfigurationForm.module.css';
-import { ModelOption } from '../../types';
+import type { ModelOption } from '../../types';
 
 interface ConfigurationFormProps {
   sourceLocale: string;

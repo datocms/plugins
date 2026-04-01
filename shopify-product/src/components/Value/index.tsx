@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { normalizeConfig } from '../../types';
 import Price from '../Price';
 import { useCtx } from 'datocms-react-ui';
-import { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
+import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
 import ShopifyClient from '../../utils/ShopifyClient';
-import useStore, { State } from '../../utils/useStore';
+import useStore, { type State } from '../../utils/useStore';
 import s from './styles.module.css';
 import classNames from 'classnames';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -44,24 +44,24 @@ export default function Value({ value, onReset }: ValueProps) {
 
   return (
     <div
-      className={classNames(s['value'], {
-        [s['loading']]: status === 'loading',
+      className={classNames(s.value, {
+        [s.loading]: status === 'loading',
       })}
     >
       {status === 'error' && (
-        <div className={s['product']}>
+        <div className={s.product}>
           API Error! Could not fetch details for product:&nbsp;
           <code>{value}</code>
         </div>
       )}
       {product && (
-        <div className={s['product']}>
+        <div className={s.product}>
           <div
-            className={s['product__image']}
+            className={s.product__image}
             style={{ backgroundImage: `url(${product.imageUrl})` }}
           />
-          <div className={s['product__info']}>
-            <div className={s['product__title']}>
+          <div className={s.product__info}>
+            <div className={s.product__title}>
               <a
                 href={product.onlineStoreUrl}
                 target="_blank"
@@ -71,18 +71,18 @@ export default function Value({ value, onReset }: ValueProps) {
               </a>
               <FontAwesomeIcon icon={faExternalLinkAlt} />
             </div>
-            <div className={s['product__description']}>
+            <div className={s.product__description}>
               {product.description}
             </div>
             {product.productType && (
-              <div className={s['product__producttype']}>
+              <div className={s.product__producttype}>
                 <strong>Product type:</strong>
                 &nbsp;
                 {product.productType}
               </div>
             )}
 
-            <div className={s['product__price']}>
+            <div className={s.product__price}>
               <strong>Price:</strong>
               &nbsp;
               {product.priceRange.maxVariantPrice.amount !==
@@ -99,7 +99,7 @@ export default function Value({ value, onReset }: ValueProps) {
           </div>
         </div>
       )}
-      <button type="button" onClick={onReset} className={s['reset']}>
+      <button type="button" onClick={onReset} className={s.reset}>
         <FontAwesomeIcon icon={faTimesCircle} />
       </button>
     </div>

@@ -1,6 +1,6 @@
-import { Column as TableColumn, Row as TableRow } from "react-table";
+import type { Column as TableColumn, Row as TableRow } from "react-table";
 import Textarea from "react-textarea-autosize";
-import { Actions, Row } from "../../types";
+import type { Actions, Row } from "../../types";
 
 type Props = Actions & {
   value: string;
@@ -18,17 +18,15 @@ function toTable(transfer: DataTransfer) {
     const tableEl = document.querySelector("table");
 
     if (tableEl) {
-      return Array.from(tableEl.rows).reduce((acc, row) => {
-        const columns = Array.from(row.children).map(
+      return Array.from(tableEl.rows).map((row) => {
+        return Array.from(row.children).map(
           (column) =>
             column.textContent
               ?.replace(/\n/g, " ")
               .replace(/\s+/, " ")
               .trim() || ""
         );
-
-        return [...acc, columns];
-      }, [] as string[][]);
+      });
     }
   }
 

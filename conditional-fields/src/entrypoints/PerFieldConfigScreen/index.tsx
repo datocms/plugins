@@ -1,7 +1,7 @@
-import { RenderManualFieldExtensionConfigScreenCtx } from "datocms-plugin-sdk";
+import type { RenderManualFieldExtensionConfigScreenCtx } from "datocms-plugin-sdk";
 import { Canvas, Form, SwitchField, SelectField } from "datocms-react-ui";
 import { useCallback, useState } from "react";
-import { isValidParameters, ValidManualExtensionParameters } from "../../types";
+import { isValidParameters, type ValidManualExtensionParameters } from "../../types";
 import normalizeParams from "../../utils/normalizeParams";
 import { isDefined } from "../../utils/isDefined";
 
@@ -24,7 +24,7 @@ export function PerFieldConfigScreen({ ctx }: PropTypes) {
       setFormValues(newParameters);
       ctx.setParameters(newParameters);
     },
-    [formValues, setFormValues, ctx]
+    [formValues, ctx]
   );
 
   const options = Object.values(ctx.fields)

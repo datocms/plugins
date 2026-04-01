@@ -1,4 +1,4 @@
-import { RenderManualFieldExtensionConfigScreenCtx } from 'datocms-plugin-sdk';
+import type { RenderManualFieldExtensionConfigScreenCtx } from 'datocms-plugin-sdk';
 import {
   Canvas,
   FieldWrapper,
@@ -9,9 +9,9 @@ import {
 import { useCallback, useState } from 'react';
 import ColorInput from '../components/ColorInput';
 import {
-  FieldParams,
+  type FieldParams,
   normalizeFieldParams,
-  ValidFieldParams,
+  type ValidFieldParams,
 } from '../utils/fieldParams';
 import { normalizeGlobalParams } from '../utils/globalParams';
 
@@ -20,7 +20,7 @@ type PropTypes = {
 };
 
 export function validateMaxRating(value: any): string | undefined {
-  if (isNaN(parseInt(value)) || parseInt(value) < 2 || parseInt(value) > 10) {
+  if (Number.isNaN(parseInt(value, 10)) || parseInt(value, 10) < 2 || parseInt(value, 10) > 10) {
     return 'Rating must be a number between 2 and 10!';
   }
 }
@@ -65,7 +65,7 @@ const FieldConfigScreen = ({ ctx }: PropTypes) => {
       setFormValues(newParameters);
       ctx.setParameters(newParameters);
     },
-    [formValues, setFormValues, ctx],
+    [formValues, ctx],
   );
 
   const errors = ctx.errors as Partial<Record<string, string>>;

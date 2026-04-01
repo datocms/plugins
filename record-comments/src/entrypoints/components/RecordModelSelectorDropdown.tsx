@@ -37,7 +37,7 @@ const RecordModelSelectorDropdown = ({
 
   useEffect(() => {
     setSelectedIndex(0);
-  }, [query]);
+  }, []);
 
   useEffect(() => {
     inputRef.current?.focus();

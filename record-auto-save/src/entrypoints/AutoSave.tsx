@@ -1,6 +1,6 @@
-import { RenderItemFormOutletCtx } from "datocms-plugin-sdk";
+import type { RenderItemFormOutletCtx } from "datocms-plugin-sdk";
 import { useEffect } from "react";
-import { PluginParametersType } from "./ConfigScreen";
+import type { PluginParametersType } from "./ConfigScreen";
 
 type PropTypes = {
   ctx: RenderItemFormOutletCtx;
@@ -19,9 +19,9 @@ const AutoSave = ({ ctx }: PropTypes) => {
         clearTimeout(debounceTimer);
       };
     }
-  }, [ctx.isFormDirty, ctx.formValues, ctx.isSubmitting]);
+  }, [ctx.isFormDirty, ctx.isSubmitting, ctx.saveCurrentItem, pluginParameters.autoSaveInterval, pluginParameters.showNotification]);
 
-  return <></>;
+  return null;
 };
 
 export default AutoSave;

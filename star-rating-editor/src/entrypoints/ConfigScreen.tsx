@@ -1,4 +1,4 @@
-import { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
+import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import {
   Button,
   Canvas,
@@ -12,7 +12,7 @@ import { Form as FormHandler, Field } from 'react-final-form';
 import ColorInput from '../components/ColorInput';
 import {
   normalizeGlobalParams,
-  ValidGlobalParams,
+  type ValidGlobalParams,
 } from '../utils/globalParams';
 import { validateMaxRating, validateStarsColor } from './FieldConfigScreen';
 

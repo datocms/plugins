@@ -60,7 +60,7 @@ type Props = {
 };
 
 const editUrlRegExp =
-  /^(?<base_url>.+?)(?:\/environments\/(?<environment>[^\/]+))?\/editor\/item_types\/(?<item_type_id>[^\/]+)\/items\/(?<item_id>[^\/]+)\/edit#fieldPath=(?<field_path>.+)$/;
+  /^(?<base_url>.+?)(?:\/environments\/(?<environment>[^/]+))?\/editor\/item_types\/(?<item_type_id>[^/]+)\/items\/(?<item_id>[^/]+)\/edit#fieldPath=(?<field_path>.+)$/;
 
 export function ContentLinkContextProvider({ children, frontend }: Props) {
   const ctx = useCtx<RenderInspectorCtx>();
@@ -189,7 +189,6 @@ export function ContentLinkContextProvider({ children, frontend }: Props) {
     undefined,
   );
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional
   useEffect(() => {
     if (highlightedItemId && connection.type === 'connected') {
       connection.methods.flashItem({
@@ -207,7 +206,6 @@ export function ContentLinkContextProvider({ children, frontend }: Props) {
     }, 5000);
   }, [ctx.highlightedItemId]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional
   useEffect(() => {
     if (!contentLinkState?.path) {
       return;

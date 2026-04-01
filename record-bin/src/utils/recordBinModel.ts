@@ -1,4 +1,4 @@
-import { buildClient } from "@datocms/cma-client-browser";
+import type { buildClient } from "@datocms/cma-client-browser";
 
 type CmaClient = ReturnType<typeof buildClient>;
 

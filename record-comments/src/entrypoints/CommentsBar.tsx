@@ -89,7 +89,7 @@ const CommentsBar = ({ ctx }: Props) => {
   const { canMentionAssets, canMentionModels, readableModels } = useMentionPermissions(ctx, projectModels);
 
   const mainLocale = ctx.site.attributes.locales[0] ?? 'en';
-  const { prefetchEntities, resolveComments, cacheVersion } = useEntityResolver({
+  const { prefetchEntities, resolveComments } = useEntityResolver({
     client,
     projectUsers,
     projectModels,
@@ -259,7 +259,7 @@ const CommentsBar = ({ ctx }: Props) => {
   const visibleComments = useMemo(
     () => resolveComments(visibleStoredComments),
     // cacheVersion triggers re-resolution when async entities (records/assets) are fetched
-    [visibleStoredComments, resolveComments, cacheVersion]
+    [visibleStoredComments, resolveComments]
   );
 
   const hasMoreComments = (hiddenOldCount ?? 0) > 0;

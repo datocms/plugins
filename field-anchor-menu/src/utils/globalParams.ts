@@ -4,7 +4,7 @@ export type ValidGlobalParams = {
   minFieldsToShow: number;
 };
 
-export type FirstInstallationParams = {};
+export type FirstInstallationParams = Record<string, never>;
 
 export type GlobalParams = ValidGlobalParams | FirstInstallationParams;
 

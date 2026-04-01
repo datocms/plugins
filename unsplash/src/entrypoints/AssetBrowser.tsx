@@ -1,4 +1,4 @@
-import { RenderAssetSourceCtx } from 'datocms-plugin-sdk';
+import type { RenderAssetSourceCtx } from 'datocms-plugin-sdk';
 import {
   Button,
   SelectInput,
@@ -10,15 +10,15 @@ import {
 import { createApi, OrderBy } from 'unsplash-js';
 import classNames from 'classnames';
 import {
-  CSSProperties,
-  FormEvent,
+  type CSSProperties,
+  type FormEvent,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
 } from 'react';
-import { Basic as Photo } from 'unsplash-js/dist/methods/photos/types';
+import type { Basic as Photo } from 'unsplash-js/dist/methods/photos/types';
 import s from './styles.module.css';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSearch } from '@fortawesome/free-solid-svg-icons';
@@ -121,12 +121,12 @@ const AssetBrowser = () => {
         },
         author: photo.user.name,
         notes: photo.description || undefined,
-        default_field_metadata: ctx.site.attributes.locales.reduce(
-          (acc, locale) => {
+        default_field_metadata: Object.fromEntries(
+          ctx.site.attributes.locales.map((locale) => {
             if (locale.startsWith('en')) {
-              return {
-                ...acc,
-                [locale]: {
+              return [
+                locale,
+                {
                   alt: photo.alt_description,
                   title: null,
                   custom_data: {
@@ -134,15 +134,14 @@ const AssetBrowser = () => {
                     unsplash_photo_id: photo.id,
                   },
                 },
-              };
+              ];
             }
 
-            return {
-              ...acc,
-              [locale]: { alt: null, title: null, custom_data: {} },
-            };
-          },
-          {},
+            return [
+              locale,
+              { alt: null, title: null, custom_data: {} },
+            ];
+          }),
         ),
       });
     },
@@ -177,7 +176,7 @@ const AssetBrowser = () => {
 
       return response.response;
     },
-    [orientation, color, query, setLoading],
+    [orientation, color, query],
   );
 
   const handleSearch = useCallback(
@@ -188,7 +187,7 @@ const AssetBrowser = () => {
       setPage(1);
       setPhotos(await performRequest(1));
     },
-    [setPage, setPhotos, performRequest],
+    [performRequest],
   );
 
   const handleLoadMore = useCallback(async () => {
@@ -199,7 +198,7 @@ const AssetBrowser = () => {
       total: result.total,
     }));
     setLoading(false);
-  }, [page, setPage, setPhotos, setLoading, performRequest]);
+  }, [page, performRequest]);
 
   useEffect(() => {
     async function run() {
@@ -208,12 +207,12 @@ const AssetBrowser = () => {
 
     run();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [performRequest]);
 
   useEffect(() => {
     handleSearch();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orientation, color]);
+  }, [handleSearch]);
 
   const rootRef = useRef<HTMLDivElement>(null);
   const rect = useElementLayout(rootRef as React.MutableRefObject<Element>);
@@ -222,7 +221,7 @@ const AssetBrowser = () => {
   const colsData = useMemo(() => {
     return photos ? chunkArray(photos.results, columns) : null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [columns, photos && JSON.stringify(photos.results)]);
+  }, [columns, photos]);
 
   return (
     <div ref={rootRef}>

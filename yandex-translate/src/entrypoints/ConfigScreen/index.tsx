@@ -1,4 +1,4 @@
-import { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
+import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import {
   Button,
   Canvas,
@@ -11,10 +11,10 @@ import {
 import { Form as FormHandler, Field } from 'react-final-form';
 import arrayMutators from 'final-form-arrays';
 import { FieldArray } from 'react-final-form-arrays';
-import { GroupBase } from 'react-select';
+import type { GroupBase } from 'react-select';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faPlus, faTrash } from '@fortawesome/free-solid-svg-icons';
-import { normalizeParams, ValidParameters } from '../../types';
+import { normalizeParams, type ValidParameters } from '../../types';
 import s from './styles.module.css';
 
 type Option = { label: string; value: string };

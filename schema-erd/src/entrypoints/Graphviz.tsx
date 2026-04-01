@@ -16,7 +16,7 @@ import { encode } from 'universal-base64';
 import {
   TransformWrapper,
   TransformComponent,
-  ReactZoomPanPinchContentRef,
+  type ReactZoomPanPinchContentRef,
 } from 'react-zoom-pan-pinch';
 import { Scheduler } from 'async-scheduler';
 

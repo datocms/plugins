@@ -1,4 +1,4 @@
-import { connect, RenderModalCtx, OnBootCtx } from 'datocms-plugin-sdk';
+import { connect, type RenderModalCtx, type OnBootCtx } from 'datocms-plugin-sdk';
 import { render } from './utils/render';
 import ConfigScreen from './entrypoints/ConfigScreen';
 import BrowseProductsModal from './components/BrowseProductsModal';
