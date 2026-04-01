@@ -72,8 +72,8 @@ export default function ConfigScreen({ ctx }: Props) {
   // Create CMA client
   const client = useMemo(() => {
     if (!ctx.currentUserAccessToken) return null;
-    return createClient(ctx.currentUserAccessToken);
-  }, [ctx.currentUserAccessToken]);
+    return createClient(ctx.currentUserAccessToken, ctx.environment);
+  }, [ctx.currentUserAccessToken, ctx.environment]);
 
   // Fetch all block models using CMA client
   useEffect(() => {
