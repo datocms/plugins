@@ -5,3 +5,6 @@ build
 
 # Ignore Jetbrains IDE files
 .idea
+
+# Personal Claude Code instructions
+CLAUDE.local.md

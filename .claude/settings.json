@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.tool_response.filePath // .tool_input.file_path' | { read -r f; npx biome check --write \"$f\"; } 2>/dev/null || true"
+          }
+        ]
+      }
+    ]
+  }
+}
