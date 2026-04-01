@@ -1,9 +1,9 @@
 import type {
-  NormalizedFailedImage,
-  NormalizedGenerationImage,
   ImageOperationRequest,
+  NormalizedFailedImage,
   NormalizedGeneratedImage,
   NormalizedGenerationBatch,
+  NormalizedGenerationImage,
 } from './types';
 
 type GeneratedImageSource = {
@@ -67,9 +67,10 @@ export function createFailedGenerationBatch(
   };
 }
 
-export function readProviderErrorDetails(
-  error: unknown,
-): { message?: string; status?: number } {
+export function readProviderErrorDetails(error: unknown): {
+  message?: string;
+  status?: number;
+} {
   if (!(error instanceof Error)) {
     return {};
   }

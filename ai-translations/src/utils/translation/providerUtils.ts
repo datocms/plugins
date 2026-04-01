@@ -5,7 +5,11 @@
  * Extracts common patterns to reduce duplication across providers.
  */
 
-import { createTimeoutSignal, DEFAULT_API_TIMEOUT_MS, type StreamOptions } from './types';
+import {
+  createTimeoutSignal,
+  DEFAULT_API_TIMEOUT_MS,
+  type StreamOptions,
+} from './types';
 
 /**
  * Checks if a prompt is empty or whitespace-only.
@@ -15,7 +19,7 @@ import { createTimeoutSignal, DEFAULT_API_TIMEOUT_MS, type StreamOptions } from 
  * @returns True if the prompt is empty or contains only whitespace.
  */
 export function isEmptyPrompt(prompt: string): boolean {
-  return !prompt || !prompt.trim();
+  return !prompt?.trim();
 }
 
 /**
@@ -32,10 +36,13 @@ export function isEmptyPrompt(prompt: string): boolean {
  */
 export async function withTimeout<T>(
   options: StreamOptions | undefined,
-  fn: (signal: AbortSignal) => Promise<T>
+  fn: (signal: AbortSignal) => Promise<T>,
 ): Promise<T> {
   const timeoutMs = options?.timeoutMs ?? DEFAULT_API_TIMEOUT_MS;
-  const { signal, cleanup } = createTimeoutSignal(timeoutMs, options?.abortSignal);
+  const { signal, cleanup } = createTimeoutSignal(
+    timeoutMs,
+    options?.abortSignal,
+  );
 
   try {
     return await fn(signal);
@@ -54,10 +61,13 @@ export async function withTimeout<T>(
  */
 export async function* withTimeoutGenerator<T>(
   options: StreamOptions | undefined,
-  fn: (signal: AbortSignal) => AsyncIterable<T>
+  fn: (signal: AbortSignal) => AsyncIterable<T>,
 ): AsyncIterable<T> {
   const timeoutMs = options?.timeoutMs ?? DEFAULT_API_TIMEOUT_MS;
-  const { signal, cleanup } = createTimeoutSignal(timeoutMs, options?.abortSignal);
+  const { signal, cleanup } = createTimeoutSignal(
+    timeoutMs,
+    options?.abortSignal,
+  );
 
   try {
     yield* fn(signal);

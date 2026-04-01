@@ -1,4 +1,4 @@
-const findUploadIds = (obj: any): string[] | null => {
+const findUploadIds = (obj: Record<string, unknown>): string[] | null => {
   const uploadIds: Set<string> = new Set();
 
   const traverse = (item: Record<string, unknown>) => {

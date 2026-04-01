@@ -1,7 +1,7 @@
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
-import { Button, Canvas, TextField, Form, FieldGroup } from 'datocms-react-ui';
-import { Form as FormHandler, Field } from 'react-final-form';
-import { type ValidConfig, normalizeConfig } from '../types';
+import { Button, Canvas, FieldGroup, Form, TextField } from 'datocms-react-ui';
+import { Field, Form as FormHandler } from 'react-final-form';
+import { normalizeConfig, type ValidConfig } from '../types';
 import ShopifyClient from '../utils/ShopifyClient';
 import s from './styles.module.css';
 

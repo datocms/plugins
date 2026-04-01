@@ -32,7 +32,7 @@ export class Logger {
 
   /**
    * Creates a new logger instance.
-   * 
+   *
    * @param pluginParams - Plugin parameters containing enableDebugging flag
    * @param source - Source module name for this logger instance
    */
@@ -47,7 +47,9 @@ export class Logger {
       pluginParams.deeplApiKey,
     ].filter((s): s is string => typeof s === 'string' && s.length > 0);
     // Only keep reasonably long secrets to avoid redacting trivial words
-    this.secrets = candidates.filter((s) => typeof s === 'string' && s.length >= 8);
+    this.secrets = candidates.filter(
+      (s) => typeof s === 'string' && s.length >= 8,
+    );
   }
 
   private redactString(s: string): string {
@@ -60,22 +62,41 @@ export class Logger {
     return out;
   }
 
+  private isSensitiveKey(key: string): boolean {
+    const k = key.toLowerCase();
+    return (
+      k.includes('apikey') ||
+      k.includes('api_key') ||
+      k.includes('authorization') ||
+      k.includes('token') ||
+      k.includes('secret')
+    );
+  }
+
+  private sanitizeObjectEntry(
+    key: string,
+    value: unknown,
+    depth: number,
+  ): unknown {
+    if (this.isSensitiveKey(key)) {
+      return typeof value === 'string' && value.length > 4
+        ? `${value.slice(0, 3)}…[REDACTED]`
+        : '[REDACTED]';
+    }
+    if (typeof value === 'string') return this.redactString(value);
+    return this.sanitize(value as LoggableData, depth + 1);
+  }
+
   private sanitize(data: LoggableData, depth = 0): LoggableData {
     if (typeof data === 'string') return this.redactString(data);
     if (data == null) return data;
     if (depth > 3) return '[Object]';
-    if (Array.isArray(data)) return data.map((v) => this.sanitize(v, depth + 1));
+    if (Array.isArray(data))
+      return data.map((v) => this.sanitize(v, depth + 1));
     if (typeof data === 'object') {
       const out: Record<string, unknown> = {};
       for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
-        const keyLower = k.toLowerCase();
-        if (keyLower.includes('apikey') || keyLower.includes('api_key') || keyLower.includes('authorization') || keyLower.includes('token') || keyLower.includes('secret')) {
-          out[k] = typeof v === 'string' && v.length > 4 ? `${(v as string).slice(0, 3)}…[REDACTED]` : '[REDACTED]';
-        } else if (typeof v === 'string') {
-          out[k] = this.redactString(v);
-        } else {
-          out[k] = this.sanitize(v as LoggableData, depth + 1);
-        }
+        out[k] = this.sanitizeObjectEntry(k, v, depth);
       }
       return out;
     }
@@ -84,30 +105,34 @@ export class Logger {
 
   /**
    * Format and print a log message with a consistent style.
-   * 
+   *
    * @param level - The log level (INFO, PROMPT, etc.)
    * @param message - The message to log
    * @param data - Optional data to include in the log
    * @private
    */
-  private log(level: keyof typeof LOG_LEVELS, message: string, data?: LoggableData): void {
+  private log(
+    level: keyof typeof LOG_LEVELS,
+    message: string,
+    data?: LoggableData,
+  ): void {
     if (!this.enabled) return;
 
     const logConfig = LOG_LEVELS[level];
     const timestamp = new Date().toISOString();
-    
+
     console.group(
       `%c ${timestamp} %c ${logConfig.label} %c ${this.source} %c ${message}`,
       'background: #333; color: white; padding: 2px 4px;',
       `background: ${logConfig.color}; color: white; padding: 2px 4px;`,
       'background: #666; color: white; padding: 2px 4px;',
-      'color: black; padding: 2px 0;'
+      'color: black; padding: 2px 0;',
     );
-    
+
     if (data !== undefined) {
       console.log(this.sanitize(data));
     }
-    
+
     console.groupEnd();
   }
 
@@ -156,10 +181,13 @@ export class Logger {
 
 /**
  * Create a logger instance for a specific module.
- * 
+ *
  * @param pluginParams - Plugin parameters with enableDebugging setting
  * @param source - Source module identifier
  */
-export function createLogger(pluginParams: ctxParamsType, source: string): Logger {
+export function createLogger(
+  pluginParams: ctxParamsType,
+  source: string,
+): Logger {
   return new Logger(pluginParams, source);
 }

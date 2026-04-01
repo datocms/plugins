@@ -1,5 +1,5 @@
-import { isProviderError, hasStatusCode, type VendorId } from './types';
 import type { Logger } from '../logging/Logger';
+import { hasStatusCode, isProviderError, type VendorId } from './types';
 
 /**
  * Canonical error shape used across providers to surface actionable messages
@@ -19,7 +19,37 @@ export type NormalizedProviderError = {
  * @returns True if any needle is found within `s` (case-insensitive).
  */
 const includes = (s: unknown, ...needles: string[]) =>
-  typeof s === 'string' && needles.some((n) => s.toLowerCase().includes(n.toLowerCase()));
+  typeof s === 'string' &&
+  needles.some((n) => s.toLowerCase().includes(n.toLowerCase()));
+
+/**
+ * Returns the value if it is a number or string, otherwise undefined.
+ */
+function asNumberOrString(value: unknown): number | string | undefined {
+  if (typeof value === 'number' || typeof value === 'string') return value;
+  return undefined;
+}
+
+/**
+ * Extracts a status code from a plain object, checking common field names.
+ */
+function extractStatusFromObject(
+  obj: Record<string, unknown>,
+): number | string | undefined {
+  const directStatus = asNumberOrString(obj.status);
+  if (directStatus !== undefined) return directStatus;
+
+  const codeStatus = asNumberOrString(obj.code);
+  if (codeStatus !== undefined) return codeStatus;
+
+  // Check nested response.status (axios-style)
+  if (obj.response && typeof obj.response === 'object') {
+    const response = obj.response as Record<string, unknown>;
+    if (typeof response.status === 'number') return response.status;
+  }
+
+  return undefined;
+}
 
 /**
  * Safely extracts the status code from an error object.
@@ -28,28 +58,10 @@ const includes = (s: unknown, ...needles: string[]) =>
  * @returns The status code, or undefined if not present.
  */
 function extractStatus(err: unknown): number | string | undefined {
-  if (isProviderError(err)) {
-    return err.status;
-  }
-  if (hasStatusCode(err)) {
-    return err.status;
-  }
+  if (isProviderError(err)) return err.status;
+  if (hasStatusCode(err)) return err.status;
   if (err !== null && typeof err === 'object') {
-    const obj = err as Record<string, unknown>;
-    // Check various status locations
-    if (typeof obj.status === 'number' || typeof obj.status === 'string') {
-      return obj.status;
-    }
-    if (typeof obj.code === 'number' || typeof obj.code === 'string') {
-      return obj.code;
-    }
-    // Check nested response.status (axios-style)
-    if (obj.response && typeof obj.response === 'object') {
-      const response = obj.response as Record<string, unknown>;
-      if (typeof response.status === 'number') {
-        return response.status;
-      }
-    }
+    return extractStatusFromObject(err as Record<string, unknown>);
   }
   return undefined;
 }
@@ -100,6 +112,93 @@ function extractErrorDetails(err: unknown): { code?: string; param?: string } {
   return {};
 }
 
+/** Per-vendor hint for rate limit errors. */
+function getRateLimitHint(
+  vendor: 'openai' | 'google' | 'anthropic' | 'deepl',
+): string {
+  if (vendor === 'openai')
+    return 'Reduce concurrency, switch to a more available model, or increase limits.';
+  if (vendor === 'google')
+    return 'Reduce request rate or increase quota in Google Cloud console.';
+  if (vendor === 'anthropic')
+    return 'Reduce request rate or increase Anthropic rate limits.';
+  return 'Reduce concurrency or batch size; check DeepL plan limits.';
+}
+
+/** Per-vendor hint for quota errors. */
+function getQuotaHint(
+  vendor: 'openai' | 'google' | 'anthropic' | 'deepl',
+): string {
+  if (vendor === 'openai')
+    return 'Check OpenAI usage and billing; switch to a smaller model if needed.';
+  if (vendor === 'google')
+    return 'Verify Google project quotas and billing for Generative Language API.';
+  if (vendor === 'anthropic')
+    return 'Check Anthropic usage limits and billing.';
+  return 'Check DeepL usage limits and plan.';
+}
+
+/** Per-vendor hint for model-not-found errors. */
+function getModelHint(
+  vendor: 'openai' | 'google' | 'anthropic' | 'deepl',
+): string {
+  if (vendor === 'openai')
+    return 'Ensure the model exists on your account and is spelled correctly.';
+  if (vendor === 'google')
+    return 'Ensure the Gemini model id is correct and available in your region.';
+  if (vendor === 'anthropic')
+    return 'Ensure the Claude model id is correct and you have access.';
+  return 'Ensure the language pair is valid for DeepL; check target code.';
+}
+
+/**
+ * Detects the OpenAI "must be verified to stream" error that occurs when an
+ * organization has not been verified for streaming access with certain models.
+ *
+ * @param vendor - Provider vendor id.
+ * @param status - HTTP status code extracted from the error.
+ * @param message - Normalized error message string.
+ * @param errorDetails - Parsed code/param details from the error body.
+ * @returns True if this is an OpenAI stream-verification error.
+ */
+function isOpenAIStreamVerificationError(
+  vendor: string,
+  status: number | string | undefined,
+  message: string,
+  errorDetails: { code?: string; param?: string },
+): boolean {
+  if (vendor !== 'openai') return false;
+  const hasUnsupportedValueOrBadRequest =
+    errorDetails.code === 'unsupported_value' || status === 400;
+  const hasStreamParam =
+    errorDetails.param === 'stream' || includes(message, 'stream');
+  return (
+    hasUnsupportedValueOrBadRequest &&
+    hasStreamParam &&
+    includes(message, 'must be verified to stream this model')
+  );
+}
+
+/**
+ * Detects the DeepL "wrong endpoint" error that occurs when a Free API key
+ * is used with the Pro endpoint or vice versa.
+ *
+ * @param vendor - Provider vendor id.
+ * @param status - HTTP status code extracted from the error.
+ * @param message - Normalized error message string.
+ * @returns True if this is a DeepL wrong-endpoint error.
+ */
+function isDeepLWrongEndpointError(
+  vendor: string,
+  status: number | string | undefined,
+  message: string,
+): boolean {
+  return (
+    vendor === 'deepl' &&
+    (status === 403 || includes(message, 'wrong endpoint'))
+  );
+}
+
 /**
  * Normalizes provider-specific errors to a compact, user-friendly shape, with
  * special handling for common authentication, quota, rate-limit and model
@@ -109,19 +208,16 @@ function extractErrorDetails(err: unknown): { code?: string; param?: string } {
  * @param vendor - Provider id for vendor-specific mappings.
  * @returns A normalized error with `code`, `message`, and optional `hint`.
  */
-export function normalizeProviderError(err: unknown, vendor: 'openai' | 'google' | 'anthropic' | 'deepl'): NormalizedProviderError {
+export function normalizeProviderError(
+  err: unknown,
+  vendor: 'openai' | 'google' | 'anthropic' | 'deepl',
+): NormalizedProviderError {
   const status = extractStatus(err);
   const rawMessage = extractMessage(err);
   const errorDetails = extractErrorDetails(err);
   const message = rawMessage;
 
-  // Special OpenAI streaming verification failure
-  if (
-    vendor === 'openai' &&
-    (errorDetails.code === 'unsupported_value' || status === 400) &&
-    (errorDetails.param === 'stream' || includes(message, 'stream')) &&
-    includes(message, 'must be verified to stream this model')
-  ) {
+  if (isOpenAIStreamVerificationError(vendor, status, message, errorDetails)) {
     return {
       code: 'auth',
       message,
@@ -129,14 +225,25 @@ export function normalizeProviderError(err: unknown, vendor: 'openai' | 'google'
     };
   }
 
-  // Common mappings
-  if (status === 401 || includes(message, 'unauthorized', 'invalid api key', 'invalid authentication', 'not valid api key', 'permission_denied')) {
+  const isAuthError =
+    status === 401 ||
+    includes(
+      message,
+      'unauthorized',
+      'invalid api key',
+      'invalid authentication',
+      'not valid api key',
+      'permission_denied',
+    );
+
+  if (isAuthError) {
     return {
       code: 'auth',
       message: 'Authentication failed for the selected AI vendor.',
-      hint: vendor === 'openai'
-        ? 'Check OpenAI API key and organization access in settings.'
-        : 'Check Google API key and that Generative Language API is enabled.',
+      hint:
+        vendor === 'openai'
+          ? 'Check OpenAI API key and organization access in settings.'
+          : 'Check Google API key and that Generative Language API is enabled.',
     };
   }
 
@@ -144,45 +251,52 @@ export function normalizeProviderError(err: unknown, vendor: 'openai' | 'google'
     return {
       code: 'rate_limit',
       message: 'Rate limit reached. Please wait and try again.',
-      hint: vendor === 'openai'
-        ? 'Reduce concurrency, switch to a more available model, or increase limits.'
-        : vendor === 'google'
-        ? 'Reduce request rate or increase quota in Google Cloud console.'
-        : vendor === 'anthropic'
-        ? 'Reduce request rate or increase Anthropic rate limits.'
-        : 'Reduce concurrency or batch size; check DeepL plan limits.',
+      hint: getRateLimitHint(vendor),
     };
   }
 
-  if (includes(message, 'insufficient_quota', 'quota exceeded', 'resource has been exhausted', 'out of quota')) {
+  const isQuotaError = includes(
+    message,
+    'insufficient_quota',
+    'quota exceeded',
+    'resource has been exhausted',
+    'out of quota',
+  );
+  if (isQuotaError) {
     return {
       code: 'quota',
       message: 'Quota exceeded for the selected AI vendor.',
-      hint: vendor === 'openai'
-        ? 'Check OpenAI usage and billing; switch to a smaller model if needed.'
-        : vendor === 'google'
-        ? 'Verify Google project quotas and billing for Generative Language API.'
-        : vendor === 'anthropic'
-        ? 'Check Anthropic usage limits and billing.'
-        : 'Check DeepL usage limits and plan.',
+      hint: getQuotaHint(vendor),
     };
   }
 
-  if (status === 404 || includes(message, 'model not found', 'no such model', 'unsupported model', 'not found: model')) {
+  const isModelError =
+    status === 404 ||
+    includes(
+      message,
+      'model not found',
+      'no such model',
+      'unsupported model',
+      'not found: model',
+    );
+  if (isModelError) {
     return {
       code: 'model',
       message: 'The selected model is unavailable or not accessible.',
-      hint: vendor === 'openai'
-        ? 'Ensure the model exists on your account and is spelled correctly.'
-        : vendor === 'google'
-        ? 'Ensure the Gemini model id is correct and available in your region.'
-        : vendor === 'anthropic'
-        ? 'Ensure the Claude model id is correct and you have access.'
-        : 'Ensure the language pair is valid for DeepL; check target code.',
+      hint: getModelHint(vendor),
     };
   }
 
-  if (includes(message, 'failed to fetch', 'fetch failed', 'network', 'ecconn', 'enotfound', 'timeout')) {
+  const isNetworkError = includes(
+    message,
+    'failed to fetch',
+    'fetch failed',
+    'network',
+    'ecconn',
+    'enotfound',
+    'timeout',
+  );
+  if (isNetworkError) {
     return {
       code: 'network',
       message: rawMessage,
@@ -190,11 +304,11 @@ export function normalizeProviderError(err: unknown, vendor: 'openai' | 'google'
     };
   }
 
-  // DeepL specific: wrong endpoint (free vs pro)
-  if (vendor === 'deepl' && (status === 403 || includes(message, 'wrong endpoint'))) {
+  if (isDeepLWrongEndpointError(vendor, status, message)) {
     return {
       code: 'auth',
-      message: 'DeepL: wrong endpoint for your API key. If your key ends with :fx, enable "Use DeepL Free endpoint (api-free.deepl.com)" in Settings. Otherwise, disable it to use api.deepl.com.',
+      message:
+        'DeepL: wrong endpoint for your API key. If your key ends with :fx, enable "Use DeepL Free endpoint (api-free.deepl.com)" in Settings. Otherwise, disable it to use api.deepl.com.',
       hint: 'Match the endpoint to your plan: Free (:fx) → api-free.deepl.com; Pro → api.deepl.com.',
     };
   }
@@ -233,13 +347,13 @@ export function handleTranslationError(
   error: unknown,
   vendor: VendorId,
   logger: Logger,
-  context = 'Translation error'
+  context = 'Translation error',
 ): never {
   const normalized = normalizeProviderError(error, vendor);
   logger.error(context, {
     message: normalized.message,
     code: normalized.code,
-    hint: normalized.hint
+    hint: normalized.hint,
   });
   // Include hint in thrown error for consistent user-facing messages
   throw new Error(formatErrorForUser(normalized), { cause: error });
@@ -270,7 +384,7 @@ export function handleUIError(
   error: unknown,
   vendor: VendorId | undefined,
   ctx: UIContext,
-  logger?: Logger
+  logger?: Logger,
 ): void {
   // Handle user cancellation gracefully
   if (error instanceof Error && error.name === 'AbortError') {
@@ -284,7 +398,7 @@ export function handleUIError(
     logger.error('UI Error', {
       message: normalized.message,
       code: normalized.code,
-      hint: normalized.hint
+      hint: normalized.hint,
     });
   }
 

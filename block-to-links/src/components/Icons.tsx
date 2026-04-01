@@ -1,9 +1,9 @@
 /**
  * Icons Component Library
- * 
+ *
  * Centralized SVG icon components used throughout the plugin UI.
  * Each icon is a React functional component that renders an SVG element.
- * 
+ *
  * @module components/Icons
  */
 
@@ -178,7 +178,7 @@ export const InfoIcon: FC<IconProps> = ({ className }) => (
 /**
  * Icons object containing all icon components.
  * Provides a convenient namespace for icon access.
- * 
+ *
  * @example
  * import { Icons } from '../components/Icons';
  * <Icons.Block />

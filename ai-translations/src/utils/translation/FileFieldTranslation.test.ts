@@ -3,10 +3,10 @@
  * Covers translation of alt/title and metadata for file and gallery fields.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import { translateFileFieldValue } from './FileFieldTranslation';
 import type { TranslationProvider } from './types';
-import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 
 vi.mock('./translateArray', () => ({
   translateArray: vi.fn(),
@@ -51,7 +51,11 @@ describe('FileFieldTranslation', () => {
   });
 
   it('translates top-level alt/title and metadata strings', async () => {
-    vi.mocked(translateArray).mockResolvedValue(['Alt IT', 'Title IT', 'Meta IT']);
+    vi.mocked(translateArray).mockResolvedValue([
+      'Alt IT',
+      'Title IT',
+      'Meta IT',
+    ]);
 
     const fileValue = {
       alt: 'Alt EN',
@@ -68,7 +72,7 @@ describe('FileFieldTranslation', () => {
       mockPluginParams,
       'it',
       'en',
-      mockProvider
+      mockProvider,
     );
 
     expect(translateArray).toHaveBeenCalledWith(
@@ -77,7 +81,7 @@ describe('FileFieldTranslation', () => {
       ['Alt EN', 'Title EN', 'Meta EN'],
       'en',
       'it',
-      { isHTML: false, recordContext: '' }
+      { isHTML: false, recordContext: '' },
     );
 
     expect(result).toEqual({
@@ -92,7 +96,11 @@ describe('FileFieldTranslation', () => {
   });
 
   it('fills top-level alt/title from metadata when only metadata has them', async () => {
-    vi.mocked(translateArray).mockResolvedValue(['Alt IT', 'Title IT', 'Meta IT']);
+    vi.mocked(translateArray).mockResolvedValue([
+      'Alt IT',
+      'Title IT',
+      'Meta IT',
+    ]);
 
     const fileValue = {
       metadata: {
@@ -107,7 +115,7 @@ describe('FileFieldTranslation', () => {
       mockPluginParams,
       'it',
       'en',
-      mockProvider
+      mockProvider,
     );
 
     expect(translateArray).toHaveBeenCalledWith(
@@ -116,7 +124,7 @@ describe('FileFieldTranslation', () => {
       ['Alt EN', 'Title EN', 'Meta EN'],
       'en',
       'it',
-      { isHTML: false, recordContext: '' }
+      { isHTML: false, recordContext: '' },
     );
 
     expect(result).toEqual({
@@ -132,7 +140,11 @@ describe('FileFieldTranslation', () => {
   });
 
   it('does not translate alt/title twice when present in both file and metadata', async () => {
-    vi.mocked(translateArray).mockResolvedValue(['Alt IT', 'Title IT', 'Meta IT']);
+    vi.mocked(translateArray).mockResolvedValue([
+      'Alt IT',
+      'Title IT',
+      'Meta IT',
+    ]);
 
     const fileValue = {
       alt: 'Alt EN',
@@ -149,7 +161,7 @@ describe('FileFieldTranslation', () => {
       mockPluginParams,
       'it',
       'en',
-      mockProvider
+      mockProvider,
     );
 
     expect(translateArray).toHaveBeenCalledWith(
@@ -158,7 +170,7 @@ describe('FileFieldTranslation', () => {
       ['Alt EN', 'Title EN', 'Meta EN'],
       'en',
       'it',
-      { isHTML: false, recordContext: '' }
+      { isHTML: false, recordContext: '' },
     );
 
     expect(result).toEqual({
@@ -174,7 +186,11 @@ describe('FileFieldTranslation', () => {
   });
 
   it('falls back to upload default metadata when alt/title are missing', async () => {
-    vi.mocked(translateArray).mockResolvedValue(['Alt IT', 'Title IT', 'Meta IT']);
+    vi.mocked(translateArray).mockResolvedValue([
+      'Alt IT',
+      'Title IT',
+      'Meta IT',
+    ]);
     mockUploadsFind.mockResolvedValue({
       default_field_metadata: {
         en: {
@@ -198,7 +214,7 @@ describe('FileFieldTranslation', () => {
       'en',
       mockProvider,
       'token-123',
-      'main'
+      'main',
     );
 
     expect(mockUploadsFind).toHaveBeenCalledWith('upl_123');
@@ -208,7 +224,7 @@ describe('FileFieldTranslation', () => {
       ['Alt EN default', 'Title EN default', 'Meta EN'],
       'en',
       'it',
-      { isHTML: false, recordContext: '' }
+      { isHTML: false, recordContext: '' },
     );
 
     expect(result).toEqual({

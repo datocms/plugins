@@ -1,25 +1,25 @@
 /**
  * Block Analysis Utilities
- * 
+ *
  * Functions for analyzing DatoCMS block models, finding their usage
  * across the schema, and extracting block instances from records.
- * 
+ *
  * @module utils/analyzer
  */
 
 import type {
-  CMAClient,
   BlockAnalysis,
+  CMAClient,
   FieldInfo,
+  GroupedBlockInstance,
   ModularContentFieldInfo,
   NestedBlockPath,
-  GroupedBlockInstance,
 } from '../types';
 import {
-  getBlockTypeId,
-  getBlockId,
-  getBlockAttributes,
   extractBlocksFromFieldValue,
+  getBlockAttributes,
+  getBlockId,
+  getBlockTypeId,
 } from './blocks';
 
 // =============================================================================
@@ -62,17 +62,20 @@ export function clearCaches(): void {
 
 /**
  * Gets item type info with caching.
- * 
+ *
  * @param client - DatoCMS CMA client
  * @param itemTypeId - ID of the item type to fetch
  * @returns Item type information
  */
-async function getItemTypeInfo(client: CMAClient, itemTypeId: string): Promise<ItemTypeInfo> {
+async function getItemTypeInfo(
+  client: CMAClient,
+  itemTypeId: string,
+): Promise<ItemTypeInfo> {
   const cached = itemTypesCache.get(itemTypeId);
   if (cached) {
     return cached;
   }
-  
+
   const itemType = await client.itemTypes.find(itemTypeId);
   const info: ItemTypeInfo = {
     id: itemType.id,
@@ -92,17 +95,17 @@ type ReferencingFieldInfo = FieldCacheEntry & {
 /**
  * Gets all fields that reference a specific block using the fields.referencing() API.
  * This is more efficient than fetching all models and their fields.
- * 
+ *
  * @param client - DatoCMS CMA client
  * @param blockId - ID of the block to find referencing fields for
  * @returns Array of fields that reference this block with their parent item type ID
  */
 async function getReferencingFields(
   client: CMAClient,
-  blockId: string
+  blockId: string,
 ): Promise<ReferencingFieldInfo[]> {
   const fields = await client.fields.referencing(blockId);
-  return fields.map(f => ({
+  return fields.map((f) => ({
     id: f.id,
     label: f.label,
     api_key: f.api_key,
@@ -121,13 +124,13 @@ async function getReferencingFields(
 
 /**
  * Analyzes a block model to understand its structure and usage.
- * 
+ *
  * This function:
  * 1. Fetches the block's field definitions
  * 2. Finds all modular content fields that use this block
  * 3. Builds nested paths from root models to this block
  * 4. Counts affected records
- * 
+ *
  * @param client - DatoCMS CMA client
  * @param blockId - ID of the block model to analyze
  * @param onProgress - Optional callback for progress updates
@@ -136,7 +139,7 @@ async function getReferencingFields(
 export async function analyzeBlock(
   client: CMAClient,
   blockId: string,
-  onProgress?: (message: string, percentage: number) => void
+  onProgress?: (message: string, percentage: number) => void,
 ): Promise<BlockAnalysis> {
   clearCaches(); // Start fresh for each analysis
 
@@ -167,32 +170,34 @@ export async function analyzeBlock(
   // Find all modular content fields that reference this block (including nested in other blocks)
   const modularContentFields = await findModularContentFieldsUsingBlock(
     client,
-    blockId
+    blockId,
   );
 
-  onProgress?.(`Found ${modularContentFields.length} fields using this block. Analyzing nested paths...`, 25);
+  onProgress?.(
+    `Found ${modularContentFields.length} fields using this block. Analyzing nested paths...`,
+    25,
+  );
   // Build nested paths to root models for each field
-  const nestedPaths = await buildNestedPathsToRootModels(client, modularContentFields, blockId);
+  const nestedPaths = await buildNestedPathsToRootModels(
+    client,
+    modularContentFields,
+    blockId,
+  );
 
   // Group paths by root model for efficient counting (one scan per root model)
   const pathsByRootModel = groupPathsByRootModelId(nestedPaths);
 
-  // Count affected records - scan each root model once and check all paths
-  let totalAffectedRecords = 0;
-  let groupIndex = 0;
-  const groupCount = pathsByRootModel.size;
+  // Count affected records - scan all root models in parallel
+  onProgress?.('Counting affected records...', 50);
 
-  for (const [rootModelId, paths] of pathsByRootModel) {
-    const rootModelName = paths[0].rootModelName;
-    // Calculate percentage from 30% to 100% based on loop progress
-    const loopPercentage = Math.round(30 + ((groupIndex / groupCount) * 70));
-    onProgress?.(`Counting records in model "${rootModelName}" (${groupIndex + 1}/${groupCount})...`, loopPercentage);
-    
-    const count = await countRecordsWithBlockAcrossPaths(client, rootModelId, paths, blockId);
-    totalAffectedRecords += count;
-    groupIndex++;
-  }
-  
+  const groupEntries = Array.from(pathsByRootModel.entries());
+  const counts = await Promise.all(
+    groupEntries.map(([rootModelId, paths]) =>
+      countRecordsWithBlockAcrossPaths(client, rootModelId, paths, blockId),
+    ),
+  );
+  const totalAffectedRecords = counts.reduce((sum, count) => sum + count, 0);
+
   onProgress?.('Analysis complete!', 100);
 
   return {
@@ -210,86 +215,102 @@ export async function analyzeBlock(
 /**
  * Finds all modular content fields (rich_text, structured_text, or single_block) that use the specified block.
  * This includes fields in other blocks (for nested block scenarios).
- * 
+ *
  * Uses the fields.referencing() API to efficiently get only fields that
  * reference this block, rather than fetching all fields from all models.
  */
+/**
+ * Extracts the allowed block IDs and field type from a field's validators,
+ * returning null if the field does not actually reference the given blockId.
+ */
+function extractFieldBlockInfo(
+  field: ReferencingFieldInfo,
+  blockId: string,
+): {
+  allowedBlockIds: string[];
+  fieldType: 'rich_text' | 'structured_text' | 'single_block';
+} | null {
+  if (field.field_type === 'rich_text') {
+    const validator = field.validators.rich_text_blocks as
+      | { item_types: string[] }
+      | undefined;
+    if (validator?.item_types?.includes(blockId)) {
+      return { allowedBlockIds: validator.item_types, fieldType: 'rich_text' };
+    }
+  } else if (field.field_type === 'structured_text') {
+    const validator = field.validators.structured_text_blocks as
+      | { item_types: string[] }
+      | undefined;
+    if (validator?.item_types?.includes(blockId)) {
+      return {
+        allowedBlockIds: validator.item_types,
+        fieldType: 'structured_text',
+      };
+    }
+  } else if (field.field_type === 'single_block') {
+    const validator = field.validators.single_block_blocks as
+      | { item_types: string[] }
+      | undefined;
+    if (validator?.item_types?.includes(blockId)) {
+      return {
+        allowedBlockIds: validator.item_types,
+        fieldType: 'single_block',
+      };
+    }
+  }
+  return null;
+}
+
 async function findModularContentFieldsUsingBlock(
   client: CMAClient,
-  blockId: string
+  blockId: string,
 ): Promise<ModularContentFieldInfo[]> {
   // Use fields.referencing() to get only fields that reference this block
   const referencingFields = await getReferencingFields(client, blockId);
-  
-  // Filter for modular content field types and collect unique item type IDs
+
+  // Filter for modular content field types
   const relevantFieldTypes = ['rich_text', 'structured_text', 'single_block'];
-  const relevantFields = referencingFields.filter(f => relevantFieldTypes.includes(f.field_type));
-  
+  const relevantFields = referencingFields.filter((f) =>
+    relevantFieldTypes.includes(f.field_type),
+  );
+
   // Batch fetch item type info for all unique parent models
-  const uniqueItemTypeIds = [...new Set(relevantFields.map(f => f.item_type_id))];
+  const uniqueItemTypeIds = [
+    ...new Set(relevantFields.map((f) => f.item_type_id)),
+  ];
   const itemTypesMap = new Map<string, ItemTypeInfo>();
-  
+
   await Promise.all(
     uniqueItemTypeIds.map(async (id) => {
       const info = await getItemTypeInfo(client, id);
       itemTypesMap.set(id, info);
-    })
+    }),
   );
-  
-  // Build the result array
+
   const result: ModularContentFieldInfo[] = [];
-  
+
   for (const field of relevantFields) {
     const itemType = itemTypesMap.get(field.item_type_id);
-    if (!itemType) continue; // Skip if item type not found (shouldn't happen)
-    
-    // Validate that the block ID is actually in the validators
-    // (fields.referencing may return stale references)
-    let allowedBlockIds: string[] | undefined;
-    let fieldType: 'rich_text' | 'structured_text' | 'single_block' | undefined;
-    
-    if (field.field_type === 'rich_text') {
-      const richTextBlocks = field.validators.rich_text_blocks as
-        | { item_types: string[] }
-        | undefined;
-      if (richTextBlocks?.item_types?.includes(blockId)) {
-        allowedBlockIds = richTextBlocks.item_types;
-        fieldType = 'rich_text';
-      }
-    } else if (field.field_type === 'structured_text') {
-      const structuredTextBlocks = field.validators.structured_text_blocks as
-        | { item_types: string[] }
-        | undefined;
-      if (structuredTextBlocks?.item_types?.includes(blockId)) {
-        allowedBlockIds = structuredTextBlocks.item_types;
-        fieldType = 'structured_text';
-      }
-    } else if (field.field_type === 'single_block') {
-      const singleBlockBlocks = field.validators.single_block_blocks as
-        | { item_types: string[] }
-        | undefined;
-      if (singleBlockBlocks?.item_types?.includes(blockId)) {
-        allowedBlockIds = singleBlockBlocks.item_types;
-        fieldType = 'single_block';
-      }
-    }
-    
-    if (allowedBlockIds && fieldType) {
-      result.push({
-        id: field.id,
-        label: field.label,
-        apiKey: field.api_key,
-        parentModelId: itemType.id,
-        parentModelName: itemType.name,
-        parentModelApiKey: itemType.api_key,
-        parentIsBlock: itemType.modular_block,
-        localized: field.localized,
-        allowedBlockIds,
-        position: field.position,
-        hint: field.hint || undefined,
-        fieldType,
-      });
-    }
+    if (!itemType) continue;
+
+    // Validate that the block ID is in the validators (fields.referencing may be stale)
+    const blockInfo = extractFieldBlockInfo(field, blockId);
+    if (!blockInfo) continue;
+
+    result.push({
+      id: field.id,
+      label: field.label,
+      apiKey: field.api_key,
+      parentModelId: itemType.id,
+      parentModelName: itemType.name,
+      parentModelApiKey: itemType.api_key,
+      parentIsBlock: itemType.modular_block,
+      localized: field.localized,
+      allowedBlockIds: blockInfo.allowedBlockIds,
+      position: field.position,
+      hint: field.hint || undefined,
+      fieldType: blockInfo.fieldType,
+    });
   }
 
   return result;
@@ -302,10 +323,10 @@ async function findModularContentFieldsUsingBlock(
 /**
  * Recursively finds all paths from root models (non-blocks) to modular content fields.
  * Handles arbitrarily deep nesting of blocks within blocks.
- * 
+ *
  * For example, if a target block is used inside another block which is used in a page,
  * this function will build the full path: Page → Parent Block Field → Target Block Field
- * 
+ *
  * @param client - DatoCMS CMA client
  * @param modularContentFields - Fields that use the target block
  * @param targetBlockId - ID of the block being analyzed
@@ -314,34 +335,42 @@ async function findModularContentFieldsUsingBlock(
 export async function buildNestedPathsToRootModels(
   client: CMAClient,
   modularContentFields: ModularContentFieldInfo[],
-  targetBlockId: string
+  targetBlockId: string,
 ): Promise<NestedBlockPath[]> {
-  const result: NestedBlockPath[] = [];
+  // Separate fields by whether their parent is a block or a regular model
+  const directFields = modularContentFields.filter((f) => !f.parentIsBlock);
+  const nestedFields = modularContentFields.filter((f) => f.parentIsBlock);
 
-  for (const mcField of modularContentFields) {
-    if (!mcField.parentIsBlock) {
-      // Parent is a regular model - simple path
-      const path = [{
+  // For direct (non-block-parent) fields, build simple paths immediately
+  const directPaths: NestedBlockPath[] = directFields.map((mcField) => {
+    const path = [
+      {
         fieldApiKey: mcField.apiKey,
         expectedBlockTypeId: targetBlockId,
         localized: mcField.localized,
         fieldType: mcField.fieldType,
-      }];
-      result.push({
-        rootModelId: mcField.parentModelId,
-        rootModelName: mcField.parentModelName,
-        rootModelApiKey: mcField.parentModelApiKey,
-        path,
-        fieldInfo: mcField,
-        isInLocalizedContext: path.some(step => step.localized),
-      });
-    } else {
-      // Parent is a block - need to recursively find paths to root models
-      // Use the referencing API to find models that reference this parent block
-      const pathsToParent = await findPathsToBlock(client, mcField.parentModelId, new Set());
-      
-      for (const pathToParent of pathsToParent) {
-        // Append the current field to the path
+      },
+    ];
+    return {
+      rootModelId: mcField.parentModelId,
+      rootModelName: mcField.parentModelName,
+      rootModelApiKey: mcField.parentModelApiKey,
+      path,
+      fieldInfo: mcField,
+      isInLocalizedContext: path.some((step) => step.localized),
+    };
+  });
+
+  // For nested (block-parent) fields, fetch all parent paths in parallel
+  const nestedPathResults = await Promise.all(
+    nestedFields.map(async (mcField) => {
+      const pathsToParent = await findPathsToBlock(
+        client,
+        mcField.parentModelId,
+        new Set(),
+      );
+
+      return pathsToParent.map((pathToParent) => {
         const fullPath = [
           ...pathToParent.path,
           {
@@ -351,31 +380,31 @@ export async function buildNestedPathsToRootModels(
             fieldType: mcField.fieldType,
           },
         ];
-        result.push({
+        return {
           rootModelId: pathToParent.rootModelId,
           rootModelName: pathToParent.rootModelName,
           rootModelApiKey: pathToParent.rootModelApiKey,
           path: fullPath,
           fieldInfo: mcField,
-          isInLocalizedContext: fullPath.some(step => step.localized),
-        });
-      }
-    }
-  }
+          isInLocalizedContext: fullPath.some((step) => step.localized),
+        };
+      });
+    }),
+  );
 
-  return result;
+  return [...directPaths, ...nestedPathResults.flat()];
 }
 
 /**
  * Groups nested paths by their root model ID.
  * This enables efficient record scanning by processing all paths
  * for a given root model in a single pass.
- * 
+ *
  * @param nestedPaths - Array of nested paths to group
  * @returns Map of root model ID to array of paths for that model
  */
 function groupPathsByRootModelId(
-  nestedPaths: NestedBlockPath[]
+  nestedPaths: NestedBlockPath[],
 ): Map<string, NestedBlockPath[]> {
   const grouped = new Map<string, NestedBlockPath[]>();
   for (const path of nestedPaths) {
@@ -389,119 +418,148 @@ function groupPathsByRootModelId(
 /**
  * Recursively finds all paths from root models to a specific block type.
  * Returns paths that lead to the block, not including the fields within the block.
- * 
+ *
  * Uses the fields.referencing() API to efficiently find only fields that
  * reference this block at each recursion level.
  */
-async function findPathsToBlock(
-  client: CMAClient,
-  blockId: string,
-  visitedBlocks: Set<string> // Prevent infinite loops with circular references
-): Promise<Array<{
+type PathEntry = {
   rootModelId: string;
   rootModelName: string;
   rootModelApiKey: string;
   path: NestedBlockPath['path'];
-}>> {
+};
+
+/**
+ * Determines the field type and whether it contains the given blockId.
+ * Returns null if the field does not reference the block.
+ */
+function resolveFieldTypeForBlock(
+  field: ReferencingFieldInfo,
+  blockId: string,
+): 'rich_text' | 'structured_text' | 'single_block' | null {
+  if (field.field_type === 'rich_text') {
+    const validator = field.validators.rich_text_blocks as
+      | { item_types: string[] }
+      | undefined;
+    return validator?.item_types?.includes(blockId) ? 'rich_text' : null;
+  }
+  if (field.field_type === 'structured_text') {
+    const validator = field.validators.structured_text_blocks as
+      | { item_types: string[] }
+      | undefined;
+    return validator?.item_types?.includes(blockId) ? 'structured_text' : null;
+  }
+  if (field.field_type === 'single_block') {
+    const validator = field.validators.single_block_blocks as
+      | { item_types: string[] }
+      | undefined;
+    return validator?.item_types?.includes(blockId) ? 'single_block' : null;
+  }
+  return null;
+}
+
+async function findPathsToBlock(
+  client: CMAClient,
+  blockId: string,
+  visitedBlocks: Set<string>, // Prevent infinite loops with circular references
+): Promise<PathEntry[]> {
   // Prevent infinite loops
   if (visitedBlocks.has(blockId)) {
     return [];
   }
   visitedBlocks.add(blockId);
 
-  const result: Array<{
-    rootModelId: string;
-    rootModelName: string;
-    rootModelApiKey: string;
-    path: NestedBlockPath['path'];
-  }> = [];
-
   // Use fields.referencing() to get only fields that reference this block
   const referencingFields = await getReferencingFields(client, blockId);
-  
+
   // Filter for modular content field types
   const relevantFieldTypes = ['rich_text', 'structured_text', 'single_block'];
-  const relevantFields = referencingFields.filter(f => relevantFieldTypes.includes(f.field_type));
-  
+  const relevantFields = referencingFields.filter((f) =>
+    relevantFieldTypes.includes(f.field_type),
+  );
+
   // Batch fetch item type info for all unique parent models
-  const uniqueItemTypeIds = [...new Set(relevantFields.map(f => f.item_type_id))];
+  const uniqueItemTypeIds = [
+    ...new Set(relevantFields.map((f) => f.item_type_id)),
+  ];
   const itemTypesMap = new Map<string, ItemTypeInfo>();
-  
+
   await Promise.all(
     uniqueItemTypeIds.map(async (id) => {
       const info = await getItemTypeInfo(client, id);
       itemTypesMap.set(id, info);
-    })
+    }),
   );
 
-  // Process each field
+  // Separate fields into root-model fields and block-parent fields
+  type FieldWithType = {
+    field: ReferencingFieldInfo;
+    itemType: ItemTypeInfo;
+    fieldType: 'rich_text' | 'structured_text' | 'single_block';
+  };
+
+  const rootModelFields: FieldWithType[] = [];
+  const blockParentFields: FieldWithType[] = [];
+
   for (const field of relevantFields) {
     const itemType = itemTypesMap.get(field.item_type_id);
-    if (!itemType) continue; // Skip if item type not found (shouldn't happen)
-    
-    // Validate and determine field type
-    let containsBlock = false;
-    let fieldType: 'rich_text' | 'structured_text' | 'single_block' = 'rich_text';
-    
-    if (field.field_type === 'rich_text') {
-      const richTextBlocks = field.validators.rich_text_blocks as
-        | { item_types: string[] }
-        | undefined;
-      containsBlock = richTextBlocks?.item_types?.includes(blockId) ?? false;
-      fieldType = 'rich_text';
-    } else if (field.field_type === 'structured_text') {
-      const structuredTextBlocks = field.validators.structured_text_blocks as
-        | { item_types: string[] }
-        | undefined;
-      containsBlock = structuredTextBlocks?.item_types?.includes(blockId) ?? false;
-      fieldType = 'structured_text';
-    } else if (field.field_type === 'single_block') {
-      const singleBlockBlocks = field.validators.single_block_blocks as
-        | { item_types: string[] }
-        | undefined;
-      containsBlock = singleBlockBlocks?.item_types?.includes(blockId) ?? false;
-      fieldType = 'single_block';
-    }
+    if (!itemType) continue;
 
-    if (containsBlock) {
-      if (!itemType.modular_block) {
-        // Found a root model - this is a complete path
-        result.push({
-          rootModelId: itemType.id,
-          rootModelName: itemType.name,
-          rootModelApiKey: itemType.api_key,
-          path: [{
+    const fieldType = resolveFieldTypeForBlock(field, blockId);
+    if (!fieldType) continue;
+
+    const entry: FieldWithType = { field, itemType, fieldType };
+    if (!itemType.modular_block) {
+      rootModelFields.push(entry);
+    } else {
+      blockParentFields.push(entry);
+    }
+  }
+
+  // Build direct paths for root-model fields
+  const directPaths: PathEntry[] = rootModelFields.map(
+    ({ field, itemType, fieldType }) => ({
+      rootModelId: itemType.id,
+      rootModelName: itemType.name,
+      rootModelApiKey: itemType.api_key,
+      path: [
+        {
+          fieldApiKey: field.api_key,
+          expectedBlockTypeId: blockId,
+          localized: field.localized,
+          fieldType,
+        },
+      ],
+    }),
+  );
+
+  // Recursively resolve paths for block-parent fields in parallel
+  const recursiveResults = await Promise.all(
+    blockParentFields.map(async ({ field, itemType, fieldType }) => {
+      const pathsToParent = await findPathsToBlock(
+        client,
+        itemType.id,
+        visitedBlocks,
+      );
+
+      return pathsToParent.map((pathToParent) => ({
+        rootModelId: pathToParent.rootModelId,
+        rootModelName: pathToParent.rootModelName,
+        rootModelApiKey: pathToParent.rootModelApiKey,
+        path: [
+          ...pathToParent.path,
+          {
             fieldApiKey: field.api_key,
             expectedBlockTypeId: blockId,
             localized: field.localized,
             fieldType,
-          }],
-        });
-      } else {
-        // Parent is also a block - recurse upward
-        const pathsToParent = await findPathsToBlock(client, itemType.id, visitedBlocks);
-        
-        for (const pathToParent of pathsToParent) {
-          result.push({
-            rootModelId: pathToParent.rootModelId,
-            rootModelName: pathToParent.rootModelName,
-            rootModelApiKey: pathToParent.rootModelApiKey,
-            path: [
-              ...pathToParent.path,
-              {
-                fieldApiKey: field.api_key,
-                expectedBlockTypeId: blockId,
-                localized: field.localized,
-                fieldType,
-              },
-            ],
-          });
-        }
-      }
-    }
-  }
+          },
+        ],
+      }));
+    }),
+  );
 
-  return result;
+  return [...directPaths, ...recursiveResults.flat()];
 }
 
 // =============================================================================
@@ -512,7 +570,7 @@ async function findPathsToBlock(
  * Counts records that contain the target block across multiple paths in a single scan.
  * This is more efficient than scanning once per path, and correctly counts unique
  * records (a record with the block in multiple fields counts as 1, not N).
- * 
+ *
  * @param client - DatoCMS CMA client
  * @param rootModelId - ID of the root model to scan
  * @param paths - All nested paths for this root model
@@ -523,7 +581,7 @@ async function countRecordsWithBlockAcrossPaths(
   client: CMAClient,
   rootModelId: string,
   paths: NestedBlockPath[],
-  targetBlockId: string
+  targetBlockId: string,
 ): Promise<number> {
   let count = 0;
 
@@ -550,7 +608,7 @@ async function countRecordsWithBlockAcrossPaths(
 function recordContainsBlockAtPath(
   record: Record<string, unknown>,
   path: NestedBlockPath['path'],
-  targetBlockId: string
+  targetBlockId: string,
 ): boolean {
   return findBlocksAtPath(record, path, targetBlockId).length > 0;
 }
@@ -565,80 +623,115 @@ function recordContainsBlockAtPath(
  * Finds all target block instances in a record following the given path.
  * Returns array of { block, pathIndices } where pathIndices tracks the position at each level.
  */
+/** Result entry for findBlocksAtPath */
+type BlockAtPathResult = {
+  block: Record<string, unknown>;
+  pathIndices: number[];
+  locale: string | null;
+};
+
+/**
+ * Processes a single block during path traversal.
+ * Either records it as a match (final step) or recurses deeper (intermediate step).
+ */
+function processBlockAtPathStep(
+  block: unknown,
+  blockIndex: number,
+  pathIndex: number,
+  path: NestedBlockPath['path'],
+  targetBlockId: string,
+  currentIndices: number[],
+  loc: string | null,
+  traverseFn: (
+    data: Record<string, unknown>,
+    idx: number,
+    indices: number[],
+    locale: string | null,
+  ) => void,
+): BlockAtPathResult | null {
+  if (!block || typeof block !== 'object') return null;
+
+  const blockObj = block as Record<string, unknown>;
+  const blockTypeId = getBlockTypeId(blockObj);
+  const isLastStep = pathIndex === path.length - 1;
+
+  if (isLastStep) {
+    if (blockTypeId === targetBlockId) {
+      return {
+        block: blockObj,
+        pathIndices: [...currentIndices, blockIndex],
+        locale: loc,
+      };
+    }
+    return null;
+  }
+
+  const step = path[pathIndex];
+  if (blockTypeId === step.expectedBlockTypeId) {
+    const blockData = getBlockAttributes(blockObj);
+    traverseFn(
+      { ...blockData, ...blockObj },
+      pathIndex + 1,
+      [...currentIndices, blockIndex],
+      loc,
+    );
+  }
+  return null;
+}
+
 export function findBlocksAtPath(
   record: Record<string, unknown>,
   path: NestedBlockPath['path'],
-  targetBlockId: string
-): Array<{
-  block: Record<string, unknown>;
-  pathIndices: number[]; // Index at each path level
-  locale: string | null;
-}> {
-  const results: Array<{
-    block: Record<string, unknown>;
-    pathIndices: number[];
-    locale: string | null;
-  }> = [];
+  targetBlockId: string,
+): BlockAtPathResult[] {
+  const results: BlockAtPathResult[] = [];
 
   function traverse(
     currentData: Record<string, unknown>,
     pathIndex: number,
     currentIndices: number[],
-    locale: string | null
+    locale: string | null,
   ): void {
-    if (pathIndex >= path.length) {
-      return;
-    }
+    if (pathIndex >= path.length) return;
 
     const step = path[pathIndex];
     const fieldValue = currentData[step.fieldApiKey];
-
     if (!fieldValue) return;
 
-    const processBlocks = (blocks: unknown[], loc: string | null) => {
-      if (!Array.isArray(blocks)) return;
-
-      blocks.forEach((block, index) => {
-        if (!block || typeof block !== 'object') return;
-        const blockObj = block as Record<string, unknown>;
-        const blockTypeId = getBlockTypeId(blockObj);
-
-        if (pathIndex === path.length - 1) {
-          // This is the final step - look for target blocks
-          if (blockTypeId === targetBlockId) {
-            results.push({
-              block: blockObj,
-              pathIndices: [...currentIndices, index],
-              locale: loc,
-            });
-          }
-        } else {
-          // Intermediate step - check if this block matches expected type and recurse
-          if (blockTypeId === step.expectedBlockTypeId) {
-            // Get the block's attributes which contain its fields
-            const blockData = getBlockAttributes(blockObj);
-            traverse(
-              { ...blockData, ...blockObj }, // Merge attributes with block for nested field access
-              pathIndex + 1,
-              [...currentIndices, index],
-              loc
-            );
-          }
-        }
-      });
+    const processBlocksArray = (blocks: unknown[], loc: string | null) => {
+      for (let i = 0; i < blocks.length; i++) {
+        const match = processBlockAtPathStep(
+          blocks[i],
+          i,
+          pathIndex,
+          path,
+          targetBlockId,
+          currentIndices,
+          loc,
+          traverse,
+        );
+        if (match) results.push(match);
+      }
     };
 
-    if (step.localized && typeof fieldValue === 'object' && !Array.isArray(fieldValue)) {
-      // Localized field - iterate over locales
-      for (const loc of Object.keys(fieldValue as Record<string, unknown>)) {
-        const localeValue = (fieldValue as Record<string, unknown>)[loc];
-        const blocks = extractBlocksFromFieldValue(localeValue, step.fieldType);
-        processBlocks(blocks, loc);
+    if (
+      step.localized &&
+      typeof fieldValue === 'object' &&
+      !Array.isArray(fieldValue)
+    ) {
+      for (const [loc, localeValue] of Object.entries(
+        fieldValue as Record<string, unknown>,
+      )) {
+        processBlocksArray(
+          extractBlocksFromFieldValue(localeValue, step.fieldType),
+          loc,
+        );
       }
     } else {
-      // Non-localized field
-      const blocks = extractBlocksFromFieldValue(fieldValue, step.fieldType);
-      processBlocks(blocks, locale);
+      processBlocksArray(
+        extractBlocksFromFieldValue(fieldValue, step.fieldType),
+        locale,
+      );
     }
   }
 
@@ -658,15 +751,18 @@ export function findBlocksAtPath(
 export async function getGroupedBlockInstances(
   client: CMAClient,
   nestedPath: NestedBlockPath,
-  targetBlockId: string
+  targetBlockId: string,
 ): Promise<GroupedBlockInstance[]> {
   // Map to collect blocks by group key (rootRecordId + pathIndices)
-  const groupMap = new Map<string, {
-    rootRecordId: string;
-    pathIndices: number[];
-    localeData: Record<string, Record<string, unknown>>;
-    allBlockIds: string[];
-  }>();
+  const groupMap = new Map<
+    string,
+    {
+      rootRecordId: string;
+      pathIndices: number[];
+      localeData: Record<string, Record<string, unknown>>;
+      allBlockIds: string[];
+    }
+  >();
 
   for await (const record of client.items.listPagedIterator({
     filter: { type: nestedPath.rootModelId },
@@ -678,10 +774,10 @@ export async function getGroupedBlockInstances(
     for (const { block, pathIndices, locale } of blocks) {
       const blockData = getBlockAttributes(block);
       const blockId = getBlockId(block);
-      
+
       // Create group key from record ID and position indices
       const groupKey = `${record.id}_${pathIndices.join('_')}`;
-      
+
       // Get or create the group entry
       let group = groupMap.get(groupKey);
       if (!group) {
@@ -693,18 +789,20 @@ export async function getGroupedBlockInstances(
         };
         groupMap.set(groupKey, group);
       }
-      
+
       // Store the block data for this locale
       // Use '__default__' for non-localized contexts
       const localeKey = locale || '__default__';
       group.localeData[localeKey] = blockData;
-      
+
       // Track all block IDs for mapping
       if (blockId) {
         group.allBlockIds.push(blockId);
       } else {
         // Generate synthetic ID if none exists
-        group.allBlockIds.push(`${record.id}_${pathIndices.join('_')}_${localeKey}`);
+        group.allBlockIds.push(
+          `${record.id}_${pathIndices.join('_')}_${localeKey}`,
+        );
       }
     }
   }

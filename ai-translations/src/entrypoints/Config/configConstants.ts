@@ -22,7 +22,10 @@ export const translateFieldTypes = {
   file: 'Media Fields',
 };
 
-export const modularContentVariations = ['framed_single_block', 'frameless_single_block'];
+export const modularContentVariations = [
+  'framed_single_block',
+  'frameless_single_block',
+];
 
 /**
  * Re-export defaultPrompt for convenience.

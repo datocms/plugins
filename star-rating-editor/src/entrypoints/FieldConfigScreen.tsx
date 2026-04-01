@@ -19,13 +19,19 @@ type PropTypes = {
   ctx: RenderManualFieldExtensionConfigScreenCtx;
 };
 
-export function validateMaxRating(value: any): string | undefined {
-  if (Number.isNaN(parseInt(value, 10)) || parseInt(value, 10) < 2 || parseInt(value, 10) > 10) {
+export function validateMaxRating(
+  value: string | number | null,
+): string | undefined {
+  if (
+    Number.isNaN(parseInt(value, 10)) ||
+    parseInt(value, 10) < 2 ||
+    parseInt(value, 10) > 10
+  ) {
     return 'Rating must be a number between 2 and 10!';
   }
 }
 
-export function validateStarsColor(value: any): string | undefined {
+export function validateStarsColor(value: string | null): string | undefined {
   if (!value) {
     return 'A color is required!';
   }
@@ -38,14 +44,24 @@ export function validateStarsColor(value: any): string | undefined {
   }
 }
 
-export function validate(parameters: Record<string, any>) {
+export function validate(parameters: Record<string, unknown>) {
   const errors: Record<string, string | undefined> = {};
 
-  errors.maxRating =
-    parameters.maxRating && validateMaxRating(parameters.maxRating);
+  const maxRating = parameters.maxRating;
+  if (maxRating !== null && maxRating !== undefined) {
+    const maxRatingValue =
+      typeof maxRating === 'string' || typeof maxRating === 'number'
+        ? maxRating
+        : String(maxRating);
+    errors.maxRating = validateMaxRating(maxRatingValue);
+  }
 
-  errors.starsColor =
-    parameters.starsColor && validateStarsColor(parameters.starsColor);
+  const starsColor = parameters.starsColor;
+  if (starsColor !== null && starsColor !== undefined) {
+    errors.starsColor = validateStarsColor(
+      typeof starsColor === 'string' ? starsColor : String(starsColor),
+    );
+  }
 
   return Object.values(errors).some((x) => x) ? errors : {};
 }

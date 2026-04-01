@@ -3,18 +3,18 @@
  * Tests shared utilities for translation operations.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import {
-  hasTranslatableSourceValue,
-  shouldProcessField,
+  calculateRateLimitBackoff,
+  delay,
   getMaxConcurrency,
   getRequestSpacingMs,
-  calculateRateLimitBackoff,
-  isRateLimitError,
+  hasTranslatableSourceValue,
   isAbortError,
-  delay,
+  isRateLimitError,
+  shouldProcessField,
 } from './TranslationCore';
-import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 
 describe('TranslationCore.ts', () => {
   describe('shouldProcessField', () => {
@@ -32,7 +32,9 @@ describe('TranslationCore.ts', () => {
     };
 
     it('should return true for translatable field types', () => {
-      expect(shouldProcessField('single_line', 'field1', baseParams)).toBe(true);
+      expect(shouldProcessField('single_line', 'field1', baseParams)).toBe(
+        true,
+      );
       expect(shouldProcessField('textarea', 'field2', baseParams)).toBe(true);
       expect(shouldProcessField('markdown', 'field3', baseParams)).toBe(true);
       expect(shouldProcessField('seo', 'field4', baseParams)).toBe(true);
@@ -44,7 +46,13 @@ describe('TranslationCore.ts', () => {
         apiKeysToBeExcludedFromThisPlugin: ['excluded-field'],
       };
 
-      expect(shouldProcessField('single_line', 'excluded-field', paramsWithExclusions)).toBe(false);
+      expect(
+        shouldProcessField(
+          'single_line',
+          'excluded-field',
+          paramsWithExclusions,
+        ),
+      ).toBe(false);
     });
 
     it('should return false for legacy exclusions stored as API keys', () => {
@@ -53,7 +61,14 @@ describe('TranslationCore.ts', () => {
         apiKeysToBeExcludedFromThisPlugin: ['slug'],
       };
 
-      expect(shouldProcessField('single_line', 'field-id', paramsWithExclusions, 'slug')).toBe(false);
+      expect(
+        shouldProcessField(
+          'single_line',
+          'field-id',
+          paramsWithExclusions,
+          'slug',
+        ),
+      ).toBe(false);
     });
 
     it('should return false for non-translatable field types', () => {
@@ -68,7 +83,9 @@ describe('TranslationCore.ts', () => {
         translationFields: [],
       };
 
-      expect(shouldProcessField('single_line', 'field1', paramsNoFields)).toBe(false);
+      expect(shouldProcessField('single_line', 'field1', paramsNoFields)).toBe(
+        false,
+      );
     });
 
     it('should handle modular content field types', () => {
@@ -77,8 +94,12 @@ describe('TranslationCore.ts', () => {
         translationFields: ['structured_text', 'rich_text'],
       };
 
-      expect(shouldProcessField('structured_text', 'field1', paramsWithModular)).toBe(true);
-      expect(shouldProcessField('rich_text', 'field2', paramsWithModular)).toBe(true);
+      expect(
+        shouldProcessField('structured_text', 'field1', paramsWithModular),
+      ).toBe(true);
+      expect(shouldProcessField('rich_text', 'field2', paramsWithModular)).toBe(
+        true,
+      );
     });
   });
 
@@ -93,16 +114,18 @@ describe('TranslationCore.ts', () => {
       expect(
         hasTranslatableSourceValue('structured_text', [
           { type: 'paragraph', children: [{ text: '' }] },
-        ])
+        ]),
       ).toBe(false);
 
       expect(
         hasTranslatableSourceValue('structured_text', {
           document: {
             type: 'root',
-            children: [{ type: 'paragraph', children: [{ type: 'span', value: '   ' }] }],
+            children: [
+              { type: 'paragraph', children: [{ type: 'span', value: '   ' }] },
+            ],
           },
-        })
+        }),
       ).toBe(false);
     });
 
@@ -316,7 +339,9 @@ describe('TranslationCore.ts', () => {
     });
 
     it('should return true for message containing "429"', () => {
-      expect(isRateLimitError({ message: 'Error 429: Too many requests' })).toBe(true);
+      expect(
+        isRateLimitError({ message: 'Error 429: Too many requests' }),
+      ).toBe(true);
     });
 
     it('should return true for message containing "Too Many Requests"', () => {

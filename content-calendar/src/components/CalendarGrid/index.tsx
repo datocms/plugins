@@ -1,11 +1,11 @@
-import React from 'react';
-import { format, isSameDay, isSameMonth, isToday } from 'date-fns';
-import classNames from 'classnames';
-import s from './styles.module.css';
-import CalendarItem from '../../components/CalendarItem';
-import { Spinner } from 'datocms-react-ui';
-import type { Criteria } from '../../types';
 import type { SchemaTypes } from '@datocms/cma-client';
+import classNames from 'classnames';
+import { format, isSameDay, isSameMonth, isToday } from 'date-fns';
+import { Spinner } from 'datocms-react-ui';
+import React from 'react';
+import CalendarItem from '../../components/CalendarItem';
+import type { Criteria } from '../../types';
+import s from './styles.module.css';
 
 type CalendarGridProps = {
   month: Date;
@@ -28,13 +28,13 @@ export default function CalendarGrid({
         className={s.calendarGrid}
         style={{ gridTemplateRows: `50px repeat(${matrix.length}, 1fr)` }}
       >
-        {matrix[0].map((day, i) => (
-          <div className={s.calendarWeekDay} key={i}>
+        {matrix[0].map((day) => (
+          <div className={s.calendarWeekDay} key={format(day, 'EEEE')}>
             {format(day, 'EEEE')}
           </div>
         ))}
-        {matrix.map((week, i) => (
-          <React.Fragment key={i}>
+        {matrix.map((week) => (
+          <React.Fragment key={week[0].toISOString()}>
             {week.map((day) => (
               <div
                 key={day.toISOString()}

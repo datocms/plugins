@@ -1,31 +1,34 @@
-import { useEffect, useMemo, useRef } from 'react';
 import {
-  useTable,
-  useFlexLayout,
-  useResizeColumns,
-  type Column,
-  type TableOptions,
-} from 'react-table';
-import { useDeepCompareMemo } from 'use-deep-compare';
-import type { Actions, Row, Value } from '../../types';
-import EditableCell from '../EditableCell';
-import { Button, useCtx } from 'datocms-react-ui';
-import omit from 'lodash-es/omit';
-import EditableHeader from '../EditableHeader';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faExpand, faPlus, faTrash } from '@fortawesome/free-solid-svg-icons';
-import {
+  faExpand,
   faLongArrowAltDown,
   faLongArrowAltUp,
+  faPlus,
+  faTrash,
   faTrashAlt,
 } from '@fortawesome/free-solid-svg-icons';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import classNames from 'classnames';
 import {
+  Button,
   Dropdown,
   DropdownMenu,
   DropdownOption,
   DropdownSeparator,
+  useCtx,
 } from 'datocms-react-ui';
-import classNames from 'classnames';
+import omit from 'lodash-es/omit';
+import { useEffect, useMemo, useRef } from 'react';
+import {
+  type Column,
+  type TableOptions,
+  useFlexLayout,
+  useResizeColumns,
+  useTable,
+} from 'react-table';
+import { useDeepCompareMemo } from 'use-deep-compare';
+import type { Actions, Row, Value } from '../../types';
+import EditableCell from '../EditableCell';
+import EditableHeader from '../EditableHeader';
 import s from './styles.module.css';
 
 type Props = {
@@ -300,7 +303,10 @@ export default function TableEditor({
         return;
       }
 
-      theadRef.current.scrollLeft = (event.target as any).scrollLeft;
+      const scrollTarget = event.target;
+      if (scrollTarget instanceof Element) {
+        theadRef.current.scrollLeft = scrollTarget.scrollLeft;
+      }
     };
 
     tbody.addEventListener('scroll', handler);
@@ -314,10 +320,18 @@ export default function TableEditor({
     <div>
       <div {...getTableProps()} className={s.table}>
         <div className={s.thead} ref={theadRef} style={{ overflowX: 'hidden' }}>
-          {headerGroups.map((headerGroup, headerGroupIndex) => (
-            <div key={headerGroupIndex} {...headerGroup.getHeaderGroupProps()} className={s.tr}>
+          {headerGroups.map((headerGroup) => (
+            <div
+              key={headerGroup.id}
+              {...headerGroup.getHeaderGroupProps()}
+              className={s.tr}
+            >
               {headerGroup.headers.map((column) => (
-                <div key={column.id} {...column.getHeaderProps()} className={s.th}>
+                <div
+                  key={column.id}
+                  {...column.getHeaderProps()}
+                  className={s.th}
+                >
                   {column.render('Header')}
                   <div
                     {...column.getResizerProps()}
@@ -382,7 +396,11 @@ export default function TableEditor({
                 </div>
                 {row.cells.map((cell) => {
                   return (
-                    <div key={cell.column.id} {...cell.getCellProps()} className={s.td}>
+                    <div
+                      key={cell.column.id}
+                      {...cell.getCellProps()}
+                      className={s.td}
+                    >
                       {cell.render('Cell')}
                     </div>
                   );

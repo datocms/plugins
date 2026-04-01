@@ -35,7 +35,7 @@ export function isImageFormat(value?: string | null): boolean {
   const normalized = value.toLowerCase();
   if (normalized.startsWith('image/')) return true;
   return ['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'svg'].includes(
-    normalized
+    normalized,
   );
 }
 

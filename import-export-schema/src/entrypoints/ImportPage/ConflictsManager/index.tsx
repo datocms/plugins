@@ -2,7 +2,7 @@ import type { SchemaTypes } from '@datocms/cma-client';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import { Button, SwitchInput } from 'datocms-react-ui';
 import get from 'lodash-es/get';
-import { useContext, useId, useMemo, useState } from 'react';
+import { useCallback, useContext, useId, useMemo, useState } from 'react';
 import { useFormState } from 'react-final-form';
 import type { ExportSchema } from '@/entrypoints/ExportPage/ExportSchema';
 import { getTextWithoutRepresentativeEmojiAndPadding } from '@/utils/emojiAgnosticSorter';
@@ -30,6 +30,66 @@ type Props = {
   // ctx is currently unused; keep for future enhancements
   ctx?: RenderPageCtx;
 };
+
+type ItemTypeEntry = {
+  exportItemType: SchemaTypes.ItemType;
+  projectItemType?: SchemaTypes.ItemType;
+};
+
+type PluginEntry = {
+  exportPlugin: SchemaTypes.Plugin;
+  projectPlugin?: SchemaTypes.Plugin;
+};
+
+function sortItemTypesByUnresolvedThenName(
+  items: ItemTypeEntry[],
+  isUnresolved: (entry: ItemTypeEntry) => boolean,
+): ItemTypeEntry[] {
+  const sorted = [...items].sort((a, b) => {
+    const aUnresolved = isUnresolved(a);
+    const bUnresolved = isUnresolved(b);
+    if (aUnresolved !== bUnresolved) {
+      return aUnresolved ? -1 : 1;
+    }
+    const aHasConflict = Boolean(a.projectItemType);
+    const bHasConflict = Boolean(b.projectItemType);
+    if (aHasConflict !== bHasConflict) {
+      return aHasConflict ? -1 : 1;
+    }
+    return 0;
+  });
+
+  return sortEntriesByDisplayName(sorted, (entry) =>
+    getTextWithoutRepresentativeEmojiAndPadding(
+      entry.exportItemType.attributes.name,
+    ),
+  );
+}
+
+function sortPluginsByUnresolvedThenName(
+  entries: PluginEntry[],
+  isUnresolved: (entry: PluginEntry) => boolean,
+): PluginEntry[] {
+  const sorted = [...entries].sort((a, b) => {
+    const aUnresolved = isUnresolved(a);
+    const bUnresolved = isUnresolved(b);
+    if (aUnresolved !== bUnresolved) {
+      return aUnresolved ? -1 : 1;
+    }
+    const aHasConflict = Boolean(a.projectPlugin);
+    const bHasConflict = Boolean(b.projectPlugin);
+    if (aHasConflict !== bHasConflict) {
+      return aHasConflict ? -1 : 1;
+    }
+    return 0;
+  });
+
+  return sortEntriesByDisplayName(sorted, (entry) =>
+    getTextWithoutRepresentativeEmojiAndPadding(
+      entry.exportPlugin.attributes.name,
+    ),
+  );
+}
 
 /**
  * Organizes detected conflicts by type, wiring them into the resolutions form.
@@ -65,15 +125,66 @@ export default function ConflictsManager({
     errors: Record<string, unknown>;
   };
 
-  type ItemTypeEntry = {
-    exportItemType: SchemaTypes.ItemType;
-    projectItemType?: SchemaTypes.ItemType;
-  };
+  // Returns true while an item-type conflict still needs user input.
+  const isItemTypeConflictUnresolved = useCallback(
+    (
+      exportItemType: SchemaTypes.ItemType,
+      projectItemType?: SchemaTypes.ItemType,
+    ) => {
+      if (!projectItemType) {
+        return false;
+      }
 
-  type PluginEntry = {
-    exportPlugin: SchemaTypes.Plugin;
-    projectPlugin?: SchemaTypes.Plugin;
-  };
+      const fieldPrefix = `itemType-${exportItemType.id}`;
+      const strategy = get(formValues, [fieldPrefix, 'strategy']);
+      const hasErrors = Boolean(get(formErrors, [fieldPrefix]));
+
+      if (!strategy) {
+        return true;
+      }
+
+      if (hasErrors) {
+        return true;
+      }
+
+      if (strategy === 'rename') {
+        const name = get(formValues, [fieldPrefix, 'name']);
+        const apiKey = get(formValues, [fieldPrefix, 'apiKey']);
+        return !(name && apiKey);
+      }
+
+      if (strategy === 'reuseExisting') {
+        return false;
+      }
+
+      return true;
+    },
+    [formValues, formErrors],
+  );
+
+  // Plugins require no extra inputs beyond strategy selection.
+  const isPluginConflictUnresolved = useCallback(
+    (exportPlugin: SchemaTypes.Plugin, projectPlugin?: SchemaTypes.Plugin) => {
+      if (!projectPlugin) {
+        return false;
+      }
+
+      const fieldPrefix = `plugin-${exportPlugin.id}`;
+      const strategy = get(formValues, [fieldPrefix, 'strategy']);
+      const hasErrors = Boolean(get(formErrors, [fieldPrefix]));
+
+      if (!strategy) {
+        return true;
+      }
+
+      if (hasErrors) {
+        return true;
+      }
+
+      return false;
+    },
+    [formValues, formErrors],
+  );
 
   const itemTypesByCategory = useMemo(() => {
     const empty: Record<'blocks' | 'models', ItemTypeEntry[]> = {
@@ -107,40 +218,20 @@ export default function ConflictsManager({
       { blocks: [], models: [] },
     );
 
-    const sortByUnresolvedThenName = (items: ItemTypeEntry[]) =>
-      sortEntriesByDisplayName(
-        [...items].sort((a, b) => {
-          // Unresolved first
-          const aUnresolved = isItemTypeConflictUnresolved(
-            a.exportItemType,
-            a.projectItemType,
-          );
-          const bUnresolved = isItemTypeConflictUnresolved(
-            b.exportItemType,
-            b.projectItemType,
-          );
-          if (aUnresolved !== bUnresolved) {
-            return aUnresolved ? -1 : 1;
-          }
-          // Then any remaining conflicts (already resolved) before non-conflicts
-          const aHasConflict = Boolean(a.projectItemType);
-          const bHasConflict = Boolean(b.projectItemType);
-          if (aHasConflict !== bHasConflict) {
-            return aHasConflict ? -1 : 1;
-          }
-          return 0;
-        }),
-        (entry) =>
-          getTextWithoutRepresentativeEmojiAndPadding(
-            entry.exportItemType.attributes.name,
-          ),
-      );
+    const isItemTypeEntryUnresolved = (entry: ItemTypeEntry) =>
+      isItemTypeConflictUnresolved(entry.exportItemType, entry.projectItemType);
 
     return {
-      blocks: sortByUnresolvedThenName(grouped.blocks),
-      models: sortByUnresolvedThenName(grouped.models),
+      blocks: sortItemTypesByUnresolvedThenName(
+        grouped.blocks,
+        isItemTypeEntryUnresolved,
+      ),
+      models: sortItemTypesByUnresolvedThenName(
+        grouped.models,
+        isItemTypeEntryUnresolved,
+      ),
     };
-  }, [conflicts, exportSchema, formValues, formErrors]);
+  }, [conflicts, exportSchema, isItemTypeConflictUnresolved]);
 
   // Deterministic sorting keeps plugin ordering stable between renders.
   const pluginEntries = useMemo<PluginEntry[]>(() => {
@@ -153,90 +244,11 @@ export default function ConflictsManager({
       projectPlugin: conflicts.plugins[String(exportPlugin.id)] ?? undefined,
     }));
 
-    const unresolvedFirst = [...entries].sort((a, b) => {
-      const aUnresolved = isPluginConflictUnresolved(
-        a.exportPlugin,
-        a.projectPlugin,
-      );
-      const bUnresolved = isPluginConflictUnresolved(
-        b.exportPlugin,
-        b.projectPlugin,
-      );
-      if (aUnresolved !== bUnresolved) {
-        return aUnresolved ? -1 : 1;
-      }
-      const aHasConflict = Boolean(a.projectPlugin);
-      const bHasConflict = Boolean(b.projectPlugin);
-      if (aHasConflict !== bHasConflict) {
-        return aHasConflict ? -1 : 1;
-      }
-      return 0;
-    });
+    const isPluginEntryUnresolved = (entry: PluginEntry) =>
+      isPluginConflictUnresolved(entry.exportPlugin, entry.projectPlugin);
 
-    return sortEntriesByDisplayName(unresolvedFirst, (entry) =>
-      getTextWithoutRepresentativeEmojiAndPadding(
-        entry.exportPlugin.attributes.name,
-      ),
-    );
-  }, [conflicts, exportSchema, formValues, formErrors]);
-
-  // Returns true while an item-type conflict still needs user input.
-  function isItemTypeConflictUnresolved(
-    exportItemType: SchemaTypes.ItemType,
-    projectItemType?: SchemaTypes.ItemType,
-  ) {
-    if (!projectItemType) {
-      return false;
-    }
-
-    const fieldPrefix = `itemType-${exportItemType.id}`;
-    const strategy = get(formValues, [fieldPrefix, 'strategy']);
-    const hasErrors = Boolean(get(formErrors, [fieldPrefix]));
-
-    if (!strategy) {
-      return true;
-    }
-
-    if (hasErrors) {
-      return true;
-    }
-
-    if (strategy === 'rename') {
-      const name = get(formValues, [fieldPrefix, 'name']);
-      const apiKey = get(formValues, [fieldPrefix, 'apiKey']);
-      return !(name && apiKey);
-    }
-
-    if (strategy === 'reuseExisting') {
-      return false;
-    }
-
-    return true;
-  }
-
-  // Plugins require no extra inputs beyond strategy selection.
-  function isPluginConflictUnresolved(
-    exportPlugin: SchemaTypes.Plugin,
-    projectPlugin?: SchemaTypes.Plugin,
-  ) {
-    if (!projectPlugin) {
-      return false;
-    }
-
-    const fieldPrefix = `plugin-${exportPlugin.id}`;
-    const strategy = get(formValues, [fieldPrefix, 'strategy']);
-    const hasErrors = Boolean(get(formErrors, [fieldPrefix]));
-
-    if (!strategy) {
-      return true;
-    }
-
-    if (hasErrors) {
-      return true;
-    }
-
-    return false;
-  }
+    return sortPluginsByUnresolvedThenName(entries, isPluginEntryUnresolved);
+  }, [conflicts, exportSchema, isPluginConflictUnresolved]);
 
   // Toggle in place filters the list down to unresolved conflicts when requested.
   const visibleModels = itemTypesByCategory.models.filter(
@@ -367,13 +379,15 @@ export default function ConflictsManager({
                     Models ({visibleModels.length})
                   </div>
                   <div className="conflicts-manager__group__content">
-                    {visibleModels.map(({ exportItemType, projectItemType }) => (
-                      <ItemTypeConflict
-                        key={exportItemType.id}
-                        exportItemType={exportItemType}
-                        projectItemType={projectItemType}
-                      />
-                    ))}
+                    {visibleModels.map(
+                      ({ exportItemType, projectItemType }) => (
+                        <ItemTypeConflict
+                          key={exportItemType.id}
+                          exportItemType={exportItemType}
+                          projectItemType={projectItemType}
+                        />
+                      ),
+                    )}
                   </div>
                 </div>
               );
@@ -386,13 +400,15 @@ export default function ConflictsManager({
                     Block models ({visibleBlocks.length})
                   </div>
                   <div className="conflicts-manager__group__content">
-                    {visibleBlocks.map(({ exportItemType, projectItemType }) => (
-                      <ItemTypeConflict
-                        key={exportItemType.id}
-                        exportItemType={exportItemType}
-                        projectItemType={projectItemType}
-                      />
-                    ))}
+                    {visibleBlocks.map(
+                      ({ exportItemType, projectItemType }) => (
+                        <ItemTypeConflict
+                          key={exportItemType.id}
+                          exportItemType={exportItemType}
+                          projectItemType={projectItemType}
+                        />
+                      ),
+                    )}
                   </div>
                 </div>
               );

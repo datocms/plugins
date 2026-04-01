@@ -16,7 +16,9 @@ describe('SharedFieldUtils', () => {
     });
 
     it('preserves valid slugs', () => {
-      expect(normalizeTranslatedSlug('already-valid_slug')).toBe('already-valid_slug');
+      expect(normalizeTranslatedSlug('already-valid_slug')).toBe(
+        'already-valid_slug',
+      );
     });
 
     it('returns empty string when nothing valid remains', () => {
@@ -26,12 +28,16 @@ describe('SharedFieldUtils', () => {
 
   describe('isFieldExcluded', () => {
     it('matches field IDs and API keys', () => {
-      expect(isFieldExcluded(['field-id-1'], ['field-id-1', 'slug'])).toBe(true);
+      expect(isFieldExcluded(['field-id-1'], ['field-id-1', 'slug'])).toBe(
+        true,
+      );
       expect(isFieldExcluded(['slug'], ['field-id-1', 'slug'])).toBe(true);
     });
 
     it('matches legacy dot-notation paths by their last segment', () => {
-      expect(isFieldExcluded(['details.en.slug'], ['field-id-1', 'slug'])).toBe(true);
+      expect(isFieldExcluded(['details.en.slug'], ['field-id-1', 'slug'])).toBe(
+        true,
+      );
     });
   });
 });

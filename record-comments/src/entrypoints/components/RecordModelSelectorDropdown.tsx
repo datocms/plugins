@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState, useMemo } from 'react';
 import type { ModelInfo } from '@hooks/useMentions';
-import { MentionDropdownBase } from './shared/MentionDropdownBase';
-import { cn } from '@/utils/cn';
 import styles from '@styles/comment.module.css';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { cn } from '@/utils/cn';
+import { MentionDropdownBase } from './shared/MentionDropdownBase';
 
 type RecordModelSelectorDropdownProps = {
   models: ModelInfo[];
@@ -23,7 +23,7 @@ const RecordModelSelectorDropdown = ({
 
   const nonBlockModels = useMemo(
     () => models.filter((m) => !m.isBlockModel),
-    [models]
+    [models],
   );
 
   const filteredModels = useMemo(() => {
@@ -31,7 +31,7 @@ const RecordModelSelectorDropdown = ({
     return nonBlockModels.filter(
       (model) =>
         model.name.toLowerCase().includes(lowerQuery) ||
-        model.apiKey.toLowerCase().includes(lowerQuery)
+        model.apiKey.toLowerCase().includes(lowerQuery),
     );
   }, [query, nonBlockModels]);
 
@@ -54,7 +54,7 @@ const RecordModelSelectorDropdown = ({
       case 'ArrowDown':
         e.preventDefault();
         setSelectedIndex((prev) =>
-          prev < filteredModels.length - 1 ? prev + 1 : prev
+          prev < filteredModels.length - 1 ? prev + 1 : prev,
         );
         break;
 
@@ -111,7 +111,10 @@ const RecordModelSelectorDropdown = ({
         <button
           ref={isSelected ? selectedRef : null}
           type="button"
-          className={cn(styles.mentionOption, isSelected && styles.mentionOptionSelected)}
+          className={cn(
+            styles.mentionOption,
+            isSelected && styles.mentionOptionSelected,
+          )}
           onMouseDown={(e) => {
             e.preventDefault();
             onSelect(model);

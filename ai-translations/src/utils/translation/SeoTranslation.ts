@@ -5,19 +5,19 @@
  * SEO fields are structured objects that typically contain title and
  * description properties, which need specialized handling during translation
  * to maintain their structure while updating their content.
- * 
+ *
  * The module provides functionality to:
  * - Parse SEO field objects
  * - Maintain field structure during translation
  * - Format localized SEO content for better user experience
  */
 
-import type { TranslationProvider, StreamCallbacks } from './types';
-import { handleTranslationError } from './ProviderErrors';
 import locale from 'locale-codes';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import { createLogger } from '../logging/Logger';
+import { handleTranslationError } from './ProviderErrors';
 import { translateArray } from './translateArray';
+import type { StreamCallbacks, TranslationProvider } from './types';
 
 /**
  * SEO field character limits as recommended by search engines.
@@ -39,7 +39,7 @@ export interface SeoObject {
 
 /**
  * Translates SEO field values while preserving their object structure
- * 
+ *
  * This function extracts the title and description from an SEO object,
  * translates them using the provider, and reconstructs the object with the
  * translated values. It handles streaming updates for UI feedback and
@@ -63,7 +63,7 @@ export async function translateSeoFieldValue(
   provider: TranslationProvider,
   fieldTypePrompt: string,
   _streamCallbacks?: StreamCallbacks,
-  recordContext = ''
+  recordContext = '',
 ): Promise<SeoObject> {
   const logger = createLogger(pluginParams, 'translateSeoFieldValue');
   logger.info('Starting SEO field translation', { fromLocale, toLocale });
@@ -71,20 +71,20 @@ export async function translateSeoFieldValue(
   if (!fieldValue) {
     return { title: '', description: '' };
   }
-  
+
   const seoObject = fieldValue;
   const seoObjectToTranslate = {
     title: seoObject.title || '',
     description: seoObject.description || '',
   };
-  
+
   logger.info('SEO object to translate', seoObjectToTranslate);
 
   try {
     // Extract language names for better prompt clarity
     const fromLocaleName = locale.getByTag(fromLocale)?.name || fromLocale;
     const toLocaleName = locale.getByTag(toLocale)?.name || toLocale;
-    
+
     logger.info(`Translating from ${fromLocaleName} to ${toLocaleName}`);
 
     // Base prompt with replaceable placeholders
@@ -92,7 +92,10 @@ export async function translateSeoFieldValue(
       .replace('{fieldValue}', JSON.stringify(seoObjectToTranslate))
       .replace('{fromLocale}', fromLocaleName)
       .replace('{toLocale}', toLocaleName)
-      .replace('{recordContext}', recordContext || 'Record context: No additional context available.');
+      .replace(
+        '{recordContext}',
+        recordContext || 'Record context: No additional context available.',
+      );
 
     // Using template literal as per linting rules
     const formattedPrompt = `${prompt}\n${fieldTypePrompt}`;
@@ -107,29 +110,47 @@ export async function translateSeoFieldValue(
       [seoObjectToTranslate.title, seoObjectToTranslate.description],
       fromLocale,
       toLocale,
-      { isHTML: false, recordContext }
+      { isHTML: false, recordContext },
     );
     const returnedSeoObject: SeoObject = { title: titleT, description: descT };
 
     // Update the original seoObject
     // Enforce character limits for SEO content
-    if (returnedSeoObject.title && returnedSeoObject.title.length > SEO_TITLE_MAX_LENGTH) {
-      logger.info(`SEO title exceeds ${SEO_TITLE_MAX_LENGTH} character limit (${returnedSeoObject.title.length}). Truncating...`);
+    if (
+      returnedSeoObject.title &&
+      returnedSeoObject.title.length > SEO_TITLE_MAX_LENGTH
+    ) {
+      logger.info(
+        `SEO title exceeds ${SEO_TITLE_MAX_LENGTH} character limit (${returnedSeoObject.title.length}). Truncating...`,
+      );
       returnedSeoObject.title = `${returnedSeoObject.title.substring(0, SEO_TITLE_MAX_LENGTH - ELLIPSIS_OFFSET)}...`;
     }
-    
-    if (returnedSeoObject.description && returnedSeoObject.description.length > SEO_DESCRIPTION_MAX_LENGTH) {
-      logger.info(`SEO description exceeds ${SEO_DESCRIPTION_MAX_LENGTH} character limit (${returnedSeoObject.description.length}). Truncating...`);
+
+    if (
+      returnedSeoObject.description &&
+      returnedSeoObject.description.length > SEO_DESCRIPTION_MAX_LENGTH
+    ) {
+      logger.info(
+        `SEO description exceeds ${SEO_DESCRIPTION_MAX_LENGTH} character limit (${returnedSeoObject.description.length}). Truncating...`,
+      );
       returnedSeoObject.description = `${returnedSeoObject.description.substring(0, SEO_DESCRIPTION_MAX_LENGTH - ELLIPSIS_OFFSET)}...`;
     }
-    
-    seoObject.title = (returnedSeoObject.title as string) || (seoObject.title as string);
-    seoObject.description = (returnedSeoObject.description as string) || (seoObject.description as string);
-    
+
+    seoObject.title =
+      (returnedSeoObject.title as string) || (seoObject.title as string);
+    seoObject.description =
+      (returnedSeoObject.description as string) ||
+      (seoObject.description as string);
+
     logger.info('SEO translation completed successfully');
     return seoObject;
   } catch (error) {
     // DRY-001: Use centralized error handler
-    handleTranslationError(error, provider.vendor, logger, 'SEO translation error');
+    handleTranslationError(
+      error,
+      provider.vendor,
+      logger,
+      'SEO translation error',
+    );
   }
 }

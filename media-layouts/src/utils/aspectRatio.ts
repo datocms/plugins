@@ -52,7 +52,7 @@ export function getEffectiveRatio(
   aspectRatio: string,
   customAspectRatio?: string,
   originalWidth?: number | null,
-  originalHeight?: number | null
+  originalHeight?: number | null,
 ): number | null {
   if (aspectRatio === 'original') {
     if (originalWidth && originalHeight && originalHeight > 0) {
@@ -71,9 +71,14 @@ export function calculateOutputHeight(
   aspectRatio: string,
   customAspectRatio?: string,
   originalWidth?: number | null,
-  originalHeight?: number | null
+  originalHeight?: number | null,
 ): number {
-  const ratio = getEffectiveRatio(aspectRatio, customAspectRatio, originalWidth, originalHeight);
+  const ratio = getEffectiveRatio(
+    aspectRatio,
+    customAspectRatio,
+    originalWidth,
+    originalHeight,
+  );
   const resolvedWidth = resolveWidthValue(width, originalWidth);
   if (resolvedWidth && ratio && ratio > 0) {
     return Math.round(resolvedWidth / ratio);

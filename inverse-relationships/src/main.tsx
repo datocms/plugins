@@ -1,4 +1,7 @@
-import { connect, type RenderItemFormSidebarPanelCtx } from 'datocms-plugin-sdk';
+import {
+  connect,
+  type RenderItemFormSidebarPanelCtx,
+} from 'datocms-plugin-sdk';
 import 'datocms-react-ui/styles.css';
 import SidebarPanel from './entrypoints/SidebarPanel';
 import { render } from './utils/render';
@@ -19,7 +22,10 @@ connect({
     ];
   },
 
-  renderItemFormSidebarPanel(sidebarPanelId: string, ctx: RenderItemFormSidebarPanelCtx) {
+  renderItemFormSidebarPanel(
+    sidebarPanelId: string,
+    ctx: RenderItemFormSidebarPanelCtx,
+  ) {
     if (sidebarPanelId === 'inverseRelationships') {
       render(<SidebarPanel ctx={ctx} />);
     }

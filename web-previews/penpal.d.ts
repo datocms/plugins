@@ -1,13 +1,13 @@
 declare module 'penpal' {
   export type FunctionPropertyNames<T> = {
-    [K in keyof T]: T[K] extends (...args: any[]) => any ? K : never;
+    [K in keyof T]: T[K] extends (...args: unknown[]) => unknown ? K : never;
   }[keyof T];
 
   export type AsyncMethodReturns<
     T,
     K extends keyof T = FunctionPropertyNames<T>,
   > = {
-    [KK in K]: T[KK] extends (...args: any[]) => PromiseLike<any>
+    [KK in K]: T[KK] extends (...args: unknown[]) => PromiseLike<unknown>
       ? T[KK]
       : T[KK] extends (...args: infer A) => infer R
         ? (...args: A) => Promise<R>
@@ -15,7 +15,7 @@ declare module 'penpal' {
   };
 
   export type CallSender = {
-    [index: string]: (...args: any[]) => any;
+    [index: string]: (...args: unknown[]) => unknown;
   };
 
   type Connection<TCallSender extends object = CallSender> = {
@@ -31,7 +31,7 @@ declare module 'penpal' {
   };
 
   export type Methods = {
-    [index: string]: (...args: any[]) => any;
+    [index: string]: (...args: unknown[]) => unknown;
   };
 
   type Options = {

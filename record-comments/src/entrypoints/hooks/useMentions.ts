@@ -1,2 +1,2 @@
 // Re-export types for consumers
-export type { UserInfo, FieldInfo, ModelInfo } from './useMentionFiltering';
+export type { FieldInfo, ModelInfo, UserInfo } from './useMentionFiltering';

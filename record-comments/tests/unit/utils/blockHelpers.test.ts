@@ -1,21 +1,21 @@
-import { describe, it, expect } from 'vitest';
+import type { BlockValue } from '@utils/blockHelpers';
 import {
-  isBlockValue,
-  isPlainObject,
-  isFieldValueRecord,
-  isBlockContainerType,
-  hasBlockAttributes,
-  isStructuredTextBlock,
-  isFieldValidators,
-  isFieldAppearance,
-  getEditorType,
-  getValidators,
-  getBlockModelId,
-  safeGetBlockAttributes,
   extractBlocksFromFieldValue,
   getBlockIndex,
+  getBlockModelId,
+  getEditorType,
+  getValidators,
+  hasBlockAttributes,
+  isBlockContainerType,
+  isBlockValue,
+  isFieldAppearance,
+  isFieldValidators,
+  isFieldValueRecord,
+  isPlainObject,
+  isStructuredTextBlock,
+  safeGetBlockAttributes,
 } from '@utils/blockHelpers';
-import type { BlockValue } from '@utils/blockHelpers';
+import { describe, expect, it } from 'vitest';
 
 describe('isBlockValue', () => {
   describe('valid block values', () => {
@@ -311,7 +311,10 @@ describe('safeGetBlockAttributes', () => {
       attributes: { title: 'Hello', content: 'World' },
     };
 
-    expect(safeGetBlockAttributes(block)).toEqual({ title: 'Hello', content: 'World' });
+    expect(safeGetBlockAttributes(block)).toEqual({
+      title: 'Hello',
+      content: 'World',
+    });
   });
 
   it('filters out metadata keys when no attributes', () => {

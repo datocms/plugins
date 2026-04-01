@@ -3,13 +3,13 @@
  * Tests timeout signal creation, ProviderError class, and type guards.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createTimeoutSignal,
-  ProviderError,
-  isProviderError,
-  hasStatusCode,
   DEFAULT_API_TIMEOUT_MS,
+  hasStatusCode,
+  isProviderError,
+  ProviderError,
 } from './types';
 
 describe('types.ts', () => {
@@ -94,7 +94,7 @@ describe('types.ts', () => {
       const externalController = new AbortController();
       const removeEventListenerSpy = vi.spyOn(
         externalController.signal,
-        'removeEventListener'
+        'removeEventListener',
       );
 
       const { cleanup } = createTimeoutSignal(1000, externalController.signal);
@@ -102,7 +102,7 @@ describe('types.ts', () => {
 
       expect(removeEventListenerSpy).toHaveBeenCalledWith(
         'abort',
-        expect.any(Function)
+        expect.any(Function),
       );
     });
   });
@@ -138,10 +138,10 @@ describe('types.ts', () => {
     it('should work with all vendor types', () => {
       const vendors = ['openai', 'google', 'anthropic', 'deepl'] as const;
 
-      vendors.forEach((vendor) => {
+      for (const vendor of vendors) {
         const error = new ProviderError('Test', 500, vendor);
         expect(error.vendor).toBe(vendor);
-      });
+      }
     });
   });
 

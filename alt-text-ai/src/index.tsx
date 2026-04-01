@@ -1,12 +1,12 @@
-import { render } from './utils/render';
 import ConfigScreen from './entrypoints/ConfigScreen';
+import { render } from './utils/render';
 import 'datocms-react-ui/styles.css';
 import { connect, type Field } from 'datocms-plugin-sdk';
 import get from 'lodash/get';
 import {
+  type AltGenerationMode,
   hasGeneratableFieldValue,
   runAltGenerationForField,
-  type AltGenerationMode,
 } from './services/altTextGeneration';
 
 const GENERATE_MISSING_ALTS_ACTION_ID = 'generate-missing-alts';

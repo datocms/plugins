@@ -1,4 +1,3 @@
-import type { JSONContent } from '@tiptap/react';
 import type {
   CommentSegment,
   Mention,
@@ -6,6 +5,7 @@ import type {
   StoredCommentSegment,
   StoredMention,
 } from '@ctypes/mentions';
+import type { JSONContent } from '@tiptap/react';
 import { attrsToMention } from './attrsToMention';
 
 // Converts between StoredCommentSegment[] (storage) and TipTap JSONContent (editor)
@@ -18,7 +18,8 @@ const MENTION_NODE_TYPES = {
   model: 'modelMention',
 } as const;
 
-type NodeTypeValue = (typeof MENTION_NODE_TYPES)[keyof typeof MENTION_NODE_TYPES];
+type NodeTypeValue =
+  (typeof MENTION_NODE_TYPES)[keyof typeof MENTION_NODE_TYPES];
 
 const NODE_TYPE_TO_MENTION_TYPE: Record<NodeTypeValue, MentionType> = {
   userMention: 'user',
@@ -34,7 +35,7 @@ function mentionToAttrs(mention: Mention): Record<string, unknown> {
 
 function nodeAttrsToMention(
   nodeType: string,
-  attrs: Record<string, unknown>
+  attrs: Record<string, unknown>,
 ): Mention | null {
   const mentionType = NODE_TYPE_TO_MENTION_TYPE[nodeType as NodeTypeValue];
   if (!mentionType) return null;
@@ -65,41 +66,77 @@ export function mentionToStoredMention(mention: Mention): StoredMention {
   }
 }
 
+function attrsToStoredUserMention(
+  attrs: Record<string, unknown>,
+): StoredMention | null {
+  if (typeof attrs.id !== 'string') return null;
+  return { type: 'user', id: attrs.id };
+}
+
+function attrsToStoredFieldMention(
+  attrs: Record<string, unknown>,
+): StoredMention | null {
+  if (typeof attrs.fieldPath !== 'string') return null;
+  return {
+    type: 'field',
+    fieldPath: attrs.fieldPath,
+    ...(typeof attrs.locale === 'string' && { locale: attrs.locale }),
+    modelId: typeof attrs.modelId === 'string' ? attrs.modelId : '',
+  };
+}
+
+function attrsToStoredRecordMention(
+  attrs: Record<string, unknown>,
+): StoredMention | null {
+  if (typeof attrs.id !== 'string' || typeof attrs.modelId !== 'string') {
+    return null;
+  }
+  return { type: 'record', id: attrs.id, modelId: attrs.modelId };
+}
+
 /**
  * Converts TipTap node attrs directly to StoredMention for persistence.
  */
 function nodeAttrsToStoredMention(
   nodeType: string,
-  attrs: Record<string, unknown>
+  attrs: Record<string, unknown>,
 ): StoredMention | null {
   const mentionType = NODE_TYPE_TO_MENTION_TYPE[nodeType as NodeTypeValue];
   if (!mentionType) return null;
 
-  // Extract only the fields needed for stored mentions
   switch (mentionType) {
     case 'user':
-      if (typeof attrs.id !== 'string') return null;
-      return { type: 'user', id: attrs.id };
+      return attrsToStoredUserMention(attrs);
     case 'field':
-      if (typeof attrs.fieldPath !== 'string') return null;
-      return {
-        type: 'field',
-        fieldPath: attrs.fieldPath,
-        ...(typeof attrs.locale === 'string' && { locale: attrs.locale }),
-        modelId: typeof attrs.modelId === 'string' ? attrs.modelId : '',
-      };
+      return attrsToStoredFieldMention(attrs);
     case 'asset':
       if (typeof attrs.id !== 'string') return null;
       return { type: 'asset', id: attrs.id };
     case 'record':
-      if (typeof attrs.id !== 'string' || typeof attrs.modelId !== 'string') return null;
-      return { type: 'record', id: attrs.id, modelId: attrs.modelId };
+      return attrsToStoredRecordMention(attrs);
     case 'model':
       if (typeof attrs.id !== 'string') return null;
       return { type: 'model', id: attrs.id };
     default:
       return null;
   }
+}
+
+function convertTextSegmentToNodes(text: string): JSONContent[] {
+  const nodes: JSONContent[] = [];
+  const lines = text.split('\n');
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line) {
+      nodes.push({ type: 'text', text: line });
+    }
+    if (i < lines.length - 1) {
+      nodes.push({ type: 'hardBreak' });
+    }
+  }
+
+  return nodes;
 }
 
 export function segmentsToTipTapDoc(segments: CommentSegment[]): JSONContent {
@@ -114,17 +151,8 @@ export function segmentsToTipTapDoc(segments: CommentSegment[]): JSONContent {
 
   for (const segment of segments) {
     if (segment.type === 'text') {
-      const lines = segment.content.split('\n');
-
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        if (line) {
-          content.push({ type: 'text', text: line });
-        }
-        if (i < lines.length - 1) {
-          content.push({ type: 'hardBreak' });
-        }
-      }
+      const textNodes = convertTextSegmentToNodes(segment.content);
+      content.push(...textNodes);
     } else {
       const { mention } = segment;
       const nodeType = MENTION_NODE_TYPES[mention.type];
@@ -150,80 +178,115 @@ type TextSegment = { type: 'text'; content: string };
 type MentionSegment<T> = { type: 'mention'; mention: T };
 type GenericSegment<T> = TextSegment | MentionSegment<T>;
 
-/**
- * Core TipTap doc to segments conversion logic.
- * Parameterized by mention converter function to avoid code duplication.
- */
-function convertTipTapDoc<TMention>(
-  doc: JSONContent,
-  convertMention: (nodeType: string, attrs: Record<string, unknown>) => TMention | null
-): GenericSegment<TMention>[] {
-  const segments: GenericSegment<TMention>[] = [];
-  let currentText = '';
+type DocConversionState<TMention> = {
+  segments: GenericSegment<TMention>[];
+  currentText: string;
+};
 
-  const flushText = () => {
-    if (currentText) {
-      segments.push({ type: 'text', content: currentText });
-      currentText = '';
-    }
-  };
+function flushTextToSegments<TMention>(
+  state: DocConversionState<TMention>,
+): void {
+  if (state.currentText) {
+    state.segments.push({ type: 'text', content: state.currentText });
+    state.currentText = '';
+  }
+}
 
-  const processNode = (node: JSONContent) => {
-    if (!node) return;
+function processChildNodes<TMention>(
+  children: JSONContent[],
+  state: DocConversionState<TMention>,
+  convertMention: (
+    nodeType: string,
+    attrs: Record<string, unknown>,
+  ) => TMention | null,
+): void {
+  for (const child of children) {
+    processDocNode(child, state, convertMention);
+  }
+}
 
-    if (node.type === 'text' && node.text) {
-      currentText += node.text;
-      return;
-    }
+function processMentionNode<TMention>(
+  mentionNodeType: string,
+  attrs: Record<string, unknown>,
+  state: DocConversionState<TMention>,
+  convertMention: (
+    nodeType: string,
+    attrs: Record<string, unknown>,
+  ) => TMention | null,
+): void {
+  flushTextToSegments(state);
+  const mention = convertMention(mentionNodeType, attrs);
+  if (mention) {
+    state.segments.push({ type: 'mention', mention });
+  }
+}
 
-    if (node.type === 'hardBreak') {
-      currentText += '\n';
-      return;
-    }
+function processParagraphNode<TMention>(
+  children: JSONContent[] | undefined,
+  state: DocConversionState<TMention>,
+  convertMention: (
+    nodeType: string,
+    attrs: Record<string, unknown>,
+  ) => TMention | null,
+): void {
+  // Paragraphs add newline BEFORE content (except first paragraph).
+  // Leading empty paragraphs are stripped in cleanup step below.
+  const hasExistingContent = state.segments.length > 0 || state.currentText;
+  if (hasExistingContent) {
+    state.currentText += '\n';
+  }
+  if (children) {
+    processChildNodes(children, state, convertMention);
+  }
+}
 
-    const mentionNodeType = node.type
-      ? Object.values(MENTION_NODE_TYPES).find((t) => t === node.type)
-      : undefined;
+function processDocNode<TMention>(
+  node: JSONContent,
+  state: DocConversionState<TMention>,
+  convertMention: (
+    nodeType: string,
+    attrs: Record<string, unknown>,
+  ) => TMention | null,
+): void {
+  if (!node) return;
 
-    if (mentionNodeType) {
-      flushText();
-      const mention = convertMention(mentionNodeType, node.attrs ?? {});
-      if (mention) {
-        segments.push({ type: 'mention', mention });
-      }
-      return;
-    }
-
-    // Paragraphs add newline BEFORE content (except first paragraph).
-    // Leading empty paragraphs are stripped in cleanup step below.
-    if (node.type === 'paragraph') {
-      if (segments.length > 0 || currentText) {
-        currentText += '\n';
-      }
-      if (node.content) {
-        for (const child of node.content) {
-          processNode(child);
-        }
-      }
-      return;
-    }
-
-    if (node.content) {
-      for (const child of node.content) {
-        processNode(child);
-      }
-    }
-  };
-
-  if (doc.content) {
-    for (const child of doc.content) {
-      processNode(child);
-    }
+  if (node.type === 'text' && node.text) {
+    state.currentText += node.text;
+    return;
   }
 
-  flushText();
+  if (node.type === 'hardBreak') {
+    state.currentText += '\n';
+    return;
+  }
 
-  // Strip leading whitespace-only text segments
+  const mentionNodeType = node.type
+    ? Object.values(MENTION_NODE_TYPES).find((t) => t === node.type)
+    : undefined;
+
+  if (mentionNodeType) {
+    processMentionNode(
+      mentionNodeType,
+      node.attrs ?? {},
+      state,
+      convertMention,
+    );
+    return;
+  }
+
+  if (node.type === 'paragraph') {
+    processParagraphNode(node.content, state, convertMention);
+    return;
+  }
+
+  if (node.content) {
+    processChildNodes(node.content, state, convertMention);
+  }
+}
+
+function stripLeadingWhitespace<TMention>(
+  segments: GenericSegment<TMention>[],
+): void {
   while (segments.length > 0) {
     const first = segments[0];
     if (first.type === 'text') {
@@ -235,8 +298,11 @@ function convertTipTapDoc<TMention>(
     }
     break;
   }
+}
 
-  // Strip trailing whitespace-only text segments
+function stripTrailingWhitespace<TMention>(
+  segments: GenericSegment<TMention>[],
+): void {
   while (segments.length > 0) {
     const last = segments[segments.length - 1];
     if (last.type === 'text') {
@@ -248,8 +314,35 @@ function convertTipTapDoc<TMention>(
     }
     break;
   }
+}
 
-  return segments;
+/**
+ * Core TipTap doc to segments conversion logic.
+ * Parameterized by mention converter function to avoid code duplication.
+ */
+function convertTipTapDoc<TMention>(
+  doc: JSONContent,
+  convertMention: (
+    nodeType: string,
+    attrs: Record<string, unknown>,
+  ) => TMention | null,
+): GenericSegment<TMention>[] {
+  const state: DocConversionState<TMention> = {
+    segments: [],
+    currentText: '',
+  };
+
+  if (doc.content) {
+    for (const child of doc.content) {
+      processDocNode(child, state, convertMention);
+    }
+  }
+
+  flushTextToSegments(state);
+  stripLeadingWhitespace(state.segments);
+  stripTrailingWhitespace(state.segments);
+
+  return state.segments;
 }
 
 /**
@@ -288,7 +381,9 @@ export function isDocEmpty(doc: JSONContent): boolean {
  * Converts full CommentSegment[] to StoredCommentSegment[] for persistence.
  * Used when saving edited content.
  */
-export function segmentsToStoredSegments(segments: CommentSegment[]): StoredCommentSegment[] {
+export function segmentsToStoredSegments(
+  segments: CommentSegment[],
+): StoredCommentSegment[] {
   return segments.map((segment) => {
     if (segment.type === 'text') {
       return segment;

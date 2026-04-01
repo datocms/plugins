@@ -3,10 +3,10 @@
  * Tests translation of SEO field objects (title and description).
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { translateSeoFieldValue, type SeoObject } from './SeoTranslation';
-import type { TranslationProvider } from './types';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
+import { type SeoObject, translateSeoFieldValue } from './SeoTranslation';
+import type { TranslationProvider } from './types';
 
 // Mock translateArray
 vi.mock('./translateArray', () => ({
@@ -50,7 +50,7 @@ describe('SeoTranslation', () => {
           'de',
           'en',
           mockProvider,
-          ''
+          '',
         );
 
         expect(result).toEqual({ title: '', description: '' });
@@ -64,7 +64,7 @@ describe('SeoTranslation', () => {
           'de',
           'en',
           mockProvider,
-          ''
+          '',
         );
 
         expect(result).toEqual({ title: '', description: '' });
@@ -90,7 +90,7 @@ describe('SeoTranslation', () => {
           'de',
           'en',
           mockProvider,
-          ''
+          '',
         );
 
         expect(result.title).toBe('Deutscher Titel');
@@ -111,7 +111,7 @@ describe('SeoTranslation', () => {
           'de',
           'en',
           mockProvider,
-          ''
+          '',
         );
 
         expect(translateArray).toHaveBeenCalledWith(
@@ -120,7 +120,7 @@ describe('SeoTranslation', () => {
           ['Title EN', 'Desc EN'],
           'en',
           'de',
-          { isHTML: false, recordContext: '' }
+          { isHTML: false, recordContext: '' },
         );
       });
 
@@ -137,7 +137,7 @@ describe('SeoTranslation', () => {
           'de',
           'en',
           mockProvider,
-          ''
+          '',
         );
 
         expect(translateArray).toHaveBeenCalledWith(
@@ -146,7 +146,7 @@ describe('SeoTranslation', () => {
           ['', 'Description EN'],
           'en',
           'de',
-          expect.any(Object)
+          expect.any(Object),
         );
         expect(result.description).toBe('Description DE');
       });
@@ -164,7 +164,7 @@ describe('SeoTranslation', () => {
           'de',
           'en',
           mockProvider,
-          ''
+          '',
         );
 
         expect(result.title).toBe('Title DE');
@@ -186,7 +186,7 @@ describe('SeoTranslation', () => {
           mockProvider,
           '',
           undefined,
-          'Product page SEO'
+          'Product page SEO',
         );
 
         expect(translateArray).toHaveBeenCalledWith(
@@ -195,7 +195,7 @@ describe('SeoTranslation', () => {
           ['Title', 'Desc'],
           'en',
           'de',
-          { isHTML: false, recordContext: 'Product page SEO' }
+          { isHTML: false, recordContext: 'Product page SEO' },
         );
       });
     });
@@ -216,7 +216,7 @@ describe('SeoTranslation', () => {
           'de',
           'en',
           mockProvider,
-          ''
+          '',
         );
 
         // 60 - 3 (ellipsis offset) = 57 chars + "..."
@@ -226,7 +226,10 @@ describe('SeoTranslation', () => {
 
       it('should not truncate title under 60 characters', async () => {
         const shortTitle = 'Short Title';
-        vi.mocked(translateArray).mockResolvedValue([shortTitle, 'Description']);
+        vi.mocked(translateArray).mockResolvedValue([
+          shortTitle,
+          'Description',
+        ]);
 
         const seoObject: SeoObject = {
           title: 'Original',
@@ -239,7 +242,7 @@ describe('SeoTranslation', () => {
           'de',
           'en',
           mockProvider,
-          ''
+          '',
         );
 
         expect(result.title).toBe(shortTitle);
@@ -261,7 +264,7 @@ describe('SeoTranslation', () => {
           'de',
           'en',
           mockProvider,
-          ''
+          '',
         );
 
         // 160 - 3 (ellipsis offset) = 157 chars + "..."
@@ -284,7 +287,7 @@ describe('SeoTranslation', () => {
           'de',
           'en',
           mockProvider,
-          ''
+          '',
         );
 
         expect(result.description).toBe(shortDesc);
@@ -292,7 +295,10 @@ describe('SeoTranslation', () => {
 
       it('should handle exactly 60 character title', async () => {
         const exactTitle = 'A'.repeat(60);
-        vi.mocked(translateArray).mockResolvedValue([exactTitle, 'Description']);
+        vi.mocked(translateArray).mockResolvedValue([
+          exactTitle,
+          'Description',
+        ]);
 
         const seoObject: SeoObject = {
           title: 'Original',
@@ -305,7 +311,7 @@ describe('SeoTranslation', () => {
           'de',
           'en',
           mockProvider,
-          ''
+          '',
         );
 
         expect(result.title).toBe(exactTitle);
@@ -327,7 +333,7 @@ describe('SeoTranslation', () => {
           'de',
           'en',
           mockProvider,
-          ''
+          '',
         );
 
         expect(result.description).toBe(exactDesc);
@@ -350,7 +356,7 @@ describe('SeoTranslation', () => {
           'de',
           'en',
           mockProvider,
-          ''
+          '',
         );
 
         // The function should keep the original title
@@ -371,7 +377,7 @@ describe('SeoTranslation', () => {
           'de',
           'en',
           mockProvider,
-          ''
+          '',
         );
 
         expect(result.description).toBe('Original Description');
@@ -394,8 +400,8 @@ describe('SeoTranslation', () => {
             'de',
             'en',
             mockProvider,
-            ''
-          )
+            '',
+          ),
         ).rejects.toThrow();
       });
     });
@@ -420,7 +426,7 @@ describe('SeoTranslation', () => {
           'de',
           'en',
           mockProvider,
-          ''
+          '',
         );
 
         expect(result.title).toBe('Title DE');

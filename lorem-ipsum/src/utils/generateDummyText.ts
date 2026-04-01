@@ -3,17 +3,17 @@ import type { Node } from 'datocms-structured-text-slate-utils';
 import { loremIpsum } from 'lorem-ipsum';
 
 import {
-  t,
-  title,
-  times,
-  sentences,
-  toHtml,
-  rand,
   email,
-  url,
+  rand,
+  sentences,
+  type Tag,
+  t,
+  times,
+  title,
+  toHtml,
   toMarkdown,
   toStructuredText,
-  type Tag,
+  url,
 } from './text';
 
 /**
@@ -85,14 +85,14 @@ export default function generateDummyText(field: Field): string | Node[] {
   // Handle text fields with markdown
   if (attributes.appearance.editor === 'markdown') {
     return toMarkdown(
-      article(attributes.appearance.parameters.toolbar as string[])
+      article(attributes.appearance.parameters.toolbar as string[]),
     );
   }
 
   // Handle text fields with wysiwyg
   if (attributes.appearance.editor === 'wysiwyg') {
     return toHtml(
-      article(attributes.appearance.parameters.toolbar as string[])
+      article(attributes.appearance.parameters.toolbar as string[]),
     );
   }
 
@@ -102,7 +102,7 @@ export default function generateDummyText(field: Field): string | Node[] {
       article([
         ...(attributes.appearance.parameters.nodes as string[]),
         ...(attributes.appearance.parameters.marks as string[]),
-      ])
+      ]),
     );
     return result;
   }

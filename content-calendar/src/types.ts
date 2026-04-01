@@ -10,7 +10,7 @@ export const allCriteria: Criteria[] = [
   'first_published_at',
   'published_at',
   'created_at',
-  'updated_at'
+  'updated_at',
 ];
 
 export const criteriaLabel: Record<Criteria, string> = {
@@ -18,7 +18,7 @@ export const criteriaLabel: Record<Criteria, string> = {
   first_published_at: 'First publish date',
   published_at: 'Last publish date',
   created_at: 'Creation date',
-  updated_at: 'Last update date'
+  updated_at: 'Last update date',
 };
 
 export type ActiveModels = 'all' | string[];

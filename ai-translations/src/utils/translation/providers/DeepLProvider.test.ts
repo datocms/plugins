@@ -3,9 +3,9 @@
  * Tests DeepL API provider implementation with batch translation.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import DeepLProvider from './DeepLProvider';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProviderError } from '../types';
+import DeepLProvider from './DeepLProvider';
 
 // Mock fetch globally
 const mockFetch = vi.fn();
@@ -74,7 +74,7 @@ describe('DeepLProvider', () => {
             'content-type': 'application/json',
             Authorization: 'DeepL-Auth-Key test-api-key',
           }),
-        })
+        }),
       );
     });
 
@@ -300,7 +300,7 @@ describe('DeepLProvider', () => {
 
       const result = await provider.translateArray(
         ['Hello', 'World', 'How are you'],
-        { targetLang: 'DE' }
+        { targetLang: 'DE' },
       );
 
       expect(result).toEqual(['Hallo', 'Welt', 'Wie geht es']);
@@ -333,7 +333,7 @@ describe('DeepLProvider', () => {
         });
 
         await expect(
-          provider.translateArray(['Hello'], { targetLang: 'DE' })
+          provider.translateArray(['Hello'], { targetLang: 'DE' }),
         ).rejects.toThrow(ProviderError);
       });
 
@@ -454,7 +454,7 @@ describe('DeepLProvider', () => {
         });
 
         await expect(
-          provider.translateArray(['Hello'], { targetLang: 'DE' })
+          provider.translateArray(['Hello'], { targetLang: 'DE' }),
         ).rejects.toThrow();
       });
     });

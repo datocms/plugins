@@ -1,5 +1,5 @@
-import { Component, type ErrorInfo, type ReactNode } from 'react';
 import { Button } from 'datocms-react-ui';
+import { Component, type ErrorInfo, type ReactNode } from 'react';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -19,7 +19,10 @@ interface ErrorBoundaryState {
  * ERR-001: Error boundary component to catch and display React errors gracefully.
  * Prevents the entire plugin from crashing when an error occurs in a child component.
  */
-export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+export default class ErrorBoundary extends Component<
+  ErrorBoundaryProps,
+  ErrorBoundaryState
+> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = {
@@ -63,33 +66,43 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
             An error occurred while rendering this component.
           </p>
           {this.state.error && (
-            <details style={{
-              marginBottom: '16px',
-              textAlign: 'left',
-              background: '#f8f9fa',
-              padding: '8px',
-              borderRadius: '4px',
-            }}>
+            <details
+              style={{
+                marginBottom: '16px',
+                textAlign: 'left',
+                background: '#f8f9fa',
+                padding: '8px',
+                borderRadius: '4px',
+              }}
+            >
               <summary style={{ cursor: 'pointer', fontWeight: 'bold' }}>
                 Error details
               </summary>
-              <pre style={{
-                whiteSpace: 'pre-wrap',
-                wordBreak: 'break-word',
-                fontSize: '12px',
-                marginTop: '4px',
-              }}>
+              <pre
+                style={{
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  fontSize: '12px',
+                  marginTop: '4px',
+                }}
+              >
                 {this.state.error.message}
                 {this.state.errorInfo?.componentStack}
               </pre>
             </details>
           )}
-          <div style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}>
+          <div
+            style={{ display: 'flex', gap: '8px', justifyContent: 'center' }}
+          >
             <Button onClick={this.handleReset} buttonSize="s">
               Try again
             </Button>
             {this.props.onNavigateToSettings && (
-              <Button onClick={this.props.onNavigateToSettings} buttonSize="s" buttonType="muted">
+              <Button
+                onClick={this.props.onNavigateToSettings}
+                buttonSize="s"
+                buttonType="muted"
+              >
                 Open Settings
               </Button>
             )}

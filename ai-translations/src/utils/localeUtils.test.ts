@@ -3,8 +3,12 @@
  * Tests locale name formatting and display functions.
  */
 
-import { describe, it, expect } from 'vitest';
-import { getLocaleName, formatLocaleWithCode, localeSelect } from './localeUtils';
+import { describe, expect, it } from 'vitest';
+import {
+  formatLocaleWithCode,
+  getLocaleName,
+  localeSelect,
+} from './localeUtils';
 
 describe('localeUtils.ts', () => {
   describe('localeSelect', () => {
@@ -117,10 +121,10 @@ describe('localeUtils.ts', () => {
     it('should include locale code in brackets', () => {
       const locales = ['en', 'fr', 'de', 'es', 'it', 'ja', 'zh'];
 
-      locales.forEach((locale) => {
+      for (const locale of locales) {
         const formatted = formatLocaleWithCode(locale);
         expect(formatted).toContain(`[${locale}]`);
-      });
+      }
     });
 
     it('should handle unknown locales with fallback', () => {

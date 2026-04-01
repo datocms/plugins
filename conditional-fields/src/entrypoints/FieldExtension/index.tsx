@@ -1,8 +1,11 @@
-import { useCallback, useEffect, useMemo } from "react";
-import type { RenderFieldExtensionCtx } from "datocms-plugin-sdk";
-import { isValidParameters, type ValidManualExtensionParameters } from "../../types";
+import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
 import get from 'lodash-es/get';
-import { isDefined } from "../../utils/isDefined";
+import { useCallback, useEffect, useMemo } from 'react';
+import {
+  isValidParameters,
+  type ValidManualExtensionParameters,
+} from '../../types';
+import { isDefined } from '../../utils/isDefined';
 
 type Props = {
   ctx: RenderFieldExtensionCtx;
@@ -10,6 +13,35 @@ type Props = {
 
 function checkedToShow(invert: boolean, value: boolean | null) {
   return invert ? !value : !!value;
+}
+
+type ToggleFieldArgs = {
+  ctx: RenderFieldExtensionCtx;
+  targetFieldApiKey: string;
+  targetFieldLocalized: boolean;
+  sourceFieldLocalized: boolean;
+  targetPath: string;
+  show: boolean;
+};
+
+function toggleSingleField({
+  ctx,
+  targetFieldLocalized,
+  sourceFieldLocalized,
+  targetPath,
+  show,
+}: ToggleFieldArgs) {
+  if (sourceFieldLocalized) {
+    if (targetFieldLocalized) {
+      ctx.toggleField(`${targetPath}.${ctx.locale}`, show);
+    }
+  } else if (targetFieldLocalized) {
+    for (const locale of ctx.site.attributes.locales) {
+      ctx.toggleField(`${targetPath}.${locale}`, show);
+    }
+  } else {
+    ctx.toggleField(targetPath, show);
+  }
 }
 
 function FieldExtensionWithValidParams({ ctx }: Props) {
@@ -21,17 +53,19 @@ function FieldExtensionWithValidParams({ ctx }: Props) {
   const targetFields = useMemo(() => {
     return targetFieldsApiKey
       .map((targetFieldApiKey) => {
-        const targetField = Object.values(ctx.fields).filter(isDefined).find((field) => {
-          return (
-            field.attributes.api_key === targetFieldApiKey &&
-            field.relationships.item_type.data.id ===
-              sourceField.relationships.item_type.data.id
-          );
-        });
+        const targetField = Object.values(ctx.fields)
+          .filter(isDefined)
+          .find((field) => {
+            return (
+              field.attributes.api_key === targetFieldApiKey &&
+              field.relationships.item_type.data.id ===
+                sourceField.relationships.item_type.data.id
+            );
+          });
 
         if (!targetField) {
           console.error(
-            `Plugin error: The field "${targetFieldApiKey}" does not exist`
+            `Plugin error: The field "${targetFieldApiKey}" does not exist`,
           );
           return null;
         }
@@ -43,27 +77,24 @@ function FieldExtensionWithValidParams({ ctx }: Props) {
 
   const toggleFields = useCallback(
     (show: boolean): void => {
-      targetFields.forEach((targetField) => {
+      for (const targetField of targetFields) {
         const targetPath = ctx.parentField
-          ? `${ctx.fieldPath.replace(/.[^.]*$/, "")}.${
+          ? `${ctx.fieldPath.replace(/.[^.]*$/, '')}.${
               targetField.attributes.api_key
             }`
           : targetField.attributes.api_key;
 
-        if (sourceField.attributes.localized) {
-          if (targetField.attributes.localized) {
-            ctx.toggleField(`${targetPath}.${ctx.locale}`, show);
-          }
-        } else if (targetField.attributes.localized) {
-          ctx.site.attributes.locales.forEach((locale) => {
-            ctx.toggleField(`${targetPath}.${locale}`, show);
-          });
-        } else {
-          ctx.toggleField(targetPath, show);
-        }
-      });
+        toggleSingleField({
+          ctx,
+          targetFieldApiKey: targetField.attributes.api_key,
+          targetFieldLocalized: targetField.attributes.localized,
+          sourceFieldLocalized: sourceField.attributes.localized,
+          targetPath,
+          show,
+        });
+      }
     },
-    [ctx, sourceField.attributes.localized, targetFields]
+    [ctx, sourceField.attributes.localized, targetFields],
   );
 
   const currentValue = get(ctx.formValues, ctx.fieldPath) as boolean | null;

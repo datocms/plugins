@@ -6,18 +6,18 @@ import {
 } from 'datocms-plugin-sdk';
 import { render } from './utils/render';
 import 'datocms-react-ui/styles.css';
-import StarRatingEditor from './entrypoints/StarRatingEditor';
+import ConfigScreen from './entrypoints/ConfigScreen';
 import FieldConfigScreen, { validate } from './entrypoints/FieldConfigScreen';
-import {
-  isValidGlobalParams,
-  normalizeGlobalParams,
-} from './utils/globalParams';
+import StarRatingEditor from './entrypoints/StarRatingEditor';
 import {
   type FieldParams,
   isValidFieldParams,
   normalizeFieldParams,
 } from './utils/fieldParams';
-import ConfigScreen from './entrypoints/ConfigScreen';
+import {
+  isValidGlobalParams,
+  normalizeGlobalParams,
+} from './utils/globalParams';
 
 const FIELD_EXTENSION_ID = 'starRating';
 const INITIAL_HEIGHT = 48;
@@ -119,7 +119,7 @@ connect({
   },
   validateManualFieldExtensionParameters(
     _fieldExtensionId: string,
-    parameters: Record<string, any>,
+    parameters: Record<string, unknown>,
   ) {
     return validate(parameters);
   },

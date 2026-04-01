@@ -44,7 +44,8 @@
   border: 2px solid white;
 }
 
-.model:hover .color, .modelActive .color {
+.model:hover .color,
+.modelActive .color {
   background-color: rgba(var(--color-rgb-components), 0.7);
 }
 

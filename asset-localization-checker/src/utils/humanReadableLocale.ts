@@ -18,6 +18,6 @@
  */
 export const humanReadableLocale = (locale: string): string => {
   return (
-    new Intl.DisplayNames(["en"], { type: "language" }).of(locale) ?? locale
+    new Intl.DisplayNames(['en'], { type: 'language' }).of(locale) ?? locale
   );
 };

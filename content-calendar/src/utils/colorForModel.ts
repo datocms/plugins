@@ -1,4 +1,4 @@
-import ColorHash from "color-hash";
+import ColorHash from 'color-hash';
 
 const colorHash = new ColorHash({ saturation: 1 });
 

@@ -1,7 +1,7 @@
-import { memo, useRef, useEffect } from 'react';
 import type { SlashCommandDefinition } from '@ctypes/slashCommands';
-import { cn } from '@/utils/cn';
 import styles from '@styles/comment.module.css';
+import { memo, useEffect, useRef } from 'react';
+import { cn } from '@/utils/cn';
 
 type SlashCommandMenuProps = {
   commands: SlashCommandDefinition[];
@@ -52,7 +52,7 @@ export const SlashCommandMenu = memo(function SlashCommandMenu({
   const dropdownClassName = cn(
     styles.mentionDropdown,
     styles.slashCommandMenu,
-    position === 'above' && styles.mentionDropdownAbove
+    position === 'above' && styles.mentionDropdownAbove,
   );
 
   if (commands.length === 0) {
@@ -78,7 +78,7 @@ export const SlashCommandMenu = memo(function SlashCommandMenu({
               className={cn(
                 styles.mentionOption,
                 styles.slashCommandItem,
-                isSelected && styles.mentionOptionSelected
+                isSelected && styles.mentionOptionSelected,
               )}
               onClick={() => onSelect(command)}
               onMouseEnter={(e) => e.currentTarget.focus()}

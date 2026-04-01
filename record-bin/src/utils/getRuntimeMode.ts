@@ -1,11 +1,11 @@
-import { getDeploymentUrlFromParameters } from "./getDeploymentUrlFromParameters";
+import { getDeploymentUrlFromParameters } from './getDeploymentUrlFromParameters';
 
 type PluginParameters = Record<string, unknown> | undefined;
 
-export type RuntimeMode = "lambda" | "lambdaless";
+export type RuntimeMode = 'lambda' | 'lambdaless';
 
 const isRuntimeMode = (value: unknown): value is RuntimeMode =>
-  value === "lambda" || value === "lambdaless";
+  value === 'lambda' || value === 'lambdaless';
 
 export const getRuntimeMode = (parameters: PluginParameters): RuntimeMode => {
   const configuredRuntimeMode = parameters?.runtimeMode;
@@ -13,11 +13,11 @@ export const getRuntimeMode = (parameters: PluginParameters): RuntimeMode => {
     return configuredRuntimeMode;
   }
 
-  if (typeof parameters?.lambdaFullMode === "boolean") {
-    return parameters.lambdaFullMode ? "lambda" : "lambdaless";
+  if (typeof parameters?.lambdaFullMode === 'boolean') {
+    return parameters.lambdaFullMode ? 'lambda' : 'lambdaless';
   }
 
   return getDeploymentUrlFromParameters(parameters).trim()
-    ? "lambda"
-    : "lambdaless";
+    ? 'lambda'
+    : 'lambdaless';
 };

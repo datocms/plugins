@@ -1,10 +1,10 @@
-import type { TranslationProvider, VendorId } from './types';
-import { ProviderConfigurationError } from './types';
-import OpenAIProvider from './providers/OpenAIProvider';
-import GeminiProvider from './providers/GeminiProvider';
+import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import AnthropicProvider from './providers/AnthropicProvider';
 import DeepLProvider from './providers/DeepLProvider';
-import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
+import GeminiProvider from './providers/GeminiProvider';
+import OpenAIProvider from './providers/OpenAIProvider';
+import type { TranslationProvider, VendorId } from './types';
+import { ProviderConfigurationError } from './types';
 
 /**
  * Creates a safe cache key from an API key.
@@ -32,57 +32,118 @@ type VendorCredentials =
   | { vendor: 'deepl'; apiKey: string; baseUrl: string };
 
 /**
+ * Resolves the DeepL base URL from plugin configuration.
+ * Honors explicit endpoint settings; falls back to toggle or key suffix heuristics.
+ *
+ * @param apiKey - The DeepL API key (used to detect free keys via the :fx suffix).
+ * @param deeplUseFree - Whether the "Use Free endpoint" toggle is enabled.
+ * @param deeplEndpoint - Explicit endpoint setting ('free', 'pro', or 'auto').
+ * @returns The resolved base URL for the DeepL API.
+ */
+function resolveDeepLBaseUrl(
+  apiKey: string,
+  deeplUseFree: boolean,
+  deeplEndpoint: string,
+): string {
+  if (deeplEndpoint === 'free') return 'https://api-free.deepl.com';
+  if (deeplEndpoint === 'pro') return 'https://api.deepl.com';
+  // Auto-detect: trust the toggle first, then fall back to key suffix heuristic
+  const isFreeByHeuristic = deeplUseFree || /:fx\b/i.test(apiKey);
+  return isFreeByHeuristic
+    ? 'https://api-free.deepl.com'
+    : 'https://api.deepl.com';
+}
+
+/**
+ * Extracts credentials for the Google/Gemini vendor.
+ *
+ * @param pluginParams - Plugin configuration.
+ * @returns Credentials or null if incomplete.
+ */
+function extractGoogleCredentials(
+  pluginParams: ctxParamsType,
+): VendorCredentials | null {
+  const apiKey = pluginParams.googleApiKey ?? '';
+  const model = pluginParams.geminiModel ?? '';
+  if (apiKey && model) {
+    return { vendor: 'google', apiKey, model };
+  }
+  return null;
+}
+
+/**
+ * Extracts credentials for the Anthropic vendor.
+ *
+ * @param pluginParams - Plugin configuration.
+ * @returns Credentials or null if incomplete.
+ */
+function extractAnthropicCredentials(
+  pluginParams: ctxParamsType,
+): VendorCredentials | null {
+  const apiKey = pluginParams.anthropicApiKey ?? '';
+  const model = pluginParams.anthropicModel ?? '';
+  if (apiKey && model) {
+    return { vendor: 'anthropic', apiKey, model };
+  }
+  return null;
+}
+
+/**
+ * Extracts credentials for the DeepL vendor.
+ *
+ * @param pluginParams - Plugin configuration.
+ * @returns Credentials or null if incomplete.
+ */
+function extractDeepLCredentials(
+  pluginParams: ctxParamsType,
+): VendorCredentials | null {
+  const apiKey = pluginParams.deeplApiKey ?? '';
+  if (!apiKey) return null;
+
+  const useFreeToggle = pluginParams.deeplUseFree === true;
+  const endpointSetting = pluginParams.deeplEndpoint ?? 'auto';
+  const baseUrl = resolveDeepLBaseUrl(apiKey, useFreeToggle, endpointSetting);
+  return { vendor: 'deepl', apiKey, baseUrl };
+}
+
+/**
+ * Extracts credentials for the OpenAI vendor.
+ *
+ * @param pluginParams - Plugin configuration.
+ * @returns Credentials or null if incomplete.
+ */
+function extractOpenAICredentials(
+  pluginParams: ctxParamsType,
+): VendorCredentials | null {
+  const apiKey = pluginParams.apiKey ?? '';
+  const model = pluginParams.gptModel ?? '';
+  if (apiKey && model && model !== 'None') {
+    return { vendor: 'openai', apiKey, model };
+  }
+  return null;
+}
+
+/**
  * Extracts and validates credentials for the selected vendor.
  * DRY: Single source of truth for credential validation logic.
  *
  * @param pluginParams - Configuration captured from the settings screen.
  * @returns Validated credentials or null if incomplete.
  */
-function extractVendorCredentials(pluginParams: ctxParamsType): VendorCredentials | null {
+function extractVendorCredentials(
+  pluginParams: ctxParamsType,
+): VendorCredentials | null {
   const vendor = (pluginParams.vendor ?? 'openai') as VendorId;
 
   switch (vendor) {
-    case 'google': {
-      const apiKey = pluginParams.googleApiKey ?? '';
-      const model = pluginParams.geminiModel ?? '';
-      if (apiKey && model) {
-        return { vendor, apiKey, model };
-      }
-      return null;
-    }
-
-    case 'anthropic': {
-      const apiKey = pluginParams.anthropicApiKey ?? '';
-      const model = pluginParams.anthropicModel ?? '';
-      if (apiKey && model) {
-        return { vendor, apiKey, model };
-      }
-      return null;
-    }
-
-    case 'deepl': {
-      const apiKey = pluginParams.deeplApiKey ?? '';
-      if (!apiKey) return null;
-
-      const useFreeToggle = pluginParams.deeplUseFree === true;
-      const endpointSetting = pluginParams.deeplEndpoint ?? 'auto';
-      // Resolve endpoint: honor explicit setting; otherwise decide based on toggle or key suffix (:fx = Free)
-      const shouldUseFree = endpointSetting === 'free'
-        ? true
-        : endpointSetting === 'pro'
-        ? false
-        : (useFreeToggle || /:fx\b/i.test(apiKey));
-      const baseUrl = shouldUseFree ? 'https://api-free.deepl.com' : 'https://api.deepl.com';
-      return { vendor, apiKey, baseUrl };
-    }
-    default: {
-      const apiKey = pluginParams.apiKey ?? '';
-      const model = pluginParams.gptModel ?? '';
-      if (apiKey && model && model !== 'None') {
-        return { vendor: 'openai', apiKey, model };
-      }
-      return null;
-    }
+    case 'google':
+      return extractGoogleCredentials(pluginParams);
+    case 'anthropic':
+      return extractAnthropicCredentials(pluginParams);
+    case 'deepl':
+      return extractDeepLCredentials(pluginParams);
+    default:
+      return extractOpenAICredentials(pluginParams);
   }
 }
 
@@ -119,7 +180,10 @@ export function getProvider(pluginParams: ctxParamsType): TranslationProvider {
   const credentials = extractVendorCredentials(pluginParams);
 
   if (!credentials) {
-    throw new ProviderConfigurationError(vendor, getMissingCredentialsMessage(vendor));
+    throw new ProviderConfigurationError(
+      vendor,
+      getMissingCredentialsMessage(vendor),
+    );
   }
 
   // Build cache key and check for existing provider
@@ -145,16 +209,28 @@ export function getProvider(pluginParams: ctxParamsType): TranslationProvider {
   let provider: TranslationProvider;
   switch (credentials.vendor) {
     case 'google':
-      provider = new GeminiProvider({ apiKey: credentials.apiKey, model: credentials.model });
+      provider = new GeminiProvider({
+        apiKey: credentials.apiKey,
+        model: credentials.model,
+      });
       break;
     case 'anthropic':
-      provider = new AnthropicProvider({ apiKey: credentials.apiKey, model: credentials.model });
+      provider = new AnthropicProvider({
+        apiKey: credentials.apiKey,
+        model: credentials.model,
+      });
       break;
     case 'deepl':
-      provider = new DeepLProvider({ apiKey: credentials.apiKey, baseUrl: credentials.baseUrl });
+      provider = new DeepLProvider({
+        apiKey: credentials.apiKey,
+        baseUrl: credentials.baseUrl,
+      });
       break;
     default:
-      provider = new OpenAIProvider({ apiKey: credentials.apiKey, model: credentials.model });
+      provider = new OpenAIProvider({
+        apiKey: credentials.apiKey,
+        model: credentials.model,
+      });
   }
 
   cache.set(cacheKey, provider);

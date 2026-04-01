@@ -1,8 +1,12 @@
-import { connect, type RenderModalCtx, type OnBootCtx } from 'datocms-plugin-sdk';
-import { render } from './utils/render';
-import ConfigScreen from './entrypoints/ConfigScreen';
+import {
+  connect,
+  type OnBootCtx,
+  type RenderModalCtx,
+} from 'datocms-plugin-sdk';
 import BrowseProductsModal from './components/BrowseProductsModal';
+import ConfigScreen from './entrypoints/ConfigScreen';
 import FieldExtension from './entrypoints/FieldExtension';
+import { render } from './utils/render';
 import 'datocms-react-ui/styles.css';
 import { isValidConfig, normalizeConfig } from './types';
 

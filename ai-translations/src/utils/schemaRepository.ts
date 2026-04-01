@@ -9,8 +9,8 @@
  * @see https://www.datocms.com/docs/content-management-api/using-the-nodejs-clients
  */
 
-import { SchemaRepository } from '@datocms/cma-client-browser';
 import type { buildClient } from '@datocms/cma-client-browser';
+import { SchemaRepository } from '@datocms/cma-client-browser';
 
 /**
  * Field metadata shape used by TranslateField.ts for block field lookups.
@@ -55,7 +55,7 @@ export type FieldTypeDictionary = Record<string, FieldTypeDictionaryEntry>;
  * ```
  */
 export function createSchemaRepository(
-  client: ReturnType<typeof buildClient>
+  client: ReturnType<typeof buildClient>,
 ): SchemaRepository {
   return new SchemaRepository(client);
 }
@@ -72,7 +72,7 @@ export function createSchemaRepository(
  */
 export async function getBlockFieldsFromRepo(
   schemaRepository: SchemaRepository,
-  blockModelId: string
+  blockModelId: string,
 ): Promise<Record<string, BlockFieldMeta>> {
   const itemType = await schemaRepository.getItemTypeById(blockModelId);
   const fields = await schemaRepository.getItemTypeFields(itemType);
@@ -87,7 +87,7 @@ export async function getBlockFieldsFromRepo(
       };
       return acc;
     },
-    {} as Record<string, BlockFieldMeta>
+    {} as Record<string, BlockFieldMeta>,
   );
 }
 
@@ -103,7 +103,7 @@ export async function getBlockFieldsFromRepo(
  */
 export async function buildFieldTypeDictionaryFromRepo(
   schemaRepository: SchemaRepository,
-  itemTypeId: string
+  itemTypeId: string,
 ): Promise<FieldTypeDictionary> {
   const itemType = await schemaRepository.getItemTypeById(itemTypeId);
   const fields = await schemaRepository.getItemTypeFields(itemType);

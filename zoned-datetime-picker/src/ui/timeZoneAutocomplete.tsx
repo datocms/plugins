@@ -1,11 +1,11 @@
-import { Box } from "@mui/material";
-import type React from "react";
-import type { UILabels } from "../i18n/uiLabels";
-import { toFlagEmoji } from "../utils/flags";
-import { getZoneLongName, utcOffsetStringForZone } from "../utils/datetime";
-import { normalizeForSearch } from "../utils/search";
+import { Box } from '@mui/material';
+import type React from 'react';
+import type { UILabels } from '../i18n/uiLabels';
+import { getZoneLongName, utcOffsetStringForZone } from '../utils/datetime';
+import { toFlagEmoji } from '../utils/flags';
+import { normalizeForSearch } from '../utils/search';
 
-import type { ZoneOption } from "../utils/zoneOptions.ts";
+import type { ZoneOption } from '../utils/zoneOptions.ts';
 
 /**
  * Factory that returns an MUI Autocomplete `renderOption` implementation
@@ -21,50 +21,69 @@ import type { ZoneOption } from "../utils/zoneOptions.ts";
  * <Autocomplete renderOption={renderOption} ... />
  * ```
  */
-export function renderZoneOptionFactory(cfg: {
+type ZoneRenderCfg = {
   labels: UILabels;
   browserTimeZone: string;
   siteTimeZone?: string | null;
   zoneToCountry: Map<string, string>;
   now: Date;
   locale?: string;
-}) {
-  const { labels, browserTimeZone, siteTimeZone, zoneToCountry, now, locale } =
-    cfg;
-  return (props: React.HTMLAttributes<HTMLLIElement>, opt: ZoneOption) => {
-    const isSuggested = opt.group === labels.suggested;
-    const isBrowser = opt.tz === browserTimeZone;
-    const isSite = !!siteTimeZone && opt.tz === siteTimeZone;
-    const isUTC = opt.tz === "UTC";
-    const countryCode = zoneToCountry.get(opt.tz) ?? null;
-    const flag = countryCode ? `${toFlagEmoji(countryCode)} ` : "";
-    const globe = isUTC ? "🌍 " : "";
-    const offsetText = utcOffsetStringForZone(opt.tz, now);
-    const localizedName = getZoneLongName(locale, opt.tz, now) ?? opt.tz;
-    const suffix = `${offsetText}${localizedName !== opt.tz ? `, ${localizedName}` : ""}`;
-    const prefix =
-      isSuggested && (isBrowser || isSite)
-        ? `${isBrowser ? labels.browser : labels.site}: `
-        : "";
-    return (
-      <li {...props}>
-        {globe}
-        {flag}
-        {prefix}
-        <Box marginX={1}>
-          <strong>{opt.tz}</strong>
-        </Box>
-        <Box
-          component="span"
-          sx={{
-            color: "text.secondary",
-          }}
-        >
-          ({suffix})
-        </Box>
-      </li>
-    );
-  };
+};
+
+function buildZoneOptionPrefix(opt: ZoneOption, cfg: ZoneRenderCfg): string {
+  const { labels, browserTimeZone, siteTimeZone } = cfg;
+  const isSuggested = opt.group === labels.suggested;
+  const isBrowser = opt.tz === browserTimeZone;
+  const isSite = !!siteTimeZone && opt.tz === siteTimeZone;
+  if (isSuggested && (isBrowser || isSite)) {
+    return `${isBrowser ? labels.browser : labels.site}: `;
+  }
+  return '';
+}
+
+function buildZoneOptionSuffix(opt: ZoneOption, cfg: ZoneRenderCfg): string {
+  const { now, locale } = cfg;
+  const offsetText = utcOffsetStringForZone(opt.tz, now);
+  const localizedName = getZoneLongName(locale, opt.tz, now) ?? opt.tz;
+  const hasLocalizedName = localizedName !== opt.tz;
+  return `${offsetText}${hasLocalizedName ? `, ${localizedName}` : ''}`;
+}
+
+function renderZoneOptionItem(
+  props: React.HTMLAttributes<HTMLLIElement>,
+  opt: ZoneOption,
+  cfg: ZoneRenderCfg,
+) {
+  const { zoneToCountry } = cfg;
+  const countryCode = zoneToCountry.get(opt.tz) ?? null;
+  const flag = countryCode ? `${toFlagEmoji(countryCode)} ` : '';
+  const globe = opt.tz === 'UTC' ? '🌍 ' : '';
+  const prefix = buildZoneOptionPrefix(opt, cfg);
+  const suffix = buildZoneOptionSuffix(opt, cfg);
+
+  return (
+    <li {...props}>
+      {globe}
+      {flag}
+      {prefix}
+      <Box marginX={1}>
+        <strong>{opt.tz}</strong>
+      </Box>
+      <Box
+        component="span"
+        sx={{
+          color: 'text.secondary',
+        }}
+      >
+        ({suffix})
+      </Box>
+    </li>
+  );
+}
+
+export function renderZoneOptionFactory(cfg: ZoneRenderCfg) {
+  return (props: React.HTMLAttributes<HTMLLIElement>, opt: ZoneOption) =>
+    renderZoneOptionItem(props, opt, cfg);
 }
 
 /**
@@ -81,9 +100,9 @@ export function renderZoneOptionFactory(cfg: {
  */
 export function filterZoneOptions(
   opts: ZoneOption[],
-  inputValue: string
+  inputValue: string,
 ): ZoneOption[] {
-  const q = (inputValue ?? "").trim();
+  const q = (inputValue ?? '').trim();
   if (!q) return opts;
   const norm = normalizeForSearch(q);
   if (!norm) return opts;
@@ -101,7 +120,7 @@ export function filterZoneOptions(
  */
 export function filterZoneOptionsMUI(
   opts: ZoneOption[],
-  state: { inputValue: string }
+  state: { inputValue: string },
 ) {
   return filterZoneOptions(opts, state.inputValue);
 }

@@ -1,10 +1,10 @@
-import { describe, it, expect } from 'vitest';
 import {
   findCommentsModel,
-  getValidItemTypes,
-  getNonCommentsItemTypes,
   getItemTypeEmoji,
+  getNonCommentsItemTypes,
+  getValidItemTypes,
 } from '@utils/itemTypeUtils';
+import { describe, expect, it } from 'vitest';
 
 // COMMENTS_MODEL_API_KEY = 'project_comment'
 
@@ -27,11 +27,19 @@ describe('findCommentsModel', () => {
     const itemTypes: Record<string, ItemType> = {
       '1': {
         id: '1',
-        attributes: { api_key: 'blog_post', name: 'Blog Post', modular_block: false },
+        attributes: {
+          api_key: 'blog_post',
+          name: 'Blog Post',
+          modular_block: false,
+        },
       },
       '2': {
         id: '2',
-        attributes: { api_key: 'project_comment', name: 'Project Comment', modular_block: false },
+        attributes: {
+          api_key: 'project_comment',
+          name: 'Project Comment',
+          modular_block: false,
+        },
       },
       '3': {
         id: '3',
@@ -49,7 +57,11 @@ describe('findCommentsModel', () => {
     const itemTypes: Record<string, ItemType> = {
       '1': {
         id: '1',
-        attributes: { api_key: 'blog_post', name: 'Blog Post', modular_block: false },
+        attributes: {
+          api_key: 'blog_post',
+          name: 'Blog Post',
+          modular_block: false,
+        },
       },
     };
 
@@ -69,7 +81,11 @@ describe('findCommentsModel', () => {
       '1': undefined,
       '2': {
         id: '2',
-        attributes: { api_key: 'project_comment', name: 'Project Comment', modular_block: false },
+        attributes: {
+          api_key: 'project_comment',
+          name: 'Project Comment',
+          modular_block: false,
+        },
       },
     };
 
@@ -84,7 +100,11 @@ describe('getValidItemTypes', () => {
     const itemTypes: Record<string, ItemType | undefined> = {
       '1': {
         id: '1',
-        attributes: { api_key: 'blog_post', name: 'Blog Post', modular_block: false },
+        attributes: {
+          api_key: 'blog_post',
+          name: 'Blog Post',
+          modular_block: false,
+        },
       },
       '2': undefined,
       '3': {
@@ -96,7 +116,7 @@ describe('getValidItemTypes', () => {
     const result = getValidItemTypes(itemTypes);
 
     expect(result).toHaveLength(2);
-    expect(result.map(t => t.id)).toEqual(['1', '3']);
+    expect(result.map((t) => t.id)).toEqual(['1', '3']);
   });
 
   it('returns empty array for empty input', () => {
@@ -122,11 +142,19 @@ describe('getNonCommentsItemTypes', () => {
     const itemTypes: Record<string, ItemType> = {
       '1': {
         id: '1',
-        attributes: { api_key: 'blog_post', name: 'Blog Post', modular_block: false },
+        attributes: {
+          api_key: 'blog_post',
+          name: 'Blog Post',
+          modular_block: false,
+        },
       },
       '2': {
         id: '2',
-        attributes: { api_key: 'project_comment', name: 'Project Comment', modular_block: false },
+        attributes: {
+          api_key: 'project_comment',
+          name: 'Project Comment',
+          modular_block: false,
+        },
       },
       '3': {
         id: '3',
@@ -137,14 +165,21 @@ describe('getNonCommentsItemTypes', () => {
     const result = getNonCommentsItemTypes(itemTypes);
 
     expect(result).toHaveLength(2);
-    expect(result.map(t => t.attributes.api_key)).toEqual(['blog_post', 'author']);
+    expect(result.map((t) => t.attributes.api_key)).toEqual([
+      'blog_post',
+      'author',
+    ]);
   });
 
   it('returns all models when no comments model exists', () => {
     const itemTypes: Record<string, ItemType> = {
       '1': {
         id: '1',
-        attributes: { api_key: 'blog_post', name: 'Blog Post', modular_block: false },
+        attributes: {
+          api_key: 'blog_post',
+          name: 'Blog Post',
+          modular_block: false,
+        },
       },
       '2': {
         id: '2',
@@ -161,7 +196,11 @@ describe('getNonCommentsItemTypes', () => {
     const itemTypes: Record<string, ItemType> = {
       '1': {
         id: '1',
-        attributes: { api_key: 'project_comment', name: 'Project Comment', modular_block: false },
+        attributes: {
+          api_key: 'project_comment',
+          name: 'Project Comment',
+          modular_block: false,
+        },
       },
     };
 

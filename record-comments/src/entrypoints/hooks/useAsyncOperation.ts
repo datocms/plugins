@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { logError } from '@/utils/errorLogger';
 import {
   categorizeGeneralError,
   normalizeError,
 } from '@utils/errorCategorization';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { logError } from '@/utils/errorLogger';
 
 type AsyncOperationError = {
   source: string;
@@ -28,7 +28,7 @@ type UseAsyncOperationReturn<T> = {
 export function useAsyncOperation<T>(
   asyncFn: () => Promise<T>,
   _deps: readonly unknown[],
-  options: UseAsyncOperationOptions<T>
+  options: UseAsyncOperationOptions<T>,
 ): UseAsyncOperationReturn<T> {
   const {
     enabled = true,
@@ -73,7 +73,11 @@ export function useAsyncOperation<T>(
           try {
             onSuccess(result);
           } catch (callbackError) {
-            logError(`onSuccess callback for "${operationName}" threw an error`, callbackError, errorContext);
+            logError(
+              `onSuccess callback for "${operationName}" threw an error`,
+              callbackError,
+              errorContext,
+            );
           }
         }
       })
@@ -92,7 +96,11 @@ export function useAsyncOperation<T>(
           try {
             onError(normalizedError);
           } catch (callbackError) {
-            logError(`onError callback for "${operationName}" threw an error`, callbackError, errorContext);
+            logError(
+              `onError callback for "${operationName}" threw an error`,
+              callbackError,
+              errorContext,
+            );
           }
         }
       });

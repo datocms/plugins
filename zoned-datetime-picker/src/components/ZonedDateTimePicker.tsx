@@ -1,29 +1,28 @@
-import { useEffect, useMemo, useState } from "react";
-import type { RenderFieldExtensionCtx } from "datocms-plugin-sdk";
-import { Canvas } from "datocms-react-ui";
-import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider";
-import { AdapterLuxon } from "@mui/x-date-pickers/AdapterLuxon";
-import { DateTimePicker } from "@mui/x-date-pickers/DateTimePicker";
-import { TextField, Autocomplete, Stack } from "@mui/material";
-import { ThemeProvider } from "@mui/material/styles";
-import { getUiLabels } from "../i18n/uiLabels";
-import { parseZones } from "../i18n/parseZones";
-import { toFlagEmoji } from "../utils/flags";
-import {
-  parseDatoValue,
-  buildDatoOutput,
-  type ZonedValue,
-} from "../utils/datetime";
-import { getSupportedTimeZones } from "../utils/timezones";
-import { buildZoneOptions, type ZoneOption } from "../utils/zoneOptions";
-
-import { DateTime } from "luxon";
-import { createMuiThemeFromDato } from "../ui/theme";
-import { CLOCK_VIEW_RENDERERS } from "../ui/timePicker";
+import { Autocomplete, Stack, TextField } from '@mui/material';
+import { ThemeProvider } from '@mui/material/styles';
+import { AdapterLuxon } from '@mui/x-date-pickers/AdapterLuxon';
+import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
+import { Canvas } from 'datocms-react-ui';
+import { DateTime } from 'luxon';
+import { useEffect, useMemo, useState } from 'react';
+import { parseZones } from '../i18n/parseZones';
+import { getUiLabels } from '../i18n/uiLabels';
+import { createMuiThemeFromDato } from '../ui/theme';
+import { CLOCK_VIEW_RENDERERS } from '../ui/timePicker';
 import {
   filterZoneOptionsMUI,
   renderZoneOptionFactory,
-} from "../ui/timeZoneAutocomplete";
+} from '../ui/timeZoneAutocomplete';
+import {
+  buildDatoOutput,
+  parseDatoValue,
+  type ZonedValue,
+} from '../utils/datetime';
+import { toFlagEmoji } from '../utils/flags';
+import { getSupportedTimeZones } from '../utils/timezones';
+import { buildZoneOptions, type ZoneOption } from '../utils/zoneOptions';
 
 /**
  * ZonedDateTime field editor
@@ -71,7 +70,7 @@ export const ZonedDateTimePicker = ({
   // Build JSON payload when local state changes
   const datoPayload = useMemo(
     () => JSON.stringify(buildDatoOutput(zonedDateTime), null, 2),
-    [zonedDateTime]
+    [zonedDateTime],
   );
 
   // Persist JSON payload to DatoCMS when it changes
@@ -83,7 +82,7 @@ export const ZonedDateTimePicker = ({
   const muiTheme = useMemo(
     () =>
       createMuiThemeFromDato(primaryColor, accentColor, lightColor, darkColor),
-    [primaryColor, accentColor, lightColor, darkColor]
+    [primaryColor, accentColor, lightColor, darkColor],
   );
 
   // Parse time zone dropdown data from raw data file
@@ -92,14 +91,17 @@ export const ZonedDateTimePicker = ({
 
   // Suggested time zones shown first: UTC, Site default, Browser zone
   const browserTimeZone = useMemo(
-    () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC",
-    []
+    () => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+    [],
   );
 
   // Localized UI labels
   const labels = getUiLabels(userPreferredLocale);
   const suggestedLabel = labels.suggested;
-  const suggestedTimeZones = ["UTC", userPreferredTimeZone, browserTimeZone];
+  const suggestedTimeZones = useMemo(
+    () => ['UTC', userPreferredTimeZone, browserTimeZone],
+    [userPreferredTimeZone, browserTimeZone],
+  );
 
   // Pre-load TZ -> country code map from IANA zone.tab
   const zoneToCountry = useMemo(() => parseZones(), []);
@@ -130,7 +132,7 @@ export const ZonedDateTimePicker = ({
       zoneToCountry,
       labels.browser,
       labels.site,
-    ]
+    ],
   );
 
   // Custom renderer to bold the TZ name and show suffix/flags
@@ -151,13 +153,13 @@ export const ZonedDateTimePicker = ({
       zoneToCountry,
       now,
       userPreferredLocale,
-    ]
+    ],
   );
 
   // DateTimePicker value: Luxon DateTime in the selected zone
   const selectedDateTime: DateTime | null = useMemo(() => {
     if (!zonedDateTime?.dateTime) return null;
-    const zone = zonedDateTime.timeZone ?? "system";
+    const zone = zonedDateTime.timeZone ?? 'system';
     const parsed = DateTime.fromISO(zonedDateTime.dateTime, { zone });
     return parsed.isValid ? parsed : null;
   }, [zonedDateTime?.dateTime, zonedDateTime?.timeZone]);
@@ -191,11 +193,11 @@ export const ZonedDateTimePicker = ({
               value={selectedDateTime}
               onChange={handleDateChange}
               disabled={disabled}
-              timezone={zonedDateTime.timeZone ?? "system"} // Sync with selected timezone if possible
+              timezone={zonedDateTime.timeZone ?? 'system'} // Sync with selected timezone if possible
               slotProps={{
                 textField: {
-                  id: "zdt-picker",
-                  size: "small",
+                  id: 'zdt-picker',
+                  size: 'small',
                   label: labels.dateTime,
                 },
                 desktopPaper: {
@@ -216,7 +218,7 @@ export const ZonedDateTimePicker = ({
                 isTimeZonePickerDisabled
                   ? undefined
                   : (options.find(
-                      (o) => o.tz === (zonedDateTime.timeZone ?? "")
+                      (o) => o.tz === (zonedDateTime.timeZone ?? ''),
                     ) ?? options[0])
               }
               disableClearable={true}
@@ -230,7 +232,7 @@ export const ZonedDateTimePicker = ({
               onClose={() => startAutoResizer()}
               slotProps={{
                 listbox: {
-                  sx: { maxHeight: 200, overflowY: "auto" },
+                  sx: { maxHeight: 200, overflowY: 'auto' },
                 },
                 popper: {
                   disablePortal: true, // Keep the DOM node as a real child
@@ -238,9 +240,9 @@ export const ZonedDateTimePicker = ({
                   modifiers: [
                     {
                       // Workaround for the popper node overflowing the iframe and causing a huge expansion
-                      name: "Manually resize on popup",
+                      name: 'Manually resize on popup',
                       enabled: true,
-                      phase: "main",
+                      phase: 'main',
                       fn() {
                         stopAutoResizer();
                         setHeight(300);

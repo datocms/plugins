@@ -22,7 +22,10 @@ export function normalizeForSearch(s: string): string {
       .replace(/[^a-z0-9]+/g, ' ')
       .trim();
   } catch {
-    return s.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    return s
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')
+      .trim();
   }
 }
 

@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react';
 import type { ReactElement } from 'react';
+import { useEffect, useRef } from 'react';
 import s from '../../entrypoints/styles.module.css';
 import { formatFileSize } from '../../utils/formatters';
 
@@ -20,21 +20,27 @@ interface ActivityLogProps {
   log: LogEntry[];
 }
 
+const buildLogEntryKey = (entry: LogEntry): string => {
+  const sizePart =
+    entry.originalSize !== undefined && entry.optimizedSize !== undefined
+      ? `${entry.originalSize}-${entry.optimizedSize}`
+      : 'no-size';
+  return `${entry.text}-${sizePart}`;
+};
+
 /**
  * ActivityLog component displays a log of optimization activities
- * 
- * This component displays log entries in reverse chronological order 
+ *
+ * This component displays log entries in reverse chronological order
  * (newest logs at the top) as per the user's preference.
- * 
+ *
  * @param log - Array of log entries to display
  * @returns Rendered component or null if no logs are present
  */
 const ActivityLog = ({ log }: ActivityLogProps): ReactElement | null => {
-  if (log.length === 0) return null;
-  
   // Create a ref for the logs container
   const logsContainerRef = useRef<HTMLDivElement>(null);
-  
+
   // Auto-scroll to the bottom whenever logs are updated
   useEffect(() => {
     if (logsContainerRef.current) {
@@ -42,7 +48,9 @@ const ActivityLog = ({ log }: ActivityLogProps): ReactElement | null => {
       logsContainerRef.current.scrollTop = scrollHeight - clientHeight;
     }
   }, []);
-  
+
+  if (log.length === 0) return null;
+
   return (
     <div className={s.logWrapper}>
       <div className={s.logHeader}>
@@ -51,15 +59,21 @@ const ActivityLog = ({ log }: ActivityLogProps): ReactElement | null => {
       </div>
       <div className={s.logsContainer} ref={logsContainerRef}>
         <div className={s.logs}>
-          {log.map((entry, i) => (
-            <div key={`log-${i}-${entry.text.substring(0, 10)}`} className={s.logEntry}>
+          {log.map((entry) => (
+            <div key={buildLogEntryKey(entry)} className={s.logEntry}>
               <span>{entry.text}</span>
               {entry.originalSize && entry.optimizedSize && (
                 <span className={s.sizeComparison}>
-                  <span className={s.originalSize}>{formatFileSize(entry.originalSize)}</span>
+                  <span className={s.originalSize}>
+                    {formatFileSize(entry.originalSize)}
+                  </span>
                   <span className={s.sizeArrow}>&#8594;</span>
-                  <span className={s.optimizedSize}>{formatFileSize(entry.optimizedSize)}</span>
-                  <span className={s.sizeSavings}>(-{entry.savingsPercentage}%)</span>
+                  <span className={s.optimizedSize}>
+                    {formatFileSize(entry.optimizedSize)}
+                  </span>
+                  <span className={s.sizeSavings}>
+                    (-{entry.savingsPercentage}%)
+                  </span>
                 </span>
               )}
             </div>

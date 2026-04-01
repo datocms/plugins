@@ -1,6 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { getGravatarUrl, getThumbnailUrl } from '@/utils/helpers';
 import md5 from 'md5';
+import { describe, expect, it } from 'vitest';
+import { getGravatarUrl, getThumbnailUrl } from '@/utils/helpers';
 
 describe('getGravatarUrl', () => {
   describe('URL generation', () => {
@@ -9,7 +9,9 @@ describe('getGravatarUrl', () => {
       const result = getGravatarUrl(email);
 
       const expectedHash = md5(email);
-      expect(result).toBe(`https://www.gravatar.com/avatar/${expectedHash}?d=mp&s=64`);
+      expect(result).toBe(
+        `https://www.gravatar.com/avatar/${expectedHash}?d=mp&s=64`,
+      );
     });
 
     it('uses default size of 64', () => {
@@ -64,23 +66,41 @@ describe('getGravatarUrl', () => {
 describe('getThumbnailUrl', () => {
   describe('image thumbnails', () => {
     it('returns thumbnail URL for images with optimization params', () => {
-      const result = getThumbnailUrl('image/jpeg', 'https://cdn.example.com/image.jpg');
+      const result = getThumbnailUrl(
+        'image/jpeg',
+        'https://cdn.example.com/image.jpg',
+      );
 
       // Includes dpr=2 for retina, q=80 for compression, auto=format for webp/avif
-      expect(result).toBe('https://cdn.example.com/image.jpg?w=300&fit=max&auto=format&dpr=2&q=80');
+      expect(result).toBe(
+        'https://cdn.example.com/image.jpg?w=300&fit=max&auto=format&dpr=2&q=80',
+      );
     });
 
     it('uses custom width', () => {
-      const result = getThumbnailUrl('image/png', 'https://cdn.example.com/image.png', null, 500);
+      const result = getThumbnailUrl(
+        'image/png',
+        'https://cdn.example.com/image.png',
+        null,
+        500,
+      );
 
       expect(result).toContain('w=500');
     });
 
     it('handles different image mime types', () => {
-      expect(getThumbnailUrl('image/png', 'https://example.com/a.png')).toBeTruthy();
-      expect(getThumbnailUrl('image/gif', 'https://example.com/a.gif')).toBeTruthy();
-      expect(getThumbnailUrl('image/webp', 'https://example.com/a.webp')).toBeTruthy();
-      expect(getThumbnailUrl('image/svg+xml', 'https://example.com/a.svg')).toBeTruthy();
+      expect(
+        getThumbnailUrl('image/png', 'https://example.com/a.png'),
+      ).toBeTruthy();
+      expect(
+        getThumbnailUrl('image/gif', 'https://example.com/a.gif'),
+      ).toBeTruthy();
+      expect(
+        getThumbnailUrl('image/webp', 'https://example.com/a.webp'),
+      ).toBeTruthy();
+      expect(
+        getThumbnailUrl('image/svg+xml', 'https://example.com/a.svg'),
+      ).toBeTruthy();
     });
 
     it('returns null when image URL is null', () => {
@@ -92,9 +112,15 @@ describe('getThumbnailUrl', () => {
 
   describe('video thumbnails', () => {
     it('returns Mux thumbnail URL for videos with playback ID', () => {
-      const result = getThumbnailUrl('video/mp4', 'https://example.com/video.mp4', 'mux123abc');
+      const result = getThumbnailUrl(
+        'video/mp4',
+        'https://example.com/video.mp4',
+        'mux123abc',
+      );
 
-      expect(result).toBe('https://image.mux.com/mux123abc/thumbnail.jpg?width=300&fit_mode=preserve');
+      expect(result).toBe(
+        'https://image.mux.com/mux123abc/thumbnail.jpg?width=300&fit_mode=preserve',
+      );
     });
 
     it('uses custom width for video thumbnails', () => {
@@ -104,7 +130,11 @@ describe('getThumbnailUrl', () => {
     });
 
     it('returns null for video without Mux playback ID', () => {
-      const result = getThumbnailUrl('video/mp4', 'https://example.com/video.mp4', null);
+      const result = getThumbnailUrl(
+        'video/mp4',
+        'https://example.com/video.mp4',
+        null,
+      );
 
       expect(result).toBeNull();
     });
@@ -118,25 +148,37 @@ describe('getThumbnailUrl', () => {
 
   describe('non-media files', () => {
     it('returns null for PDF', () => {
-      const result = getThumbnailUrl('application/pdf', 'https://example.com/doc.pdf');
+      const result = getThumbnailUrl(
+        'application/pdf',
+        'https://example.com/doc.pdf',
+      );
 
       expect(result).toBeNull();
     });
 
     it('returns null for text files', () => {
-      const result = getThumbnailUrl('text/plain', 'https://example.com/file.txt');
+      const result = getThumbnailUrl(
+        'text/plain',
+        'https://example.com/file.txt',
+      );
 
       expect(result).toBeNull();
     });
 
     it('returns null for audio files', () => {
-      const result = getThumbnailUrl('audio/mpeg', 'https://example.com/audio.mp3');
+      const result = getThumbnailUrl(
+        'audio/mpeg',
+        'https://example.com/audio.mp3',
+      );
 
       expect(result).toBeNull();
     });
 
     it('returns null for zip files', () => {
-      const result = getThumbnailUrl('application/zip', 'https://example.com/archive.zip');
+      const result = getThumbnailUrl(
+        'application/zip',
+        'https://example.com/archive.zip',
+      );
 
       expect(result).toBeNull();
     });
@@ -150,7 +192,11 @@ describe('getThumbnailUrl', () => {
     });
 
     it('handles undefined mux playback ID', () => {
-      const result = getThumbnailUrl('video/mp4', 'https://example.com/video.mp4', undefined);
+      const result = getThumbnailUrl(
+        'video/mp4',
+        'https://example.com/video.mp4',
+        undefined,
+      );
 
       expect(result).toBeNull();
     });

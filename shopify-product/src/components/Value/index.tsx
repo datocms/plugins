@@ -1,17 +1,17 @@
-import { useCallback, useEffect, useMemo } from 'react';
-import { normalizeConfig } from '../../types';
-import Price from '../Price';
-import { useCtx } from 'datocms-react-ui';
-import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
-import ShopifyClient from '../../utils/ShopifyClient';
-import useStore, { type State } from '../../utils/useStore';
-import s from './styles.module.css';
-import classNames from 'classnames';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faExternalLinkAlt,
   faTimesCircle,
 } from '@fortawesome/free-solid-svg-icons';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import classNames from 'classnames';
+import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
+import { useCtx } from 'datocms-react-ui';
+import { useCallback, useEffect, useMemo } from 'react';
+import { normalizeConfig } from '../../types';
+import ShopifyClient from '../../utils/ShopifyClient';
+import useStore, { type State } from '../../utils/useStore';
+import Price from '../Price';
+import s from './styles.module.css';
 
 export type ValueProps = {
   value: string;
@@ -71,9 +71,7 @@ export default function Value({ value, onReset }: ValueProps) {
               </a>
               <FontAwesomeIcon icon={faExternalLinkAlt} />
             </div>
-            <div className={s.product__description}>
-              {product.description}
-            </div>
+            <div className={s.product__description}>{product.description}</div>
             {product.productType && (
               <div className={s.product__producttype}>
                 <strong>Product type:</strong>

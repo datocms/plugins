@@ -10,13 +10,15 @@ import {
 } from 'use-deep-compare';
 import {
   type Frontend,
+  isValidResponse,
+  normalizeParameters,
   type Parameters,
   type PreviewLink,
   type Response,
-  isValidResponse,
-  normalizeParameters,
 } from '../types';
-export type FrontendStatus = { previewLinks: PreviewLink[] } | { error: any };
+export type FrontendStatus =
+  | { previewLinks: PreviewLink[] }
+  | { error: unknown };
 
 export async function makeRequest(
   frontend: Frontend,

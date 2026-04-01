@@ -1,5 +1,5 @@
-import type { MutableRefObject, ReactNode, Ref } from 'react';
 import styles from '@styles/comment.module.css';
+import type { MutableRefObject, ReactNode, Ref } from 'react';
 import { cn } from '@/utils/cn';
 
 type LocalePickerViewProps = {
@@ -20,7 +20,11 @@ export function LocalePickerView({
   justClickedInsideRef,
 }: LocalePickerViewProps): ReactNode {
   return (
-    <div className={styles.mentionList} role="listbox" aria-label="Select locale">
+    <div
+      className={styles.mentionList}
+      role="listbox"
+      aria-label="Select locale"
+    >
       {locales.map((locale, index) => (
         <button
           key={locale}
@@ -28,7 +32,10 @@ export function LocalePickerView({
           type="button"
           role="option"
           aria-selected={index === selectedIndex}
-          className={cn(styles.mentionOption, index === selectedIndex && styles.mentionOptionSelected)}
+          className={cn(
+            styles.mentionOption,
+            index === selectedIndex && styles.mentionOptionSelected,
+          )}
           onMouseDown={(e) => {
             e.preventDefault();
             justClickedInsideRef.current = true;
@@ -36,7 +43,9 @@ export function LocalePickerView({
           }}
           onMouseEnter={() => onHover(index)}
         >
-          <span className={styles.mentionLocaleBadge}>{locale.toUpperCase()}</span>
+          <span className={styles.mentionLocaleBadge}>
+            {locale.toUpperCase()}
+          </span>
           <span className={styles.mentionFieldLabel}>{locale}</span>
         </button>
       ))}

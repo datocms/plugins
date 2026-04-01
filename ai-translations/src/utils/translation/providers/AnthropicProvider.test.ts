@@ -3,9 +3,9 @@
  * Tests Anthropic Claude API provider implementation.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import AnthropicProvider from './AnthropicProvider';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProviderError } from '../types';
+import AnthropicProvider from './AnthropicProvider';
 
 // Mock fetch globally
 const mockFetch = vi.fn();
@@ -104,7 +104,7 @@ describe('AnthropicProvider', () => {
             'anthropic-version': '2023-06-01',
           }),
           signal: expect.any(AbortSignal),
-        })
+        }),
       );
     });
 
@@ -194,7 +194,7 @@ describe('AnthropicProvider', () => {
         });
 
         await expect(provider.completeText('Test')).rejects.toThrow(
-          ProviderError
+          ProviderError,
         );
       });
 
@@ -239,7 +239,7 @@ describe('AnthropicProvider', () => {
         mockFetch.mockRejectedValue(new Error('Network error'));
 
         await expect(provider.completeText('Test')).rejects.toThrow(
-          'Network error'
+          'Network error',
         );
       });
     });
@@ -256,7 +256,7 @@ describe('AnthropicProvider', () => {
         await provider.completeText('Non-empty prompt');
 
         expect(warnSpy).toHaveBeenCalledWith(
-          expect.stringContaining('empty response')
+          expect.stringContaining('empty response'),
         );
 
         warnSpy.mockRestore();
@@ -323,7 +323,7 @@ describe('AnthropicProvider', () => {
         expect.any(String),
         expect.objectContaining({
           signal: expect.any(AbortSignal),
-        })
+        }),
       );
     });
 
@@ -359,7 +359,7 @@ describe('AnthropicProvider', () => {
         expect.any(String),
         expect.objectContaining({
           signal: expect.any(AbortSignal),
-        })
+        }),
       );
     });
   });

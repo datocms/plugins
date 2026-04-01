@@ -206,11 +206,19 @@ export function isValidPreviewLink(data: unknown): data is PreviewLink {
 }
 
 export function isValidResponse(data: unknown): data is Response {
-  if (typeof data !== 'object' || !data || !('previewLinks' in data)) {
+  if (typeof data !== 'object' || !data) {
     return false;
   }
 
-  const previewLinks = (data as any).previewLinks;
+  // TypeScript narrows `data` to `object` above. We check for the property
+  // explicitly and then access it via the narrowed type.
+  if (!('previewLinks' in data)) {
+    return false;
+  }
+
+  // After `'previewLinks' in data`, TypeScript narrows to
+  // `object & { previewLinks: unknown }`, allowing direct property access.
+  const previewLinks = data.previewLinks;
 
   if (!Array.isArray(previewLinks)) {
     return false;

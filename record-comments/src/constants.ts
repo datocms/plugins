@@ -29,7 +29,6 @@ export const COMMENT_FIELDS = {
   CONTENT: 'content',
 } as const;
 
-
 export const PLUGIN_IDS = {
   SIDEBAR: 'comments',
 } as const;
@@ -41,7 +40,8 @@ export const ERROR_MESSAGES = {
   RECORD_PICKER_FAILED: 'Failed to open record picker. Please try again.',
   COMMENTS_LOAD_FAILED: 'Failed to load comments. Please refresh the page.',
   VERSION_CONFLICT_RETRYING: 'Another user edited comments. Retrying...',
-  MAX_RETRIES_EXCEEDED: 'Unable to save after multiple attempts. Please check your connection and try again.',
+  MAX_RETRIES_EXCEEDED:
+    'Unable to save after multiple attempts. Please check your connection and try again.',
   OPERATION_TIMEOUT: 'Operation timed out after 2 minutes. Please try again.',
   MISSING_USER_INFO: 'Unable to add comment: user information is missing.',
 } as const;

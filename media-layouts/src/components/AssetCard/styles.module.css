@@ -6,7 +6,9 @@
   border: 1px solid var(--border-color);
   border-radius: 6px;
   background: white;
-  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+  transition:
+    box-shadow 0.2s ease,
+    border-color 0.2s ease;
 }
 
 .card:hover {
@@ -99,7 +101,9 @@
   border: 1px solid transparent;
   border-radius: 4px;
   cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
 }
 
 .controlButton:hover:not(:disabled) {
@@ -184,7 +188,10 @@
   background: var(--light-bg-color);
   border: 1px solid var(--border-color);
   border-radius: 6px;
-  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .cssClassInput::placeholder {
@@ -219,7 +226,10 @@
   border: 1px solid var(--border-color);
   border-radius: 999px;
   cursor: pointer;
-  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
 .lazyToggle:hover {
@@ -241,11 +251,13 @@
   background: white;
   border: 1px solid var(--border-color);
   position: relative;
-  transition: border-color 0.15s ease, background 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease;
 }
 
 .toggleTrack::after {
-  content: '';
+  content: "";
   position: absolute;
   top: 50%;
   left: 1px;
@@ -254,7 +266,9 @@
   border-radius: 50%;
   background: var(--light-body-color);
   transform: translateY(-50%);
-  transition: transform 0.15s ease, background 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    background 0.15s ease;
 }
 
 .lazyToggle input:checked + .toggleTrack {

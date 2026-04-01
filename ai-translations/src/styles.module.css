@@ -31,7 +31,9 @@
   gap: 12px;
   padding: 12px 16px;
   border-radius: 12px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    sans-serif;
   font-size: 14px;
   line-height: 1.4;
   letter-spacing: 0.01em;
@@ -73,7 +75,7 @@
   border: 1px solid rgba(114, 0, 196, 0.14) !important;
   margin-top: 0; /* flush with bubble above */
   margin-bottom: 12px; /* spacing from next bubble */
-  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   /* Bubble-level pulse: more noticeable fade, no scale on text */
   animation: ai-pendingPulse 2.8s ease-in-out infinite;
   will-change: opacity, transform;
@@ -81,9 +83,18 @@
 }
 
 @keyframes ai-pendingPulse {
-  0%   { opacity: 0.6; transform: scale(0.985); }
-  50%  { opacity: 1;   transform: scale(1.02); }
-  100% { opacity: 0.6; transform: scale(0.985); }
+  0% {
+    opacity: 0.6;
+    transform: scale(0.985);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.02);
+  }
+  100% {
+    opacity: 0.6;
+    transform: scale(0.985);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -100,25 +111,27 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pendingPulseText { animation: none; }
+  .pendingPulseText {
+    animation: none;
+  }
 }
 
 .hierarchyLine {
   position: absolute;
   left: -24px;
-  top: -8px;  /* Position it to connect with the bubble above */
+  top: -8px; /* Position it to connect with the bubble above */
   width: 2px;
-  height: 24px;  /* Fixed height to reach the streaming bubble */
+  height: 24px; /* Fixed height to reach the streaming bubble */
   background-color: rgba(0, 0, 0, 0.1);
   opacity: 0.5;
 }
 
 .hierarchyLine::before {
-  content: '';
+  content: "";
   position: absolute;
   left: 0;
-  bottom: 0;  /* Align with end of vertical line */
-  width: 24px;  /* Length of horizontal line to reach bubble */
+  bottom: 0; /* Align with end of vertical line */
+  width: 24px; /* Length of horizontal line to reach bubble */
   height: 2px;
   background-color: inherit;
 }
@@ -144,7 +157,7 @@
 }
 
 .streamingBubble:hover::after {
-  content: '';
+  content: "";
   position: absolute;
   right: 5px;
   top: 50%;
@@ -159,7 +172,7 @@
 
 /* Up arrow */
 .streamingBubble:hover::before {
-  content: '';
+  content: "";
   position: absolute;
   right: 2.5px;
   top: 58%;
@@ -174,7 +187,7 @@
 
 /* Down arrow */
 .streamingBubble:hover .streamingContent::after {
-  content: '';
+  content: "";
   position: absolute;
   right: 2.5px;
   top: 42%;
@@ -196,8 +209,12 @@
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .streamingContent {

@@ -59,7 +59,17 @@ const productFragment = `
   }
 `;
 
-const normalizeProduct = (product: any): Product => {
+type RawProductNode = Omit<Product, 'imageUrl'> & {
+  images: {
+    edges: Array<{ node: { src: string } }>;
+  };
+};
+
+type RawProductsResponse = {
+  edges: Array<{ node: RawProductNode }>;
+};
+
+const normalizeProduct = (product: RawProductNode): Product => {
   if (!product || typeof product !== 'object') {
     throw new Error('Invalid product');
   }
@@ -70,8 +80,8 @@ const normalizeProduct = (product: any): Product => {
   };
 };
 
-const normalizeProducts = (products: any): Product[] =>
-  products.edges.map((edge: any) => normalizeProduct(edge.node));
+const normalizeProducts = (products: RawProductsResponse): Product[] =>
+  products.edges.map((edge) => normalizeProduct(edge.node));
 
 export default class ShopifyClient {
   storefrontAccessToken: string;
@@ -118,7 +128,10 @@ export default class ShopifyClient {
     return normalizeProduct(response.product);
   }
 
-  async fetch(requestBody: any) {
+  async fetch(requestBody: {
+    query: string;
+    variables?: Record<string, unknown>;
+  }) {
     const res = await fetch(
       `https://${this.shopifyDomain}.myshopify.com/api/graphql`,
       {
@@ -137,7 +150,7 @@ export default class ShopifyClient {
 
     const contentType = res.headers.get('content-type');
 
-    if (!contentType || !contentType.includes('application/json')) {
+    if (!contentType?.includes('application/json')) {
       throw new Error(`Invalid content type: ${contentType}`);
     }
 

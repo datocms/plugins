@@ -35,10 +35,15 @@ interface GlossaryParams {
 export function parseGlossaryMap(input?: string): Record<string, string> {
   const map: Record<string, string> = {};
   if (!input) return map;
-  const lines = String(input).split(/\r?\n|[;,]+/).map((l) => l.trim()).filter(Boolean);
+  const lines = String(input)
+    .split(/\r?\n|[;,]+/)
+    .map((l) => l.trim())
+    .filter(Boolean);
   for (const line of lines) {
     // Split into pair and id
-    const m = line.match(/^(.*?)\s*(?:=|:|\s)\s*((?:gls-)?[A-Za-z0-9_-]+)\s*$/i);
+    const m = line.match(
+      /^(.*?)\s*(?:=|:|\s)\s*((?:gls-)?[A-Za-z0-9_-]+)\s*$/i,
+    );
     if (!m) continue;
     const pair = m[1].replace(/\s/g, '');
     const id = m[2];
@@ -69,7 +74,7 @@ export function parseGlossaryMap(input?: string): Record<string, string> {
 export function resolveGlossaryId(
   params: GlossaryParams | null | undefined,
   fromLocale: string | undefined,
-  toLocale: string
+  toLocale: string,
 ): string | undefined {
   const defaultId = params?.deeplGlossaryId;
   const rawMap = params?.deeplGlossaryPairs;
@@ -77,7 +82,9 @@ export function resolveGlossaryId(
 
   // Compute DeepL codes for the actual request
   const targetDeepL = mapDatoToDeepL(toLocale, 'target').toUpperCase();
-  const sourceDeepL = fromLocale ? mapDatoToDeepL(fromLocale, 'source').toUpperCase() : '';
+  const sourceDeepL = fromLocale
+    ? mapDatoToDeepL(fromLocale, 'source').toUpperCase()
+    : '';
   const deepKey = `${sourceDeepL}:${targetDeepL}`;
 
   const map = parseGlossaryMap(rawMap);
@@ -100,7 +107,7 @@ export function resolveGlossaryId(
   if (sourceDeepL) {
     const sourceToAnyDeep = `${sourceDeepL}:*`;
     if (map[sourceToAnyDeep]) return map[sourceToAnyDeep];
-    const sourceToAnyRaw = `${fromLocale!.toUpperCase()}:*`;
+    const sourceToAnyRaw = `${fromLocale?.toUpperCase()}:*`;
     if (map[sourceToAnyRaw]) return map[sourceToAnyRaw];
   }
 

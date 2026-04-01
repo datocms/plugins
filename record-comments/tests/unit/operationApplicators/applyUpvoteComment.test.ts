@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
 import { applyOperation } from '@utils/operationApplicators';
+import { beforeEach, describe, expect, it } from 'vitest';
 import {
   createBaseComment,
   createCommentWithReplies,
@@ -140,7 +140,11 @@ describe('applyUpvoteComment', () => {
         id: 'to-upvote',
         upvoterIds: [],
       });
-      const op = createUpvoteCommentOp('to-upvote', 'remove', 'nonexistent-voter');
+      const op = createUpvoteCommentOp(
+        'to-upvote',
+        'remove',
+        'nonexistent-voter',
+      );
 
       const result = applyOperation([comment], op);
 
@@ -152,32 +156,37 @@ describe('applyUpvoteComment', () => {
   describe('upvoting reply', () => {
     it('adds upvote to reply', () => {
       const parent = createCommentWithReplies(1, { id: 'parent' });
-      const replyId = parent.replies![0].id;
+      const replyId = parent.replies?.[0].id;
       const userId = 'voter-user-1';
       const op = createUpvoteCommentOp(replyId, 'add', userId, 'parent');
 
       const result = applyOperation([parent], op);
 
-      expect(result.comments[0].replies![0].upvoterIds).toHaveLength(1);
-      expect(result.comments[0].replies![0].upvoterIds[0]).toBe(userId);
+      expect(result.comments[0].replies?.[0].upvoterIds).toHaveLength(1);
+      expect(result.comments[0].replies?.[0].upvoterIds[0]).toBe(userId);
     });
 
     it('removes upvote from reply', () => {
       const parent = createCommentWithReplies(1, { id: 'parent' });
-      const replyId = parent.replies![0].id;
+      const replyId = parent.replies?.[0].id;
       const userId = 'voter-user-1';
-      parent.replies![0].upvoterIds = [userId];
+      parent.replies?.[0].upvoterIds = [userId];
       const op = createUpvoteCommentOp(replyId, 'remove', userId, 'parent');
 
       const result = applyOperation([parent], op);
 
-      expect(result.comments[0].replies![0].upvoterIds).toHaveLength(0);
+      expect(result.comments[0].replies?.[0].upvoterIds).toHaveLength(0);
     });
 
     it('returns status "applied"', () => {
       const parent = createCommentWithReplies(1, { id: 'parent' });
-      const replyId = parent.replies![0].id;
-      const op = createUpvoteCommentOp(replyId, 'add', 'voter-user-1', 'parent');
+      const replyId = parent.replies?.[0].id;
+      const op = createUpvoteCommentOp(
+        replyId,
+        'add',
+        'voter-user-1',
+        'parent',
+      );
 
       const result = applyOperation([parent], op);
 
@@ -197,7 +206,12 @@ describe('applyUpvoteComment', () => {
 
     it('returns status "failed_target_missing" when reply not found', () => {
       const parent = createCommentWithReplies(1, { id: 'parent' });
-      const op = createUpvoteCommentOp('nonexistent-reply', 'add', 'voter-1', 'parent');
+      const op = createUpvoteCommentOp(
+        'nonexistent-reply',
+        'add',
+        'voter-1',
+        'parent',
+      );
 
       const result = applyOperation([parent], op);
 
@@ -208,7 +222,12 @@ describe('applyUpvoteComment', () => {
   describe('parent missing', () => {
     it('returns status "failed_parent_missing" when parent not found', () => {
       const comment = createBaseComment({ id: 'some-comment' });
-      const op = createUpvoteCommentOp('some-reply', 'add', 'voter-1', 'nonexistent-parent');
+      const op = createUpvoteCommentOp(
+        'some-reply',
+        'add',
+        'voter-1',
+        'nonexistent-parent',
+      );
 
       const result = applyOperation([comment], op);
 

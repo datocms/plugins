@@ -1,8 +1,8 @@
-import type React from "react";
-import { useState } from "react";
-import styles from "./note.module.css";
-import Textarea from "react-textarea-autosize";
-import ReactTimeAgo from "react-time-ago";
+import type React from 'react';
+import { useState } from 'react';
+import Textarea from 'react-textarea-autosize';
+import ReactTimeAgo from 'react-time-ago';
+import styles from './note.module.css';
 
 type noteProps = {
   deleteNotes: (timestamp: string) => void;

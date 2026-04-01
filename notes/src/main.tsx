@@ -2,12 +2,12 @@ import {
   connect,
   type OnBootCtx,
   type RenderFieldExtensionCtx,
-} from "datocms-plugin-sdk";
-import { render } from "./utils/render";
-import "datocms-react-ui/styles.css";
-import NotesSidebar from "./entrypoints/NotesSidebar";
-import TimeAgo from "javascript-time-ago";
-import en from "javascript-time-ago/locale/en.json";
+} from 'datocms-plugin-sdk';
+import { render } from './utils/render';
+import 'datocms-react-ui/styles.css';
+import TimeAgo from 'javascript-time-ago';
+import en from 'javascript-time-ago/locale/en.json';
+import NotesSidebar from './entrypoints/NotesSidebar';
 
 TimeAgo.addDefaultLocale(en);
 
@@ -27,11 +27,11 @@ connect({
       fields.map(async (field) => {
         await ctx.updateFieldAppearance(field.id, [
           {
-            operation: "updateEditor",
-            newFieldExtensionId: "sidebarNotes",
+            operation: 'updateEditor',
+            newFieldExtensionId: 'sidebarNotes',
           },
         ]);
-      })
+      }),
     );
 
     ctx.updatePluginParameters({
@@ -43,16 +43,16 @@ connect({
   manualFieldExtensions() {
     return [
       {
-        id: "sidebarNotes",
-        name: "Sidebar Notes",
-        type: "editor",
-        fieldTypes: ["json"],
+        id: 'sidebarNotes',
+        name: 'Sidebar Notes',
+        type: 'editor',
+        fieldTypes: ['json'],
         asSidebarPanel: true,
       },
     ];
   },
   renderFieldExtension(fieldExtensionId: string, ctx: RenderFieldExtensionCtx) {
-    if (fieldExtensionId === "sidebarNotes") {
+    if (fieldExtensionId === 'sidebarNotes') {
       return render(<NotesSidebar ctx={ctx} />);
     }
   },

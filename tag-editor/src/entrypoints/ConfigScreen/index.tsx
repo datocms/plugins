@@ -1,18 +1,19 @@
+import { faPlus, faTrash } from '@fortawesome/free-solid-svg-icons';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import {
   Button,
   Canvas,
-  TextField,
-  SelectField,
-  Form,
   FieldGroup,
+  Form,
   Section,
+  SelectField,
+  TextField,
 } from 'datocms-react-ui';
-import { Form as FormHandler, Field } from 'react-final-form';
 import arrayMutators from 'final-form-arrays';
+import type { FieldRenderProps, FormRenderProps } from 'react-final-form';
+import { Field, Form as FormHandler } from 'react-final-form';
 import { FieldArray } from 'react-final-form-arrays';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPlus, faTrash } from '@fortawesome/free-solid-svg-icons';
 import type { GroupBase } from 'react-select';
 import type { AutoApplyRule, Config } from '../../types';
 import s from './styles.module.css';
@@ -51,19 +52,21 @@ export default function ConfigScreen({ ctx }: Props) {
           const errors: Errors = {};
 
           if ('autoApplyRules' in values) {
-            errors.autoApplyRules = values.autoApplyRules.map((rule: AutoApplyRule) => {
-              const ruleErrors: Record<string, string> = {};
+            errors.autoApplyRules = values.autoApplyRules.map(
+              (rule: AutoApplyRule) => {
+                const ruleErrors: Record<string, string> = {};
 
-              if (!rule.apiKeyRegexp) {
-                ruleErrors.apiKeyRegexp = 'Please specify a regexp!';
-              }
+                if (!rule.apiKeyRegexp) {
+                  ruleErrors.apiKeyRegexp = 'Please specify a regexp!';
+                }
 
-              if (rule.fieldTypes.length === 0) {
-                ruleErrors.fieldTypes = 'Please specify at least one!';
-              }
+                if (rule.fieldTypes.length === 0) {
+                  ruleErrors.fieldTypes = 'Please specify at least one!';
+                }
 
-              return ruleErrors;
-            });
+                return ruleErrors;
+              },
+            );
           }
 
           return errors;
@@ -73,7 +76,7 @@ export default function ConfigScreen({ ctx }: Props) {
           ctx.notice('Settings updated successfully!');
         }}
       >
-        {({ handleSubmit, submitting, dirty }: any) => (
+        {({ handleSubmit, submitting, dirty }: FormRenderProps<Config>) => (
           <Form onSubmit={handleSubmit}>
             <Section
               title="Automatic apply rules"
@@ -88,7 +91,10 @@ export default function ConfigScreen({ ctx }: Props) {
                         <div className={s.grid}>
                           <div>
                             <Field name={`${name}.fieldTypes`}>
-                              {({ input, meta: { error } }: any) => (
+                              {({
+                                input,
+                                meta: { error },
+                              }: FieldRenderProps<string[], HTMLElement>) => (
                                 <SelectField<Option, true, GroupBase<Option>>
                                   {...input}
                                   id="fieldTypes"
@@ -112,7 +118,10 @@ export default function ConfigScreen({ ctx }: Props) {
                           </div>
                           <div>
                             <Field name={`${name}.apiKeyRegexp`}>
-                              {({ input, meta: { error } }: any) => (
+                              {({
+                                input,
+                                meta: { error },
+                              }: FieldRenderProps<string, HTMLElement>) => (
                                 <TextField
                                   id="apiKeyRegexp"
                                   label="API key (regexp)"

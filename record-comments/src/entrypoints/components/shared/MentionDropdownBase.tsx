@@ -1,7 +1,7 @@
-import { useRef, type ReactNode } from 'react';
-import { useScrollSelectedIntoView, useClickOutside } from '@hooks/useDropdown';
-import { cn } from '@/utils/cn';
+import { useClickOutside, useScrollSelectedIntoView } from '@hooks/useDropdown';
 import styles from '@styles/comment.module.css';
+import { type ReactNode, useRef } from 'react';
+import { cn } from '@/utils/cn';
 
 type MentionDropdownBaseProps<T> = {
   items: T[];
@@ -9,7 +9,12 @@ type MentionDropdownBaseProps<T> = {
   headerText: string;
   selectedIndex: number;
   onClose: () => void;
-  renderItem: (item: T, index: number, isSelected: boolean, selectedRef: React.RefObject<HTMLButtonElement | null>) => ReactNode;
+  renderItem: (
+    item: T,
+    index: number,
+    isSelected: boolean,
+    selectedRef: React.RefObject<HTMLButtonElement | null>,
+  ) => ReactNode;
   keyExtractor: (item: T) => string;
   position?: 'above' | 'below';
   searchSlot?: ReactNode;
@@ -35,7 +40,7 @@ export function MentionDropdownBase<T>({
 
   const dropdownClassName = cn(
     styles.mentionDropdown,
-    position === 'above' && styles.mentionDropdownAbove
+    position === 'above' && styles.mentionDropdownAbove,
   );
 
   if (items.length === 0 && !searchSlot) {
@@ -60,7 +65,7 @@ export function MentionDropdownBase<T>({
                 item,
                 index,
                 index === selectedIndex,
-                index === selectedIndex ? selectedRef : { current: null }
+                index === selectedIndex ? selectedRef : { current: null },
               )}
             </div>
           ))}

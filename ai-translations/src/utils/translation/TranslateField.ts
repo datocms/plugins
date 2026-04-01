@@ -41,14 +41,22 @@
  * a natural consequence of DatoCMS's recursive content structure.
  */
 
-import type { TranslationProvider, StreamCallbacks } from './types';
 import { buildClient } from '@datocms/cma-client-browser';
 import type { ExecuteFieldDropdownActionCtx } from 'datocms-plugin-sdk';
-import {
-  type ctxParamsType,
-  modularContentVariations,
-} from '../../entrypoints/Config/ConfigScreen';
+import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
+import { modularContentVariations } from '../../entrypoints/Config/configConstants';
 import { fieldPrompt } from '../../prompts/FieldPrompts';
+import { createLogger, type Logger } from '../logging/Logger';
+import {
+  type BlockFieldMeta,
+  getBlockFieldsFromRepo,
+  type SchemaRepository,
+} from '../schemaRepository';
+import { translateDefaultFieldValue } from './DefaultTranslation';
+import { translateFileFieldValue } from './FileFieldTranslation';
+import { handleTranslationError } from './ProviderErrors';
+import { getProvider } from './ProviderFactory';
+import { type SeoObject, translateSeoFieldValue } from './SeoTranslation';
 import {
   findExactLocaleKey,
   getExactSourceValue,
@@ -57,18 +65,8 @@ import {
   normalizeTranslatedSlug,
   prepareFieldTypePrompt,
 } from './SharedFieldUtils';
-import { translateDefaultFieldValue } from './DefaultTranslation';
-import { type SeoObject, translateSeoFieldValue } from './SeoTranslation';
 import { translateStructuredTextValue } from './StructuredTextTranslation';
-import { translateFileFieldValue } from './FileFieldTranslation';
-import { createLogger, type Logger } from '../logging/Logger';
-import { getProvider } from './ProviderFactory';
-import { handleTranslationError } from './ProviderErrors';
-import {
-  type SchemaRepository,
-  type BlockFieldMeta,
-  getBlockFieldsFromRepo,
-} from '../schemaRepository';
+import type { StreamCallbacks, TranslationProvider } from './types';
 
 /**
  * Block structure that may contain relationships with item_type data.
@@ -109,7 +107,9 @@ type DatoCMSBlock = Record<string, unknown> & {
  * @param block - The block to check.
  * @returns True if block has item.attributes structure.
  */
-function hasNestedItem(block: DatoCMSBlock): block is DatoCMSBlock & { item: { attributes: Record<string, unknown> } } {
+function hasNestedItem(
+  block: DatoCMSBlock,
+): block is DatoCMSBlock & { item: { attributes: Record<string, unknown> } } {
   return (
     block.item !== undefined &&
     typeof block.item === 'object' &&
@@ -186,7 +186,7 @@ function deepCloneValue<T>(value: T): T {
       Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
         key,
         deepCloneValue(entry),
-      ])
+      ]),
     ) as T;
   }
 
@@ -227,7 +227,7 @@ function stripBlockWrapperIdentifiers(block: DatoCMSBlock): DatoCMSBlock {
 async function runWithConcurrency<T>(
   tasks: Array<() => Promise<T>>,
   maxConcurrency: number,
-  checkCancellation?: () => void
+  checkCancellation?: () => void,
 ): Promise<ConcurrencyResult<T>[]> {
   const results: ConcurrencyResult<T>[] = tasks.map((_, index) => ({
     index,
@@ -237,32 +237,39 @@ async function runWithConcurrency<T>(
   let nextIndex = 0;
   let cancelled = false;
 
-  async function worker(): Promise<void> {
-    while (!cancelled && nextIndex < tasks.length) {
-      const index = nextIndex++;
+  /**
+   * Processes a single task and recursively continues to the next one.
+   * Recursive approach avoids await-in-loop lint errors while preserving
+   * the sequential-within-one-worker execution model.
+   */
+  async function processNextTask(): Promise<void> {
+    if (cancelled || nextIndex >= tasks.length) return;
 
-      // Check for cancellation before starting each task
-      try {
-        checkCancellation?.();
-      } catch {
+    const index = nextIndex++;
+
+    try {
+      checkCancellation?.();
+    } catch {
+      cancelled = true;
+      return;
+    }
+
+    try {
+      const result = await tasks[index]();
+      results[index] = { index, result, completed: true };
+    } catch (error) {
+      if (error instanceof CancellationError) {
         cancelled = true;
         return;
       }
-
-      try {
-        const result = await tasks[index]();
-        results[index] = { index, result, completed: true };
-      } catch (error) {
-        // If task throws due to cancellation, stop this worker
-        if (error instanceof CancellationError) {
-          cancelled = true;
-          return;
-        }
-        // Re-throw other errors to fail the whole operation
-        throw error;
-      }
+      throw error;
     }
+
+    return processNextTask();
   }
+
+  // Each worker is an independent call to processNextTask
+  const worker = () => processNextTask();
 
   // Start workers up to maxConcurrency or task count, whichever is smaller
   const workerCount = Math.min(maxConcurrency, tasks.length);
@@ -279,12 +286,12 @@ export type { StreamCallbacks } from './types';
 
 /**
  * Routes field translation to the appropriate specialized translator based on field type
- * 
+ *
  * This function serves as the primary decision point for determining which translator
  * to use for a given field. It examines the field type and delegates to specialized
  * translators for complex fields (SEO, structured text, etc.) or falls back to the
  * default translator for simple field types.
- * 
+ *
  * @param fieldValue - The value of the field to translate
  * @param pluginParams - Plugin configuration parameters
  * @param toLocale - Target locale code
@@ -315,17 +322,20 @@ export async function translateFieldValue(
   streamCallbacks?: StreamCallbacks,
   recordContext = '',
   schemaRepository?: SchemaRepository,
-  options: TranslateFieldValueOptions = {}
+  options: TranslateFieldValueOptions = {},
 ): Promise<unknown> {
   const logger = createLogger(pluginParams, 'translateFieldValue');
-  
-  logger.info(`Translating field of type: ${fieldType}`, { fromLocale, toLocale });
-  
+
+  logger.info(`Translating field of type: ${fieldType}`, {
+    fromLocale,
+    toLocale,
+  });
+
   if (
-    isFieldExcluded(
-      pluginParams.apiKeysToBeExcludedFromThisPlugin,
-      [fieldId, options.fieldApiKey]
-    )
+    isFieldExcluded(pluginParams.apiKeysToBeExcludedFromThisPlugin, [
+      fieldId,
+      options.fieldApiKey,
+    ])
   ) {
     return fieldValue;
   }
@@ -334,10 +344,13 @@ export async function translateFieldValue(
   const fieldTranslatable = isFieldTranslatable(
     fieldType,
     pluginParams.translationFields,
-    modularContentVariations
+    modularContentVariations,
   );
 
-  if ((!fieldTranslatable && !options.bypassFieldTypeAllowlist) || !fieldValue) {
+  if (
+    (!fieldTranslatable && !options.bypassFieldTypeAllowlist) ||
+    !fieldValue
+  ) {
     return fieldValue;
   }
 
@@ -353,7 +366,7 @@ export async function translateFieldValue(
         provider,
         fieldTypePrompt,
         streamCallbacks,
-        recordContext
+        recordContext,
       );
       break;
     case 'structured_text':
@@ -367,7 +380,7 @@ export async function translateFieldValue(
         environment,
         streamCallbacks,
         recordContext,
-        schemaRepository
+        schemaRepository,
       );
       break;
     case 'rich_text':
@@ -384,7 +397,7 @@ export async function translateFieldValue(
         environment,
         streamCallbacks,
         recordContext,
-        schemaRepository
+        schemaRepository,
       );
       break;
     case 'file':
@@ -398,7 +411,7 @@ export async function translateFieldValue(
         apiToken,
         environment,
         streamCallbacks,
-        recordContext
+        recordContext,
       );
       break;
     default:
@@ -409,7 +422,7 @@ export async function translateFieldValue(
         fromLocale,
         provider,
         streamCallbacks,
-        recordContext
+        recordContext,
       );
       break;
   }
@@ -446,7 +459,10 @@ const BLOCK_FIELD_CONCURRENCY = 3;
  * requests for the same block model ID would all make API calls. By caching the
  * Promise itself, subsequent requests wait for the same pending request.
  */
-const blockFieldsCache = new Map<string, Promise<Record<string, BlockFieldMeta>>>();
+const blockFieldsCache = new Map<
+  string,
+  Promise<Record<string, BlockFieldMeta>>
+>();
 
 /**
  * Adds an entry to the block fields cache with size management.
@@ -455,7 +471,10 @@ const blockFieldsCache = new Map<string, Promise<Record<string, BlockFieldMeta>>
  * @param key - The cache key (typically block model ID).
  * @param value - Promise resolving to the field metadata dictionary.
  */
-function addToBlockFieldsCache(key: string, value: Promise<Record<string, BlockFieldMeta>>): void {
+function addToBlockFieldsCache(
+  key: string,
+  value: Promise<Record<string, BlockFieldMeta>>,
+): void {
   // Remove oldest entries if at capacity
   if (blockFieldsCache.size >= BLOCK_FIELDS_CACHE_MAX_SIZE) {
     const firstKey = blockFieldsCache.keys().next().value;
@@ -487,7 +506,7 @@ export async function fetchBlockFields(
   apiToken: string,
   environment: string,
   blockModelId: string,
-  schemaRepository?: SchemaRepository
+  schemaRepository?: SchemaRepository,
 ): Promise<Record<string, BlockFieldMeta>> {
   // If SchemaRepository is provided, use it for cached lookups
   if (schemaRepository) {
@@ -503,15 +522,18 @@ export async function fetchBlockFields(
   const fetchPromise = (async () => {
     const client = buildClient({ apiToken, environment });
     const fields = await client.fields.list(blockModelId);
-    return fields.reduce((acc, field) => {
-      acc[field.api_key] = {
-        editor: field.appearance.editor,
-        id: field.id,
-        localized: field.localized,
-        validators: field.validators,
-      };
-      return acc;
-    }, {} as Record<string, BlockFieldMeta>);
+    return fields.reduce(
+      (acc, field) => {
+        acc[field.api_key] = {
+          editor: field.appearance.editor,
+          id: field.id,
+          localized: field.localized,
+          validators: field.validators,
+        };
+        return acc;
+      },
+      {} as Record<string, BlockFieldMeta>,
+    );
   })();
 
   // Store the Promise in cache before awaiting, so concurrent requests share it
@@ -582,7 +604,10 @@ function getSingleBlockModelId(validators: unknown): string | undefined {
  * @param locale - Requested locale code
  * @returns The exact matching key from `obj`, or the input locale when no exact match exists
  */
-function resolveLocaleKey(obj: Record<string, unknown>, locale: string): string {
+function resolveLocaleKey(
+  obj: Record<string, unknown>,
+  locale: string,
+): string {
   return findExactLocaleKey(obj, locale) ?? locale;
 }
 
@@ -597,15 +622,22 @@ function resolveLocaleKey(obj: Record<string, unknown>, locale: string): string 
 async function translateFramelessSingleBlockValue(
   fieldValue: unknown,
   fieldMeta: BlockFieldMeta | undefined,
-  ctx: BlockFieldProcessingContext
+  ctx: BlockFieldProcessingContext,
 ): Promise<unknown> {
-  if (!fieldValue || typeof fieldValue !== 'object' || Array.isArray(fieldValue)) {
+  if (
+    !fieldValue ||
+    typeof fieldValue !== 'object' ||
+    Array.isArray(fieldValue)
+  ) {
     return fieldValue;
   }
 
   const blockModelId = getSingleBlockModelId(fieldMeta?.validators);
   if (!blockModelId) {
-    ctx.logger.warning('Frameless single block missing item type validators', fieldMeta);
+    ctx.logger.warning(
+      'Frameless single block missing item type validators',
+      fieldMeta,
+    );
     return fieldValue;
   }
 
@@ -613,7 +645,7 @@ async function translateFramelessSingleBlockValue(
     ctx.apiToken,
     ctx.environment,
     blockModelId,
-    ctx.schemaRepository
+    ctx.schemaRepository,
   );
 
   const cleanedValue = deepCloneValue(fieldValue) as Record<string, unknown>;
@@ -632,6 +664,109 @@ interface TranslatedFieldResult {
 }
 
 /**
+ * Extracts the value to translate from a (possibly localized) field entry,
+ * and returns the localized container and target locale key when applicable.
+ *
+ * @param rawValue - The raw value stored in the source object for this field.
+ * @param isLocalizedField - Whether the field has per-locale values.
+ * @param fromLocale - Source locale to extract the value from.
+ * @param toLocale - Target locale to write the translated value to.
+ * @returns Object describing the value to translate and how to write it back.
+ */
+function resolveFieldValueForTranslation(
+  rawValue: unknown,
+  isLocalizedField: boolean,
+  fromLocale: string,
+  toLocale: string,
+): {
+  valueToTranslate: unknown;
+  localizedContainer: Record<string, unknown> | null;
+  targetLocaleKey: string | null;
+  skip: boolean;
+} {
+  if (
+    !isLocalizedField ||
+    !rawValue ||
+    typeof rawValue !== 'object' ||
+    Array.isArray(rawValue)
+  ) {
+    return {
+      valueToTranslate: rawValue,
+      localizedContainer: null,
+      targetLocaleKey: null,
+      skip: false,
+    };
+  }
+
+  const sourceValue = getExactSourceValue(
+    rawValue as Record<string, unknown>,
+    fromLocale,
+  );
+
+  if (sourceValue === undefined || sourceValue === null || sourceValue === '') {
+    return {
+      valueToTranslate: rawValue,
+      localizedContainer: null,
+      targetLocaleKey: null,
+      skip: true,
+    };
+  }
+
+  const localizedContainer = { ...(rawValue as Record<string, unknown>) };
+  const targetLocaleKey = resolveLocaleKey(localizedContainer, toLocale);
+
+  return {
+    valueToTranslate: sourceValue,
+    localizedContainer,
+    targetLocaleKey,
+    skip: false,
+  };
+}
+
+/**
+ * Translates a single block field value using the appropriate strategy.
+ *
+ * @param field - The field API key.
+ * @param fieldMeta - Metadata for the field (editor, id, etc.).
+ * @param valueToTranslate - The value to translate.
+ * @param ctx - Processing context with translation configuration.
+ * @returns The translated value.
+ */
+async function translateBlockFieldValue(
+  field: string,
+  fieldMeta: BlockFieldMeta | undefined,
+  valueToTranslate: unknown,
+  ctx: BlockFieldProcessingContext,
+): Promise<unknown> {
+  const fieldEditor = fieldMeta?.editor || 'text';
+
+  if (fieldEditor === 'frameless_single_block') {
+    return translateFramelessSingleBlockValue(valueToTranslate, fieldMeta, ctx);
+  }
+
+  const nestedPrompt =
+    ' Return the response in the format of ' +
+    (fieldPrompt[fieldEditor as keyof typeof fieldPrompt] || '');
+
+  return translateFieldValue(
+    valueToTranslate,
+    ctx.pluginParams,
+    ctx.toLocale,
+    ctx.fromLocale,
+    fieldEditor,
+    ctx.provider,
+    nestedPrompt,
+    ctx.apiToken,
+    fieldMeta?.id || '',
+    ctx.environment,
+    ctx.streamCallbacks,
+    ctx.recordContext,
+    ctx.schemaRepository,
+    { fieldApiKey: field },
+  );
+}
+
+/**
  * Processes fields within a block's source object using parallel execution.
  *
  * Translates multiple fields concurrently (up to BLOCK_FIELD_CONCURRENCY) to improve
@@ -646,11 +781,14 @@ interface TranslatedFieldResult {
 async function processBlockFields(
   source: Record<string, unknown>,
   fieldTypeDictionary: Record<string, BlockFieldMeta>,
-  ctx: BlockFieldProcessingContext
+  ctx: BlockFieldProcessingContext,
 ): Promise<void> {
   // Collect translatable fields (skip metadata fields)
   const translatableFields = Object.keys(source).filter(
-    (field) => !BLOCK_METADATA_FIELDS.includes(field as typeof BLOCK_METADATA_FIELDS[number])
+    (field) =>
+      !BLOCK_METADATA_FIELDS.includes(
+        field as (typeof BLOCK_METADATA_FIELDS)[number],
+      ),
   );
 
   if (translatableFields.length === 0) {
@@ -658,80 +796,45 @@ async function processBlockFields(
   }
 
   // Create translation tasks for each field
-  const tasks = translatableFields.map((field) => async (): Promise<TranslatedFieldResult> => {
-    // Show progress if using streaming callbacks
-    ctx.streamCallbacks?.onStream?.(`Translating block field: ${field}...`);
+  const tasks = translatableFields.map(
+    (field) => async (): Promise<TranslatedFieldResult> => {
+      ctx.streamCallbacks?.onStream?.(`Translating block field: ${field}...`);
 
-    const fieldMeta = fieldTypeDictionary[field];
-    const fieldEditor = fieldMeta?.editor || 'text';
-    const isLocalizedField = fieldMeta?.localized === true;
+      const fieldMeta = fieldTypeDictionary[field];
+      const isLocalizedField = fieldMeta?.localized === true;
 
-    let valueToTranslate: unknown = source[field];
-    let localizedContainer: Record<string, unknown> | null = null;
-    let targetLocaleKey: string | null = null;
-
-    if (
-      isLocalizedField &&
-      valueToTranslate &&
-      typeof valueToTranslate === 'object' &&
-      !Array.isArray(valueToTranslate)
-    ) {
-      const sourceValue = getExactSourceValue(
-        valueToTranslate as Record<string, unknown>,
-        ctx.fromLocale
-      );
-      if (sourceValue === undefined || sourceValue === null || sourceValue === '') {
-        return { field, value: valueToTranslate };
-      }
-      localizedContainer = { ...(valueToTranslate as Record<string, unknown>) };
-      targetLocaleKey = resolveLocaleKey(localizedContainer, ctx.toLocale);
-      valueToTranslate = sourceValue;
-    }
-
-    let translatedValue: unknown;
-    if (fieldEditor === 'frameless_single_block') {
-      translatedValue = await translateFramelessSingleBlockValue(
-        valueToTranslate,
-        fieldMeta,
-        ctx
-      );
-    } else {
-      let nestedPrompt = ' Return the response in the format of ';
-      nestedPrompt += fieldPrompt[fieldEditor as keyof typeof fieldPrompt] || '';
-
-      translatedValue = await translateFieldValue(
-        valueToTranslate,
-        ctx.pluginParams,
-        ctx.toLocale,
+      const resolved = resolveFieldValueForTranslation(
+        source[field],
+        isLocalizedField,
         ctx.fromLocale,
-        fieldEditor,
-        ctx.provider,
-        nestedPrompt,
-        ctx.apiToken,
-        fieldMeta?.id || '',
-        ctx.environment,
-        ctx.streamCallbacks,
-        ctx.recordContext,
-        ctx.schemaRepository,
-        {
-          fieldApiKey: field,
-        }
+        ctx.toLocale,
       );
-    }
 
-    if (localizedContainer && targetLocaleKey) {
-      localizedContainer[targetLocaleKey] = translatedValue;
-      return { field, value: localizedContainer };
-    }
+      if (resolved.skip) {
+        return { field, value: source[field] };
+      }
 
-    return { field, value: translatedValue };
-  });
+      const translatedValue = await translateBlockFieldValue(
+        field,
+        fieldMeta,
+        resolved.valueToTranslate,
+        ctx,
+      );
+
+      if (resolved.localizedContainer && resolved.targetLocaleKey) {
+        resolved.localizedContainer[resolved.targetLocaleKey] = translatedValue;
+        return { field, value: resolved.localizedContainer };
+      }
+
+      return { field, value: translatedValue };
+    },
+  );
 
   // Execute tasks with concurrency limit, checking for cancellation between tasks
   const results = await runWithConcurrency(
     tasks,
     BLOCK_FIELD_CONCURRENCY,
-    ctx.streamCallbacks?.checkCancellation
+    ctx.streamCallbacks?.checkCancellation,
   );
 
   // Apply completed results to source object
@@ -744,7 +847,9 @@ async function processBlockFields(
   // Log if cancelled mid-way
   const completedCount = results.filter((r) => r.completed).length;
   if (completedCount < translatableFields.length) {
-    ctx.logger.info(`Translation cancelled: ${completedCount}/${translatableFields.length} fields translated`);
+    ctx.logger.info(
+      `Translation cancelled: ${completedCount}/${translatableFields.length} fields translated`,
+    );
   }
 }
 
@@ -779,13 +884,17 @@ async function translateBlockValue(
   environment: string,
   streamCallbacks?: StreamCallbacks,
   recordContext = '',
-  schemaRepository?: SchemaRepository
+  schemaRepository?: SchemaRepository,
 ) {
   const logger = createLogger(pluginParams, 'translateBlockValue');
   logger.info('Translating block value');
 
-  const isSingleBlock = fieldType === 'framed_single_block' || fieldType === 'frameless_single_block';
-  const rawBlocks = (isSingleBlock ? [fieldValue] : fieldValue) as Array<DatoCMSBlock>;
+  const isSingleBlock =
+    fieldType === 'framed_single_block' ||
+    fieldType === 'frameless_single_block';
+  const rawBlocks = (
+    isSingleBlock ? [fieldValue] : fieldValue
+  ) as Array<DatoCMSBlock>;
   const cleanedFieldValue = rawBlocks.map(stripBlockWrapperIdentifiers);
 
   // Create processing context with all translation configuration
@@ -802,16 +911,63 @@ async function translateBlockValue(
     schemaRepository,
   };
 
-  for (const block of cleanedFieldValue) {
-    // Determine the block model ID using type-safe extraction
+  /**
+   * Merges field metadata from a single frameless block field into the accumulated map.
+   * Fetches the nested block's field types and adds entries that don't already exist.
+   *
+   * @param fieldKey - The API key of the frameless block field.
+   * @param meta - Field metadata for the frameless block field.
+   * @param sourceObject - Source object to check if the field is already present.
+   * @param parentBlockModelId - Model ID of the parent block (used for warning context).
+   * @param merged - Mutable map being accumulated.
+   */
+  async function mergeFramelessBlockFields(
+    fieldKey: string,
+    meta: BlockFieldMeta,
+    sourceObject: Record<string, unknown>,
+    parentBlockModelId: string,
+    merged: Record<string, BlockFieldMeta>,
+  ): Promise<void> {
+    if (fieldKey in sourceObject) return;
+    const nestedModelId = getSingleBlockModelId(meta.validators);
+    if (!nestedModelId) {
+      logger.warning('Frameless single block missing validators', {
+        fieldKey,
+        blockModelId: parentBlockModelId,
+      });
+      return;
+    }
+    const nestedFieldTypes = await fetchBlockFields(
+      apiToken,
+      environment,
+      nestedModelId,
+      schemaRepository,
+    );
+    for (const [nestedKey, nestedMeta] of Object.entries(nestedFieldTypes)) {
+      if (!(nestedKey in merged)) {
+        merged[nestedKey] = nestedMeta;
+      }
+    }
+  }
+
+  /**
+   * Processes a single block: fetches its field metadata, resolves frameless
+   * field type merging, and translates all its fields.
+   * Extracted to avoid await-in-loop lint errors.
+   */
+  async function processBlock(block: DatoCMSBlock): Promise<void> {
     const blockModelId = extractBlockModelId(block);
     if (!blockModelId) {
       logger.warning('Block model ID not found', block);
-      continue;
+      return;
     }
 
-    // Fetch fields for this specific block using SchemaRepository or manual cache
-    const fieldTypeDictionary = await fetchBlockFields(apiToken, environment, blockModelId, schemaRepository);
+    const fieldTypeDictionary = await fetchBlockFields(
+      apiToken,
+      environment,
+      blockModelId,
+      schemaRepository,
+    );
 
     const sourceObject = block.attributes
       ? block.attributes
@@ -819,36 +975,40 @@ async function translateBlockValue(
         ? block.item.attributes
         : (block as Record<string, unknown>);
 
-    // Handle frameless single block flattening: if the frameless field key is absent
-    // but its nested fields are flattened into the parent, merge nested field types.
     let effectiveFieldTypes = fieldTypeDictionary;
     const framelessFields = Object.entries(fieldTypeDictionary).filter(
-      ([, meta]) => meta.editor === 'frameless_single_block'
+      ([, meta]) => meta.editor === 'frameless_single_block',
     );
+
     if (framelessFields.length > 0) {
       const merged: Record<string, BlockFieldMeta> = { ...fieldTypeDictionary };
-      for (const [fieldKey, meta] of framelessFields) {
-        if (fieldKey in sourceObject) {
-          continue;
-        }
-        const nestedModelId = getSingleBlockModelId(meta.validators);
-        if (!nestedModelId) {
-          logger.warning('Frameless single block missing validators', { fieldKey, blockModelId });
-          continue;
-        }
-        const nestedFieldTypes = await fetchBlockFields(apiToken, environment, nestedModelId, schemaRepository);
-        for (const [nestedKey, nestedMeta] of Object.entries(nestedFieldTypes)) {
-          if (!(nestedKey in merged)) {
-            merged[nestedKey] = nestedMeta;
-          }
-        }
-      }
+
+      await framelessFields.reduce(async (chain, [fieldKey, meta]) => {
+        await chain;
+        await mergeFramelessBlockFields(
+          fieldKey,
+          meta,
+          sourceObject,
+          blockModelId,
+          merged,
+        );
+      }, Promise.resolve());
+
       effectiveFieldTypes = merged;
     }
 
-    // Translate each field within the block using type guard for nested item check
-    await processBlockFields(sourceObject, effectiveFieldTypes, processingContext);
+    await processBlockFields(
+      sourceObject,
+      effectiveFieldTypes,
+      processingContext,
+    );
   }
+
+  // Process blocks sequentially using reduce to avoid await-in-loop
+  await cleanedFieldValue.reduce(
+    (chain, block) => chain.then(() => processBlock(block)),
+    Promise.resolve(),
+  );
 
   logger.info('Block translation completed');
   return isSingleBlock ? cleanedFieldValue[0] : cleanedFieldValue;
@@ -885,7 +1045,7 @@ export async function translateFieldValueDirect(
   environment: string,
   streamCallbacks?: StreamCallbacks,
   recordContext = '',
-  schemaRepository?: SchemaRepository
+  schemaRepository?: SchemaRepository,
 ): Promise<unknown> {
   const provider = getProvider(pluginParams);
   const fieldTypePrompt = prepareFieldTypePrompt(fieldType);
@@ -903,7 +1063,7 @@ export async function translateFieldValueDirect(
     environment,
     streamCallbacks,
     recordContext,
-    schemaRepository
+    schemaRepository,
   );
 }
 
@@ -939,7 +1099,7 @@ async function TranslateField(
   fieldType: string,
   environment: string,
   streamCallbacks?: StreamCallbacks,
-  recordContext = ''
+  recordContext = '',
 ) {
   const apiToken = await ctx.currentUserAccessToken;
   // Resolve provider (OpenAI for now; vendor-agnostic interface)
@@ -947,12 +1107,17 @@ async function TranslateField(
   const logger = createLogger(pluginParams, 'TranslateField');
 
   try {
-    logger.info('Starting field translation', { fieldType, fromLocale, toLocale });
+    logger.info('Starting field translation', {
+      fieldType,
+      fromLocale,
+      toLocale,
+    });
 
     // Generate record context if not provided or use the existing one
-    const contextToUse = ctx.formValues && !recordContext
-      ? generateRecordContext(ctx.formValues, fromLocale)
-      : recordContext;
+    const contextToUse =
+      ctx.formValues && !recordContext
+        ? generateRecordContext(ctx.formValues, fromLocale)
+        : recordContext;
 
     if (streamCallbacks?.onStream) {
       streamCallbacks.onStream('Loading...');
@@ -965,13 +1130,12 @@ async function TranslateField(
     let fieldTypePrompt = 'Return the response in the format of ';
     const fieldPromptObject = fieldPrompt;
     const baseFieldPrompts = fieldPromptObject ? fieldPromptObject : {};
-    
+
     // Structured and rich text fields use specialized prompts defined elsewhere
     if (fieldType !== 'structured_text' && fieldType !== 'rich_text') {
       fieldTypePrompt +=
         baseFieldPrompts[fieldType as keyof typeof baseFieldPrompts] || '';
     }
-  
 
     const translatedValue = await translateFieldValue(
       fieldValue,
@@ -989,55 +1153,82 @@ async function TranslateField(
       undefined,
       {
         fieldApiKey,
-      }
+      },
     );
 
     logger.info('Field translation completed');
     return translatedValue;
   } catch (error) {
     // DRY-001: Use centralized error handler
-    handleTranslationError(error, provider.vendor, logger, 'Translation failed');
+    handleTranslationError(
+      error,
+      provider.vendor,
+      logger,
+      'Translation failed',
+    );
   }
+}
+
+/** Field name keywords that suggest a field carries meaningful context for translation. */
+const CONTEXT_FIELD_KEYWORDS = ['title', 'name', 'content', 'description'];
+
+/**
+ * Checks whether a field key is likely to provide useful context for translation.
+ *
+ * @param key - The field API key.
+ * @returns True if the key contains a context keyword.
+ */
+function isContextField(key: string): boolean {
+  const lowerKey = key.toLowerCase();
+  return CONTEXT_FIELD_KEYWORDS.some((keyword) => lowerKey.includes(keyword));
+}
+
+/**
+ * Extracts the source locale string from a localized field value.
+ * Returns null if the value is missing, not a string, or too long to be useful.
+ *
+ * @param val - The raw field value (expected to be a localized object).
+ * @param sourceLocale - The locale code to extract.
+ * @returns The string value at the source locale, or null.
+ */
+function extractLocaleString(
+  val: unknown,
+  sourceLocale: string,
+): string | null {
+  if (typeof val !== 'object' || val === null) return null;
+  const localized = val as Record<string, unknown>;
+  const localeValue = localized[sourceLocale];
+  if (typeof localeValue !== 'string') return null;
+  if (!localeValue || localeValue.length >= 300) return null;
+  return localeValue;
 }
 
 /**
  * Generates descriptive context about a record to improve translation accuracy
- * 
+ *
  * This function extracts key information from a record's source locale values
  * to provide context for the AI model, helping it understand the content
  * it's translating. It focuses on title, name, and content fields.
- * 
+ *
  * @param formValues - The current form values from DatoCMS
  * @param sourceLocale - The source locale code
  * @returns Formatted context string for use in translation prompts
  */
-export function generateRecordContext(formValues: Record<string, unknown>, sourceLocale: string): string {
+export function generateRecordContext(
+  formValues: Record<string, unknown>,
+  sourceLocale: string,
+): string {
   if (!formValues) return '';
 
   let contextStr = 'Content context: ';
   let hasAddedContext = false;
 
-  // Look for values that might represent titles, names, or main content
   for (const key in formValues) {
-    const val = formValues[key];
-    // Only use string values from the source locale
-    if (typeof val === 'object' && val !== null) {
-      const localized = val as Record<string, unknown>;
-      if (typeof localized[sourceLocale] === 'string') {
-        const value = localized[sourceLocale] as string;
-        if (value && value.length < 300) {
-          // Focus on fields likely to contain important context
-          if (
-            key.toLowerCase().includes('title') ||
-            key.toLowerCase().includes('name') ||
-            key.toLowerCase().includes('content') ||
-            key.toLowerCase().includes('description')
-          ) {
-            contextStr += `${key}: ${value}. `;
-            hasAddedContext = true;
-          }
-        }
-      }
+    if (!isContextField(key)) continue;
+    const value = extractLocaleString(formValues[key], sourceLocale);
+    if (value) {
+      contextStr += `${key}: ${value}. `;
+      hasAddedContext = true;
     }
   }
 

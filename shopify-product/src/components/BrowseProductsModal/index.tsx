@@ -1,13 +1,13 @@
+import { faSearch } from '@fortawesome/free-solid-svg-icons';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import classNames from 'classnames';
 import type { RenderModalCtx } from 'datocms-plugin-sdk';
+import { Button, Canvas, Spinner, TextInput } from 'datocms-react-ui';
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
-import { Button, TextInput, Canvas, Spinner } from 'datocms-react-ui';
-import s from './styles.module.css';
+import { normalizeConfig } from '../../types';
 import ShopifyClient, { type Product } from '../../utils/ShopifyClient';
 import useStore, { type State } from '../../utils/useStore';
-import { normalizeConfig } from '../../types';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faSearch } from '@fortawesome/free-solid-svg-icons';
-import classNames from 'classnames';
+import s from './styles.module.css';
 
 export default function BrowseProductsModal({ ctx }: { ctx: RenderModalCtx }) {
   const performSearch = useStore(
@@ -60,7 +60,7 @@ export default function BrowseProductsModal({ ctx }: { ctx: RenderModalCtx }) {
           </Button>
         </form>
         <div className={s.container}>
-          {products?.filter((x: any) => !!x) && (
+          {products?.filter((x) => !!x) && (
             <div
               className={classNames(s.products, {
                 [s.products__loading]: status === 'loading',

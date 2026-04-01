@@ -1,6 +1,6 @@
-import type { Column as TableColumn, Row as TableRow } from "react-table";
-import Textarea from "react-textarea-autosize";
-import type { Actions, Row } from "../../types";
+import type { Column as TableColumn, Row as TableRow } from 'react-table';
+import Textarea from 'react-textarea-autosize';
+import type { Actions, Row } from '../../types';
 
 type Props = Actions & {
   value: string;
@@ -12,31 +12,31 @@ type Props = Actions & {
 };
 
 function toTable(transfer: DataTransfer) {
-  const html = transfer.getData("text/html");
+  const html = transfer.getData('text/html');
   if (html) {
-    const document = new DOMParser().parseFromString(html, "text/html");
-    const tableEl = document.querySelector("table");
+    const document = new DOMParser().parseFromString(html, 'text/html');
+    const tableEl = document.querySelector('table');
 
     if (tableEl) {
       return Array.from(tableEl.rows).map((row) => {
         return Array.from(row.children).map(
           (column) =>
             column.textContent
-              ?.replace(/\n/g, " ")
-              .replace(/\s+/, " ")
-              .trim() || ""
+              ?.replace(/\n/g, ' ')
+              .replace(/\s+/, ' ')
+              .trim() || '',
         );
       });
     }
   }
 
-  const data = transfer.getData("text/plain");
+  const data = transfer.getData('text/plain');
 
-  if (data.includes("\t")) {
+  if (data.includes('\t')) {
     return data
       .trim()
       .split(/\r\n|\n|\r/)
-      .map((row) => row.split("\t"));
+      .map((row) => row.split('\t'));
   }
 
   return [[data.trim()]];
@@ -61,9 +61,9 @@ export default function EditableCell({
         const end = target.selectionEnd ?? 0;
 
         if (isMultiCell) {
-          onMultipleCellUpdate(index, id!, table);
+          onMultipleCellUpdate(index, id ?? '', table);
         } else {
-          const text = table[0]?.[0] ?? "";
+          const text = table[0]?.[0] ?? '';
           const newValue = value.slice(0, start) + text + value.slice(end);
           onCellUpdate(index, id as string, newValue);
 

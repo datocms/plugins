@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { TranslationProvider } from './types';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
+import type { TranslationProvider } from './types';
 
 vi.mock('@datocms/cma-client-browser', () => ({
   buildClient: vi.fn(() => ({
@@ -26,8 +26,8 @@ vi.mock('./translateArray', () => ({
   translateArray: vi.fn(),
 }));
 
-import { translateFieldValue } from './TranslateField';
 import { translateDefaultFieldValue } from './DefaultTranslation';
+import { translateFieldValue } from './TranslateField';
 import { translateArray } from './translateArray';
 
 describe('TranslateField', () => {
@@ -68,8 +68,8 @@ describe('TranslateField', () => {
         '',
         'api-token',
         'field-slug',
-        'main'
-      )
+        'main',
+      ),
     ).resolves.toBe('caffe-te');
   });
 
@@ -87,15 +87,15 @@ describe('TranslateField', () => {
         '',
         'api-token',
         'field-slug',
-        'main'
-      )
+        'main',
+      ),
     ).rejects.toThrow('Translated slug is empty after normalization');
   });
 
   it('removes only wrapper ids from block payloads while preserving nested metadata ids', async () => {
     vi.mocked(translateArray).mockResolvedValue(['Clicca qui']);
 
-    const result = await translateFieldValue(
+    const result = (await translateFieldValue(
       [
         {
           id: 'wrapper-id',
@@ -122,8 +122,8 @@ describe('TranslateField', () => {
       '',
       'api-token',
       'field-rich',
-      'main'
-    ) as Array<{
+      'main',
+    )) as Array<{
       id?: string;
       content: Array<{
         children: Array<{
@@ -138,6 +138,8 @@ describe('TranslateField', () => {
       id: 'target',
       value: '_blank',
     });
-    expect(result[0].content[0].children[0].children[0].value).toBe('Clicca qui');
+    expect(result[0].content[0].children[0].children[0].value).toBe(
+      'Clicca qui',
+    );
   });
 });

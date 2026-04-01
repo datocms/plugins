@@ -73,7 +73,10 @@ const googleImageSizeOptionsByAspectRatio = {
   '3:2': [{ value: 'native', label: '1248×832 px' }],
 } satisfies Record<AspectRatio, ImageSizeOption[]>;
 
-const openAiRequestSizeByAspectRatio: Record<AspectRatio, `${number}x${number}`> = {
+const openAiRequestSizeByAspectRatio: Record<
+  AspectRatio,
+  `${number}x${number}`
+> = {
   '1:1': '1024x1024',
   '2:3': '1024x1536',
   '3:2': '1536x1024',
@@ -87,7 +90,9 @@ export function getAspectRatioLabel(value: AspectRatioOption['value']): string {
   return labelByAspectRatio[value];
 }
 
-export function getSupportedModels(provider: ProviderId): SupportedImageModel[] {
+export function getSupportedModels(
+  provider: ProviderId,
+): SupportedImageModel[] {
   return providerModels[provider];
 }
 
@@ -124,7 +129,9 @@ export function getImageSizeOptions(
   model: SupportedImageModel,
   aspectRatio: AspectRatio,
 ): ImageSizeOption[] {
-  return getCapabilities(provider, model).imageSizeOptionsByAspectRatio[aspectRatio];
+  return getCapabilities(provider, model).imageSizeOptionsByAspectRatio[
+    aspectRatio
+  ];
 }
 
 export function getDefaultImageSize(

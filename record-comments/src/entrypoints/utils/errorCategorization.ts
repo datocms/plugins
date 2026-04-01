@@ -42,13 +42,13 @@ const GENERAL_NETWORK_KEYWORDS = ['network', 'fetch', 'timeout'] as const;
 
 function messageContainsAny(
   errorMessage: string,
-  keywords: readonly string[]
+  keywords: readonly string[],
 ): boolean {
   return keywords.some((keyword) => errorMessage.includes(keyword));
 }
 
 export function categorizeSubscriptionError(
-  error: Error
+  error: Error,
 ): ErrorCategorization<SubscriptionErrorType> {
   const errorMessage = error.message.toLowerCase();
 
@@ -81,7 +81,7 @@ export function categorizeSubscriptionError(
 }
 
 export function categorizeGeneralError(
-  error: Error
+  error: Error,
 ): ErrorCategorization<GeneralErrorType> {
   const errorMessage = error.message.toLowerCase();
 

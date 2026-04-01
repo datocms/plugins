@@ -1,8 +1,11 @@
+import { Workbook } from 'exceljs';
+import { flatten } from 'flat';
 import { json2csv } from 'json-2-csv';
 import jsontoxml from 'jsontoxml';
 import type { AvailableFormats } from '../entrypoints/ConfigScreen';
-import { flatten } from 'flat';
-import { Workbook } from 'exceljs';
+import type { RecordExportEnvelope } from './recordExport';
+
+type RecordRow = Record<string, unknown>;
 
 function downloadFile(content: BlobPart, type: string, extension: string) {
   const file = new Blob([content], {
@@ -25,7 +28,7 @@ async function downloadXlsxFile(records: unknown[]): Promise<void> {
   });
 
   const columnKeys = Array.from(
-    new Set(flattenedData.flatMap((row) => Object.keys(row)))
+    new Set(flattenedData.flatMap((row) => Object.keys(row))),
   );
 
   const workbook = new Workbook();
@@ -36,31 +39,27 @@ async function downloadXlsxFile(records: unknown[]): Promise<void> {
     key,
   }));
 
-  flattenedData.forEach((row) => {
+  for (const row of flattenedData) {
     worksheet.addRow(row);
-  });
+  }
 
   const buffer = await workbook.xlsx.writeBuffer();
   downloadFile(
     buffer as BlobPart,
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    'xlsx'
+    'xlsx',
   );
 }
 
 async function downloadRecordsFile(
-  data: any,
-  format: AvailableFormats
+  data: RecordExportEnvelope | RecordRow[],
+  format: AvailableFormats,
 ): Promise<void> {
   const records = Array.isArray(data) ? data : data.records;
 
   switch (format) {
     case 'JSON':
-      downloadFile(
-        JSON.stringify(data, null, 2),
-        'application/json',
-        'json'
-      );
+      downloadFile(JSON.stringify(data, null, 2), 'application/json', 'json');
       break;
     case 'CSV':
       downloadFile(await json2csv(records), 'text/csv', 'csv');

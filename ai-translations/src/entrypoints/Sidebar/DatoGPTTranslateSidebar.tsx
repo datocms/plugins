@@ -1,14 +1,15 @@
 import type { RenderItemFormSidebarPanelCtx } from 'datocms-plugin-sdk';
 import { Button, Canvas, SelectField } from 'datocms-react-ui';
-import { useState, useEffect, useRef } from 'react';
-import type { ctxParamsType } from '../Config/ConfigScreen';
-import { motion, AnimatePresence } from 'framer-motion';
-import { translateRecordFields } from '../../utils/translateRecordFields';
-import { ChatBubble } from './Components/ChatbubbleTranslate';
+import { AnimatePresence, motion } from 'framer-motion';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { MdCelebration } from 'react-icons/md';
 import { localeSelect } from '../../utils/localeUtils';
-import { isProviderConfigured } from '../../utils/translation/ProviderFactory';
+import { translateRecordFields } from '../../utils/translateRecordFields';
 import { handleUIError } from '../../utils/translation/ProviderErrors';
+import { isProviderConfigured } from '../../utils/translation/ProviderFactory';
+import type { ctxParamsType } from '../Config/ConfigScreen';
+import { ChatBubble } from './Components/ChatbubbleTranslate';
+
 /**
  * DatoGPTTranslateSidebar.tsx
  *
@@ -49,14 +50,14 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
 
   // The first locale in internalLocales is considered the source/base locale
   const [selectedLocale, setSelectedLocale] = useState<string>(
-    (ctx.formValues.internalLocales as Array<string>)[0]
+    (ctx.formValues.internalLocales as Array<string>)[0],
   );
 
   // By default, all other locales are target locales
   const [selectedLocales, setSelectedLocales] = useState<Array<string>>(
     (ctx.formValues.internalLocales as Array<string>).filter(
-      (locale) => locale !== selectedLocale
-    )
+      (locale) => locale !== selectedLocale,
+    ),
   );
 
   // isLoading tracks if translation is in progress
@@ -92,13 +93,17 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
   // Prevent duplicate success notices across effect and completion handler
   const successShownRef = useRef(false);
 
-  function showSuccessNoticeOnce() {
+  // Stable callback — wrapped in useCallback so it can be safely listed as a
+  // useEffect dependency without triggering infinite re-renders.
+  const showSuccessNoticeOnce = useCallback(() => {
     if (successShownRef.current) return;
     successShownRef.current = true;
-    ctx.notice('Translations were applied to the form. Review them and click Save to persist the changes.');
+    ctx.notice(
+      'Translations were applied to the form. Review them and click Save to persist the changes.',
+    );
     setShowTimer(true);
     setProgress(100);
-  }
+  }, [ctx]);
 
   // Timer effect
   useEffect(() => {
@@ -131,7 +136,9 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
   useEffect(() => {
     if (!isLoading || isCancelling || showTimer) return;
     if (translationBubbles.length === 0) return;
-    const allFinished = translationBubbles.every((b) => b.status === 'done' || b.status === 'error');
+    const allFinished = translationBubbles.every(
+      (b) => b.status === 'done' || b.status === 'error',
+    );
     const hasErrors = translationBubbles.some((b) => b.status === 'error');
     if (allFinished) {
       const t = setTimeout(() => {
@@ -144,7 +151,13 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
       }, 100); // allow final bubble animation to commit
       return () => clearTimeout(t);
     }
-  }, [translationBubbles, isLoading, isCancelling, showTimer, showSuccessNoticeOnce]);
+  }, [
+    translationBubbles,
+    isLoading,
+    isCancelling,
+    showTimer,
+    showSuccessNoticeOnce,
+  ]);
 
   // If not configured, prompt user to fix configuration
   if (!isProviderConfigured(pluginParams)) {
@@ -162,9 +175,7 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
           <Button
             buttonType="muted"
             onClick={() =>
-              ctx.navigateTo(
-                `/configuration/plugins/${ctx.plugin.id}/edit`
-              )
+              ctx.navigateTo(`/configuration/plugins/${ctx.plugin.id}/edit`)
             }
           >
             Configure credentials for your selected AI vendor in settings
@@ -185,7 +196,7 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
     setTranslationBubbles([]);
     setIsCancelling(false);
     successShownRef.current = false;
-    
+
     // Create a new AbortController for this translation session
     const controller = new AbortController();
     abortControllerRef.current = controller;
@@ -214,13 +225,19 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
               ];
             });
           },
-          onStream: (_fieldLabel, _locale, fieldPath, _baseFieldPath, content) => {
+          onStream: (
+            _fieldLabel,
+            _locale,
+            fieldPath,
+            _baseFieldPath,
+            content,
+          ) => {
             setTranslationBubbles((prev) =>
               prev.map((bubble) =>
                 bubble.id === fieldPath
                   ? { ...bubble, streamingContent: content }
-                  : bubble
-              )
+                  : bubble,
+              ),
             );
           },
           onComplete: (_fieldLabel, _locale, fieldPath) => {
@@ -228,23 +245,36 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
               prev.map((bubble) =>
                 bubble.id === fieldPath
                   ? { ...bubble, status: 'done', streamingContent: undefined }
-                  : bubble
-              )
+                  : bubble,
+              ),
             );
           },
-          onError: (fieldLabel, locale, fieldPath, _baseFieldPath, errorMessage) => {
+          onError: (
+            fieldLabel,
+            locale,
+            fieldPath,
+            _baseFieldPath,
+            errorMessage,
+          ) => {
             setTranslationBubbles((prev) =>
               prev.map((bubble) =>
                 bubble.id === fieldPath
-                  ? { ...bubble, status: 'error', streamingContent: undefined, errorMessage }
-                  : bubble
-              )
+                  ? {
+                      ...bubble,
+                      status: 'error',
+                      streamingContent: undefined,
+                      errorMessage,
+                    }
+                  : bubble,
+              ),
             );
-            ctx.alert(`Failed to translate "${fieldLabel}" to ${locale}: ${errorMessage}`);
+            ctx.alert(
+              `Failed to translate "${fieldLabel}" to ${locale}: ${errorMessage}`,
+            );
           },
           checkCancellation: () => isCancelling,
-          abortSignal: controller.signal
-        }
+          abortSignal: controller.signal,
+        },
       );
 
       if (isCancelling) {
@@ -264,7 +294,7 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
 
   /**
    * handleCancelTranslation
-   * 
+   *
    * Called when "Cancel" is clicked during translation.
    * Sets the cancellation flag and shows a notification.
    * Aborts the current API request if one is in progress.
@@ -272,7 +302,7 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
   function handleCancelTranslation() {
     setIsCancelling(true);
     ctx.notice('Translation cancellation requested. Please wait...');
-    
+
     // Abort the API request
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -331,8 +361,8 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
                   setSelectedLocale(newSourceLocale);
                   setSelectedLocales(
                     (ctx.formValues.internalLocales as Array<string>).filter(
-                      (locale) => locale !== newSourceLocale
-                    )
+                      (locale) => locale !== newSourceLocale,
+                    ),
                   );
                 }}
               />
@@ -358,7 +388,7 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
                 }}
                 onChange={(newValue) => {
                   setSelectedLocales(
-                    newValue?.map((locale) => locale.value) || []
+                    newValue?.map((locale) => locale.value) || [],
                   );
                 }}
               />
@@ -405,15 +435,11 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
                     padding: 0,
                     width: '100%',
                     cursor: 'pointer',
-                    textAlign: 'left'
+                    textAlign: 'left',
                   }}
                   type="button"
                 >
-                  <ChatBubble
-                    index={index}
-                    bubble={bubble}
-                    theme={ctx.theme}
-                  />
+                  <ChatBubble index={index} bubble={bubble} theme={ctx.theme} />
                 </button>
               ))}
               {showTimer && (
@@ -455,7 +481,8 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
                     >
                       <MdCelebration size={20} />
                     </motion.div>
-                    Translations were applied to the form. Review them and click Save.
+                    Translations were applied to the form. Review them and click
+                    Save.
                     <motion.div
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}

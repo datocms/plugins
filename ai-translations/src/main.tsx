@@ -6,52 +6,60 @@
  * the translation logic when actions are invoked.
  */
 
-import { connect } from 'datocms-plugin-sdk';
 import type {
-  ItemDropdownActionsCtx,
   DropdownAction,
   DropdownActionGroup,
-  RenderFieldExtensionCtx,
   ExecuteFieldDropdownActionCtx,
-  FieldDropdownActionsCtx,
-  ItemType,
-  ItemFormSidebarPanelsCtx,
   ExecuteItemsDropdownActionCtx,
+  FieldDropdownActionsCtx,
   Item,
+  ItemDropdownActionsCtx,
+  ItemFormSidebarPanelsCtx,
+  ItemType,
+  RenderFieldExtensionCtx,
   RenderItemFormSidebarPanelCtx,
   RenderModalCtx,
   RenderPageCtx,
   SettingsAreaSidebarItemGroupsCtx,
 } from 'datocms-plugin-sdk';
+import { connect } from 'datocms-plugin-sdk';
 
-import {
-  Button,
-  Canvas,
-} from 'datocms-react-ui';
+import { Button, Canvas } from 'datocms-react-ui';
 
 import 'datocms-react-ui/styles.css';
+import ErrorBoundary from './components/ErrorBoundary';
+import TranslationProgressModal from './components/TranslationProgressModal';
 import ConfigScreen, {
   type ctxParamsType,
-  modularContentVariations,
-  translateFieldTypes,
   isValidCtxParams,
 } from './entrypoints/Config/ConfigScreen';
-import { render } from './utils/render';
-import { localeSelect } from './utils/localeUtils';
-import TranslateField from './utils/translation/TranslateField';
-import DatoGPTTranslateSidebar from './entrypoints/Sidebar/DatoGPTTranslateSidebar';
-import LoadingAddon from './entrypoints/LoadingAddon';
-import { defaultPrompt } from './prompts/DefaultPrompt';
-import TranslationProgressModal from './components/TranslationProgressModal';
-import ErrorBoundary from './components/ErrorBoundary';
+import {
+  modularContentVariations,
+  translateFieldTypes,
+} from './entrypoints/Config/configConstants';
 import AIBulkTranslationsPage from './entrypoints/CustomPage/AIBulkTranslationsPage';
-
+import LoadingAddon from './entrypoints/LoadingAddon';
+import DatoGPTTranslateSidebar from './entrypoints/Sidebar/DatoGPTTranslateSidebar';
+import { defaultPrompt } from './prompts/DefaultPrompt';
+import { localeSelect } from './utils/localeUtils';
+import { render } from './utils/render';
 // Import refactored utility functions and types
 import { parseActionId } from './utils/translation/ItemsDropdownUtils';
-import { isProviderConfigured, getProvider } from './utils/translation/ProviderFactory';
-import { isFieldExcluded, isFieldTranslatable } from './utils/translation/SharedFieldUtils';
+import {
+  formatErrorForUser,
+  handleUIError,
+  normalizeProviderError,
+} from './utils/translation/ProviderErrors';
+import {
+  getProvider,
+  isProviderConfigured,
+} from './utils/translation/ProviderFactory';
+import {
+  isFieldExcluded,
+  isFieldTranslatable,
+} from './utils/translation/SharedFieldUtils';
+import TranslateField from './utils/translation/TranslateField';
 import { isEmptyStructuredText } from './utils/translation/utils';
-import { normalizeProviderError, formatErrorForUser, handleUIError } from './utils/translation/ProviderErrors';
 
 /**
  * Result shape returned from the translation progress modal.
@@ -81,7 +89,9 @@ interface TranslationProgressModalParams {
  * @param params - The parameters to validate.
  * @returns True if params has all required TranslationProgressModalParams fields.
  */
-function isTranslationProgressModalParams(params: unknown): params is TranslationProgressModalParams {
+function isTranslationProgressModalParams(
+  params: unknown,
+): params is TranslationProgressModalParams {
   if (!params || typeof params !== 'object') return false;
   const p = params as Record<string, unknown>;
   return (
@@ -104,7 +114,9 @@ function isTranslationProgressModalParams(params: unknown): params is Translatio
  * @param ctx - Any DatoCMS context with plugin attributes.
  * @returns Typed plugin parameters.
  */
-function getPluginParams(ctx: { plugin: { attributes: { parameters: unknown } } }): ctxParamsType {
+function getPluginParams(ctx: {
+  plugin: { attributes: { parameters: unknown } };
+}): ctxParamsType {
   const params = ctx.plugin.attributes.parameters;
 
   if (isValidCtxParams(params)) {
@@ -120,7 +132,9 @@ function getPluginParams(ctx: { plugin: { attributes: { parameters: unknown } } 
  * Type guard for TranslationModalResult.
  * The modal can return undefined or an object with completed/canceled flags.
  */
-function isTranslationModalResult(value: unknown): value is TranslationModalResult {
+function isTranslationModalResult(
+  value: unknown,
+): value is TranslationModalResult {
   return (
     value !== null &&
     typeof value === 'object' &&
@@ -133,13 +147,20 @@ function isTranslationModalResult(value: unknown): value is TranslationModalResu
  * @param obj - object to traverse
  * @param path - dot/bracket string path
  */
-function getValueAtPath(obj: Record<string, unknown> | unknown[], path: string): unknown {
+function getValueAtPath(
+  obj: Record<string, unknown> | unknown[],
+  path: string,
+): unknown {
   // Handle both dot and bracket notation
   const parts = path.replace(/\[([^\]]+)\]/g, '.$1').split('.');
   let current: unknown = obj;
 
   for (const part of parts) {
-    if (current === null || current === undefined || typeof current !== 'object') {
+    if (
+      current === null ||
+      current === undefined ||
+      typeof current !== 'object'
+    ) {
       return undefined;
     }
     current = (current as Record<string, unknown>)[part];
@@ -149,15 +170,83 @@ function getValueAtPath(obj: Record<string, unknown> | unknown[], path: string):
 }
 
 /**
+ * Determines whether the plugin should suppress dropdown actions for a field
+ * based on model exclusion, role exclusion, field exclusion, and translatability.
+ *
+ * @param pluginParams - Plugin configuration parameters.
+ * @param ctx - Field dropdown actions context.
+ * @returns True if the field's dropdown should return an empty array.
+ */
+function isFieldDropdownSuppressed(
+  pluginParams: ctxParamsType,
+  ctx: FieldDropdownActionsCtx,
+): boolean {
+  const isModelExcluded =
+    pluginParams.modelsToBeExcludedFromThisPlugin.includes(
+      ctx.itemType.attributes.api_key,
+    );
+  const isRoleExcluded = pluginParams.rolesToBeExcludedFromThisPlugin.includes(
+    ctx.currentRole.id,
+  );
+  const fieldExcluded = isFieldExcluded(
+    pluginParams.apiKeysToBeExcludedFromThisPlugin,
+    [ctx.field.id, ctx.field.attributes.api_key, ctx.fieldPath],
+  );
+  const fieldTranslatable = isFieldTranslatable(
+    ctx.field.attributes.appearance.editor,
+    pluginParams.translationFields,
+    modularContentVariations,
+  );
+  return (
+    isModelExcluded || isRoleExcluded || fieldExcluded || !fieldTranslatable
+  );
+}
+
+/**
+ * Resolves whether the current locale contains a non-empty translatable value
+ * for the given field. Handles both direct values and locale-keyed objects.
+ *
+ * @param fieldType - The field editor type identifier.
+ * @param fieldValue - The raw field value from form values.
+ * @param locale - The current editing locale.
+ * @returns True if the field has a non-empty value in the current locale.
+ */
+function resolveHasFieldValueInLocale(
+  fieldType: string,
+  fieldValue: unknown,
+  locale: string,
+): boolean {
+  const isLocaleKeyedObject =
+    fieldValue &&
+    typeof fieldValue === 'object' &&
+    !Array.isArray(fieldValue) &&
+    locale in (fieldValue as Record<string, unknown>);
+
+  if (isLocaleKeyedObject) {
+    const fieldValueInThisLocale = (fieldValue as Record<string, unknown>)[
+      locale
+    ];
+    const emptyStructuredText =
+      fieldType === 'structured_text' &&
+      isEmptyStructuredText(fieldValueInThisLocale);
+    return !!fieldValueInThisLocale && !emptyStructuredText;
+  }
+
+  const emptyStructuredText =
+    fieldType === 'structured_text' && isEmptyStructuredText(fieldValue);
+  return !!fieldValue && !emptyStructuredText;
+}
+
+/**
  * Primary plugin connection point.
  */
 connect({
   onBoot(ctx) {
     const pluginParams = getPluginParams(ctx);
-    
+
     // Collect all missing default values in a single object
     const defaults: Partial<ctxParamsType> = {};
-    
+
     if (!pluginParams.vendor) {
       defaults.vendor = 'openai';
     }
@@ -182,16 +271,18 @@ connect({
     if (!pluginParams.gptModel) {
       defaults.gptModel = 'gpt-5.4-mini';
     }
-    
+
     // Apply all defaults in a single update call if any are needed
     if (Object.keys(defaults).length > 0) {
       ctx.updatePluginParameters({ ...pluginParams, ...defaults });
     }
-    
+
     // Check if provider is configured after applying defaults
     const effectiveParams = { ...pluginParams, ...defaults };
     if (!isProviderConfigured(effectiveParams as ctxParamsType)) {
-      ctx.alert('Please configure credentials for the selected AI vendor in the settings page');
+      ctx.alert(
+        'Please configure credentials for the selected AI vendor in the settings page',
+      );
     }
   },
 
@@ -199,17 +290,17 @@ connect({
     return render(
       <ErrorBoundary>
         <ConfigScreen ctx={ctx} />
-      </ErrorBoundary>
+      </ErrorBoundary>,
     );
   },
-  
+
   // New hook to add a custom section in the Settings area
   settingsAreaSidebarItemGroups(ctx: SettingsAreaSidebarItemGroupsCtx) {
     // Only show to users who can edit schema
     if (!ctx.currentRole.attributes.can_edit_schema) {
       return [];
     }
-    
+
     return [
       {
         label: 'AI Translations',
@@ -225,49 +316,66 @@ connect({
       },
     ];
   },
-  
+
   // Update renderPage function to render our custom page
   renderPage(pageId: string, ctx: RenderPageCtx) {
     switch (pageId) {
       case 'ai-bulk-translations':
         return render(
           <ErrorBoundary
-            onNavigateToSettings={() => ctx.navigateTo(`/configuration/plugins/${ctx.plugin.id}/edit`)}
+            onNavigateToSettings={() =>
+              ctx.navigateTo(`/configuration/plugins/${ctx.plugin.id}/edit`)
+            }
           >
             <AIBulkTranslationsPage ctx={ctx} />
-          </ErrorBoundary>
+          </ErrorBoundary>,
         );
       default:
         return null;
     }
   },
-  
+
   itemsDropdownActions(_itemType: ItemType, ctx: ItemDropdownActionsCtx) {
     const pluginParams = getPluginParams(ctx);
-    
+
     // Check for feature toggle and exclusion rules
-    const isRoleExcluded = pluginParams.rolesToBeExcludedFromThisPlugin?.includes(ctx.currentRole.id);
-    const isModelExcluded = pluginParams.modelsToBeExcludedFromThisPlugin?.includes(_itemType.attributes.api_key);
-    
+    const isRoleExcluded =
+      pluginParams.rolesToBeExcludedFromThisPlugin?.includes(
+        ctx.currentRole.id,
+      );
+    const isModelExcluded =
+      pluginParams.modelsToBeExcludedFromThisPlugin?.includes(
+        _itemType.attributes.api_key,
+      );
+
     // Return empty array if bulk translation is disabled or if role/model is excluded
-    if ((typeof pluginParams.translateBulkRecords === 'boolean' && !pluginParams.translateBulkRecords) ||
-        isRoleExcluded || 
-        isModelExcluded) {
+    if (
+      (typeof pluginParams.translateBulkRecords === 'boolean' &&
+        !pluginParams.translateBulkRecords) ||
+      isRoleExcluded ||
+      isModelExcluded
+    ) {
       return [];
     }
 
     return ctx.site.attributes.locales.map((locale) => ({
       label: `Translate Record from ${locale}`,
-      icon: "language",
-      actions: ctx.site.attributes.locales.filter((targetLocale) => targetLocale !== locale).map((targetLocale) => ({
-        label: `to ${targetLocale}`,
-        icon: "globe",
-        id: `translateRecord-${locale}-${targetLocale}`,
-      }))
+      icon: 'language',
+      actions: ctx.site.attributes.locales
+        .filter((targetLocale) => targetLocale !== locale)
+        .map((targetLocale) => ({
+          label: `to ${targetLocale}`,
+          icon: 'globe',
+          id: `translateRecord-${locale}-${targetLocale}`,
+        })),
     }));
   },
 
-  async executeItemsDropdownAction(actionId: string, items: Item[], ctx: ExecuteItemsDropdownActionCtx) {
+  async executeItemsDropdownAction(
+    actionId: string,
+    items: Item[],
+    ctx: ExecuteItemsDropdownActionCtx,
+  ) {
     if (!ctx.currentUserAccessToken) {
       ctx.alert('No user access token found');
       return;
@@ -275,7 +383,7 @@ connect({
 
     // Parse action ID to get locale information
     const { fromLocale, toLocale } = parseActionId(actionId);
-    
+
     const pluginParams = getPluginParams(ctx);
 
     // Open a modal to show translation progress and handle translation process
@@ -289,25 +397,29 @@ connect({
         toLocale,
         accessToken: ctx.currentUserAccessToken,
         pluginParams,
-        itemIds: items.map(item => item.id)
-      }
+        itemIds: items.map((item) => item.id),
+      },
     });
-    
+
     try {
       // Wait for the modal to be closed by the user
       const result = await modalPromise;
 
       if (isTranslationModalResult(result)) {
         if (result.completed) {
-          ctx.notice(`Successfully translated ${items.length} record(s) from ${fromLocale} to ${toLocale}`);
+          ctx.notice(
+            `Successfully translated ${items.length} record(s) from ${fromLocale} to ${toLocale}`,
+          );
         } else if (result.canceled) {
-          ctx.notice(`Translation from ${fromLocale} to ${toLocale} was canceled`);
+          ctx.notice(
+            `Translation from ${fromLocale} to ${toLocale} was canceled`,
+          );
         }
       }
     } catch (error) {
       handleUIError(error, pluginParams.vendor, ctx);
     }
-    
+
     return;
   },
 
@@ -320,7 +432,7 @@ connect({
       pluginParams.rolesToBeExcludedFromThisPlugin.includes(ctx.currentRole.id);
     const isModelExcluded =
       pluginParams.modelsToBeExcludedFromThisPlugin.includes(
-        model.attributes.api_key
+        model.attributes.api_key,
       );
 
     if (
@@ -346,7 +458,7 @@ connect({
    */
   renderItemFormSidebarPanel(
     sidebarPanelId,
-    ctx: RenderItemFormSidebarPanelCtx
+    ctx: RenderItemFormSidebarPanelCtx,
   ) {
     const pluginParams = getPluginParams(ctx);
     if (!isProviderConfigured(pluginParams)) {
@@ -363,7 +475,7 @@ connect({
           >
             Open Settings
           </Button>
-        </Canvas>
+        </Canvas>,
       );
     }
     if (sidebarPanelId === 'datoGptTranslateSidebar') {
@@ -373,10 +485,12 @@ connect({
       ) {
         return render(
           <ErrorBoundary
-            onNavigateToSettings={() => ctx.navigateTo(`/configuration/plugins/${ctx.plugin.id}/edit`)}
+            onNavigateToSettings={() =>
+              ctx.navigateTo(`/configuration/plugins/${ctx.plugin.id}/edit`)
+            }
           >
             <DatoGPTTranslateSidebar ctx={ctx} />
-          </ErrorBoundary>
+          </ErrorBoundary>,
         );
       }
       return render(
@@ -385,7 +499,7 @@ connect({
             For the translate feature to work, you need to have more than one
             locale in this record.
           </p>
-        </Canvas>
+        </Canvas>,
       );
     }
     return null;
@@ -403,81 +517,32 @@ connect({
         {
           id: 'not-configured',
           label: 'Please configure valid AI vendor credentials',
-          icon: "language",
+          icon: 'language',
         } as DropdownAction,
       ];
     }
 
-    const isModelExcluded =
-      pluginParams.modelsToBeExcludedFromThisPlugin.includes(
-        ctx.itemType.attributes.api_key
-      );
-
-    const isRoleExcluded =
-      pluginParams.rolesToBeExcludedFromThisPlugin.includes(ctx.currentRole.id);
-
-    const fieldExcluded = isFieldExcluded(
-      pluginParams.apiKeysToBeExcludedFromThisPlugin,
-      [ctx.field.id, ctx.field.attributes.api_key, ctx.fieldPath]
-    );
-
-    const fieldTranslatable = isFieldTranslatable(
-      ctx.field.attributes.appearance.editor,
-      pluginParams.translationFields,
-      modularContentVariations
-    );
-
-    if (
-      isModelExcluded ||
-      isRoleExcluded ||
-      fieldExcluded ||
-      !fieldTranslatable
-    ) {
+    if (isFieldDropdownSuppressed(pluginParams, ctx)) {
       return [];
     }
 
-    // Extract field type from field's appearance
     const fieldType = ctx.field.attributes.appearance.editor;
-
-    // Attempt to get field value from form values
     const fieldValue =
       ctx.formValues[ctx.field.attributes.api_key] ||
       (ctx.parentField?.attributes.localized &&
         getValueAtPath(ctx.formValues, ctx.fieldPath));
 
-    // Specialized check for structured text that might appear empty
-    let emptyStructuredText =
-      fieldType === 'structured_text' && isEmptyStructuredText(fieldValue);
+    const hasFieldValueInThisLocale = resolveHasFieldValueInLocale(
+      fieldType,
+      fieldValue,
+      ctx.locale,
+    );
 
-    let hasFieldValueInThisLocale = !!fieldValue && !emptyStructuredText;
-
-    // Check if there are multiple locales in this record
     const hasOtherLocales =
       Array.isArray(ctx.formValues.internalLocales) &&
       ctx.formValues.internalLocales.length > 1;
 
-    // Check if field is localized
     const isLocalized = ctx.field.attributes.localized;
-
-    // Additional check if fieldValue is an object keyed by locales
-    if (
-      fieldValue &&
-      typeof fieldValue === 'object' &&
-      !Array.isArray(fieldValue) &&
-      ctx.locale in (fieldValue as Record<string, unknown>)
-    ) {
-      const fieldValueInThisLocale = (fieldValue as Record<string, unknown>)[
-        ctx.locale
-      ];
-
-      emptyStructuredText =
-        fieldType === 'structured_text' &&
-        isEmptyStructuredText(fieldValueInThisLocale);
-
-      hasFieldValueInThisLocale =
-        !!fieldValueInThisLocale && !emptyStructuredText;
-    }
-
     const actionsArray: (DropdownAction | DropdownActionGroup)[] = [];
     const availableLocales = ctx.formValues.internalLocales as string[];
 
@@ -485,7 +550,7 @@ connect({
     if (isLocalized && hasOtherLocales && hasFieldValueInThisLocale) {
       actionsArray.push({
         label: 'Translate to',
-        icon: "language",
+        icon: 'language',
         actions: [
           {
             id: 'translateTo.allLocales',
@@ -507,7 +572,7 @@ connect({
     if (isLocalized && hasOtherLocales) {
       actionsArray.push({
         label: 'Translate from',
-        icon: "language",
+        icon: 'language',
         actions: [
           ...availableLocales
             .filter((locale) => locale !== ctx.locale)
@@ -529,7 +594,7 @@ connect({
         return render(
           <ErrorBoundary>
             <LoadingAddon ctx={ctx} />
-          </ErrorBoundary>
+          </ErrorBoundary>,
         );
       default:
         // Unknown field extension; return null to let SDK handle gracefully
@@ -542,7 +607,7 @@ connect({
    */
   async executeFieldDropdownAction(
     actionId: string,
-    ctx: ExecuteFieldDropdownActionCtx
+    ctx: ExecuteFieldDropdownActionCtx,
   ) {
     const pluginParams = getPluginParams(ctx);
     const locales = ctx.formValues.internalLocales as string[];
@@ -558,7 +623,7 @@ connect({
       )?.[locale];
       if (!fieldValueInSourceLocale) {
         ctx.alert(
-          `The field on the ${localeSelect(locale)?.name} locale is empty`
+          `The field on the ${localeSelect(locale)?.name} locale is empty`,
         );
         return;
       }
@@ -591,12 +656,12 @@ connect({
       // Persist translated value into the current editing locale
       await ctx.setFieldValue(
         `${ctx.field.attributes.api_key}.${ctx.locale}`,
-        translatedValue
+        translatedValue,
       );
       ctx.notice(
         `Translated "${ctx.field.attributes.label}" from ${
           localeSelect(locale)?.name
-        }`
+        }`,
       );
 
       return;
@@ -613,8 +678,12 @@ connect({
           message: `Translating "${ctx.field.attributes.label}" to all locales...`,
           dismissAfterTimeout: true,
         });
-        for (const loc of locales) {
-          if (loc === ctx.locale) continue;
+
+        /**
+         * Translates a single locale and writes the result to the form.
+         * Extracted to avoid await-in-loop lint errors in the sequential chain.
+         */
+        const translateToLocale = async (loc: string): Promise<void> => {
           let translatedValue: unknown;
           try {
             translatedValue = await TranslateField(
@@ -630,14 +699,21 @@ connect({
             const provider = getProvider(pluginParams);
             const normalized = normalizeProviderError(e, provider.vendor);
             ctx.alert(formatErrorForUser(normalized));
-            continue;
+            return;
           }
 
           await ctx.setFieldValue(
             `${ctx.field.attributes.api_key}.${loc}`,
-            translatedValue
+            translatedValue,
           );
-        }
+        };
+
+        const targetLocales = locales.filter((loc) => loc !== ctx.locale);
+        await targetLocales.reduce(
+          (chain, loc) => chain.then(() => translateToLocale(loc)),
+          Promise.resolve(),
+        );
+
         ctx.notice(`Translated "${ctx.field.attributes.label}" to all locales`);
         return;
       }
@@ -671,12 +747,12 @@ connect({
 
       await ctx.setFieldValue(
         `${ctx.field.attributes.api_key}.${locale}`,
-        translatedValue
+        translatedValue,
       );
       ctx.notice(
         `Translated "${ctx.field.attributes.label}" to ${
           localeSelect(locale)?.name
-        }`
+        }`,
       );
       return;
     }
@@ -686,7 +762,7 @@ connect({
       ctx.navigateTo(`/configuration/plugins/${ctx.plugin.id}/edit`);
     }
   },
-  
+
   /**
    * Renders modal components.
    */
@@ -697,19 +773,16 @@ connect({
           return render(
             <Canvas ctx={ctx}>
               <p>Invalid modal parameters</p>
-            </Canvas>
+            </Canvas>,
           );
         }
         return render(
           <ErrorBoundary>
-            <TranslationProgressModal
-              ctx={ctx}
-              parameters={ctx.parameters}
-            />
-          </ErrorBoundary>
+            <TranslationProgressModal ctx={ctx} parameters={ctx.parameters} />
+          </ErrorBoundary>,
         );
       default:
         return null;
     }
-  }
+  },
 });

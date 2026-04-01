@@ -1,13 +1,13 @@
+import styles from '@styles/comment.module.css';
 import { memo } from 'react';
 import { cn } from '@/utils/cn';
 import {
-  MoreVerticalIcon,
-  UpvoteIcon,
-  ReplyIcon,
-  EditIcon,
   DeleteIcon,
+  EditIcon,
+  MoreVerticalIcon,
+  ReplyIcon,
+  UpvoteIcon,
 } from './Icons';
-import styles from '@styles/comment.module.css';
 
 type CommentActionsProps = {
   onUpvote: () => void;
@@ -20,7 +20,10 @@ type CommentActionsProps = {
   hasUpvotes: boolean;
 };
 
-function arePropsEqual(prev: CommentActionsProps, next: CommentActionsProps): boolean {
+function arePropsEqual(
+  prev: CommentActionsProps,
+  next: CommentActionsProps,
+): boolean {
   return (
     prev.userUpvoted === next.userUpvoted &&
     prev.userIsAuthor === next.userIsAuthor &&
@@ -57,7 +60,10 @@ const CommentActions = memo(function CommentActions({
         {!hasUpvotes && (
           <button
             type="button"
-            className={cn(styles.actionBtn, userUpvoted && styles.actionBtnActive)}
+            className={cn(
+              styles.actionBtn,
+              userUpvoted && styles.actionBtnActive,
+            )}
             onClick={onUpvote}
             aria-label={userUpvoted ? 'Remove upvote' : 'Upvote'}
           >

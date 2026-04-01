@@ -24,13 +24,13 @@ function weekStart(
     ? regionSun.includes(region)
       ? 0
       : regionSat.includes(region)
-      ? 6
-      : 1
+        ? 6
+        : 1
     : languageSun.includes(language)
-    ? 0
-    : languageSat.includes(language)
-    ? 6
-    : 1;
+      ? 0
+      : languageSat.includes(language)
+        ? 6
+        : 1;
 }
 
 export function weekStartLocale(locale: string) {

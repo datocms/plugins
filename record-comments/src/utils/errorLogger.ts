@@ -19,7 +19,7 @@ function isSensitiveKey(key: string): boolean {
 function sanitizeValue(
   value: unknown,
   key?: string,
-  seen = new WeakSet<object>()
+  seen = new WeakSet<object>(),
 ): unknown {
   if (key && isSensitiveKey(key)) {
     return '[redacted]';
@@ -40,7 +40,7 @@ function sanitizeValue(
       Object.entries(value).map(([entryKey, entryValue]) => [
         entryKey,
         sanitizeValue(entryValue, entryKey, seen),
-      ])
+      ]),
     );
   }
 
@@ -76,7 +76,9 @@ function stringifyLogValue(value: unknown): string | undefined {
   }
 
   const normalizedValue =
-    value instanceof Error ? sanitizeValue(normalizeError(value)) : sanitizeValue(value);
+    value instanceof Error
+      ? sanitizeValue(normalizeError(value))
+      : sanitizeValue(value);
 
   if (typeof normalizedValue === 'string') {
     return normalizedValue;
@@ -100,7 +102,7 @@ function stringifyLogValue(value: unknown): string | undefined {
 function buildLogMessage(
   level: 'error' | 'warn' | 'debug',
   message: string,
-  details: Record<string, unknown>
+  details: Record<string, unknown>,
 ): string {
   const lines = [`[RecordComments][${level}] ${message}`];
 
@@ -126,7 +128,7 @@ export function setDebugLoggingEnabled(enabled: boolean) {
 export function logError(
   message: string,
   error?: unknown,
-  context?: Record<string, unknown>
+  context?: Record<string, unknown>,
 ) {
   console.error(buildLogMessage('error', message, { error, context }));
 }

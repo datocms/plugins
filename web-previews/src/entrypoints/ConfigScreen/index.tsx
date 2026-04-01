@@ -1,3 +1,4 @@
+import type { IconName } from '@fortawesome/fontawesome-svg-core';
 import { findIconDefinition } from '@fortawesome/fontawesome-svg-core';
 import { faPlus } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
@@ -15,11 +16,11 @@ import { useState } from 'react';
 import { Field, Form as FormHandler } from 'react-final-form';
 import { FieldArray } from 'react-final-form-arrays';
 import {
+  denormalizeParameters,
+  normalizeParameters,
   type Parameters,
   type RawFrontend,
   type RawViewport,
-  denormalizeParameters,
-  normalizeParameters,
 } from '../../types';
 import { FrontendFieldItem } from './components/FrontendFieldItem';
 import { PreviewLinksSettings } from './components/PreviewLinksSettings';
@@ -27,6 +28,26 @@ import { ViewportFieldItem } from './components/ViewportFieldItem';
 
 type PropTypes = {
   ctx: RenderConfigScreenCtx;
+};
+
+type CustomHeader = {
+  name: string;
+  value: string;
+};
+
+type FrontendErrors = {
+  name?: string;
+  _error?: string;
+  previewWebhook?: string;
+  customHeaders?: Record<string, string>[];
+  visualEditing?: { enableDraftModeUrl?: string };
+};
+
+type ViewportErrors = {
+  name?: string;
+  width?: string;
+  height?: string;
+  icon?: string;
 };
 
 function isValidUrl(string: string) {
@@ -37,6 +58,110 @@ function isValidUrl(string: string) {
     return false;
   }
   return url.protocol === 'http:' || url.protocol === 'https:';
+}
+
+function isValidIconName(iconString: string): iconString is IconName {
+  const definition = findIconDefinition({
+    prefix: 'fas',
+    iconName: iconString as IconName,
+  });
+  return Boolean(definition);
+}
+
+function validateCustomHeaders(
+  headers: CustomHeader[] | undefined,
+): Record<string, string>[] | undefined {
+  return headers?.map((header) => {
+    const headerErrors: Record<string, string> = {};
+
+    if (!header.name) {
+      headerErrors.name = 'Name required!';
+    }
+
+    const isDuplicateHeaderName =
+      headers.filter((h) => h.name === header.name).length > 1;
+
+    if (isDuplicateHeaderName) {
+      headerErrors.name = 'Name must be unique!';
+    }
+
+    if (!header.value) {
+      headerErrors.value = 'Value required!';
+    }
+
+    return headerErrors;
+  });
+}
+
+function validateFrontend(
+  rule: RawFrontend,
+  allFrontends: RawFrontend[],
+): FrontendErrors {
+  const ruleErrors: FrontendErrors = {};
+
+  if (!rule.name) {
+    ruleErrors.name = 'Name required!';
+  }
+
+  const isDuplicateName =
+    (allFrontends.filter((f) => f.name === rule.name).length ?? 0) > 1;
+
+  if (isDuplicateName) {
+    ruleErrors.name = 'Name must be unique!';
+  }
+
+  const hasNoFeatureEnabled =
+    !rule.previewWebhook &&
+    !rule.visualEditing?.enableDraftModeUrl &&
+    !rule.disabled;
+
+  if (hasNoFeatureEnabled) {
+    ruleErrors._error =
+      'Enable at least one feature (Preview Links or Visual Editing) or disable this frontend.';
+  }
+
+  if (rule.previewWebhook && !isValidUrl(rule.previewWebhook)) {
+    ruleErrors.previewWebhook = 'Please specify a valid URL!';
+  }
+
+  const customHeaderErrors = validateCustomHeaders(rule.customHeaders);
+  if (customHeaderErrors) {
+    ruleErrors.customHeaders = customHeaderErrors;
+  }
+
+  if (rule.visualEditing?.enableDraftModeUrl) {
+    if (!isValidUrl(rule.visualEditing.enableDraftModeUrl)) {
+      ruleErrors.visualEditing = {
+        enableDraftModeUrl: 'Please specify a valid URL!',
+      };
+    }
+  }
+
+  return ruleErrors;
+}
+
+function validateViewport(rule: RawViewport): ViewportErrors {
+  const ruleErrors: ViewportErrors = {};
+
+  if (!rule.name) {
+    ruleErrors.name = 'Name required!';
+  }
+
+  if (!rule.width) {
+    ruleErrors.width = 'Width required!';
+  }
+
+  if (!rule.height) {
+    ruleErrors.height = 'Height required!';
+  }
+
+  if (!rule.icon) {
+    ruleErrors.icon = 'Icon required!';
+  } else if (!isValidIconName(rule.icon)) {
+    ruleErrors.icon = 'Invalid icon!';
+  }
+
+  return ruleErrors;
 }
 
 export default function ConfigScreen({ ctx }: PropTypes) {
@@ -50,103 +175,14 @@ export default function ConfigScreen({ ctx }: PropTypes) {
           normalizeParameters(ctx.plugin.attributes.parameters as Parameters),
         )}
         validate={(values) => {
-          const errors: Record<string, any> = {};
+          const errors: Record<string, unknown> = {};
 
-          errors.frontends = values.frontends?.map((rule: any) => {
-            const ruleErrors: Record<string, any> = {};
-
-            if (!rule.name) {
-              ruleErrors.name = 'Name required!';
-            }
-
-            if (
-              (values.frontends?.filter((f: any) => f.name === rule.name)
-                .length ?? 0) > 1
-            ) {
-              ruleErrors.name = 'Name must be unique!';
-            }
-
-            // Validate that at least one feature is enabled (using flat structure)
-            if (
-              !rule.previewWebhook &&
-              !rule.visualEditing?.enableDraftModeUrl &&
-              !rule.disabled
-            ) {
-              ruleErrors._error =
-                'Enable at least one feature (Preview Links or Visual Editing) or disable this frontend.';
-            }
-
-            // Validate preview API endpoint URL if provided (flat structure)
-            if (rule.previewWebhook && !isValidUrl(rule.previewWebhook)) {
-              ruleErrors.previewWebhook = 'Please specify a valid URL!';
-            }
-
-            // Validate custom headers (flat structure)
-            ruleErrors.customHeaders = rule.customHeaders?.map(
-              (header: any) => {
-                const headerErrors: Record<string, string> = {};
-
-                if (!header.name) {
-                  headerErrors.name = 'Name required!';
-                }
-
-                if (
-                  rule.customHeaders &&
-                  rule.customHeaders.filter((h: any) => h.name === header.name)
-                    .length > 1
-                ) {
-                  headerErrors.name = 'Name must be unique!';
-                }
-
-                if (!header.value) {
-                  headerErrors.value = 'Value required!';
-                }
-
-                return headerErrors;
-              },
-            );
-
-            // Validate visual editing URL if provided
-            if (rule.visualEditing?.enableDraftModeUrl) {
-              if (!isValidUrl(rule.visualEditing.enableDraftModeUrl)) {
-                ruleErrors.visualEditing = {
-                  enableDraftModeUrl: 'Please specify a valid URL!',
-                };
-              }
-            }
-
-            return ruleErrors;
+          errors.frontends = values.frontends?.map((rule) => {
+            return validateFrontend(rule, values.frontends ?? []);
           });
 
           errors.defaultViewports = values.defaultViewports?.map((rule) => {
-            const ruleErrors: Record<string, string> = {};
-
-            if (!rule.name) {
-              ruleErrors.name = 'Name required!';
-            }
-
-            if (!rule.width) {
-              ruleErrors.width = 'Width required!';
-            }
-
-            if (!rule.height) {
-              ruleErrors.height = 'Height required!';
-            }
-
-            if (!rule.icon) {
-              ruleErrors.icon = 'Icon required!';
-            }
-
-            const definition = findIconDefinition({
-              prefix: 'fas',
-              iconName: rule.icon as any,
-            });
-
-            if (!definition) {
-              ruleErrors.icon = 'Invalid icon!';
-            }
-
-            return ruleErrors;
+            return validateViewport(rule);
           });
 
           return errors;
@@ -193,7 +229,7 @@ export default function ConfigScreen({ ctx }: PropTypes) {
                             enableDraftModeUrl: '',
                             initialPath: '',
                           },
-                        } as any)
+                        })
                       }
                     >
                       Add new frontend

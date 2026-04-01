@@ -1,10 +1,14 @@
 import { buildClient, type Client } from '@datocms/cma-client-browser';
 import type { OnBootCtx } from 'datocms-plugin-sdk';
-import { COMMENTS_MODEL_API_KEY, COMMENT_FIELDS } from '@/constants';
+import { COMMENT_FIELDS, COMMENTS_MODEL_API_KEY } from '@/constants';
 
 type CommentsStorageClient = Pick<Client, 'itemTypes' | 'fields'>;
-type CommentsModel = Awaited<ReturnType<CommentsStorageClient['itemTypes']['list']>>[number];
-type CommentsField = Awaited<ReturnType<CommentsStorageClient['fields']['list']>>[number];
+type CommentsModel = Awaited<
+  ReturnType<CommentsStorageClient['itemTypes']['list']>
+>[number];
+type CommentsField = Awaited<
+  ReturnType<CommentsStorageClient['fields']['list']>
+>[number];
 
 const REQUIRED_COMMENT_FIELDS = [
   {
@@ -28,11 +32,12 @@ const REQUIRED_COMMENT_FIELDS = [
 ] as const;
 
 async function findCommentsModel(
-  client: CommentsStorageClient
+  client: CommentsStorageClient,
 ): Promise<CommentsModel | null> {
   const existingModels = await client.itemTypes.list();
   return (
-    existingModels.find((model) => model.api_key === COMMENTS_MODEL_API_KEY) ?? null
+    existingModels.find((model) => model.api_key === COMMENTS_MODEL_API_KEY) ??
+    null
   );
 }
 
@@ -40,9 +45,11 @@ async function ensureCommentField(
   client: CommentsStorageClient,
   modelId: string,
   fieldDefinition: (typeof REQUIRED_COMMENT_FIELDS)[number],
-  existingFields: CommentsField[]
+  existingFields: CommentsField[],
 ): Promise<CommentsField[]> {
-  if (existingFields.some((field) => field.api_key === fieldDefinition.api_key)) {
+  if (
+    existingFields.some((field) => field.api_key === fieldDefinition.api_key)
+  ) {
     return existingFields;
   }
 
@@ -63,22 +70,23 @@ async function ensureCommentField(
 
 async function ensureRequiredCommentFields(
   client: CommentsStorageClient,
-  modelId: string
+  modelId: string,
 ): Promise<void> {
-  let existingFields = await client.fields.list(modelId);
+  const initialFields = await client.fields.list(modelId);
 
-  for (const fieldDefinition of REQUIRED_COMMENT_FIELDS) {
-    existingFields = await ensureCommentField(
-      client,
-      modelId,
-      fieldDefinition,
-      existingFields
-    );
-  }
+  // Each field creation depends on the result of the previous (updated field list),
+  // so we chain sequentially using reduce rather than awaiting inside a loop.
+  await REQUIRED_COMMENT_FIELDS.reduce(
+    async (previousFieldsPromise, fieldDefinition) => {
+      const fields = await previousFieldsPromise;
+      return ensureCommentField(client, modelId, fieldDefinition, fields);
+    },
+    Promise.resolve(initialFields),
+  );
 }
 
 export async function ensureCommentsModelExistsWithClient(
-  client: CommentsStorageClient
+  client: CommentsStorageClient,
 ): Promise<string> {
   let commentsModel = await findCommentsModel(client);
 
@@ -102,7 +110,7 @@ export async function ensureCommentsModelExistsWithClient(
 }
 
 export async function ensureCommentsModelExists(
-  ctx: OnBootCtx
+  ctx: OnBootCtx,
 ): Promise<string | null> {
   if (!ctx.currentUserAccessToken) return null;
 

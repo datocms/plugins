@@ -13,7 +13,7 @@ import {
 describe('assetExport helpers', () => {
   test('buildAssetZipEntryName includes source ID and sanitized filename', () => {
     expect(buildAssetZipEntryName('upload:123', 'Hero Image (Final).png')).toBe(
-      'u_upload-123__Hero_Image_-Final-.png'
+      'u_upload-123__Hero_Image_-Final-.png',
     );
   });
 
@@ -23,7 +23,7 @@ describe('assetExport helpers', () => {
         part: 3,
         totalParts: 12,
         timestamp: '2026-02-09T12-00-00.000Z',
-      })
+      }),
     ).toBe('allAssets.part-003-of-012.2026-02-09T12-00-00.000Z.zip');
   });
 
@@ -53,11 +53,13 @@ describe('assetExport helpers', () => {
         maxZipBytes: 100,
         maxFilesPerZip: 10,
         sizeSafetyFactor: 1,
-      }
+      },
     );
 
     expect(chunks).toHaveLength(2);
-    expect(chunks[0].assets.map((asset) => asset.sourceUploadId)).toEqual(['1']);
+    expect(chunks[0].assets.map((asset) => asset.sourceUploadId)).toEqual([
+      '1',
+    ]);
     expect(chunks[1].assets.map((asset) => asset.sourceUploadId)).toEqual([
       '2',
       '3',
@@ -90,7 +92,7 @@ describe('assetExport helpers', () => {
         maxZipBytes: 100,
         maxFilesPerZip: 10,
         sizeSafetyFactor: 1,
-      }
+      },
     );
 
     expect(chunks).toHaveLength(3);
@@ -100,23 +102,23 @@ describe('assetExport helpers', () => {
   });
 
   test('calculateAssetExportProgress maps downloaded ratio into visible range', () => {
-    expect(calculateAssetExportProgress(0, 10)).toBe(ASSET_EXPORT_PROGRESS_START);
+    expect(calculateAssetExportProgress(0, 10)).toBe(
+      ASSET_EXPORT_PROGRESS_START,
+    );
     expect(calculateAssetExportProgress(5, 10)).toBe(50);
     expect(calculateAssetExportProgress(10, 10)).toBe(
-      ASSET_EXPORT_PROGRESS_END
+      ASSET_EXPORT_PROGRESS_END,
     );
   });
 
   test('calculateAssetExportProgress clamps out-of-bounds values', () => {
     expect(calculateAssetExportProgress(-1, 10)).toBe(
-      ASSET_EXPORT_PROGRESS_START
+      ASSET_EXPORT_PROGRESS_START,
     );
     expect(calculateAssetExportProgress(100, 10)).toBe(
-      ASSET_EXPORT_PROGRESS_END
+      ASSET_EXPORT_PROGRESS_END,
     );
-    expect(calculateAssetExportProgress(1, 0)).toBe(
-      ASSET_EXPORT_PROGRESS_END
-    );
+    expect(calculateAssetExportProgress(1, 0)).toBe(ASSET_EXPORT_PROGRESS_END);
   });
 
   test('buildAssetManifestEntry preserves import-critical metadata', () => {
@@ -133,7 +135,7 @@ describe('assetExport helpers', () => {
         path: '/brochure.pdf',
         custom_data: { source: 'legacy' },
       },
-      'u_upload-42__Brochure.pdf'
+      'u_upload-42__Brochure.pdf',
     );
 
     expect(entry.sourceUploadId).toBe('upload-42');

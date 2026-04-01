@@ -31,7 +31,7 @@ export function useDebouncedEffect(
     return () => {
       clearTimeout(handler);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [delay, ...deps, callback]);
 }
 

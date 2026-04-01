@@ -29,6 +29,109 @@ export type ImportDoc = {
 };
 
 /**
+ * Resolve linked item types from the export schema, returning only those that exist in the export.
+ */
+function resolveLinkedItemTypes(
+  fields: SchemaTypes.Field[],
+  exportSchema: ExportSchema,
+): SchemaTypes.ItemType[] {
+  const linked: SchemaTypes.ItemType[] = [];
+  for (const field of fields) {
+    for (const linkedItemTypeId of findLinkedItemTypeIds(field)) {
+      const linkedItemType = exportSchema.itemTypesById.get(linkedItemTypeId);
+      if (linkedItemType) {
+        linked.push(linkedItemType);
+      }
+    }
+  }
+  return linked;
+}
+
+/**
+ * Resolve linked plugins from the export schema, returning only those that exist.
+ */
+function resolveLinkedPlugins(
+  fields: SchemaTypes.Field[],
+  exportSchema: ExportSchema,
+): SchemaTypes.Plugin[] {
+  const exportedPluginIds = new Set(
+    Array.from(exportSchema.pluginsById.keys()),
+  );
+  const linked: SchemaTypes.Plugin[] = [];
+  for (const field of fields) {
+    for (const linkedPluginId of findLinkedPluginIds(
+      field,
+      exportedPluginIds,
+    )) {
+      const linkedPlugin = exportSchema.pluginsById.get(linkedPluginId);
+      if (linkedPlugin) {
+        linked.push(linkedPlugin);
+      }
+    }
+  }
+  return linked;
+}
+
+/**
+ * Process a single item type during BFS traversal, adding it to the result and
+ * queuing its dependencies for the next level.
+ */
+function processItemType(
+  itemType: SchemaTypes.ItemType,
+  exportSchema: ExportSchema,
+  conflicts: Conflicts,
+  resolutions: Resolutions,
+  result: ImportDoc,
+  nextLevelQueue: Set<QueueItem>,
+) {
+  const resolution = resolutions.itemTypes[itemType.id];
+
+  if (resolution?.strategy === 'reuseExisting') {
+    result.itemTypes.idsToReuse[itemType.id] =
+      conflicts.itemTypes[itemType.id].id;
+    return;
+  }
+
+  const fields = exportSchema.getItemTypeFields(itemType);
+  const fieldsets = exportSchema.getItemTypeFieldsets(itemType);
+
+  result.itemTypes.entitiesToCreate.push({
+    entity: itemType,
+    fields,
+    fieldsets,
+    rename: resolution,
+  });
+
+  for (const linkedItemType of resolveLinkedItemTypes(fields, exportSchema)) {
+    nextLevelQueue.add(linkedItemType);
+  }
+
+  for (const linkedPlugin of resolveLinkedPlugins(fields, exportSchema)) {
+    nextLevelQueue.add(linkedPlugin);
+  }
+}
+
+/**
+ * Process a single plugin during BFS traversal, adding it to the result.
+ */
+function processPlugin(
+  plugin: SchemaTypes.Plugin,
+  conflicts: Conflicts,
+  resolutions: Resolutions,
+  result: ImportDoc,
+) {
+  const resolution = resolutions.plugins[plugin.id];
+
+  if (resolution?.strategy === 'reuseExisting') {
+    result.plugins.idsToReuse[plugin.id] = conflicts.plugins[plugin.id].id;
+  }
+
+  if (!resolution) {
+    result.plugins.entitiesToCreate.push(plugin);
+  }
+}
+
+/**
  * Walk the export graph while honoring conflict resolutions, producing a document for import.
  */
 export async function buildImportDoc(
@@ -69,56 +172,16 @@ export async function buildImportDoc(
       processedNodes.add(itemTypeOrPlugin);
 
       if (itemTypeOrPlugin.type === 'item_type') {
-        const itemType = itemTypeOrPlugin;
-
-        const resolution = resolutions.itemTypes[itemType.id];
-
-        if (resolution?.strategy === 'reuseExisting') {
-          result.itemTypes.idsToReuse[itemType.id] =
-            conflicts.itemTypes[itemType.id].id;
-
-          continue;
-        }
-
-        const fields = exportSchema.getItemTypeFields(itemType);
-        const fieldsets = exportSchema.getItemTypeFieldsets(itemType);
-
-        result.itemTypes.entitiesToCreate.push({
-          entity: itemType,
-          fields,
-          fieldsets,
-          rename: resolution,
-        });
-
-        for (const field of fields) {
-          for (const linkedItemTypeId of findLinkedItemTypeIds(field)) {
-            const linkedItemType =
-              exportSchema.itemTypesById.get(linkedItemTypeId)!;
-            nextLevelQueue.add(linkedItemType);
-          }
-
-          for (const linkedPluginId of findLinkedPluginIds(
-            field,
-            new Set(Array.from(exportSchema.pluginsById.keys())),
-          )) {
-            const linkedPlugin = exportSchema.pluginsById.get(linkedPluginId)!;
-
-            nextLevelQueue.add(linkedPlugin);
-          }
-        }
+        processItemType(
+          itemTypeOrPlugin,
+          exportSchema,
+          conflicts,
+          resolutions,
+          result,
+          nextLevelQueue,
+        );
       } else {
-        const plugin = itemTypeOrPlugin;
-
-        const resolution = resolutions.plugins[plugin.id];
-
-        if (resolution?.strategy === 'reuseExisting') {
-          result.plugins.idsToReuse[plugin.id] =
-            conflicts.plugins[plugin.id].id;
-        }
-
-        if (!resolution) {
-          result.plugins.entitiesToCreate.push(plugin);
-        }
+        processPlugin(itemTypeOrPlugin, conflicts, resolutions, result);
       }
     }
 

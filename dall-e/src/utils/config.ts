@@ -1,6 +1,10 @@
-import { getSupportedModels, googleGenerateModels, openAiGenerateModels } from './imageService';
-import type { ProviderId, SupportedImageModel } from './imageService';
 import type { ConfigParameters, NormalizedConfigParameters } from '../types';
+import type { ProviderId, SupportedImageModel } from './imageService';
+import {
+  getSupportedModels,
+  googleGenerateModels,
+  openAiGenerateModels,
+} from './imageService';
 
 const providerFallbackOrder: ProviderId[] = ['openai', 'google'];
 
@@ -111,7 +115,9 @@ export function getDefaultModelForProvider(
   parameters: NormalizedConfigParameters,
   provider: ProviderId,
 ): SupportedImageModel {
-  return resolveProviderModel(provider, [parameters.providers[provider].defaultModel]);
+  return resolveProviderModel(provider, [
+    parameters.providers[provider].defaultModel,
+  ]);
 }
 
 export function getInitialProvider(
@@ -122,8 +128,9 @@ export function getInitialProvider(
   }
 
   return (
-    providerFallbackOrder.find((provider) => getProviderApiKey(parameters, provider)) ||
-    parameters.defaultProvider
+    providerFallbackOrder.find((provider) =>
+      getProviderApiKey(parameters, provider),
+    ) || parameters.defaultProvider
   );
 }
 

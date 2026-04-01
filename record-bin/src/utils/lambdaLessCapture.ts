@@ -1,22 +1,22 @@
-import { buildClient, type SchemaTypes } from "@datocms/cma-client-browser";
-import type { OnBeforeItemsDestroyCtx } from "datocms-plugin-sdk";
-import { createDebugLogger, isDebugEnabled } from "./debugLogger";
-import { ensureRecordBinModel } from "./recordBinModel";
+import { buildClient, type SchemaTypes } from '@datocms/cma-client-browser';
+import type { OnBeforeItemsDestroyCtx } from 'datocms-plugin-sdk';
+import { createDebugLogger, isDebugEnabled } from './debugLogger';
+import { ensureRecordBinModel } from './recordBinModel';
 import {
   buildRecordBinCompatiblePayload,
   extractEntityAttributes,
   extractEntityModelId,
-} from "./recordBinPayload";
+} from './recordBinPayload';
 
 const buildTrashLabel = (
   attributes: Record<string, unknown>,
-  modelID: string
+  modelID: string,
 ): string => {
-  let titleValue = "No title record";
+  let titleValue = 'No title record';
   for (const attributeKey of Object.keys(attributes)) {
     const attributeValue = attributes[attributeKey];
     if (
-      typeof attributeValue === "string" &&
+      typeof attributeValue === 'string' &&
       Number.isNaN(Number(attributeValue))
     ) {
       titleValue = attributeValue;
@@ -29,7 +29,7 @@ const buildTrashLabel = (
 
 const getHookItemModelId = (item: SchemaTypes.Item): string | undefined => {
   const candidateModelId = item.relationships?.item_type?.data?.id;
-  return typeof candidateModelId === "string" ? candidateModelId : undefined;
+  return typeof candidateModelId === 'string' ? candidateModelId : undefined;
 };
 
 export type LambdaLessCaptureResult = {
@@ -40,11 +40,11 @@ export type LambdaLessCaptureResult = {
 
 export const captureDeletedItemsWithoutLambda = async (
   items: SchemaTypes.Item[],
-  ctx: OnBeforeItemsDestroyCtx
+  ctx: OnBeforeItemsDestroyCtx,
 ): Promise<LambdaLessCaptureResult> => {
   const debugLogger = createDebugLogger(
     isDebugEnabled(ctx.plugin.attributes.parameters),
-    "lambdaLessCapture"
+    'lambdaLessCapture',
   );
 
   const result: LambdaLessCaptureResult = {
@@ -55,10 +55,10 @@ export const captureDeletedItemsWithoutLambda = async (
 
   if (!ctx.currentUserAccessToken) {
     debugLogger.warn(
-      "Skipping Lambda-less capture because currentUserAccessToken is missing"
+      'Skipping Lambda-less capture because currentUserAccessToken is missing',
     );
     await ctx.notice(
-      "Record Bin could not archive deleted records because currentUserAccessToken is missing."
+      'Record Bin could not archive deleted records because currentUserAccessToken is missing.',
     );
     return {
       ...result,
@@ -73,14 +73,17 @@ export const captureDeletedItemsWithoutLambda = async (
     environment: ctx.environment,
   });
 
-  let recordBinModelId = "";
+  let recordBinModelId = '';
   try {
     const recordBinModel = await ensureRecordBinModel(client);
     recordBinModelId = recordBinModel.id;
   } catch (error) {
-    debugLogger.error("Could not ensure record_bin model before delete capture", error);
+    debugLogger.error(
+      'Could not ensure record_bin model before delete capture',
+      error,
+    );
     await ctx.notice(
-      "Record Bin could not archive deleted records because the record_bin model is unavailable."
+      'Record Bin could not archive deleted records because the record_bin model is unavailable.',
     );
     return {
       ...result,
@@ -90,37 +93,36 @@ export const captureDeletedItemsWithoutLambda = async (
     };
   }
 
-  for (const item of items) {
+  const processItem = async (item: SchemaTypes.Item): Promise<void> => {
     const itemId = item.id;
     if (!itemId) {
-      continue;
+      return;
     }
 
     if (getHookItemModelId(item) === recordBinModelId) {
       result.skippedRecordBinItems += 1;
-      continue;
+      return;
     }
 
     try {
-      const fullItemResponse = await client.items.rawFind(itemId, { nested: true });
-      const fullItemEntity = fullItemResponse.data as unknown as Record<
-        string,
-        unknown
-      >;
+      const fullItemResponse = await client.items.rawFind(itemId, {
+        nested: true,
+      });
+      const fullItemEntity = fullItemResponse.data as Record<string, unknown>;
       const deletedModelID =
         extractEntityModelId(fullItemEntity) ?? getHookItemModelId(item);
       if (!deletedModelID) {
-        throw new Error("Deleted record model id could not be determined.");
+        throw new Error('Deleted record model id could not be determined.');
       }
 
       if (deletedModelID === recordBinModelId) {
         result.skippedRecordBinItems += 1;
-        continue;
+        return;
       }
 
       const trashLabel = buildTrashLabel(
         extractEntityAttributes(fullItemEntity),
-        deletedModelID
+        deletedModelID,
       );
 
       const payload = buildRecordBinCompatiblePayload({
@@ -130,7 +132,7 @@ export const captureDeletedItemsWithoutLambda = async (
 
       await client.items.create({
         item_type: {
-          type: "item_type",
+          type: 'item_type',
           id: recordBinModelId,
         },
         label: trashLabel,
@@ -142,19 +144,24 @@ export const captureDeletedItemsWithoutLambda = async (
       result.capturedCount += 1;
     } catch (error) {
       result.failedItemIds.push(itemId);
-      debugLogger.warn("Could not archive deleted record", {
+      debugLogger.warn('Could not archive deleted record', {
         itemId,
         error,
       });
     }
-  }
+  };
+
+  await items.reduce(
+    (chain, item) => chain.then(() => processItem(item)),
+    Promise.resolve(),
+  );
 
   if (result.failedItemIds.length > 0) {
     await ctx.notice(
-      `Record Bin could not archive ${result.failedItemIds.length} deleted record(s). Deletion still completed.`
+      `Record Bin could not archive ${result.failedItemIds.length} deleted record(s). Deletion still completed.`,
     );
   }
 
-  debugLogger.log("Lambda-less delete capture finished", result);
+  debugLogger.log('Lambda-less delete capture finished', result);
   return result;
 };

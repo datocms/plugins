@@ -1,17 +1,17 @@
-import { connect } from "datocms-plugin-sdk";
-import { render } from "./utils/render";
-import FieldExtension from "./entrypoints/FieldExtension";
-import Modal from "./entrypoints/Modal";
-import "datocms-react-ui/styles.css";
+import { connect } from 'datocms-plugin-sdk';
+import FieldExtension from './entrypoints/FieldExtension';
+import Modal from './entrypoints/Modal';
+import { render } from './utils/render';
+import 'datocms-react-ui/styles.css';
 
 connect({
   manualFieldExtensions() {
     return [
       {
-        id: "table",
-        type: "editor",
-        name: "Table",
-        fieldTypes: ["json"],
+        id: 'table',
+        type: 'editor',
+        name: 'Table',
+        fieldTypes: ['json'],
       },
     ];
   },

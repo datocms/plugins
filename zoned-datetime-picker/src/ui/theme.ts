@@ -1,4 +1,4 @@
-import { createTheme } from "@mui/material/styles";
+import { createTheme } from '@mui/material/styles';
 
 /**
  * Map DatoCMS theme colors into an MUI theme and apply component overrides.
@@ -23,7 +23,7 @@ export function createMuiThemeFromDato(
   primaryColor: string,
   accentColor: string,
   lightColor: string,
-  darkColor: string
+  darkColor: string,
 ) {
   return createTheme({
     palette: {
@@ -34,19 +34,19 @@ export function createMuiThemeFromDato(
       MuiAutocomplete: {
         styleOverrides: {
           option: ({ theme }) => ({
-            "&.Mui-focused": {
-              backgroundColor: "unset !important",
+            '&.Mui-focused': {
+              backgroundColor: 'unset !important',
             },
-            "&:hover": {
+            '&:hover': {
               backgroundColor: `${theme.palette.secondary.light} !important`,
-              "*": {
+              '*': {
                 color: `${theme.palette.secondary.dark} !important`,
               },
             },
             '&[aria-selected="true"]': {
               backgroundColor: `${theme.palette.primary.main} !important`,
               color: `${theme.palette.primary.contrastText} !important`,
-              "*": {
+              '*': {
                 color: `${theme.palette.primary.contrastText} !important`,
               },
             },

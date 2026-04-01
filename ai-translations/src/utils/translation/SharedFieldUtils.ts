@@ -8,7 +8,10 @@ import { fieldPrompt } from '../../prompts/FieldPrompts';
 /**
  * Field metadata dictionary keyed by field API key.
  */
-export type FieldTypeDictionary = Record<string, { editor: string; id: string; isLocalized: boolean }>;
+export type FieldTypeDictionary = Record<
+  string,
+  { editor: string; id: string; isLocalized: boolean }
+>;
 
 /**
  * Normalizes a list of exclusion entries to support both current field IDs
@@ -44,7 +47,10 @@ function normalizeExcludedFieldEntries(excludedFields: string[]): Set<string> {
  * @param localeCode - The locale code to search for (case-insensitive)
  * @returns The exact locale key as it appears in the object, or undefined if not found
  */
-export function findExactLocaleKey(obj: Record<string, unknown>, localeCode: string): string | undefined {
+export function findExactLocaleKey(
+  obj: Record<string, unknown>,
+  localeCode: string,
+): string | undefined {
   if (!obj || typeof obj !== 'object') return undefined;
 
   const normalizedLocale = localeCode.toLowerCase();
@@ -70,14 +76,15 @@ export function findExactLocaleKey(obj: Record<string, unknown>, localeCode: str
 export function isFieldTranslatable(
   fieldType: string,
   translationFields: string[],
-  modularContentVariations: string[]
+  modularContentVariations: string[],
 ): boolean {
   let isTranslatable = translationFields.includes(fieldType);
 
   // Handle special cases: modular content variations count as rich_text,
   // and gallery fields count as file fields
   if (
-    (translationFields.includes('rich_text') && modularContentVariations.includes(fieldType)) ||
+    (translationFields.includes('rich_text') &&
+      modularContentVariations.includes(fieldType)) ||
     (translationFields.includes('file') && fieldType === 'gallery')
   ) {
     isTranslatable = true;
@@ -96,7 +103,7 @@ export function isFieldTranslatable(
  */
 export function isFieldExcluded(
   excludedFields: string[],
-  identifiers: Array<string | undefined>
+  identifiers: Array<string | undefined>,
 ): boolean {
   if (!Array.isArray(excludedFields) || excludedFields.length === 0) {
     return false;
@@ -160,9 +167,12 @@ export function normalizeTranslatedSlug(value: unknown): string {
  */
 export function getExactSourceValue(
   fieldData: Record<string, unknown> | undefined,
-  fromLocale: string
+  fromLocale: string,
 ): unknown {
   if (!fieldData || typeof fieldData !== 'object') return undefined;
-  const exact = findExactLocaleKey(fieldData as Record<string, unknown>, fromLocale);
+  const exact = findExactLocaleKey(
+    fieldData as Record<string, unknown>,
+    fromLocale,
+  );
   return exact ? (fieldData as Record<string, unknown>)[exact] : undefined;
 }

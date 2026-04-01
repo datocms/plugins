@@ -2,17 +2,17 @@ import type {
   LambdaConnectionErrorCode,
   LambdaConnectionPhase,
   LambdaConnectionState,
-} from "../types/types";
-import { createDebugLogger } from "./debugLogger";
+} from '../types/types';
+import { createDebugLogger } from './debugLogger';
 
 const HEALTH_CHECK_TIMEOUT_MS = 8000;
-export const HEALTH_ENDPOINT_PATH = "/api/datocms/plugin-health";
-const EXPECTED_PLUGIN_NAME = "datocms-plugin-record-bin";
-const EXPECTED_MPI_MESSAGE = "DATOCMS_RECORD_BIN_PLUGIN_PING";
-const EXPECTED_MPI_VERSION = "2026-02-25";
-const EXPECTED_PONG_MESSAGE = "DATOCMS_RECORD_BIN_LAMBDA_PONG";
-const EXPECTED_SERVICE_NAME = "record-bin-lambda-function";
-const EXPECTED_STATUS = "ready";
+export const HEALTH_ENDPOINT_PATH = '/api/datocms/plugin-health';
+const EXPECTED_PLUGIN_NAME = 'datocms-plugin-record-bin';
+const EXPECTED_MPI_MESSAGE = 'DATOCMS_RECORD_BIN_PLUGIN_PING';
+const EXPECTED_MPI_VERSION = '2026-02-25';
+const EXPECTED_PONG_MESSAGE = 'DATOCMS_RECORD_BIN_LAMBDA_PONG';
+const EXPECTED_SERVICE_NAME = 'record-bin-lambda-function';
+const EXPECTED_STATUS = 'ready';
 const SNIPPET_MAX_LENGTH = 280;
 const PROTOCOL_PREFIX_PATTERN = /^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//;
 
@@ -72,7 +72,7 @@ export class LambdaHealthCheckError extends Error {
     responseSnippet,
   }: LambdaHealthCheckErrorConstructorProps) {
     super(message);
-    this.name = "LambdaHealthCheckError";
+    this.name = 'LambdaHealthCheckError';
     this.code = code;
     this.phase = phase;
     this.endpoint = endpoint;
@@ -88,7 +88,7 @@ const getFallbackEndpoint = (baseUrl: string): string => {
     const parsed = new URL(candidate);
     return new URL(HEALTH_ENDPOINT_PATH, `${parsed.origin}/`).toString();
   } catch {
-    return `${candidate || "(empty url)"}${HEALTH_ENDPOINT_PATH}`;
+    return `${candidate || '(empty url)'}${HEALTH_ENDPOINT_PATH}`;
   }
 };
 
@@ -96,7 +96,7 @@ const normalizeCandidateUrl = (baseUrl: string): string => {
   const trimmedBaseUrl = baseUrl.trim();
 
   if (!trimmedBaseUrl) {
-    return "";
+    return '';
   }
 
   if (PROTOCOL_PREFIX_PATTERN.test(trimmedBaseUrl)) {
@@ -108,16 +108,16 @@ const normalizeCandidateUrl = (baseUrl: string): string => {
 
 const normalizeBaseUrl = (
   baseUrl: string,
-  phase: LambdaConnectionPhase
+  phase: LambdaConnectionPhase,
 ): string => {
   const candidate = normalizeCandidateUrl(baseUrl);
 
   if (!candidate) {
     throw new LambdaHealthCheckError({
-      code: "INVALID_URL",
-      message: "No URL was provided for the lambda deployment.",
+      code: 'INVALID_URL',
+      message: 'No URL was provided for the lambda deployment.',
       phase,
-      endpoint: "(missing endpoint)",
+      endpoint: '(missing endpoint)',
     });
   }
 
@@ -127,32 +127,32 @@ const normalizeBaseUrl = (
     parsed = new URL(candidate);
   } catch {
     throw new LambdaHealthCheckError({
-      code: "INVALID_URL",
+      code: 'INVALID_URL',
       message:
-        "The deployed URL is not valid. Use a full URL like https://record-bin.example.com, or paste only the hostname and https will be added automatically.",
+        'The deployed URL is not valid. Use a full URL like https://record-bin.example.com, or paste only the hostname and https will be added automatically.',
       phase,
       endpoint: getFallbackEndpoint(candidate),
     });
   }
 
-  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
     throw new LambdaHealthCheckError({
-      code: "INVALID_URL",
+      code: 'INVALID_URL',
       message:
-        "The deployed URL must use http or https. Example: https://record-bin.example.com",
+        'The deployed URL must use http or https. Example: https://record-bin.example.com',
       phase,
       endpoint: getFallbackEndpoint(candidate),
     });
   }
 
   const hostname = parsed.hostname.toLowerCase();
-  const isLocalhost = hostname === "localhost";
-  const hasDomainDot = hostname.includes(".");
+  const isLocalhost = hostname === 'localhost';
+  const hasDomainDot = hostname.includes('.');
   if (!isLocalhost && !hasDomainDot) {
     throw new LambdaHealthCheckError({
-      code: "INVALID_URL",
+      code: 'INVALID_URL',
       message:
-        "The deployed URL hostname looks incomplete. Use a full domain like https://record-bin.example.com, or localhost for local testing.",
+        'The deployed URL hostname looks incomplete. Use a full domain like https://record-bin.example.com, or localhost for local testing.',
       phase,
       endpoint: getFallbackEndpoint(candidate),
     });
@@ -163,10 +163,10 @@ const normalizeBaseUrl = (
 
 const truncateSnippet = (value: string): string => {
   if (!value) {
-    return "";
+    return '';
   }
 
-  const compact = value.replace(/\s+/g, " ").trim();
+  const compact = value.replace(/\s+/g, ' ').trim();
   if (compact.length <= SNIPPET_MAX_LENGTH) {
     return compact;
   }
@@ -176,7 +176,7 @@ const truncateSnippet = (value: string): string => {
 
 const parseJsonPayload = (payload: string): unknown => {
   if (!payload.trim()) {
-    throw new Error("empty");
+    throw new Error('empty');
   }
 
   return JSON.parse(payload);
@@ -187,7 +187,7 @@ const extractHttpErrorMessage = (payload: string, status: number): string => {
     const parsedPayload = parseJsonPayload(payload) as LambdaHealthErrorPayload;
     const errorCode = parsedPayload.error?.code;
     const errorMessage =
-      parsedPayload.error?.message || parsedPayload.message || "";
+      parsedPayload.error?.message || parsedPayload.message || '';
 
     if (errorCode && errorMessage) {
       return `HTTP ${status}: ${errorCode} - ${errorMessage}`;
@@ -202,10 +202,10 @@ const extractHttpErrorMessage = (payload: string, status: number): string => {
 };
 
 const isAbortError = (error: unknown): boolean =>
-  typeof error === "object" &&
+  typeof error === 'object' &&
   error !== null &&
-  "name" in error &&
-  (error as { name?: string }).name === "AbortError";
+  'name' in error &&
+  (error as { name?: string }).name === 'AbortError';
 
 const isExpectedResponse = (payload: LambdaHealthResponsePayload): boolean => {
   return (
@@ -221,13 +221,13 @@ const assertExpectedResponse = (
   payload: LambdaHealthResponsePayload,
   endpoint: string,
   phase: LambdaConnectionPhase,
-  rawPayload: string
+  rawPayload: string,
 ) => {
   if (!isExpectedResponse(payload)) {
     throw new LambdaHealthCheckError({
-      code: "UNEXPECTED_RESPONSE",
+      code: 'UNEXPECTED_RESPONSE',
       message:
-        "Health endpoint response did not match the expected MPI PONG contract.",
+        'Health endpoint response did not match the expected MPI PONG contract.',
       phase,
       endpoint,
       responseSnippet: truncateSnippet(rawPayload),
@@ -244,15 +244,18 @@ export const verifyLambdaHealth = async ({
   phase,
   debug = false,
 }: VerifyLambdaHealthInput): Promise<VerifyLambdaHealthResult> => {
-  const debugLogger = createDebugLogger(debug, "verifyLambdaHealth");
-  debugLogger.log("Starting health check", { baseUrl, environment, phase });
+  const debugLogger = createDebugLogger(debug, 'verifyLambdaHealth');
+  debugLogger.log('Starting health check', { baseUrl, environment, phase });
 
   const normalizedBaseUrl = normalizeBaseUrl(baseUrl, phase);
-  debugLogger.log("Normalized base URL", { normalizedBaseUrl });
-  const endpoint = new URL(HEALTH_ENDPOINT_PATH, `${normalizedBaseUrl}/`).toString();
+  debugLogger.log('Normalized base URL', { normalizedBaseUrl });
+  const endpoint = new URL(
+    HEALTH_ENDPOINT_PATH,
+    `${normalizedBaseUrl}/`,
+  ).toString();
   const checkedAt = new Date().toISOString();
   const requestBody = JSON.stringify({
-    event_type: "plugin_health_ping",
+    event_type: 'plugin_health_ping',
     mpi: {
       message: EXPECTED_MPI_MESSAGE,
       version: EXPECTED_MPI_VERSION,
@@ -263,45 +266,51 @@ export const verifyLambdaHealth = async ({
       environment,
     },
   });
-  debugLogger.log("Prepared health check request", {
+  debugLogger.log('Prepared health check request', {
     endpoint,
     requestBody: JSON.parse(requestBody),
     checkedAt,
   });
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), HEALTH_CHECK_TIMEOUT_MS);
+  const timeoutId = setTimeout(
+    () => controller.abort(),
+    HEALTH_CHECK_TIMEOUT_MS,
+  );
 
   let response: Response;
 
   try {
     response = await fetch(endpoint, {
-      method: "POST",
+      method: 'POST',
       body: requestBody,
-      headers: { Accept: "*/*", "Content-Type": "application/json" },
+      headers: { Accept: '*/*', 'Content-Type': 'application/json' },
       signal: controller.signal,
     });
-    debugLogger.log("Health check response received", {
+    debugLogger.log('Health check response received', {
       status: response.status,
       ok: response.ok,
     });
   } catch (error) {
     if (isAbortError(error)) {
-      debugLogger.warn("Health check request timed out", {
+      debugLogger.warn('Health check request timed out', {
         timeoutMs: HEALTH_CHECK_TIMEOUT_MS,
       });
       throw new LambdaHealthCheckError({
-        code: "TIMEOUT",
+        code: 'TIMEOUT',
         message: `Health check timed out after ${HEALTH_CHECK_TIMEOUT_MS}ms.`,
         phase,
         endpoint,
       });
     }
 
-    debugLogger.error("Health check request failed due to network error", error);
+    debugLogger.error(
+      'Health check request failed due to network error',
+      error,
+    );
     throw new LambdaHealthCheckError({
-      code: "NETWORK",
-      message: "Could not reach the lambda health endpoint.",
+      code: 'NETWORK',
+      message: 'Could not reach the lambda health endpoint.',
       phase,
       endpoint,
     });
@@ -310,16 +319,16 @@ export const verifyLambdaHealth = async ({
   }
 
   const responsePayload = await response.text();
-  debugLogger.log("Health check raw payload", {
+  debugLogger.log('Health check raw payload', {
     payload: truncateSnippet(responsePayload),
   });
 
   if (!response.ok) {
-    debugLogger.warn("Health check returned non-200 status", {
+    debugLogger.warn('Health check returned non-200 status', {
       status: response.status,
     });
     throw new LambdaHealthCheckError({
-      code: "HTTP",
+      code: 'HTTP',
       message: extractHttpErrorMessage(responsePayload, response.status),
       phase,
       endpoint,
@@ -331,13 +340,16 @@ export const verifyLambdaHealth = async ({
   let parsedResponse: LambdaHealthResponsePayload;
 
   try {
-    parsedResponse = parseJsonPayload(responsePayload) as LambdaHealthResponsePayload;
-    debugLogger.log("Health check payload parsed as JSON", parsedResponse);
+    parsedResponse = parseJsonPayload(
+      responsePayload,
+    ) as LambdaHealthResponsePayload;
+    debugLogger.log('Health check payload parsed as JSON', parsedResponse);
   } catch {
-    debugLogger.warn("Health check payload is not valid JSON");
+    debugLogger.warn('Health check payload is not valid JSON');
     throw new LambdaHealthCheckError({
-      code: "INVALID_JSON",
-      message: "Health endpoint returned HTTP 200 with an invalid JSON payload.",
+      code: 'INVALID_JSON',
+      message:
+        'Health endpoint returned HTTP 200 with an invalid JSON payload.',
       phase,
       endpoint,
       responseSnippet: truncateSnippet(responsePayload),
@@ -345,14 +357,14 @@ export const verifyLambdaHealth = async ({
   }
 
   assertExpectedResponse(parsedResponse, endpoint, phase, responsePayload);
-  debugLogger.log("Health check response matched expected contract");
+  debugLogger.log('Health check response matched expected contract');
 
   const result = {
     endpoint,
     checkedAt,
     normalizedBaseUrl,
   };
-  debugLogger.log("Health check completed successfully", result);
+  debugLogger.log('Health check completed successfully', result);
 
   return result;
 };
@@ -360,14 +372,14 @@ export const verifyLambdaHealth = async ({
 export const buildDisconnectedLambdaConnectionState = (
   error: unknown,
   baseUrl: string,
-  phase: LambdaConnectionPhase
+  phase: LambdaConnectionPhase,
 ): LambdaConnectionState => {
   const fallbackEndpoint = getFallbackEndpoint(baseUrl);
   const checkedAt = new Date().toISOString();
 
   if (error instanceof LambdaHealthCheckError) {
     return {
-      status: "disconnected",
+      status: 'disconnected',
       endpoint: error.endpoint || fallbackEndpoint,
       lastCheckedAt: checkedAt,
       lastCheckPhase: phase,
@@ -379,42 +391,44 @@ export const buildDisconnectedLambdaConnectionState = (
   }
 
   return {
-    status: "disconnected",
+    status: 'disconnected',
     endpoint: fallbackEndpoint,
     lastCheckedAt: checkedAt,
     lastCheckPhase: phase,
-    errorCode: "NETWORK",
-    errorMessage: "Unexpected error while checking lambda health.",
+    errorCode: 'NETWORK',
+    errorMessage: 'Unexpected error while checking lambda health.',
   };
 };
 
 export const buildConnectedLambdaConnectionState = (
   endpoint: string,
   checkedAt: string,
-  phase: LambdaConnectionPhase
+  phase: LambdaConnectionPhase,
 ): LambdaConnectionState => ({
-  status: "connected",
+  status: 'connected',
   endpoint,
   lastCheckedAt: checkedAt,
   lastCheckPhase: phase,
 });
 
 export const getLambdaConnectionErrorDetails = (
-  connection: LambdaConnectionState
+  connection: LambdaConnectionState,
 ): string[] => {
   return [
-    "Could not validate the Record Bin lambda deployment.",
+    'Could not validate the Record Bin lambda deployment.',
     `Health check phase: ${connection.lastCheckPhase}.`,
     `Endpoint called: ${connection.endpoint}.`,
-    connection.errorCode ? `Failure code: ${connection.errorCode}.` : "",
-    connection.errorMessage ? `Failure details: ${connection.errorMessage}` : "",
-    connection.httpStatus ? `HTTP status: ${connection.httpStatus}.` : "",
+    connection.errorCode ? `Failure code: ${connection.errorCode}.` : '',
+    connection.errorMessage
+      ? `Failure details: ${connection.errorMessage}`
+      : '',
+    connection.httpStatus ? `HTTP status: ${connection.httpStatus}.` : '',
     connection.responseSnippet
       ? `Response snippet: ${connection.responseSnippet}`
-      : "",
+      : '',
     buildUnexpectedResponseMessage(),
-    "If this worked before, the deployment may have been deleted or is no longer healthy on your chosen platform.",
-    "Confirm /api/datocms/plugin-health exists and returns the expected MPI PONG payload.",
+    'If this worked before, the deployment may have been deleted or is no longer healthy on your chosen platform.',
+    'Confirm /api/datocms/plugin-health exists and returns the expected MPI PONG payload.',
   ].filter(Boolean);
 };
 

@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest';
 import { extractLeadingEmoji } from '@utils/emojiUtils';
+import { describe, expect, it } from 'vitest';
 
 describe('extractLeadingEmoji', () => {
   describe('basic emoji extraction', () => {

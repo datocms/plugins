@@ -1,13 +1,13 @@
+import styles from '@styles/commentbar.module.css';
 import { cn } from '@/utils/cn';
 import {
-  UserMentionIcon,
-  FieldMentionIcon,
-  RecordMentionIcon,
   AssetMentionIcon,
+  FieldMentionIcon,
   ModelMentionIcon,
+  RecordMentionIcon,
   SendIcon,
+  UserMentionIcon,
 } from './Icons';
-import styles from '@styles/commentbar.module.css';
 import ToolbarButton from './shared/ToolbarButton';
 
 type ComposerToolbarProps = {
@@ -60,7 +60,10 @@ const ComposerToolbar = ({
             tooltipText="Field"
             onClick={onFieldClick}
             ariaLabel="Mention field"
-            buttonClassName={cn(styles.toolbarButton, styles.toolbarButtonField)}
+            buttonClassName={cn(
+              styles.toolbarButton,
+              styles.toolbarButtonField,
+            )}
           />
         )}
 
@@ -77,7 +80,11 @@ const ComposerToolbar = ({
           tooltipText={canMentionAssets ? 'Asset' : 'No upload permission'}
           onClick={onAssetClick}
           disabled={!canMentionAssets}
-          ariaLabel={canMentionAssets ? 'Mention asset' : 'Asset mentions unavailable - no upload permissions'}
+          ariaLabel={
+            canMentionAssets
+              ? 'Mention asset'
+              : 'Asset mentions unavailable - no upload permissions'
+          }
           buttonClassName={cn(styles.toolbarButton, styles.toolbarButtonAsset)}
         />
 
@@ -86,7 +93,11 @@ const ComposerToolbar = ({
           tooltipText={canMentionModels ? 'Model' : 'No schema access'}
           onClick={onModelClick}
           disabled={!canMentionModels}
-          ariaLabel={canMentionModels ? 'Mention model' : 'Model mentions unavailable - no schema access'}
+          ariaLabel={
+            canMentionModels
+              ? 'Mention model'
+              : 'Model mentions unavailable - no schema access'
+          }
           buttonClassName={cn(styles.toolbarButton, styles.toolbarButtonModel)}
         />
       </div>

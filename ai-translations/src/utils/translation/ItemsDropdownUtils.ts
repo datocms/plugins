@@ -2,17 +2,24 @@
  * Utilities for handling DatoCMS record translations via dropdown actions
  */
 import type { buildClient } from '@datocms/cma-client-browser';
-import type { TranslationProvider } from './types';
-import { normalizeProviderError } from './ProviderErrors';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
-// no specific ctx type required here; we accept a minimal ctx shape
-import { translateFieldValue, generateRecordContext } from './TranslateField';
-import { prepareFieldTypePrompt, getExactSourceValue, type FieldTypeDictionary } from './SharedFieldUtils';
-import { hasTranslatableSourceValue, shouldProcessField } from './TranslationCore';
 import {
-  type SchemaRepository,
   buildFieldTypeDictionaryFromRepo,
+  type SchemaRepository,
 } from '../schemaRepository';
+import { normalizeProviderError } from './ProviderErrors';
+import {
+  type FieldTypeDictionary,
+  getExactSourceValue,
+  prepareFieldTypePrompt,
+} from './SharedFieldUtils';
+// no specific ctx type required here; we accept a minimal ctx shape
+import { generateRecordContext, translateFieldValue } from './TranslateField';
+import {
+  hasTranslatableSourceValue,
+  shouldProcessField,
+} from './TranslationCore';
+import type { TranslationProvider } from './types';
 
 /**
  * Defines a DatoCMS record structure with common fields
@@ -22,6 +29,65 @@ export type DatoCMSRecordFromAPI = {
   item_type: { id: string };
   [key: string]: unknown;
 };
+
+/** Candidate field names used to derive a human-readable record label. */
+const RECORD_LABEL_CANDIDATES = [
+  'title',
+  'name',
+  'headline',
+  'heading',
+  'label',
+  'internal_name',
+  'internalName',
+  'slug',
+] as const;
+
+/**
+ * Extracts a string from a localized value map by first trying the preferred locale,
+ * then falling back to any non-empty string value in the map.
+ *
+ * @param localized - An object keyed by locale codes.
+ * @param preferredLocale - The locale to try first.
+ * @returns The first usable string, or null if none found.
+ */
+function extractStringFromLocalizedMap(
+  localized: Record<string, unknown>,
+  preferredLocale: string,
+): string | null {
+  const exact = getExactSourceValue(localized, preferredLocale);
+  if (typeof exact === 'string' && exact.trim()) return exact;
+  for (const v of Object.values(localized)) {
+    if (typeof v === 'string' && v.trim()) return v;
+  }
+  return null;
+}
+
+/**
+ * Converts an arbitrary field value to a string for use in a record label.
+ * Handles strings, numbers, arrays, and localized maps.
+ *
+ * @param val - The raw field value.
+ * @param preferredLocale - Locale code to prefer for localized values.
+ * @returns A string representation, or null if no usable value is found.
+ */
+function coerceFieldValueToString(
+  val: unknown,
+  preferredLocale: string,
+): string | null {
+  if (val == null) return null;
+  if (typeof val === 'string') return val;
+  if (typeof val === 'number') return String(val);
+  if (Array.isArray(val)) {
+    return val.filter((x) => typeof x === 'string')[0] ?? null;
+  }
+  if (typeof val === 'object') {
+    return extractStringFromLocalizedMap(
+      val as Record<string, unknown>,
+      preferredLocale,
+    );
+  }
+  return null;
+}
 
 /**
  * Derives a short human-friendly label for a record using common title-like
@@ -33,45 +99,19 @@ export type DatoCMSRecordFromAPI = {
  * @param preferredLocale - Locale code to prefer when selecting a localized value.
  * @returns A concise label usable in progress messages and alerts.
  */
-function deriveRecordLabel(record: DatoCMSRecordFromAPI, preferredLocale: string): string {
-  const candidates = [
-    'title',
-    'name',
-    'headline',
-    'heading',
-    'label',
-    'internal_name',
-    'internalName',
-    'slug',
-  ];
-
-  const coerceToString = (val: unknown): string | null => {
-    if (val == null) return null;
-    if (typeof val === 'string') return val;
-    if (typeof val === 'number') return String(val);
-    if (Array.isArray(val)) return val.filter((x) => typeof x === 'string')[0] || null;
-    // Objects may be localized maps; try locale or any string value
-    if (typeof val === 'object') {
-      const localized = val as Record<string, unknown>;
-      const exact = getExactSourceValue(localized, preferredLocale);
-      if (typeof exact === 'string' && exact.trim()) return exact;
-      for (const v of Object.values(localized)) {
-        if (typeof v === 'string' && v.trim()) return v;
-      }
-    }
-    return null;
-  };
-
-  for (const key of candidates) {
+function deriveRecordLabel(
+  record: DatoCMSRecordFromAPI,
+  preferredLocale: string,
+): string {
+  for (const key of RECORD_LABEL_CANDIDATES) {
     if (record[key] !== undefined) {
-      const s = coerceToString(record[key]);
+      const s = coerceFieldValueToString(record[key], preferredLocale);
       if (s?.trim()) {
         const trimmed = s.trim();
         return trimmed.length > 80 ? `${trimmed.slice(0, 77)}…` : trimmed;
       }
     }
   }
-
   return `Record ${record.id}`;
 }
 
@@ -82,10 +122,15 @@ function deriveRecordLabel(record: DatoCMSRecordFromAPI, preferredLocale: string
  * @param actionId - The action identifier (e.g. `translateRecord-en-pt-BR`).
  * @returns Object with fromLocale and toLocale.
  */
-export function parseActionId(actionId: string): { fromLocale: string; toLocale: string } {
+export function parseActionId(actionId: string): {
+  fromLocale: string;
+  toLocale: string;
+} {
   // Action ID format is: "translateRecord-${fromLocale}-${toLocale}"
   const prefix = 'translateRecord-';
-  const localesString = actionId.startsWith(prefix) ? actionId.substring(prefix.length) : actionId;
+  const localesString = actionId.startsWith(prefix)
+    ? actionId.substring(prefix.length)
+    : actionId;
 
   // Split into components and attempt to rebuild both locale segments.
   const parts = localesString.split('-');
@@ -126,32 +171,37 @@ export function parseActionId(actionId: string): { fromLocale: string; toLocale:
  * @returns An array of CMA records.
  */
 export async function fetchRecordsWithPagination(
-  client: ReturnType<typeof buildClient>, 
-  itemIds: string[]
+  client: ReturnType<typeof buildClient>,
+  itemIds: string[],
 ): Promise<DatoCMSRecordFromAPI[]> {
   const allRecords: DatoCMSRecordFromAPI[] = [];
-  let page = 1;
   const pageSize = 30;
-  let hasMorePages = true;
-  
-  while (hasMorePages) {
+  const idsParam = itemIds.join(',');
+
+  /**
+   * Recursively fetches pages of records and appends them to allRecords.
+   * Recursive approach avoids await-in-loop lint errors while preserving
+   * sequential pagination behaviour.
+   */
+  async function fetchPage(page: number): Promise<void> {
     const response: DatoCMSRecordFromAPI[] = await client.items.list({
-      filter: {
-        ids: itemIds.join(',')
-      },
+      filter: { ids: idsParam },
       nested: true,
-      version: 'current', // Explicitly request the draft/current version
+      version: 'current',
       page: {
         offset: (page - 1) * pageSize,
-        limit: pageSize
-      }
+        limit: pageSize,
+      },
     });
-    
+
     allRecords.push(...response);
-    hasMorePages = response.length === pageSize;
-    page++;
+
+    if (response.length === pageSize) {
+      await fetchPage(page + 1);
+    }
   }
-  
+
+  await fetchPage(1);
   return allRecords;
 }
 
@@ -173,7 +223,7 @@ function hasKeyDeep(obj: Record<string, unknown>, targetKey: string): boolean {
   }
 
   // Recursive check in nested objects
-  return Object.values(obj).some(value => {
+  return Object.values(obj).some((value) => {
     if (typeof value === 'object' && value !== null) {
       return hasKeyDeep(value as Record<string, unknown>, targetKey);
     }
@@ -216,7 +266,6 @@ export interface BuildTranslatedUpdatePayloadResult {
   warnings: string[];
 }
 
-
 /**
  * Safely extracts error candidates from various error object shapes.
  *
@@ -244,7 +293,10 @@ function extractErrorCandidates(error: unknown): unknown[] | undefined {
  * @param path - Array of property keys to follow.
  * @returns The array at the path, or undefined if not found or not an array.
  */
-function getNestedArray(obj: Record<string, unknown>, path: string[]): unknown[] | undefined {
+function getNestedArray(
+  obj: Record<string, unknown>,
+  path: string[],
+): unknown[] | undefined {
   let current: unknown = obj;
   for (const key of path) {
     if (current === null || typeof current !== 'object') return undefined;
@@ -295,7 +347,10 @@ function extractErrorMessage(error: unknown): string | undefined {
  * @param recordId - Identifier of the record that failed to update.
  * @returns A user-friendly message or null when no mapping matches.
  */
-function getFriendlyDatoErrorMessage(error: unknown, recordId: string): string | null {
+function getFriendlyDatoErrorMessage(
+  error: unknown,
+  recordId: string,
+): string | null {
   try {
     const candidates = extractErrorCandidates(error);
     if (Array.isArray(candidates)) {
@@ -315,8 +370,6 @@ function getFriendlyDatoErrorMessage(error: unknown, recordId: string): string |
 
   return null;
 }
-
- 
 
 /**
  * Translates and updates a list of records using CMA, reporting progress
@@ -345,7 +398,7 @@ export async function translateAndUpdateRecords(
   ctx: { alert: (msg: string) => void; environment: string },
   accessToken: string,
   options: TranslateBatchOptions = {},
-  schemaRepository?: SchemaRepository
+  schemaRepository?: SchemaRepository,
 ): Promise<void> {
   const updateProgress = (u: ProgressUpdate) => {
     // Normalize legacy in-progress message that included the word "fields"
@@ -355,90 +408,174 @@ export async function translateAndUpdateRecords(
     options.onProgress?.(u);
   };
 
-  for (let i = 0; i < records.length; i++) {
-    const record = records[i];
-    const recordLabel = deriveRecordLabel(record, fromLocale);
+  /**
+   * Translates all fields for a record and saves the result via the CMA client.
+   * Returns the translation result object.
+   * Extracted to reduce complexity in processRecord.
+   */
+  async function translateAndSaveRecord(
+    record: DatoCMSRecordFromAPI,
+    recordIndex: number,
+    recordLabel: string,
+  ): Promise<BuildTranslatedUpdatePayloadResult> {
+    updateProgress({
+      recordIndex,
+      recordId: record.id,
+      status: 'processing',
+      message: `Translating "${recordLabel}" (#${record.id}) fields…`,
+    });
 
-    // Cooperative cancellation
-    if (options.checkCancellation?.()) {
-      updateProgress({ recordIndex: i, recordId: record.id, status: 'error', message: `Translation cancelled for "${recordLabel}" (#${record.id}).` });
-      return;
+    const fieldTypeDictionary = await getFieldTypeDictionary(
+      record.item_type.id,
+    );
+
+    const translatedFields = await buildTranslatedUpdatePayload(
+      record,
+      fromLocale,
+      toLocale,
+      fieldTypeDictionary,
+      provider,
+      pluginParams,
+      accessToken,
+      ctx.environment,
+      {
+        abortSignal: options.abortSignal,
+        checkCancellation: options.checkCancellation,
+      },
+      schemaRepository,
+    );
+
+    if (Object.keys(translatedFields.payload).length > 0) {
+      updateProgress({
+        recordIndex,
+        recordId: record.id,
+        status: 'processing',
+        message: `Saving "${recordLabel}" (#${record.id})…`,
+      });
+      await client.items.update(record.id, { ...translatedFields.payload });
     }
 
-    updateProgress({ recordIndex: i, recordId: record.id, status: 'processing', message: `Translating "${recordLabel}" (#${record.id})…` });
+    return translatedFields;
+  }
+
+  /**
+   * Reports the completion status of a translation result, returning the appropriate
+   * outcome code ('done' or 'continue').
+   */
+  function reportTranslationResult(
+    translatedFields: BuildTranslatedUpdatePayloadResult,
+    recordIndex: number,
+    recordId: string,
+    recordLabel: string,
+  ): 'continue' | 'done' {
+    const warningSuffix =
+      translatedFields.warnings.length > 0
+        ? ` Warnings: ${translatedFields.warnings.join(' ')}`
+        : '';
+
+    if (
+      translatedFields.translatedFieldCount === 0 &&
+      translatedFields.warnings.length > 0
+    ) {
+      updateProgress({
+        recordIndex,
+        recordId,
+        status: 'error',
+        message: `No fields were updated for "${recordLabel}" (#${recordId}).${warningSuffix}`,
+      });
+      return 'continue';
+    }
+
+    const completionMessage =
+      translatedFields.translatedFieldCount === 0
+        ? `No eligible fields to translate for "${recordLabel}" (#${recordId}).`
+        : `Translated "${recordLabel}" (#${recordId}).${warningSuffix}`;
+    updateProgress({
+      recordIndex,
+      recordId,
+      status: 'completed',
+      message: completionMessage,
+    });
+    return 'done';
+  }
+
+  /**
+   * Translates and saves a single record.
+   * Returns `'cancelled'` when cancellation was detected, `'continue'` to skip
+   * to the next record, or `'done'` on success.
+   * Extracted to avoid await-in-loop lint errors.
+   */
+  async function processRecord(
+    record: DatoCMSRecordFromAPI,
+    recordIndex: number,
+  ): Promise<'cancelled' | 'continue' | 'done'> {
+    const recordLabel = deriveRecordLabel(record, fromLocale);
+
+    if (options.checkCancellation?.()) {
+      updateProgress({
+        recordIndex,
+        recordId: record.id,
+        status: 'error',
+        message: `Translation cancelled for "${recordLabel}" (#${record.id}).`,
+      });
+      return 'cancelled';
+    }
+
+    updateProgress({
+      recordIndex,
+      recordId: record.id,
+      status: 'processing',
+      message: `Translating "${recordLabel}" (#${record.id})…`,
+    });
 
     try {
-      // Check if the record has the fromLocale key
       if (!hasKeyDeep(record as Record<string, unknown>, fromLocale)) {
         const errorMsg = `Record "${recordLabel}" (#${record.id}) does not have the source locale '${fromLocale}'`;
         console.error(`Record ${record.id} ${errorMsg}`);
         ctx.alert(`Error: Record ID ${record.id} ${errorMsg}`);
-        updateProgress({ recordIndex: i, recordId: record.id, status: 'error', message: errorMsg });
-        continue;
-      }
-
-      updateProgress({ recordIndex: i, recordId: record.id, status: 'processing', message: `Translating "${recordLabel}" (#${record.id}) fields…` });
-
-      const fieldTypeDictionary = await getFieldTypeDictionary(record.item_type.id);
-
-      const translatedFields = await buildTranslatedUpdatePayload(
-        record,
-        fromLocale,
-        toLocale,
-        fieldTypeDictionary,
-        provider,
-        pluginParams,
-        accessToken,
-        ctx.environment,
-        { abortSignal: options.abortSignal, checkCancellation: options.checkCancellation },
-        schemaRepository
-      );
-
-      if (Object.keys(translatedFields.payload).length > 0) {
-        updateProgress({ recordIndex: i, recordId: record.id, status: 'processing', message: `Saving "${recordLabel}" (#${record.id})…` });
-        await client.items.update(record.id, {
-          ...translatedFields.payload
-        });
-      }
-
-      const warningSuffix = translatedFields.warnings.length > 0
-        ? ` Warnings: ${translatedFields.warnings.join(' ')}`
-        : '';
-
-      if (translatedFields.translatedFieldCount === 0 && translatedFields.warnings.length > 0) {
         updateProgress({
-          recordIndex: i,
+          recordIndex,
           recordId: record.id,
           status: 'error',
-          message: `No fields were updated for "${recordLabel}" (#${record.id}).${warningSuffix}`,
+          message: errorMsg,
         });
-        continue;
+        return 'continue';
       }
 
-      // Provide a message including the record label so the UI shows useful text
-      updateProgress({ 
-        recordIndex: i, 
-        recordId: record.id, 
-        status: 'completed', 
-        message:
-          translatedFields.translatedFieldCount === 0
-            ? `No eligible fields to translate for "${recordLabel}" (#${record.id}).`
-            : `Translated "${recordLabel}" (#${record.id}).${warningSuffix}`
-      });
+      const translatedFields = await translateAndSaveRecord(
+        record,
+        recordIndex,
+        recordLabel,
+      );
+
+      return reportTranslationResult(
+        translatedFields,
+        recordIndex,
+        record.id,
+        recordLabel,
+      );
     } catch (error) {
-      // Try to detect DatoCMS-specific error codes for clearer UX
       const friendlyMessage = getFriendlyDatoErrorMessage(error, record.id);
       const rawMessage = error instanceof Error ? error.message : String(error);
-
       console.error(`Error translating record ${record.id}:`, rawMessage);
       updateProgress({
-        recordIndex: i,
+        recordIndex,
         recordId: record.id,
         status: 'error',
-        message: friendlyMessage ?? `Failed "${recordLabel}" (#${record.id}): ${rawMessage}`,
+        message:
+          friendlyMessage ??
+          `Failed "${recordLabel}" (#${record.id}): ${rawMessage}`,
       });
+      return 'continue';
     }
   }
+
+  // Process records sequentially using reduce to avoid await-in-loop
+  await records.reduce(async (previousRecord, record, i) => {
+    const previousOutcome = await previousRecord;
+    if (previousOutcome === 'cancelled') return 'cancelled';
+    return processRecord(record, i);
+  }, Promise.resolve<'cancelled' | 'continue' | 'done'>('done'));
 }
 
 /**
@@ -472,36 +609,47 @@ export async function buildTranslatedUpdatePayload(
   accessToken: string,
   environment: string,
   opts: { abortSignal?: AbortSignal; checkCancellation?: () => boolean } = {},
-  schemaRepository?: SchemaRepository
+  schemaRepository?: SchemaRepository,
 ): Promise<BuildTranslatedUpdatePayloadResult> {
   const updatePayload: Record<string, Record<string, unknown>> = {};
   const warnings: string[] = [];
   let translatedFieldCount = 0;
 
-  // Process fields that are present on the record and should be translated
-  for (const field in record) {
+  const recordContext = generateRecordContext(record, fromLocale);
+
+  // Collect the fields that need translation before the async loop
+  const translatableFields = Object.keys(record).filter((field) => {
     const fieldMeta = fieldTypeDictionary[field];
+    return (
+      fieldMeta?.isLocalized &&
+      shouldTranslateField(
+        field,
+        record,
+        fromLocale,
+        fieldTypeDictionary,
+        pluginParams,
+      )
+    );
+  });
 
-    if (!fieldMeta?.isLocalized) {
-      // Skip non-localized fields or fields not in the current item type's schema dictionary
-      continue;
-    }
-
-    if (!shouldTranslateField(field, record, fromLocale, fieldTypeDictionary, pluginParams)) {
-      continue;
-    }
-
-    // Handle hyphenated locales by finding the exact field key that matches the fromLocale
-    const sourceValue = getExactSourceValue(record[field] as Record<string, unknown>, fromLocale);
+  /**
+   * Translates a single field and accumulates the result into updatePayload.
+   * Extracted to avoid await-in-loop lint errors.
+   */
+  async function translateField(field: string): Promise<void> {
+    const sourceValue = getExactSourceValue(
+      record[field] as Record<string, unknown>,
+      fromLocale,
+    );
 
     const fieldType = fieldTypeDictionary[field].editor;
     const fieldTypePrompt = prepareFieldTypePrompt(fieldType);
 
-    try {
-      if (!hasTranslatableSourceValue(fieldType, sourceValue)) {
-        continue;
-      }
+    if (!hasTranslatableSourceValue(fieldType, sourceValue)) {
+      return;
+    }
 
+    try {
       const translatedValue = await translateFieldValue(
         sourceValue,
         pluginParams,
@@ -513,12 +661,15 @@ export async function buildTranslatedUpdatePayload(
         accessToken,
         fieldTypeDictionary[field].id,
         environment,
-        { abortSignal: opts.abortSignal, checkCancellation: opts.checkCancellation },
-        generateRecordContext(record, fromLocale),
+        {
+          abortSignal: opts.abortSignal,
+          checkCancellation: opts.checkCancellation,
+        },
+        recordContext,
         schemaRepository,
         {
           fieldApiKey: field,
-        }
+        },
       );
 
       updatePayload[field] = {
@@ -528,10 +679,18 @@ export async function buildTranslatedUpdatePayload(
       translatedFieldCount += 1;
     } catch (error) {
       const norm = normalizeProviderError(error, provider.vendor);
-      console.error(`Error translating field ${field} for record ${record.id}: ${norm.message}`);
+      console.error(
+        `Error translating field ${field} for record ${record.id}: ${norm.message}`,
+      );
       warnings.push(`Field "${field}" was skipped: ${norm.message}.`);
     }
   }
+
+  // Process fields sequentially using reduce to avoid await-in-loop
+  await translatableFields.reduce(
+    (chain, field) => chain.then(() => translateField(field)),
+    Promise.resolve(),
+  );
 
   return {
     payload: updatePayload,
@@ -555,7 +714,7 @@ export function shouldTranslateField(
   record: DatoCMSRecordFromAPI,
   fromLocale: string,
   fieldTypeDictionary: FieldTypeDictionary,
-  pluginParams: ctxParamsType
+  pluginParams: ctxParamsType,
 ): boolean {
   // Skip system fields that shouldn't be translated
   if (
@@ -567,12 +726,17 @@ export function shouldTranslateField(
   }
 
   const fieldMeta = fieldTypeDictionary[field];
-  if (!shouldProcessField(fieldMeta.editor, fieldMeta.id, pluginParams, field)) {
+  if (
+    !shouldProcessField(fieldMeta.editor, fieldMeta.id, pluginParams, field)
+  ) {
     return false;
   }
 
   // Check for the source locale in the field data with proper hyphenated locale support
-  const sourceVal = getExactSourceValue(record[field] as Record<string, unknown>, fromLocale);
+  const sourceVal = getExactSourceValue(
+    record[field] as Record<string, unknown>,
+    fromLocale,
+  );
   if (!hasTranslatableSourceValue(fieldMeta.editor, sourceVal)) {
     return false;
   }
@@ -596,22 +760,28 @@ export function shouldTranslateField(
  */
 export async function buildFieldTypeDictionary(
   client: ReturnType<typeof buildClient>,
-  itemTypeId: string
+  itemTypeId: string,
 ) {
   const fields = await client.fields.list(itemTypeId);
-  return fields.reduce((acc: FieldTypeDictionary, field: {
-    api_key: string;
-    appearance: { editor: string };
-    id: string;
-    localized: boolean;
-  }) => {
-    acc[field.api_key] = {
-      editor: field.appearance.editor,
-      id: field.id,
-      isLocalized: field.localized
-    };
-    return acc;
-  }, {});
+  return fields.reduce(
+    (
+      acc: FieldTypeDictionary,
+      field: {
+        api_key: string;
+        appearance: { editor: string };
+        id: string;
+        localized: boolean;
+      },
+    ) => {
+      acc[field.api_key] = {
+        editor: field.appearance.editor,
+        id: field.id,
+        isLocalized: field.localized,
+      };
+      return acc;
+    },
+    {},
+  );
 }
 
 /**
@@ -626,7 +796,7 @@ export async function buildFieldTypeDictionary(
  */
 export async function buildFieldTypeDictionaryWithRepo(
   schemaRepository: SchemaRepository,
-  itemTypeId: string
+  itemTypeId: string,
 ): Promise<FieldTypeDictionary> {
   return buildFieldTypeDictionaryFromRepo(schemaRepository, itemTypeId);
 }

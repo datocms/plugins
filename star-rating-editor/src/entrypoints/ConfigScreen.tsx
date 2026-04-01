@@ -2,13 +2,13 @@ import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import {
   Button,
   Canvas,
-  TextField,
-  Form,
   FieldGroup,
-  Section,
   FieldWrapper,
+  Form,
+  Section,
+  TextField,
 } from 'datocms-react-ui';
-import { Form as FormHandler, Field } from 'react-final-form';
+import { Field, Form as FormHandler } from 'react-final-form';
 import ColorInput from '../components/ColorInput';
 import {
   normalizeGlobalParams,

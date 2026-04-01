@@ -1,18 +1,18 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { JSX } from 'react';
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import {
   Button,
   Canvas,
+  CreatableSelectField,
   Form,
   Section,
   SelectField,
   Spinner,
   TextField,
-  CreatableSelectField,
 } from 'datocms-react-ui';
-import { buildCmaClient } from '../utils/cma';
+import type { JSX } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { PluginParameters, StageMenuItem } from '../types';
+import { buildCmaClient } from '../utils/cma';
 import s from './styles.module.css';
 
 type Props = {
@@ -35,10 +35,63 @@ type SelectOption = {
   label: string;
 };
 
-const BasicSelectField = SelectField as unknown as (props: Record<string, unknown>) => JSX.Element;
-const IconSelectField = CreatableSelectField as unknown as (props: Record<string, unknown>) => JSX.Element;
+const BasicSelectField = SelectField as unknown as (
+  props: Record<string, unknown>,
+) => JSX.Element;
+const IconSelectField = CreatableSelectField as unknown as (
+  props: Record<string, unknown>,
+) => JSX.Element;
 
 const FONT_AWESOME_LINK_ID = 'project-stage-viewer-fa';
+
+async function fetchWorkflowSummaries(
+  ctx: RenderConfigScreenCtx,
+): Promise<WorkflowSummary[]> {
+  const client = buildCmaClient(ctx);
+  const raw = await client.workflows.list();
+  const workflowArray = Array.isArray(raw) ? raw : [];
+
+  return workflowArray.map((wf) => ({
+    id: wf.id,
+    name: wf.name ?? wf.id,
+    stages: (wf.stages ?? []).map((stage) => ({
+      id: stage.id,
+      name: stage.name ?? stage.id,
+    })),
+  }));
+}
+
+type WorkflowSetters = {
+  setWorkflows: (v: WorkflowSummary[]) => void;
+  setLoadError: (v: string | null) => void;
+  setWorkflowsLoading: (v: boolean) => void;
+};
+
+async function loadWorkflowsIntoState(
+  ctx: RenderConfigScreenCtx,
+  isMountedCheck: () => boolean,
+  setters: WorkflowSetters,
+): Promise<void> {
+  setters.setWorkflowsLoading(true);
+  setters.setLoadError(null);
+
+  try {
+    const mapped = await fetchWorkflowSummaries(ctx);
+    if (isMountedCheck()) {
+      setters.setWorkflows(mapped);
+    }
+  } catch (error) {
+    if (isMountedCheck()) {
+      setters.setLoadError(
+        error instanceof Error ? error.message : 'Failed to load workflows.',
+      );
+    }
+  } finally {
+    if (isMountedCheck()) {
+      setters.setWorkflowsLoading(false);
+    }
+  }
+}
 
 export default function ConfigScreen({ ctx }: Props) {
   const [workflows, setWorkflows] = useState<WorkflowSummary[]>([]);
@@ -46,10 +99,13 @@ export default function ConfigScreen({ ctx }: Props) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [menuItems, setMenuItems] = useState<StageMenuItem[]>(() => {
-    const rawParams = (ctx.plugin.attributes.parameters ?? {}) as Partial<PluginParameters>;
+    const rawParams = (ctx.plugin.attributes.parameters ??
+      {}) as Partial<PluginParameters>;
     return rawParams.menuItems ?? [];
   });
-  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
+  const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(
+    null,
+  );
   const [selectedStageId, setSelectedStageId] = useState<string | null>(null);
   const [labelOverride, setLabelOverride] = useState('');
   const [iconOverride, setIconOverride] = useState('');
@@ -57,7 +113,8 @@ export default function ConfigScreen({ ctx }: Props) {
   const canEditSchema = ctx.currentRole?.attributes.can_edit_schema ?? false;
 
   useEffect(() => {
-    const rawParams = (ctx.plugin.attributes.parameters ?? {}) as Partial<PluginParameters>;
+    const rawParams = (ctx.plugin.attributes.parameters ??
+      {}) as Partial<PluginParameters>;
     setMenuItems(rawParams.menuItems ?? []);
   }, [ctx.plugin.attributes.parameters]);
 
@@ -69,46 +126,22 @@ export default function ConfigScreen({ ctx }: Props) {
     const link = document.createElement('link');
     link.rel = 'stylesheet';
     link.id = FONT_AWESOME_LINK_ID;
-    link.href = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css';
+    link.href =
+      'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css';
     document.head.append(link);
   }, []);
 
   useEffect(() => {
     let isMounted = true;
+    const isMountedCheck = () => isMounted;
 
-    async function loadWorkflows() {
-      try {
-        setWorkflowsLoading(true);
-        setLoadError(null);
+    const setters: WorkflowSetters = {
+      setWorkflows,
+      setLoadError,
+      setWorkflowsLoading,
+    };
 
-        const client = buildCmaClient(ctx);
-        const raw = await client.workflows.list();
-        const workflowArray = Array.isArray(raw) ? raw : [];
-
-        const mapped = workflowArray.map((wf) => ({
-          id: wf.id,
-          name: wf.name ?? wf.id,
-          stages: (wf.stages ?? []).map((stage) => ({
-            id: stage.id,
-            name: stage.name ?? stage.id,
-          })),
-        }));
-
-        if (isMounted) {
-          setWorkflows(mapped);
-        }
-      } catch (error) {
-        if (isMounted) {
-          setLoadError(error instanceof Error ? error.message : 'Failed to load workflows.');
-        }
-      } finally {
-        if (isMounted) {
-          setWorkflowsLoading(false);
-        }
-      }
-    }
-
-    void loadWorkflows();
+    void loadWorkflowsIntoState(ctx, isMountedCheck, setters);
 
     return () => {
       isMounted = false;
@@ -126,20 +159,26 @@ export default function ConfigScreen({ ctx }: Props) {
   );
 
   const stageOptions = useMemo<SelectOption[]>(
-    () => selectedWorkflow?.stages.map((stage) => ({ value: stage.id, label: stage.name })) ?? [],
+    () =>
+      selectedWorkflow?.stages.map((stage) => ({
+        value: stage.id,
+        label: stage.name,
+      })) ?? [],
     [selectedWorkflow],
   );
 
   const selectedStage = useMemo(
-    () => selectedWorkflow?.stages.find((stage) => stage.id === selectedStageId) ?? null,
+    () =>
+      selectedWorkflow?.stages.find((stage) => stage.id === selectedStageId) ??
+      null,
     [selectedWorkflow, selectedStageId],
   );
 
   const handleWorkflowChange = useCallback((option: SelectOption | null) => {
     const nextWorkflowId = option?.value ?? null;
-      setSelectedWorkflowId(nextWorkflowId);
-      setSelectedStageId(null);
-      setActionError(null);
+    setSelectedWorkflowId(nextWorkflowId);
+    setSelectedStageId(null);
+    setActionError(null);
   }, []);
 
   const handleStageChange = useCallback((option: SelectOption | null) => {
@@ -155,50 +194,48 @@ export default function ConfigScreen({ ctx }: Props) {
   }, []);
 
   const iconOptions = useMemo<SelectOption[]>(
-    () => [
-      'tasks',
-      'flag',
-      'check',
-      'check-circle',
-      'clipboard-list',
-      'clock',
-      'comments',
-      'edit',
-      'inbox',
-      'lightbulb',
-      'list',
-      'list-alt',
-      'play-circle',
-      'project-diagram',
-      'rocket',
-      'star',
-      'sticky-note',
-      'stream',
-      'table',
-      'thermometer-half',
-      'thumbs-up',
-      'tools',
-      'user-check',
-      'wrench',
-    ].map((icon) => ({ value: icon, label: icon })),
+    () =>
+      [
+        'tasks',
+        'flag',
+        'check',
+        'check-circle',
+        'clipboard-list',
+        'clock',
+        'comments',
+        'edit',
+        'inbox',
+        'lightbulb',
+        'list',
+        'list-alt',
+        'play-circle',
+        'project-diagram',
+        'rocket',
+        'star',
+        'sticky-note',
+        'stream',
+        'table',
+        'thermometer-half',
+        'thumbs-up',
+        'tools',
+        'user-check',
+        'wrench',
+      ].map((icon) => ({ value: icon, label: icon })),
     [],
   );
 
-  const selectedIconOption = useMemo<SelectOption | null>(
-    () => {
-      if (!iconOverride) {
-        return null;
-      }
+  const selectedIconOption = useMemo<SelectOption | null>(() => {
+    if (!iconOverride) {
+      return null;
+    }
 
-      const match = iconOptions.find((option) => option.value === iconOverride);
-      if (match) {
-        return match;
-      }
+    const match = iconOptions.find((option) => option.value === iconOverride);
+    if (match) {
+      return match;
+    }
 
-      return { value: iconOverride, label: iconOverride };
-    },
-    [iconOptions, iconOverride],
-  );
+    return { value: iconOverride, label: iconOverride };
+  }, [iconOptions, iconOverride]);
 
   const handleAdd = useCallback(async () => {
     if (!selectedWorkflow || !selectedStage || isSaving) {
@@ -222,7 +259,8 @@ export default function ConfigScreen({ ctx }: Props) {
       icon: trimmedIcon !== '' ? trimmedIcon : undefined,
     };
 
-    const currentParams = (ctx.plugin.attributes.parameters ?? {}) as Partial<PluginParameters>;
+    const currentParams = (ctx.plugin.attributes.parameters ??
+      {}) as Partial<PluginParameters>;
     const filteredItems = menuItems.filter((item) => item.id !== id);
     const nextMenuItems = [...filteredItems, nextItem];
 
@@ -234,7 +272,9 @@ export default function ConfigScreen({ ctx }: Props) {
       setMenuItems(nextMenuItems);
       resetForm();
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : 'Failed to save menu item.');
+      setActionError(
+        error instanceof Error ? error.message : 'Failed to save menu item.',
+      );
     } finally {
       setIsSaving(false);
     }
@@ -258,7 +298,8 @@ export default function ConfigScreen({ ctx }: Props) {
       setIsSaving(true);
       setActionError(null);
 
-      const currentParams = (ctx.plugin.attributes.parameters ?? {}) as Partial<PluginParameters>;
+      const currentParams = (ctx.plugin.attributes.parameters ??
+        {}) as Partial<PluginParameters>;
       const nextMenuItems = menuItems.filter((item) => item.id !== itemId);
 
       try {
@@ -268,7 +309,11 @@ export default function ConfigScreen({ ctx }: Props) {
         });
         setMenuItems(nextMenuItems);
       } catch (error) {
-        setActionError(error instanceof Error ? error.message : 'Failed to remove menu item.');
+        setActionError(
+          error instanceof Error
+            ? error.message
+            : 'Failed to remove menu item.',
+        );
       } finally {
         setIsSaving(false);
       }
@@ -284,8 +329,9 @@ export default function ConfigScreen({ ctx }: Props) {
         <div className={s.section}>
           <Section title="Workflow stage menu items">
             <p className={s.instructions}>
-              Pick a workflow stage, optionally customise its label/icon, then add it. Each saved stage appears in the
-              content sidebar and opens a paginated view of every record currently in that stage.
+              Pick a workflow stage, optionally customise its label/icon, then
+              add it. Each saved stage appears in the content sidebar and opens
+              a paginated view of every record currently in that stage.
             </p>
             {workflowsLoading ? (
               <div className={s.loading}>
@@ -295,7 +341,10 @@ export default function ConfigScreen({ ctx }: Props) {
             ) : loadError ? (
               <p className={s.error}>{loadError}</p>
             ) : (
-              <Form className={s.form} onSubmit={(event) => event.preventDefault()}>
+              <Form
+                className={s.form}
+                onSubmit={(event) => event.preventDefault()}
+              >
                 {!canEditSchema ? (
                   <p className={s.notice}>
                     You need schema permissions to add or remove menu items.
@@ -306,8 +355,14 @@ export default function ConfigScreen({ ctx }: Props) {
                   name="workflow"
                   label="Workflow"
                   required
-                  value={workflowOptions.find((option) => option.value === selectedWorkflowId) ?? null}
-                  onChange={(option: SelectOption | null) => handleWorkflowChange(option)}
+                  value={
+                    workflowOptions.find(
+                      (option) => option.value === selectedWorkflowId,
+                    ) ?? null
+                  }
+                  onChange={(option: SelectOption | null) =>
+                    handleWorkflowChange(option)
+                  }
                   selectInputProps={{
                     options: workflowOptions,
                     isClearable: true,
@@ -319,8 +374,14 @@ export default function ConfigScreen({ ctx }: Props) {
                   name="stage"
                   label="Stage"
                   required
-                  value={stageOptions.find((option) => option.value === selectedStageId) ?? null}
-                  onChange={(option: SelectOption | null) => handleStageChange(option)}
+                  value={
+                    stageOptions.find(
+                      (option) => option.value === selectedStageId,
+                    ) ?? null
+                  }
+                  onChange={(option: SelectOption | null) =>
+                    handleStageChange(option)
+                  }
                   selectInputProps={{
                     options: stageOptions,
                     isClearable: true,
@@ -341,7 +402,9 @@ export default function ConfigScreen({ ctx }: Props) {
                   name="icon"
                   label="Custom icon"
                   value={selectedIconOption}
-                  onChange={(option: SelectOption | null) => setIconOverride(option?.value ?? '')}
+                  onChange={(option: SelectOption | null) =>
+                    setIconOverride(option?.value ?? '')
+                  }
                   selectInputProps={{
                     options: iconOptions,
                     isClearable: true,
@@ -351,7 +414,10 @@ export default function ConfigScreen({ ctx }: Props) {
                     formatOptionLabel: (option: SelectOption) => (
                       <span className={s.iconOption}>
                         <span className={s.iconPreview}>
-                          <span className={`fa-solid fa-${option.value}`} aria-hidden="true" />
+                          <span
+                            className={`fa-solid fa-${option.value}`}
+                            aria-hidden="true"
+                          />
                         </span>
                         <span>{option.label}</span>
                       </span>
@@ -362,7 +428,12 @@ export default function ConfigScreen({ ctx }: Props) {
                   <Button
                     buttonType="primary"
                     buttonSize="l"
-                    disabled={!canEditSchema || !selectedWorkflow || !selectedStage || isSaving}
+                    disabled={
+                      !canEditSchema ||
+                      !selectedWorkflow ||
+                      !selectedStage ||
+                      isSaving
+                    }
                     onClick={handleAdd}
                   >
                     Add this
@@ -382,16 +453,19 @@ export default function ConfigScreen({ ctx }: Props) {
                 {menuItems.map((item) => (
                   <li key={item.id} className={s.menuItem}>
                     <div className={s.menuItemDetails}>
-                      <span className={s.menuItemLabel}>{
-                        item.label ?? `${item.stageName} (${item.workflowName})`
-                      }</span>
+                      <span className={s.menuItemLabel}>
+                        {item.label ??
+                          `${item.stageName} (${item.workflowName})`}
+                      </span>
                       <span className={s.menuItemMeta}>
                         {item.workflowName}
                         {' -> '}
                         {item.stageName}
                       </span>
                       {item.icon ? (
-                        <span className={s.menuItemMeta}>Icon: {item.icon}</span>
+                        <span className={s.menuItemMeta}>
+                          Icon: {item.icon}
+                        </span>
                       ) : null}
                     </div>
                     <Button

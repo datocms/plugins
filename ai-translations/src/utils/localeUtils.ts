@@ -50,4 +50,3 @@ export function formatLocaleWithCode(localeCode: string): string {
   const name = getLocaleName(localeCode);
   return `${name} [${localeCode}]`;
 }
-

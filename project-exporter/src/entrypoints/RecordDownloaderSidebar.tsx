@@ -1,13 +1,13 @@
+import { buildClient } from '@datocms/cma-client-browser';
 import type { RenderItemFormSidebarPanelCtx } from 'datocms-plugin-sdk';
 import { Button, Canvas } from 'datocms-react-ui';
-import downloadRecordsFile from '../utils/downloadRecordsFile';
-import type { AvailableFormats } from './ConfigScreen';
-import { buildClient } from '@datocms/cma-client-browser';
 import { useState } from 'react';
+import downloadRecordsFile from '../utils/downloadRecordsFile';
 import {
   buildRecordExportEnvelope,
   fetchProjectConfigurationExport,
 } from '../utils/recordExport';
+import type { AvailableFormats } from './ConfigScreen';
 
 type PropTypes = {
   ctx: RenderItemFormSidebarPanelCtx;
@@ -33,7 +33,7 @@ export default function RecordDownloaderSidebar({ ctx }: PropTypes) {
 
     if (!ctx.currentUserAccessToken) {
       ctx.alert(
-        'A user access token is required to export JSON metadata for this record.'
+        'A user access token is required to export JSON metadata for this record.',
       );
       return;
     }
@@ -47,7 +47,9 @@ export default function RecordDownloaderSidebar({ ctx }: PropTypes) {
 
       const itemTypes = await client.itemTypes.list();
       const fields = (
-        await Promise.all(itemTypes.map((model) => client.fields.list(model.id)))
+        await Promise.all(
+          itemTypes.map((model) => client.fields.list(model.id)),
+        )
       ).flat();
       const { projectConfiguration, siteInfo } =
         await fetchProjectConfigurationExport({

@@ -11,15 +11,15 @@
  */
 
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
-import { modularContentVariations } from '../../entrypoints/Config/ConfigScreen';
-import { isFieldExcluded, isFieldTranslatable } from './SharedFieldUtils';
-import { isEmptyStructuredText } from './utils';
+import { modularContentVariations } from '../../entrypoints/Config/configConstants';
 import {
   DEFAULT_REQUEST_SPACING_MS,
   GEMINI_REQUEST_SPACING_MS,
   RATE_LIMIT_BASE_DELAY_MS,
   RATE_LIMIT_MAX_DELAY_MS,
 } from '../constants';
+import { isFieldExcluded, isFieldTranslatable } from './SharedFieldUtils';
+import { isEmptyStructuredText } from './utils';
 
 /**
  * Determines if a field should be processed for translation based on
@@ -34,17 +34,17 @@ export function shouldProcessField(
   fieldType: string,
   fieldId: string,
   pluginParams: ctxParamsType,
-  fieldApiKey?: string
+  fieldApiKey?: string,
 ): boolean {
   const isTranslatable = isFieldTranslatable(
     fieldType,
     pluginParams.translationFields,
-    modularContentVariations
+    modularContentVariations,
   );
 
   const isExcluded = isFieldExcluded(
     pluginParams.apiKeysToBeExcludedFromThisPlugin,
-    [fieldId, fieldApiKey]
+    [fieldId, fieldApiKey],
   );
 
   return isTranslatable && !isExcluded;
@@ -60,7 +60,7 @@ export function shouldProcessField(
  */
 export function hasTranslatableSourceValue(
   fieldType: string,
-  sourceValue: unknown
+  sourceValue: unknown,
 ): boolean {
   if (sourceValue === undefined || sourceValue === null || sourceValue === '') {
     return false;
@@ -87,9 +87,10 @@ export function hasTranslatableSourceValue(
  */
 export function getMaxConcurrency(pluginParams: ctxParamsType): number {
   const vendor = pluginParams.vendor ?? 'openai';
-  const modelId = vendor === 'google'
-    ? String(pluginParams.geminiModel ?? '').toLowerCase()
-    : String(pluginParams.gptModel ?? '').toLowerCase();
+  const modelId =
+    vendor === 'google'
+      ? String(pluginParams.geminiModel ?? '').toLowerCase()
+      : String(pluginParams.gptModel ?? '').toLowerCase();
 
   // Gemini has stricter rate limits - use lower concurrency across all models
   if (vendor === 'google') {
@@ -103,7 +104,8 @@ export function getMaxConcurrency(pluginParams: ctxParamsType): number {
 
   // Non-Gemini vendors (OpenAI, Anthropic, DeepL)
   // Light/fast profiles
-  if (/(^|[-])nano\b/.test(modelId) || /flash|mini|lite/.test(modelId)) return 6;
+  if (/(^|[-])nano\b/.test(modelId) || /flash|mini|lite/.test(modelId))
+    return 6;
   // Medium
   if (/mini/.test(modelId) || /1\.5/.test(modelId)) return 5;
   // Heavier "pro" / general models

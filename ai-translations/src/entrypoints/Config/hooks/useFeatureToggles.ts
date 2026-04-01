@@ -4,7 +4,7 @@
  * Groups related state to reduce re-renders in the parent component.
  */
 
-import { useState, useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import type { ctxParamsType } from '../ConfigScreen';
 import { translateFieldTypes } from '../configConstants';
 
@@ -31,24 +31,24 @@ export interface FeatureToggleActions {
  */
 export function useFeatureToggles(
   pluginParams: ctxParamsType,
-  defaultPrompt: string
+  defaultPrompt: string,
 ): [FeatureToggleState, FeatureToggleActions] {
   const [translationFields, setTranslationFields] = useState<string[]>(
     Array.isArray(pluginParams.translationFields)
       ? pluginParams.translationFields
-      : Object.keys(translateFieldTypes)
+      : Object.keys(translateFieldTypes),
   );
 
   const [translateWholeRecord, setTranslateWholeRecord] = useState<boolean>(
     typeof pluginParams.translateWholeRecord === 'boolean'
       ? pluginParams.translateWholeRecord
-      : true
+      : true,
   );
 
   const [translateBulkRecords, setTranslateBulkRecords] = useState<boolean>(
     typeof pluginParams.translateBulkRecords === 'boolean'
       ? pluginParams.translateBulkRecords
-      : true
+      : true,
   );
 
   const [prompt, setPrompt] = useState(pluginParams.prompt ?? defaultPrompt);
@@ -56,7 +56,7 @@ export function useFeatureToggles(
   const [enableDebugging, setEnableDebugging] = useState<boolean>(
     typeof pluginParams.enableDebugging === 'boolean'
       ? pluginParams.enableDebugging
-      : false
+      : false,
   );
 
   const state: FeatureToggleState = {
@@ -68,9 +68,18 @@ export function useFeatureToggles(
   };
 
   const actions: FeatureToggleActions = {
-    setTranslationFields: useCallback((f: string[]) => setTranslationFields(f), []),
-    setTranslateWholeRecord: useCallback((v: boolean) => setTranslateWholeRecord(v), []),
-    setTranslateBulkRecords: useCallback((v: boolean) => setTranslateBulkRecords(v), []),
+    setTranslationFields: useCallback(
+      (f: string[]) => setTranslationFields(f),
+      [],
+    ),
+    setTranslateWholeRecord: useCallback(
+      (v: boolean) => setTranslateWholeRecord(v),
+      [],
+    ),
+    setTranslateBulkRecords: useCallback(
+      (v: boolean) => setTranslateBulkRecords(v),
+      [],
+    ),
     setPrompt: useCallback((p: string) => setPrompt(p), []),
     setEnableDebugging: useCallback((v: boolean) => setEnableDebugging(v), []),
     resetToDefaults: useCallback(() => {
@@ -87,7 +96,9 @@ export function useFeatureToggles(
 /**
  * Extracts feature toggle params for saving.
  */
-export function getFeatureToggleParams(state: FeatureToggleState): Partial<ctxParamsType> {
+export function getFeatureToggleParams(
+  state: FeatureToggleState,
+): Partial<ctxParamsType> {
   return {
     translationFields: state.translationFields,
     translateWholeRecord: state.translateWholeRecord,

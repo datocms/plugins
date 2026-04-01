@@ -1,4 +1,4 @@
-import type { RenderFieldExtensionCtx } from "datocms-plugin-sdk";
+import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
 
 type PropTypes = {
   ctx: RenderFieldExtensionCtx;

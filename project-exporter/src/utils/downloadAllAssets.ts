@@ -1,26 +1,33 @@
 import { buildClient } from '@datocms/cma-client-browser';
 import JSZip from 'jszip';
 import {
+  ASSET_EXPORT_PROGRESS_START,
   ASSET_EXPORT_VERSION,
   ASSET_MANIFEST_FILENAME,
   ASSET_ZIP_ENTRY_PATTERN,
   ASSET_ZIP_FILENAME_TEMPLATE,
-  ASSET_EXPORT_PROGRESS_START,
-  MAX_FILES_PER_ZIP,
-  MAX_ZIP_BYTES,
-  SIZE_SAFETY_FACTOR,
+  type AssetForChunk,
+  type AssetManifestEntry,
   buildAssetChunkZipFilename,
-  calculateAssetExportProgress,
   buildAssetManifestEntry,
   buildAssetZipEntryName,
+  calculateAssetExportProgress,
   createAssetChunks,
   getUploadFilename,
   getUploadSize,
+  MAX_FILES_PER_ZIP,
+  MAX_ZIP_BYTES,
   persistLastAssetExportSnapshot,
-  type AssetManifestEntry,
+  SIZE_SAFETY_FACTOR,
 } from './assetExport';
 
 type UploadLike = Record<string, unknown>;
+
+type DownloadedAssetResult = {
+  zipEntryName: string;
+  file: Blob;
+  manifestEntry: AssetManifestEntry;
+};
 
 function downloadBlob(blob: Blob, filename: string) {
   const objectUrl = URL.createObjectURL(blob);
@@ -37,9 +44,105 @@ function downloadBlob(blob: Blob, filename: string) {
   }, 1000);
 }
 
+async function downloadSingleAsset(
+  asset: AssetForChunk<UploadLike>,
+): Promise<DownloadedAssetResult> {
+  const upload = asset.payload;
+  const originalFilename = getUploadFilename(upload);
+  const zipEntryName = buildAssetZipEntryName(
+    asset.sourceUploadId,
+    originalFilename,
+  );
+  const uploadUrl = typeof upload.url === 'string' ? upload.url : null;
+
+  if (!uploadUrl) {
+    throw new Error(
+      `Upload ${asset.sourceUploadId} does not have a downloadable URL`,
+    );
+  }
+
+  const response = await fetch(uploadUrl);
+  if (!response.ok) {
+    throw new Error(
+      `Failed to download upload ${asset.sourceUploadId} (${response.status})`,
+    );
+  }
+
+  const file = await response.blob();
+  const manifestEntry = buildAssetManifestEntry(upload, zipEntryName);
+
+  return { zipEntryName, file, manifestEntry };
+}
+
+async function buildZipForChunk(
+  chunkAssets: AssetForChunk<UploadLike>[],
+  chunkInfo: {
+    currentChunk: number;
+    totalChunks: number;
+    chunkFilename: string;
+    estimatedBytes: number;
+  },
+  totalUploads: number,
+  downloadedBefore: number,
+  onProgress: ((progress: number, msg: string) => void) | undefined,
+): Promise<{
+  zip: JSZip;
+  manifestEntries: AssetManifestEntry[];
+  downloadedCount: number;
+}> {
+  const downloadResults = await Promise.all(
+    chunkAssets.map((asset) => downloadSingleAsset(asset)),
+  );
+
+  const zip = new JSZip();
+  const manifestEntries: AssetManifestEntry[] = [];
+
+  for (const result of downloadResults) {
+    zip.file(result.zipEntryName, result.file);
+    manifestEntries.push(result.manifestEntry);
+  }
+
+  const downloadedCount = downloadedBefore + downloadResults.length;
+  onProgress?.(
+    calculateAssetExportProgress(downloadedCount, totalUploads),
+    `ZIP ${chunkInfo.currentChunk}/${chunkInfo.totalChunks}: downloaded ${downloadResults.length}/${chunkAssets.length} assets`,
+  );
+
+  zip.file(
+    ASSET_MANIFEST_FILENAME,
+    JSON.stringify(
+      {
+        manifestVersion: ASSET_EXPORT_VERSION,
+        generatedAt: new Date().toISOString(),
+        chunk: {
+          index: chunkInfo.currentChunk,
+          totalChunks: chunkInfo.totalChunks,
+          filename: chunkInfo.chunkFilename,
+          assetCount: chunkAssets.length,
+          estimatedBytes: chunkInfo.estimatedBytes,
+        },
+        conventions: {
+          zipEntryName: ASSET_ZIP_ENTRY_PATTERN,
+          zipFilename: ASSET_ZIP_FILENAME_TEMPLATE,
+        },
+        limits: {
+          maxZipBytes: MAX_ZIP_BYTES,
+          maxFilesPerZip: MAX_FILES_PER_ZIP,
+          sizeSafetyFactor: SIZE_SAFETY_FACTOR,
+        },
+        assets: manifestEntries,
+      },
+      null,
+      2,
+    ),
+  );
+
+  return { zip, manifestEntries, downloadedCount };
+}
+
 export default async function downloadAllAssets(
   apiToken: string,
-  onProgress?: (progress: number, msg: string) => void
+  onProgress?: (progress: number, msg: string) => void,
 ) {
   const client = buildClient({
     apiToken,
@@ -75,113 +178,65 @@ export default async function downloadAllAssets(
       maxZipBytes: MAX_ZIP_BYTES,
       maxFilesPerZip: MAX_FILES_PER_ZIP,
       sizeSafetyFactor: SIZE_SAFETY_FACTOR,
-    }
+    },
   );
 
   const timestamp = new Date().toISOString().replace(/:/g, '-');
-  const chunkFilenames: string[] = [];
 
   onProgress?.(
     ASSET_EXPORT_PROGRESS_START,
-    `Preparing ${chunks.length} zip file(s) from ${uploads.length} assets...`
+    `Preparing ${chunks.length} zip file(s) from ${uploads.length} assets...`,
   );
 
-  let downloadedAssets = 0;
+  // Track total downloaded across all chunks using a shared counter object
+  let globalDownloadedAssets = 0;
 
-  for (let chunkIndex = 0; chunkIndex < chunks.length; chunkIndex++) {
-    const chunk = chunks[chunkIndex];
-    const currentChunk = chunkIndex + 1;
-    const chunkFilename = buildAssetChunkZipFilename({
-      part: currentChunk,
-      totalParts: chunks.length,
-      timestamp,
-    });
+  const chunkResults = await Promise.all(
+    chunks.map(async (chunk, chunkIndex) => {
+      const currentChunk = chunkIndex + 1;
+      const chunkFilename = buildAssetChunkZipFilename({
+        part: currentChunk,
+        totalParts: chunks.length,
+        timestamp,
+      });
 
-    chunkFilenames.push(chunkFilename);
-    const zip = new JSZip();
-    const manifestEntries: AssetManifestEntry[] = [];
-
-    onProgress?.(
-      calculateAssetExportProgress(downloadedAssets, uploads.length),
-      `ZIP ${currentChunk}/${chunks.length}: downloading ${chunk.assets.length} assets...`
-    );
-
-    for (let assetIndex = 0; assetIndex < chunk.assets.length; assetIndex++) {
-      const asset = chunk.assets[assetIndex];
-      const upload = asset.payload;
-      const originalFilename = getUploadFilename(upload);
-      const zipEntryName = buildAssetZipEntryName(
-        asset.sourceUploadId,
-        originalFilename
+      onProgress?.(
+        calculateAssetExportProgress(globalDownloadedAssets, uploads.length),
+        `ZIP ${currentChunk}/${chunks.length}: downloading ${chunk.assets.length} assets...`,
       );
-      const uploadUrl = typeof upload.url === 'string' ? upload.url : null;
 
-      if (!uploadUrl) {
-        throw new Error(
-          `Upload ${asset.sourceUploadId} does not have a downloadable URL`
-        );
-      }
-
-      const response = await fetch(uploadUrl);
-      if (!response.ok) {
-        throw new Error(
-          `Failed to download upload ${asset.sourceUploadId} (${response.status})`
-        );
-      }
-
-      const file = await response.blob();
-      zip.file(zipEntryName, file);
-      manifestEntries.push(buildAssetManifestEntry(upload, zipEntryName));
-      downloadedAssets++;
-
-      if ((assetIndex + 1) % 5 === 0 || assetIndex + 1 === chunk.assets.length) {
-        onProgress?.(
-          calculateAssetExportProgress(downloadedAssets, uploads.length),
-          `ZIP ${currentChunk}/${chunks.length}: downloaded ${
-            assetIndex + 1
-          }/${chunk.assets.length} assets`
-        );
-      }
-    }
-
-    zip.file(
-      ASSET_MANIFEST_FILENAME,
-      JSON.stringify(
+      const { zip, downloadedCount } = await buildZipForChunk(
+        chunk.assets,
         {
-          manifestVersion: ASSET_EXPORT_VERSION,
-          generatedAt: new Date().toISOString(),
-          chunk: {
-            index: currentChunk,
-            totalChunks: chunks.length,
-            filename: chunkFilename,
-            assetCount: chunk.assets.length,
-            estimatedBytes: chunk.estimatedBytes,
-          },
-          conventions: {
-            zipEntryName: ASSET_ZIP_ENTRY_PATTERN,
-            zipFilename: ASSET_ZIP_FILENAME_TEMPLATE,
-          },
-          limits: {
-            maxZipBytes: MAX_ZIP_BYTES,
-            maxFilesPerZip: MAX_FILES_PER_ZIP,
-            sizeSafetyFactor: SIZE_SAFETY_FACTOR,
-          },
-          assets: manifestEntries,
+          currentChunk,
+          totalChunks: chunks.length,
+          chunkFilename,
+          estimatedBytes: chunk.estimatedBytes,
         },
-        null,
-        2
-      )
-    );
+        uploads.length,
+        globalDownloadedAssets,
+        onProgress,
+      );
 
-    onProgress?.(
-      calculateAssetExportProgress(downloadedAssets, uploads.length),
-      `ZIP ${currentChunk}/${chunks.length}: generating archive...`
-    );
-    const finishedZip = await zip.generateAsync({
-      type: 'blob',
-      compression: 'STORE',
-    });
+      globalDownloadedAssets = downloadedCount;
 
+      onProgress?.(
+        calculateAssetExportProgress(globalDownloadedAssets, uploads.length),
+        `ZIP ${currentChunk}/${chunks.length}: generating archive...`,
+      );
+
+      const finishedZip = await zip.generateAsync({
+        type: 'blob',
+        compression: 'STORE',
+      });
+
+      return { chunkFilename, finishedZip };
+    }),
+  );
+
+  const chunkFilenames = chunkResults.map((result) => result.chunkFilename);
+
+  for (const { finishedZip, chunkFilename } of chunkResults) {
     downloadBlob(finishedZip, chunkFilename);
   }
 
@@ -198,6 +253,6 @@ export default async function downloadAllAssets(
 
   onProgress?.(
     100,
-    `Completed asset export: ${uploads.length} assets in ${chunks.length} ZIP file(s).`
+    `Completed asset export: ${uploads.length} assets in ${chunks.length} ZIP file(s).`,
   );
 }

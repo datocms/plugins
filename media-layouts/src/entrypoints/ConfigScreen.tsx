@@ -1,11 +1,10 @@
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import { Button, Canvas, Form, SelectField, TextField } from 'datocms-react-ui';
-import { useEffect, useMemo, useState, useCallback } from 'react';
-import {
-  ASPECT_RATIO_OPTIONS,
-  DEFAULT_WIDTH,
-} from '../constants';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ASPECT_RATIO_OPTIONS, DEFAULT_WIDTH } from '../constants';
+import type { ValidGlobalParams } from '../types';
 import { validateCustomAspectRatio } from '../utils/aspectRatio';
+import { normalizeGlobalParams } from '../utils/fieldParams';
 import {
   buildWidthOptions,
   MAX_WIDTH,
@@ -13,8 +12,6 @@ import {
   parseCustomWidth,
   validateCustomWidth,
 } from '../utils/width';
-import { normalizeGlobalParams } from '../utils/fieldParams';
-import type { ValidGlobalParams } from '../types';
 import styles from './ConfigScreen.module.css';
 
 type Props = {
@@ -23,20 +20,23 @@ type Props = {
 
 export default function ConfigScreen({ ctx }: Props) {
   const [formValues, setFormValues] = useState<ValidGlobalParams>(() =>
-    normalizeGlobalParams(ctx.plugin.attributes.parameters)
+    normalizeGlobalParams(ctx.plugin.attributes.parameters),
   );
 
   const update = useCallback(
-    <K extends keyof ValidGlobalParams>(field: K, value: ValidGlobalParams[K]) => {
+    <K extends keyof ValidGlobalParams>(
+      field: K,
+      value: ValidGlobalParams[K],
+    ) => {
       const newParameters = { ...formValues, [field]: value };
       setFormValues(newParameters);
       ctx.updatePluginParameters(newParameters);
     },
-    [formValues, ctx]
+    [formValues, ctx],
   );
 
   const presetAspectRatioOptions = ASPECT_RATIO_OPTIONS.filter(
-    (opt) => opt.value !== 'custom'
+    (opt) => opt.value !== 'custom',
   ).map((opt) => ({
     value: opt.value,
     label: opt.label,
@@ -47,7 +47,9 @@ export default function ConfigScreen({ ctx }: Props) {
     { value: 'custom', label: 'Custom...' },
   ];
 
-  const presetAspectRatioValues = presetAspectRatioOptions.map((opt) => opt.value);
+  const presetAspectRatioValues = presetAspectRatioOptions.map(
+    (opt) => opt.value,
+  );
   const isCustomAspectRatio =
     formValues.defaultAspectRatio === 'custom' ||
     !presetAspectRatioValues.includes(formValues.defaultAspectRatio);
@@ -63,23 +65,24 @@ export default function ConfigScreen({ ctx }: Props) {
 
   const presetWidthOptions = useMemo(
     () => buildWidthOptions(formValues.widthPresets),
-    [formValues.widthPresets]
+    [formValues.widthPresets],
   );
   const widthOptions = useMemo(
     () => [...presetWidthOptions, { value: 'custom', label: 'Custom...' }],
-    [presetWidthOptions]
+    [presetWidthOptions],
   );
   const presetWidthValues = useMemo(
     () => presetWidthOptions.map((opt) => opt.value),
-    [presetWidthOptions]
+    [presetWidthOptions],
   );
 
   const isCustomWidthValue =
     typeof formValues.defaultWidth === 'number' &&
     !presetWidthValues.includes(formValues.defaultWidth);
-  const [customWidthActive, setCustomWidthActive] = useState(isCustomWidthValue);
+  const [customWidthActive, setCustomWidthActive] =
+    useState(isCustomWidthValue);
   const [customWidthInput, setCustomWidthInput] = useState(
-    isCustomWidthValue ? String(formValues.defaultWidth) : ''
+    isCustomWidthValue ? String(formValues.defaultWidth) : '',
   );
   const customWidthError = customWidthActive
     ? validateCustomWidth(customWidthInput)
@@ -100,37 +103,41 @@ export default function ConfigScreen({ ctx }: Props) {
 
   const selectedAspectRatio = aspectRatioOptions.find(
     (opt) =>
-      opt.value === (isCustomAspectRatio ? 'custom' : formValues.defaultAspectRatio)
+      opt.value ===
+      (isCustomAspectRatio ? 'custom' : formValues.defaultAspectRatio),
   );
 
   const selectedWidth = widthOptions.find(
-    (opt) => opt.value === (customWidthActive ? 'custom' : formValues.defaultWidth)
+    (opt) =>
+      opt.value === (customWidthActive ? 'custom' : formValues.defaultWidth),
   );
 
   const [presetDrafts, setPresetDrafts] = useState(() =>
-    formValues.widthPresets.map((preset) => ({
+    formValues.widthPresets.map((preset, i) => ({
+      id: `preset-init-${i}-${Date.now()}`,
       label: preset.label,
       width: String(preset.value),
-    }))
+    })),
   );
 
   useEffect(() => {
-    setPresetDrafts(
-      formValues.widthPresets.map((preset) => ({
-        label: preset.label,
-        width: String(preset.value),
-      }))
+    setPresetDrafts((existingDrafts) =>
+      formValues.widthPresets.map((preset, i) => {
+        const existingDraft = existingDrafts[i];
+        return {
+          id: existingDraft?.id ?? `preset-sync-${i}-${Date.now()}`,
+          label: preset.label,
+          width: String(preset.value),
+        };
+      }),
     );
   }, [formValues.widthPresets]);
 
   const handlePresetChange = useCallback(
-    (
-      index: number,
-      next: { label?: string; width?: string }
-    ) => {
+    (index: number, next: { label?: string; width?: string }) => {
       setPresetDrafts((drafts) => {
         const updated = drafts.map((draft, i) =>
-          i === index ? { ...draft, ...next } : draft
+          i === index ? { ...draft, ...next } : draft,
         );
         return updated;
       });
@@ -146,11 +153,11 @@ export default function ConfigScreen({ ctx }: Props) {
       if (!label || widthError || parsed === null) return;
 
       const updatedPresets = formValues.widthPresets.map((preset, i) =>
-        i === index ? { ...preset, label, value: parsed } : preset
+        i === index ? { ...preset, label, value: parsed } : preset,
       );
       update('widthPresets', updatedPresets);
     },
-    [formValues.widthPresets, presetDrafts, update]
+    [formValues.widthPresets, presetDrafts, update],
   );
 
   const handleAddPreset = useCallback(() => {
@@ -161,7 +168,11 @@ export default function ConfigScreen({ ctx }: Props) {
     const updatedPresets = [...formValues.widthPresets, nextPreset];
     setPresetDrafts((drafts) => [
       ...drafts,
-      { label: nextPreset.label, width: String(nextPreset.value) },
+      {
+        id: `preset-new-${Date.now()}`,
+        label: nextPreset.label,
+        width: String(nextPreset.value),
+      },
     ]);
     update('widthPresets', updatedPresets);
   }, [formValues.widthPresets, update]);
@@ -169,12 +180,12 @@ export default function ConfigScreen({ ctx }: Props) {
   const handleRemovePreset = useCallback(
     (index: number) => {
       const updatedPresets = formValues.widthPresets.filter(
-        (_, i) => i !== index
+        (_, i) => i !== index,
       );
       setPresetDrafts((drafts) => drafts.filter((_, i) => i !== index));
       update('widthPresets', updatedPresets);
     },
-    [formValues.widthPresets, update]
+    [formValues.widthPresets, update],
   );
 
   return (
@@ -237,7 +248,7 @@ export default function ConfigScreen({ ctx }: Props) {
                 setCustomWidthInput('');
                 update(
                   'defaultWidth',
-                  option.value as ValidGlobalParams['defaultWidth']
+                  option.value as ValidGlobalParams['defaultWidth'],
                 );
               }
             }
@@ -287,9 +298,7 @@ export default function ConfigScreen({ ctx }: Props) {
           </div>
 
           {presetDrafts.length === 0 ? (
-            <div className={styles.presetsEmpty}>
-              No custom presets yet.
-            </div>
+            <div className={styles.presetsEmpty}>No custom presets yet.</div>
           ) : (
             <div className={styles.presetsList}>
               {presetDrafts.map((preset, index) => {
@@ -298,7 +307,7 @@ export default function ConfigScreen({ ctx }: Props) {
                   : 'Label is required';
                 const widthError = validateCustomWidth(preset.width);
                 return (
-                  <div key={`preset-${index}`} className={styles.presetRow}>
+                  <div key={preset.id} className={styles.presetRow}>
                     <div className={styles.presetFields}>
                       <TextField
                         id={`preset-label-${index}`}

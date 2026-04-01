@@ -96,11 +96,11 @@ const useStore = create(
               state.searches[query].status = 'success';
               state.searches[query].result = products.map((p) => p.handle);
 
-              products.forEach((product) => {
+              for (const product of products) {
                 state.products[product.handle] =
                   state.products[product.handle] || {};
                 state.products[product.handle].result = product;
-              });
+              }
             });
           } catch (_e) {
             set((state) => {

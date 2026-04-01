@@ -1,11 +1,14 @@
-import { describe, it, expect } from 'vitest';
 import {
+  isValidAuthorId,
   isValidComment,
   isValidCommentArray,
-  isValidAuthorId,
   isValidISOString,
 } from '@utils/typeGuards';
-import { createBaseComment, createCommentWithReplies } from '../fixtures/comments';
+import { describe, expect, it } from 'vitest';
+import {
+  createBaseComment,
+  createCommentWithReplies,
+} from '../fixtures/comments';
 import { createMentionSegment, mentionFixtures } from '../fixtures/mentions';
 
 describe('isValidISOString', () => {
@@ -62,7 +65,9 @@ describe('isValidAuthorId', () => {
     });
 
     it('accepts UUID-style ID', () => {
-      expect(isValidAuthorId('550e8400-e29b-41d4-a716-446655440000')).toBe(true);
+      expect(isValidAuthorId('550e8400-e29b-41d4-a716-446655440000')).toBe(
+        true,
+      );
     });
   });
 
@@ -180,13 +185,14 @@ describe('isValidComment', () => {
 
     it('rejects non-array content', () => {
       const comment = createBaseComment();
-      expect(isValidComment({ ...comment, content: 'string content' })).toBe(false);
+      expect(isValidComment({ ...comment, content: 'string content' })).toBe(
+        false,
+      );
     });
 
     it('rejects invalid content segments', () => {
-      const comment = createBaseComment({
-        content: [{ type: 'invalid' }] as any,
-      });
+      const base = createBaseComment();
+      const comment = { ...base, content: [{ type: 'invalid' }] };
       expect(isValidComment(comment)).toBe(false);
     });
 
@@ -196,9 +202,8 @@ describe('isValidComment', () => {
     });
 
     it('rejects invalid upvoterIds (non-string elements)', () => {
-      const comment = createBaseComment({
-        upvoterIds: [123, 456] as any,
-      });
+      const base = createBaseComment();
+      const comment = { ...base, upvoterIds: [123, 456] };
       expect(isValidComment(comment)).toBe(false);
     });
 
@@ -214,13 +219,18 @@ describe('isValidComment', () => {
 
     it('rejects invalid replies', () => {
       const comment = createBaseComment();
-      expect(isValidComment({ ...comment, replies: [{ invalid: true }] })).toBe(false);
+      expect(isValidComment({ ...comment, replies: [{ invalid: true }] })).toBe(
+        false,
+      );
     });
   });
 
   describe('cycle detection', () => {
     it('rejects circular references', () => {
-      const comment: any = createBaseComment({ id: 'circular' });
+      const comment = createBaseComment({ id: 'circular' }) as Record<
+        string,
+        unknown
+      >;
       comment.replies = [comment]; // Create circular reference
 
       expect(isValidComment(comment)).toBe(false);
@@ -256,9 +266,8 @@ describe('isValidComment', () => {
     });
 
     it('rejects text segment with non-string content', () => {
-      const comment = createBaseComment({
-        content: [{ type: 'text', content: 123 }] as any,
-      });
+      const base = createBaseComment();
+      const comment = { ...base, content: [{ type: 'text', content: 123 }] };
       expect(isValidComment(comment)).toBe(false);
     });
 
@@ -270,23 +279,28 @@ describe('isValidComment', () => {
     });
 
     it('rejects mention segment with null mention', () => {
-      const comment = createBaseComment({
-        content: [{ type: 'mention', mention: null }] as any,
-      });
+      const base = createBaseComment();
+      const comment = {
+        ...base,
+        content: [{ type: 'mention', mention: null }],
+      };
       expect(isValidComment(comment)).toBe(false);
     });
 
     it('rejects mention segment with invalid stored mention shape', () => {
-      const comment = createBaseComment({
-        content: [{ type: 'mention', mention: { type: 'record', id: 'record-1' } }] as any,
-      });
+      const base = createBaseComment();
+      const comment = {
+        ...base,
+        content: [
+          { type: 'mention', mention: { type: 'record', id: 'record-1' } },
+        ],
+      };
       expect(isValidComment(comment)).toBe(false);
     });
 
     it('rejects unknown segment type', () => {
-      const comment = createBaseComment({
-        content: [{ type: 'unknown', data: {} }] as any,
-      });
+      const base = createBaseComment();
+      const comment = { ...base, content: [{ type: 'unknown', data: {} }] };
       expect(isValidComment(comment)).toBe(false);
     });
   });
@@ -299,7 +313,10 @@ describe('isValidCommentArray', () => {
     });
 
     it('accepts array of valid comments', () => {
-      const comments = [createBaseComment({ id: '1' }), createBaseComment({ id: '2' })];
+      const comments = [
+        createBaseComment({ id: '1' }),
+        createBaseComment({ id: '2' }),
+      ];
       expect(isValidCommentArray(comments)).toBe(true);
     });
 

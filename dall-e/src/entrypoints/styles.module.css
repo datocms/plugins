@@ -176,7 +176,7 @@
 }
 
 .shapePreview::before {
-  content: '';
+  content: "";
   display: block;
   border: 1px solid currentColor;
   border-radius: 3px;

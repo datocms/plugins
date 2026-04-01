@@ -42,7 +42,7 @@ OUTPUT INSTRUCTIONS:
 
 /**
  * The defaultPrompt uses the following placeholders:
- * 
+ *
  * {fieldValue} - The content to be translated
  * {fromLocale} - The source language
  * {toLocale} - The target language
@@ -52,4 +52,3 @@ OUTPUT INSTRUCTIONS:
  *                  - Understanding specialized terminology in context
  *                  - More accurately capturing the intended meaning
  */
-

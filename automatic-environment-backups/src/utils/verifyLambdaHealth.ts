@@ -2,26 +2,26 @@ import type {
   LambdaConnectionErrorCode,
   LambdaConnectionPhase,
   LambdaConnectionState,
-} from "../types/types";
+} from '../types/types';
 import {
   buildLambdaHttpErrorMessage,
   buildLambdaJsonHeaders,
   LambdaAuthSecretError,
-} from "./lambdaAuth";
+} from './lambdaAuth';
 import {
   createTimeoutController,
   isAbortError,
   truncateResponseSnippet,
-} from "./lambdaHttp";
+} from './lambdaHttp';
 
 const HEALTH_CHECK_TIMEOUT_MS = 8000;
-export const HEALTH_ENDPOINT_PATH = "/api/datocms/plugin-health";
-const EXPECTED_PLUGIN_NAME = "datocms-plugin-automatic-environment-backups";
-const EXPECTED_MPI_MESSAGE = "DATOCMS_AUTOMATIC_BACKUPS_PLUGIN_PING";
-const EXPECTED_MPI_VERSION = "2026-02-26";
-const EXPECTED_PONG_MESSAGE = "DATOCMS_AUTOMATIC_BACKUPS_LAMBDA_PONG";
-const EXPECTED_SERVICE_NAME = "datocms-backups-scheduled-function";
-const EXPECTED_STATUS = "ready";
+export const HEALTH_ENDPOINT_PATH = '/api/datocms/plugin-health';
+const EXPECTED_PLUGIN_NAME = 'datocms-plugin-automatic-environment-backups';
+const EXPECTED_MPI_MESSAGE = 'DATOCMS_AUTOMATIC_BACKUPS_PLUGIN_PING';
+const EXPECTED_MPI_VERSION = '2026-02-26';
+const EXPECTED_PONG_MESSAGE = 'DATOCMS_AUTOMATIC_BACKUPS_LAMBDA_PONG';
+const EXPECTED_SERVICE_NAME = 'datocms-backups-scheduled-function';
+const EXPECTED_STATUS = 'ready';
 const SNIPPET_MAX_LENGTH = 280;
 const PROTOCOL_PREFIX_PATTERN = /^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//;
 
@@ -73,7 +73,7 @@ export class LambdaHealthCheckError extends Error {
     responseSnippet,
   }: LambdaHealthCheckErrorConstructorProps) {
     super(message);
-    this.name = "LambdaHealthCheckError";
+    this.name = 'LambdaHealthCheckError';
     this.code = code;
     this.phase = phase;
     this.endpoint = endpoint;
@@ -86,7 +86,7 @@ const normalizeCandidateUrl = (baseUrl: string): string => {
   const trimmedBaseUrl = baseUrl.trim();
 
   if (!trimmedBaseUrl) {
-    return "";
+    return '';
   }
 
   if (PROTOCOL_PREFIX_PATTERN.test(trimmedBaseUrl)) {
@@ -103,19 +103,22 @@ const getFallbackEndpoint = (baseUrl: string): string => {
     const parsed = new URL(candidate);
     return new URL(HEALTH_ENDPOINT_PATH, `${parsed.origin}/`).toString();
   } catch {
-    return `${candidate || "(empty url)"}${HEALTH_ENDPOINT_PATH}`;
+    return `${candidate || '(empty url)'}${HEALTH_ENDPOINT_PATH}`;
   }
 };
 
-const normalizeBaseUrl = (baseUrl: string, phase: LambdaConnectionPhase): string => {
+const normalizeBaseUrl = (
+  baseUrl: string,
+  phase: LambdaConnectionPhase,
+): string => {
   const candidate = normalizeCandidateUrl(baseUrl);
 
   if (!candidate) {
     throw new LambdaHealthCheckError({
-      code: "INVALID_URL",
-      message: "No URL was provided for the deployment.",
+      code: 'INVALID_URL',
+      message: 'No URL was provided for the deployment.',
       phase,
-      endpoint: "(missing endpoint)",
+      endpoint: '(missing endpoint)',
     });
   }
 
@@ -125,33 +128,33 @@ const normalizeBaseUrl = (baseUrl: string, phase: LambdaConnectionPhase): string
     parsed = new URL(candidate);
   } catch {
     throw new LambdaHealthCheckError({
-      code: "INVALID_URL",
+      code: 'INVALID_URL',
       message:
-        "The deployed URL is not valid. Use a full URL like https://backups.example.com, or paste only the hostname and https will be added automatically.",
+        'The deployed URL is not valid. Use a full URL like https://backups.example.com, or paste only the hostname and https will be added automatically.',
       phase,
       endpoint: getFallbackEndpoint(candidate),
     });
   }
 
-  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
     throw new LambdaHealthCheckError({
-      code: "INVALID_URL",
+      code: 'INVALID_URL',
       message:
-        "The deployed URL must use http or https. Example: https://backups.example.com",
+        'The deployed URL must use http or https. Example: https://backups.example.com',
       phase,
       endpoint: getFallbackEndpoint(candidate),
     });
   }
 
   const hostname = parsed.hostname.toLowerCase();
-  const isLocalhost = hostname === "localhost";
-  const hasDomainDot = hostname.includes(".");
+  const isLocalhost = hostname === 'localhost';
+  const hasDomainDot = hostname.includes('.');
 
   if (!isLocalhost && !hasDomainDot) {
     throw new LambdaHealthCheckError({
-      code: "INVALID_URL",
+      code: 'INVALID_URL',
       message:
-        "The deployed URL hostname looks incomplete. Use a full domain like https://backups.example.com, or localhost for local testing.",
+        'The deployed URL hostname looks incomplete. Use a full domain like https://backups.example.com, or localhost for local testing.',
       phase,
       endpoint: getFallbackEndpoint(candidate),
     });
@@ -162,7 +165,7 @@ const normalizeBaseUrl = (baseUrl: string, phase: LambdaConnectionPhase): string
 
 const parseJsonPayload = (payload: string): unknown => {
   if (!payload.trim()) {
-    throw new Error("empty");
+    throw new Error('empty');
   }
 
   return JSON.parse(payload);
@@ -172,7 +175,7 @@ const extractHttpErrorMessage = (payload: string, status: number): string =>
   buildLambdaHttpErrorMessage(
     status,
     payload,
-    "health endpoint returned an error status",
+    'health endpoint returned an error status',
   );
 
 const isExpectedResponse = (payload: LambdaHealthResponsePayload): boolean => {
@@ -193,9 +196,9 @@ const assertExpectedResponse = (
 ) => {
   if (!isExpectedResponse(payload)) {
     throw new LambdaHealthCheckError({
-      code: "UNEXPECTED_RESPONSE",
+      code: 'UNEXPECTED_RESPONSE',
       message:
-        "Health endpoint response did not match the expected Automatic Backups MPI PONG contract.",
+        'Health endpoint response did not match the expected Automatic Backups MPI PONG contract.',
       phase,
       endpoint,
       responseSnippet: truncateResponseSnippet(rawPayload, SNIPPET_MAX_LENGTH),
@@ -213,10 +216,13 @@ export const verifyLambdaHealth = async ({
   lambdaAuthSecret,
 }: VerifyLambdaHealthInput): Promise<VerifyLambdaHealthResult> => {
   const normalizedBaseUrl = normalizeBaseUrl(baseUrl, phase);
-  const endpoint = new URL(HEALTH_ENDPOINT_PATH, `${normalizedBaseUrl}/`).toString();
+  const endpoint = new URL(
+    HEALTH_ENDPOINT_PATH,
+    `${normalizedBaseUrl}/`,
+  ).toString();
   const checkedAt = new Date().toISOString();
   const requestBody = JSON.stringify({
-    event_type: "plugin_health_ping",
+    event_type: 'plugin_health_ping',
     mpi: {
       message: EXPECTED_MPI_MESSAGE,
       version: EXPECTED_MPI_VERSION,
@@ -236,7 +242,7 @@ export const verifyLambdaHealth = async ({
   } catch (error) {
     if (error instanceof LambdaAuthSecretError) {
       throw new LambdaHealthCheckError({
-        code: "MISSING_AUTH_SECRET",
+        code: 'MISSING_AUTH_SECRET',
         message: error.message,
         phase,
         endpoint,
@@ -249,7 +255,7 @@ export const verifyLambdaHealth = async ({
 
   try {
     response = await fetch(endpoint, {
-      method: "POST",
+      method: 'POST',
       body: requestBody,
       headers: requestHeaders,
       signal: timeoutController.controller.signal,
@@ -257,7 +263,7 @@ export const verifyLambdaHealth = async ({
   } catch (error) {
     if (isAbortError(error)) {
       throw new LambdaHealthCheckError({
-        code: "TIMEOUT",
+        code: 'TIMEOUT',
         message: `Health check timed out after ${HEALTH_CHECK_TIMEOUT_MS}ms.`,
         phase,
         endpoint,
@@ -265,8 +271,8 @@ export const verifyLambdaHealth = async ({
     }
 
     throw new LambdaHealthCheckError({
-      code: "NETWORK",
-      message: "Could not reach the health endpoint.",
+      code: 'NETWORK',
+      message: 'Could not reach the health endpoint.',
       phase,
       endpoint,
     });
@@ -278,26 +284,35 @@ export const verifyLambdaHealth = async ({
 
   if (!response.ok) {
     throw new LambdaHealthCheckError({
-      code: "HTTP",
+      code: 'HTTP',
       message: extractHttpErrorMessage(responsePayload, response.status),
       phase,
       endpoint,
       httpStatus: response.status,
-      responseSnippet: truncateResponseSnippet(responsePayload, SNIPPET_MAX_LENGTH),
+      responseSnippet: truncateResponseSnippet(
+        responsePayload,
+        SNIPPET_MAX_LENGTH,
+      ),
     });
   }
 
   let parsedResponse: LambdaHealthResponsePayload;
 
   try {
-    parsedResponse = parseJsonPayload(responsePayload) as LambdaHealthResponsePayload;
+    parsedResponse = parseJsonPayload(
+      responsePayload,
+    ) as LambdaHealthResponsePayload;
   } catch {
     throw new LambdaHealthCheckError({
-      code: "INVALID_JSON",
-      message: "Health endpoint returned HTTP 200 with an invalid JSON payload.",
+      code: 'INVALID_JSON',
+      message:
+        'Health endpoint returned HTTP 200 with an invalid JSON payload.',
       phase,
       endpoint,
-      responseSnippet: truncateResponseSnippet(responsePayload, SNIPPET_MAX_LENGTH),
+      responseSnippet: truncateResponseSnippet(
+        responsePayload,
+        SNIPPET_MAX_LENGTH,
+      ),
     });
   }
 
@@ -320,7 +335,7 @@ export const buildDisconnectedLambdaConnectionState = (
 
   if (error instanceof LambdaHealthCheckError) {
     return {
-      status: "disconnected",
+      status: 'disconnected',
       endpoint: error.endpoint || fallbackEndpoint,
       lastCheckedAt: checkedAt,
       lastCheckPhase: phase,
@@ -332,12 +347,12 @@ export const buildDisconnectedLambdaConnectionState = (
   }
 
   return {
-    status: "disconnected",
+    status: 'disconnected',
     endpoint: fallbackEndpoint,
     lastCheckedAt: checkedAt,
     lastCheckPhase: phase,
-    errorCode: "NETWORK",
-    errorMessage: "Unexpected error while checking health.",
+    errorCode: 'NETWORK',
+    errorMessage: 'Unexpected error while checking health.',
   };
 };
 
@@ -346,7 +361,7 @@ export const buildConnectedLambdaConnectionState = (
   checkedAt: string,
   phase: LambdaConnectionPhase,
 ): LambdaConnectionState => ({
-  status: "connected",
+  status: 'connected',
   endpoint,
   lastCheckedAt: checkedAt,
   lastCheckPhase: phase,
@@ -356,19 +371,23 @@ export const getLambdaConnectionErrorDetails = (
   connection: LambdaConnectionState,
 ): string[] => {
   return [
-    "Could not validate the Automatic Backups deployment.",
+    'Could not validate the Automatic Backups deployment.',
     `Health check phase: ${connection.lastCheckPhase}.`,
     `Endpoint called: ${connection.endpoint}.`,
-    connection.errorCode ? `Failure code: ${connection.errorCode}.` : "",
-    connection.errorMessage ? `Failure details: ${connection.errorMessage}` : "",
-    connection.httpStatus ? `HTTP status: ${connection.httpStatus}.` : "",
-    connection.responseSnippet ? `Response snippet: ${connection.responseSnippet}` : "",
+    connection.errorCode ? `Failure code: ${connection.errorCode}.` : '',
+    connection.errorMessage
+      ? `Failure details: ${connection.errorMessage}`
+      : '',
+    connection.httpStatus ? `HTTP status: ${connection.httpStatus}.` : '',
+    connection.responseSnippet
+      ? `Response snippet: ${connection.responseSnippet}`
+      : '',
     buildUnexpectedResponseMessage(),
-    "If this worked before, your deployment may be outdated or unhealthy.",
-    "Confirm /api/datocms/plugin-health exists, the lambda auth secret matches, and DATOCMS_BACKUPS_SHARED_SECRET is configured server-side.",
+    'If this worked before, your deployment may be outdated or unhealthy.',
+    'Confirm /api/datocms/plugin-health exists, the lambda auth secret matches, and DATOCMS_BACKUPS_SHARED_SECRET is configured server-side.',
   ].filter(Boolean);
 };
 
 export const normalizeLambdaBaseUrl = (baseUrl: string): string => {
-  return normalizeBaseUrl(baseUrl, "config_connect");
+  return normalizeBaseUrl(baseUrl, 'config_connect');
 };

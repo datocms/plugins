@@ -75,7 +75,9 @@ export function isRelevantChatModel(id: string): boolean {
  * @param apiKey - OpenAI API key used to list available models.
  * @returns Sorted array of relevant chat model identifiers.
  */
-export async function listRelevantOpenAIModels(apiKey: string): Promise<string[]> {
+export async function listRelevantOpenAIModels(
+  apiKey: string,
+): Promise<string[]> {
   const client = new OpenAI({ apiKey, dangerouslyAllowBrowser: true });
   const { data } = await client.models.list();
   const allIds = data.map((m) => m.id);

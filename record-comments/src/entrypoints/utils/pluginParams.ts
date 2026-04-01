@@ -27,7 +27,7 @@ function parseBoolean(value: unknown, fallback: boolean) {
 }
 
 function parseCommentsModelIdsByEnvironment(
-  value: unknown
+  value: unknown,
 ): Record<string, string> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return {};
@@ -45,7 +45,7 @@ function parseCommentsModelIdsByEnvironment(
       }
 
       return [[environment, trimmedModelId]];
-    })
+    }),
   );
 }
 
@@ -57,49 +57,57 @@ export function parsePluginParams(params: unknown): PluginParameters {
   const rawParams = params as Record<string, unknown>;
 
   return {
-    cdaToken: parseTrimmedString(rawParams.cdaToken, PLUGIN_PARAMS_DEFAULTS.cdaToken),
+    cdaToken: parseTrimmedString(
+      rawParams.cdaToken,
+      PLUGIN_PARAMS_DEFAULTS.cdaToken,
+    ),
     commentsModelIdsByEnvironment: parseCommentsModelIdsByEnvironment(
-      rawParams.commentsModelIdsByEnvironment
+      rawParams.commentsModelIdsByEnvironment,
     ),
     debugLoggingEnabled: parseBoolean(
       rawParams.debugLoggingEnabled,
-      PLUGIN_PARAMS_DEFAULTS.debugLoggingEnabled
+      PLUGIN_PARAMS_DEFAULTS.debugLoggingEnabled,
     ),
     migrationCompleted: parseBoolean(
       rawParams.migrationCompleted,
-      PLUGIN_PARAMS_DEFAULTS.migrationCompleted
+      PLUGIN_PARAMS_DEFAULTS.migrationCompleted,
     ),
     realTimeUpdatesEnabled: parseBoolean(
       rawParams.realTimeUpdatesEnabled,
-      PLUGIN_PARAMS_DEFAULTS.realTimeUpdatesEnabled
+      PLUGIN_PARAMS_DEFAULTS.realTimeUpdatesEnabled,
     ),
   };
 }
 
-export function buildPluginParams(params: Partial<PluginParameters>): PluginParameters {
+export function buildPluginParams(
+  params: Partial<PluginParameters>,
+): PluginParameters {
   return {
-    cdaToken: parseTrimmedString(params.cdaToken, PLUGIN_PARAMS_DEFAULTS.cdaToken),
+    cdaToken: parseTrimmedString(
+      params.cdaToken,
+      PLUGIN_PARAMS_DEFAULTS.cdaToken,
+    ),
     commentsModelIdsByEnvironment: parseCommentsModelIdsByEnvironment(
-      params.commentsModelIdsByEnvironment
+      params.commentsModelIdsByEnvironment,
     ),
     debugLoggingEnabled: parseBoolean(
       params.debugLoggingEnabled,
-      PLUGIN_PARAMS_DEFAULTS.debugLoggingEnabled
+      PLUGIN_PARAMS_DEFAULTS.debugLoggingEnabled,
     ),
     migrationCompleted: parseBoolean(
       params.migrationCompleted,
-      PLUGIN_PARAMS_DEFAULTS.migrationCompleted
+      PLUGIN_PARAMS_DEFAULTS.migrationCompleted,
     ),
     realTimeUpdatesEnabled: parseBoolean(
       params.realTimeUpdatesEnabled,
-      PLUGIN_PARAMS_DEFAULTS.realTimeUpdatesEnabled
+      PLUGIN_PARAMS_DEFAULTS.realTimeUpdatesEnabled,
     ),
   };
 }
 
 export function getCommentsModelIdForEnvironment(
   params: PluginParameters,
-  environment: string
+  environment: string,
 ): string | null {
   return params.commentsModelIdsByEnvironment[environment] ?? null;
 }
@@ -107,7 +115,7 @@ export function getCommentsModelIdForEnvironment(
 export function setCommentsModelIdForEnvironment(
   params: PluginParameters,
   environment: string,
-  modelId: string
+  modelId: string,
 ): PluginParameters {
   return buildPluginParams({
     ...params,

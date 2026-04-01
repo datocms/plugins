@@ -9,7 +9,9 @@ function isNullableStringAttr(value: unknown): value is string | null {
 }
 
 /** TipTap stores defaults as null, so accept null for optional attrs. */
-function isOptionalStringAttr(value: unknown): value is string | undefined | null {
+function isOptionalStringAttr(
+  value: unknown,
+): value is string | undefined | null {
   return value === undefined || value === null || typeof value === 'string';
 }
 
@@ -19,7 +21,7 @@ function isOptionalBooleanAttr(value: unknown): value is boolean | undefined {
 }
 
 export function isValidUserMentionAttrs(
-  attrs: Record<string, unknown>
+  attrs: Record<string, unknown>,
 ): attrs is Record<string, unknown> & {
   id: string;
   name: string;
@@ -35,7 +37,7 @@ export function isValidUserMentionAttrs(
 }
 
 export function isValidFieldMentionAttrs(
-  attrs: Record<string, unknown>
+  attrs: Record<string, unknown>,
 ): attrs is Record<string, unknown> & {
   apiKey: string;
   label: string;
@@ -55,7 +57,7 @@ export function isValidFieldMentionAttrs(
 }
 
 export function isValidAssetMentionAttrs(
-  attrs: Record<string, unknown>
+  attrs: Record<string, unknown>,
 ): attrs is Record<string, unknown> & {
   id: string;
   filename: string;
@@ -73,7 +75,7 @@ export function isValidAssetMentionAttrs(
 }
 
 export function isValidRecordMentionAttrs(
-  attrs: Record<string, unknown>
+  attrs: Record<string, unknown>,
 ): attrs is Record<string, unknown> & {
   id: string;
   title: string;
@@ -97,7 +99,7 @@ export function isValidRecordMentionAttrs(
 }
 
 export function isValidModelMentionAttrs(
-  attrs: Record<string, unknown>
+  attrs: Record<string, unknown>,
 ): attrs is Record<string, unknown> & {
   id: string;
   apiKey: string;
@@ -195,45 +197,58 @@ function isValidCommentSegment(segment: unknown): boolean {
   return false;
 }
 
-/** Uses WeakSet for cycle detection to prevent infinite recursion on malformed data. */
-export function isValidComment(comment: unknown, visited: WeakSet<object> = new WeakSet()): boolean {
-  if (!isNonNullObject(comment)) return false;
+function isValidCommentBaseFields(comment: Record<string, unknown>): boolean {
+  return (
+    isStringAttr(comment.id) &&
+    isStringAttr(comment.dateISO) &&
+    isValidISOString(comment.dateISO) &&
+    isValidAuthorId(comment.authorId)
+  );
+}
 
+function isValidCommentContentSegments(content: unknown): boolean {
+  if (!Array.isArray(content)) return false;
+  return content.every((segment) => isValidCommentSegment(segment));
+}
+
+function isValidCommentOptionalFields(
+  comment: Record<string, unknown>,
+): boolean {
+  const parentIdIsValid =
+    comment.parentCommentId === undefined ||
+    isStringAttr(comment.parentCommentId);
+
+  return isValidUpvoterIds(comment.upvoterIds) && parentIdIsValid;
+}
+
+function isValidCommentReplies(
+  replies: unknown,
+  visited: WeakSet<object>,
+): boolean {
+  if (replies === undefined) return true;
+  if (!Array.isArray(replies)) return false;
+  return replies.every((reply) => isValidComment(reply, visited));
+}
+
+/** Uses WeakSet for cycle detection to prevent infinite recursion on malformed data. */
+export function isValidComment(
+  comment: unknown,
+  visited: WeakSet<object> = new WeakSet(),
+): boolean {
+  if (!isNonNullObject(comment)) return false;
   if (visited.has(comment)) return false;
+
   visited.add(comment);
 
-  if (!isStringAttr(comment.id)) return false;
-  if (!isStringAttr(comment.dateISO)) return false;
-  if (!isValidISOString(comment.dateISO)) return false;
-  if (!isValidAuthorId(comment.authorId)) return false;
-
-  if (!Array.isArray(comment.content)) return false;
-  for (const segment of comment.content) {
-    if (!isValidCommentSegment(segment)) return false;
-  }
-
-  if (!isValidUpvoterIds(comment.upvoterIds)) return false;
-
-  if (comment.parentCommentId !== undefined && !isStringAttr(comment.parentCommentId)) {
-    return false;
-  }
-
-  if (comment.replies !== undefined) {
-    if (!Array.isArray(comment.replies)) return false;
-    for (const reply of comment.replies) {
-      if (!isValidComment(reply, visited)) return false;
-    }
-  }
-
-  return true;
+  return (
+    isValidCommentBaseFields(comment) &&
+    isValidCommentContentSegments(comment.content) &&
+    isValidCommentOptionalFields(comment) &&
+    isValidCommentReplies(comment.replies, visited)
+  );
 }
 
 export function isValidCommentArray(data: unknown): boolean {
   if (!Array.isArray(data)) return false;
-
-  for (const comment of data) {
-    if (!isValidComment(comment)) return false;
-  }
-
-  return true;
+  return data.every((comment) => isValidComment(comment));
 }

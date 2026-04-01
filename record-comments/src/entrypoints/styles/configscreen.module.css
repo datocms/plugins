@@ -37,7 +37,11 @@
   display: flex;
   gap: 0.75rem;
   padding: 1rem 1.25rem;
-  background: linear-gradient(135deg, var(--color-success-bg-gradient-start) 0%, var(--color-success-bg-gradient-end) 100%);
+  background: linear-gradient(
+    135deg,
+    var(--color-success-bg-gradient-start) 0%,
+    var(--color-success-bg-gradient-end) 100%
+  );
   border: 1px solid var(--color-success-border);
   border-radius: 10px;
   color: var(--base-body-color);
@@ -64,7 +68,11 @@
   display: flex;
   gap: 0.75rem;
   padding: 1rem 1.25rem;
-  background: linear-gradient(135deg, var(--color-warning-bg-gradient-start) 0%, var(--color-warning-bg-gradient-end) 100%);
+  background: linear-gradient(
+    135deg,
+    var(--color-warning-bg-gradient-start) 0%,
+    var(--color-warning-bg-gradient-end) 100%
+  );
   border: 1px solid var(--color-warning-border);
   border-radius: 10px;
   color: var(--base-body-color);
@@ -128,8 +136,9 @@
 }
 
 .code {
-  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Mono', 'Droid Sans Mono',
-    'Source Code Pro', monospace;
+  font-family:
+    "SF Mono", "Monaco", "Inconsolata", "Fira Mono", "Droid Sans Mono",
+    "Source Code Pro", monospace;
   font-size: 0.875em;
   background: var(--light-bg-color);
   padding: 0.2em 0.5em;
@@ -186,7 +195,7 @@
 .modelApiKey {
   font-size: 0.85rem;
   color: var(--light-body-color);
-  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Mono', monospace;
+  font-family: "SF Mono", "Monaco", "Inconsolata", "Fira Mono", monospace;
 }
 
 /* Progress Bar */
@@ -215,7 +224,11 @@
 
 .progressFill {
   height: 100%;
-  background: linear-gradient(135deg, var(--accent-color) 0%, var(--primary-color) 100%);
+  background: linear-gradient(
+    135deg,
+    var(--accent-color) 0%,
+    var(--primary-color) 100%
+  );
   border-radius: 4px;
   transition: width 0.3s ease;
 }
@@ -289,7 +302,11 @@
   display: flex;
   gap: 0.75rem;
   padding: 1rem 1.25rem;
-  background: linear-gradient(135deg, var(--color-error-bg-gradient-start) 0%, var(--color-error-bg-gradient-end) 100%);
+  background: linear-gradient(
+    135deg,
+    var(--color-error-bg-gradient-start) 0%,
+    var(--color-error-bg-gradient-end) 100%
+  );
   border: 1px solid var(--color-error-border);
   border-radius: 10px;
   color: var(--base-body-color);
@@ -318,7 +335,11 @@
   display: flex;
   gap: 0.75rem;
   padding: 1rem 1.25rem;
-  background: linear-gradient(135deg, var(--color-error-bg-gradient-start) 0%, var(--color-error-bg-gradient-end) 100%);
+  background: linear-gradient(
+    135deg,
+    var(--color-error-bg-gradient-start) 0%,
+    var(--color-error-bg-gradient-end) 100%
+  );
   border: 1px solid var(--color-error-border);
   border-radius: 10px;
   color: var(--base-body-color);
@@ -385,7 +406,7 @@
 .scanProgressCount {
   font-size: 0.9rem;
   color: var(--light-body-color);
-  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Mono', monospace;
+  font-family: "SF Mono", "Monaco", "Inconsolata", "Fira Mono", monospace;
 }
 
 .scanDetails {

@@ -1,14 +1,16 @@
 import type {
-  UserMention,
-  FieldMention,
   AssetMention,
-  RecordMention,
-  ModelMention,
-  Mention,
   CommentSegment,
+  FieldMention,
+  Mention,
+  ModelMention,
+  RecordMention,
+  UserMention,
 } from '@ctypes/mentions';
 
-export function createUserMention(overrides: Partial<UserMention> = {}): UserMention {
+export function createUserMention(
+  overrides: Partial<UserMention> = {},
+): UserMention {
   return {
     type: 'user',
     id: 'user-123',
@@ -19,7 +21,9 @@ export function createUserMention(overrides: Partial<UserMention> = {}): UserMen
   };
 }
 
-export function createFieldMention(overrides: Partial<FieldMention> = {}): FieldMention {
+export function createFieldMention(
+  overrides: Partial<FieldMention> = {},
+): FieldMention {
   return {
     type: 'field',
     apiKey: 'title',
@@ -30,7 +34,9 @@ export function createFieldMention(overrides: Partial<FieldMention> = {}): Field
   };
 }
 
-export function createAssetMention(overrides: Partial<AssetMention> = {}): AssetMention {
+export function createAssetMention(
+  overrides: Partial<AssetMention> = {},
+): AssetMention {
   return {
     type: 'asset',
     id: 'asset-456',
@@ -42,7 +48,9 @@ export function createAssetMention(overrides: Partial<AssetMention> = {}): Asset
   };
 }
 
-export function createRecordMention(overrides: Partial<RecordMention> = {}): RecordMention {
+export function createRecordMention(
+  overrides: Partial<RecordMention> = {},
+): RecordMention {
   return {
     type: 'record',
     id: 'record-789',
@@ -56,7 +64,9 @@ export function createRecordMention(overrides: Partial<RecordMention> = {}): Rec
   };
 }
 
-export function createModelMention(overrides: Partial<ModelMention> = {}): ModelMention {
+export function createModelMention(
+  overrides: Partial<ModelMention> = {},
+): ModelMention {
   return {
     type: 'model',
     id: 'model-123',

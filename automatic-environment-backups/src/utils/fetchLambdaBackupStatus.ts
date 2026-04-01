@@ -1,35 +1,35 @@
-import type { LambdaBackupStatus } from "../types/types";
+import type { LambdaBackupStatus } from '../types/types';
 import {
   buildLambdaHttpErrorMessage,
   buildLambdaJsonHeaders,
   LambdaAuthSecretError,
-} from "./lambdaAuth";
+} from './lambdaAuth';
 import {
   createTimeoutController,
   isAbortError,
   truncateResponseSnippet,
-} from "./lambdaHttp";
-import { normalizeLambdaBaseUrl } from "./verifyLambdaHealth";
+} from './lambdaHttp';
+import { normalizeLambdaBaseUrl } from './verifyLambdaHealth';
 
 const STATUS_TIMEOUT_MS = 10000;
 const RESPONSE_SNIPPET_MAX_LENGTH = 280;
-const STATUS_EVENT_TYPE = "backup_status_request";
-const STATUS_MPI_REQUEST_MESSAGE = "DATOCMS_AUTOMATIC_BACKUPS_PLUGIN_STATUS";
-const STATUS_MPI_RESPONSE_MESSAGE = "DATOCMS_AUTOMATIC_BACKUPS_LAMBDA_STATUS";
-const STATUS_MPI_VERSION = "2026-02-26";
-const EXPECTED_PLUGIN_NAME = "datocms-plugin-automatic-environment-backups";
-const EXPECTED_SERVICE_NAME = "datocms-backups-scheduled-function";
-const EXPECTED_SERVICE_STATUS = "ready";
+const STATUS_EVENT_TYPE = 'backup_status_request';
+const STATUS_MPI_REQUEST_MESSAGE = 'DATOCMS_AUTOMATIC_BACKUPS_PLUGIN_STATUS';
+const STATUS_MPI_RESPONSE_MESSAGE = 'DATOCMS_AUTOMATIC_BACKUPS_LAMBDA_STATUS';
+const STATUS_MPI_VERSION = '2026-02-26';
+const EXPECTED_PLUGIN_NAME = 'datocms-plugin-automatic-environment-backups';
+const EXPECTED_SERVICE_NAME = 'datocms-backups-scheduled-function';
+const EXPECTED_SERVICE_STATUS = 'ready';
 
 export class LambdaBackupStatusError extends Error {
   readonly endpoint: string;
   readonly code:
-    | "MISSING_AUTH_SECRET"
-    | "TIMEOUT"
-    | "NETWORK"
-    | "HTTP"
-    | "INVALID_JSON"
-    | "INVALID_RESPONSE";
+    | 'MISSING_AUTH_SECRET'
+    | 'TIMEOUT'
+    | 'NETWORK'
+    | 'HTTP'
+    | 'INVALID_JSON'
+    | 'INVALID_RESPONSE';
   readonly httpStatus?: number;
   readonly responseSnippet?: string;
 
@@ -41,19 +41,19 @@ export class LambdaBackupStatusError extends Error {
     responseSnippet,
   }: {
     code:
-      | "MISSING_AUTH_SECRET"
-      | "TIMEOUT"
-      | "NETWORK"
-      | "HTTP"
-      | "INVALID_JSON"
-      | "INVALID_RESPONSE";
+      | 'MISSING_AUTH_SECRET'
+      | 'TIMEOUT'
+      | 'NETWORK'
+      | 'HTTP'
+      | 'INVALID_JSON'
+      | 'INVALID_RESPONSE';
     endpoint: string;
     message: string;
     httpStatus?: number;
     responseSnippet?: string;
   }) {
     super(message);
-    this.name = "LambdaBackupStatusError";
+    this.name = 'LambdaBackupStatusError';
     this.code = code;
     this.endpoint = endpoint;
     this.httpStatus = httpStatus;
@@ -68,22 +68,22 @@ type FetchLambdaBackupStatusInput = {
 };
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
+  typeof value === 'object' && value !== null && !Array.isArray(value);
 
 const isIsoOrNull = (value: unknown): value is string | null =>
-  value === null || typeof value === "string";
+  value === null || typeof value === 'string';
 
 const toValidatedSlot = (
   candidate: unknown,
-  expectedScope: "daily" | "weekly" | "biweekly" | "monthly",
-): LambdaBackupStatus["slots"]["daily"] | null => {
+  expectedScope: 'daily' | 'weekly' | 'biweekly' | 'monthly',
+): LambdaBackupStatus['slots']['daily'] | null => {
   if (!isObject(candidate)) {
     return null;
   }
 
   if (
     candidate.scope !== expectedScope ||
-    candidate.executionMode !== "lambda_cron" ||
+    candidate.executionMode !== 'lambda_cron' ||
     !isIsoOrNull(candidate.lastBackupAt) ||
     !isIsoOrNull(candidate.nextBackupAt)
   ) {
@@ -92,7 +92,7 @@ const toValidatedSlot = (
 
   return {
     scope: expectedScope,
-    executionMode: "lambda_cron",
+    executionMode: 'lambda_cron',
     lastBackupAt: candidate.lastBackupAt,
     nextBackupAt: candidate.nextBackupAt,
   };
@@ -114,30 +114,30 @@ const toValidatedStatus = (payload: unknown): LambdaBackupStatus | null => {
     payload.status !== EXPECTED_SERVICE_STATUS ||
     !isObject(scheduler) ||
     !isObject(slots) ||
-    typeof payload.checkedAt !== "string"
+    typeof payload.checkedAt !== 'string'
   ) {
     return null;
   }
 
   if (
-    (scheduler.provider !== "vercel" &&
-      scheduler.provider !== "netlify" &&
-      scheduler.provider !== "cloudflare" &&
-      scheduler.provider !== "unknown") ||
-    (scheduler.cadence !== "hourly" && scheduler.cadence !== "daily")
+    (scheduler.provider !== 'vercel' &&
+      scheduler.provider !== 'netlify' &&
+      scheduler.provider !== 'cloudflare' &&
+      scheduler.provider !== 'unknown') ||
+    (scheduler.cadence !== 'hourly' && scheduler.cadence !== 'daily')
   ) {
     return null;
   }
 
-  const dailySlot = toValidatedSlot(slots.daily, "daily");
-  const weeklySlot = toValidatedSlot(slots.weekly, "weekly");
+  const dailySlot = toValidatedSlot(slots.daily, 'daily');
+  const weeklySlot = toValidatedSlot(slots.weekly, 'weekly');
   if (!dailySlot || !weeklySlot) {
     return null;
   }
 
-  const biweeklySlot = toValidatedSlot(slots.biweekly, "biweekly");
-  const monthlySlot = toValidatedSlot(slots.monthly, "monthly");
-  const validatedSlots: LambdaBackupStatus["slots"] = {
+  const biweeklySlot = toValidatedSlot(slots.biweekly, 'biweekly');
+  const monthlySlot = toValidatedSlot(slots.monthly, 'monthly');
+  const validatedSlots: LambdaBackupStatus['slots'] = {
     daily: dailySlot,
     weekly: weeklySlot,
   };
@@ -165,7 +165,10 @@ export const fetchLambdaBackupStatus = async ({
   lambdaAuthSecret,
 }: FetchLambdaBackupStatusInput): Promise<LambdaBackupStatus> => {
   const normalizedBaseUrl = normalizeLambdaBaseUrl(baseUrl);
-  const endpoint = new URL("/api/datocms/backup-status", `${normalizedBaseUrl}/`).toString();
+  const endpoint = new URL(
+    '/api/datocms/backup-status',
+    `${normalizedBaseUrl}/`,
+  ).toString();
   const body = JSON.stringify({
     event_type: STATUS_EVENT_TYPE,
     mpi: {
@@ -187,7 +190,7 @@ export const fetchLambdaBackupStatus = async ({
   } catch (error) {
     if (error instanceof LambdaAuthSecretError) {
       throw new LambdaBackupStatusError({
-        code: "MISSING_AUTH_SECRET",
+        code: 'MISSING_AUTH_SECRET',
         endpoint,
         message: error.message,
       });
@@ -197,7 +200,7 @@ export const fetchLambdaBackupStatus = async ({
 
   try {
     response = await fetch(endpoint, {
-      method: "POST",
+      method: 'POST',
       headers: requestHeaders,
       body,
       signal: timeoutController.controller.signal,
@@ -205,16 +208,16 @@ export const fetchLambdaBackupStatus = async ({
   } catch (error) {
     if (isAbortError(error)) {
       throw new LambdaBackupStatusError({
-        code: "TIMEOUT",
+        code: 'TIMEOUT',
         endpoint,
         message: `Backup status request timed out after ${STATUS_TIMEOUT_MS}ms.`,
       });
     }
 
     throw new LambdaBackupStatusError({
-      code: "NETWORK",
+      code: 'NETWORK',
       endpoint,
-      message: "Could not reach backup status endpoint.",
+      message: 'Could not reach backup status endpoint.',
     });
   } finally {
     timeoutController.clear();
@@ -228,14 +231,14 @@ export const fetchLambdaBackupStatus = async ({
 
   if (!response.ok) {
     throw new LambdaBackupStatusError({
-      code: "HTTP",
+      code: 'HTTP',
       endpoint,
       httpStatus: response.status,
       responseSnippet,
       message: buildLambdaHttpErrorMessage(
         response.status,
         payloadText,
-        "backup status endpoint returned an error status",
+        'backup status endpoint returned an error status',
       ),
     });
   }
@@ -245,20 +248,20 @@ export const fetchLambdaBackupStatus = async ({
     parsedPayload = payloadText.trim() ? JSON.parse(payloadText) : null;
   } catch {
     throw new LambdaBackupStatusError({
-      code: "INVALID_JSON",
+      code: 'INVALID_JSON',
       endpoint,
       responseSnippet,
-      message: "Backup status endpoint returned invalid JSON.",
+      message: 'Backup status endpoint returned invalid JSON.',
     });
   }
 
   const status = toValidatedStatus(parsedPayload);
   if (!status) {
     throw new LambdaBackupStatusError({
-      code: "INVALID_RESPONSE",
+      code: 'INVALID_RESPONSE',
       endpoint,
       responseSnippet,
-      message: "Backup status response did not match the expected contract.",
+      message: 'Backup status response did not match the expected contract.',
     });
   }
 

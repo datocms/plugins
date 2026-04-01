@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, type ReactNode } from 'react';
+import { createContext, type ReactNode, useContext, useMemo } from 'react';
 
 type MentionPermissionsContextType = {
   canMentionFields: boolean;
@@ -6,7 +6,8 @@ type MentionPermissionsContextType = {
   canMentionModels: boolean;
 };
 
-const MentionPermissionsContext = createContext<MentionPermissionsContextType | null>(null);
+const MentionPermissionsContext =
+  createContext<MentionPermissionsContextType | null>(null);
 
 type MentionPermissionsProviderProps = {
   children: ReactNode;
@@ -27,7 +28,7 @@ export function MentionPermissionsProvider({
       canMentionAssets,
       canMentionModels,
     }),
-    [canMentionFields, canMentionAssets, canMentionModels]
+    [canMentionFields, canMentionAssets, canMentionModels],
   );
 
   return (
@@ -40,7 +41,9 @@ export function MentionPermissionsProvider({
 export function useMentionPermissionsContext(): MentionPermissionsContextType {
   const context = useContext(MentionPermissionsContext);
   if (!context) {
-    throw new Error('useMentionPermissionsContext must be used within a MentionPermissionsProvider');
+    throw new Error(
+      'useMentionPermissionsContext must be used within a MentionPermissionsProvider',
+    );
   }
   return context;
 }

@@ -19,8 +19,9 @@ export async function ensureExportableAppearance(
   const editorId = original?.editor;
   const editorIsHardcoded = editorId ? await isHardcodedEditor(editorId) : true;
 
+  const editorAllowed = editorId != null && allowedPluginIds.includes(editorId);
   const appearance =
-    hasAppearance && (editorIsHardcoded || allowedPluginIds.includes(editorId!))
+    hasAppearance && (editorIsHardcoded || editorAllowed)
       ? { ...original }
       : await defaultAppearanceForFieldType(field.attributes.field_type);
 
@@ -58,10 +59,13 @@ export async function mapAppearanceToProject(
         field_extension: original.field_extension,
       };
     } else if (editorId && pluginIdMappings.has(editorId)) {
-      next = {
-        ...next,
-        editor: pluginIdMappings.get(editorId)!,
-      };
+      const mappedEditorId = pluginIdMappings.get(editorId);
+      if (mappedEditorId) {
+        next = {
+          ...next,
+          editor: mappedEditorId,
+        };
+      }
     }
 
     const sourceAddons = (original.addons ?? []) as Array<
@@ -69,12 +73,16 @@ export async function mapAppearanceToProject(
     >;
     next.addons = sourceAddons
       .filter((addon) => pluginIdMappings.has(addon.id))
-      .map((addon) => ({
-        ...addon,
-        id: pluginIdMappings.get(addon.id)!,
-        parameters:
-          (addon as { parameters?: Record<string, unknown> }).parameters ?? {},
-      }));
+      .map((addon) => {
+        const mappedAddonId = pluginIdMappings.get(addon.id) ?? addon.id;
+        return {
+          ...addon,
+          id: mappedAddonId,
+          parameters:
+            (addon as { parameters?: Record<string, unknown> }).parameters ??
+            {},
+        };
+      });
   }
 
   return next;

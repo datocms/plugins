@@ -152,15 +152,7 @@ function useImportMode({
         importTask.controller.reset();
       }
     },
-    [
-      client,
-      conflicts,
-      ctx,
-      exportSchema,
-      importTask,
-      setConflicts,
-      setExportSchema,
-    ],
+    [client, conflicts, ctx, exportSchema, importTask, setConflicts],
   );
 
   useEffect(() => {
@@ -198,7 +190,7 @@ function useImportMode({
         handleCancelRequest as unknown as EventListener,
       );
     };
-  }, [ctx, exportSchema, setExportSchema]);
+  }, [ctx, exportSchema]);
 
   return {
     exportSchema,

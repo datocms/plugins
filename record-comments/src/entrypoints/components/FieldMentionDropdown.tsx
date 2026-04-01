@@ -1,17 +1,15 @@
-import { useEffect, useRef } from 'react';
-import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
-import type { FieldInfo } from '@hooks/useMentions';
-import { useFieldNavigation } from '@hooks/useFieldNavigation';
 import { useClickOutside } from '@hooks/useDropdown';
-import {
-  FieldDropdownHeader,
-  LocalePickerView,
-  BlockPickerView,
-  NestedFieldsView,
-  FieldListView,
-} from './field-dropdown';
-import { cn } from '@/utils/cn';
+import { useFieldNavigation } from '@hooks/useFieldNavigation';
+import type { FieldInfo } from '@hooks/useMentions';
 import styles from '@styles/comment.module.css';
+import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
+import { useEffect, useRef } from 'react';
+import { cn } from '@/utils/cn';
+import { BlockPickerView } from './field-dropdown/BlockPickerView';
+import { FieldDropdownHeader } from './field-dropdown/FieldDropdownHeader';
+import { FieldListView } from './field-dropdown/FieldListView';
+import { LocalePickerView } from './field-dropdown/LocalePickerView';
+import { NestedFieldsView } from './field-dropdown/NestedFieldsView';
 
 type FieldMentionDropdownProps = {
   fields: FieldInfo[];
@@ -43,7 +41,7 @@ const FieldMentionDropdown = ({
 }: FieldMentionDropdownProps) => {
   const dropdownClassName = cn(
     styles.mentionDropdown,
-    position === 'above' && styles.mentionDropdownAbove
+    position === 'above' && styles.mentionDropdownAbove,
   );
   const dropdownRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<HTMLButtonElement>(null);

@@ -1,5 +1,9 @@
-import { describe, it, expect } from 'vitest';
-import { filterUsers, filterFields, filterModels } from '@utils/mentions/filters';
+import {
+  filterFields,
+  filterModels,
+  filterUsers,
+} from '@utils/mentions/filters';
+import { describe, expect, it } from 'vitest';
 
 describe('filterUsers', () => {
   const users = [

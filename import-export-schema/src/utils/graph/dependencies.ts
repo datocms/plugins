@@ -1,3 +1,4 @@
+import type { SchemaTypes } from '@datocms/cma-client';
 import {
   findLinkedItemTypeIds,
   findLinkedPluginIds,
@@ -17,6 +18,26 @@ type ExpandOptions = {
   seedPluginIds: Iterable<string>;
   installedPluginIds?: Set<string>;
 };
+
+function collectFieldDependencies(
+  fields: SchemaTypes.Field[],
+  nextItemTypeIds: Set<string>,
+  nextPluginIds: Set<string>,
+  installedPluginIds: Set<string> | undefined,
+  queue: string[],
+) {
+  for (const field of fields) {
+    for (const linkedId of findLinkedItemTypeIds(field)) {
+      if (!nextItemTypeIds.has(linkedId)) {
+        nextItemTypeIds.add(linkedId);
+        queue.push(linkedId);
+      }
+    }
+    for (const pluginId of findLinkedPluginIds(field, installedPluginIds)) {
+      nextPluginIds.add(pluginId);
+    }
+  }
+}
 
 /**
  * Expand the current selection with all linked item types and plugins.
@@ -50,18 +71,13 @@ export function expandSelectionWithDependencies({
     );
     if (!node || node.type !== 'itemType') continue;
 
-    for (const field of node.data.fields) {
-      for (const linkedId of findLinkedItemTypeIds(field)) {
-        if (!nextItemTypeIds.has(linkedId)) {
-          nextItemTypeIds.add(linkedId);
-          queue.push(linkedId);
-        }
-      }
-
-      for (const pluginId of findLinkedPluginIds(field, installedPluginIds)) {
-        nextPluginIds.add(pluginId);
-      }
-    }
+    collectFieldDependencies(
+      node.data.fields,
+      nextItemTypeIds,
+      nextPluginIds,
+      installedPluginIds,
+      queue,
+    );
   }
 
   const addedItemTypeIds = Array.from(nextItemTypeIds).filter(

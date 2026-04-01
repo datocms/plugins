@@ -1,10 +1,10 @@
 import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
 import { Canvas } from 'datocms-react-ui';
-import { useState, useCallback, useEffect } from 'react';
 import get from 'lodash-es/get';
+import { useCallback, useEffect, useState } from 'react';
 import { normalizeParams } from '../../types';
-import s from './styles.module.css';
 import translate from '../../utils/translate';
+import s from './styles.module.css';
 
 type Props = {
   ctx: RenderFieldExtensionCtx;
@@ -32,14 +32,14 @@ export default function FieldExtension({ ctx }: Props) {
         locales: ctx.site.attributes.locales.slice(1),
       });
 
-      Object.entries(valuesByLocale).forEach(([locale, text]) => {
+      for (const [locale, text] of Object.entries(valuesByLocale)) {
         const path = ctx.fieldPath.replace(
           new RegExp(`\\.${mainLocale}$`),
           `.${locale}`,
         );
 
         ctx.setFieldValue(path, text);
-      });
+      }
 
       if (!ctx.itemType.attributes.all_locales_required) {
         ctx.setFieldValue('internalLocales', ctx.site.attributes.locales);
@@ -50,17 +50,13 @@ export default function FieldExtension({ ctx }: Props) {
     } finally {
       setIsTranslating(false);
     }
-  }, [
-    ctx, 
-    mainLocale, 
-    configParameters.yandexApiKey
-  ]);
+  }, [ctx, mainLocale, configParameters.yandexApiKey]);
 
   useEffect(() => {
     if (ctx.locale !== mainLocale || !ctx.field.attributes.localized) {
       ctx.setHeight(0);
     }
-  // eslint-disable-next-line
+    // eslint-disable-next-line
   }, [ctx.field.attributes.localized, ctx.locale, ctx.setHeight, mainLocale]);
 
   if (ctx.locale !== mainLocale || !ctx.field.attributes.localized) {

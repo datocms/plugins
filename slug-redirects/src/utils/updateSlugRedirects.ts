@@ -1,11 +1,11 @@
-import type { Client } from "@datocms/cma-client-browser";
+import type { Client } from '@datocms/cma-client-browser';
 
 export default async function updateSlugRedirects(
   urlPrefix: string,
   oldSlug: string,
   newSlug: string,
   recordID: string,
-  client: Client
+  client: Client,
 ) {
   if (oldSlug === newSlug) {
     return;
@@ -20,7 +20,7 @@ export default async function updateSlugRedirects(
 
   const records = await client.items.list({
     filter: {
-      type: "slug_redirect",
+      type: 'slug_redirect',
     },
   });
 

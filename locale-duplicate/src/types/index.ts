@@ -1,8 +1,8 @@
 import type { SimpleSchemaTypes } from '@datocms/cma-client-browser';
-import type { 
-  RenderFieldExtensionCtx,
+import type {
   RenderConfigScreenCtx,
-  RenderItemFormSidebarCtx
+  RenderFieldExtensionCtx,
+  RenderItemFormSidebarCtx,
 } from 'datocms-plugin-sdk';
 
 // Re-export commonly used DatoCMS types
@@ -65,21 +65,20 @@ export interface DuplicationSummary {
 
 // Type guards
 export function isLocalizedField(value: unknown): value is LocalizedField {
-  return (
-    typeof value === 'object' && 
-    value !== null && 
-    !Array.isArray(value)
-  );
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 export function isFieldConfig(value: unknown): value is FieldConfig {
   if (typeof value !== 'object' || value === null) return false;
-  
+
   const obj = value as Record<string, unknown>;
   return (
-    'modelId' in obj && typeof obj.modelId === 'string' &&
-    'modelName' in obj && typeof obj.modelName === 'string' &&
-    'fieldIds' in obj && Array.isArray(obj.fieldIds) &&
+    'modelId' in obj &&
+    typeof obj.modelId === 'string' &&
+    'modelName' in obj &&
+    typeof obj.modelName === 'string' &&
+    'fieldIds' in obj &&
+    Array.isArray(obj.fieldIds) &&
     obj.fieldIds.every((id: unknown) => typeof id === 'string')
   );
 }
@@ -90,17 +89,23 @@ export function isFieldConfigArray(value: unknown): value is FieldConfig[] {
 
 export function isFieldCopyConfig(value: unknown): value is FieldCopyConfig {
   if (typeof value !== 'object' || value === null) return false;
-  
+
   const obj = value as Record<string, unknown>;
   return (
-    'modelId' in obj && typeof obj.modelId === 'string' &&
-    'modelLabel' in obj && typeof obj.modelLabel === 'string' &&
-    'fieldId' in obj && typeof obj.fieldId === 'string' &&
-    'fieldLabel' in obj && typeof obj.fieldLabel === 'string'
+    'modelId' in obj &&
+    typeof obj.modelId === 'string' &&
+    'modelLabel' in obj &&
+    typeof obj.modelLabel === 'string' &&
+    'fieldId' in obj &&
+    typeof obj.fieldId === 'string' &&
+    'fieldLabel' in obj &&
+    typeof obj.fieldLabel === 'string'
   );
 }
 
-export function isFieldCopyConfigArray(value: unknown): value is FieldCopyConfig[] {
+export function isFieldCopyConfigArray(
+  value: unknown,
+): value is FieldCopyConfig[] {
   return Array.isArray(value) && value.every(isFieldCopyConfig);
 }
 
@@ -126,14 +131,14 @@ export interface FetchRecordsResponse {
 // Field type constants
 export const SUPPORTED_FIELD_TYPES = [
   'string',
-  'text', 
+  'text',
   'structured_text',
   'json',
   'seo',
-  'slug'
+  'slug',
 ] as const;
 
-export type SupportedFieldType = typeof SUPPORTED_FIELD_TYPES[number];
+export type SupportedFieldType = (typeof SUPPORTED_FIELD_TYPES)[number];
 
 export function isSupportedFieldType(type: string): type is SupportedFieldType {
   return (SUPPORTED_FIELD_TYPES as readonly string[]).includes(type);

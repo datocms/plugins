@@ -16,6 +16,22 @@ type RecipeLoaderOptions = {
   onError?: (error: unknown) => void;
 };
 
+async function fetchAndParseRecipe(
+  recipeUrl: string,
+  recipeTitle: string | null,
+  onLoaded: RecipeLoadedCallback,
+): Promise<void> {
+  const response = await fetch(recipeUrl);
+  const body = (await response.json()) as ExportDoc;
+  const schema = new ExportSchema(body);
+  const parsedUrl = new URL(recipeUrl);
+  const fallbackName = parsedUrl.pathname.split('/').pop() || 'Imported schema';
+  onLoaded({
+    label: recipeTitle ?? fallbackName,
+    schema,
+  });
+}
+
 /**
  * Watches the page URL for the optional recipe parameters and hydrates an export schema
  * when present, exposing a simple loading flag to the caller.
@@ -42,16 +58,10 @@ export function useRecipeLoader(
     async function run() {
       try {
         setLoading(true);
-        const response = await fetch(recipeUrl);
-        const body = (await response.json()) as ExportDoc;
-        const schema = new ExportSchema(body);
-        if (cancelled) return;
-        const parsedUrl = new URL(recipeUrl);
-        const fallbackName =
-          parsedUrl.pathname.split('/').pop() || 'Imported schema';
-        onLoaded({
-          label: recipeTitle || fallbackName,
-          schema,
+        await fetchAndParseRecipe(recipeUrl, recipeTitle, (payload) => {
+          if (!cancelled) {
+            onLoaded(payload);
+          }
         });
       } catch (error) {
         if (!cancelled) {

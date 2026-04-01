@@ -1,5 +1,5 @@
-import type { RenderModalCtx } from "datocms-plugin-sdk";
-import { Canvas } from "datocms-react-ui";
+import type { RenderModalCtx } from 'datocms-plugin-sdk';
+import { Canvas } from 'datocms-react-ui';
 
 /**
  * Simple modal that displays the raw JSON value for debugging.

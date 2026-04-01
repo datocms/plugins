@@ -1,6 +1,9 @@
 /// <reference types="vitest" />
 
-import { buildRecordExportEnvelope, type SiteManifestInfo } from './recordExport';
+import {
+  buildRecordExportEnvelope,
+  type SiteManifestInfo,
+} from './recordExport';
 
 const siteInfo: SiteManifestInfo = {
   sourceProjectId: 'project-1',
@@ -175,7 +178,7 @@ describe('recordExport envelope', () => {
     expect(envelope.manifest.exportVersion).toBe('2.1.0');
     expect(envelope.manifest.sourceProjectId).toBe('project-1');
     expect(envelope.manifest.configurationExport.includedResources).toContain(
-      'site'
+      'site',
     );
     expect(envelope.manifest.configurationExport.warningCount).toBe(0);
     expect(envelope.schema.itemTypeIdToApiKey.model_page).toBe('page');
@@ -187,20 +190,26 @@ describe('recordExport envelope', () => {
           fieldType: 'structured_text',
           localized: true,
         }),
-      ])
+      ]),
     );
 
     const recordTargets = new Set(
-      envelope.referenceIndex.recordRefs.map((reference) => reference.targetSourceId)
+      envelope.referenceIndex.recordRefs.map(
+        (reference) => reference.targetSourceId,
+      ),
     );
     const uploadTargets = new Set(
-      envelope.referenceIndex.uploadRefs.map((reference) => reference.targetSourceId)
+      envelope.referenceIndex.uploadRefs.map(
+        (reference) => reference.targetSourceId,
+      ),
     );
     const blockTargets = new Set(
-      envelope.referenceIndex.blockRefs.map((reference) => reference.blockSourceId)
+      envelope.referenceIndex.blockRefs.map(
+        (reference) => reference.blockSourceId,
+      ),
     );
 
-    [
+    for (const expectedTarget of [
       'record-200',
       'record-201',
       'record-202',
@@ -212,27 +221,31 @@ describe('recordExport envelope', () => {
       'record-403',
       'record-404',
       'record-405',
-    ].forEach((expectedTarget) => {
+    ]) {
       expect(recordTargets.has(expectedTarget)).toBe(true);
-    });
+    }
 
-    ['upload-1', 'upload-2', 'upload-3', 'upload-4', 'upload-5'].forEach(
-      (expectedTarget) => {
-        expect(uploadTargets.has(expectedTarget)).toBe(true);
-      }
-    );
+    for (const expectedTarget of [
+      'upload-1',
+      'upload-2',
+      'upload-3',
+      'upload-4',
+      'upload-5',
+    ]) {
+      expect(uploadTargets.has(expectedTarget)).toBe(true);
+    }
 
-    ['block-1', 'block-2', 'block-3', 'block-4'].forEach((expectedTarget) => {
+    for (const expectedTarget of ['block-1', 'block-2', 'block-3', 'block-4']) {
       expect(blockTargets.has(expectedTarget)).toBe(true);
-    });
+    }
 
     expect(
       envelope.referenceIndex.structuredTextRefs.some(
         (reference) =>
           reference.targetSourceId === 'record-400' &&
           reference.kind === 'link' &&
-          reference.locale === 'en'
-      )
+          reference.locale === 'en',
+      ),
     ).toBe(true);
 
     expect(
@@ -241,14 +254,14 @@ describe('recordExport envelope', () => {
           reference.targetSourceId === 'block-3' &&
           reference.targetType === 'block' &&
           reference.kind === 'block' &&
-          reference.locale === 'en'
-      )
+          reference.locale === 'en',
+      ),
     ).toBe(true);
 
     expect(envelope.assetPackageInfo.manifestFilename).toBe('manifest.json');
-    expect(
-      envelope.assetPackageInfo.zipEntryNamingConvention
-    ).toContain('<sourceUploadId>');
+    expect(envelope.assetPackageInfo.zipEntryNamingConvention).toContain(
+      '<sourceUploadId>',
+    );
     expect(envelope.projectConfiguration.site).toBeNull();
     expect(envelope.projectConfiguration.menuItems).toEqual([]);
   });

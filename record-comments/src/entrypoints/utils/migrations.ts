@@ -67,18 +67,21 @@ function isLegacyCommentRecord(value: unknown): value is LegacyComment {
 }
 
 export function normalizeComment(comment: LegacyComment): NormalizedComment {
-  const { parentCommentISO, author, usersWhoUpvoted, replies, ...rest } = comment;
+  const { parentCommentISO, author, usersWhoUpvoted, replies, ...rest } =
+    comment;
   return {
     ...rest,
     authorEmail: author.email,
     upvoterEmails: normalizeUpvoters(usersWhoUpvoted),
     replies: replies?.map(normalizeComment),
-    ...(parentCommentISO !== undefined && { parentCommentId: parentCommentISO }),
+    ...(parentCommentISO !== undefined && {
+      parentCommentId: parentCommentISO,
+    }),
   };
 }
 
 export function normalizeCommentIfValid(
-  comment: unknown
+  comment: unknown,
 ): NormalizedComment | null {
   if (!isLegacyCommentRecord(comment)) {
     return null;
@@ -109,7 +112,7 @@ function treeNeedsMigration(comment: CommentWithId): boolean {
 /** Migrates legacy IDs to UUIDs and updates parentCommentId references. */
 function migrateCommentId(
   comment: CommentWithId,
-  parentIdMap: Map<string, string> = new Map()
+  parentIdMap: Map<string, string> = new Map(),
 ): MigratedComment {
   const oldId = comment.id ?? comment.dateISO;
   const needsMigration = isLegacyIdFormat(comment);
@@ -127,7 +130,8 @@ function migrateCommentId(
   const migratedReplies = comment.replies?.map((reply) => {
     const replyWithUpdatedParent: CommentWithId = {
       ...reply,
-      parentCommentId: reply.parentCommentId === oldId ? newId : reply.parentCommentId,
+      parentCommentId:
+        reply.parentCommentId === oldId ? newId : reply.parentCommentId,
     };
     return migrateCommentId(replyWithUpdatedParent, parentIdMap);
   });
@@ -135,7 +139,9 @@ function migrateCommentId(
   return {
     ...comment,
     id: newId,
-    ...(updatedParentCommentId !== undefined && { parentCommentId: updatedParentCommentId }),
+    ...(updatedParentCommentId !== undefined && {
+      parentCommentId: updatedParentCommentId,
+    }),
     ...(migratedReplies && { replies: migratedReplies }),
   };
 }
@@ -144,7 +150,9 @@ export function migrateCommentsToUuid(comments: CommentWithId[]): {
   comments: MigratedComment[];
   wasMigrated: boolean;
 } {
-  const needsMigration = comments.some((comment) => treeNeedsMigration(comment));
+  const needsMigration = comments.some((comment) =>
+    treeNeedsMigration(comment),
+  );
 
   if (!needsMigration) {
     return { comments: comments as MigratedComment[], wasMigrated: false };
@@ -152,7 +160,7 @@ export function migrateCommentsToUuid(comments: CommentWithId[]): {
 
   const parentIdMap = new Map<string, string>();
   const migratedComments = comments.map((comment) =>
-    migrateCommentId(comment, parentIdMap)
+    migrateCommentId(comment, parentIdMap),
   );
 
   return { comments: migratedComments, wasMigrated: true };

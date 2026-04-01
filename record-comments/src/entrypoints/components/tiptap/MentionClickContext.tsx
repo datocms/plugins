@@ -1,5 +1,5 @@
-import { createContext, useContext } from 'react';
 import type { Mention } from '@ctypes/mentions';
+import { createContext, useContext } from 'react';
 
 type MentionClickHandler = (mention: Mention, event: React.MouseEvent) => void;
 

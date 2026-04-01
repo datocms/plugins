@@ -1,5 +1,9 @@
-import type { CommentType, ResolvedCommentType, ResolvedAuthor } from '@ctypes/comments';
-import type { StoredCommentSegment, CommentSegment } from '@ctypes/mentions';
+import type {
+  CommentType,
+  ResolvedAuthor,
+  ResolvedCommentType,
+} from '@ctypes/comments';
+import type { CommentSegment, StoredCommentSegment } from '@ctypes/mentions';
 
 // Counter for unique IDs
 let idCounter = 0;
@@ -21,7 +25,9 @@ export function createTextSegment(text: string): StoredCommentSegment {
   return { type: 'text', content: text };
 }
 
-export function createBaseComment(overrides: Partial<CommentType> = {}): CommentType {
+export function createBaseComment(
+  overrides: Partial<CommentType> = {},
+): CommentType {
   const id = overrides.id ?? generateId();
   return {
     id,
@@ -36,7 +42,7 @@ export function createBaseComment(overrides: Partial<CommentType> = {}): Comment
 
 export function createCommentWithReplies(
   replyCount = 2,
-  commentOverrides: Partial<CommentType> = {}
+  commentOverrides: Partial<CommentType> = {},
 ): CommentType {
   const parentId = commentOverrides.id ?? generateId();
   const replies: CommentType[] = Array.from({ length: replyCount }, (_, i) =>
@@ -44,7 +50,7 @@ export function createCommentWithReplies(
       id: `${parentId}-reply-${i + 1}`,
       content: [createTextSegment(`Reply ${i + 1}`)],
       parentCommentId: parentId,
-    })
+    }),
   );
 
   return createBaseComment({
@@ -56,10 +62,11 @@ export function createCommentWithReplies(
 
 export function createCommentWithUpvotes(
   upvoterCount = 2,
-  commentOverrides: Partial<CommentType> = {}
+  commentOverrides: Partial<CommentType> = {},
 ): CommentType {
-  const upvoterIds = Array.from({ length: upvoterCount }, (_, i) =>
-    `upvoter-${i + 1}`
+  const upvoterIds = Array.from(
+    { length: upvoterCount },
+    (_, i) => `upvoter-${i + 1}`,
   );
 
   return createBaseComment({
@@ -73,7 +80,7 @@ export function createCommentList(count: number): CommentType[] {
     createBaseComment({
       content: [createTextSegment(`Comment ${i + 1}`)],
       dateISO: generateDateISO(i * 60000), // Each comment 1 minute apart
-    })
+    }),
   );
 }
 
@@ -101,7 +108,9 @@ export function createFullTextSegment(text: string): CommentSegment {
 }
 
 // Helper for creating resolved author
-export function createResolvedAuthor(overrides: Partial<ResolvedAuthor> = {}): ResolvedAuthor {
+export function createResolvedAuthor(
+  overrides: Partial<ResolvedAuthor> = {},
+): ResolvedAuthor {
   return {
     id: overrides.id ?? 'author-123',
     email: overrides.email ?? 'test@example.com',
@@ -111,7 +120,9 @@ export function createResolvedAuthor(overrides: Partial<ResolvedAuthor> = {}): R
 }
 
 // Helper for creating resolved comments (used for comparison tests)
-export function createResolvedComment(overrides: Partial<ResolvedCommentType> = {}): ResolvedCommentType {
+export function createResolvedComment(
+  overrides: Partial<ResolvedCommentType> = {},
+): ResolvedCommentType {
   const id = overrides.id ?? generateId();
   return {
     id,
@@ -126,15 +137,17 @@ export function createResolvedComment(overrides: Partial<ResolvedCommentType> = 
 
 export function createResolvedCommentWithReplies(
   replyCount = 2,
-  commentOverrides: Partial<ResolvedCommentType> = {}
+  commentOverrides: Partial<ResolvedCommentType> = {},
 ): ResolvedCommentType {
   const parentId = commentOverrides.id ?? generateId();
-  const replies: ResolvedCommentType[] = Array.from({ length: replyCount }, (_, i) =>
-    createResolvedComment({
-      id: `${parentId}-reply-${i + 1}`,
-      content: [createFullTextSegment(`Reply ${i + 1}`)],
-      parentCommentId: parentId,
-    })
+  const replies: ResolvedCommentType[] = Array.from(
+    { length: replyCount },
+    (_, i) =>
+      createResolvedComment({
+        id: `${parentId}-reply-${i + 1}`,
+        content: [createFullTextSegment(`Reply ${i + 1}`)],
+        parentCommentId: parentId,
+      }),
   );
 
   return createResolvedComment({

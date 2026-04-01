@@ -1,4 +1,4 @@
-import { type Client, buildClient } from '@datocms/cma-client-browser';
+import { buildClient, type Client } from '@datocms/cma-client-browser';
 import type {
   ExecuteFieldDropdownActionCtx,
   FileFieldValue,
@@ -20,7 +20,9 @@ type AltTextApiResponse = {
 };
 
 function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error ?? UNKNOWN_ERROR);
+  return error instanceof Error
+    ? error.message
+    : String(error ?? UNKNOWN_ERROR);
 }
 
 function formatAltTextErrorMessage(result: AltTextApiResponse): string {
@@ -50,7 +52,10 @@ function hasAltText(alt: string | null): boolean {
   return typeof alt === 'string' && alt.trim().length > 0;
 }
 
-function shouldProcessAsset(asset: FileFieldValue, mode: AltGenerationMode): boolean {
+function shouldProcessAsset(
+  asset: FileFieldValue,
+  mode: AltGenerationMode,
+): boolean {
   if (mode === 'overwrite-all') {
     return true;
   }
@@ -67,7 +72,9 @@ function isFileFieldValue(value: unknown): value is FileFieldValue {
 }
 
 function isFileFieldValueArray(value: unknown): value is FileFieldValue[] {
-  return Array.isArray(value) && value.every((asset) => isFileFieldValue(asset));
+  return (
+    Array.isArray(value) && value.every((asset) => isFileFieldValue(asset))
+  );
 }
 
 function getFieldValue(ctx: ExecuteFieldDropdownActionCtx): unknown {
@@ -153,7 +160,9 @@ async function generateSingleAlt(
   const result = await fetchAlt(apiKey, client, asset, ctx.locale);
 
   if (result.error_code) {
-    await ctx.alert(`Error fetching alt text: ${formatAltTextErrorMessage(result)}`);
+    await ctx.alert(
+      `Error fetching alt text: ${formatAltTextErrorMessage(result)}`,
+    );
     return;
   }
 
@@ -180,7 +189,9 @@ async function generateGalleryAlts(
   }
 
   const results = await Promise.allSettled(
-    assetsToProcess.map(({ asset }) => fetchAlt(apiKey, client, asset, ctx.locale)),
+    assetsToProcess.map(({ asset }) =>
+      fetchAlt(apiKey, client, asset, ctx.locale),
+    ),
   );
 
   let hasAtLeastOneSuccessfulUpdate = false;
@@ -233,7 +244,9 @@ export async function runAltGenerationForField(
 
   const apiKey = parseApiKey(ctx);
   if (!apiKey) {
-    await ctx.alert('Please configure your AltText.ai API key in the plugin settings.');
+    await ctx.alert(
+      'Please configure your AltText.ai API key in the plugin settings.',
+    );
     return;
   }
 

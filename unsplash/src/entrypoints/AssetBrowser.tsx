@@ -1,3 +1,6 @@
+import { faSearch } from '@fortawesome/free-solid-svg-icons';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import classNames from 'classnames';
 import type { RenderAssetSourceCtx } from 'datocms-plugin-sdk';
 import {
   Button,
@@ -7,8 +10,6 @@ import {
   useCtx,
   useElementLayout,
 } from 'datocms-react-ui';
-import { createApi, OrderBy } from 'unsplash-js';
-import classNames from 'classnames';
 import {
   type CSSProperties,
   type FormEvent,
@@ -18,11 +19,10 @@ import {
   useRef,
   useState,
 } from 'react';
+import { createApi, OrderBy } from 'unsplash-js';
 import type { Basic as Photo } from 'unsplash-js/dist/methods/photos/types';
-import s from './styles.module.css';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faSearch } from '@fortawesome/free-solid-svg-icons';
 import Cell from '../components/Cell';
+import s from './styles.module.css';
 
 const PER_PAGE = 30;
 
@@ -59,18 +59,18 @@ function chunkArray<T extends Photo>(array: T[], chunks: number): T[][] {
     total: 0,
   }));
 
-  array.forEach((item) => {
+  for (const item of array) {
     const minCol = results.reduce<Chunk<T> | null>((winner, col) => {
       return !winner || col.total < winner.total ? col : winner;
     }, null);
 
     if (!minCol) {
-      return;
+      continue;
     }
 
     minCol.items.push(item);
     minCol.total += (1.0 * item.height) / item.width;
-  });
+  }
 
   return results.map((c) => c.items);
 }
@@ -137,10 +137,7 @@ const AssetBrowser = () => {
               ];
             }
 
-            return [
-              locale,
-              { alt: null, title: null, custom_data: {} },
-            ];
+            return [locale, { alt: null, title: null, custom_data: {} }];
           }),
         ),
       });
@@ -291,8 +288,11 @@ const AssetBrowser = () => {
                 } as CSSProperties
               }
             >
-              {colsData.map((group, i) => (
-                <div className={s.masonryCol} key={i}>
+              {colsData.map((group) => (
+                <div
+                  className={s.masonryCol}
+                  key={group.map((photo) => photo.id).join('-') || 'empty'}
+                >
                   {group.map((photo) => (
                     <Cell
                       key={photo.id}

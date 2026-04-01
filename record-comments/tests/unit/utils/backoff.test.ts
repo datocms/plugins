@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
 import { calculateBackoffDelay, delay } from '@utils/backoff';
+import { describe, expect, it, vi } from 'vitest';
 
 describe('calculateBackoffDelay', () => {
   describe('exponential growth', () => {
@@ -19,11 +19,11 @@ describe('calculateBackoffDelay', () => {
       const base = 50;
       const max = 100000;
 
-      expect(calculateBackoffDelay(0, base, max)).toBe(50);   // 50 * 2^0
-      expect(calculateBackoffDelay(1, base, max)).toBe(100);  // 50 * 2^1
-      expect(calculateBackoffDelay(2, base, max)).toBe(200);  // 50 * 2^2
-      expect(calculateBackoffDelay(3, base, max)).toBe(400);  // 50 * 2^3
-      expect(calculateBackoffDelay(4, base, max)).toBe(800);  // 50 * 2^4
+      expect(calculateBackoffDelay(0, base, max)).toBe(50); // 50 * 2^0
+      expect(calculateBackoffDelay(1, base, max)).toBe(100); // 50 * 2^1
+      expect(calculateBackoffDelay(2, base, max)).toBe(200); // 50 * 2^2
+      expect(calculateBackoffDelay(3, base, max)).toBe(400); // 50 * 2^3
+      expect(calculateBackoffDelay(4, base, max)).toBe(800); // 50 * 2^4
     });
   });
 
@@ -126,7 +126,9 @@ describe('delay', () => {
     vi.useFakeTimers();
 
     let resolved = false;
-    delay(100).then(() => { resolved = true; });
+    delay(100).then(() => {
+      resolved = true;
+    });
 
     vi.advanceTimersByTime(50);
     expect(resolved).toBe(false);

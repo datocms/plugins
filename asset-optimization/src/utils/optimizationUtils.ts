@@ -93,9 +93,98 @@ export const defaultSettings: OptimizationSettings = {
   resizeLargeImages: true,
   useAutoCompress: true,
   useDpr: true, // Use DPR=2 for very large images
-  useLossless: false,  // Default to not using lossless compression
+  useLossless: false, // Default to not using lossless compression
   useChromaSubsampling: false, // Default to standard JPEG chroma subsampling (420)
   preserveColorProfile: true, // Default to preserve color profiles for accurate colors
+};
+
+type AssetSizeCategory = 'small' | 'large' | 'very-large';
+
+const getAssetSizeCategory = (
+  assetSize: number,
+  settings: OptimizationSettings,
+): AssetSizeCategory => {
+  const veryLargeThresholdBytes =
+    settings.veryLargeAssetThreshold * 1024 * 1024;
+  const largeThresholdBytes = settings.largeAssetThreshold * 1024 * 1024;
+
+  if (assetSize >= veryLargeThresholdBytes) {
+    return 'very-large';
+  }
+  if (assetSize >= largeThresholdBytes) {
+    return 'large';
+  }
+  return 'small';
+};
+
+const buildResizeParam = (
+  asset: Asset,
+  sizeCategory: AssetSizeCategory,
+  settings: OptimizationSettings,
+): string | null => {
+  if (!settings.resizeLargeImages || !asset.width || !asset.height) {
+    return null;
+  }
+
+  const maxDimension =
+    sizeCategory === 'very-large'
+      ? settings.resizeDimensionVeryLarge
+      : settings.resizeDimensionLarge;
+
+  const largerDimension = Math.max(asset.width, asset.height);
+  if (largerDimension <= maxDimension) {
+    return null;
+  }
+
+  if (asset.width >= asset.height) {
+    return `max-w=${maxDimension}`;
+  }
+  return `h=${maxDimension}`;
+};
+
+const collectOptimizationParamParts = (
+  asset: Asset,
+  settings: OptimizationSettings,
+  sizeCategory: AssetSizeCategory,
+): string[] => {
+  const parts: string[] = [];
+
+  if (settings.useAutoCompress) {
+    parts.push('auto=compress');
+  }
+
+  const qualityValue =
+    sizeCategory === 'very-large'
+      ? settings.qualityVeryLarge
+      : settings.qualityLarge;
+  parts.push(`q=${qualityValue}`);
+
+  const resizeParam = buildResizeParam(asset, sizeCategory, settings);
+  if (resizeParam) {
+    parts.push(resizeParam);
+  }
+
+  if (settings.targetFormat && !settings.preserveOriginalFormat) {
+    parts.push(`fm=${settings.targetFormat}`);
+  }
+
+  if (sizeCategory === 'very-large' && settings.useDpr) {
+    parts.push('dpr=2');
+  }
+
+  if (settings.useLossless) {
+    parts.push('lossless=1');
+  }
+
+  if (settings.useChromaSubsampling) {
+    parts.push('chromasub=444');
+  }
+
+  if (settings.preserveColorProfile) {
+    parts.push('cs=origin');
+  }
+
+  return parts;
 };
 
 /**
@@ -104,88 +193,20 @@ export const defaultSettings: OptimizationSettings = {
  * @param settings - Optimization settings to apply
  * @returns Optimization parameters as a URL query string or null if optimization not possible
  */
-export function getOptimizationParams(asset: Asset, settings: OptimizationSettings): string | null {
-  // Only proceed if the asset is an image
+export function getOptimizationParams(
+  asset: Asset,
+  settings: OptimizationSettings,
+): string | null {
   if (!asset.is_image) {
     return null;
   }
 
-  // Using the size directly in bytes when comparing to thresholds
-  const largeThresholdBytes = settings.largeAssetThreshold * 1024 * 1024;
-  const veryLargeThresholdBytes = settings.veryLargeAssetThreshold * 1024 * 1024;
-  
-  // Determine asset size category
-  const isLargeAsset = asset.size >= largeThresholdBytes;
-  const isVeryLargeAsset = asset.size >= veryLargeThresholdBytes;
-  
-  // Base parameters
-  let params = '?';
-  
-  // Auto compression if enabled
-  if (settings.useAutoCompress) {
-    params += 'auto=compress';
-  }
-  
-  // Quality parameter based on asset size
-  if (isVeryLargeAsset) {
-    params += params.length > 1 ? '&' : '';
-    params += `q=${settings.qualityVeryLarge}`;
-  } else if (isLargeAsset) {
-    params += params.length > 1 ? '&' : '';
-    params += `q=${settings.qualityLarge}`;
-  } else {
-    // For images smaller than the large threshold
-    // Don't apply any quality reduction - skip optimization
+  const sizeCategory = getAssetSizeCategory(asset.size, settings);
+
+  if (sizeCategory === 'small') {
     return null;
   }
-  
-  // Resize large images if enabled and dimensions are available
-  if (settings.resizeLargeImages && asset.width && asset.height) {
-    const largerDimension = Math.max(asset.width, asset.height);
-    const maxDimension = isVeryLargeAsset ? 
-                        settings.resizeDimensionVeryLarge : 
-                        (isLargeAsset ? settings.resizeDimensionLarge : null);
-    
-    if (maxDimension && largerDimension > maxDimension) {
-      if (asset.width >= asset.height) {
-        params += params.length > 1 ? '&' : '';
-        params += `max-w=${maxDimension}`;
-      } else {
-        params += params.length > 1 ? '&' : '';
-        params += `h=${maxDimension}`;
-      }
-    }
-  }
-  
-  // Format conversion if enabled and not preserving original format
-  if (settings.targetFormat && !settings.preserveOriginalFormat) {
-    params += params.length > 1 ? '&' : '';
-    params += `fm=${settings.targetFormat}`;
-  }
-  
-  // Use DPR=2 for very large images if enabled
-  if (isVeryLargeAsset && settings.useDpr) {
-    params += params.length > 1 ? '&' : '';
-    params += 'dpr=2';
-  }
-  
-  // Use lossless compression if enabled
-  if (settings.useLossless) {
-    params += params.length > 1 ? '&' : '';
-    params += 'lossless=1';
-  }
 
-  // Apply higher quality chroma subsampling if enabled (444 instead of default 420)
-  if (settings.useChromaSubsampling) {
-    params += params.length > 1 ? '&' : '';
-    params += 'chromasub=444';
-  }
-
-  // Preserve original color profile if enabled
-  if (settings.preserveColorProfile) {
-    params += params.length > 1 ? '&' : '';
-    params += 'cs=origin';
-  }
-  
-  return params;
+  const parts = collectOptimizationParamParts(asset, settings, sizeCategory);
+  return `?${parts.join('&')}`;
 }

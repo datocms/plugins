@@ -1,7 +1,7 @@
 import {
-  connect,
-  type ContentAreaSidebarItemsCtx,
   type ContentAreaSidebarItem,
+  type ContentAreaSidebarItemsCtx,
+  connect,
   type RenderPageCtx,
 } from 'datocms-plugin-sdk';
 import 'datocms-react-ui/styles.css';
@@ -10,7 +10,10 @@ import StagePage from './entrypoints/StagePage';
 import type { PluginParameters, StageMenuItem } from './types';
 import { render } from './utils/render';
 
-type ParametersWithFallback = Partial<PluginParameters> | Record<string, unknown> | undefined;
+type ParametersWithFallback =
+  | Partial<PluginParameters>
+  | Record<string, unknown>
+  | undefined;
 
 function readMenuItems(params: ParametersWithFallback): StageMenuItem[] {
   const typed = (params ?? {}) as Partial<PluginParameters>;

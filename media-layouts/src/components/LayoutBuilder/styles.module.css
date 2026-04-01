@@ -175,7 +175,9 @@
 }
 
 .slotItem.isSelected {
-  box-shadow: 0 0 0 2px var(--accent-color), 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow:
+    0 0 0 2px var(--accent-color),
+    0 4px 12px rgba(0, 0, 0, 0.15);
 }
 
 .slotItem.isDragging {
@@ -185,12 +187,14 @@
 }
 
 .slotItem.isDragOver {
-  box-shadow: 0 0 0 2px var(--accent-color), 0 8px 24px rgba(0, 0, 0, 0.2);
+  box-shadow:
+    0 0 0 2px var(--accent-color),
+    0 8px 24px rgba(0, 0, 0, 0.2);
   transform: scale(1.02);
 }
 
 .slotItem.isRequired::before {
-  content: '';
+  content: "";
   position: absolute;
   top: 0;
   left: 0;

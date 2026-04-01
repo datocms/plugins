@@ -39,7 +39,9 @@
   /* Hidden by default, shown on hover */
   opacity: 0;
   visibility: hidden;
-  transition: opacity var(--transition-fast), visibility var(--transition-fast);
+  transition:
+    opacity var(--transition-fast),
+    visibility var(--transition-fast);
 }
 
 /* ===========================================

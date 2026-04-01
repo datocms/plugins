@@ -18,6 +18,8 @@ export type CustomWidthPreset = {
 
 // The data stored for each asset in the JSON field
 export type MediaLayoutItem = {
+  /** Stable per-item unique identifier for React key prop (not persisted in JSON). */
+  _itemId?: string;
   uploadId: string;
   url: string;
   filename: string;

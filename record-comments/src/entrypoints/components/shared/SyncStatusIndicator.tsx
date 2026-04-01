@@ -1,6 +1,9 @@
-import { memo } from 'react';
+import {
+  SUBSCRIPTION_STATUS,
+  type SubscriptionStatus,
+} from '@hooks/useCommentsSubscription';
 import type { RetryState } from '@hooks/useOperationQueue';
-import { SUBSCRIPTION_STATUS, type SubscriptionStatus } from '@hooks/useCommentsSubscription';
+import { memo } from 'react';
 import styles from './SyncStatusIndicator.module.css';
 
 type SyncStatusIndicatorProps = {
@@ -36,7 +39,10 @@ function SyncStatusIndicatorComponent({
         <span className={styles.text}>
           {retryState.message}
           {retryState.retryCount > 1 && (
-            <span className={styles.count}> (attempt {retryState.retryCount})</span>
+            <span className={styles.count}>
+              {' '}
+              (attempt {retryState.retryCount})
+            </span>
           )}
         </span>
       </div>
@@ -51,10 +57,16 @@ function SyncStatusIndicatorComponent({
         role="alert"
         aria-live="assertive"
       >
-        <span className={styles.icon} aria-hidden="true">!</span>
+        <span className={styles.icon} aria-hidden="true">
+          !
+        </span>
         <span className={styles.text}>Sync error</span>
         {onRetry && (
-          <button type="button" className={styles.retryButton} onClick={onRetry}>
+          <button
+            type="button"
+            className={styles.retryButton}
+            onClick={onRetry}
+          >
             Retry
           </button>
         )}
@@ -79,9 +91,10 @@ function SyncStatusIndicatorComponent({
   if (realTimeEnabled && subscriptionStatus === SUBSCRIPTION_STATUS.CLOSED) {
     // Auto-reconnecting - show spinner and "Reconnecting..." message
     if (isAutoReconnecting) {
-      const className = variant === 'banner'
-        ? `${styles.indicator} ${styles.banner}`
-        : styles.indicator;
+      const className =
+        variant === 'banner'
+          ? `${styles.indicator} ${styles.banner}`
+          : styles.indicator;
 
       return (
         <div
@@ -104,10 +117,16 @@ function SyncStatusIndicatorComponent({
         role="alert"
         aria-live="assertive"
       >
-        <span className={styles.icon} aria-hidden="true">!</span>
+        <span className={styles.icon} aria-hidden="true">
+          !
+        </span>
         <span className={styles.text}>Connection lost</span>
         {onRetry && (
-          <button type="button" className={styles.retryButton} onClick={onRetry}>
+          <button
+            type="button"
+            className={styles.retryButton}
+            onClick={onRetry}
+          >
             Retry
           </button>
         )}

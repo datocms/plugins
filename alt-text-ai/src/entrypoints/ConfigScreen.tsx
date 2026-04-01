@@ -1,12 +1,7 @@
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
-import {
-  Button,
-  Canvas,
-  Spinner,
-  TextField,
-} from 'datocms-react-ui';
-import s from './styles.module.css';
+import { Button, Canvas, Spinner, TextField } from 'datocms-react-ui';
 import { useState } from 'react';
+import s from './styles.module.css';
 
 const ALT_TEXT_API_KEYS_URL = 'https://alttext.ai/account/api_keys';
 const SAVE_SUCCESS_TOAST = 'API key saved!';
@@ -30,7 +25,7 @@ function getInitialApiKey(ctx: RenderConfigScreenCtx): string {
 async function saveApiKey(
   ctx: RenderConfigScreenCtx,
   apiKey: string,
-  setIsLoading: React.Dispatch<React.SetStateAction<boolean>>
+  setIsLoading: React.Dispatch<React.SetStateAction<boolean>>,
 ) {
   setIsLoading(true);
   try {
@@ -67,11 +62,7 @@ export default function ConfigScreen({ ctx }: Props) {
         />
         <p>
           You can get your API key by going to{' '}
-          <a
-            href={ALT_TEXT_API_KEYS_URL}
-            target="_blank"
-            rel="noreferrer"
-          >
+          <a href={ALT_TEXT_API_KEYS_URL} target="_blank" rel="noreferrer">
             {ALT_TEXT_API_KEYS_URL}
           </a>
         </p>

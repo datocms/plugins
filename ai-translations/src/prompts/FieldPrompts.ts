@@ -33,4 +33,3 @@ export const fieldPrompt = {
   // FIXED: Same as json field - clarified JSON formatting without contradictory phrasing
   file: 'A valid JSON object in the format {"title": "translated title", "alt": "translated alt"}. Return only the JSON object with no surrounding text or code fences. Keys and string values must use double quotes.',
 };
-

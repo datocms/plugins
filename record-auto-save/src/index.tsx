@@ -5,11 +5,13 @@ import {
   type OnBootCtx,
   type RenderConfigScreenCtx,
   type RenderItemFormOutletCtx,
-} from "datocms-plugin-sdk";
-import { render } from "./utils/render";
-import "datocms-react-ui/styles.css";
-import AutoSave from "./entrypoints/AutoSave";
-import ConfigScreen, { type PluginParametersType } from "./entrypoints/ConfigScreen";
+} from 'datocms-plugin-sdk';
+import { render } from './utils/render';
+import 'datocms-react-ui/styles.css';
+import AutoSave from './entrypoints/AutoSave';
+import ConfigScreen, {
+  type PluginParametersType,
+} from './entrypoints/ConfigScreen';
 
 connect({
   async onBoot(ctx: OnBootCtx) {
@@ -26,7 +28,7 @@ connect({
   itemFormOutlets(_itemType: ItemType, _ctx: ItemFormOutletsCtx) {
     return [
       {
-        id: "auto_save",
+        id: 'auto_save',
         initialHeight: 0,
       },
     ];
@@ -34,9 +36,9 @@ connect({
   renderItemFormOutlet(outletId: string, ctx: RenderItemFormOutletCtx) {
     const pluginParameters = ctx.plugin.attributes
       .parameters as PluginParametersType;
-    if (outletId === "auto_save") {
+    if (outletId === 'auto_save') {
       const isActivatedOnThisModel = pluginParameters.selectedModels.find(
-        (item) => item.value === ctx.itemType.attributes.api_key
+        (item) => item.value === ctx.itemType.attributes.api_key,
       );
       if (isActivatedOnThisModel) {
         render(<AutoSave ctx={ctx} />);

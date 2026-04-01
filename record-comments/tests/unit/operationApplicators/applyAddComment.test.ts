@@ -1,10 +1,10 @@
-import { describe, it, expect, beforeEach } from 'vitest';
 import { applyOperation } from '@utils/operationApplicators';
+import { beforeEach, describe, expect, it } from 'vitest';
 import {
   createBaseComment,
   createCommentList,
-  resetIdCounter,
   createTextSegment,
+  resetIdCounter,
 } from '../fixtures/comments';
 import { createAddCommentOp } from '../fixtures/operations';
 
@@ -47,7 +47,9 @@ describe('applyAddComment', () => {
 
       expect(result.comments).toHaveLength(4);
       expect(result.comments[0].id).toBe('new-first');
-      expect(result.comments[0].content).toEqual([createTextSegment('I should be first')]);
+      expect(result.comments[0].content).toEqual([
+        createTextSegment('I should be first'),
+      ]);
     });
 
     it('preserves existing comments in their relative order', () => {

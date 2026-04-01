@@ -16,7 +16,10 @@ export type LegacyFieldParams = {
   };
 };
 
-export type FieldParams = ValidFieldParams | LegacyFieldParams | Record<string, never>;
+export type FieldParams =
+  | ValidFieldParams
+  | LegacyFieldParams
+  | Record<string, never>;
 
 export function isValidFieldParams(
   params: FieldParams,
@@ -25,9 +28,7 @@ export function isValidFieldParams(
 }
 
 function rgbToHex({ red, blue, green }: LegacyFieldParams['starsColor']) {
-  return (
-    `#${((1 << 24) + (red << 16) + (green << 8) + blue).toString(16).slice(1).toUpperCase()}`
-  );
+  return `#${((1 << 24) + (red << 16) + (green << 8) + blue).toString(16).slice(1).toUpperCase()}`;
 }
 
 export function normalizeFieldParams(

@@ -9,7 +9,10 @@ import { Canvas, Spinner, useCtx } from 'datocms-react-ui';
 import { ButtonGroup, ButtonGroupButton } from '../../components/ButtonGroup';
 import type { Frontend } from '../../types';
 import { type FrontendStatus, useStatusByFrontend } from '../../utils/common';
-import { extractRedirectFromDraftModePreviewUrl, inspectorUrl } from '../../utils/urls';
+import {
+  extractRedirectFromDraftModePreviewUrl,
+  inspectorUrl,
+} from '../../utils/urls';
 import styles from './styles.module.css';
 
 type PropTypes = {
@@ -127,25 +130,25 @@ const PreviewUrl = ({ ctx }: PropTypes) => {
     <Canvas ctx={ctx}>
       {statusByFrontend ? (
         frontends.length === 0 ? (
-            <div>No frontends configured!</div>
-          ) : frontends.length === 1 && firstStatus ? (
-            <FrontendResult status={firstStatus} frontend={frontends[0]} />
-          ) : Object.values(statusByFrontend).every(
-              (status) =>
-                !status ||
-                ('previewLinks' in status && status.previewLinks.length === 0),
-            ) ? (
-            <div>No preview links available.</div>
-          ) : (
-            frontends.map((frontend) => (
-              <FrontendGroup
-                key={frontend.name}
-                frontend={frontend}
-                status={statusByFrontend[frontend.name]}
-                hideIfNoLinks
-              />
-            ))
-          )
+          <div>No frontends configured!</div>
+        ) : frontends.length === 1 && firstStatus ? (
+          <FrontendResult status={firstStatus} frontend={frontends[0]} />
+        ) : Object.values(statusByFrontend).every(
+            (status) =>
+              !status ||
+              ('previewLinks' in status && status.previewLinks.length === 0),
+          ) ? (
+          <div>No preview links available.</div>
+        ) : (
+          frontends.map((frontend) => (
+            <FrontendGroup
+              key={frontend.name}
+              frontend={frontend}
+              status={statusByFrontend[frontend.name]}
+              hideIfNoLinks
+            />
+          ))
+        )
       ) : (
         <Spinner />
       )}

@@ -1,6 +1,8 @@
+import type { NewUpload, RenderAssetSourceCtx } from 'datocms-plugin-sdk';
+import { Button, Spinner, useCtx } from 'datocms-react-ui';
 import {
-  type CSSProperties,
   type ChangeEvent,
+  type CSSProperties,
   type FormEvent,
   useCallback,
   useEffect,
@@ -8,8 +10,6 @@ import {
   useRef,
   useState,
 } from 'react';
-import type { NewUpload, RenderAssetSourceCtx } from 'datocms-plugin-sdk';
-import { Button, Spinner, useCtx } from 'datocms-react-ui';
 import Cell from '../components/Cell';
 import type { ConfigParameters } from '../types';
 import {
@@ -19,22 +19,26 @@ import {
   normalizeConfigParameters,
 } from '../utils/config';
 import {
-  aspectRatioOptions,
   buildGenerationNotes,
-  createFailedGenerationBatch,
   buildImportFilename,
   generateImages,
-  getDefaultImageSize,
   getProviderCapabilities,
   normalizeProviderError,
-  variationOptions,
-  type AspectRatio,
-  type GenerationStatus,
-  type ImageOperationRequest,
-  type NormalizedGeneratedImage,
-  type NormalizedGenerationBatch,
-  type VariationCount,
 } from '../utils/imageService';
+import {
+  aspectRatioOptions,
+  getDefaultImageSize,
+  variationOptions,
+} from '../utils/imageService/catalog';
+import { createFailedGenerationBatch } from '../utils/imageService/shared';
+import type {
+  AspectRatio,
+  GenerationStatus,
+  ImageOperationRequest,
+  NormalizedGeneratedImage,
+  NormalizedGenerationBatch,
+  VariationCount,
+} from '../utils/imageService/types';
 import s from './styles.module.css';
 
 const MAX_REQUESTS = 5;
@@ -196,7 +200,10 @@ const AssetBrowser = () => {
     selectUploads(ctx, uploads);
     setSelectedImageIds((current) =>
       current.filter(
-        (id) => !selectedImages.some((selectedImage) => selectedImage.image.id === id),
+        (id) =>
+          !selectedImages.some(
+            (selectedImage) => selectedImage.image.id === id,
+          ),
       ),
     );
   }, [ctx, selectedImages]);
@@ -227,14 +234,16 @@ const AssetBrowser = () => {
         console.error('Image Generator plugin', error);
         const nextErrorMessage = normalizeProviderError(provider, error);
 
-        setRequests((current) => [
-          createFailedGenerationBatch(
-            normalizedRequest,
-            new Date().toISOString(),
-            nextErrorMessage,
-          ),
-          ...current,
-        ].slice(0, MAX_REQUESTS));
+        setRequests((current) =>
+          [
+            createFailedGenerationBatch(
+              normalizedRequest,
+              new Date().toISOString(),
+              nextErrorMessage,
+            ),
+            ...current,
+          ].slice(0, MAX_REQUESTS),
+        );
         setErrorMessage(nextErrorMessage);
         setStatus('error');
       }
@@ -496,9 +505,9 @@ function selectUploads(ctx: RenderAssetSourceCtx, uploads: NewUpload[]): void {
     return;
   }
 
-  uploads.forEach((upload) => {
+  for (const upload of uploads) {
     ctx.select(upload);
-  });
+  }
 }
 
 function isGeneratedImage(

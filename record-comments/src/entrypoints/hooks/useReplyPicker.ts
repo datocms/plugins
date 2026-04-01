@@ -1,13 +1,13 @@
-import { useState, useCallback, useRef, type RefObject } from 'react';
-import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
-import type { Client } from '@datocms/cma-client-browser';
 import type { TipTapComposerRef } from '@components/tiptap/TipTapComposer';
-import type { ModelInfo } from './useMentions';
-import { createRecordMention } from '@utils/recordPickerHelpers';
+import type { Client } from '@datocms/cma-client-browser';
 import { createAssetMention } from '@utils/composerHelpers';
+import { createRecordMention } from '@utils/recordPickerHelpers';
 import { insertMentionWithRetry } from '@utils/textareaUtils';
+import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
+import { type RefObject, useCallback, useRef, useState } from 'react';
 import { ERROR_MESSAGES } from '@/constants';
 import { logError, logWarn } from '@/utils/errorLogger';
+import type { ModelInfo } from './useMentions';
 
 export type UseReplyPickerParams = {
   ctx: RenderItemFormSidebarCtx;
@@ -19,11 +19,11 @@ type UseReplyPickerReturn = {
   isPickerInProgress: boolean;
   handleReplyPickerRequest: (
     type: 'asset' | 'record',
-    replyComposerRef: RefObject<TipTapComposerRef | null>
+    replyComposerRef: RefObject<TipTapComposerRef | null>,
   ) => Promise<void>;
   handleRecordModelSelectFromComment: (
     model: ModelInfo,
-    targetComposerRef: RefObject<TipTapComposerRef | null>
+    targetComposerRef: RefObject<TipTapComposerRef | null>,
   ) => Promise<void>;
 };
 
@@ -41,7 +41,7 @@ export function useReplyPicker({
   const handleReplyPickerRequest = useCallback(
     async (
       type: 'asset' | 'record',
-      replyComposerRef: RefObject<TipTapComposerRef | null>
+      replyComposerRef: RefObject<TipTapComposerRef | null>,
     ) => {
       // Record mentions are handled by the Comment component's own dropdown
       if (type !== 'asset') return;
@@ -68,17 +68,19 @@ export function useReplyPicker({
         activeReplyComposerRef.current = null;
       }
     },
-    [ctx, canMentionAssets]
+    [ctx, canMentionAssets],
   );
 
   const handleRecordModelSelectFromComment = useCallback(
     async (
       model: ModelInfo,
-      targetComposerRef: RefObject<TipTapComposerRef | null>
+      targetComposerRef: RefObject<TipTapComposerRef | null>,
     ) => {
       const targetComposer = targetComposerRef.current;
       if (!targetComposer) {
-        logWarn('No valid composer target for record mention from comment, aborting');
+        logWarn(
+          'No valid composer target for record mention from comment, aborting',
+        );
         return;
       }
 
@@ -98,7 +100,11 @@ export function useReplyPicker({
           try {
             fields = await ctx.loadItemTypeFields(model.id);
           } catch (fieldError) {
-            logError('Failed to load item type fields for record mention', fieldError, { modelId: model.id });
+            logError(
+              'Failed to load item type fields for record mention',
+              fieldError,
+              { modelId: model.id },
+            );
           }
         }
 
@@ -106,11 +112,16 @@ export function useReplyPicker({
 
         const recordMention = await createRecordMention(
           { id: record.id, attributes: record.attributes },
-          { id: model.id, apiKey: model.apiKey, name: model.name, isBlockModel: model.isBlockModel },
+          {
+            id: model.id,
+            apiKey: model.apiKey,
+            name: model.name,
+            isBlockModel: model.isBlockModel,
+          },
           itemType,
           fields,
           mainLocale,
-          client
+          client,
         );
 
         await insertMentionWithRetry(targetComposerRef, recordMention);
@@ -121,7 +132,7 @@ export function useReplyPicker({
         setIsPickerInProgress(false);
       }
     },
-    [ctx, client]
+    [ctx, client],
   );
 
   return {

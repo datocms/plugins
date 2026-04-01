@@ -1,6 +1,6 @@
-import { createContext, useContext, useMemo, type ReactNode } from 'react';
-import type { FieldInfo, UserInfo, ModelInfo } from '@hooks/useMentions';
+import type { FieldInfo, ModelInfo, UserInfo } from '@hooks/useMentions';
 import type { TypedUserInfo } from '@utils/userDisplayResolver';
+import { createContext, type ReactNode, useContext, useMemo } from 'react';
 
 type ProjectDataContextType = {
   projectUsers: UserInfo[];
@@ -37,7 +37,7 @@ export function ProjectDataProvider({
       currentUserId,
       typedUsers,
     }),
-    [projectUsers, projectModels, modelFields, currentUserId, typedUsers]
+    [projectUsers, projectModels, modelFields, currentUserId, typedUsers],
   );
 
   return (
@@ -50,7 +50,9 @@ export function ProjectDataProvider({
 export function useProjectDataContext(): ProjectDataContextType {
   const context = useContext(ProjectDataContext);
   if (!context) {
-    throw new Error('useProjectDataContext must be used within a ProjectDataProvider');
+    throw new Error(
+      'useProjectDataContext must be used within a ProjectDataProvider',
+    );
   }
   return context;
 }

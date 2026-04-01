@@ -1,8 +1,8 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildClient, type SchemaTypes } from "@datocms/cma-client-browser";
-import { captureDeletedItemsWithoutLambda } from "./lambdaLessCapture";
+import { buildClient, type SchemaTypes } from '@datocms/cma-client-browser';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { captureDeletedItemsWithoutLambda } from './lambdaLessCapture';
 
-vi.mock("@datocms/cma-client-browser", () => ({
+vi.mock('@datocms/cma-client-browser', () => ({
   buildClient: vi.fn(),
 }));
 
@@ -36,27 +36,24 @@ const createClientMock = (): ClientMock => ({
   },
 });
 
-const createHookItem = (
-  id: string,
-  modelId: string
-): SchemaTypes.Item =>
+const createHookItem = (id: string, modelId: string): SchemaTypes.Item =>
   ({
-    type: "item",
+    type: 'item',
     id,
     relationships: {
       item_type: {
         data: {
-          type: "item_type",
+          type: 'item_type',
           id: modelId,
         },
       },
     },
     attributes: {},
-    meta: {} as SchemaTypes.Item["meta"],
-  } as SchemaTypes.Item);
+    meta: {} as SchemaTypes.Item['meta'],
+  }) as SchemaTypes.Item;
 
 const createCtxMock = (
-  token?: string
+  token?: string,
 ): {
   currentUserAccessToken: string | undefined;
   environment: string;
@@ -64,7 +61,7 @@ const createCtxMock = (
   notice: ReturnType<typeof vi.fn>;
 } => ({
   currentUserAccessToken: token,
-  environment: "main",
+  environment: 'main',
   plugin: {
     attributes: {
       parameters: {},
@@ -78,39 +75,39 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("captureDeletedItemsWithoutLambda", () => {
-  it("captures deleted records using nested rawFind payload", async () => {
+describe('captureDeletedItemsWithoutLambda', () => {
+  it('captures deleted records using nested rawFind payload', async () => {
     const clientMock = createClientMock();
-    clientMock.itemTypes.find.mockResolvedValue({ id: "record-bin-model-id" });
+    clientMock.itemTypes.find.mockResolvedValue({ id: 'record-bin-model-id' });
     clientMock.items.rawFind.mockResolvedValue({
       data: {
-        type: "item",
-        id: "item-1",
+        type: 'item',
+        id: 'item-1',
         relationships: {
           item_type: {
             data: {
-              type: "item_type",
-              id: "blog-model-id",
+              type: 'item_type',
+              id: 'blog-model-id',
             },
           },
         },
         attributes: {
-          title: "Post title",
+          title: 'Post title',
         },
         meta: {},
       },
     });
-    clientMock.items.create.mockResolvedValue({ id: "trash-1" });
+    clientMock.items.create.mockResolvedValue({ id: 'trash-1' });
 
     vi.mocked(buildClient).mockReturnValue(
-      clientMock as unknown as ReturnType<typeof buildClient>
+      clientMock as unknown as ReturnType<typeof buildClient>,
     );
 
-    const ctx = createCtxMock("token");
+    const ctx = createCtxMock('token');
 
     const result = await captureDeletedItemsWithoutLambda(
-      [createHookItem("item-1", "blog-model-id")],
-      ctx as never
+      [createHookItem('item-1', 'blog-model-id')],
+      ctx as never,
     );
 
     expect(result).toEqual({
@@ -119,34 +116,34 @@ describe("captureDeletedItemsWithoutLambda", () => {
       skippedRecordBinItems: 0,
     });
     expect(buildClient).toHaveBeenCalledWith({
-      apiToken: "token",
-      environment: "main",
+      apiToken: 'token',
+      environment: 'main',
     });
-    expect(clientMock.items.rawFind).toHaveBeenCalledWith("item-1", {
+    expect(clientMock.items.rawFind).toHaveBeenCalledWith('item-1', {
       nested: true,
     });
     expect(clientMock.items.create).toHaveBeenCalledTimes(1);
     const requestPayload = clientMock.items.create.mock.calls[0][0];
-    expect(requestPayload.model).toBe("blog-model-id");
+    expect(requestPayload.model).toBe('blog-model-id');
     expect(requestPayload.record_body).toEqual(expect.any(String));
     expect(JSON.parse(requestPayload.record_body).event_type).toBe(
-      "to_be_restored"
+      'to_be_restored',
     );
   });
 
-  it("skips records belonging to record_bin model", async () => {
+  it('skips records belonging to record_bin model', async () => {
     const clientMock = createClientMock();
-    clientMock.itemTypes.find.mockResolvedValue({ id: "record-bin-model-id" });
+    clientMock.itemTypes.find.mockResolvedValue({ id: 'record-bin-model-id' });
 
     vi.mocked(buildClient).mockReturnValue(
-      clientMock as unknown as ReturnType<typeof buildClient>
+      clientMock as unknown as ReturnType<typeof buildClient>,
     );
 
-    const ctx = createCtxMock("token");
+    const ctx = createCtxMock('token');
 
     const result = await captureDeletedItemsWithoutLambda(
-      [createHookItem("trash-item", "record-bin-model-id")],
-      ctx as never
+      [createHookItem('trash-item', 'record-bin-model-id')],
+      ctx as never,
     );
 
     expect(result).toEqual({
@@ -158,64 +155,64 @@ describe("captureDeletedItemsWithoutLambda", () => {
     expect(clientMock.items.create).not.toHaveBeenCalled();
   });
 
-  it("aggregates failures and keeps deletion fail-open", async () => {
+  it('aggregates failures and keeps deletion fail-open', async () => {
     const clientMock = createClientMock();
-    clientMock.itemTypes.find.mockResolvedValue({ id: "record-bin-model-id" });
+    clientMock.itemTypes.find.mockResolvedValue({ id: 'record-bin-model-id' });
     clientMock.items.rawFind
-      .mockRejectedValueOnce(new Error("fetch failed"))
+      .mockRejectedValueOnce(new Error('fetch failed'))
       .mockResolvedValueOnce({
         data: {
-          type: "item",
-          id: "item-2",
+          type: 'item',
+          id: 'item-2',
           relationships: {
             item_type: {
               data: {
-                type: "item_type",
-                id: "page-model-id",
+                type: 'item_type',
+                id: 'page-model-id',
               },
             },
           },
           attributes: {
-            title: "Page title",
+            title: 'Page title',
           },
           meta: {},
         },
       });
-    clientMock.items.create.mockResolvedValue({ id: "trash-2" });
+    clientMock.items.create.mockResolvedValue({ id: 'trash-2' });
 
     vi.mocked(buildClient).mockReturnValue(
-      clientMock as unknown as ReturnType<typeof buildClient>
+      clientMock as unknown as ReturnType<typeof buildClient>,
     );
 
-    const ctx = createCtxMock("token");
+    const ctx = createCtxMock('token');
 
     const result = await captureDeletedItemsWithoutLambda(
       [
-        createHookItem("item-1", "post-model-id"),
-        createHookItem("item-2", "page-model-id"),
+        createHookItem('item-1', 'post-model-id'),
+        createHookItem('item-2', 'page-model-id'),
       ],
-      ctx as never
+      ctx as never,
     );
 
     expect(result.capturedCount).toBe(1);
-    expect(result.failedItemIds).toEqual(["item-1"]);
+    expect(result.failedItemIds).toEqual(['item-1']);
     expect(ctx.notice).toHaveBeenCalledWith(
-      "Record Bin could not archive 1 deleted record(s). Deletion still completed."
+      'Record Bin could not archive 1 deleted record(s). Deletion still completed.',
     );
   });
 
-  it("warns and returns when access token is missing", async () => {
+  it('warns and returns when access token is missing', async () => {
     const ctx = createCtxMock();
 
     const result = await captureDeletedItemsWithoutLambda(
-      [createHookItem("item-1", "blog-model-id")],
-      ctx as never
+      [createHookItem('item-1', 'blog-model-id')],
+      ctx as never,
     );
 
     expect(result.capturedCount).toBe(0);
-    expect(result.failedItemIds).toEqual(["item-1"]);
+    expect(result.failedItemIds).toEqual(['item-1']);
     expect(ctx.notice).toHaveBeenCalledWith(
-      "Record Bin could not archive deleted records because currentUserAccessToken is missing."
+      'Record Bin could not archive deleted records because currentUserAccessToken is missing.',
     );
     expect(buildClient).not.toHaveBeenCalled();
   });

@@ -20,7 +20,7 @@ export function useConflictsBuilder({
   task: LongTaskController;
 }) {
   const [conflicts, setConflicts] = useState<Conflicts | undefined>();
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [_refreshKey, setRefreshKey] = useState(0);
 
   // Rebuild conflicts whenever the export document, schema, or refresh key changes.
   useEffect(() => {
@@ -54,7 +54,7 @@ export function useConflictsBuilder({
     return () => {
       cancelled = true;
     };
-  }, [exportSchema, projectSchema, task, refreshKey]);
+  }, [exportSchema, projectSchema, task]);
 
   const refresh = useCallback(() => setRefreshKey((key) => key + 1), []);
 

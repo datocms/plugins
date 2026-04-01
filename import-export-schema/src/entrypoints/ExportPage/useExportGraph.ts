@@ -28,7 +28,7 @@ export function useExportGraph({
 }: Options) {
   const [graph, setGraph] = useState<Graph | undefined>();
   const [error, setError] = useState<Error | undefined>();
-  const [refreshKey, setRefreshKey] = useState(0);
+  const [_refreshKey, setRefreshKey] = useState(0);
   const prepareProgressRef = useRef(onPrepareProgress);
   const graphPreparedRef = useRef(onGraphPrepared);
 
@@ -75,14 +75,11 @@ export function useExportGraph({
       cancelled = true;
     };
   }, [
-    initialItemTypes
-      .map((it) => it.id)
-      .sort()
-      .join('-'),
-    selectedItemTypeIds.slice().sort().join('-'),
     schema,
-    refreshKey,
     installedPluginIds,
+    selectedItemTypeIds.length,
+    selectedItemTypeIds,
+    initialItemTypes,
   ]);
 
   return {

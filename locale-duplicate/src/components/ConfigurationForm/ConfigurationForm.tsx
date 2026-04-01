@@ -1,14 +1,14 @@
-import { 
-  Form, 
-  Section, 
-  FieldGroup, 
+import {
+  Button,
+  FieldGroup,
+  Form,
+  Section,
   SelectField,
-  SwitchField, 
-  Button 
+  SwitchField,
 } from 'datocms-react-ui';
 import { useMemo } from 'react';
-import styles from './ConfigurationForm.module.css';
 import type { ModelOption } from '../../types';
+import styles from './ConfigurationForm.module.css';
 
 interface ConfigurationFormProps {
   sourceLocale: string;
@@ -41,43 +41,51 @@ export function ConfigurationForm({
   onModelsChange,
   onUseDraftRecordsChange,
   onPublishAfterDuplicationChange,
-  onSubmit
+  onSubmit,
 }: ConfigurationFormProps) {
   // Memoize locale options for source locale
-  const sourceLocaleOptions = useMemo(() => 
-    currentSiteLocales.map((locale) => ({
-      label: getLocaleLabel(locale),
-      value: locale,
-    })),
-    [currentSiteLocales, getLocaleLabel]
-  );
-
-  // Memoize locale options for target locale (excluding source)
-  const targetLocaleOptions = useMemo(() => 
-    currentSiteLocales
-      .filter((l) => l !== sourceLocale)
-      .map((locale) => ({
+  const sourceLocaleOptions = useMemo(
+    () =>
+      currentSiteLocales.map((locale) => ({
         label: getLocaleLabel(locale),
         value: locale,
       })),
-    [currentSiteLocales, sourceLocale, getLocaleLabel]
+    [currentSiteLocales, getLocaleLabel],
+  );
+
+  // Memoize locale options for target locale (excluding source)
+  const targetLocaleOptions = useMemo(
+    () =>
+      currentSiteLocales
+        .filter((l) => l !== sourceLocale)
+        .map((locale) => ({
+          label: getLocaleLabel(locale),
+          value: locale,
+        })),
+    [currentSiteLocales, sourceLocale, getLocaleLabel],
   );
 
   // Memoize source locale value
-  const sourceLocaleValue = useMemo(() => [
-    {
-      label: getLocaleLabel(sourceLocale),
-      value: sourceLocale,
-    },
-  ], [sourceLocale, getLocaleLabel]);
+  const sourceLocaleValue = useMemo(
+    () => [
+      {
+        label: getLocaleLabel(sourceLocale),
+        value: sourceLocale,
+      },
+    ],
+    [sourceLocale, getLocaleLabel],
+  );
 
   // Memoize target locale value
-  const targetLocaleValue = useMemo(() => [
-    {
-      label: getLocaleLabel(targetLocale),
-      value: targetLocale,
-    },
-  ], [targetLocale, getLocaleLabel]);
+  const targetLocaleValue = useMemo(
+    () => [
+      {
+        label: getLocaleLabel(targetLocale),
+        value: targetLocale,
+      },
+    ],
+    [targetLocale, getLocaleLabel],
+  );
 
   return (
     <div className={styles.formWrapper}>
@@ -86,8 +94,9 @@ export function ConfigurationForm({
           {/* Explanation and warnings */}
           <div className={styles.explanationBox}>
             <p className={styles.explanationText}>
-              This feature allows you to duplicate all content from one locale to another across multiple models in bulk. 
-              It's useful for setting up new locales or creating baseline translations.
+              This feature allows you to duplicate all content from one locale
+              to another across multiple models in bulk. It's useful for setting
+              up new locales or creating baseline translations.
             </p>
             <div className={styles.warningBox}>
               <p className={styles.warningHeader}>
@@ -96,18 +105,16 @@ export function ConfigurationForm({
               </p>
               <ul className={styles.warningList}>
                 <li>
-                  This operation will <strong>overwrite all existing content</strong> in the target locale
+                  This operation will{' '}
+                  <strong>overwrite all existing content</strong> in the target
+                  locale
                 </li>
-                <li>
-                  The process cannot be undone automatically
-                </li>
-                <li>
-                  Make sure to backup important content before proceeding
-                </li>
+                <li>The process cannot be undone automatically</li>
+                <li>Make sure to backup important content before proceeding</li>
               </ul>
             </div>
           </div>
-          
+
           <FieldGroup>
             {/* Locale selection interface - side by side layout */}
             <div className={styles.localeSelection}>
@@ -155,9 +162,10 @@ export function ConfigurationForm({
                 Select Models to Duplicate
               </h3>
               <p className={styles.modelSelectionDescription}>
-                Choose which models should have their content duplicated from {getLocaleLabel(sourceLocale)} to {getLocaleLabel(targetLocale)}
+                Choose which models should have their content duplicated from{' '}
+                {getLocaleLabel(sourceLocale)} to {getLocaleLabel(targetLocale)}
               </p>
-              
+
               <SelectField
                 name="models"
                 id="models"
@@ -166,7 +174,7 @@ export function ConfigurationForm({
                 selectInputProps={{
                   isMulti: true,
                   options: allModels,
-                  placeholder: "Select models...",
+                  placeholder: 'Select models...',
                 }}
                 onChange={(newValue) => {
                   onModelsChange(newValue as ModelOption[]);
@@ -187,7 +195,7 @@ export function ConfigurationForm({
                   onChange={onUseDraftRecordsChange}
                 />
               </div>
-              
+
               <div className={styles.switchFieldWrapper}>
                 <SwitchField
                   name="publishAfterDuplication"

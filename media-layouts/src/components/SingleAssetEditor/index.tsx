@@ -25,13 +25,14 @@ export default function SingleAssetEditor({
 }: Props) {
   const handleLayoutChange = (newLayout: Partial<MediaLayoutItem>) => {
     const merged = { ...item, ...newLayout };
-    const height = calculateOutputHeight(
-      merged.width,
-      merged.aspectRatio,
-      merged.customAspectRatio,
-      merged.originalWidth,
-      merged.originalHeight
-    ) || merged.height;
+    const height =
+      calculateOutputHeight(
+        merged.width,
+        merged.aspectRatio,
+        merged.customAspectRatio,
+        merged.originalWidth,
+        merged.originalHeight,
+      ) || merged.height;
     const updatedItem: MediaLayoutItem = { ...merged, height };
     ctx.setFieldValue(ctx.fieldPath, JSON.stringify(updatedItem));
   };
@@ -45,7 +46,7 @@ export default function SingleAssetEditor({
         focal_point: item.focalPoint,
         custom_data: {},
       },
-      ctx.locale
+      ctx.locale,
     );
     if (result) {
       const updatedItem: MediaLayoutItem = {

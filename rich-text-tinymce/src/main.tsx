@@ -1,6 +1,6 @@
 import { connect, type OnBootCtx } from 'datocms-plugin-sdk';
-import { render } from './utils/render';
 import FieldExtension from './entrypoints/FieldExtension';
+import { render } from './utils/render';
 import 'datocms-react-ui/styles.css';
 
 connect({

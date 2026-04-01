@@ -12,7 +12,7 @@ export function getThumbnailUrl(
   mimeType: string,
   url: string | null,
   muxPlaybackId?: string | null,
-  width = 300
+  width = 300,
 ): string | null {
   const isImage = mimeType.startsWith('image/');
   const isVideo = mimeType.startsWith('video/');
@@ -30,6 +30,8 @@ export function getThumbnailUrl(
 }
 
 /** Normalizes a string for case-insensitive comparison by lowercasing and trimming. */
-export function normalizeForComparison(value: string | undefined | null): string {
+export function normalizeForComparison(
+  value: string | undefined | null,
+): string {
   return value?.toLowerCase().trim() ?? '';
 }

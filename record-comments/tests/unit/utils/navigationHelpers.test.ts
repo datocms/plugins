@@ -1,8 +1,5 @@
+import { openModelPage, openUsersPage } from '@utils/navigationHelpers';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  openModelPage,
-  openUsersPage,
-} from '@utils/navigationHelpers';
 
 const openSpy = vi.fn();
 
@@ -17,7 +14,7 @@ describe('navigation helpers', () => {
       {
         site: { attributes: { internal_domain: null } },
       },
-      'user'
+      'user',
     );
 
     expect(openSpy).not.toHaveBeenCalled();
@@ -29,7 +26,7 @@ describe('navigation helpers', () => {
         site: { attributes: { internal_domain: null } },
       },
       'model-1',
-      false
+      false,
     );
 
     expect(openSpy).not.toHaveBeenCalled();

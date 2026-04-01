@@ -1,5 +1,5 @@
-import type { CommentSegment } from '@ctypes/mentions';
 import type { CommentType } from '@ctypes/comments';
+import type { CommentSegment } from '@ctypes/mentions';
 import { segmentsToStoredSegments } from '@utils/tipTapSerializer';
 
 // LOCAL/OPTIMISTIC state updates (fast, assumes success).
@@ -25,7 +25,7 @@ export function isAuthorValid(userId: string): boolean {
 function toggleUpvote(
   voterIds: string[],
   voterId: string,
-  userUpvoted: boolean
+  userUpvoted: boolean,
 ): string[] {
   return userUpvoted
     ? voterIds.filter((id) => id !== voterId)
@@ -35,13 +35,13 @@ function toggleUpvote(
 export function applyDeleteToState(
   comments: CommentType[],
   id: string,
-  parentCommentId?: string
+  parentCommentId?: string,
 ): CommentType[] {
   if (parentCommentId) {
     return comments.map((c) =>
       c.id === parentCommentId
         ? { ...c, replies: c.replies?.filter((r) => r.id !== id) }
-        : c
+        : c,
     );
   }
   return comments.filter((c) => c.id !== id);
@@ -54,7 +54,7 @@ export function applyEditToState(
   comments: CommentType[],
   id: string,
   newContent: CommentSegment[],
-  parentCommentId?: string
+  parentCommentId?: string,
 ): CommentType[] {
   const storedContent = segmentsToStoredSegments(newContent);
   if (parentCommentId) {
@@ -63,14 +63,14 @@ export function applyEditToState(
         ? {
             ...c,
             replies: c.replies?.map((r) =>
-              r.id === id ? { ...r, content: storedContent } : r
+              r.id === id ? { ...r, content: storedContent } : r,
             ),
           }
-        : c
+        : c,
     );
   }
   return comments.map((c) =>
-    c.id === id ? { ...c, content: storedContent } : c
+    c.id === id ? { ...c, content: storedContent } : c,
   );
 }
 
@@ -79,7 +79,7 @@ export function applyUpvoteToState(
   id: string,
   voterId: string,
   userUpvoted: boolean,
-  parentCommentId?: string
+  parentCommentId?: string,
 ): CommentType[] {
   if (parentCommentId) {
     return comments.map((c) =>
@@ -88,17 +88,24 @@ export function applyUpvoteToState(
             ...c,
             replies: c.replies?.map((r) =>
               r.id === id
-                ? { ...r, upvoterIds: toggleUpvote(r.upvoterIds, voterId, userUpvoted) }
-                : r
+                ? {
+                    ...r,
+                    upvoterIds: toggleUpvote(
+                      r.upvoterIds,
+                      voterId,
+                      userUpvoted,
+                    ),
+                  }
+                : r,
             ),
           }
-        : c
+        : c,
     );
   }
   return comments.map((c) =>
     c.id === id
       ? { ...c, upvoterIds: toggleUpvote(c.upvoterIds, voterId, userUpvoted) }
-      : c
+      : c,
   );
 }
 
@@ -110,7 +117,7 @@ export function applyUpvoteToState(
 export function createComment(
   content: CommentSegment[],
   authorId: string,
-  parentCommentId?: string
+  parentCommentId?: string,
 ): CommentType {
   if (!isAuthorValid(authorId)) {
     throw new Error('Cannot create comment: author ID is required');
@@ -145,7 +152,15 @@ export function createComment(
 export type CommentActionsReturn = {
   submitNewComment: () => boolean;
   deleteComment: (id: string, parentCommentId?: string) => boolean;
-  editComment: (id: string, newContent: CommentSegment[], parentCommentId?: string) => boolean;
-  upvoteComment: (id: string, userUpvoted: boolean, parentCommentId?: string) => boolean;
+  editComment: (
+    id: string,
+    newContent: CommentSegment[],
+    parentCommentId?: string,
+  ) => boolean;
+  upvoteComment: (
+    id: string,
+    userUpvoted: boolean,
+    parentCommentId?: string,
+  ) => boolean;
   replyComment: (parentCommentId: string) => boolean;
 };

@@ -42,16 +42,16 @@ describe('errorLogger', () => {
 
     expect(console.error).toHaveBeenCalledTimes(1);
     expect(console.error).toHaveBeenCalledWith(
-      expect.stringContaining('[RecordComments][error] Something failed')
+      expect.stringContaining('[RecordComments][error] Something failed'),
     );
     expect(console.error).toHaveBeenCalledWith(
-      expect.stringContaining('"currentUserAccessToken": "[redacted]"')
+      expect.stringContaining('"currentUserAccessToken": "[redacted]"'),
     );
     expect(console.error).toHaveBeenCalledWith(
-      expect.stringContaining('"recordId": "record-1"')
+      expect.stringContaining('"recordId": "record-1"'),
     );
     expect(console.error).toHaveBeenCalledWith(
-      expect.stringContaining('"message": "boom"')
+      expect.stringContaining('"message": "boom"'),
     );
   });
 
@@ -66,13 +66,13 @@ describe('errorLogger', () => {
     });
 
     expect(console.info).toHaveBeenCalledWith(
-      expect.stringContaining('[RecordComments][debug] Visible debug message')
+      expect.stringContaining('[RecordComments][debug] Visible debug message'),
     );
     expect(console.info).toHaveBeenCalledWith(
-      expect.stringContaining('"cdaToken": "[redacted]"')
+      expect.stringContaining('"cdaToken": "[redacted]"'),
     );
     expect(console.info).toHaveBeenCalledWith(
-      expect.stringContaining('"recordId": "record-1"')
+      expect.stringContaining('"recordId": "record-1"'),
     );
   });
 
@@ -87,13 +87,13 @@ describe('errorLogger', () => {
     });
 
     expect(console.warn).toHaveBeenCalledWith(
-      expect.stringContaining('[RecordComments][warn] Visible warning')
+      expect.stringContaining('[RecordComments][warn] Visible warning'),
     );
     expect(console.warn).toHaveBeenCalledWith(
-      expect.stringContaining('"content": "[redacted]"')
+      expect.stringContaining('"content": "[redacted]"'),
     );
     expect(console.warn).toHaveBeenCalledWith(
-      expect.stringContaining('"recordId": "record-1"')
+      expect.stringContaining('"recordId": "record-1"'),
     );
   });
 });

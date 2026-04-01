@@ -1,10 +1,10 @@
-import { NodeViewWrapper } from '@tiptap/react';
-import type { ReactNodeViewProps } from '@tiptap/react';
-import { MentionChip } from '../MentionChip';
 import type { MentionType } from '@ctypes/mentions';
-import { useMentionClick } from './MentionClickContext';
-import { useProjectDataContext } from '@/entrypoints/contexts/ProjectDataContext';
+import type { ReactNodeViewProps } from '@tiptap/react';
+import { NodeViewWrapper } from '@tiptap/react';
 import { attrsToMention } from '@utils/attrsToMention';
+import { useProjectDataContext } from '@/entrypoints/contexts/ProjectDataContext';
+import { MentionChip } from '../MentionChip';
+import { useMentionClick } from './MentionClickContext';
 
 type MentionNodeViewProps = ReactNodeViewProps;
 
@@ -16,11 +16,17 @@ function InvalidMentionFallback() {
   );
 }
 
-function createMentionNodeView(mentionType: MentionType, needsProjectUsers = false) {
+function createMentionNodeView(
+  mentionType: MentionType,
+  needsProjectUsers = false,
+) {
   return function MentionNodeView({ node }: MentionNodeViewProps) {
     const { onMentionClick } = useMentionClick();
     const { projectUsers } = useProjectDataContext();
-    const mention = attrsToMention(mentionType, node.attrs as Record<string, unknown>);
+    const mention = attrsToMention(
+      mentionType,
+      node.attrs as Record<string, unknown>,
+    );
 
     return (
       <NodeViewWrapper as="span" contentEditable={false}>

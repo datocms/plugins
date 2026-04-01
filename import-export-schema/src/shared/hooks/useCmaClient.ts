@@ -21,6 +21,6 @@ export function useCmaClient(
 ): Client {
   return useMemo(
     () => createCmaClient(ctx, overrides),
-    [ctx.currentUserAccessToken, ctx.environment, overrides],
+    [ctx.currentUserAccessToken, ctx.environment, overrides, ctx],
   );
 }

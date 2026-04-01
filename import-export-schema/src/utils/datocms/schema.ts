@@ -235,14 +235,14 @@ export function findLinkedPluginIds(
 
   // If we have a list of installed plugins, only collect editors that match.
   // If not, skip editor to avoid false-positives for built-in editors.
-  if (editorId && hasInstalledList && installedPluginIds!.has(editorId)) {
+  if (editorId && hasInstalledList && installedPluginIds?.has(editorId)) {
     fieldLinkedPluginIds.add(editorId);
   }
 
   for (const addon of field.attributes.appearance?.addons ?? []) {
     // If we don't have the installed list yet, include addons optimistically;
     // otherwise include only if installed.
-    if (!hasInstalledList || installedPluginIds!.has(addon.id)) {
+    if (!hasInstalledList || installedPluginIds?.has(addon.id)) {
       fieldLinkedPluginIds.add(addon.id);
     }
   }

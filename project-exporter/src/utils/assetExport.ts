@@ -87,10 +87,10 @@ export function sanitizeFilename(filename: string): string {
 
 export function buildAssetZipEntryName(
   sourceUploadId: string,
-  originalFilename: string
+  originalFilename: string,
 ): string {
   return `u_${sanitizeIdentifier(sourceUploadId)}__${sanitizeFilename(
-    originalFilename
+    originalFilename,
   )}`;
 }
 
@@ -119,7 +119,7 @@ export function getUploadSize(upload: Record<string, unknown>): number {
 
 export function calculateAssetExportProgress(
   downloadedAssets: number,
-  totalAssets: number
+  totalAssets: number,
 ): number {
   if (totalAssets <= 0) {
     return ASSET_EXPORT_PROGRESS_END;
@@ -127,15 +127,17 @@ export function calculateAssetExportProgress(
 
   const normalizedRatio = Math.min(
     Math.max(downloadedAssets / totalAssets, 0),
-    1
+    1,
   );
-  const progressRange =
-    ASSET_EXPORT_PROGRESS_END - ASSET_EXPORT_PROGRESS_START;
+  const progressRange = ASSET_EXPORT_PROGRESS_END - ASSET_EXPORT_PROGRESS_START;
 
   return ASSET_EXPORT_PROGRESS_START + normalizedRatio * progressRange;
 }
 
-function estimateAssetSizeBytes(size: number, sizeSafetyFactor: number): number {
+function estimateAssetSizeBytes(
+  size: number,
+  sizeSafetyFactor: number,
+): number {
   if (!Number.isFinite(size) || size <= 0) {
     return 1;
   }
@@ -145,7 +147,7 @@ function estimateAssetSizeBytes(size: number, sizeSafetyFactor: number): number 
 
 export function createAssetChunks<TPayload>(
   assets: AssetForChunk<TPayload>[],
-  options: AssetChunkingOptions = {}
+  options: AssetChunkingOptions = {},
 ): AssetChunk<TPayload>[] {
   const maxZipBytes = options.maxZipBytes ?? MAX_ZIP_BYTES;
   const maxFilesPerZip = options.maxFilesPerZip ?? MAX_FILES_PER_ZIP;
@@ -201,7 +203,7 @@ export function createAssetChunks<TPayload>(
 
 export function buildAssetManifestEntry(
   upload: Record<string, unknown>,
-  zipEntryName: string
+  zipEntryName: string,
 ): AssetManifestEntry {
   const sourceUploadId = asString(upload.id) ?? 'unknown';
   const originalFilename = getUploadFilename(upload);
@@ -250,13 +252,12 @@ export function buildAssetManifestEntry(
 
 function localStorageAvailable(): boolean {
   return (
-    typeof window !== 'undefined' &&
-    typeof window.localStorage !== 'undefined'
+    typeof window !== 'undefined' && typeof window.localStorage !== 'undefined'
   );
 }
 
 export function persistLastAssetExportSnapshot(
-  snapshot: LastAssetExportSnapshot
+  snapshot: LastAssetExportSnapshot,
 ): void {
   if (!localStorageAvailable()) {
     return;
@@ -265,7 +266,7 @@ export function persistLastAssetExportSnapshot(
   try {
     window.localStorage.setItem(
       LAST_ASSET_EXPORT_STORAGE_KEY,
-      JSON.stringify(snapshot)
+      JSON.stringify(snapshot),
     );
   } catch (_err) {
     // Ignore storage errors to avoid blocking exports.

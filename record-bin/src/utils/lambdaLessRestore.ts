@@ -1,14 +1,14 @@
-import { buildClient } from "@datocms/cma-client-browser";
-import type { errorObject } from "../types/types";
-import { normalizeRecordBinPayload } from "./recordBinPayload";
-import { buildRestoreErrorPayload } from "./restoreError";
+import { buildClient } from '@datocms/cma-client-browser';
+import type { errorObject } from '../types/types';
+import { normalizeRecordBinPayload } from './recordBinPayload';
+import { buildRestoreErrorPayload } from './restoreError';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
-  Boolean(value) && typeof value === "object" && !Array.isArray(value);
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
 const recursivelyDeleteAllBlockIDs = (
   recursiveObject: unknown,
-  previousKey: string
+  previousKey: string,
 ) => {
   if (Array.isArray(recursiveObject)) {
     for (const arrayItem of recursiveObject) {
@@ -21,27 +21,25 @@ const recursivelyDeleteAllBlockIDs = (
     return;
   }
 
-  if (
-    Object.hasOwn(recursiveObject, "id") &&
-    previousKey !== "data"
-  ) {
+  if (Object.hasOwn(recursiveObject, 'id') && previousKey !== 'data') {
     delete recursiveObject.id;
   }
 
   for (const key of Object.keys(recursiveObject)) {
     const child = recursiveObject[key];
-    if (typeof child === "object" && child !== null) {
+    if (typeof child === 'object' && child !== null) {
       recursivelyDeleteAllBlockIDs(child, key);
     }
   }
 };
 
 const deepCloneRecord = (
-  value: Record<string, unknown>
-): Record<string, unknown> => JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
+  value: Record<string, unknown>,
+): Record<string, unknown> =>
+  JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
 
 const sanitizeEntityForCreation = (
-  entity: Record<string, unknown>
+  entity: Record<string, unknown>,
 ): Record<string, unknown> => {
   const requestBody = deepCloneRecord(entity);
   delete requestBody.id;
@@ -65,7 +63,7 @@ const sanitizeEntityForCreation = (
     first_published_at: meta.first_published_at,
   };
 
-  recursivelyDeleteAllBlockIDs(requestBody, "");
+  recursivelyDeleteAllBlockIDs(requestBody, '');
   return requestBody;
 };
 
@@ -74,13 +72,13 @@ export class LambdaLessRestoreError extends Error {
 
   constructor(message: string, restorationError: errorObject) {
     super(message);
-    this.name = "LambdaLessRestoreError";
+    this.name = 'LambdaLessRestoreError';
     this.restorationError = restorationError;
   }
 }
 
 export const isLambdaLessRestoreError = (
-  error: unknown
+  error: unknown,
 ): error is LambdaLessRestoreError => error instanceof LambdaLessRestoreError;
 
 export type RestoreRecordWithoutLambdaInput = {
@@ -104,12 +102,12 @@ export const restoreRecordWithoutLambda = async ({
   trashRecordID,
 }: RestoreRecordWithoutLambdaInput): Promise<RestoreRecordWithoutLambdaResult> => {
   if (!currentUserAccessToken) {
-    throw new Error("Missing currentUserAccessToken for Lambda-less restore.");
+    throw new Error('Missing currentUserAccessToken for Lambda-less restore.');
   }
 
   const normalizedPayload = normalizeRecordBinPayload(
     recordBody,
-    currentEnvironment
+    currentEnvironment,
   );
   const requestBody = sanitizeEntityForCreation(normalizedPayload.entity);
 
@@ -139,8 +137,8 @@ export const restoreRecordWithoutLambda = async ({
     });
   } catch (error) {
     throw new LambdaLessRestoreError(
-      "The record could not be restored!",
-      buildRestoreErrorPayload(error)
+      'The record could not be restored!',
+      buildRestoreErrorPayload(error),
     );
   }
 

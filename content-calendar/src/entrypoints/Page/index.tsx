@@ -1,44 +1,44 @@
-import { useCallback, useMemo, useState, useEffect } from 'react';
-import { generateMatrix } from '../../utils/calendar';
+import { buildClient, type SchemaTypes } from '@datocms/cma-client';
 import {
-  format,
+  addDays,
   addMonths,
+  format,
+  isThisMonth,
   startOfMonth,
   subMonths,
-  isThisMonth,
-  addDays,
 } from 'date-fns';
-import s from './styles.module.css';
+import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import {
-  Canvas,
-  Toolbar,
-  ToolbarButton,
-  SidebarLeftArrowIcon,
-  SidebarRightArrowIcon,
-  ToolbarStack,
-  ToolbarTitle,
   ButtonGroup,
   ButtonGroupButton,
-  SidebarPanel,
-  Dropdown,
-  DropdownOption,
-  DropdownMenu,
-  CaretUpIcon,
+  Canvas,
   CaretDownIcon,
+  CaretUpIcon,
+  Dropdown,
+  DropdownMenu,
+  DropdownOption,
+  SidebarLeftArrowIcon,
+  SidebarPanel,
+  SidebarRightArrowIcon,
+  Toolbar,
+  ToolbarButton,
+  ToolbarStack,
+  ToolbarTitle,
 } from 'datocms-react-ui';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ActiveModelsPanel } from '../../components/ActiveModelsPanel';
 import CalendarGrid from '../../components/CalendarGrid';
+import { HoverItemContext } from '../../context/HoverItemContext';
+import { useStickyState } from '../../hooks/useStickyState';
 import {
   type ActiveModels,
   allCriteria,
   type Criteria,
   criteriaLabel,
 } from '../../types';
-import { ActiveModelsPanel } from '../../components/ActiveModelsPanel';
-import { HoverItemContext } from '../../context/HoverItemContext';
+import { generateMatrix } from '../../utils/calendar';
 import { weekStartLocale } from '../../utils/getWeekStart';
-import { useStickyState } from '../../hooks/useStickyState';
-import { buildClient, type SchemaTypes } from '@datocms/cma-client';
-import type { RenderPageCtx } from 'datocms-plugin-sdk';
+import s from './styles.module.css';
 
 type PropTypes = {
   ctx: RenderPageCtx;
@@ -78,14 +78,16 @@ export default function Page({ ctx }: PropTypes) {
     setSidebarOpen((x) => !x);
   }, []);
 
-  const client = useMemo(
-    () =>
-      buildClient({
-        apiToken: ctx.currentUserAccessToken!,
-        environment: ctx.environment,
-      }),
-    [ctx.currentUserAccessToken, ctx.environment],
-  );
+  const client = useMemo(() => {
+    const apiToken = ctx.currentUserAccessToken;
+    if (!apiToken) {
+      throw new Error('No access token available');
+    }
+    return buildClient({
+      apiToken,
+      environment: ctx.environment,
+    });
+  }, [ctx.currentUserAccessToken, ctx.environment]);
 
   const matrix = useMemo(
     () =>

@@ -36,20 +36,24 @@ export const openAiAdapter: ImageProviderAdapter = {
 
     const createdAt = new Date().toISOString();
     const providerImages = readProviderImages(result.providerMetadata);
-    const images = normalizeGeneratedImages(result.images, createdAt, (index) => {
-      const metadata = providerImages[index];
+    const images = normalizeGeneratedImages(
+      result.images,
+      createdAt,
+      (index) => {
+        const metadata = providerImages[index];
 
-      if (!metadata) {
-        return undefined;
-      }
+        if (!metadata) {
+          return undefined;
+        }
 
-      return {
-        revisedPrompt: metadata.revisedPrompt,
-        returnedFormat: metadata.outputFormat,
-        returnedQuality: metadata.quality,
-        returnedSize: metadata.size,
-      };
-    });
+        return {
+          revisedPrompt: metadata.revisedPrompt,
+          returnedFormat: metadata.outputFormat,
+          returnedQuality: metadata.quality,
+          returnedSize: metadata.size,
+        };
+      },
+    );
 
     if (!images.length) {
       throw new Error('OpenAI did not return image data for this request.');
@@ -69,7 +73,9 @@ type ProviderImageMetadata = {
   size?: string;
 };
 
-function readProviderImages(providerMetadata: unknown): ProviderImageMetadata[] {
+function readProviderImages(
+  providerMetadata: unknown,
+): ProviderImageMetadata[] {
   if (!providerMetadata || typeof providerMetadata !== 'object') {
     return [];
   }
@@ -149,6 +155,7 @@ function readProviderError(
 
   return {
     message:
-      details.message || `Something went wrong while talking to ${providerLabel}.`,
+      details.message ||
+      `Something went wrong while talking to ${providerLabel}.`,
   };
 }

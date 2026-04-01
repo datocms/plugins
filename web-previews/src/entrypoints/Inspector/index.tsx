@@ -2,9 +2,9 @@ import type { RenderInspectorCtx } from 'datocms-plugin-sdk';
 import { Canvas } from 'datocms-react-ui';
 import { useEffect } from 'react';
 import {
-  type Parameters,
   getVisualEditingFrontends,
   normalizeParameters,
+  type Parameters,
 } from '../../types';
 import { inspectorUrl } from '../../utils/urls';
 import { ContentLinkContextProvider } from './ContentLinkContext';

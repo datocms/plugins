@@ -3,7 +3,7 @@
  * to map time zone -> ISO 3166-1 alpha-2 country code.
  */
 
-import zoneTabRaw from "./zone.tab?raw";
+import zoneTabRaw from './zone.tab?raw';
 
 /**
  * Load and parse the bundled `src/i18n/zone.tab` file into a map of
@@ -30,12 +30,12 @@ import zoneTabRaw from "./zone.tab?raw";
  */
 export function parseZones(): Map<string, string> {
   const zoneToCountry = new Map<string, string>();
-  const zoneTabContent = zoneTabRaw || "";
+  const zoneTabContent = zoneTabRaw || '';
   const rows = zoneTabContent.split(/\r?\n/);
   for (const row of rows) {
     // Ignore blank lines and comments
-    if (!row || row.startsWith("#")) continue;
-    const columns = row.split("\t");
+    if (!row || row.startsWith('#')) continue;
+    const columns = row.split('\t');
     if (columns.length < 3) continue; // Not enough columns
     const countryCode = columns[0]?.trim();
     const timeZoneId = columns[2]?.trim();

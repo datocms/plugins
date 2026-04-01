@@ -83,7 +83,7 @@ export default function ExclusionRulesSection({
               label="Models to be excluded from this plugin"
               value={modelsToBeExcluded.map((modelKey) => {
                 const model = availableModels.find(
-                  (m) => m.apiKey === modelKey
+                  (m) => m.apiKey === modelKey,
                 );
                 return {
                   label: model?.name ?? modelKey,
@@ -161,4 +161,3 @@ export default function ExclusionRulesSection({
     </>
   );
 }
-

@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs';
-import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
+import { defineConfig } from 'vitest/config';
 
 const packageJson = JSON.parse(
-  readFileSync(new URL('./package.json', import.meta.url), 'utf-8')
+  readFileSync(new URL('./package.json', import.meta.url), 'utf-8'),
 ) as { version?: string };
 
 const pluginVersion = packageJson.version ?? '1.0.0';

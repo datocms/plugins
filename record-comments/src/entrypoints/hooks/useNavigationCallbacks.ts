@@ -1,17 +1,23 @@
-import { useCallback } from 'react';
-import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
 import { buildRecordEditPath } from '@utils/navigationHelpers';
+import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
+import { useCallback } from 'react';
 import { useNavigationCallbacksBase } from './useNavigationCallbacksBase';
 
 type UseNavigationCallbacksReturn = {
-  handleScrollToField: (fieldPath: string, localized: boolean, locale?: string) => Promise<void>;
+  handleScrollToField: (
+    fieldPath: string,
+    localized: boolean,
+    locale?: string,
+  ) => Promise<void>;
   handleNavigateToUsers: () => void;
   handleNavigateToModel: (modelId: string, isBlockModel: boolean) => void;
   handleOpenAsset: (assetId: string) => Promise<void>;
   handleOpenRecord: (recordId: string, modelId: string) => Promise<void>;
 };
 
-export function useNavigationCallbacks(ctx: RenderItemFormSidebarCtx): UseNavigationCallbacksReturn {
+export function useNavigationCallbacks(
+  ctx: RenderItemFormSidebarCtx,
+): UseNavigationCallbacksReturn {
   const base = useNavigationCallbacksBase(ctx);
 
   const handleScrollToField = useCallback(
@@ -27,8 +33,11 @@ export function useNavigationCallbacks(ctx: RenderItemFormSidebarCtx): UseNaviga
           await ctx.scrollToField(fieldPath, effectiveLocale);
 
           // Check if locale is already in path (e.g., sections.it.0.hero_title)
-          const localeAlreadyInPath = effectiveLocale && fieldPath.includes(`.${effectiveLocale}.`);
-          const fullPath = localeAlreadyInPath ? fieldPath : `${fieldPath}.${effectiveLocale}`;
+          const localeAlreadyInPath =
+            effectiveLocale && fieldPath.includes(`.${effectiveLocale}.`);
+          const fullPath = localeAlreadyInPath
+            ? fieldPath
+            : `${fieldPath}.${effectiveLocale}`;
           const path = `${buildRecordEditPath(modelId, recordId)}#fieldPath=${fullPath}`;
           await ctx.navigateTo(path);
         } else {
@@ -39,7 +48,7 @@ export function useNavigationCallbacks(ctx: RenderItemFormSidebarCtx): UseNaviga
         // Silent: field navigation is best-effort (may not exist, hidden by permissions, etc.)
       }
     },
-    [ctx]
+    [ctx],
   );
 
   const handleOpenRecord = useCallback(
@@ -53,7 +62,7 @@ export function useNavigationCallbacks(ctx: RenderItemFormSidebarCtx): UseNaviga
       }
       await ctx.editItem(recordId);
     },
-    [ctx]
+    [ctx],
   );
 
   return {

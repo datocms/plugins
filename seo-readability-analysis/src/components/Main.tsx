@@ -1,26 +1,26 @@
-import { useCallback, useEffect, useState, type DependencyList } from 'react';
-import AnalysisWorkerWrapper from 'yoastseo/build/worker/AnalysisWorkerWrapper';
-import createWorker from 'yoastseo/build/worker/createWorker';
-import Paper from 'yoastseo/build/values/Paper';
-import * as helpers from 'yoastseo/build/helpers';
-import Results from './Results';
-import Seo from './Seo';
-import ScoreIcon from './ScoreIcon';
 import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
 import { Button } from 'datocms-react-ui';
-import type { Analysis, ValidParameters } from '../types';
 import get from 'lodash-es/get';
+import { useCallback, useEffect, useState } from 'react';
+import * as helpers from 'yoastseo/build/helpers';
+import Paper from 'yoastseo/build/values/Paper';
+import AnalysisWorkerWrapper from 'yoastseo/build/worker/AnalysisWorkerWrapper';
+import createWorker from 'yoastseo/build/worker/createWorker';
+import type { Analysis, AnalysisAssessment, ValidParameters } from '../types';
+import Results from './Results';
+import ScoreIcon from './ScoreIcon';
+import Seo from './Seo';
 
 const worker = new AnalysisWorkerWrapper(
-  createWorker(
-    import.meta.env.PROD ? './main.js' : '/main.js',
-  ),
+  createWorker(import.meta.env.PROD ? './main.js' : '/main.js'),
 );
 
-const removeResultsWithNoText = (data: any) => {
+const removeResultsWithNoText = (
+  data: AnalysisAssessment,
+): AnalysisAssessment => {
   return {
     ...data,
-    results: data.results.filter((result: any) => result.text?.length > 0),
+    results: data.results.filter((result) => result.text?.length > 0),
   };
 };
 
@@ -46,19 +46,6 @@ type Page = {
 type PropTypes = {
   ctx: RenderFieldExtensionCtx;
 };
-
-function useDebouncedEffect(
-  effect: () => void,
-  delayMs: number,
-  deps: DependencyList,
-): void {
-  useEffect(() => {
-    const timeoutId = window.setTimeout(effect, delayMs);
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
-  }, deps);
-}
 
 const Main = ({ ctx }: PropTypes) => {
   const { htmlGeneratorUrl } = ctx.plugin.attributes
@@ -145,7 +132,7 @@ const Main = ({ ctx }: PropTypes) => {
 
       const missingKeys = (
         ['content', 'locale', 'title', 'slug', 'description'] as const
-      ).filter((key) => !response || !response[key]);
+      ).filter((key) => !response?.[key]);
 
       if (missingKeys.length > 0) {
         throw new Error(`Missing keys in response: ${missingKeys.join(', ')}`);
@@ -159,12 +146,12 @@ const Main = ({ ctx }: PropTypes) => {
       setPageFetchingInProgress(false);
     }
   }, [
-    htmlGeneratorUrl, 
-    item?.id, 
-    itemType.id, 
-    itemType.attributes.api_key, 
-    environmentId, 
-    locale
+    htmlGeneratorUrl,
+    item?.id,
+    itemType.id,
+    itemType.attributes.api_key,
+    environmentId,
+    locale,
   ]);
 
   useEffect(() => {
@@ -173,14 +160,10 @@ const Main = ({ ctx }: PropTypes) => {
     }
 
     refetchPage();
-  }, [
-    refetchPage, 
-    item?.id, 
-    isSubmitting
-  ]);
+  }, [refetchPage, item?.id, isSubmitting]);
 
-  useDebouncedEffect(
-    () => {
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
       const run = async () => {
         if (!isWorkerReady || !page) {
           return;
@@ -231,21 +214,14 @@ const Main = ({ ctx }: PropTypes) => {
       };
 
       run();
-    },
-    500,
-    [
-      isWorkerReady,
-      JSON.stringify(page),
-      keyword,
-      synonyms,
-      JSON.stringify(relatedKeywords),
-    ],
-  );
+    }, 500);
+    return () => window.clearTimeout(timeoutId);
+  }, [isWorkerReady, page, keyword, synonyms, relatedKeywords]);
 
   const [activeTab, setActiveTab] = useState(tabs[0].key);
 
-  useDebouncedEffect(
-    () => {
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
       ctx.setFieldValue(
         ctx.fieldPath,
         JSON.stringify({
@@ -254,18 +230,16 @@ const Main = ({ ctx }: PropTypes) => {
           relatedKeywords,
         }),
       );
-    },
-    200,
-    [keyword, synonyms, relatedKeywords],
-  );
+    }, 200);
+    return () => window.clearTimeout(timeoutId);
+  }, [keyword, synonyms, relatedKeywords, ctx]);
 
   const validRelatedIndices = relatedKeywords
     .map((related, i) => ({ related, i }))
     .filter(
       ({ related, i }) =>
         related.keyword &&
-        analysis &&
-        analysis.relatedKeywordsSeo &&
+        analysis?.relatedKeywordsSeo &&
         i in analysis.relatedKeywordsSeo,
     )
     .map(({ i }) => i);
@@ -357,7 +331,7 @@ const Main = ({ ctx }: PropTypes) => {
 
             {relatedKeywords.map((relatedKeyword, i) => (
               <Seo
-                key={i}
+                key={relatedKeyword.keyword || `related-keyword-${i}`}
                 keyword={relatedKeyword.keyword}
                 synonyms={relatedKeyword.synonyms}
                 setKeyword={(keyword) =>
@@ -375,9 +349,7 @@ const Main = ({ ctx }: PropTypes) => {
                   )
                 }
                 onRemove={() => {
-                  setRelatedKeywords((old) =>
-                    old.filter((_, j) => i !== j),
-                  );
+                  setRelatedKeywords((old) => old.filter((_, j) => i !== j));
                 }}
                 analysis={analysis?.relatedKeywordsSeo[i]}
               />

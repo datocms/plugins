@@ -3,7 +3,7 @@
  * Tests Google Gemini API provider implementation.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Create mock functions before the mock
 const mockGenerateContent = vi.fn();
@@ -145,7 +145,7 @@ describe('GeminiProvider', () => {
       controller.abort();
 
       await expect(
-        provider.completeText('Test', { abortSignal: controller.signal })
+        provider.completeText('Test', { abortSignal: controller.signal }),
       ).rejects.toThrow(DOMException);
     });
   });

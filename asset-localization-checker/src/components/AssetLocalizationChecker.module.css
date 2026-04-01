@@ -1,68 +1,67 @@
 :root {
-    --color-grey: #999;
-    --color-light-grey: #EEE;
-    --color-red: #f44;
+  --color-grey: #999;
+  --color-light-grey: #eee;
+  --color-red: #f44;
 }
 
 .localeTable {
-    margin: 0 auto;
-    border-collapse: collapse;
-    text-align: left;
-    p:first-child {
-        margin-top: 0;
-    }
+  margin: 0 auto;
+  border-collapse: collapse;
+  text-align: left;
+  p:first-child {
+    margin-top: 0;
+  }
 
-    td, th {
-        padding: 10px 15px;
-        vertical-align: top;
-        max-width: 250px;
-        width: 33%;
-    }
+  td,
+  th {
+    padding: 10px 15px;
+    vertical-align: top;
+    max-width: 250px;
+    width: 33%;
+  }
 
-    tbody td {
-        /*border: solid var(--color-grey);*/
-    }
+  tbody td {
+    /*border: solid var(--color-grey);*/
+  }
 
-    th {
-        font-weight: bold;
-        text-align: center;
-    }
+  th {
+    font-weight: bold;
+    text-align: center;
+  }
 
-    .overridden-true {
-        /*color: var(--color-red);*/
-    }
-
-
+  .overridden-true {
+    /*color: var(--color-red);*/
+  }
 }
 
 .snippet {
-    text-overflow: ellipsis;
-    color: var(--color-grey);
-    font-style: italic;
+  text-overflow: ellipsis;
+  color: var(--color-grey);
+  font-style: italic;
 
-    &::before {
-        content: "“";
-    }
+  &::before {
+    content: "“";
+  }
 
-    &::after {
-        content: "”";
-    }
+  &::after {
+    content: "”";
+  }
 }
 
 .helperText {
-    color: var(--color-grey);
-    font-weight: normal;
+  color: var(--color-grey);
+  font-weight: normal;
 
-    &.required-true {
-        font-weight: bold;
-    }
+  &.required-true {
+    font-weight: bold;
+  }
 }
 
 .warning {
-    color: var(--color-red);
+  color: var(--color-red);
 }
 
 code {
-    background: var(--color-light-grey);
-    padding: 0 5px;
+  background: var(--color-light-grey);
+  padding: 0 5px;
 }

@@ -1,11 +1,35 @@
 import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import type { Upload } from '../types';
+
+async function fetchUploadFromApi(
+  uploadId: string,
+  accessToken: string | null,
+): Promise<Upload> {
+  const response = await fetch(
+    `https://site-api.datocms.com/uploads/${uploadId}`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: 'application/vnd.api+json',
+        'Content-Type': 'application/vnd.api+json',
+        'X-Api-Version': '3',
+      },
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch upload');
+  }
+
+  const json = await response.json();
+  return json.data as Upload;
+}
 
 export function useUploadData(
   ctx: RenderFieldExtensionCtx,
   uploadId: string | null,
-  skip = false
+  skip = false,
 ) {
   const [upload, setUpload] = useState<Upload | null>(null);
   const [loading, setLoading] = useState(false);
@@ -26,26 +50,12 @@ export function useUploadData(
       setError(null);
 
       try {
-        const response = await fetch(
-          `https://site-api.datocms.com/uploads/${uploadId}`,
-          {
-            headers: {
-              Authorization: `Bearer ${ctx.currentUserAccessToken}`,
-              Accept: 'application/vnd.api+json',
-              'Content-Type': 'application/vnd.api+json',
-              'X-Api-Version': '3',
-            },
-          }
+        const data = await fetchUploadFromApi(
+          uploadId as string,
+          ctx.currentUserAccessToken,
         );
-
-        if (!response.ok) {
-          throw new Error('Failed to fetch upload');
-        }
-
-        const json = await response.json();
-
         if (!cancelled) {
-          setUpload(json.data as Upload);
+          setUpload(data);
         }
       } catch (err) {
         if (!cancelled) {

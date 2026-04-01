@@ -72,10 +72,13 @@ describe('analyzeFieldValue', () => {
     expect(result.words).toBe(5);
     expect(result.uniqueWords).toBe(4);
 
-    const filteredWords = summarizeWordFrequencies(result.wordFrequencyEntries, {
-      locale: 'en',
-      filterStopwords: true,
-    });
+    const filteredWords = summarizeWordFrequencies(
+      result.wordFrequencyEntries,
+      {
+        locale: 'en',
+        filterStopwords: true,
+      },
+    );
 
     expect(filteredWords.uniqueWords).toBe(2);
     expect(filteredWords.topWords).toEqual([

@@ -1,4 +1,4 @@
-import type { PriceTypes } from "../utils/ShopifyClient";
+import type { PriceTypes } from '../utils/ShopifyClient';
 
 export default function Price({ amount, currencyCode }: PriceTypes) {
   return (

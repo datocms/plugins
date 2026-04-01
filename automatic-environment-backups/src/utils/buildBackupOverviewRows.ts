@@ -1,10 +1,10 @@
-import { formatDistanceStrict } from "date-fns";
+import { formatDistanceStrict } from 'date-fns';
 import type {
   BackupCadence,
   BackupOverviewRow,
   BackupScheduleConfig,
   LambdaBackupStatus,
-} from "../types/types";
+} from '../types/types';
 
 type BuildBackupOverviewRowsInput = {
   scheduleConfig: BackupScheduleConfig;
@@ -18,28 +18,28 @@ const formatRelativeDateTime = (
   now: Date,
 ): string => {
   if (!value) {
-    return "Never";
+    return 'Never';
   }
 
   const parsedDate = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(parsedDate.getTime())) {
-    return "Unavailable";
+    return 'Unavailable';
   }
 
   return formatDistanceStrict(parsedDate, now, { addSuffix: true });
 };
 
 const getCadencePrefix = (cadence: BackupCadence): string => {
-  if (cadence === "daily") {
-    return "backup-plugin-daily";
+  if (cadence === 'daily') {
+    return 'backup-plugin-daily';
   }
-  if (cadence === "weekly") {
-    return "backup-plugin-weekly";
+  if (cadence === 'weekly') {
+    return 'backup-plugin-weekly';
   }
-  if (cadence === "biweekly") {
-    return "backup-plugin-biweekly";
+  if (cadence === 'biweekly') {
+    return 'backup-plugin-biweekly';
   }
-  return "backup-plugin-monthly";
+  return 'backup-plugin-monthly';
 };
 
 const toLambdaEnvironmentName = (
@@ -69,9 +69,9 @@ const buildLambdaRows = (
     if (!slot) {
       return {
         scope: cadence,
-        lastBackup: "Unavailable",
-        nextBackup: "Unavailable",
-        environmentName: "Not yet created",
+        lastBackup: 'Unavailable',
+        nextBackup: 'Unavailable',
+        environmentName: 'Not yet created',
         environmentLinked: false,
       };
     }
@@ -80,13 +80,13 @@ const buildLambdaRows = (
       scope: cadence,
       lastBackup: slot.lastBackupAt
         ? formatRelativeDateTime(slot.lastBackupAt, now)
-        : "Never",
+        : 'Never',
       nextBackup: slot.nextBackupAt
         ? formatRelativeDateTime(slot.nextBackupAt, now)
-        : "Unavailable",
+        : 'Unavailable',
       environmentName: slot.lastBackupAt
         ? toLambdaEnvironmentName(cadence, slot.lastBackupAt)
-        : "Not yet created",
+        : 'Not yet created',
       environmentLinked: Boolean(slot.lastBackupAt),
     };
   });
@@ -120,7 +120,8 @@ const annotateMissingEnvironment = (
   return {
     ...row,
     environmentLinked: false,
-    environmentStatusNote: "Missing in current environments list (deleted or renamed).",
+    environmentStatusNote:
+      'Missing in current environments list (deleted or renamed).',
   };
 };
 

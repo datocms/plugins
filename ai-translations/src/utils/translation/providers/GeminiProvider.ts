@@ -1,6 +1,14 @@
-import type { TranslationProvider, VendorId, StreamOptions } from '../types';
-import { GoogleGenerativeAI, type GenerativeModel, type GenerateContentRequest } from '@google/generative-ai';
-import { isEmptyPrompt, withTimeout, withTimeoutGenerator } from '../providerUtils';
+import {
+  type GenerateContentRequest,
+  type GenerativeModel,
+  GoogleGenerativeAI,
+} from '@google/generative-ai';
+import {
+  isEmptyPrompt,
+  withTimeout,
+  withTimeoutGenerator,
+} from '../providerUtils';
+import type { StreamOptions, TranslationProvider, VendorId } from '../types';
 
 type GeminiProviderConfig = {
   apiKey: string;
@@ -23,7 +31,7 @@ type GeminiProviderConfig = {
 function buildGeminiRequest(
   prompt: string,
   temperature?: number,
-  maxOutputTokens?: number
+  maxOutputTokens?: number,
 ): GenerateContentRequest {
   return {
     contents: [{ role: 'user', parts: [{ text: prompt }] }],
@@ -68,7 +76,10 @@ export default class GeminiProvider implements TranslationProvider {
    * @param options - Optional abort signal for early termination.
    * @returns Async iterable of text deltas.
    */
-  async *streamText(prompt: string, options?: StreamOptions): AsyncIterable<string> {
+  async *streamText(
+    prompt: string,
+    options?: StreamOptions,
+  ): AsyncIterable<string> {
     if (isEmptyPrompt(prompt)) {
       return;
     }

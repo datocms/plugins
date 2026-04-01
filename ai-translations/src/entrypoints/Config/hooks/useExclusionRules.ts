@@ -4,7 +4,7 @@
  * Groups related state to reduce re-renders in the parent component.
  */
 
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ctxParamsType } from '../ConfigScreen';
 
 export interface ExclusionRulesState {
@@ -27,17 +27,19 @@ export interface ExclusionRulesActions {
  * Custom hook for managing exclusion rules state.
  * Consolidates model, role, and field exclusions into a single hook.
  */
-export function useExclusionRules(pluginParams: ctxParamsType): [ExclusionRulesState, ExclusionRulesActions] {
+export function useExclusionRules(
+  pluginParams: ctxParamsType,
+): [ExclusionRulesState, ExclusionRulesActions] {
   const [modelsToBeExcluded, setModelsToBeExcluded] = useState<string[]>(
-    pluginParams.modelsToBeExcludedFromThisPlugin ?? []
+    pluginParams.modelsToBeExcludedFromThisPlugin ?? [],
   );
 
   const [rolesToBeExcluded, setRolesToBeExcluded] = useState<string[]>(
-    pluginParams.rolesToBeExcludedFromThisPlugin ?? []
+    pluginParams.rolesToBeExcludedFromThisPlugin ?? [],
   );
 
   const [apiKeysToBeExcluded, setApiKeysToBeExcluded] = useState<string[]>(
-    pluginParams.apiKeysToBeExcludedFromThisPlugin ?? []
+    pluginParams.apiKeysToBeExcludedFromThisPlugin ?? [],
   );
 
   const [showExclusionRules, setShowExclusionRules] = useState<boolean>(false);
@@ -67,10 +69,22 @@ export function useExclusionRules(pluginParams: ctxParamsType): [ExclusionRulesS
   };
 
   const actions: ExclusionRulesActions = {
-    setModelsToBeExcluded: useCallback((m: string[]) => setModelsToBeExcluded(m), []),
-    setRolesToBeExcluded: useCallback((r: string[]) => setRolesToBeExcluded(r), []),
-    setApiKeysToBeExcluded: useCallback((k: string[]) => setApiKeysToBeExcluded(k), []),
-    setShowExclusionRules: useCallback((s: boolean) => setShowExclusionRules(s), []),
+    setModelsToBeExcluded: useCallback(
+      (m: string[]) => setModelsToBeExcluded(m),
+      [],
+    ),
+    setRolesToBeExcluded: useCallback(
+      (r: string[]) => setRolesToBeExcluded(r),
+      [],
+    ),
+    setApiKeysToBeExcluded: useCallback(
+      (k: string[]) => setApiKeysToBeExcluded(k),
+      [],
+    ),
+    setShowExclusionRules: useCallback(
+      (s: boolean) => setShowExclusionRules(s),
+      [],
+    ),
     resetExclusionRules: useCallback(() => {
       setModelsToBeExcluded([]);
       setRolesToBeExcluded([]);
@@ -84,7 +98,9 @@ export function useExclusionRules(pluginParams: ctxParamsType): [ExclusionRulesS
 /**
  * Extracts exclusion rules params for saving.
  */
-export function getExclusionRulesParams(state: ExclusionRulesState): Partial<ctxParamsType> {
+export function getExclusionRulesParams(
+  state: ExclusionRulesState,
+): Partial<ctxParamsType> {
   return {
     modelsToBeExcludedFromThisPlugin: state.modelsToBeExcluded,
     rolesToBeExcludedFromThisPlugin: state.rolesToBeExcluded,

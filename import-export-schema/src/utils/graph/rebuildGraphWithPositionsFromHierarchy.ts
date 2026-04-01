@@ -23,8 +23,8 @@ export function rebuildGraphWithPositionsFromHierarchy(
           ...hierarchyNode.data,
           data: { ...hierarchyNode.data.data },
           position: {
-            x: hierarchyNode.x!,
-            y: hierarchyNode.y!,
+            x: hierarchyNode.x ?? 0,
+            y: hierarchyNode.y ?? 0,
           },
         } as AppNode;
       }),

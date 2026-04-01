@@ -1,8 +1,19 @@
-import type React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { RenderItemFormSidebarPanelCtx } from 'datocms-plugin-sdk';
+import type React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import DatoGPTTranslateSidebar from './DatoGPTTranslateSidebar';
 import type { ctxParamsType } from '../Config/ConfigScreen';
+import DatoGPTTranslateSidebar from './DatoGPTTranslateSidebar';
+
+/**
+ * Wraps a partial test context object into the full SDK type.
+ * Necessary because tests provide only the properties actually used by the component.
+ */
+function asCtx(
+  partial: Record<string, unknown>,
+): RenderItemFormSidebarPanelCtx {
+  return partial as unknown as RenderItemFormSidebarPanelCtx;
+}
 
 vi.mock('../../utils/translateRecordFields', () => ({
   translateRecordFields: vi.fn(),
@@ -18,9 +29,11 @@ vi.mock('framer-motion', () => ({
 }));
 
 vi.mock('./Components/ChatbubbleTranslate', () => ({
-  ChatBubble: ({ bubble }: { bubble: { fieldLabel: string; locale: string } }) => (
-    <div>{`${bubble.fieldLabel} (${bubble.locale})`}</div>
-  ),
+  ChatBubble: ({
+    bubble,
+  }: {
+    bubble: { fieldLabel: string; locale: string };
+  }) => <div>{`${bubble.fieldLabel} (${bubble.locale})`}</div>,
 }));
 
 import { translateRecordFields } from '../../utils/translateRecordFields';
@@ -57,11 +70,13 @@ describe('DatoGPTTranslateSidebar', () => {
   });
 
   it('navigates using the base field path and locale from a progress bubble', async () => {
-    vi.mocked(translateRecordFields).mockImplementation(async (_ctx, _params, _targets, _source, options) => {
-      options?.onStart?.('Title', 'it', 'title.it', 'title');
-    });
+    vi.mocked(translateRecordFields).mockImplementation(
+      async (_ctx, _params, _targets, _source, options) => {
+        options?.onStart?.('Title', 'it', 'title.it', 'title');
+      },
+    );
 
-    render(<DatoGPTTranslateSidebar ctx={baseCtx as any} />);
+    render(<DatoGPTTranslateSidebar ctx={asCtx(baseCtx)} />);
 
     fireEvent.click(screen.getByText('Translate all fields'));
 
@@ -74,18 +89,20 @@ describe('DatoGPTTranslateSidebar', () => {
   });
 
   it('shows a manual-save success notice after successful translation', async () => {
-    vi.mocked(translateRecordFields).mockImplementation(async (_ctx, _params, _targets, _source, options) => {
-      options?.onStart?.('Title', 'it', 'title.it', 'title');
-      options?.onComplete?.('Title', 'it', 'title.it', 'title');
-    });
+    vi.mocked(translateRecordFields).mockImplementation(
+      async (_ctx, _params, _targets, _source, options) => {
+        options?.onStart?.('Title', 'it', 'title.it', 'title');
+        options?.onComplete?.('Title', 'it', 'title.it', 'title');
+      },
+    );
 
-    render(<DatoGPTTranslateSidebar ctx={baseCtx as any} />);
+    render(<DatoGPTTranslateSidebar ctx={asCtx(baseCtx)} />);
 
     fireEvent.click(screen.getByText('Translate all fields'));
 
     await waitFor(() => {
       expect(baseCtx.notice).toHaveBeenCalledWith(
-        'Translations were applied to the form. Review them and click Save to persist the changes.'
+        'Translations were applied to the form. Review them and click Save to persist the changes.',
       );
     });
   });

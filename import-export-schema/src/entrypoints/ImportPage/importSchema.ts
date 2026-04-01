@@ -139,6 +139,8 @@ function prepareMappings(importDoc: ImportDoc): ImportMappings {
 
 /**
  * Concurrency-limited map that respects cancellation signals between iterations.
+ * Each worker processes items one at a time via tail-recursive async calls,
+ * avoiding await-in-loop while still limiting concurrency.
  */
 async function pMap<T, R>(
   items: readonly T[],
@@ -148,32 +150,76 @@ async function pMap<T, R>(
 ): Promise<R[]> {
   const results: R[] = new Array(items.length);
   let nextIndex = 0;
-  let error: unknown = null;
+  let firstError: unknown = null;
 
-  async function worker() {
-    while (true) {
-      if (error) return;
-      const current = nextIndex;
-      if (current >= items.length) return;
-      nextIndex += 1;
-      try {
-        checkCancel();
-        const result = await iteratee(items[current], current);
-        results[current] = result;
-      } catch (err) {
-        error = err;
-        return;
-      }
+  async function processNextItem(): Promise<void> {
+    if (firstError) return;
+    const current = nextIndex;
+    if (current >= items.length) return;
+    nextIndex += 1;
+    try {
+      checkCancel();
+      const result = await iteratee(items[current], current);
+      results[current] = result;
+      // Tail-recursive: process the next item in sequence for this worker
+      await processNextItem();
+    } catch (err) {
+      firstError = err;
     }
   }
 
-  const workers = Array.from(
-    { length: Math.max(1, Math.min(limit, items.length)) },
-    () => worker(),
-  );
+  const workerCount = Math.max(1, Math.min(limit, items.length));
+  const workers = Array.from({ length: workerCount }, () => processNextItem());
   await Promise.all(workers);
-  if (error) throw error;
+  if (firstError) throw firstError;
   return results;
+}
+
+function buildPluginCreateData(
+  plugin: SchemaTypes.Plugin,
+  newPluginId: string | undefined,
+): SchemaTypes.PluginCreateSchema['data'] {
+  const baseAttributes = plugin.attributes.package_name
+    ? pick(plugin.attributes, ['package_name'])
+    : plugin.meta.version === '2'
+      ? omit(plugin.attributes, ['parameters'])
+      : omit(plugin.attributes, [
+          'parameter_definitions',
+          'field_types',
+          'plugin_type',
+          'parameters',
+        ]);
+
+  return {
+    type: 'plugin',
+    id: newPluginId,
+    attributes: baseAttributes,
+  };
+}
+
+async function createSinglePlugin(
+  client: ImportContext['client'],
+  plugin: SchemaTypes.Plugin,
+  pluginIds: Map<string, string>,
+) {
+  const data = buildPluginCreateData(plugin, pluginIds.get(plugin.id));
+  try {
+    debugLog('Creating plugin', data);
+    const { data: created } = await client.plugins.rawCreate({ data });
+
+    if (!isEqual(created.attributes.parameters, {})) {
+      try {
+        await client.plugins.update(created.id, {
+          parameters: created.attributes.parameters,
+        });
+      } catch {
+        // ignore invalid legacy parameters
+      }
+    }
+    debugLog('Created plugin', created);
+  } catch (error) {
+    console.error('Failed to create plugin', data, error);
+  }
 }
 
 /**
@@ -198,40 +244,7 @@ async function createPluginsPhase(context: ImportContext) {
           `Creating plugin: ${
             p.attributes.name || p.attributes.package_name || p.id
           }`,
-        async (p: SchemaTypes.Plugin) => {
-          const data: SchemaTypes.PluginCreateSchema['data'] = {
-            type: 'plugin',
-            id: pluginIds.get(p.id),
-            attributes: p.attributes.package_name
-              ? pick(p.attributes, ['package_name'])
-              : p.meta.version === '2'
-                ? omit(p.attributes, ['parameters'])
-                : omit(p.attributes, [
-                    'parameter_definitions',
-                    'field_types',
-                    'plugin_type',
-                    'parameters',
-                  ]),
-          };
-
-          try {
-            debugLog('Creating plugin', data);
-            const { data: created } = await client.plugins.rawCreate({ data });
-
-            if (!isEqual(created.attributes.parameters, {})) {
-              try {
-                await client.plugins.update(created.id, {
-                  parameters: created.attributes.parameters,
-                });
-              } catch {
-                // ignore invalid legacy parameters
-              }
-            }
-            debugLog('Created plugin', created);
-          } catch (error) {
-            console.error('Failed to create plugin', data, error);
-          }
-        },
+        (p: SchemaTypes.Plugin) => createSinglePlugin(client, p, pluginIds),
         plugin,
       ),
     () => tracker.checkCancel(),
@@ -513,6 +526,71 @@ async function finalizeItemTypesPhase(
   );
 }
 
+type ReorderableEntity = SchemaTypes.Fieldset | SchemaTypes.Field;
+
+async function reorderSingleEntity(
+  entity: ReorderableEntity,
+  client: ImportContext['client'],
+  mappings: ImportMappings,
+  tracker: ProgressTracker,
+) {
+  tracker.checkCancel();
+  if (entity.type === 'fieldset') {
+    await client.fieldsets.update(
+      getOrThrow(mappings.fieldsetIds, entity.id, 'fieldset reorder'),
+      { position: entity.attributes.position },
+    );
+  } else {
+    await client.fields.update(
+      getOrThrow(mappings.fieldIds, entity.id, 'field reorder'),
+      { position: entity.attributes.position },
+    );
+  }
+}
+
+async function reorderItemTypeEntities(
+  o: ImportDoc['itemTypes']['entitiesToCreate'][number],
+  client: ImportContext['client'],
+  mappings: ImportMappings,
+  tracker: ProgressTracker,
+) {
+  const { entity: itemType, fields, fieldsets } = o;
+  const allEntities = [...fieldsets, ...fields];
+
+  if (allEntities.length <= 1) {
+    return;
+  }
+
+  try {
+    debugLog('Reordering fields/fieldsets for item type', {
+      itemTypeId: getOrThrow(
+        mappings.itemTypeIds,
+        itemType.id,
+        'reorder start log',
+      ),
+    });
+
+    // Sequential reordering is required: reduce to chain promises in position order
+    const sortedEntities = sortBy(allEntities, [
+      'attributes',
+      'position',
+    ]) as ReorderableEntity[];
+    await sortedEntities.reduce<Promise<void>>(
+      (chain, entity) =>
+        chain.then(() =>
+          reorderSingleEntity(entity, client, mappings, tracker),
+        ),
+      Promise.resolve(),
+    );
+
+    debugLog('Reordered fields/fieldsets for item type', {
+      itemTypeId: getOrThrow(mappings.itemTypeIds, itemType.id, 'reorder log'),
+    });
+  } catch (error) {
+    console.error('Failed to reorder fields/fieldsets', error);
+  }
+}
+
 /**
  * Restore the original ordering for fieldsets and fields to match the export.
  */
@@ -535,58 +613,8 @@ async function reorderEntitiesPhase(context: ImportContext) {
           const { entity } = o;
           return `Reordering fields/fieldsets for ${entity.attributes.name}`;
         },
-        async (o: ImportDoc['itemTypes']['entitiesToCreate'][number]) => {
-          const { entity: itemType, fields, fieldsets } = o;
-          const allEntities = [...fieldsets, ...fields];
-
-          if (allEntities.length <= 1) {
-            return;
-          }
-
-          try {
-            debugLog('Reordering fields/fieldsets for item type', {
-              itemTypeId: getOrThrow(
-                mappings.itemTypeIds,
-                itemType.id,
-                'reorder start log',
-              ),
-            });
-            for (const entity of sortBy(allEntities, [
-              'attributes',
-              'position',
-            ])) {
-              tracker.checkCancel();
-              if (entity.type === 'fieldset') {
-                await client.fieldsets.update(
-                  getOrThrow(
-                    mappings.fieldsetIds,
-                    entity.id,
-                    'fieldset reorder',
-                  ),
-                  {
-                    position: entity.attributes.position,
-                  },
-                );
-              } else {
-                await client.fields.update(
-                  getOrThrow(mappings.fieldIds, entity.id, 'field reorder'),
-                  {
-                    position: entity.attributes.position,
-                  },
-                );
-              }
-            }
-            debugLog('Reordered fields/fieldsets for item type', {
-              itemTypeId: getOrThrow(
-                mappings.itemTypeIds,
-                itemType.id,
-                'reorder log',
-              ),
-            });
-          } catch (error) {
-            console.error('Failed to reorder fields/fieldsets', error);
-          }
-        },
+        (o: ImportDoc['itemTypes']['entitiesToCreate'][number]) =>
+          reorderItemTypeEntities(o, client, mappings, tracker),
         obj,
       ),
     () => tracker.checkCancel(),

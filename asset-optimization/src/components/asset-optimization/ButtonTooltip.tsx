@@ -9,10 +9,7 @@ interface ButtonTooltipProps {
 /**
  * Component that displays a tooltip when hovering over a button or other control
  */
-const ButtonTooltip = ({ 
-  children, 
-  tooltip 
-}: ButtonTooltipProps) => {
+const ButtonTooltip = ({ children, tooltip }: ButtonTooltipProps) => {
   if (!tooltip) {
     return <>{children}</>;
   }

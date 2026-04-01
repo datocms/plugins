@@ -1,9 +1,9 @@
 import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
 import { Canvas } from 'datocms-react-ui';
-import Value from '../components/Value';
-import Empty from '../components/Empty';
-import type { Product } from '../utils/ShopifyClient';
 import get from 'lodash-es/get';
+import Empty from '../components/Empty';
+import Value from '../components/Value';
+import type { Product } from '../utils/ShopifyClient';
 
 type PropTypes = {
   ctx: RenderFieldExtensionCtx;

@@ -1,25 +1,25 @@
-import { describe, it, expect, beforeEach } from 'vitest';
 import {
+  areCommentsEqual,
   areMentionsEqual,
+  areRepliesEqual,
   areSegmentsEqual,
   areUpvotersEqual,
-  areRepliesEqual,
-  areCommentsEqual,
 } from '@utils/comparisonHelpers';
+import { beforeEach, describe, expect, it } from 'vitest';
 import {
+  createFullTextSegment,
+  createResolvedAuthor,
   createResolvedComment,
   createResolvedCommentWithReplies,
-  createResolvedAuthor,
-  createFullTextSegment,
   resetIdCounter,
 } from '../fixtures/comments';
 import {
-  createUserMention,
-  createFieldMention,
   createAssetMention,
-  createRecordMention,
-  createModelMention,
+  createFieldMention,
   createMentionSegment,
+  createModelMention,
+  createRecordMention,
+  createUserMention,
 } from '../fixtures/mentions';
 
 describe('areMentionsEqual', () => {
@@ -140,9 +140,9 @@ describe('areMentionsEqual', () => {
 
     it('handles undefined isSingleton', () => {
       const a = createRecordMention();
-      delete (a as any).isSingleton;
+      delete (a as Record<string, unknown>).isSingleton;
       const b = createRecordMention();
-      delete (b as any).isSingleton;
+      delete (b as Record<string, unknown>).isSingleton;
       expect(areMentionsEqual(a, b)).toBe(true);
     });
   });
@@ -225,14 +225,23 @@ describe('areSegmentsEqual', () => {
   describe('mixed segments', () => {
     it('returns true for identical mixed segments', () => {
       const mention = createUserMention();
-      const a = [createFullTextSegment('Hello '), createMentionSegment(mention)];
-      const b = [createFullTextSegment('Hello '), createMentionSegment(mention)];
+      const a = [
+        createFullTextSegment('Hello '),
+        createMentionSegment(mention),
+      ];
+      const b = [
+        createFullTextSegment('Hello '),
+        createMentionSegment(mention),
+      ];
       expect(areSegmentsEqual(a, b)).toBe(true);
     });
 
     it('returns false when text differs in mixed segments', () => {
       const mention = createUserMention();
-      const a = [createFullTextSegment('Hello '), createMentionSegment(mention)];
+      const a = [
+        createFullTextSegment('Hello '),
+        createMentionSegment(mention),
+      ];
       const b = [createFullTextSegment('Hi '), createMentionSegment(mention)];
       expect(areSegmentsEqual(a, b)).toBe(false);
     });
@@ -270,7 +279,10 @@ describe('areUpvotersEqual', () => {
   });
 
   it('returns false for different lengths', () => {
-    const a = [createResolvedAuthor({ email: 'a@test.com' }), createResolvedAuthor({ email: 'b@test.com' })];
+    const a = [
+      createResolvedAuthor({ email: 'a@test.com' }),
+      createResolvedAuthor({ email: 'b@test.com' }),
+    ];
     const b = [createResolvedAuthor({ email: 'a@test.com' })];
     expect(areUpvotersEqual(a, b)).toBe(false);
   });
@@ -282,8 +294,14 @@ describe('areUpvotersEqual', () => {
   });
 
   it('is order-sensitive', () => {
-    const a = [createResolvedAuthor({ email: 'a@test.com' }), createResolvedAuthor({ email: 'b@test.com' })];
-    const b = [createResolvedAuthor({ email: 'b@test.com' }), createResolvedAuthor({ email: 'a@test.com' })];
+    const a = [
+      createResolvedAuthor({ email: 'a@test.com' }),
+      createResolvedAuthor({ email: 'b@test.com' }),
+    ];
+    const b = [
+      createResolvedAuthor({ email: 'b@test.com' }),
+      createResolvedAuthor({ email: 'a@test.com' }),
+    ];
     expect(areUpvotersEqual(a, b)).toBe(false);
   });
 
@@ -327,8 +345,18 @@ describe('areRepliesEqual', () => {
   });
 
   it('returns false for different reply content', () => {
-    const a = [createResolvedComment({ id: 'reply-1', content: [createFullTextSegment('A')] })];
-    const b = [createResolvedComment({ id: 'reply-1', content: [createFullTextSegment('B')] })];
+    const a = [
+      createResolvedComment({
+        id: 'reply-1',
+        content: [createFullTextSegment('A')],
+      }),
+    ];
+    const b = [
+      createResolvedComment({
+        id: 'reply-1',
+        content: [createFullTextSegment('B')],
+      }),
+    ];
     expect(areRepliesEqual(a, b)).toBe(false);
   });
 
@@ -470,8 +498,14 @@ describe('areCommentsEqual', () => {
   });
 
   it('ignores dateISO differences (uses id for identity)', () => {
-    const a = createResolvedComment({ id: 'test-1', dateISO: '2024-01-01T00:00:00Z' });
-    const b = createResolvedComment({ id: 'test-1', dateISO: '2024-12-31T23:59:59Z' });
+    const a = createResolvedComment({
+      id: 'test-1',
+      dateISO: '2024-01-01T00:00:00Z',
+    });
+    const b = createResolvedComment({
+      id: 'test-1',
+      dateISO: '2024-12-31T23:59:59Z',
+    });
     expect(areCommentsEqual(a, b)).toBe(true);
   });
 

@@ -1,11 +1,12 @@
+import type { Theme } from 'datocms-plugin-sdk';
+import { AnimatePresence, type Easing, motion } from 'framer-motion';
 import { useEffect, useMemo, useState } from 'react';
-import { motion, AnimatePresence, type Easing } from 'framer-motion';
 import { AiOutlineOpenAI } from 'react-icons/ai';
 import { BsCheckCircleFill, BsXCircleFill } from 'react-icons/bs';
-import type { Theme } from 'datocms-plugin-sdk';
 import styles from '../../../styles.module.css';
-import { localeSelect } from '../../../utils/localeUtils';
 import { PENDING_HINT_THRESHOLD_SECONDS } from '../../../utils/constants';
+import { localeSelect } from '../../../utils/localeUtils';
+
 /**
  * ChatbubbleTranslate.tsx
  *
@@ -140,7 +141,8 @@ export function ChatBubble({ bubble, theme }: Props) {
   // Removed streaming text animations in full-response mode
 
   // Show hint only for long-running fields
-  const showPendingHint = bubble.status === 'pending' && elapsedSec >= PENDING_HINT_THRESHOLD_SECONDS;
+  const showPendingHint =
+    bubble.status === 'pending' && elapsedSec >= PENDING_HINT_THRESHOLD_SECONDS;
 
   // Conditional icon animation:
   // - If status is 'pending', rotate continuously.
@@ -202,11 +204,9 @@ export function ChatBubble({ bubble, theme }: Props) {
 
           <div className={styles.bubbleContent}>
             <span className={styles.bubbleText}>
-              
-                “<strong>{bubble.fieldLabel}</strong>” to{' '}
-                <strong>{localeSelect(bubble.locale)?.name}</strong>{' '}
-                [<code>{bubble.locale}</code>]
-              
+              “<strong>{bubble.fieldLabel}</strong>” to{' '}
+              <strong>{localeSelect(bubble.locale)?.name}</strong> [
+              <code>{bubble.locale}</code>]
             </span>
           </div>
           {bubble.status === 'done' && (
@@ -216,10 +216,7 @@ export function ChatBubble({ bubble, theme }: Props) {
             />
           )}
           {bubble.status === 'error' && (
-            <BsXCircleFill
-              size={16}
-              style={{ color: 'rgb(220, 53, 69)' }}
-            />
+            <BsXCircleFill size={16} style={{ color: 'rgb(220, 53, 69)' }} />
           )}
         </motion.div>
 
@@ -236,12 +233,15 @@ export function ChatBubble({ bubble, theme }: Props) {
                 style={{
                   backgroundColor: tooltipBackgroundColor,
                   border: `1px solid ${
-                    theme.semiTransparentAccentColor || 'rgba(114, 0, 196, 0.12)'
+                    theme.semiTransparentAccentColor ||
+                    'rgba(114, 0, 196, 0.12)'
                   }`,
                   color: tooltipTextColor,
                 }}
               >
-                <span className={styles.pendingPulseText}>Translating a large field: not stuck</span>
+                <span className={styles.pendingPulseText}>
+                  Translating a large field: not stuck
+                </span>
               </motion.div>
             )}
           </AnimatePresence>

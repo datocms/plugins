@@ -1,18 +1,18 @@
-import { useCallback, type RefObject } from 'react';
-import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
-import type { CommentSegment } from '@ctypes/mentions';
 import type { CommentType } from '@ctypes/comments';
+import type { CommentSegment } from '@ctypes/mentions';
 import type { CommentOperation } from '@ctypes/operations';
-import { ERROR_MESSAGES } from '@/constants';
 import { segmentsToStoredSegments } from '@utils/tipTapSerializer';
+import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
+import { type RefObject, useCallback } from 'react';
+import { ERROR_MESSAGES } from '@/constants';
 import {
-  isSegmentsEmpty,
-  isAuthorValid,
   applyDeleteToState,
   applyEditToState,
   applyUpvoteToState,
-  createComment,
   type CommentActionsReturn,
+  createComment,
+  isAuthorValid,
+  isSegmentsEmpty,
 } from './commentActionHelpers';
 
 type InsertPosition = 'prepend' | 'append';
@@ -43,7 +43,7 @@ type UseCommentActionsParams = {
 function findCommentById(
   comments: CommentType[],
   id: string,
-  parentCommentId?: string
+  parentCommentId?: string,
 ): CommentType | null {
   if (parentCommentId) {
     const parent = comments.find((comment) => comment.id === parentCommentId);
@@ -128,7 +128,7 @@ export function useCommentActions({
       setComments((prev) => applyDeleteToState(prev, id, parentCommentId));
       return true;
     },
-    [setComments, enqueue, pendingNewReplies]
+    [setComments, enqueue, pendingNewReplies],
   );
 
   const editComment = useCallback(
@@ -174,16 +174,12 @@ export function useCommentActions({
         }
       }
 
-      setComments((prev) => applyEditToState(prev, id, newContent, parentCommentId));
+      setComments((prev) =>
+        applyEditToState(prev, id, newContent, parentCommentId),
+      );
       return true;
     },
-    [
-      userId,
-      comments,
-      setComments,
-      enqueue,
-      pendingNewReplies,
-    ]
+    [userId, comments, setComments, enqueue, pendingNewReplies],
   );
 
   const upvoteComment = useCallback(
@@ -201,11 +197,11 @@ export function useCommentActions({
       }
 
       setComments((prev) =>
-        applyUpvoteToState(prev, id, userId, userUpvoted, parentCommentId)
+        applyUpvoteToState(prev, id, userId, userUpvoted, parentCommentId),
       );
       return true;
     },
-    [userId, setComments, enqueue]
+    [userId, setComments, enqueue],
   );
 
   const replyComment = useCallback(
@@ -222,11 +218,11 @@ export function useCommentActions({
           } else {
             return { ...c, replies: [...(c.replies ?? []), newReply] };
           }
-        })
+        }),
       );
       return true;
     },
-    [userId, setComments, pendingNewReplies, replyInsertPosition]
+    [userId, setComments, pendingNewReplies, replyInsertPosition],
   );
 
   return {

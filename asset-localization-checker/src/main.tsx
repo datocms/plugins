@@ -1,22 +1,22 @@
-import { connect } from "datocms-plugin-sdk";
-import "datocms-react-ui/styles.css";
-import { render } from "./utils/render";
-import { AssetLocalizationChecker } from "./components/AssetLocalizationChecker.tsx";
+import { connect } from 'datocms-plugin-sdk';
+import 'datocms-react-ui/styles.css';
+import { AssetLocalizationChecker } from './components/AssetLocalizationChecker.tsx';
+import { render } from './utils/render';
 
 connect({
   overrideFieldExtensions(field) {
-    if (field.attributes.field_type === "file") {
+    if (field.attributes.field_type === 'file') {
       return {
         addons: [
           {
-            id: "assetLocalizationChecker",
+            id: 'assetLocalizationChecker',
           },
         ],
       };
     }
   },
   renderFieldExtension(id, ctx) {
-    if (id === "assetLocalizationChecker") {
+    if (id === 'assetLocalizationChecker') {
       render(<AssetLocalizationChecker ctx={ctx} />);
     }
   },

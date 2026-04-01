@@ -1,24 +1,28 @@
-import { useState, useCallback, useRef } from 'react';
-import type { Client } from '@datocms/cma-client-browser';
-import type { ItemType } from 'datocms-plugin-sdk';
 import type {
-  Mention,
-  UserMention,
-  FieldMention,
+  CommentType,
+  ResolvedAuthor,
+  ResolvedCommentType,
+} from '@ctypes/comments';
+import type {
   AssetMention,
-  RecordMention,
-  ModelMention,
-  StoredMention,
-  StoredCommentSegment,
   CommentSegment,
+  FieldMention,
+  Mention,
+  ModelMention,
+  RecordMention,
+  StoredCommentSegment,
+  StoredMention,
+  UserMention,
 } from '@ctypes/mentions';
-import type { CommentType, ResolvedCommentType, ResolvedAuthor } from '@ctypes/comments';
-import type { UserInfo } from '@utils/userTransformers';
-import type { FieldInfo, ModelInfo } from './useMentions';
+import type { Client } from '@datocms/cma-client-browser';
+import { extractLeadingEmoji } from '@utils/emojiUtils';
 import { getRecordTitles } from '@utils/recordTitleUtils';
-import { extractLeadingEmoji } from '@utils/mentionFormatters';
+import type { UserInfo } from '@utils/userTransformers';
+import type { ItemType } from 'datocms-plugin-sdk';
+import { useCallback, useRef, useState } from 'react';
 import { logError } from '@/utils/errorLogger';
 import { getGravatarUrl } from '@/utils/helpers';
+import type { FieldInfo, ModelInfo } from './useMentions';
 
 // ============================================================================
 // Types
@@ -70,7 +74,10 @@ type UseEntityResolverReturn = {
 // Helper Functions
 // ============================================================================
 
-function resolveAuthorById(userId: string, projectUsers: UserInfo[]): ResolvedAuthor {
+function resolveAuthorById(
+  userId: string,
+  projectUsers: UserInfo[],
+): ResolvedAuthor {
   const user = projectUsers.find((u) => u.id === userId);
 
   if (user) {
@@ -78,7 +85,8 @@ function resolveAuthorById(userId: string, projectUsers: UserInfo[]): ResolvedAu
       id: user.id,
       email: user.email,
       name: user.name,
-      avatarUrl: user.avatarUrl ?? (user.email ? getGravatarUrl(user.email, 48) : null),
+      avatarUrl:
+        user.avatarUrl ?? (user.email ? getGravatarUrl(user.email, 48) : null),
     };
   }
 
@@ -93,7 +101,7 @@ function resolveAuthorById(userId: string, projectUsers: UserInfo[]): ResolvedAu
 
 function resolveUserMention(
   stored: { id: string },
-  projectUsers: UserInfo[]
+  projectUsers: UserInfo[],
 ): UserMention | null {
   const user = projectUsers.find((u) => u.id === stored.id);
   if (!user) return null;
@@ -109,7 +117,7 @@ function resolveUserMention(
 
 function resolveModelMention(
   stored: { id: string },
-  projectModels: ModelInfo[]
+  projectModels: ModelInfo[],
 ): ModelMention | null {
   const model = projectModels.find((m) => m.id === stored.id);
   if (!model) return null;
@@ -125,7 +133,7 @@ function resolveModelMention(
 
 function resolveFieldMention(
   stored: { fieldPath: string; locale?: string; modelId: string },
-  modelFields: FieldInfo[]
+  modelFields: FieldInfo[],
 ): FieldMention | null {
   // Find field by fieldPath
   const field = modelFields.find((f) => f.fieldPath === stored.fieldPath);
@@ -160,7 +168,7 @@ function resolveFieldMention(
 function createRecordMentionFromResolved(
   recordId: string,
   _modelId: string,
-  resolved: ResolvedRecord
+  resolved: ResolvedRecord,
 ): RecordMention {
   return {
     type: 'record',
@@ -175,7 +183,10 @@ function createRecordMentionFromResolved(
   };
 }
 
-function createFallbackRecordMention(recordId: string, modelId: string): RecordMention {
+function createFallbackRecordMention(
+  recordId: string,
+  modelId: string,
+): RecordMention {
   return {
     type: 'record',
     id: recordId,
@@ -189,7 +200,10 @@ function createFallbackRecordMention(recordId: string, modelId: string): RecordM
   };
 }
 
-function createAssetMentionFromResolved(assetId: string, resolved: ResolvedAsset): AssetMention {
+function createAssetMentionFromResolved(
+  assetId: string,
+  resolved: ResolvedAsset,
+): AssetMention {
   return {
     type: 'asset',
     id: assetId,
@@ -224,8 +238,17 @@ function getAssetThumbnailUrl(mimeType: string, url: string): string | null {
 // Hook
 // ============================================================================
 
-export function useEntityResolver(params: UseEntityResolverParams): UseEntityResolverReturn {
-  const { client, projectUsers, projectModels, modelFields, itemTypes, mainLocale } = params;
+export function useEntityResolver(
+  params: UseEntityResolverParams,
+): UseEntityResolverReturn {
+  const {
+    client,
+    projectUsers,
+    projectModels,
+    modelFields,
+    itemTypes,
+    mainLocale,
+  } = params;
 
   const [isResolving, setIsResolving] = useState(false);
   const cacheRef = useRef<ResolutionCache>({
@@ -255,7 +278,11 @@ export function useEntityResolver(params: UseEntityResolverParams): UseEntityRes
         case 'record': {
           const cached = cacheRef.current.records.get(stored.id);
           if (cached && cached !== 'loading' && cached !== 'error') {
-            return createRecordMentionFromResolved(stored.id, stored.modelId, cached);
+            return createRecordMentionFromResolved(
+              stored.id,
+              stored.modelId,
+              cached,
+            );
           }
           // Return fallback while loading
           return createFallbackRecordMention(stored.id, stored.modelId);
@@ -274,7 +301,7 @@ export function useEntityResolver(params: UseEntityResolverParams): UseEntityRes
           return null;
       }
     },
-    [projectUsers, projectModels, modelFields]
+    [projectUsers, projectModels, modelFields],
   );
 
   const resolveSegment = useCallback(
@@ -291,7 +318,7 @@ export function useEntityResolver(params: UseEntityResolverParams): UseEntityRes
 
       return { type: 'mention', mention };
     },
-    [resolveMention]
+    [resolveMention],
   );
 
   const resolveComment = useCallback(
@@ -299,7 +326,7 @@ export function useEntityResolver(params: UseEntityResolverParams): UseEntityRes
       const resolvedContent = comment.content.map(resolveSegment);
       const resolvedAuthor = resolveAuthorById(comment.authorId, projectUsers);
       const resolvedUpvoters = comment.upvoterIds.map((upvoterId) =>
-        resolveAuthorById(upvoterId, projectUsers)
+        resolveAuthorById(upvoterId, projectUsers),
       );
 
       return {
@@ -312,7 +339,7 @@ export function useEntityResolver(params: UseEntityResolverParams): UseEntityRes
         parentCommentId: comment.parentCommentId,
       };
     },
-    [resolveSegment, projectUsers]
+    [resolveSegment, projectUsers],
   );
 
   const collectAsyncMentions = useCallback((comments: CommentType[]) => {
@@ -321,33 +348,35 @@ export function useEntityResolver(params: UseEntityResolverParams): UseEntityRes
     const seenRecordIds = new Set<string>();
     const seenAssetIds = new Set<string>();
 
+    const collectRecordMention = (mentionId: string, modelId: string) => {
+      const cached = cacheRef.current.records.get(mentionId);
+      const isUncached = !cached || cached === 'error';
+      const isPending = pendingRecordsRef.current.has(mentionId);
+      const isSeen = seenRecordIds.has(mentionId);
+      if (isUncached && !isPending && !isSeen) {
+        recordsToFetch.push({ id: mentionId, modelId });
+        seenRecordIds.add(mentionId);
+      }
+    };
+
+    const collectAssetMention = (mentionId: string) => {
+      const cached = cacheRef.current.assets.get(mentionId);
+      const isUncached = !cached || cached === 'error';
+      const isPending = pendingAssetsRef.current.has(mentionId);
+      const isSeen = seenAssetIds.has(mentionId);
+      if (isUncached && !isPending && !isSeen) {
+        assetsToFetch.push(mentionId);
+        seenAssetIds.add(mentionId);
+      }
+    };
+
     const processSegments = (segments: StoredCommentSegment[]) => {
       for (const segment of segments) {
-        if (segment.type === 'mention') {
-          if (segment.mention.type === 'record') {
-            const cached = cacheRef.current.records.get(segment.mention.id);
-            if (
-              (!cached || cached === 'error') &&
-              !pendingRecordsRef.current.has(segment.mention.id) &&
-              !seenRecordIds.has(segment.mention.id)
-            ) {
-              recordsToFetch.push({
-                id: segment.mention.id,
-                modelId: segment.mention.modelId,
-              });
-              seenRecordIds.add(segment.mention.id);
-            }
-          } else if (segment.mention.type === 'asset') {
-            const cached = cacheRef.current.assets.get(segment.mention.id);
-            if (
-              (!cached || cached === 'error') &&
-              !pendingAssetsRef.current.has(segment.mention.id) &&
-              !seenAssetIds.has(segment.mention.id)
-            ) {
-              assetsToFetch.push(segment.mention.id);
-              seenAssetIds.add(segment.mention.id);
-            }
-          }
+        if (segment.type !== 'mention') continue;
+        if (segment.mention.type === 'record') {
+          collectRecordMention(segment.mention.id, segment.mention.modelId);
+        } else if (segment.mention.type === 'asset') {
+          collectAssetMention(segment.mention.id);
         }
       }
     };
@@ -365,10 +394,98 @@ export function useEntityResolver(params: UseEntityResolverParams): UseEntityRes
     return { recordsToFetch, assetsToFetch };
   }, []);
 
+  const resolveRecordBatch = useCallback(
+    async (recordsToFetch: Array<{ id: string; modelId: string }>) => {
+      if (!client || recordsToFetch.length === 0) return;
+
+      const recordResults = await getRecordTitles(
+        client,
+        recordsToFetch.map((r) => ({ recordId: r.id, modelId: r.modelId })),
+        mainLocale,
+      );
+
+      for (const record of recordsToFetch) {
+        const result = recordResults.get(record.id);
+        const model = Object.values(itemTypes).find(
+          (it) => it?.id === record.modelId,
+        );
+
+        if (result) {
+          const { emoji: modelEmoji } = extractLeadingEmoji(result.modelName);
+          cacheRef.current.records.set(record.id, {
+            id: record.id,
+            title: result.title,
+            modelId: record.modelId,
+            modelApiKey: model?.attributes.api_key ?? 'unknown',
+            modelName: result.modelName,
+            modelEmoji,
+            thumbnailUrl: null,
+            isSingleton: result.isSingleton,
+          });
+        } else {
+          cacheRef.current.records.set(record.id, 'error');
+        }
+        pendingRecordsRef.current.delete(record.id);
+      }
+    },
+    [client, itemTypes, mainLocale],
+  );
+
+  const resolveAssetBatch = useCallback(
+    async (assetsToFetch: string[]) => {
+      if (!client) return;
+
+      const assetPromises = assetsToFetch.map(async (assetId) => {
+        try {
+          const upload = await client.uploads.find(assetId);
+          cacheRef.current.assets.set(assetId, {
+            id: assetId,
+            filename: upload.filename ?? upload.basename ?? `Asset #${assetId}`,
+            url: upload.url,
+            thumbnailUrl: getAssetThumbnailUrl(
+              upload.mime_type ?? '',
+              upload.url,
+            ),
+            mimeType: upload.mime_type ?? 'application/octet-stream',
+          });
+        } catch (error) {
+          logError('Failed to fetch asset', error, { assetId });
+          cacheRef.current.assets.set(assetId, 'error');
+        } finally {
+          pendingAssetsRef.current.delete(assetId);
+        }
+      });
+
+      await Promise.all(assetPromises);
+    },
+    [client],
+  );
+
+  const markEntitiesAsError = useCallback(
+    (
+      recordsToFetch: Array<{ id: string; modelId: string }>,
+      assetsToFetch: string[],
+    ) => {
+      for (const record of recordsToFetch) {
+        pendingRecordsRef.current.delete(record.id);
+        if (cacheRef.current.records.get(record.id) === 'loading') {
+          cacheRef.current.records.set(record.id, 'error');
+        }
+      }
+      for (const assetId of assetsToFetch) {
+        pendingAssetsRef.current.delete(assetId);
+        if (cacheRef.current.assets.get(assetId) === 'loading') {
+          cacheRef.current.assets.set(assetId, 'error');
+        }
+      }
+    },
+    [],
+  );
+
   const fetchAsyncEntities = useCallback(
     async (
       recordsToFetch: Array<{ id: string; modelId: string }>,
-      assetsToFetch: string[]
+      assetsToFetch: string[],
     ) => {
       if (!client) return;
       if (recordsToFetch.length === 0 && assetsToFetch.length === 0) return;
@@ -386,80 +503,17 @@ export function useEntityResolver(params: UseEntityResolverParams): UseEntityRes
       }
 
       try {
-        // Fetch records in batch
-        if (recordsToFetch.length > 0) {
-          const recordResults = await getRecordTitles(
-            client,
-            recordsToFetch.map((r) => ({ recordId: r.id, modelId: r.modelId })),
-            mainLocale
-          );
-
-          for (const record of recordsToFetch) {
-            const result = recordResults.get(record.id);
-            const model = Object.values(itemTypes).find(
-              (it) => it?.id === record.modelId
-            );
-
-            if (result) {
-              const { emoji: modelEmoji } = extractLeadingEmoji(result.modelName);
-              cacheRef.current.records.set(record.id, {
-                id: record.id,
-                title: result.title,
-                modelId: record.modelId,
-                modelApiKey: model?.attributes.api_key ?? 'unknown',
-                modelName: result.modelName,
-                modelEmoji,
-                thumbnailUrl: null, // Would need additional fetch
-                isSingleton: result.isSingleton,
-              });
-            } else {
-              cacheRef.current.records.set(record.id, 'error');
-            }
-            pendingRecordsRef.current.delete(record.id);
-          }
-        }
-
-        // Fetch assets individually (no batch API available)
-        const assetPromises = assetsToFetch.map(async (assetId) => {
-          try {
-            const upload = await client.uploads.find(assetId);
-            cacheRef.current.assets.set(assetId, {
-              id: assetId,
-              filename: upload.filename ?? upload.basename ?? `Asset #${assetId}`,
-              url: upload.url,
-              thumbnailUrl: getAssetThumbnailUrl(upload.mime_type ?? '', upload.url),
-              mimeType: upload.mime_type ?? 'application/octet-stream',
-            });
-          } catch (error) {
-            logError('Failed to fetch asset', error, { assetId });
-            cacheRef.current.assets.set(assetId, 'error');
-          } finally {
-            pendingAssetsRef.current.delete(assetId);
-          }
-        });
-
-        await Promise.all(assetPromises);
+        await resolveRecordBatch(recordsToFetch);
+        await resolveAssetBatch(assetsToFetch);
       } catch (error) {
         logError('Failed to fetch async entities', error);
-        for (const record of recordsToFetch) {
-          pendingRecordsRef.current.delete(record.id);
-          if (cacheRef.current.records.get(record.id) === 'loading') {
-            cacheRef.current.records.set(record.id, 'error');
-          }
-        }
-
-        for (const assetId of assetsToFetch) {
-          pendingAssetsRef.current.delete(assetId);
-          if (cacheRef.current.assets.get(assetId) === 'loading') {
-            cacheRef.current.assets.set(assetId, 'error');
-          }
-        }
+        markEntitiesAsError(recordsToFetch, assetsToFetch);
       } finally {
         setIsResolving(false);
         setCacheVersion((n) => n + 1);
       }
     },
-    [client, mainLocale, itemTypes]
+    [client, resolveRecordBatch, resolveAssetBatch, markEntitiesAsError],
   );
 
   const prefetchEntities = useCallback(
@@ -468,12 +522,13 @@ export function useEntityResolver(params: UseEntityResolverParams): UseEntityRes
       if (recordsToFetch.length === 0 && assetsToFetch.length === 0) return;
       void fetchAsyncEntities(recordsToFetch, assetsToFetch);
     },
-    [collectAsyncMentions, fetchAsyncEntities]
+    [collectAsyncMentions, fetchAsyncEntities],
   );
 
   const resolveComments = useCallback(
-    (comments: CommentType[]): ResolvedCommentType[] => comments.map(resolveComment),
-    [resolveComment]
+    (comments: CommentType[]): ResolvedCommentType[] =>
+      comments.map(resolveComment),
+    [resolveComment],
   );
 
   return {

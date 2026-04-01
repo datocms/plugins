@@ -4,7 +4,7 @@
  * This module provides translation logic for standard text fields in DatoCMS,
  * such as single_line, markdown, and JSON fields. It implements a generalized
  * approach for translating simple text content using OpenAI's API.
- * 
+ *
  * The module is responsible for:
  * - Formatting prompts for the AI model
  * - Managing streaming responses and cancellation
@@ -12,20 +12,20 @@
  * - Supporting contextual information to improve translation quality
  */
 
-import type { TranslationProvider, StreamCallbacks } from './types';
-import { handleTranslationError } from './ProviderErrors';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import { createLogger } from '../logging/Logger';
+import { handleTranslationError } from './ProviderErrors';
 import { translateArray } from './translateArray';
+import type { StreamCallbacks, TranslationProvider } from './types';
 
 /**
  * Translates a basic text field value using OpenAI's language model
- * 
+ *
  * This function handles the translation of simple text-based field types by
  * constructing an appropriate prompt, sending it to OpenAI, and handling the
  * streamed response. It supports providing record context for improved translation
  * accuracy and offers streaming callbacks for UI updates.
- * 
+ *
  * @param fieldValue - The value to translate (typically a string)
  * @param pluginParams - Configuration parameters for the plugin
  * @param toLocale - Target locale code
@@ -42,7 +42,7 @@ export async function translateDefaultFieldValue(
   fromLocale: string,
   provider: TranslationProvider,
   _streamCallbacks?: StreamCallbacks,
-  recordContext = ''
+  recordContext = '',
 ): Promise<unknown> {
   // If nothing to translate, return as is
   if (fieldValue === null || fieldValue === undefined || fieldValue === '') {
@@ -58,7 +58,14 @@ export async function translateDefaultFieldValue(
 
   try {
     // Translate as a single-element array to align with DeepL + chat vendors via helper
-    const [translated] = await translateArray(provider, pluginParams, [String(fieldValue)], fromLocale, toLocale, { isHTML: false, recordContext });
+    const [translated] = await translateArray(
+      provider,
+      pluginParams,
+      [String(fieldValue)],
+      fromLocale,
+      toLocale,
+      { isHTML: false, recordContext },
+    );
     return translated;
   } catch (error) {
     // DRY-001: Use centralized error handler

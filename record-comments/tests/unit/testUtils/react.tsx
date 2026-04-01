@@ -1,5 +1,5 @@
-import { act } from 'react';
 import type { ReactNode } from 'react';
+import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 
 type RenderResult = {
@@ -37,9 +37,7 @@ type HookResult<T> = {
   current: T | null;
 };
 
-export function renderHook<T>(
-  useHook: () => T
-): {
+export function renderHook<T>(useHook: () => T): {
   result: HookResult<T>;
   rerender: () => void;
   unmount: () => void;

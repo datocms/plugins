@@ -1,10 +1,10 @@
+import { googleAdapter } from './adapters/google';
+import { openAiAdapter } from './adapters/openai';
 import {
   getAspectRatioLabel,
   getImageSizeLabel,
   getModelLabel,
 } from './catalog';
-import { googleAdapter } from './adapters/google';
-import { openAiAdapter } from './adapters/openai';
 import type {
   ImageOperationRequest,
   ImageProviderAdapter,
@@ -13,10 +13,6 @@ import type {
   ProviderId,
   SupportedImageModel,
 } from './types';
-
-export * from './catalog';
-export * from './types';
-export * from './shared';
 
 const adapters: Record<ProviderId, ImageProviderAdapter> = {
   openai: openAiAdapter,

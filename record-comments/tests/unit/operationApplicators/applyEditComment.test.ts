@@ -1,13 +1,13 @@
-import { describe, it, expect, beforeEach } from 'vitest';
 import { applyOperation } from '@utils/operationApplicators';
+import { beforeEach, describe, expect, it } from 'vitest';
 import {
   createBaseComment,
   createCommentWithReplies,
   createTextSegment,
   resetIdCounter,
 } from '../fixtures/comments';
-import { createEditCommentOp } from '../fixtures/operations';
 import { createMentionSegment, mentionFixtures } from '../fixtures/mentions';
+import { createEditCommentOp } from '../fixtures/operations';
 
 describe('applyEditComment', () => {
   beforeEach(() => {
@@ -70,19 +70,23 @@ describe('applyEditComment', () => {
   describe('editing reply', () => {
     it('updates reply content', () => {
       const parent = createCommentWithReplies(1, { id: 'parent' });
-      const replyId = parent.replies![0].id;
+      const replyId = parent.replies?.[0].id;
       const newContent = [createTextSegment('Updated reply')];
       const op = createEditCommentOp(replyId, newContent, 'parent');
 
       const result = applyOperation([parent], op);
 
-      expect(result.comments[0].replies![0].content).toEqual(newContent);
+      expect(result.comments[0].replies?.[0].content).toEqual(newContent);
     });
 
     it('returns status "applied"', () => {
       const parent = createCommentWithReplies(1, { id: 'parent' });
-      const replyId = parent.replies![0].id;
-      const op = createEditCommentOp(replyId, [createTextSegment('New')], 'parent');
+      const replyId = parent.replies?.[0].id;
+      const op = createEditCommentOp(
+        replyId,
+        [createTextSegment('New')],
+        'parent',
+      );
 
       const result = applyOperation([parent], op);
 
@@ -92,8 +96,12 @@ describe('applyEditComment', () => {
     it('preserves parent content', () => {
       const parent = createCommentWithReplies(1, { id: 'parent' });
       const originalParentContent = parent.content;
-      const replyId = parent.replies![0].id;
-      const op = createEditCommentOp(replyId, [createTextSegment('New')], 'parent');
+      const replyId = parent.replies?.[0].id;
+      const op = createEditCommentOp(
+        replyId,
+        [createTextSegment('New')],
+        'parent',
+      );
 
       const result = applyOperation([parent], op);
 
@@ -102,14 +110,25 @@ describe('applyEditComment', () => {
 
     it('preserves other replies', () => {
       const parent = createCommentWithReplies(3, { id: 'parent' });
-      const replyToEdit = parent.replies![1].id;
-      const otherReplyContents = [parent.replies![0].content, parent.replies![2].content];
-      const op = createEditCommentOp(replyToEdit, [createTextSegment('New')], 'parent');
+      const replyToEdit = parent.replies?.[1].id;
+      const otherReplyContents = [
+        parent.replies?.[0].content,
+        parent.replies?.[2].content,
+      ];
+      const op = createEditCommentOp(
+        replyToEdit,
+        [createTextSegment('New')],
+        'parent',
+      );
 
       const result = applyOperation([parent], op);
 
-      expect(result.comments[0].replies![0].content).toEqual(otherReplyContents[0]);
-      expect(result.comments[0].replies![2].content).toEqual(otherReplyContents[1]);
+      expect(result.comments[0].replies?.[0].content).toEqual(
+        otherReplyContents[0],
+      );
+      expect(result.comments[0].replies?.[2].content).toEqual(
+        otherReplyContents[1],
+      );
     });
   });
 
@@ -134,7 +153,11 @@ describe('applyEditComment', () => {
 
     it('returns status "failed_target_missing" when reply not found', () => {
       const parent = createCommentWithReplies(1, { id: 'parent' });
-      const op = createEditCommentOp('nonexistent-reply', [createTextSegment('New')], 'parent');
+      const op = createEditCommentOp(
+        'nonexistent-reply',
+        [createTextSegment('New')],
+        'parent',
+      );
 
       const result = applyOperation([parent], op);
 
@@ -154,7 +177,11 @@ describe('applyEditComment', () => {
 
     it('includes appropriate failure reason for reply', () => {
       const parent = createCommentWithReplies(1, { id: 'parent' });
-      const op = createEditCommentOp('nonexistent-reply', [createTextSegment('New')], 'parent');
+      const op = createEditCommentOp(
+        'nonexistent-reply',
+        [createTextSegment('New')],
+        'parent',
+      );
 
       const result = applyOperation([parent], op);
 
@@ -166,7 +193,11 @@ describe('applyEditComment', () => {
   describe('parent missing', () => {
     it('returns status "failed_parent_missing" when parent not found', () => {
       const comment = createBaseComment({ id: 'some-comment' });
-      const op = createEditCommentOp('some-reply', [createTextSegment('New')], 'nonexistent-parent');
+      const op = createEditCommentOp(
+        'some-reply',
+        [createTextSegment('New')],
+        'nonexistent-parent',
+      );
 
       const result = applyOperation([comment], op);
 
@@ -175,7 +206,11 @@ describe('applyEditComment', () => {
 
     it('includes failure reason about thread deletion', () => {
       const comment = createBaseComment({ id: 'some-comment' });
-      const op = createEditCommentOp('some-reply', [createTextSegment('New')], 'nonexistent-parent');
+      const op = createEditCommentOp(
+        'some-reply',
+        [createTextSegment('New')],
+        'nonexistent-parent',
+      );
 
       const result = applyOperation([comment], op);
 

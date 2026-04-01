@@ -23,7 +23,7 @@ function scoreClaude(id: string): number {
   if (mid.includes('3.5')) score += 1000;
   if (mid.includes('haiku')) score += 100; // fastest / cost‑effective
   if (mid.includes('sonnet')) score += 60; // higher quality
-  if (mid.includes('opus')) score += 20;   // heavyweight
+  if (mid.includes('opus')) score += 20; // heavyweight
   if (mid.endsWith('-latest')) score += 30;
   return score;
 }
@@ -36,7 +36,9 @@ function scoreClaude(id: string): number {
  * @param apiKey - Anthropic API key used to query the models endpoint.
  * @returns Sorted list of model ids (e.g. "claude-3.5-haiku-latest").
  */
-export async function listRelevantAnthropicModels(apiKey: string): Promise<string[]> {
+export async function listRelevantAnthropicModels(
+  apiKey: string,
+): Promise<string[]> {
   try {
     const res = await fetch('https://api.anthropic.com/v1/models', {
       headers: {
@@ -47,7 +49,9 @@ export async function listRelevantAnthropicModels(apiKey: string): Promise<strin
     if (!res.ok) throw new Error(String(res.status));
     const json = await res.json();
     const data: AnthropicModel[] = Array.isArray(json?.data) ? json.data : [];
-    const ids = data.map((m) => m.id).filter((id) => typeof id === 'string' && isRelevantClaude(id));
+    const ids = data
+      .map((m) => m.id)
+      .filter((id) => typeof id === 'string' && isRelevantClaude(id));
     const uniq = Array.from(new Set(ids));
     return uniq.sort((a, b) => {
       const s = scoreClaude(b) - scoreClaude(a);

@@ -1,5 +1,5 @@
-import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
 import type { ModelInfo } from '@hooks/useMentions';
+import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
 
 export type PermissionContext = RenderItemFormSidebarCtx;
 
@@ -17,7 +17,7 @@ function checkPermission(
   positivePermissions: Permission[],
   negativePermissions: Permission[],
   currentEnv: string,
-  extraMatcher?: (perm: Permission) => boolean
+  extraMatcher?: (perm: Permission) => boolean,
 ) {
   const matchesEnvironmentAndAction = (perm: Permission) =>
     perm.environment === currentEnv &&
@@ -38,7 +38,11 @@ export function hasUploadReadPermission(ctx: PermissionContext) {
   const positivePermissions = role.attributes.positive_upload_permissions || [];
   const negativePermissions = role.attributes.negative_upload_permissions || [];
 
-  return checkPermission(positivePermissions, negativePermissions, ctx.environment);
+  return checkPermission(
+    positivePermissions,
+    negativePermissions,
+    ctx.environment,
+  );
 }
 
 export function canEditSchema(ctx: PermissionContext) {
@@ -48,15 +52,25 @@ export function canEditSchema(ctx: PermissionContext) {
 /** item_type=null applies to all models. */
 function canReadModel(ctx: PermissionContext, modelId: string) {
   const role = ctx.currentRole;
-  const positivePermissions = role.attributes.positive_item_type_permissions || [];
-  const negativePermissions = role.attributes.negative_item_type_permissions || [];
+  const positivePermissions =
+    role.attributes.positive_item_type_permissions || [];
+  const negativePermissions =
+    role.attributes.negative_item_type_permissions || [];
 
   const matchesModel = (perm: Permission) =>
     perm.item_type === null || perm.item_type === modelId;
 
-  return checkPermission(positivePermissions, negativePermissions, ctx.environment, matchesModel);
+  return checkPermission(
+    positivePermissions,
+    negativePermissions,
+    ctx.environment,
+    matchesModel,
+  );
 }
 
-export function filterReadableModels(ctx: PermissionContext, models: ModelInfo[]) {
+export function filterReadableModels(
+  ctx: PermissionContext,
+  models: ModelInfo[],
+) {
   return models.filter((model) => canReadModel(ctx, model.id));
 }

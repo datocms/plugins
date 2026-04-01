@@ -1,5 +1,5 @@
-import type { RenderFieldExtensionCtx, Upload } from "datocms-plugin-sdk";
-import queryString from "qs";
+import type { RenderFieldExtensionCtx, Upload } from 'datocms-plugin-sdk';
+import queryString from 'qs';
 
 // imageishThing can be:
 // * upload JSON API
@@ -42,7 +42,7 @@ function getUrl({ imageishThing, ctx }: GetUrlParams) {
     };
   }
 
-  const path = payload.path.startsWith("/")
+  const path = payload.path.startsWith('/')
     ? payload.path.slice(1)
     : payload.path;
 

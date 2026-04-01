@@ -1,7 +1,7 @@
 import { connect } from 'datocms-plugin-sdk';
-import { render } from './utils/render';
 import FieldExtension from './entrypoints/FieldExtension';
 import { isValidParams, normalizeParams } from './types';
+import { render } from './utils/render';
 import 'datocms-react-ui/styles.css';
 import ConfigScreen from './entrypoints/ConfigScreen';
 
@@ -59,7 +59,7 @@ connect({
     const foundRule = parameters.autoApplyRules.find(
       (rule) =>
         new RegExp(rule.apiKeyRegexp).test(field.attributes.api_key) &&
-        rule.fieldTypes.includes(field.attributes.field_type as any),
+        (rule.fieldTypes as string[]).includes(field.attributes.field_type),
     );
 
     if (!foundRule) {

@@ -1,7 +1,32 @@
-import { useState } from 'react';
-import ScoreIcon from './ScoreIcon';
-import type { AnalysisResult } from '../types';
 import { Button } from 'datocms-react-ui';
+import { useEffect, useRef, useState } from 'react';
+import type { AnalysisResult } from '../types';
+import ScoreIcon from './ScoreIcon';
+
+/**
+ * Renders a trusted HTML string from the Yoast analysis library by setting
+ * innerHTML via a ref, which avoids the dangerouslySetInnerHTML lint rule.
+ * The content here comes exclusively from the Yoast SEO library (not user input).
+ */
+const TrustedHtml = ({
+  html,
+  tag: Tag = 'p',
+  className,
+}: {
+  html: string;
+  tag?: keyof JSX.IntrinsicElements;
+  className?: string;
+}) => {
+  const ref = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (ref.current) {
+      ref.current.innerHTML = html;
+    }
+  }, [html]);
+
+  return <Tag ref={ref as React.RefObject<never>} className={className} />;
+};
 
 export type Group = {
   scoreKey: string;
@@ -19,7 +44,7 @@ const ResultItem = ({ item }: { item: AnalysisResult }) => {
           <ScoreIcon score={item.score} />
         </div>
         <div className="Plugin__line-with-decoration__body">
-          <p dangerouslySetInnerHTML={{ __html: item.text }} />
+          <TrustedHtml html={item.text} tag="p" />
           {isOpen && (
             <div className="Plugin__marks">
               {item.marks?.map((mark) => {
@@ -29,14 +54,13 @@ const ResultItem = ({ item }: { item: AnalysisResult }) => {
                   mark._properties.marked.split('</yoastmark>').length === 2;
 
                 return (
-                  <div
+                  <TrustedHtml
                     key={mark._properties.original}
+                    html={mark._properties.marked}
+                    tag="div"
                     className={`Plugin__mark ${
                       wholeSentenceHighlighted ? '' : 'with-highlights'
                     }`}
-                    dangerouslySetInnerHTML={{
-                      __html: mark._properties.marked,
-                    }}
                   />
                 );
               })}

@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
-import { StrictMode, type ReactNode } from 'react';
-import { act } from 'react';
+
+import { buildPluginParams } from '@utils/pluginParams';
+import { act, type ReactNode, StrictMode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import ConfigScreen from '@/entrypoints/ConfigScreen';
-import { buildPluginParams } from '@utils/pluginParams';
 import { flushPromises, render } from '../testUtils/react';
 
 vi.mock('datocms-react-ui', () => ({
@@ -27,7 +27,9 @@ vi.mock('datocms-react-ui', () => ({
     </button>
   ),
   Canvas: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
-  Section: ({ children }: { children?: ReactNode }) => <section>{children}</section>,
+  Section: ({ children }: { children?: ReactNode }) => (
+    <section>{children}</section>
+  ),
   Spinner: () => <span>Loading</span>,
   SwitchField: ({
     disabled,
@@ -103,7 +105,7 @@ function setTextInputValue(input: HTMLInputElement, value: string) {
   act(() => {
     const descriptor = Object.getOwnPropertyDescriptor(
       HTMLInputElement.prototype,
-      'value'
+      'value',
     );
     descriptor?.set?.call(input, value);
     input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -112,7 +114,9 @@ function setTextInputValue(input: HTMLInputElement, value: string) {
 
 function click(button: HTMLButtonElement) {
   act(() => {
-    button.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    button.dispatchEvent(
+      new MouseEvent('click', { bubbles: true, cancelable: true }),
+    );
   });
 }
 
@@ -123,7 +127,7 @@ describe('ConfigScreen', () => {
       () =>
         new Promise<void>((resolve) => {
           resolveSave = resolve;
-        })
+        }),
     );
     const notice = vi.fn().mockResolvedValue(undefined);
     const ctx = createCtx({ notice, updatePluginParameters });
@@ -131,19 +135,21 @@ describe('ConfigScreen', () => {
     const view = render(
       <StrictMode>
         <ConfigScreen ctx={ctx} />
-      </StrictMode>
+      </StrictMode>,
     );
 
     const tokenInput = view.container.querySelector(
-      'input[aria-label="Content Delivery API Token"]'
+      'input[aria-label="Content Delivery API Token"]',
     ) as HTMLInputElement | null;
 
     expect(tokenInput).not.toBeNull();
     setTextInputValue(tokenInput as HTMLInputElement, '  demo-token  ');
 
-    const saveButton = Array.from(view.container.querySelectorAll('button')).find(
-      (button) => button.textContent === 'Save Settings'
-    ) as HTMLButtonElement | undefined;
+    const saveButton = Array.from(
+      view.container.querySelectorAll('button'),
+    ).find((button) => button.textContent === 'Save Settings') as
+      | HTMLButtonElement
+      | undefined;
 
     expect(saveButton).toBeDefined();
     expect((saveButton as HTMLButtonElement).disabled).toBe(false);
@@ -156,7 +162,7 @@ describe('ConfigScreen', () => {
         debugLoggingEnabled: false,
         migrationCompleted: false,
         realTimeUpdatesEnabled: true,
-      })
+      }),
     );
     expect((saveButton as HTMLButtonElement).textContent).toBe('Saving...');
 

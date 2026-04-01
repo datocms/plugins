@@ -1,4 +1,7 @@
-import { SLASH_COMMANDS, type SlashCommandDefinition } from '@ctypes/slashCommands';
+import {
+  SLASH_COMMANDS,
+  type SlashCommandDefinition,
+} from '@ctypes/slashCommands';
 
 export type ParsedSlashQuery = {
   commandPart: string;
@@ -15,7 +18,7 @@ export function parseSlashQuery(rawQuery: string): ParsedSlashQuery {
     // Still typing command (e.g., "us" from "/us")
     const commandPart = rawQuery.toLowerCase();
     const matchedCommands = SLASH_COMMANDS.filter((cmd) =>
-      cmd.name.startsWith(commandPart)
+      cmd.name.startsWith(commandPart),
     );
     const exactMatch =
       SLASH_COMMANDS.find((cmd) => cmd.name === commandPart) ?? null;

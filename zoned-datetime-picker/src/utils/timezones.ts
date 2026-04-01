@@ -23,11 +23,11 @@
  */
 export function getSupportedTimeZones(): readonly string[] {
   const anyIntl = Intl as typeof Intl & {
-    supportedValuesOf?: (key: "timeZone") => readonly string[];
+    supportedValuesOf?: (key: 'timeZone') => readonly string[];
   };
-  if (typeof anyIntl.supportedValuesOf === "function") {
+  if (typeof anyIntl.supportedValuesOf === 'function') {
     try {
-      return anyIntl.supportedValuesOf("timeZone");
+      return anyIntl.supportedValuesOf('timeZone');
     } catch {
       return [];
     }
@@ -47,7 +47,7 @@ export function getSupportedTimeZones(): readonly string[] {
  * ```
  */
 export function groupForTimeZone(tz: string): string {
-  if (tz === "UTC" || tz === "GMT" || tz.startsWith("Etc/")) return "Etc";
-  const first = tz.split("/")[0];
-  return first || "Other";
+  if (tz === 'UTC' || tz === 'GMT' || tz.startsWith('Etc/')) return 'Etc';
+  const first = tz.split('/')[0];
+  return first || 'Other';
 }

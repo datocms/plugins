@@ -24,7 +24,10 @@ export function buildRecordEditPath(modelId: string, recordId: string): string {
 /** 'user' -> /project_settings/users, 'sso' -> /project_settings/sso-users, 'owner' -> not navigable */
 export type NavigableUserType = 'user' | 'sso' | 'owner';
 
-export function openUsersPage(ctx: ContextWithSite, userType: NavigableUserType): void {
+export function openUsersPage(
+  ctx: ContextWithSite,
+  userType: NavigableUserType,
+): void {
   const baseUrl = getBaseUrl(ctx);
   if (!baseUrl) return;
 
@@ -38,7 +41,7 @@ export function openUsersPage(ctx: ContextWithSite, userType: NavigableUserType)
 export function openModelPage(
   ctx: ContextWithSite,
   modelId: string,
-  isBlockModel: boolean
+  isBlockModel: boolean,
 ): void {
   const baseUrl = getBaseUrl(ctx);
   if (!baseUrl) return;

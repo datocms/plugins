@@ -4,7 +4,7 @@
  * This file manages translations of structured text fields from DatoCMS.
  * It handles extracting text nodes, translating block nodes, and reassembling
  * the content after translation while preserving the original structure.
- * 
+ *
  * The module provides functionality to:
  * - Extract and track text values from structured text nodes
  * - Process block nodes separately to maintain rich formatting
@@ -12,17 +12,14 @@
  * - Handle streaming responses from the provider
  */
 
-import type { TranslationProvider, StreamCallbacks } from './types';
-import { translateArray } from './translateArray';
-import { handleTranslationError } from './ProviderErrors';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
-import { translateFieldValue } from './TranslateField';
 import { createLogger } from '../logging/Logger';
-import {
-  insertObjectAtIndex,
-  removeIds
-} from './utils';
 import type { SchemaRepository } from '../schemaRepository';
+import { handleTranslationError } from './ProviderErrors';
+import { translateFieldValue } from './TranslateField';
+import { translateArray } from './translateArray';
+import type { StreamCallbacks, TranslationProvider } from './types';
+import { insertObjectAtIndex, removeIds } from './utils';
 
 /**
  * Interface representing a structured text node from DatoCMS.
@@ -67,7 +64,8 @@ function isAPIResponseFormat(value: unknown): value is APIResponseFormat {
  * Figure/Punctuation/Thin/Hair spaces, Line/Paragraph separators,
  * Narrow NBSP, Mathematical space, and Ideographic space.
  */
-const UNICODE_WHITESPACE_REGEX = /^[\s\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000]+$/;
+const UNICODE_WHITESPACE_REGEX =
+  /^[\s\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000]+$/;
 
 /**
  * Checks if a string is whitespace-only (empty or containing any Unicode whitespace).
@@ -102,7 +100,7 @@ function cloneStructuredTextValue<T>(value: T): T {
       Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
         key,
         cloneStructuredTextValue(entry),
-      ])
+      ]),
     ) as T;
   }
 
@@ -119,11 +117,11 @@ function cloneStructuredTextValue<T>(value: T): T {
  */
 function collectVisibleTextLeaves(
   value: unknown,
-  path: PathSegment[] = []
+  path: PathSegment[] = [],
 ): StructuredTextTextLeaf[] {
   if (Array.isArray(value)) {
     return value.flatMap((entry, index) =>
-      collectVisibleTextLeaves(entry, [...path, index])
+      collectVisibleTextLeaves(entry, [...path, index]),
     );
   }
 
@@ -163,7 +161,7 @@ function collectVisibleTextLeaves(
 function setLeafValueAtPath(
   root: unknown,
   path: PathSegment[],
-  value: string
+  value: string,
 ): void {
   let current: unknown = root;
 
@@ -175,7 +173,8 @@ function setLeafValueAtPath(
   }
 
   if (current !== null && typeof current === 'object') {
-    (current as Record<string, unknown>)[path[path.length - 1] as string] = value;
+    (current as Record<string, unknown>)[path[path.length - 1] as string] =
+      value;
   }
 }
 
@@ -190,7 +189,7 @@ function setLeafValueAtPath(
 function rebuildStructuredTextLeaves<T>(
   originalValue: T,
   leaves: StructuredTextTextLeaf[],
-  translatedValues: string[]
+  translatedValues: string[],
 ): T {
   const clonedValue = cloneStructuredTextValue(originalValue);
 
@@ -205,25 +204,28 @@ function rebuildStructuredTextLeaves<T>(
 
 /**
  * Ensures the array lengths match, with fallback strategies if they don't
- * 
+ *
  * @param originalValues - Original array of text values.
  * @param translatedValues - Translated array that might need adjustment.
  * @returns Adjusted translated values array matching original length.
  */
-function ensureArrayLengthsMatch(originalValues: string[], translatedValues: string[]): string[] {
+function ensureArrayLengthsMatch(
+  originalValues: string[],
+  translatedValues: string[],
+): string[] {
   if (originalValues.length === translatedValues.length) {
     return translatedValues;
   }
-  
+
   // If too few elements, pad with the original values verbatim (including pure whitespace)
   // so that structural spaces between inline nodes are preserved.
   if (translatedValues.length < originalValues.length) {
     return [
       ...translatedValues,
-      ...originalValues.slice(translatedValues.length)
+      ...originalValues.slice(translatedValues.length),
     ];
   }
-  
+
   // If too many elements, truncate to match original length
   return translatedValues.slice(0, originalValues.length);
 }
@@ -239,7 +241,10 @@ function ensureArrayLengthsMatch(originalValues: string[], translatedValues: str
  * @param translatedValues - Translated strings returned by the provider.
  * @returns A new array with edge whitespace restored from the originals.
  */
-function preserveEdgeWhitespace(originalValues: string[], translatedValues: string[]): string[] {
+function preserveEdgeWhitespace(
+  originalValues: string[],
+  translatedValues: string[],
+): string[] {
   const out: string[] = new Array(translatedValues.length);
   for (let i = 0; i < translatedValues.length; i++) {
     const orig = String(originalValues[i] ?? '');
@@ -270,7 +275,10 @@ function preserveEdgeWhitespace(originalValues: string[], translatedValues: stri
  * @param translatedValues - Translated strings that may have a different count.
  * @returns A translated array aligned to the original positions.
  */
-function alignSegmentsPreservingWhitespace(originalValues: string[], translatedValues: string[]): string[] {
+function alignSegmentsPreservingWhitespace(
+  originalValues: string[],
+  translatedValues: string[],
+): string[] {
   const out: string[] = [];
   let j = 0;
   for (let i = 0; i < originalValues.length; i++) {
@@ -278,7 +286,8 @@ function alignSegmentsPreservingWhitespace(originalValues: string[], translatedV
     if (isWhitespaceOnly(orig)) {
       out.push(orig); // keep exact whitespace segment in place
     } else {
-      const tr = j < translatedValues.length ? String(translatedValues[j++]) : orig;
+      const tr =
+        j < translatedValues.length ? String(translatedValues[j++]) : orig;
       out.push(tr);
     }
   }
@@ -295,7 +304,10 @@ function alignSegmentsPreservingWhitespace(originalValues: string[], translatedV
  * @param processed - Translated strings after initial normalization.
  * @returns A defensively spaced translated array.
  */
-function enforceBoundarySpaces(originalValues: string[], processed: string[]): string[] {
+function enforceBoundarySpaces(
+  originalValues: string[],
+  processed: string[],
+): string[] {
   const out = processed.slice();
   for (let i = 0; i < originalValues.length - 1; i++) {
     const oL = String(originalValues[i] ?? '');
@@ -328,7 +340,10 @@ function enforceBoundarySpaces(originalValues: string[], processed: string[]): s
  * @param processed - Translated strings after boundary spacing.
  * @returns A translated array with punctuation boundaries respected.
  */
-function enforcePunctuationBoundarySpaces(originalValues: string[], processed: string[]): string[] {
+function enforcePunctuationBoundarySpaces(
+  originalValues: string[],
+  processed: string[],
+): string[] {
   const out = processed.slice();
   for (let i = 0; i < originalValues.length - 1; i++) {
     const oL = String(originalValues[i] ?? '');
@@ -372,11 +387,11 @@ export async function translateStructuredTextValue(
   environment: string,
   streamCallbacks?: StreamCallbacks,
   recordContext = '',
-  schemaRepository?: SchemaRepository
+  schemaRepository?: SchemaRepository,
 ): Promise<unknown> {
   // Create logger
   const logger = createLogger(pluginParams, 'StructuredTextTranslation');
-  
+
   let fieldValue: unknown = initialValue;
   let isAPIResponse = false;
 
@@ -387,12 +402,14 @@ export async function translateStructuredTextValue(
   }
 
   // Skip translation if null or not an array
-  if (!fieldValue || (!Array.isArray(fieldValue) || fieldValue.length === 0)) {
+  if (!fieldValue || !Array.isArray(fieldValue) || fieldValue.length === 0) {
     logger.info('Invalid structured text value', fieldValue);
     return fieldValue;
   }
 
-  logger.info('Translating structured text field', { nodeCount: fieldValue.length });
+  logger.info('Translating structured text field', {
+    nodeCount: fieldValue.length,
+  });
 
   // Remove any 'id' fields
   const noIdFieldValue = removeIds(fieldValue) as StructuredTextNode[];
@@ -405,18 +422,18 @@ export async function translateStructuredTextValue(
       }
       return acc;
     },
-    []
+    [],
   );
 
   // Filter out block nodes for inline translation first
   const fieldValueWithoutBlocks = noIdFieldValue.filter(
-    (node) => node?.type !== 'block'
+    (node) => node?.type !== 'block',
   );
 
   // Extract only visible text leaves from the structured text
   const textLeaves = collectVisibleTextLeaves(fieldValueWithoutBlocks);
   const textValues = textLeaves.map((leaf) => leaf.value);
-  
+
   if (textValues.length === 0) {
     logger.info('No text values found to translate');
     return fieldValue;
@@ -432,43 +449,58 @@ export async function translateStructuredTextValue(
       textValues,
       fromLocale,
       toLocale,
-      { isHTML: false, recordContext }
+      { isHTML: false, recordContext },
     );
 
     // Check for length mismatch and attempt recovery
     let processedTranslatedValues = translatedValues;
-    
+
     if (translatedValues.length !== textValues.length) {
       logger.warning(
         `Translation mismatch: got ${translatedValues.length} values, expected ${textValues.length}`,
-        { original: textValues, translated: translatedValues }
+        { original: textValues, translated: translatedValues },
       );
-      
+
       // First align segments so pure-whitespace originals stay in-place
-      processedTranslatedValues = alignSegmentsPreservingWhitespace(textValues, translatedValues);
+      processedTranslatedValues = alignSegmentsPreservingWhitespace(
+        textValues,
+        translatedValues,
+      );
       // If still off, pad/truncate conservatively
       if (processedTranslatedValues.length !== textValues.length) {
-        processedTranslatedValues = ensureArrayLengthsMatch(textValues, processedTranslatedValues);
+        processedTranslatedValues = ensureArrayLengthsMatch(
+          textValues,
+          processedTranslatedValues,
+        );
       }
-      
+
       logger.info('Adjusted translated values to match original length', {
-        adjustedLength: processedTranslatedValues.length
+        adjustedLength: processedTranslatedValues.length,
       });
     }
 
     // Re-apply original edge whitespace to avoid word concatenation across inline nodes
-    processedTranslatedValues = preserveEdgeWhitespace(textValues, processedTranslatedValues);
+    processedTranslatedValues = preserveEdgeWhitespace(
+      textValues,
+      processedTranslatedValues,
+    );
     // Finally, enforce required boundary spaces when the original had them
-    processedTranslatedValues = enforceBoundarySpaces(textValues, processedTranslatedValues);
+    processedTranslatedValues = enforceBoundarySpaces(
+      textValues,
+      processedTranslatedValues,
+    );
     // And if the original left ended with punctuation but translator dropped it,
     // still keep a separating space.
-    processedTranslatedValues = enforcePunctuationBoundarySpaces(textValues, processedTranslatedValues);
+    processedTranslatedValues = enforcePunctuationBoundarySpaces(
+      textValues,
+      processedTranslatedValues,
+    );
 
     // Reconstruct the inline text portion with the newly translated text
     const reconstructedObject = rebuildStructuredTextLeaves(
       fieldValueWithoutBlocks,
       textLeaves,
-      processedTranslatedValues
+      processedTranslatedValues,
     ) as StructuredTextNode[];
 
     // Insert block nodes back into their original positions
@@ -477,10 +509,10 @@ export async function translateStructuredTextValue(
     // If there are block nodes, translate them separately
     if (blockNodes.length > 0) {
       logger.info(`Translating ${blockNodes.length} block nodes`);
-      
+
       // Key change: Pass the entire blockNodes array to translateFieldValue
       // and use 'rich_text' as the field type instead of translating each block separately
-      const translatedBlockNodes = await translateFieldValue(
+      const translatedBlockNodes = (await translateFieldValue(
         blockNodes,
         pluginParams,
         toLocale,
@@ -496,8 +528,8 @@ export async function translateStructuredTextValue(
         schemaRepository,
         {
           bypassFieldTypeAllowlist: true,
-        }
-      ) as StructuredTextNode[];
+        },
+      )) as StructuredTextNode[];
 
       // Insert translated blocks back at their original positions
       for (const node of translatedBlockNodes) {
@@ -505,31 +537,36 @@ export async function translateStructuredTextValue(
           finalReconstructedObject = insertObjectAtIndex(
             finalReconstructedObject,
             node,
-            node.originalIndex
+            node.originalIndex,
           );
         }
       }
     }
 
     // Remove temporary 'originalIndex' keys
-    const cleanedReconstructedObject = (finalReconstructedObject as StructuredTextNode[]).map(
-      ({ originalIndex, ...rest }) => rest
-    );
+    const cleanedReconstructedObject = (
+      finalReconstructedObject as StructuredTextNode[]
+    ).map(({ originalIndex, ...rest }) => rest);
 
-    if(isAPIResponse) {
+    if (isAPIResponse) {
       return {
         document: {
           children: cleanedReconstructedObject,
-          type: "root"
+          type: 'root',
         },
-        schema: "dast"
-      }
+        schema: 'dast',
+      };
     }
 
     logger.info('Successfully translated structured text');
     return cleanedReconstructedObject;
   } catch (error) {
     // DRY-001: Use centralized error handler
-    handleTranslationError(error, provider.vendor, logger, 'Error during structured text translation');
+    handleTranslationError(
+      error,
+      provider.vendor,
+      logger,
+      'Error during structured text translation',
+    );
   }
 }

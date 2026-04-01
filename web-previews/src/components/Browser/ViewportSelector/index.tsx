@@ -13,9 +13,9 @@ import {
   useCtx,
 } from 'datocms-react-ui';
 import {
+  normalizeParameters,
   type Parameters,
   type Viewport,
-  normalizeParameters,
 } from '../../../types';
 import { ToolbarButton } from '../Toolbar/ToolbarButton';
 import styles from './styles.module.css';

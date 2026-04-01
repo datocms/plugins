@@ -1,4 +1,4 @@
-import { DateTime } from "luxon";
+import { DateTime } from 'luxon';
 
 /**
  * Date/time helpers built on Luxon to keep logic minimal and predictable.
@@ -23,14 +23,14 @@ import { DateTime } from "luxon";
 export function getZoneLongName(
   locale: string | undefined,
   timeZone: string,
-  at: Date
+  at: Date,
 ): string | null {
   try {
     const parts = new Intl.DateTimeFormat(locale, {
       timeZone,
-      timeZoneName: "longGeneric",
+      timeZoneName: 'longGeneric',
     }).formatToParts(at);
-    const namePart = parts.find((p) => p.type === "timeZoneName");
+    const namePart = parts.find((p) => p.type === 'timeZoneName');
     return namePart?.value ?? null;
   } catch {
     return null;
@@ -52,11 +52,11 @@ export function getZoneLongName(
 export function utcOffsetStringForZone(timeZone: string, at: Date): string {
   const dt = DateTime.fromJSDate(at, { zone: timeZone });
   const offsetMin = dt.offset; // minutes
-  const sign = offsetMin >= 0 ? "+" : "-";
+  const sign = offsetMin >= 0 ? '+' : '-';
   const abs = Math.abs(offsetMin);
   const hours = Math.floor(abs / 60);
   const minutes = abs % 60;
-  const mm = minutes ? `:${minutes.toString().padStart(2, "0")}` : "";
+  const mm = minutes ? `:${minutes.toString().padStart(2, '0')}` : '';
   return `UTC${sign}${hours}${mm}`;
 }
 
@@ -75,7 +75,7 @@ export type DatoZonedOutput = {
   date: string; // yyyy-LL-dd
   time_24hr: string; // HH:mm:ss
   time_12hr: string; // hh:mm:ss (no AM/PM)
-  ampm: "am" | "pm";
+  ampm: 'am' | 'pm';
   timestamp: string; // epoch seconds as string
 };
 
@@ -108,7 +108,7 @@ export function ensureSeconds(dt: string): string {
  * ```
  */
 export function parseIxdtf(input: string): ZonedValue {
-  const trimmed = (input ?? "").trim();
+  const trimmed = (input ?? '').trim();
   if (!trimmed) return { dateTime: null, timeZone: null };
   // Extract [Zone]
   const zoneMatch = trimmed.match(/\[([^\]]+)\]\s*$/);
@@ -118,7 +118,7 @@ export function parseIxdtf(input: string): ZonedValue {
     : trimmed;
   // Extract local date-time portion (strip any offset)
   const localMatch = withoutZone.match(
-    /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?)/
+    /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?)/,
   );
   const dateTime = localMatch ? ensureSeconds(localMatch[1]) : null;
   return { dateTime, timeZone };
@@ -138,38 +138,59 @@ export function parseIxdtf(input: string): ZonedValue {
  * // { dateTime: '2025-01-01T10:00:00', timeZone: 'Europe/Rome' }
  * ```
  */
-export function parseDatoValue(input: unknown): ZonedValue {
-  if (input && typeof input === "object") {
-    const anyVal = input as Record<string, unknown>;
-    // Prefer explicit fields over parsing IXDTF from JSON payload
-    const zone = typeof anyVal.zone === "string" ? anyVal.zone : null;
-    const dateTime =
-      typeof anyVal.dateTime === "string" ? anyVal.dateTime : null;
-    if (zone && dateTime) {
-      // Extract local wall time part from ISO8601 with offset
-      const m = dateTime.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?)/);
-      return { dateTime: m ? ensureSeconds(m[1]) : null, timeZone: zone };
-    }
-    // Fallback to separate date/time fields
-    const date = typeof anyVal.date === "string" ? anyVal.date : null;
-    const time24 =
-      typeof (anyVal as any).time_24hr === "string"
-        ? (anyVal as any).time_24hr
-        : null;
-    const time =
-      typeof (anyVal as any).time === "string" ? (anyVal as any).time : null; // legacy
-    if (zone && date && (time24 || time)) {
-      const t = time24 ?? time!;
-      return { dateTime: ensureSeconds(`${date}T${t}`), timeZone: zone };
-    }
-    // As a last resort, try parsing the embedded IXDTF
-    const fromZdt =
-      typeof anyVal.zonedDateTime === "string"
-        ? parseIxdtf(anyVal.zonedDateTime)
-        : null;
-    if (fromZdt) return fromZdt;
+function extractStringField(
+  record: Record<string, unknown>,
+  key: string,
+): string | null {
+  const value = record[key];
+  return typeof value === 'string' ? value : null;
+}
+
+function parseFromExplicitFields(
+  record: Record<string, unknown>,
+): ZonedValue | null {
+  const zone = extractStringField(record, 'zone');
+  const dateTime = extractStringField(record, 'dateTime');
+  if (!zone || !dateTime) {
+    return null;
   }
-  return { dateTime: null, timeZone: null };
+  const m = dateTime.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?)/);
+  return { dateTime: m ? ensureSeconds(m[1]) : null, timeZone: zone };
+}
+
+function parseFromSeparateDateTimeFields(
+  record: Record<string, unknown>,
+): ZonedValue | null {
+  const zone = extractStringField(record, 'zone');
+  const date = extractStringField(record, 'date');
+  const time24 = extractStringField(record, 'time_24hr');
+  const timeLegacy = extractStringField(record, 'time'); // legacy field name
+  const resolvedTime = time24 ?? timeLegacy;
+  if (!zone || !date || !resolvedTime) {
+    return null;
+  }
+  return { dateTime: ensureSeconds(`${date}T${resolvedTime}`), timeZone: zone };
+}
+
+function parseFromEmbeddedIxdtf(
+  record: Record<string, unknown>,
+): ZonedValue | null {
+  const ixdtf = extractStringField(record, 'zonedDateTime');
+  return ixdtf ? parseIxdtf(ixdtf) : null;
+}
+
+export function parseDatoValue(input: unknown): ZonedValue {
+  if (!input || typeof input !== 'object') {
+    return { dateTime: null, timeZone: null };
+  }
+
+  const record = input as Record<string, unknown>;
+
+  return (
+    parseFromExplicitFields(record) ??
+    parseFromSeparateDateTimeFields(record) ??
+    parseFromEmbeddedIxdtf(record) ?? { dateTime: null, timeZone: null }
+  );
 }
 
 /**
@@ -199,7 +220,9 @@ export function parseDatoValue(input: unknown): ZonedValue {
  * // }
  * ```
  */
-export function buildDatoOutput(value: ZonedValue): DatoZonedOutput | Record<string, never> {
+export function buildDatoOutput(
+  value: ZonedValue,
+): DatoZonedOutput | Record<string, never> {
   const { dateTime, timeZone } = value;
   if (!dateTime || !timeZone) return {};
   const dt = DateTime.fromISO(dateTime, { zone: timeZone });
@@ -212,11 +235,11 @@ export function buildDatoOutput(value: ZonedValue): DatoZonedOutput | Record<str
   });
   // IXDTF with zone id appended
   const ixdtf = `${isoWithOffset}[${timeZone}]`;
-  const offset = dt.toFormat("ZZ");
-  const date = dt.toFormat("yyyy-LL-dd");
-  const time_24hr = dt.toFormat("HH:mm:ss");
-  const time_12hr = dt.toFormat("hh:mm:ss");
-  const ampm = dt.hour >= 12 ? "pm" : "am";
+  const offset = dt.toFormat('ZZ');
+  const date = dt.toFormat('yyyy-LL-dd');
+  const time_24hr = dt.toFormat('HH:mm:ss');
+  const time_12hr = dt.toFormat('hh:mm:ss');
+  const ampm = dt.hour >= 12 ? 'pm' : 'am';
   const timestamp = String(dt.toUnixInteger());
 
   return {

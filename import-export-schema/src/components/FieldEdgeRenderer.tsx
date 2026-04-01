@@ -24,7 +24,7 @@ export function FieldEdgeRenderer({
   markerEnd,
   data,
 }: EdgeProps<FieldEdge>) {
-  const fields = data!.fields;
+  const fields = data?.fields;
 
   const [edgePath, labelX, labelY] =
     source === target

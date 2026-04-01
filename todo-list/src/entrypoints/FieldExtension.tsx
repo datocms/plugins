@@ -1,9 +1,10 @@
-import { Canvas, Button, TextInput, SwitchField } from 'datocms-react-ui';
 import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
+import { Button, Canvas, SwitchField, TextInput } from 'datocms-react-ui';
 import { useEffect, useMemo, useState } from 'react';
 import s from './styles.module.css';
 
 type Todo = {
+  id: string;
   todo: string;
   completedAt: string | null;
 };
@@ -26,10 +27,22 @@ const emptyTodos: TodosValue = {
   incomplete: [],
 };
 
+function ensureTodoHasId(todo: Omit<Todo, 'id'> & { id?: string }): Todo {
+  return {
+    id: todo.id ?? crypto.randomUUID(),
+    todo: todo.todo,
+    completedAt: todo.completedAt,
+  };
+}
+
 function readValue(raw: unknown, initialTodos?: string): TodosValue {
   if (typeof raw === 'string' && raw.trim().length > 0) {
     try {
-      return JSON.parse(raw) as TodosValue;
+      const parsed = JSON.parse(raw) as TodosValue;
+      return {
+        complete: parsed.complete.map(ensureTodoHasId),
+        incomplete: parsed.incomplete.map(ensureTodoHasId),
+      };
     } catch {
       return emptyTodos;
     }
@@ -42,7 +55,7 @@ function readValue(raw: unknown, initialTodos?: string): TodosValue {
         .split(/\n/g)
         .map((todo) => todo.trim())
         .filter(Boolean)
-        .map((todo) => ({ todo, completedAt: null })),
+        .map((todo) => ({ id: crypto.randomUUID(), todo, completedAt: null })),
     };
   }
 
@@ -56,7 +69,10 @@ function stringify(value: TodosValue): string {
 export default function FieldExtension({ ctx }: Props) {
   const params = ctx.plugin.attributes.parameters as PluginParameters;
   const rawValue = ctx.formValues[ctx.field.attributes.api_key];
-  const initial = useMemo(() => readValue(rawValue, params.initialTodos), [rawValue, params.initialTodos]);
+  const initial = useMemo(
+    () => readValue(rawValue, params.initialTodos),
+    [rawValue, params.initialTodos],
+  );
   const [todos, setTodos] = useState<TodosValue>(initial);
   const [newTodo, setNewTodo] = useState('');
   const [showComplete, setShowComplete] = useState(false);
@@ -75,12 +91,19 @@ export default function FieldExtension({ ctx }: Props) {
     if (!text) return;
     await persist({
       ...todos,
-      incomplete: [...todos.incomplete, { todo: text, completedAt: null }],
+      incomplete: [
+        ...todos.incomplete,
+        { id: crypto.randomUUID(), todo: text, completedAt: null },
+      ],
     });
     setNewTodo('');
   };
 
-  const updateTodo = async (index: number, value: string, complete: boolean) => {
+  const updateTodo = async (
+    index: number,
+    value: string,
+    complete: boolean,
+  ) => {
     const key = complete ? 'complete' : 'incomplete';
     const list = [...todos[key]];
     list[index] = { ...list[index], todo: value };
@@ -99,7 +122,10 @@ export default function FieldExtension({ ctx }: Props) {
 
     const target = todos.incomplete[index];
     await persist({
-      complete: [...todos.complete, { ...target, completedAt: new Date().toISOString() }],
+      complete: [
+        ...todos.complete,
+        { ...target, completedAt: new Date().toISOString() },
+      ],
       incomplete: todos.incomplete.filter((_, i) => i !== index),
     });
   };
@@ -112,7 +138,11 @@ export default function FieldExtension({ ctx }: Props) {
     });
   };
 
-  const moveTodo = async (index: number, direction: -1 | 1, complete: boolean) => {
+  const moveTodo = async (
+    index: number,
+    direction: -1 | 1,
+    complete: boolean,
+  ) => {
     const key = complete ? 'complete' : 'incomplete';
     const list = [...todos[key]];
     const to = index + direction;
@@ -138,17 +168,38 @@ export default function FieldExtension({ ctx }: Props) {
 
         <div className={s.list}>
           {todos.incomplete.map((todo, index) => (
-            <div className={s.item} key={`incomplete-${index}`}>
+            <div className={s.item} key={todo.id}>
               <TextInput
                 value={todo.todo}
                 onChange={(value) => {
                   void updateTodo(index, value, false);
                 }}
               />
-              <Button buttonSize="xxs" onClick={() => void moveTodo(index, -1, false)}>↑</Button>
-              <Button buttonSize="xxs" onClick={() => void moveTodo(index, 1, false)}>↓</Button>
-              <Button buttonSize="xxs" onClick={() => void toggleComplete(index, false)}>Done</Button>
-              <Button buttonSize="xxs" buttonType="negative" onClick={() => void removeTodo(index, false)}>Delete</Button>
+              <Button
+                buttonSize="xxs"
+                onClick={() => void moveTodo(index, -1, false)}
+              >
+                ↑
+              </Button>
+              <Button
+                buttonSize="xxs"
+                onClick={() => void moveTodo(index, 1, false)}
+              >
+                ↓
+              </Button>
+              <Button
+                buttonSize="xxs"
+                onClick={() => void toggleComplete(index, false)}
+              >
+                Done
+              </Button>
+              <Button
+                buttonSize="xxs"
+                buttonType="negative"
+                onClick={() => void removeTodo(index, false)}
+              >
+                Delete
+              </Button>
             </div>
           ))}
         </div>
@@ -166,17 +217,38 @@ export default function FieldExtension({ ctx }: Props) {
             {showComplete && (
               <div className={s.list}>
                 {todos.complete.map((todo, index) => (
-                  <div className={s.item} key={`complete-${index}`}>
+                  <div className={s.item} key={todo.id}>
                     <TextInput
                       value={todo.todo}
                       onChange={(value) => {
                         void updateTodo(index, value, true);
                       }}
                     />
-                    <Button buttonSize="xxs" onClick={() => void moveTodo(index, -1, true)}>↑</Button>
-                    <Button buttonSize="xxs" onClick={() => void moveTodo(index, 1, true)}>↓</Button>
-                    <Button buttonSize="xxs" onClick={() => void toggleComplete(index, true)}>Undo</Button>
-                    <Button buttonSize="xxs" buttonType="negative" onClick={() => void removeTodo(index, true)}>Delete</Button>
+                    <Button
+                      buttonSize="xxs"
+                      onClick={() => void moveTodo(index, -1, true)}
+                    >
+                      ↑
+                    </Button>
+                    <Button
+                      buttonSize="xxs"
+                      onClick={() => void moveTodo(index, 1, true)}
+                    >
+                      ↓
+                    </Button>
+                    <Button
+                      buttonSize="xxs"
+                      onClick={() => void toggleComplete(index, true)}
+                    >
+                      Undo
+                    </Button>
+                    <Button
+                      buttonSize="xxs"
+                      buttonType="negative"
+                      onClick={() => void removeTodo(index, true)}
+                    >
+                      Delete
+                    </Button>
                   </div>
                 ))}
               </div>

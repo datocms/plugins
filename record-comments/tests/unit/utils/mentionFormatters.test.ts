@@ -1,5 +1,8 @@
-import { describe, it, expect } from 'vitest';
-import { getTruncatedFilename, formatFieldType } from '@utils/mentionFormatters';
+import {
+  formatFieldType,
+  getTruncatedFilename,
+} from '@utils/mentionFormatters';
+import { describe, expect, it } from 'vitest';
 
 describe('getTruncatedFilename', () => {
   // UI.MENTION_CHIP_MAX_NAME_LENGTH is 8

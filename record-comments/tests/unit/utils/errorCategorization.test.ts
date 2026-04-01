@@ -1,9 +1,9 @@
-import { describe, it, expect } from 'vitest';
 import {
-  categorizeSubscriptionError,
   categorizeGeneralError,
+  categorizeSubscriptionError,
   normalizeError,
 } from '@utils/errorCategorization';
+import { describe, expect, it } from 'vitest';
 
 describe('categorizeSubscriptionError', () => {
   describe('token_expired', () => {

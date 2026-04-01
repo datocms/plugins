@@ -59,11 +59,11 @@ const isData = (data: unknown, columns: string[]): data is Data => {
 };
 
 export const isValue = (data: unknown): data is Value => {
-  return (
-    isObject(data) &&
-    'columns' in data &&
-    isColumns((data as any).columns) &&
-    'data' in data &&
-    isData((data as any).data, (data as any).columns as string[])
-  );
+  if (!isObject(data)) {
+    return false;
+  }
+  // isObject narrows data to Record<string, unknown>, so property access is safe
+  const columns = data.columns;
+  const rows = data.data;
+  return isColumns(columns) && isData(rows, columns);
 };

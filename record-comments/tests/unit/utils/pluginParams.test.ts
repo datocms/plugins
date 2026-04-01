@@ -1,11 +1,11 @@
-import { describe, expect, it } from 'vitest';
 import {
   buildPluginParams,
   getCommentsModelIdForEnvironment,
-  parsePluginParams,
   PLUGIN_PARAMS_DEFAULTS,
+  parsePluginParams,
   setCommentsModelIdForEnvironment,
 } from '@utils/pluginParams';
+import { describe, expect, it } from 'vitest';
 
 describe('plugin parameter helpers', () => {
   describe('parsePluginParams', () => {
@@ -25,7 +25,7 @@ describe('plugin parameter helpers', () => {
           debugLoggingEnabled: true,
           migrationCompleted: true,
           realTimeUpdatesEnabled: false,
-        })
+        }),
       ).toEqual({
         cdaToken: 'token-123',
         commentsModelIdsByEnvironment: {
@@ -60,7 +60,7 @@ describe('plugin parameter helpers', () => {
           debugLoggingEnabled: true,
           migrationCompleted: true,
           realTimeUpdatesEnabled: true,
-        })
+        }),
       ).toEqual({
         cdaToken: '',
         commentsModelIdsByEnvironment: {
@@ -82,8 +82,8 @@ describe('plugin parameter helpers', () => {
               primary: 'model-1',
             },
           }),
-          'primary'
-        )
+          'primary',
+        ),
       ).toBe('model-1');
     });
 
@@ -96,15 +96,15 @@ describe('plugin parameter helpers', () => {
             },
           }),
           'sandbox',
-          'model-2'
-        )
+          'model-2',
+        ),
       ).toEqual(
         buildPluginParams({
           commentsModelIdsByEnvironment: {
             primary: 'model-1',
             sandbox: 'model-2',
           },
-        })
+        }),
       );
     });
   });

@@ -1,7 +1,7 @@
-import type { MutableRefObject, ReactNode, Ref } from 'react';
 import type { BlockInfo } from '@ctypes/mentions';
-import { cn } from '@/utils/cn';
 import styles from '@styles/comment.module.css';
+import type { MutableRefObject, ReactNode, Ref } from 'react';
+import { cn } from '@/utils/cn';
 
 type BlockPickerViewProps = {
   blocks: BlockInfo[];
@@ -33,13 +33,21 @@ export function BlockPickerView({
   }
 
   return (
-    <div className={styles.mentionList} role="listbox" aria-label="Select block">
+    <div
+      className={styles.mentionList}
+      role="listbox"
+      aria-label="Select block"
+    >
       <button
         ref={selectedIndex === 0 ? selectedRef : null}
         type="button"
         role="option"
         aria-selected={selectedIndex === 0}
-        className={cn(styles.mentionOption, styles.mentionOptionEntireField, selectedIndex === 0 && styles.mentionOptionSelected)}
+        className={cn(
+          styles.mentionOption,
+          styles.mentionOptionEntireField,
+          selectedIndex === 0 && styles.mentionOptionSelected,
+        )}
         onMouseDown={(e) => {
           e.preventDefault();
           justClickedInsideRef.current = true;
@@ -67,7 +75,10 @@ export function BlockPickerView({
               type="button"
               role="option"
               aria-selected={itemIndex === selectedIndex}
-              className={cn(styles.mentionOption, itemIndex === selectedIndex && styles.mentionOptionSelected)}
+              className={cn(
+                styles.mentionOption,
+                itemIndex === selectedIndex && styles.mentionOptionSelected,
+              )}
               onMouseDown={(e) => {
                 e.preventDefault();
                 justClickedInsideRef.current = true;
@@ -79,7 +90,9 @@ export function BlockPickerView({
                 {block.modelName} #{block.index + 1}
               </span>
               <span className={styles.mentionFieldMeta}>
-                <span className={styles.mentionBlockBadge}>{block.modelName}</span>
+                <span className={styles.mentionBlockBadge}>
+                  {block.modelName}
+                </span>
               </span>
             </button>
           );

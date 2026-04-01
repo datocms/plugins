@@ -15,7 +15,7 @@ export default async function downloadAllRecords(
   apiToken: string,
   format: AvailableFormats,
   options: Options,
-  onProgress?: (progress: number, msg: string) => void
+  onProgress?: (progress: number, msg: string) => void,
 ) {
   const client = buildClient({
     apiToken,
@@ -46,7 +46,7 @@ export default async function downloadAllRecords(
           Accept: 'application/json',
           'X-Api-Version': '3',
         },
-      }
+      },
     );
 
     const responseData = await response.json();
@@ -69,7 +69,7 @@ export default async function downloadAllRecords(
       onProgress?.(percentage, `Fetched ${count} entities...`);
     }
   }
-  
+
   onProgress?.(100, 'Preparing file for download...');
 
   if (format === 'JSON') {

@@ -1,5 +1,5 @@
-import { useCallback, type RefObject } from 'react';
 import type { TipTapComposerRef } from '@components/tiptap/TipTapComposer';
+import { type RefObject, useCallback } from 'react';
 
 type UseToolbarHandlersParams = {
   composerRef: RefObject<TipTapComposerRef | null>;

@@ -4,7 +4,7 @@
  * Groups related state to reduce re-renders in the parent component.
  */
 
-import { useState, useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import type { ctxParamsType } from '../ConfigScreen';
 
 export type VendorType = 'openai' | 'google' | 'anthropic' | 'deepl';
@@ -53,26 +53,101 @@ export interface VendorConfigActions {
 }
 
 /**
+ * Resolves default values for DeepL-specific configuration fields.
+ *
+ * @param pluginParams - Plugin configuration parameters from DatoCMS.
+ * @returns Partial state containing only DeepL-related defaults.
+ */
+function resolveDeepLDefaults(pluginParams: ctxParamsType): {
+  deeplApiKey: string;
+  deeplUseFree: boolean;
+  deeplFormality: 'default' | 'more' | 'less';
+  deeplPreserveFormatting: boolean;
+  deeplIgnoreTags: string;
+  deeplNonSplittingTags: string;
+  deeplSplittingTags: string;
+  deeplGlossaryId: string;
+  deeplGlossaryPairs: string;
+} {
+  return {
+    deeplApiKey: pluginParams.deeplApiKey ?? '',
+    deeplUseFree: pluginParams.deeplUseFree ?? false,
+    deeplFormality: pluginParams.deeplFormality ?? 'default',
+    deeplPreserveFormatting: pluginParams.deeplPreserveFormatting ?? true,
+    deeplIgnoreTags: pluginParams.deeplIgnoreTags ?? 'notranslate,ph',
+    deeplNonSplittingTags:
+      pluginParams.deeplNonSplittingTags ??
+      'a,code,pre,strong,em,ph,notranslate',
+    deeplSplittingTags: pluginParams.deeplSplittingTags ?? '',
+    deeplGlossaryId: pluginParams.deeplGlossaryId ?? '',
+    deeplGlossaryPairs: pluginParams.deeplGlossaryPairs ?? '',
+  };
+}
+
+/**
+ * Resolves the initial state for the vendor config hook by applying default values
+ * to each field from pluginParams. Extracting this into its own function keeps all
+ * null-coalescing operators out of the hook body and reduces its cognitive complexity.
+ *
+ * @param pluginParams - Plugin configuration parameters from DatoCMS.
+ * @returns A fully-defaulted VendorConfigState object ready to seed useState calls.
+ */
+function resolveInitialVendorState(
+  pluginParams: ctxParamsType,
+): VendorConfigState {
+  return {
+    vendor: pluginParams.vendor ?? 'openai',
+    apiKey: pluginParams.apiKey ?? '',
+    gptModel: pluginParams.gptModel ?? 'None',
+    googleApiKey: pluginParams.googleApiKey ?? '',
+    geminiModel: pluginParams.geminiModel ?? 'gemini-2.5-flash',
+    anthropicApiKey: pluginParams.anthropicApiKey ?? '',
+    anthropicModel: pluginParams.anthropicModel ?? 'claude-haiku-4-5-latest',
+    ...resolveDeepLDefaults(pluginParams),
+  };
+}
+
+/**
  * Custom hook for managing vendor configuration state.
  * Consolidates all vendor-related state into a single hook to reduce parent re-renders.
  */
-export function useVendorConfig(pluginParams: ctxParamsType): [VendorConfigState, VendorConfigActions] {
-  const [vendor, setVendor] = useState<VendorType>(pluginParams.vendor ?? 'openai');
-  const [apiKey, setApiKey] = useState(pluginParams.apiKey ?? '');
-  const [gptModel, setGptModel] = useState(pluginParams.gptModel ?? 'None');
-  const [googleApiKey, setGoogleApiKey] = useState(pluginParams.googleApiKey ?? '');
-  const [geminiModel, setGeminiModel] = useState(pluginParams.geminiModel ?? 'gemini-2.5-flash');
-  const [anthropicApiKey, setAnthropicApiKey] = useState(pluginParams.anthropicApiKey ?? '');
-  const [anthropicModel, setAnthropicModel] = useState(pluginParams.anthropicModel ?? 'claude-haiku-4-5-latest');
-  const [deeplApiKey, setDeeplApiKey] = useState(pluginParams.deeplApiKey ?? '');
-  const [deeplUseFree, setDeeplUseFree] = useState(pluginParams.deeplUseFree ?? false);
-  const [deeplFormality, setDeeplFormality] = useState<'default' | 'more' | 'less'>(pluginParams.deeplFormality ?? 'default');
-  const [deeplPreserveFormatting, setDeeplPreserveFormatting] = useState(pluginParams.deeplPreserveFormatting ?? true);
-  const [deeplIgnoreTags, setDeeplIgnoreTags] = useState(pluginParams.deeplIgnoreTags ?? 'notranslate,ph');
-  const [deeplNonSplittingTags, setDeeplNonSplittingTags] = useState(pluginParams.deeplNonSplittingTags ?? 'a,code,pre,strong,em,ph,notranslate');
-  const [deeplSplittingTags, setDeeplSplittingTags] = useState(pluginParams.deeplSplittingTags ?? '');
-  const [deeplGlossaryId, setDeeplGlossaryId] = useState(pluginParams.deeplGlossaryId ?? '');
-  const [deeplGlossaryPairs, setDeeplGlossaryPairs] = useState(pluginParams.deeplGlossaryPairs ?? '');
+export function useVendorConfig(
+  pluginParams: ctxParamsType,
+): [VendorConfigState, VendorConfigActions] {
+  const initial = resolveInitialVendorState(pluginParams);
+
+  const [vendor, setVendor] = useState<VendorType>(initial.vendor);
+  const [apiKey, setApiKey] = useState(initial.apiKey);
+  const [gptModel, setGptModel] = useState(initial.gptModel);
+  const [googleApiKey, setGoogleApiKey] = useState(initial.googleApiKey);
+  const [geminiModel, setGeminiModel] = useState(initial.geminiModel);
+  const [anthropicApiKey, setAnthropicApiKey] = useState(
+    initial.anthropicApiKey,
+  );
+  const [anthropicModel, setAnthropicModel] = useState(initial.anthropicModel);
+  const [deeplApiKey, setDeeplApiKey] = useState(initial.deeplApiKey);
+  const [deeplUseFree, setDeeplUseFree] = useState(initial.deeplUseFree);
+  const [deeplFormality, setDeeplFormality] = useState<
+    'default' | 'more' | 'less'
+  >(initial.deeplFormality);
+  const [deeplPreserveFormatting, setDeeplPreserveFormatting] = useState(
+    initial.deeplPreserveFormatting,
+  );
+  const [deeplIgnoreTags, setDeeplIgnoreTags] = useState(
+    initial.deeplIgnoreTags,
+  );
+  const [deeplNonSplittingTags, setDeeplNonSplittingTags] = useState(
+    initial.deeplNonSplittingTags,
+  );
+  const [deeplSplittingTags, setDeeplSplittingTags] = useState(
+    initial.deeplSplittingTags,
+  );
+  const [deeplGlossaryId, setDeeplGlossaryId] = useState(
+    initial.deeplGlossaryId,
+  );
+  const [deeplGlossaryPairs, setDeeplGlossaryPairs] = useState(
+    initial.deeplGlossaryPairs,
+  );
 
   const state: VendorConfigState = {
     vendor,
@@ -103,13 +178,28 @@ export function useVendorConfig(pluginParams: ctxParamsType): [VendorConfigState
     setAnthropicModel: useCallback((m: string) => setAnthropicModel(m), []),
     setDeeplApiKey: useCallback((k: string) => setDeeplApiKey(k), []),
     setDeeplUseFree: useCallback((v: boolean) => setDeeplUseFree(v), []),
-    setDeeplFormality: useCallback((v: 'default' | 'more' | 'less') => setDeeplFormality(v), []),
-    setDeeplPreserveFormatting: useCallback((v: boolean) => setDeeplPreserveFormatting(v), []),
+    setDeeplFormality: useCallback(
+      (v: 'default' | 'more' | 'less') => setDeeplFormality(v),
+      [],
+    ),
+    setDeeplPreserveFormatting: useCallback(
+      (v: boolean) => setDeeplPreserveFormatting(v),
+      [],
+    ),
     setDeeplIgnoreTags: useCallback((v: string) => setDeeplIgnoreTags(v), []),
-    setDeeplNonSplittingTags: useCallback((v: string) => setDeeplNonSplittingTags(v), []),
-    setDeeplSplittingTags: useCallback((v: string) => setDeeplSplittingTags(v), []),
+    setDeeplNonSplittingTags: useCallback(
+      (v: string) => setDeeplNonSplittingTags(v),
+      [],
+    ),
+    setDeeplSplittingTags: useCallback(
+      (v: string) => setDeeplSplittingTags(v),
+      [],
+    ),
     setDeeplGlossaryId: useCallback((v: string) => setDeeplGlossaryId(v), []),
-    setDeeplGlossaryPairs: useCallback((v: string) => setDeeplGlossaryPairs(v), []),
+    setDeeplGlossaryPairs: useCallback(
+      (v: string) => setDeeplGlossaryPairs(v),
+      [],
+    ),
   };
 
   return [state, actions];
@@ -118,7 +208,9 @@ export function useVendorConfig(pluginParams: ctxParamsType): [VendorConfigState
 /**
  * Extracts vendor config params for saving.
  */
-export function getVendorConfigParams(state: VendorConfigState): Partial<ctxParamsType> {
+export function getVendorConfigParams(
+  state: VendorConfigState,
+): Partial<ctxParamsType> {
   return {
     vendor: state.vendor,
     apiKey: state.apiKey,

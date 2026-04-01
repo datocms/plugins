@@ -14,7 +14,11 @@ type UploadResult = {
 export function createAssetMention(upload: UploadResult): AssetMention {
   const mimeType = upload.attributes.mime_type ?? 'application/octet-stream';
   const url = upload.attributes.url ?? '';
-  const thumbnailUrl = getThumbnailUrl(mimeType, url, upload.attributes.mux_playback_id);
+  const thumbnailUrl = getThumbnailUrl(
+    mimeType,
+    url,
+    upload.attributes.mux_playback_id,
+  );
 
   return {
     type: 'asset',

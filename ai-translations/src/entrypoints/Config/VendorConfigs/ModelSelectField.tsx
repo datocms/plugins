@@ -4,8 +4,8 @@
  * Extracts the common pattern used across OpenAI, Gemini, and Anthropic configs.
  */
 
-import { useMemo } from 'react';
 import { SelectField, SelectInput } from 'datocms-react-ui';
+import { useMemo } from 'react';
 import s from '../../styles.module.css';
 
 export interface ModelSelectFieldProps {
@@ -38,7 +38,7 @@ export default function ModelSelectField({
   // PERF-004: Memoize options to prevent recreation on every render
   const options = useMemo(
     () => models.map((m) => ({ label: m, value: m })),
-    [models]
+    [models],
   );
 
   const selectValue = { label: value, value };
@@ -52,7 +52,9 @@ export default function ModelSelectField({
   if (useStyledWrapper) {
     return (
       <div className={s.dropdownLabel}>
-        <span className={s.label} id={`${id}Label`}>{label}*</span>
+        <span className={s.label} id={`${id}Label`}>
+          {label}*
+        </span>
         <div className={s.modelSelect}>
           <SelectInput
             id={id}

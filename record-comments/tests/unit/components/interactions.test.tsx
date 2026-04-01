@@ -1,29 +1,34 @@
 // @vitest-environment jsdom
-import { createRef } from 'react';
-import TimeAgo from 'javascript-time-ago';
-import en from 'javascript-time-ago/locale/en.json';
-import { describe, expect, it, vi } from 'vitest';
-import UserMentionDropdown from '@components/UserMentionDropdown';
-import ModelMentionDropdown from '@components/ModelMentionDropdown';
+
+import Comment from '@components/Comment';
+import CommentActions from '@components/CommentActions';
+import { BlockPickerView } from '@components/field-dropdown/BlockPickerView';
 import { FieldListView } from '@components/field-dropdown/FieldListView';
 import { LocalePickerView } from '@components/field-dropdown/LocalePickerView';
 import { NestedFieldsView } from '@components/field-dropdown/NestedFieldsView';
-import { BlockPickerView } from '@components/field-dropdown/BlockPickerView';
-import CommentActions from '@components/CommentActions';
-import Comment from '@components/Comment';
+import ModelMentionDropdown from '@components/ModelMentionDropdown';
+import UserMentionDropdown from '@components/UserMentionDropdown';
+import TimeAgo from 'javascript-time-ago';
+import en from 'javascript-time-ago/locale/en.json';
+import { createRef } from 'react';
+import { describe, expect, it, vi } from 'vitest';
 import { SidebarNavigationProvider } from '@/entrypoints/contexts/NavigationCallbacksContext';
 import { ProjectDataProvider } from '@/entrypoints/contexts/ProjectDataContext';
-import { render } from '../testUtils/react';
 import {
   createResolvedAuthor,
   createResolvedCommentWithReplies,
 } from '../fixtures/comments';
+import { render } from '../testUtils/react';
 
 TimeAgo.addDefaultLocale(en);
 
 function clickSequence(button: HTMLButtonElement) {
-  button.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-  button.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+  button.dispatchEvent(
+    new MouseEvent('mousedown', { bubbles: true, cancelable: true }),
+  );
+  button.dispatchEvent(
+    new MouseEvent('click', { bubbles: true, cancelable: true }),
+  );
 }
 
 function createSidebarCtx() {
@@ -52,27 +57,45 @@ describe('dropdown interactions', () => {
 
     const userRender = render(
       <UserMentionDropdown
-        users={[{ id: 'user-1', name: 'John Doe', email: 'john@example.com', avatarUrl: null }]}
+        users={[
+          {
+            id: 'user-1',
+            name: 'John Doe',
+            email: 'john@example.com',
+            avatarUrl: null,
+          },
+        ]}
         query=""
         selectedIndex={0}
         onSelect={onUserSelect}
         onClose={vi.fn()}
-      />
+      />,
     );
-    clickSequence(userRender.container.querySelector('button') as HTMLButtonElement);
+    clickSequence(
+      userRender.container.querySelector('button') as HTMLButtonElement,
+    );
     expect(onUserSelect).toHaveBeenCalledTimes(1);
     userRender.unmount();
 
     const modelRender = render(
       <ModelMentionDropdown
-        models={[{ id: 'model-1', apiKey: 'article', name: 'Article', isBlockModel: false }]}
+        models={[
+          {
+            id: 'model-1',
+            apiKey: 'article',
+            name: 'Article',
+            isBlockModel: false,
+          },
+        ]}
         query=""
         selectedIndex={0}
         onSelect={onModelSelect}
         onClose={vi.fn()}
-      />
+      />,
     );
-    clickSequence(modelRender.container.querySelector('button') as HTMLButtonElement);
+    clickSequence(
+      modelRender.container.querySelector('button') as HTMLButtonElement,
+    );
     expect(onModelSelect).toHaveBeenCalledTimes(1);
     modelRender.unmount();
 
@@ -95,9 +118,11 @@ describe('dropdown interactions', () => {
         onSelect={onFieldSelect}
         selectedRef={createRef()}
         justClickedInsideRef={justClickedInsideRef}
-      />
+      />,
     );
-    clickSequence(fieldRender.container.querySelector('button') as HTMLButtonElement);
+    clickSequence(
+      fieldRender.container.querySelector('button') as HTMLButtonElement,
+    );
     expect(onFieldSelect).toHaveBeenCalledTimes(1);
     fieldRender.unmount();
 
@@ -109,9 +134,11 @@ describe('dropdown interactions', () => {
         onHover={vi.fn()}
         selectedRef={createRef()}
         justClickedInsideRef={justClickedInsideRef}
-      />
+      />,
     );
-    clickSequence(localeRender.container.querySelector('button') as HTMLButtonElement);
+    clickSequence(
+      localeRender.container.querySelector('button') as HTMLButtonElement,
+    );
     expect(onLocaleSelect).toHaveBeenCalledTimes(1);
     localeRender.unmount();
 
@@ -136,9 +163,11 @@ describe('dropdown interactions', () => {
         onHover={vi.fn()}
         selectedRef={createRef()}
         justClickedInsideRef={justClickedInsideRef}
-      />
+      />,
     );
-    clickSequence(nestedRender.container.querySelector('button') as HTMLButtonElement);
+    clickSequence(
+      nestedRender.container.querySelector('button') as HTMLButtonElement,
+    );
     expect(onNestedFieldSelect).toHaveBeenCalledTimes(1);
     nestedRender.unmount();
 
@@ -152,7 +181,7 @@ describe('dropdown interactions', () => {
         onHover={vi.fn()}
         selectedRef={createRef()}
         justClickedInsideRef={justClickedInsideRef}
-      />
+      />,
     );
     const buttons = blockRender.container.querySelectorAll('button');
     clickSequence(buttons[0] as HTMLButtonElement);
@@ -175,7 +204,7 @@ describe('comment accessibility and semantics', () => {
         userIsAuthor={true}
         isTopLevel={true}
         hasUpvotes={false}
-      />
+      />,
     );
 
     expect(view.container.querySelector('[role="menu"]')).toBeNull();
@@ -207,10 +236,20 @@ describe('comment accessibility and semantics', () => {
       <SidebarNavigationProvider ctx={ctx}>
         <ProjectDataProvider
           projectUsers={[
-            { id: 'user-1', name: 'User One', email: 'user@example.com', avatarUrl: null },
+            {
+              id: 'user-1',
+              name: 'User One',
+              email: 'user@example.com',
+              avatarUrl: null,
+            },
           ]}
           projectModels={[
-            { id: 'model-1', apiKey: 'article', name: 'Article', isBlockModel: false },
+            {
+              id: 'model-1',
+              apiKey: 'article',
+              name: 'Article',
+              isBlockModel: false,
+            },
           ]}
           modelFields={[]}
           currentUserId="user-1"
@@ -224,15 +263,25 @@ describe('comment accessibility and semantics', () => {
             commentObject={comment}
             currentUserId="user-1"
             projectUsers={[
-              { id: 'user-1', name: 'User One', email: 'user@example.com', avatarUrl: null },
+              {
+                id: 'user-1',
+                name: 'User One',
+                email: 'user@example.com',
+                avatarUrl: null,
+              },
             ]}
             projectModels={[
-              { id: 'model-1', apiKey: 'article', name: 'Article', isBlockModel: false },
+              {
+                id: 'model-1',
+                apiKey: 'article',
+                name: 'Article',
+                isBlockModel: false,
+              },
             ]}
             ctx={ctx}
           />
         </ProjectDataProvider>
-      </SidebarNavigationProvider>
+      </SidebarNavigationProvider>,
     );
 
     expect(view.container.querySelectorAll('title')).toHaveLength(0);

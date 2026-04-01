@@ -1,8 +1,8 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   migrateCommentsToUuid,
   normalizeCommentIfValid,
 } from '@utils/migrations';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 describe('migration helpers', () => {
   afterEach(() => {
@@ -17,7 +17,7 @@ describe('migration helpers', () => {
           dateISO: '2024-01-01T00:00:00.000Z',
           author: {},
           usersWhoUpvoted: [],
-        })
+        }),
       ).toBeNull();
     });
 
@@ -27,8 +27,12 @@ describe('migration helpers', () => {
           dateISO: '2024-01-01T00:00:00.000Z',
           content: [],
           author: { name: 'Jane', email: 'jane@example.com' },
-          usersWhoUpvoted: ['a@example.com', { name: 'Bob', email: 'bob@example.com' }, 42],
-        })
+          usersWhoUpvoted: [
+            'a@example.com',
+            { name: 'Bob', email: 'bob@example.com' },
+            42,
+          ],
+        }),
       ).toEqual({
         dateISO: '2024-01-01T00:00:00.000Z',
         content: [],

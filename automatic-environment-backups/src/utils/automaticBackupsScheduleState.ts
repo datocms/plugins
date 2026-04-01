@@ -1,11 +1,14 @@
-import type { AutomaticBackupsScheduleState, BackupCadence } from "../types/types";
-import { BACKUP_CADENCES } from "./backupSchedule";
+import type {
+  AutomaticBackupsScheduleState,
+  BackupCadence,
+} from '../types/types';
+import { BACKUP_CADENCES } from './backupSchedule';
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
+  typeof value === 'object' && value !== null;
 
 const asOptionalString = (value: unknown): string | undefined =>
-  typeof value === "string" && value.trim() ? value.trim() : undefined;
+  typeof value === 'string' && value.trim() ? value.trim() : undefined;
 
 const toCadenceMap = (
   value: unknown,
@@ -45,14 +48,18 @@ export const toAutomaticBackupsScheduleState = (
     ),
     lastExecutionModeByCadence: toCadenceMap(
       value.lastExecutionModeByCadence,
-    ) as AutomaticBackupsScheduleState["lastExecutionModeByCadence"],
+    ) as AutomaticBackupsScheduleState['lastExecutionModeByCadence'],
     lastErrorByCadence: toCadenceMap(value.lastErrorByCadence),
     dailyLastRunDate: asOptionalString(value.dailyLastRunDate),
     weeklyLastRunKey: asOptionalString(value.weeklyLastRunKey),
     lastDailyRunAt: asOptionalString(value.lastDailyRunAt),
     lastWeeklyRunAt: asOptionalString(value.lastWeeklyRunAt),
-    lastDailyManagedEnvironmentId: asOptionalString(value.lastDailyManagedEnvironmentId),
-    lastWeeklyManagedEnvironmentId: asOptionalString(value.lastWeeklyManagedEnvironmentId),
+    lastDailyManagedEnvironmentId: asOptionalString(
+      value.lastDailyManagedEnvironmentId,
+    ),
+    lastWeeklyManagedEnvironmentId: asOptionalString(
+      value.lastWeeklyManagedEnvironmentId,
+    ),
     lastDailyError: asOptionalString(value.lastDailyError),
     lastWeeklyError: asOptionalString(value.lastWeeklyError),
   };

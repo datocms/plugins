@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import {
   buildTranslatedUpdatePayload,
-  shouldTranslateField,
   type DatoCMSRecordFromAPI,
+  shouldTranslateField,
 } from './ItemsDropdownUtils';
-import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 
 vi.mock('./TranslateField', () => ({
   translateFieldValue: vi.fn(),
@@ -57,35 +57,26 @@ describe('ItemsDropdownUtils', () => {
   describe('shouldTranslateField', () => {
     it('returns false for disabled field types', () => {
       expect(
-        shouldTranslateField(
-          'slug',
-          record,
-          'en',
-          fieldTypeDictionary,
-          { ...pluginParams, translationFields: ['single_line'] }
-        )
+        shouldTranslateField('slug', record, 'en', fieldTypeDictionary, {
+          ...pluginParams,
+          translationFields: ['single_line'],
+        }),
       ).toBe(false);
     });
 
     it('returns false for excluded fields by API key or field ID', () => {
       expect(
-        shouldTranslateField(
-          'slug',
-          record,
-          'en',
-          fieldTypeDictionary,
-          { ...pluginParams, apiKeysToBeExcludedFromThisPlugin: ['slug'] }
-        )
+        shouldTranslateField('slug', record, 'en', fieldTypeDictionary, {
+          ...pluginParams,
+          apiKeysToBeExcludedFromThisPlugin: ['slug'],
+        }),
       ).toBe(false);
 
       expect(
-        shouldTranslateField(
-          'slug',
-          record,
-          'en',
-          fieldTypeDictionary,
-          { ...pluginParams, apiKeysToBeExcludedFromThisPlugin: ['field-slug'] }
-        )
+        shouldTranslateField('slug', record, 'en', fieldTypeDictionary, {
+          ...pluginParams,
+          apiKeysToBeExcludedFromThisPlugin: ['field-slug'],
+        }),
       ).toBe(false);
     });
   });
@@ -102,7 +93,7 @@ describe('ItemsDropdownUtils', () => {
         provider,
         { ...pluginParams, translationFields: ['single_line'] },
         'access-token',
-        'main'
+        'main',
       );
 
       expect(result.payload).toEqual({
@@ -122,7 +113,7 @@ describe('ItemsDropdownUtils', () => {
         provider,
         { ...pluginParams, apiKeysToBeExcludedFromThisPlugin: ['field-title'] },
         'access-token',
-        'main'
+        'main',
       );
 
       expect(result.payload).toEqual({
@@ -138,8 +129,12 @@ describe('ItemsDropdownUtils', () => {
     it('keeps target locale untouched and records a warning when translation fails', async () => {
       vi.mocked(translateFieldValue)
         .mockResolvedValueOnce('Ciao')
-        .mockRejectedValueOnce(new Error('Translated slug is empty after normalization'))
-        .mockResolvedValueOnce([{ type: 'paragraph', children: [{ text: 'Corpo' }] }]);
+        .mockRejectedValueOnce(
+          new Error('Translated slug is empty after normalization'),
+        )
+        .mockResolvedValueOnce([
+          { type: 'paragraph', children: [{ text: 'Corpo' }] },
+        ]);
 
       const result = await buildTranslatedUpdatePayload(
         record,
@@ -149,12 +144,18 @@ describe('ItemsDropdownUtils', () => {
         provider,
         pluginParams,
         'access-token',
-        'main'
+        'main',
       );
 
-      expect(result.payload.title).toEqual({ en: 'Hello', de: 'Hallo', it: 'Ciao' });
+      expect(result.payload.title).toEqual({
+        en: 'Hello',
+        de: 'Hallo',
+        it: 'Ciao',
+      });
       expect(result.payload.slug).toBeUndefined();
-      expect(result.warnings).toContain('Field "slug" was skipped: Translated slug is empty after normalization.');
+      expect(result.warnings).toContain(
+        'Field "slug" was skipped: Translated slug is empty after normalization.',
+      );
     });
   });
 });

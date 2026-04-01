@@ -1,14 +1,14 @@
+import { buildClient } from '@datocms/cma-client-browser';
+import { Editor as ReactEditor } from '@tinymce/tinymce-react';
 import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
 import { Canvas } from 'datocms-react-ui';
 import get from 'lodash/get';
-import tinymce from 'tinymce/tinymce';
-import { Editor as ReactEditor } from '@tinymce/tinymce-react';
-import imgixThumbUrl from '../../utils/imgixThumbUrl';
-import type { Editor } from 'tinymce';
 import { useEffect, useRef, useState } from 'react';
-import { buildClient } from '@datocms/cma-client-browser';
+import type { Editor } from 'tinymce';
+import tinymce from 'tinymce/tinymce';
+import imgixThumbUrl from '../../utils/imgixThumbUrl';
 
-(window as any).tinymce = tinymce;
+(window as Window & { tinymce: typeof tinymce }).tinymce = tinymce;
 
 import 'tinymce/icons/default';
 import 'tinymce/themes/silver';
@@ -44,6 +44,87 @@ function log(step: string, object?: Record<string, unknown>) {
 type Props = {
   ctx: RenderFieldExtensionCtx;
 };
+
+type UploadFile = RenderFieldExtensionCtx['selectUpload'] extends (
+  opts: unknown,
+) => Promise<infer T>
+  ? NonNullable<T>[number]
+  : never;
+
+function buildImgTagForFile(
+  file: UploadFile,
+  locale: string,
+  ctx: RenderFieldExtensionCtx,
+) {
+  const metadata = file.attributes.default_field_metadata[locale];
+  let text = '<img ';
+
+  if (metadata.alt) {
+    text += `alt="${metadata.alt}" `;
+  }
+
+  if (metadata.title) {
+    text += `title="${metadata.title}" `;
+  }
+
+  text += `src="${imgixThumbUrl({ imageishThing: file, ctx })}" />`;
+  return text;
+}
+
+async function uploadBlobToClient(
+  ctx: RenderFieldExtensionCtx,
+  blobInfo: { blob(): Blob; filename(): string },
+  progress: (percent: number) => void,
+) {
+  const apiToken = ctx.currentUserAccessToken;
+  if (!apiToken) {
+    throw new Error('No access token available');
+  }
+  const client = buildClient({ apiToken, environment: ctx.environment });
+  const upload = await client.uploads.createFromFileOrBlob({
+    fileOrBlob: blobInfo.blob(),
+    filename: blobInfo.filename(),
+    onProgress(info) {
+      if (info.type === 'UPLOADING_FILE') {
+        progress(Math.round(info.payload.progress * 100));
+      }
+    },
+  });
+  return upload.url;
+}
+
+function registerEditorImageButtons(
+  editor: Editor,
+  ctx: RenderFieldExtensionCtx,
+) {
+  const handleDatoImages = () => {
+    ctx.selectUpload({ multiple: true }).then((files) => {
+      if (!files) return;
+      for (const file of files) {
+        editor.insertContent(buildImgTagForFile(file, ctx.locale, ctx));
+      }
+    });
+  };
+
+  editor.ui.registry.addButton('customimage', {
+    icon: 'image',
+    tooltip: 'Insert image...',
+    onAction: handleDatoImages,
+  });
+
+  editor.ui.registry.addButton('replaceimage', {
+    icon: 'browse',
+    tooltip: 'Replace image',
+    onAction: handleDatoImages,
+  });
+
+  editor.ui.registry.addContextToolbar('imagealignment', {
+    predicate: (node) => node.nodeName.toLowerCase() === 'img',
+    items: 'replaceimage image',
+    position: 'node',
+    scope: 'node',
+  });
+}
 
 // Caution: The controlled component can have performance problems on large documents
 // as it requires converting the entire document to a string on each keystroke or modification.
@@ -113,57 +194,7 @@ export default function FieldExtension({ ctx }: Props) {
   };
 
   const initialize = (editor: Editor) => {
-    const handleDatoImages = () => {
-      // Handles inserting Dato image in the HTML editor
-      ctx.selectUpload({ multiple: true }).then((files) => {
-        files?.forEach((file) => {
-            const metadata = file.attributes.default_field_metadata[ctx.locale];
-
-            let text = '<img ';
-
-            if (metadata.alt) {
-              text += `alt="${metadata.alt || ''}" `;
-            }
-
-            if (metadata.title) {
-              text += `title="${metadata.title || ''}" `;
-            }
-
-            text += `src="${imgixThumbUrl({
-              imageishThing: file,
-              ctx,
-            })}" />`;
-
-            editor.insertContent(text);
-          });
-      });
-    };
-
-    editor.ui.registry.addButton('customimage', {
-      icon: 'image',
-      tooltip: 'Insert image...',
-      onAction: handleDatoImages,
-    });
-
-    editor.ui.registry.addButton('replaceimage', {
-      icon: 'browse',
-      tooltip: 'Replace image',
-      onAction: handleDatoImages,
-    });
-
-    editor.ui.registry.addContextToolbar('imagealignment', {
-      // Shows image replacement options when selecting image
-      predicate: (node) => {
-        if (node.nodeName.toLowerCase() === 'img') {
-          return true;
-        }
-        return false;
-      },
-
-      items: 'replaceimage image',
-      position: 'node',
-      scope: 'node',
-    });
+    registerEditorImageButtons(editor, ctx);
   };
 
   return (
@@ -171,8 +202,7 @@ export default function FieldExtension({ ctx }: Props) {
       <ReactEditor
         disabled={ctx.disabled}
         init={{
-          plugins:
-            'image advlist code emoticons link lists table autoresize',
+          plugins: 'image advlist code emoticons link lists table autoresize',
           toolbar:
             'undo redo | formatselect | ' +
             'bold italic backcolor | link customimage |' +
@@ -186,22 +216,7 @@ export default function FieldExtension({ ctx }: Props) {
           paste_data_images: true,
           async images_upload_handler(blobInfo, progress) {
             try {
-              const client = buildClient({
-                apiToken: ctx.currentUserAccessToken!,
-                environment: ctx.environment,
-              });
-
-              const upload = await client.uploads.createFromFileOrBlob({
-                fileOrBlob: blobInfo.blob(),
-                filename: blobInfo.filename(),
-                onProgress(info) {
-                  if (info.type === 'UPLOADING_FILE') {
-                    progress(Math.round(info.payload.progress * 100));
-                  }
-                },
-              });
-
-              return upload.url;
+              return await uploadBlobToClient(ctx, blobInfo, progress);
             } catch (_e) {
               throw new Error('Could not upload image');
             }

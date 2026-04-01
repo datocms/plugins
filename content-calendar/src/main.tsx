@@ -1,6 +1,6 @@
 import { connect } from 'datocms-plugin-sdk';
-import { render } from './utils/render';
 import Page from './entrypoints/Page';
+import { render } from './utils/render';
 import 'datocms-react-ui/styles.css';
 
 connect({

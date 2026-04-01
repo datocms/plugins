@@ -1,7 +1,5 @@
 import { UI } from '@/constants';
 
-export { extractLeadingEmoji } from './emojiUtils';
-
 /** Truncates filename keeping first N chars + extension. */
 export function getTruncatedFilename(filename: string): string {
   const maxLength = UI.MENTION_CHIP_MAX_NAME_LENGTH;

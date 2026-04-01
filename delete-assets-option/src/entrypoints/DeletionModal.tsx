@@ -14,8 +14,14 @@ export default function DeletionModal({ ctx }: PropTypes) {
   return (
     <Canvas ctx={ctx}>
       <div className={styles.buttonContainer}>
-        <Button fullWidth onClick={handleClose.bind(null, false)}>Keep</Button>
-        <Button fullWidth buttonType="negative" onClick={handleClose.bind(null, true)}>
+        <Button fullWidth onClick={handleClose.bind(null, false)}>
+          Keep
+        </Button>
+        <Button
+          fullWidth
+          buttonType="negative"
+          onClick={handleClose.bind(null, true)}
+        >
           Delete
         </Button>
       </div>

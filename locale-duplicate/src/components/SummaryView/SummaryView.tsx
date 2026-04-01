@@ -1,5 +1,5 @@
-import { useState, useMemo, useCallback } from 'react';
-import { Section, Button } from 'datocms-react-ui';
+import { Button, Section } from 'datocms-react-ui';
+import { useCallback, useMemo, useState } from 'react';
 import type { ProgressUpdate } from '../ProgressView';
 import styles from './SummaryView.module.css';
 
@@ -11,13 +11,16 @@ export interface DuplicationStats {
   totalRecords: number;
   successfulRecords: number;
   failedRecords: number;
-  modelStats: Record<string, { 
-    success: number;
-    error: number;
-    total: number;
-    name: string;
-    processedRecordIds: Record<string, boolean>;
-  }>;
+  modelStats: Record<
+    string,
+    {
+      success: number;
+      error: number;
+      total: number;
+      name: string;
+      processedRecordIds: Record<string, boolean>;
+    }
+  >;
   startTime: number;
   endTime: number;
 }
@@ -38,48 +41,53 @@ interface ExpandedSections {
 export function SummaryView({
   duplicationStats,
   progressUpdates,
-  onReturn
+  onReturn,
 }: SummaryViewProps) {
   const [expandedSections, setExpandedSections] = useState<ExpandedSections>({
     models: false,
     fields: false,
     errors: false,
-    logs: false
+    logs: false,
   });
 
   // Memoize error updates filtering
-  const errorUpdates = useMemo(() => 
-    progressUpdates.filter(update => update.type === 'error'), 
-    [progressUpdates]
+  const errorUpdates = useMemo(
+    () => progressUpdates.filter((update) => update.type === 'error'),
+    [progressUpdates],
   );
-  
+
   // Memoize success percentage calculation
-  const successPercentage = useMemo(() => 
-    duplicationStats.totalRecords > 0
-      ? Math.round((duplicationStats.successfulRecords / duplicationStats.totalRecords) * 100)
-      : 0,
-    [duplicationStats.totalRecords, duplicationStats.successfulRecords]
+  const successPercentage = useMemo(
+    () =>
+      duplicationStats.totalRecords > 0
+        ? Math.round(
+            (duplicationStats.successfulRecords /
+              duplicationStats.totalRecords) *
+              100,
+          )
+        : 0,
+    [duplicationStats.totalRecords, duplicationStats.successfulRecords],
   );
-  
+
   // Memoize duration calculations
   const { durationMinutes, durationSeconds } = useMemo(() => {
     const duration = duplicationStats.endTime - duplicationStats.startTime;
     return {
       durationMinutes: Math.floor(duration / 60000),
-      durationSeconds: Math.floor((duration % 60000) / 1000)
+      durationSeconds: Math.floor((duration % 60000) / 1000),
     };
   }, [duplicationStats.endTime, duplicationStats.startTime]);
-  
+
   // Memoize model statistics entries
-  const modelStatsEntries = useMemo(() => 
-    Object.entries(duplicationStats.modelStats),
-    [duplicationStats.modelStats]
+  const modelStatsEntries = useMemo(
+    () => Object.entries(duplicationStats.modelStats),
+    [duplicationStats.modelStats],
   );
 
   const toggleSection = useCallback((section: keyof ExpandedSections) => {
-    setExpandedSections(prev => ({
+    setExpandedSections((prev) => ({
       ...prev,
-      [section]: !prev[section]
+      [section]: !prev[section],
     }));
   }, []);
 
@@ -90,12 +98,12 @@ export function SummaryView({
           Duplication Summary
           <span className={styles.summaryTitleUnderline} />
         </h2>
-        
+
         {/* Duplication Statistics Section */}
         <Section title="Duplication Statistics">
           <div className={styles.statsContainer}>
             {/* Records Processed */}
-            <button 
+            <button
               type="button"
               onClick={() => toggleSection('models')}
               aria-expanded={expandedSections.models}
@@ -103,25 +111,25 @@ export function SummaryView({
             >
               <div className={styles.buttonLeft}>
                 <span className={styles.buttonIcon}>📝</span>
-                <span className={styles.buttonLabel}>
-                  Records Processed
-                </span>
+                <span className={styles.buttonLabel}>Records Processed</span>
               </div>
               <div className={styles.buttonRight}>
                 <span className={styles.buttonValue}>
                   {duplicationStats.totalRecords}
                 </span>
-                <span className={`${styles.expandIcon} ${expandedSections.models ? styles.expanded : ''}`}>
+                <span
+                  className={`${styles.expandIcon} ${expandedSections.models ? styles.expanded : ''}`}
+                >
                   ▾
                 </span>
               </div>
             </button>
-            
+
             {/* Expanded records details */}
             {expandedSections.models && (
               <div className={styles.expandedContent}>
                 <h4 className={styles.subheading}>Record Statistics</h4>
-                
+
                 <table className={styles.statsTable}>
                   <thead>
                     <tr>
@@ -161,7 +169,9 @@ export function SummaryView({
                       <tr key={modelId}>
                         <td>{stats.name}</td>
                         <td className={styles.successText}>{stats.success}</td>
-                        <td className={stats.error > 0 ? styles.errorText : ''}>{stats.error}</td>
+                        <td className={stats.error > 0 ? styles.errorText : ''}>
+                          {stats.error}
+                        </td>
                         <td>{stats.total}</td>
                       </tr>
                     ))}
@@ -173,7 +183,7 @@ export function SummaryView({
             {/* Errors */}
             {errorUpdates.length > 0 && (
               <>
-                <button 
+                <button
                   type="button"
                   onClick={() => toggleSection('errors')}
                   aria-expanded={expandedSections.errors}
@@ -189,7 +199,9 @@ export function SummaryView({
                     <span className={`${styles.buttonValue} ${styles.error}`}>
                       {errorUpdates.length}
                     </span>
-                    <span className={`${styles.expandIcon} ${expandedSections.errors ? styles.expanded : ''}`}>
+                    <span
+                      className={`${styles.expandIcon} ${expandedSections.errors ? styles.expanded : ''}`}
+                    >
                       ▾
                     </span>
                   </div>
@@ -198,8 +210,11 @@ export function SummaryView({
                 {expandedSections.errors && (
                   <div className={styles.expandedContent}>
                     <div className={styles.errorLog}>
-                      {errorUpdates.map((error, index) => (
-                        <div key={`error-${index}`} className={styles.errorItem}>
+                      {errorUpdates.map((error) => (
+                        <div
+                          key={`error-${error.timestamp}-${error.message}`}
+                          className={styles.errorItem}
+                        >
                           <span className={styles.errorIcon}>✗</span>
                           <span>{error.message}</span>
                         </div>
@@ -211,7 +226,7 @@ export function SummaryView({
             )}
 
             {/* Full Operation Log */}
-            <button 
+            <button
               type="button"
               onClick={() => toggleSection('logs')}
               aria-expanded={expandedSections.logs}
@@ -219,15 +234,15 @@ export function SummaryView({
             >
               <div className={styles.buttonLeft}>
                 <span className={styles.buttonIcon}>📋</span>
-                <span className={styles.buttonLabel}>
-                  Full Operation Log
-                </span>
+                <span className={styles.buttonLabel}>Full Operation Log</span>
               </div>
               <div className={styles.buttonRight}>
                 <span className={`${styles.buttonValue} ${styles.muted}`}>
                   {progressUpdates.length} entries
                 </span>
-                <span className={`${styles.expandIcon} ${expandedSections.logs ? styles.expanded : ''}`}>
+                <span
+                  className={`${styles.expandIcon} ${expandedSections.logs ? styles.expanded : ''}`}
+                >
                   ▾
                 </span>
               </div>
@@ -236,9 +251,9 @@ export function SummaryView({
             {expandedSections.logs && (
               <div className={styles.expandedContent}>
                 <div className={styles.fullLog}>
-                  {progressUpdates.map((update, index) => (
-                    <div 
-                      key={`log-${index}`} 
+                  {progressUpdates.map((update) => (
+                    <div
+                      key={`log-${update.timestamp}-${update.message}`}
                       className={`${styles.logItem} ${styles[update.type]}`}
                     >
                       <span className={styles.logIcon}>
@@ -246,7 +261,9 @@ export function SummaryView({
                         {update.type === 'error' && '✗'}
                         {update.type === 'info' && '•'}
                       </span>
-                      <span className={styles.logMessage}>{update.message}</span>
+                      <span className={styles.logMessage}>
+                        {update.message}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -255,12 +272,20 @@ export function SummaryView({
           </div>
 
           {/* Overall Summary */}
-          <div className={`${styles.overallSummary} ${successPercentage === 100 ? styles.success : styles.error}`}>
-            <h3 className={`${styles.overallTitle} ${successPercentage === 100 ? styles.success : styles.error}`}>
-              {successPercentage === 100 ? '✓ Duplication Completed Successfully!' : '⚠️ Duplication Completed with Errors'}
+          <div
+            className={`${styles.overallSummary} ${successPercentage === 100 ? styles.success : styles.error}`}
+          >
+            <h3
+              className={`${styles.overallTitle} ${successPercentage === 100 ? styles.success : styles.error}`}
+            >
+              {successPercentage === 100
+                ? '✓ Duplication Completed Successfully!'
+                : '⚠️ Duplication Completed with Errors'}
             </h3>
             <p className={styles.overallDescription}>
-              Processed {duplicationStats.totalRecords} records across {duplicationStats.totalModels} models in {durationMinutes}m {durationSeconds}s
+              Processed {duplicationStats.totalRecords} records across{' '}
+              {duplicationStats.totalModels} models in {durationMinutes}m{' '}
+              {durationSeconds}s
             </p>
           </div>
         </Section>

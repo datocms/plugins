@@ -1,44 +1,43 @@
-import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
-import { Canvas, Spinner } from 'datocms-react-ui';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-
-import RecordModelSelectorDropdown from '@components/RecordModelSelectorDropdown';
-import ComposerToolbar from '@components/ComposerToolbar';
 import CommentsList from '@components/CommentsList';
-import SyncStatusIndicator from '@components/shared/SyncStatusIndicator';
+import ComposerToolbar from '@components/ComposerToolbar';
+import RecordModelSelectorDropdown from '@components/RecordModelSelectorDropdown';
 import { CommentErrorBoundary } from '@components/shared/CommentErrorBoundary';
-import { TipTapComposer, type TipTapComposerRef } from '@components/tiptap/TipTapComposer';
-
+import SyncStatusIndicator from '@components/shared/SyncStatusIndicator';
+import {
+  TipTapComposer,
+  type TipTapComposerRef,
+} from '@components/tiptap/TipTapComposer';
+import { isContentEmpty } from '@ctypes/comments';
+import type { CommentSegment } from '@ctypes/mentions';
+import { useCommentActions } from '@hooks/useCommentActions';
+import { useCommentsData } from '@hooks/useCommentsData';
+import { SUBSCRIPTION_STATUS } from '@hooks/useCommentsSubscription';
+import { useEntityResolver } from '@hooks/useEntityResolver';
+import { useMentionPermissions } from '@hooks/useMentionPermissions';
 import { useOperationQueue } from '@hooks/useOperationQueue';
 import { useProjectData } from '@hooks/useProjectData';
-import { useToolbarHandlers } from '@hooks/useToolbarHandlers';
-import { useCommentsData } from '@hooks/useCommentsData';
-import { useCommentActions } from '@hooks/useCommentActions';
-import { useMentionPermissions } from '@hooks/useMentionPermissions';
 import { useReplyPicker } from '@hooks/useReplyPicker';
-import { useEntityResolver } from '@hooks/useEntityResolver';
-
-import { ProjectDataProvider } from './contexts/ProjectDataContext';
-import { MentionPermissionsProvider } from './contexts/MentionPermissionsContext';
-
-import type { CommentSegment } from '@ctypes/mentions';
-import { getCurrentUserInfo } from '@utils/userTransformers';
+import { useToolbarHandlers } from '@hooks/useToolbarHandlers';
+import styles from '@styles/commentbar.module.css';
 import { createApiClient } from '@utils/apiClient';
-import { createRecordMention } from '@utils/recordPickerHelpers';
-import { insertMentionWithRetry } from '@utils/textareaUtils';
 import { createAssetMention } from '@utils/composerHelpers';
-import { isContentEmpty } from '@ctypes/comments';
+import { categorizeGeneralError } from '@utils/errorCategorization';
+import { findCommentsModel } from '@utils/itemTypeUtils';
 import {
   getCommentsModelIdForEnvironment,
   parsePluginParams,
 } from '@utils/pluginParams';
-import { findCommentsModel } from '@utils/itemTypeUtils';
-import { SUBSCRIPTION_STATUS } from '@hooks/useCommentsSubscription';
+import { createRecordMention } from '@utils/recordPickerHelpers';
+import { insertMentionWithRetry } from '@utils/textareaUtils';
+import { getCurrentUserInfo } from '@utils/userTransformers';
+import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
+import { Canvas, Spinner } from 'datocms-react-ui';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { COMMENTS_PAGE_SIZE, ERROR_MESSAGES } from '@/constants';
-import { logDebug, logError, logWarn } from '@/utils/errorLogger';
-import { categorizeGeneralError } from '@utils/errorCategorization';
 import { ensureCommentsModelExistsWithClient } from '@/utils/commentsStorage';
-import styles from '@styles/commentbar.module.css';
+import { logDebug, logError, logWarn } from '@/utils/errorLogger';
+import { MentionPermissionsProvider } from './contexts/MentionPermissionsContext';
+import { ProjectDataProvider } from './contexts/ProjectDataContext';
 
 // Uses props (not context) due to shallow tree. Reply picker logic shared via useReplyPicker hook.
 type Props = {
@@ -48,11 +47,14 @@ type Props = {
 const CommentsBar = ({ ctx }: Props) => {
   const { id: currentUserId } = getCurrentUserInfo(ctx.currentUser);
 
-  const [composerSegments, setComposerSegments] = useState<CommentSegment[]>([]);
+  const [composerSegments, setComposerSegments] = useState<CommentSegment[]>(
+    [],
+  );
   const composerRef = useRef<TipTapComposerRef>(null);
   const pendingNewReplies = useRef(new Set<string>());
 
-  const [isRecordModelSelectorOpen, setIsRecordModelSelectorOpen] = useState(false);
+  const [isRecordModelSelectorOpen, setIsRecordModelSelectorOpen] =
+    useState(false);
 
   // Tracks how many old comments to hide (new comments at index 0 always visible)
   const [hiddenOldCount, setHiddenOldCount] = useState<number | null>(null);
@@ -64,7 +66,7 @@ const CommentsBar = ({ ctx }: Props) => {
   const realTimeEnabled = realTimeRequested && !!cdaToken;
   const storedCommentsModelId = getCommentsModelIdForEnvironment(
     pluginParams,
-    ctx.environment
+    ctx.environment,
   );
 
   useEffect(() => {
@@ -85,8 +87,10 @@ const CommentsBar = ({ ctx }: Props) => {
   ]);
 
   const client = useMemo(() => createApiClient(cmaToken), [cmaToken]);
-  const { projectUsers, projectModels, modelFields, typedUsers } = useProjectData(ctx, { loadFields: true });
-  const { canMentionAssets, canMentionModels, readableModels } = useMentionPermissions(ctx, projectModels);
+  const { projectUsers, projectModels, modelFields, typedUsers } =
+    useProjectData(ctx, { loadFields: true });
+  const { canMentionAssets, canMentionModels, readableModels } =
+    useMentionPermissions(ctx, projectModels);
 
   const mainLocale = ctx.site.attributes.locales[0] ?? 'en';
   const { prefetchEntities, resolveComments } = useEntityResolver({
@@ -121,7 +125,42 @@ const CommentsBar = ({ ctx }: Props) => {
     });
   }, [client, commentsModelId, ctx.itemTypes, storedCommentsModelId]);
 
-  const resolveCommentsModelId = useCallback(async (): Promise<string | null> => {
+  const resolveCommentsModelIdViaClient = useCallback(
+    async (environment: string): Promise<string | null> => {
+      if (!client) return null;
+
+      logDebug('Ensuring comments model via CMA client', { environment });
+
+      try {
+        const ensuredCommentsModelId =
+          await ensureCommentsModelExistsWithClient(client);
+        setCommentsModelId((previous) =>
+          previous === ensuredCommentsModelId
+            ? previous
+            : ensuredCommentsModelId,
+        );
+        logDebug('Ensured comments model via CMA client', {
+          commentsModelId: ensuredCommentsModelId,
+          environment,
+        });
+        return ensuredCommentsModelId;
+      } catch (error) {
+        if (!storedCommentsModelId) {
+          throw error;
+        }
+        logDebug('Falling back to stored comments model ID in sidebar', {
+          environment,
+          errorMessage: error instanceof Error ? error.message : String(error),
+        });
+        return null;
+      }
+    },
+    [client, storedCommentsModelId],
+  );
+
+  const resolveCommentsModelId = useCallback(async (): Promise<
+    string | null
+  > => {
     const contextCommentsModelId = findCommentsModel(ctx.itemTypes)?.id;
     if (contextCommentsModelId) {
       logDebug('Using comments model ID from loaded item types', {
@@ -134,29 +173,11 @@ const CommentsBar = ({ ctx }: Props) => {
     }
 
     if (client) {
-      try {
-        logDebug('Ensuring comments model via CMA client', {
-          environment: ctx.environment,
-        });
-        const ensuredCommentsModelId = await ensureCommentsModelExistsWithClient(client);
-        setCommentsModelId((previous) =>
-          previous === ensuredCommentsModelId ? previous : ensuredCommentsModelId
-        );
-
-        logDebug('Ensured comments model via CMA client', {
-          commentsModelId: ensuredCommentsModelId,
-          environment: ctx.environment,
-        });
-        return ensuredCommentsModelId;
-      } catch (error) {
-        if (!storedCommentsModelId) {
-          throw error;
-        }
-
-        logDebug('Falling back to stored comments model ID in sidebar', {
-          environment: ctx.environment,
-          errorMessage: error instanceof Error ? error.message : String(error),
-        });
+      const clientResolvedId = await resolveCommentsModelIdViaClient(
+        ctx.environment,
+      );
+      if (clientResolvedId) {
+        return clientResolvedId;
       }
     }
 
@@ -176,7 +197,14 @@ const CommentsBar = ({ ctx }: Props) => {
       hasClient: !!client,
     });
     return null;
-  }, [client, commentsModelId, ctx.environment, ctx.itemTypes, storedCommentsModelId]);
+  }, [
+    client,
+    commentsModelId,
+    ctx.environment,
+    ctx.itemTypes,
+    resolveCommentsModelIdViaClient,
+    storedCommentsModelId,
+  ]);
 
   useEffect(() => {
     if (commentsModelId || !client) {
@@ -204,16 +232,17 @@ const CommentsBar = ({ ctx }: Props) => {
   const [commentRecordId, setCommentRecordId] = useState<string | null>(null);
 
   // Must be called BEFORE useCommentsData so isSyncAllowed is available
-  const { enqueue, pendingCount, isSyncAllowed, retryState } = useOperationQueue({
-    client,
-    commentRecordId,
-    commentsModelId,
-    modelId: ctx.itemType.id,
-    recordId: ctx.item?.id,
-    ctx,
-    onRecordCreated: setCommentRecordId,
-    resolveCommentsModelId,
-  });
+  const { enqueue, pendingCount, isSyncAllowed, retryState } =
+    useOperationQueue({
+      client,
+      commentRecordId,
+      commentsModelId,
+      modelId: ctx.itemType.id,
+      recordId: ctx.item?.id,
+      ctx,
+      onRecordCreated: setCommentRecordId,
+      resolveCommentsModelId,
+    });
 
   const handleOrphanedDraft = useCallback(() => {
     ctx.alert('The comment you were replying to was deleted by another user.');
@@ -247,7 +276,8 @@ const CommentsBar = ({ ctx }: Props) => {
   }, [comments.length, hiddenOldCount]);
 
   const visibleStoredComments = useMemo(() => {
-    const hideCount = hiddenOldCount ?? Math.max(0, comments.length - COMMENTS_PAGE_SIZE);
+    const hideCount =
+      hiddenOldCount ?? Math.max(0, comments.length - COMMENTS_PAGE_SIZE);
     const showCount = comments.length - hideCount;
     return comments.slice(0, showCount);
   }, [comments, hiddenOldCount]);
@@ -259,7 +289,7 @@ const CommentsBar = ({ ctx }: Props) => {
   const visibleComments = useMemo(
     () => resolveComments(visibleStoredComments),
     // cacheVersion triggers re-resolution when async entities (records/assets) are fetched
-    [visibleStoredComments, resolveComments]
+    [visibleStoredComments, resolveComments],
   );
 
   const hasMoreComments = (hiddenOldCount ?? 0) > 0;
@@ -317,7 +347,12 @@ const CommentsBar = ({ ctx }: Props) => {
   });
 
   const handleRecordModelSelectForReply = useCallback(
-    async (model: { id: string; apiKey: string; name: string; isBlockModel: boolean }) => {
+    async (model: {
+      id: string;
+      apiKey: string;
+      name: string;
+      isBlockModel: boolean;
+    }) => {
       setIsRecordModelSelectorOpen(false);
       const targetComposer = composerRef.current;
 
@@ -340,7 +375,11 @@ const CommentsBar = ({ ctx }: Props) => {
           try {
             fields = await ctx.loadItemTypeFields(model.id);
           } catch (fieldError) {
-            logError('Failed to load item type fields for record mention', fieldError, { modelId: model.id });
+            logError(
+              'Failed to load item type fields for record mention',
+              fieldError,
+              { modelId: model.id },
+            );
           }
         }
 
@@ -348,11 +387,16 @@ const CommentsBar = ({ ctx }: Props) => {
 
         const recordMention = await createRecordMention(
           { id: record.id, attributes: record.attributes },
-          { id: model.id, apiKey: model.apiKey, name: model.name, isBlockModel: model.isBlockModel },
+          {
+            id: model.id,
+            apiKey: model.apiKey,
+            name: model.name,
+            isBlockModel: model.isBlockModel,
+          },
           itemType,
           fields,
           mainLocale,
-          client
+          client,
         );
 
         await insertMentionWithRetry(targetComposer, recordMention);
@@ -361,7 +405,7 @@ const CommentsBar = ({ ctx }: Props) => {
         ctx.alert(ERROR_MESSAGES.RECORD_PICKER_FAILED);
       }
     },
-    [ctx, client]
+    [ctx, client],
   );
 
   const {
@@ -379,10 +423,13 @@ const CommentsBar = ({ ctx }: Props) => {
 
   const isComposerEmptyValue = useMemo(
     () => isContentEmpty(composerSegments),
-    [composerSegments]
+    [composerSegments],
   );
 
-  if ((realTimeEnabled && status === SUBSCRIPTION_STATUS.CONNECTING) || (!realTimeEnabled && isLoading)) {
+  if (
+    (realTimeEnabled && status === SUBSCRIPTION_STATUS.CONNECTING) ||
+    (!realTimeEnabled && isLoading)
+  ) {
     return (
       <Canvas ctx={ctx}>
         <div className={styles.loading}>
@@ -418,108 +465,122 @@ const CommentsBar = ({ ctx }: Props) => {
           canMentionAssets={canMentionAssets}
           canMentionModels={canMentionModels}
         >
-        <div className={styles.container}>
-          {/* Inline status indicators (errors, retrying, connecting) - positioned in header */}
-          {!isAutoReconnecting && (
-            <div className={styles.header}>
-              <SyncStatusIndicator
-                subscriptionStatus={status}
-                subscriptionError={errorInfo?.message ?? null}
-                retryState={retryState}
-                onRetry={retrySubscription}
-                realTimeEnabled={realTimeEnabled}
-                isAutoReconnecting={false}
-              />
-            </div>
-          )}
-
-          {realTimeRequested && !cdaToken && (
-            <div className={styles.warning}>
-              <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" role="img" aria-labelledby="warningIconTitle">
-                <title id="warningIconTitle">Warning</title>
-                <path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/>
-              </svg>
-              <span>Realtime updates disabled. Configure a CDA token in plugin settings.</span>
-            </div>
-          )}
-
-          <div className={styles.composer}>
-            <CommentErrorBoundary fallbackMessage="Unable to load editor. Please refresh.">
-              {/* Reconnecting banner - full width above composer */}
-              {isAutoReconnecting && (
+          <div className={styles.container}>
+            {/* Inline status indicators (errors, retrying, connecting) - positioned in header */}
+            {!isAutoReconnecting && (
+              <div className={styles.header}>
                 <SyncStatusIndicator
                   subscriptionStatus={status}
-                  subscriptionError={null}
+                  subscriptionError={errorInfo?.message ?? null}
                   retryState={retryState}
                   onRetry={retrySubscription}
                   realTimeEnabled={realTimeEnabled}
-                  isAutoReconnecting={true}
-                  variant="banner"
-                />
-              )}
-              <div className={styles.composerInputWrapper}>
-                <TipTapComposer
-                  ref={composerRef}
-                  segments={composerSegments}
-                  onSegmentsChange={setComposerSegments}
-                  onSubmit={submitNewComment}
-                  placeholder="Add a comment...&#10;Type / for commands"
-                  projectUsers={projectUsers}
-                  modelFields={modelFields}
-                  projectModels={projectModels}
-                  canMentionAssets={canMentionAssets}
-                  canMentionModels={canMentionModels}
-                  canMentionFields={true}
-                  onAssetTrigger={handleAssetTrigger}
-                  onRecordTrigger={handleRecordTrigger}
-                  autoFocus={false}
-                  ctx={ctx}
-                />
-
-                {isRecordModelSelectorOpen && (
-                  <RecordModelSelectorDropdown
-                    models={readableModels}
-                    onSelect={handleRecordModelSelectForReply}
-                    onClose={handleRecordModelSelectorClose}
-                  />
-                )}
-
-                <ComposerToolbar
-                  onUserClick={handleUserToolbarClick}
-                  onFieldClick={handleFieldToolbarClick}
-                  onRecordClick={handleRecordToolbarClick}
-                  onAssetClick={handleAssetToolbarClick}
-                  onModelClick={handleModelToolbarClick}
-                  onSendClick={submitNewComment}
-                  isSendDisabled={isComposerEmptyValue || pendingCount > 0}
-                  canMentionAssets={canMentionAssets}
-                  canMentionModels={canMentionModels}
+                  isAutoReconnecting={false}
                 />
               </div>
-            </CommentErrorBoundary>
-          </div>
+            )}
 
-          <CommentsList
-            comments={visibleComments}
-            hasMoreComments={hasMoreComments}
-            onLoadMore={() => setHiddenOldCount((prev) => Math.max(0, (prev ?? 0) - COMMENTS_PAGE_SIZE))}
-            currentUserId={currentUserId}
-            modelFields={modelFields}
-            projectUsers={projectUsers}
-            projectModels={projectModels}
-            deleteComment={deleteComment}
-            editComment={editComment}
-            upvoteComment={upvoteComment}
-            replyComment={replyComment}
-            onPickerRequest={handleReplyPickerRequest}
-            onRecordModelSelect={handleRecordModelSelectFromComment}
-            readableModels={readableModels}
-            canMentionAssets={canMentionAssets}
-            canMentionModels={canMentionModels}
-            ctx={ctx}
-            isPickerActive={isPickerInProgress}
-          />
-        </div>
+            {realTimeRequested && !cdaToken && (
+              <div className={styles.warning}>
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 16 16"
+                  fill="currentColor"
+                  role="img"
+                  aria-labelledby="warningIconTitle"
+                >
+                  <title id="warningIconTitle">Warning</title>
+                  <path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z" />
+                </svg>
+                <span>
+                  Realtime updates disabled. Configure a CDA token in plugin
+                  settings.
+                </span>
+              </div>
+            )}
+
+            <div className={styles.composer}>
+              <CommentErrorBoundary fallbackMessage="Unable to load editor. Please refresh.">
+                {/* Reconnecting banner - full width above composer */}
+                {isAutoReconnecting && (
+                  <SyncStatusIndicator
+                    subscriptionStatus={status}
+                    subscriptionError={null}
+                    retryState={retryState}
+                    onRetry={retrySubscription}
+                    realTimeEnabled={realTimeEnabled}
+                    isAutoReconnecting={true}
+                    variant="banner"
+                  />
+                )}
+                <div className={styles.composerInputWrapper}>
+                  <TipTapComposer
+                    ref={composerRef}
+                    segments={composerSegments}
+                    onSegmentsChange={setComposerSegments}
+                    onSubmit={submitNewComment}
+                    placeholder="Add a comment...&#10;Type / for commands"
+                    projectUsers={projectUsers}
+                    modelFields={modelFields}
+                    projectModels={projectModels}
+                    canMentionAssets={canMentionAssets}
+                    canMentionModels={canMentionModels}
+                    canMentionFields={true}
+                    onAssetTrigger={handleAssetTrigger}
+                    onRecordTrigger={handleRecordTrigger}
+                    autoFocus={false}
+                    ctx={ctx}
+                  />
+
+                  {isRecordModelSelectorOpen && (
+                    <RecordModelSelectorDropdown
+                      models={readableModels}
+                      onSelect={handleRecordModelSelectForReply}
+                      onClose={handleRecordModelSelectorClose}
+                    />
+                  )}
+
+                  <ComposerToolbar
+                    onUserClick={handleUserToolbarClick}
+                    onFieldClick={handleFieldToolbarClick}
+                    onRecordClick={handleRecordToolbarClick}
+                    onAssetClick={handleAssetToolbarClick}
+                    onModelClick={handleModelToolbarClick}
+                    onSendClick={submitNewComment}
+                    isSendDisabled={isComposerEmptyValue || pendingCount > 0}
+                    canMentionAssets={canMentionAssets}
+                    canMentionModels={canMentionModels}
+                  />
+                </div>
+              </CommentErrorBoundary>
+            </div>
+
+            <CommentsList
+              comments={visibleComments}
+              hasMoreComments={hasMoreComments}
+              onLoadMore={() =>
+                setHiddenOldCount((prev) =>
+                  Math.max(0, (prev ?? 0) - COMMENTS_PAGE_SIZE),
+                )
+              }
+              currentUserId={currentUserId}
+              modelFields={modelFields}
+              projectUsers={projectUsers}
+              projectModels={projectModels}
+              deleteComment={deleteComment}
+              editComment={editComment}
+              upvoteComment={upvoteComment}
+              replyComment={replyComment}
+              onPickerRequest={handleReplyPickerRequest}
+              onRecordModelSelect={handleRecordModelSelectFromComment}
+              readableModels={readableModels}
+              canMentionAssets={canMentionAssets}
+              canMentionModels={canMentionModels}
+              ctx={ctx}
+              isPickerActive={isPickerInProgress}
+            />
+          </div>
         </MentionPermissionsProvider>
       </ProjectDataProvider>
     </Canvas>

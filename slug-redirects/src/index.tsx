@@ -1,11 +1,8 @@
-import {
-  type RenderFieldExtensionCtx,
-  connect,
-} from 'datocms-plugin-sdk';
-import { render } from './utils/render';
-import ConfigScreen from './entrypoints/ConfigScreen';
 import { buildClient } from '@datocms/cma-client-browser';
+import { connect, type RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
+import ConfigScreen from './entrypoints/ConfigScreen';
 import SlugExtension from './entrypoints/SlugExtension';
+import { render } from './utils/render';
 import updateSlugRedirects from './utils/updateSlugRedirects';
 
 connect({
@@ -63,31 +60,33 @@ connect({
     const fieldUsingThisPlugin: Array<string> = [];
     let urlPrefix = '';
 
-    (await ctx.loadFieldsUsingPlugin()).forEach((field) => {
+    for (const field of await ctx.loadFieldsUsingPlugin()) {
       fieldUsingThisPlugin.push(field.attributes.api_key);
-      const appearanceParams = field.attributes.appearance
-        .parameters as Record<string, unknown>;
+      const appearanceParams = field.attributes.appearance.parameters as Record<
+        string,
+        unknown
+      >;
       if (typeof appearanceParams.url_prefix === 'string') {
         urlPrefix = appearanceParams.url_prefix;
       }
-    });
+    }
 
     if (!fieldUsingThisPlugin) {
       return true;
     }
 
     const updatedFields = Object.keys(
-      createOrUpdateItemPayload.data.attributes as object
+      createOrUpdateItemPayload.data.attributes as object,
     );
 
     let updatedFieldKey: string | undefined;
 
-    (fieldUsingThisPlugin as Array<string>).forEach((field) => {
+    for (const field of fieldUsingThisPlugin) {
       if (updatedFields.includes(field)) {
         updatedFieldKey = field;
-        return;
+        break;
       }
-    });
+    }
 
     if (!updatedFieldKey) {
       return true;
@@ -99,7 +98,7 @@ connect({
     });
 
     const recordBeforeUpdate = await client.items.find(
-      (createOrUpdateItemPayload.data as any).id as string
+      createOrUpdateItemPayload.data.id,
     );
 
     const oldSlug = recordBeforeUpdate[updatedFieldKey];
@@ -112,7 +111,7 @@ connect({
       oldSlug as string,
       newSlug,
       recordBeforeUpdate.id,
-      client
+      client,
     );
 
     return true;
@@ -126,31 +125,33 @@ connect({
     const fieldUsingThisPlugin: Array<string> = [];
     let urlPrefix = '';
 
-    (await ctx.loadFieldsUsingPlugin()).forEach((field) => {
+    for (const field of await ctx.loadFieldsUsingPlugin()) {
       fieldUsingThisPlugin.push(field.attributes.api_key);
-      const appearanceParams = field.attributes.appearance
-        .parameters as Record<string, unknown>;
+      const appearanceParams = field.attributes.appearance.parameters as Record<
+        string,
+        unknown
+      >;
       if (typeof appearanceParams.url_prefix === 'string') {
         urlPrefix = appearanceParams.url_prefix;
       }
-    });
+    }
 
     if (!fieldUsingThisPlugin) {
       return true;
     }
 
     const updatedFields = Object.keys(
-      publishItemPayload[0].attributes as object
+      publishItemPayload[0].attributes as object,
     );
 
     let updatedFieldKey: string | undefined;
 
-    (fieldUsingThisPlugin as Array<string>).forEach((field) => {
+    for (const field of fieldUsingThisPlugin) {
       if (updatedFields.includes(field)) {
         updatedFieldKey = field;
-        return;
+        break;
       }
-    });
+    }
 
     if (!updatedFieldKey) {
       return true;
@@ -162,7 +163,7 @@ connect({
     });
 
     const recordBeforeUpdate = await client.items.find(
-      (publishItemPayload[0] as any).id as string
+      publishItemPayload[0].id,
     );
 
     const oldSlug = recordBeforeUpdate[updatedFieldKey];
@@ -175,7 +176,7 @@ connect({
       newSlug as string,
       oldSlug as string,
       recordBeforeUpdate.id,
-      client
+      client,
     );
 
     return true;

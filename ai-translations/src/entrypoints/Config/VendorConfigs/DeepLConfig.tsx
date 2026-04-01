@@ -3,12 +3,12 @@
  * Configuration component for DeepL vendor settings.
  */
 
-import { useState, useMemo } from 'react';
 import { Button, SelectField, SwitchField, TextField } from 'datocms-react-ui';
+import { useMemo, useState } from 'react';
 import ReactTextareaAutosize from 'react-textarea-autosize';
-import DeepLProvider from '../../../utils/translation/providers/DeepLProvider';
-import { normalizeProviderError } from '../../../utils/translation/ProviderErrors';
 import { RESPONSE_PREVIEW_MAX_LENGTH } from '../../../utils/constants';
+import { normalizeProviderError } from '../../../utils/translation/ProviderErrors';
+import DeepLProvider from '../../../utils/translation/providers/DeepLProvider';
 import s from '../../styles.module.css';
 
 /**
@@ -27,12 +27,11 @@ function validateGlossaryPairLine(line: string): string | null {
   if (!trimmed) return null; // Empty lines are OK
 
   // Normalize arrow variants
-  const normalized = trimmed
-    .replace(/[→⇒–—]/g, '->')
-    .replace(/\s+/g, '');
+  const normalized = trimmed.replace(/[→⇒–—]/g, '->').replace(/\s+/g, '');
 
   // Pattern: SOURCE->TARGET=GLOSSARY_ID or SOURCE->TARGET:GLOSSARY_ID
-  const pattern = /^([a-zA-Z*]{1,5}(?:-[a-zA-Z]{2,4})?)->([a-zA-Z*]{1,5}(?:-[a-zA-Z]{2,4})?)(?:=|:)((?:gls-)?[A-Za-z0-9_-]+)$/;
+  const pattern =
+    /^([a-zA-Z*]{1,5}(?:-[a-zA-Z]{2,4})?)->([a-zA-Z*]{1,5}(?:-[a-zA-Z]{2,4})?)(?:=|:)((?:gls-)?[A-Za-z0-9_-]+)$/;
 
   if (!pattern.test(normalized)) {
     return `Invalid format: "${trimmed}". Expected: SOURCE->TARGET=gls-ID (e.g., EN->DE=gls-abc123)`;
@@ -47,12 +46,15 @@ function validateGlossaryPairLine(line: string): string | null {
  * @param text - The full textarea content with multiple lines
  * @returns Object with isValid boolean and array of error messages
  */
-function validateGlossaryPairs(text: string): { isValid: boolean; errors: string[] } {
+function validateGlossaryPairs(text: string): {
+  isValid: boolean;
+  errors: string[];
+} {
   if (!text.trim()) {
     return { isValid: true, errors: [] };
   }
 
-  const lines = text.split(/[;\n,]/).filter(l => l.trim());
+  const lines = text.split(/[;\n,]/).filter((l) => l.trim());
   const errors: string[] = [];
 
   for (let i = 0; i < lines.length; i++) {
@@ -116,7 +118,7 @@ export default function DeepLConfig({
   // Validate glossary pairs in real-time
   const glossaryValidation = useMemo(
     () => validateGlossaryPairs(deeplGlossaryPairs),
-    [deeplGlossaryPairs]
+    [deeplGlossaryPairs],
   );
 
   const handleTestApiKey = async () => {
@@ -132,7 +134,10 @@ export default function DeepLConfig({
       const base = deeplUseFree
         ? 'https://api-free.deepl.com'
         : 'https://api.deepl.com';
-      const provider = new DeepLProvider({ apiKey: deeplApiKey, baseUrl: base });
+      const provider = new DeepLProvider({
+        apiKey: deeplApiKey,
+        baseUrl: base,
+      });
       const out = await provider.translateArray(['Hello world'], {
         targetLang: 'DE',
       });
@@ -140,7 +145,7 @@ export default function DeepLConfig({
       if (sample) {
         setTestApiKeyStatus('success');
         setTestApiKeyMessage(
-          `API Key OK. DeepL responded: ${sample.slice(0, RESPONSE_PREVIEW_MAX_LENGTH)}${sample.length > RESPONSE_PREVIEW_MAX_LENGTH ? '…' : ''}`
+          `API Key OK. DeepL responded: ${sample.slice(0, RESPONSE_PREVIEW_MAX_LENGTH)}${sample.length > RESPONSE_PREVIEW_MAX_LENGTH ? '…' : ''}`,
         );
       } else {
         setTestApiKeyStatus('success');
@@ -223,7 +228,9 @@ export default function DeepLConfig({
           }}
           onChange={(nv) => {
             if (!Array.isArray(nv)) {
-              const selected = nv as { value: 'default' | 'more' | 'less' } | null;
+              const selected = nv as {
+                value: 'default' | 'more' | 'less';
+              } | null;
               if (selected?.value) setDeeplFormality(selected.value);
             }
           }}
@@ -236,7 +243,9 @@ export default function DeepLConfig({
           buttonType="muted"
           onClick={() => setShowDeeplAdvanced((v) => !v)}
         >
-          {showDeeplAdvanced ? 'Hide advanced settings' : 'Show advanced settings'}
+          {showDeeplAdvanced
+            ? 'Hide advanced settings'
+            : 'Show advanced settings'}
         </Button>
       </div>
 
@@ -334,7 +343,9 @@ export default function DeepLConfig({
               minRows={2}
               placeholder={'EN->DE=gls-...\nen-US->pt-BR=gls-...'}
               style={{
-                borderColor: !glossaryValidation.isValid ? '#cf1322' : undefined,
+                borderColor: !glossaryValidation.isValid
+                  ? '#cf1322'
+                  : undefined,
               }}
             />
             {!glossaryValidation.isValid && (
@@ -342,11 +353,13 @@ export default function DeepLConfig({
                 className={s.inlineStatus}
                 style={{ color: '#cf1322', marginTop: 4 }}
               >
-                {glossaryValidation.errors.slice(0, 3).map((err, i) => (
-                  <div key={i}>{err}</div>
+                {glossaryValidation.errors.slice(0, 3).map((err) => (
+                  <div key={err}>{err}</div>
                 ))}
                 {glossaryValidation.errors.length > 3 && (
-                  <div>...and {glossaryValidation.errors.length - 3} more error(s)</div>
+                  <div>
+                    ...and {glossaryValidation.errors.length - 3} more error(s)
+                  </div>
                 )}
               </div>
             )}
@@ -356,5 +369,3 @@ export default function DeepLConfig({
     </>
   );
 }
-
-

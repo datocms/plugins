@@ -1,7 +1,7 @@
-import { buildClient } from "@datocms/cma-client-browser";
+import { buildClient } from '@datocms/cma-client-browser';
 
-export const RECORD_BIN_WEBHOOK_NAME = "🗑️ Record Bin";
-const LEGACY_RECORD_BIN_WEBHOOK_NAME = "🗑 Record Bin";
+export const RECORD_BIN_WEBHOOK_NAME = '🗑️ Record Bin';
+const LEGACY_RECORD_BIN_WEBHOOK_NAME = '🗑 Record Bin';
 const MANAGED_RECORD_BIN_WEBHOOK_NAMES = [
   RECORD_BIN_WEBHOOK_NAME,
   LEGACY_RECORD_BIN_WEBHOOK_NAME,
@@ -9,19 +9,19 @@ const MANAGED_RECORD_BIN_WEBHOOK_NAMES = [
 
 const RECORD_BIN_WEBHOOK_EVENTS = [
   {
-    entity_type: "item",
-    event_types: ["delete"],
+    entity_type: 'item',
+    event_types: ['delete'],
   },
 ];
 
 export type RecordBinWebhookSyncErrorCode =
-  | "MISSING_ACCESS_TOKEN"
-  | "INSUFFICIENT_PERMISSIONS"
-  | "AMBIGUOUS_RECORD_BIN_WEBHOOK"
-  | "WEBHOOK_LIST_FAILED"
-  | "WEBHOOK_CREATE_FAILED"
-  | "WEBHOOK_UPDATE_FAILED"
-  | "WEBHOOK_DELETE_FAILED";
+  | 'MISSING_ACCESS_TOKEN'
+  | 'INSUFFICIENT_PERMISSIONS'
+  | 'AMBIGUOUS_RECORD_BIN_WEBHOOK'
+  | 'WEBHOOK_LIST_FAILED'
+  | 'WEBHOOK_CREATE_FAILED'
+  | 'WEBHOOK_UPDATE_FAILED'
+  | 'WEBHOOK_DELETE_FAILED';
 
 type RecordBinWebhookSyncErrorConstructorProps = {
   code: RecordBinWebhookSyncErrorCode;
@@ -39,14 +39,14 @@ export class RecordBinWebhookSyncError extends Error {
     details,
   }: RecordBinWebhookSyncErrorConstructorProps) {
     super(message);
-    this.name = "RecordBinWebhookSyncError";
+    this.name = 'RecordBinWebhookSyncError';
     this.code = code;
     this.details = details;
   }
 }
 
 export const isRecordBinWebhookSyncError = (
-  error: unknown
+  error: unknown,
 ): error is RecordBinWebhookSyncError =>
   error instanceof RecordBinWebhookSyncError;
 
@@ -63,12 +63,12 @@ export type EnsureRecordBinWebhookInput = RecordBinWebhookSyncBaseInput & {
 export type RemoveRecordBinWebhookInput = RecordBinWebhookSyncBaseInput;
 
 type WebhookOperationResult = {
-  action: "created" | "updated" | "deleted" | "none";
+  action: 'created' | 'updated' | 'deleted' | 'none';
   webhookId?: string;
 };
 
 type BulkWebhookRemovalResult = {
-  action: "deleted" | "none";
+  action: 'deleted' | 'none';
   webhookIds: string[];
 };
 
@@ -82,7 +82,7 @@ const getUnknownErrorMessage = (error: unknown): string => {
     return error.message;
   }
 
-  return "Unknown error";
+  return 'Unknown error';
 };
 
 const getWebhookClient = ({
@@ -92,17 +92,17 @@ const getWebhookClient = ({
 }: RecordBinWebhookSyncBaseInput) => {
   if (!currentUserAccessToken) {
     throw new RecordBinWebhookSyncError({
-      code: "MISSING_ACCESS_TOKEN",
+      code: 'MISSING_ACCESS_TOKEN',
       message:
-        "Missing access token. Grant the plugin permission currentUserAccessToken.",
+        'Missing access token. Grant the plugin permission currentUserAccessToken.',
     });
   }
 
   if (!canManageWebhooks) {
     throw new RecordBinWebhookSyncError({
-      code: "INSUFFICIENT_PERMISSIONS",
+      code: 'INSUFFICIENT_PERMISSIONS',
       message:
-        "Current user does not have permission to manage webhooks in this project.",
+        'Current user does not have permission to manage webhooks in this project.',
     });
   }
 
@@ -113,25 +113,25 @@ const getWebhookClient = ({
 };
 
 const isManagedWebhookName = (name: unknown): name is string =>
-  typeof name === "string" &&
+  typeof name === 'string' &&
   MANAGED_RECORD_BIN_WEBHOOK_NAMES.includes(
-    name as (typeof MANAGED_RECORD_BIN_WEBHOOK_NAMES)[number]
+    name as (typeof MANAGED_RECORD_BIN_WEBHOOK_NAMES)[number],
   );
 
 const isWebhookCandidate = (value: unknown): value is WebhookCandidate => {
-  if (!value || typeof value !== "object") {
+  if (!value || typeof value !== 'object') {
     return false;
   }
 
   const candidate = value as Record<string, unknown>;
 
   return (
-    typeof candidate.id === "string" && isManagedWebhookName(candidate.name)
+    typeof candidate.id === 'string' && isManagedWebhookName(candidate.name)
   );
 };
 
 const listManagedRecordBinWebhooks = async (
-  client: ReturnType<typeof buildClient>
+  client: ReturnType<typeof buildClient>,
 ): Promise<WebhookCandidate[]> => {
   let webhooksResponse: unknown;
 
@@ -139,7 +139,7 @@ const listManagedRecordBinWebhooks = async (
     webhooksResponse = await client.webhooks.list();
   } catch (error) {
     throw new RecordBinWebhookSyncError({
-      code: "WEBHOOK_LIST_FAILED",
+      code: 'WEBHOOK_LIST_FAILED',
       message: `Could not list existing webhooks. ${getUnknownErrorMessage(error)}`,
     });
   }
@@ -157,9 +157,9 @@ const assertSingleManagedWebhook = (managedWebhooks: WebhookCandidate[]) => {
   }
 
   throw new RecordBinWebhookSyncError({
-    code: "AMBIGUOUS_RECORD_BIN_WEBHOOK",
+    code: 'AMBIGUOUS_RECORD_BIN_WEBHOOK',
     message:
-      "Found multiple managed Record Bin webhooks. Resolve duplicates before continuing.",
+      'Found multiple managed Record Bin webhooks. Resolve duplicates before continuing.',
     details: {
       webhookIds: managedWebhooks.map((webhook) => webhook.id),
       webhookNames: managedWebhooks.map((webhook) => webhook.name),
@@ -176,7 +176,7 @@ const getCanonicalWebhookPayload = (lambdaBaseUrl: string) => ({
   http_basic_user: null,
   http_basic_password: null,
   enabled: true,
-  payload_api_version: "3",
+  payload_api_version: '3',
   nested_items_in_payload: true,
 });
 
@@ -192,19 +192,19 @@ export const ensureRecordBinWebhook = async ({
   if (managedWebhooks.length === 0) {
     try {
       const createdWebhook = await client.webhooks.create(
-        getCanonicalWebhookPayload(lambdaBaseUrl)
+        getCanonicalWebhookPayload(lambdaBaseUrl),
       );
 
       return {
-        action: "created",
+        action: 'created',
         webhookId:
-          createdWebhook && typeof createdWebhook.id === "string"
+          createdWebhook && typeof createdWebhook.id === 'string'
             ? createdWebhook.id
             : undefined,
       };
     } catch (error) {
       throw new RecordBinWebhookSyncError({
-        code: "WEBHOOK_CREATE_FAILED",
+        code: 'WEBHOOK_CREATE_FAILED',
         message: `Could not create the Record Bin webhook. ${getUnknownErrorMessage(error)}`,
       });
     }
@@ -215,16 +215,16 @@ export const ensureRecordBinWebhook = async ({
   try {
     await client.webhooks.update(
       webhookToUpdate.id,
-      getCanonicalWebhookPayload(lambdaBaseUrl)
+      getCanonicalWebhookPayload(lambdaBaseUrl),
     );
 
     return {
-      action: "updated",
+      action: 'updated',
       webhookId: webhookToUpdate.id,
     };
   } catch (error) {
     throw new RecordBinWebhookSyncError({
-      code: "WEBHOOK_UPDATE_FAILED",
+      code: 'WEBHOOK_UPDATE_FAILED',
       message: `Could not update the Record Bin webhook. ${getUnknownErrorMessage(error)}`,
       details: {
         webhookId: webhookToUpdate.id,
@@ -234,7 +234,7 @@ export const ensureRecordBinWebhook = async ({
 };
 
 export const removeRecordBinWebhook = async (
-  baseInput: RemoveRecordBinWebhookInput
+  baseInput: RemoveRecordBinWebhookInput,
 ): Promise<WebhookOperationResult> => {
   const client = getWebhookClient(baseInput);
   const managedWebhooks = await listManagedRecordBinWebhooks(client);
@@ -243,7 +243,7 @@ export const removeRecordBinWebhook = async (
 
   if (managedWebhooks.length === 0) {
     return {
-      action: "none",
+      action: 'none',
     };
   }
 
@@ -253,12 +253,12 @@ export const removeRecordBinWebhook = async (
     await client.webhooks.destroy(webhookToDelete.id);
 
     return {
-      action: "deleted",
+      action: 'deleted',
       webhookId: webhookToDelete.id,
     };
   } catch (error) {
     throw new RecordBinWebhookSyncError({
-      code: "WEBHOOK_DELETE_FAILED",
+      code: 'WEBHOOK_DELETE_FAILED',
       message: `Could not delete the Record Bin webhook. ${getUnknownErrorMessage(error)}`,
       details: {
         webhookId: webhookToDelete.id,
@@ -268,44 +268,53 @@ export const removeRecordBinWebhook = async (
 };
 
 export const removeAllManagedRecordBinWebhooks = async (
-  baseInput: RemoveRecordBinWebhookInput
+  baseInput: RemoveRecordBinWebhookInput,
 ): Promise<BulkWebhookRemovalResult> => {
   const client = getWebhookClient(baseInput);
   const managedWebhooks = await listManagedRecordBinWebhooks(client);
 
   if (managedWebhooks.length === 0) {
     return {
-      action: "none",
+      action: 'none',
       webhookIds: [],
     };
   }
 
-  const deletedWebhookIds: string[] = [];
-
-  for (const webhookToDelete of managedWebhooks) {
+  const deleteWebhookSequentially = async (
+    deletedSoFar: string[],
+    webhookToDelete: { id: string },
+  ): Promise<string[]> => {
     try {
       await client.webhooks.destroy(webhookToDelete.id);
-      deletedWebhookIds.push(webhookToDelete.id);
+      return [...deletedSoFar, webhookToDelete.id];
     } catch (error) {
       throw new RecordBinWebhookSyncError({
-        code: "WEBHOOK_DELETE_FAILED",
+        code: 'WEBHOOK_DELETE_FAILED',
         message: `Could not delete the Record Bin webhook. ${getUnknownErrorMessage(error)}`,
         details: {
           webhookId: webhookToDelete.id,
-          webhookIdsDeletedBeforeFailure: deletedWebhookIds,
+          webhookIdsDeletedBeforeFailure: deletedSoFar,
         },
       });
     }
-  }
+  };
+
+  const deletedWebhookIds = await managedWebhooks.reduce(
+    (chain, webhook) =>
+      chain.then((deletedSoFar) =>
+        deleteWebhookSequentially(deletedSoFar, webhook),
+      ),
+    Promise.resolve([] as string[]),
+  );
 
   return {
-    action: "deleted",
+    action: 'deleted',
     webhookIds: deletedWebhookIds,
   };
 };
 
 const getDetailLines = (
-  details: Record<string, unknown> | undefined
+  details: Record<string, unknown> | undefined,
 ): string[] => {
   if (!details) {
     return [];
@@ -313,14 +322,14 @@ const getDetailLines = (
 
   return Object.entries(details).map(([key, value]) => {
     if (Array.isArray(value)) {
-      return `${key}: ${value.join(", ")}`;
+      return `${key}: ${value.join(', ')}`;
     }
 
     if (value === null || value === undefined) {
       return `${key}: ${String(value)}`;
     }
 
-    if (typeof value === "object") {
+    if (typeof value === 'object') {
       return `${key}: ${JSON.stringify(value)}`;
     }
 
@@ -330,18 +339,18 @@ const getDetailLines = (
 
 export const getRecordBinWebhookSyncErrorDetails = (
   error: RecordBinWebhookSyncError,
-  operation: "connect" | "disconnect"
+  operation: 'connect' | 'disconnect',
 ): string[] => {
   const title =
-    operation === "connect"
-      ? "Could not synchronize the Record Bin webhook while connecting the lambda."
-      : "Could not delete the Record Bin webhook while disconnecting the lambda.";
+    operation === 'connect'
+      ? 'Could not synchronize the Record Bin webhook while connecting the lambda.'
+      : 'Could not delete the Record Bin webhook while disconnecting the lambda.';
 
   return [
     title,
     `Failure code: ${error.code}.`,
     `Failure details: ${error.message}`,
     ...getDetailLines(error.details),
-    "Ensure the plugin has currentUserAccessToken permission and that your role can manage webhooks.",
+    'Ensure the plugin has currentUserAccessToken permission and that your role can manage webhooks.',
   ];
 };

@@ -1,9 +1,9 @@
 import { connect, type RenderModalCtx } from 'datocms-plugin-sdk';
 import 'datocms-react-ui/styles.css';
-import { render } from './utils/render';
 import { buildClient } from '@datocms/cma-client-browser';
-import findUploadIds from './utils/findUploadIds';
 import DeletionModal from './entrypoints/DeletionModal';
+import findUploadIds from './utils/findUploadIds';
+import { render } from './utils/render';
 
 connect({
   renderModal(modalId: string, ctx: RenderModalCtx) {
@@ -24,29 +24,42 @@ connect({
       return true;
     }
 
-    for (const deletedItem of items) {
-      const client = buildClient({ apiToken: ctx.currentUserAccessToken! });
-      const item = await client.items.find(deletedItem.id, { nested: true });
-
-      const uploadIds = findUploadIds(item);
-
-      if (!uploadIds) {
-        return true;
-      }
-
-      setTimeout(() => {
-        client.uploads
-          .bulkDestroy({
-            uploads: uploadIds.map((id) => ({
-              type: 'upload',
-              id: id,
-            })),
-          })
-          .then(() => {
-            ctx.notice(`${uploadIds.length} assets successfully deleted!`);
-          });
-      }, 5000);
+    const apiToken = ctx.currentUserAccessToken;
+    if (!apiToken) {
+      return true;
     }
+
+    const client = buildClient({ apiToken });
+
+    const itemsWithUploads = await Promise.all(
+      items.map(async (deletedItem) => {
+        const item = await client.items.find(deletedItem.id, { nested: true });
+        const uploadIds = findUploadIds(item as Record<string, unknown>);
+        return uploadIds;
+      }),
+    );
+
+    const allUploadIds = itemsWithUploads
+      .filter((ids): ids is string[] => ids !== null)
+      .flat();
+
+    if (allUploadIds.length === 0) {
+      return true;
+    }
+
+    setTimeout(() => {
+      client.uploads
+        .bulkDestroy({
+          uploads: allUploadIds.map((id) => ({
+            type: 'upload',
+            id: id,
+          })),
+        })
+        .then(() => {
+          ctx.notice(`${allUploadIds.length} assets successfully deleted!`);
+        });
+    }, 5000);
+
     return true;
   },
 });

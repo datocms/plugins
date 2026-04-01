@@ -1,7 +1,7 @@
-import type { errorObject } from "../types/types";
+import type { errorObject } from '../types/types';
 
-const UNKNOWN_ERROR_CODE = "UNKNOWN";
-const DEFAULT_FALLBACK_MESSAGE = "Could not parse restoration error payload.";
+const UNKNOWN_ERROR_CODE = 'UNKNOWN';
+const DEFAULT_FALLBACK_MESSAGE = 'Could not parse restoration error payload.';
 
 type BuildRestoreErrorPayloadOptions = {
   fullErrorPayload?: string;
@@ -9,10 +9,10 @@ type BuildRestoreErrorPayloadOptions = {
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
-  Boolean(value) && typeof value === "object" && !Array.isArray(value);
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
 const isNonEmptyString = (value: unknown): value is string =>
-  typeof value === "string" && value.trim().length > 0;
+  typeof value === 'string' && value.trim().length > 0;
 
 const serializeUnknownError = (error: unknown): string => {
   if (error instanceof Error) {
@@ -31,7 +31,7 @@ const isErrorObject = (value: unknown): value is errorObject => {
     return false;
   }
 
-  if (typeof value.fullErrorPayload !== "string") {
+  if (typeof value.fullErrorPayload !== 'string') {
     return false;
   }
 
@@ -44,8 +44,8 @@ const isErrorObject = (value: unknown): value is errorObject => {
 
 const buildUnknownSimplifiedError = (
   error: unknown,
-  fallbackMessage: string
-): errorObject["simplifiedError"] => {
+  fallbackMessage: string,
+): errorObject['simplifiedError'] => {
   const message = isNonEmptyString(error)
     ? error
     : error instanceof Error && isNonEmptyString(error.message)
@@ -63,11 +63,14 @@ const buildUnknownSimplifiedError = (
 
 const normalizeSimplifiedErrorRecord = (
   candidate: Record<string, unknown>,
-  fallbackMessage: string
-): errorObject["simplifiedError"] | undefined => {
-  const candidateDetails = isRecord(candidate.details) ? { ...candidate.details } : {};
+  fallbackMessage: string,
+): errorObject['simplifiedError'] | undefined => {
+  const candidateDetails = isRecord(candidate.details)
+    ? { ...candidate.details }
+    : {};
   const hasStructuredShape =
-    isNonEmptyString(candidate.code) || Object.keys(candidateDetails).length > 0;
+    isNonEmptyString(candidate.code) ||
+    Object.keys(candidateDetails).length > 0;
 
   if (!hasStructuredShape) {
     if (isNonEmptyString(candidate.message)) {
@@ -92,7 +95,10 @@ const normalizeSimplifiedErrorRecord = (
     details.code = code;
   }
 
-  if (!isNonEmptyString(details.message) && isNonEmptyString(candidate.message)) {
+  if (
+    !isNonEmptyString(details.message) &&
+    isNonEmptyString(candidate.message)
+  ) {
     details.message = candidate.message;
   }
 
@@ -108,13 +114,13 @@ const normalizeSimplifiedErrorRecord = (
     ...candidate,
     code,
     details,
-  } as errorObject["simplifiedError"];
+  } as errorObject['simplifiedError'];
 };
 
 const unwrapErrorWrapper = (error: unknown): unknown => {
   let current = error;
 
-  while (isRecord(current) && "error" in current) {
+  while (isRecord(current) && 'error' in current) {
     const nestedError = current.error;
     if (nestedError === undefined || nestedError === current) {
       break;
@@ -128,8 +134,8 @@ const unwrapErrorWrapper = (error: unknown): unknown => {
 
 const extractSimplifiedError = (
   error: unknown,
-  fallbackMessage: string
-): errorObject["simplifiedError"] => {
+  fallbackMessage: string,
+): errorObject['simplifiedError'] => {
   if (isErrorObject(error)) {
     return error.simplifiedError;
   }
@@ -145,7 +151,7 @@ const extractSimplifiedError = (
     if (isRecord(firstError) && isRecord(firstError.attributes)) {
       const normalizedAttributes = normalizeSimplifiedErrorRecord(
         firstError.attributes,
-        fallbackMessage
+        fallbackMessage,
       );
       if (normalizedAttributes) {
         return normalizedAttributes;
@@ -156,7 +162,7 @@ const extractSimplifiedError = (
   if (isRecord(unwrappedError)) {
     const normalizedError = normalizeSimplifiedErrorRecord(
       unwrappedError,
-      fallbackMessage
+      fallbackMessage,
     );
     if (normalizedError) {
       return normalizedError;
@@ -167,7 +173,7 @@ const extractSimplifiedError = (
 };
 
 export const parseJsonStringSafely = (
-  rawResponseText: string
+  rawResponseText: string,
 ): unknown | undefined => {
   if (!isNonEmptyString(rawResponseText)) {
     return undefined;
@@ -182,9 +188,10 @@ export const parseJsonStringSafely = (
 
 export const buildRestoreErrorPayload = (
   error: unknown,
-  options: BuildRestoreErrorPayloadOptions = {}
+  options: BuildRestoreErrorPayloadOptions = {},
 ): errorObject => {
-  const { fullErrorPayload, fallbackMessage = DEFAULT_FALLBACK_MESSAGE } = options;
+  const { fullErrorPayload, fallbackMessage = DEFAULT_FALLBACK_MESSAGE } =
+    options;
 
   if (isErrorObject(error) && !isNonEmptyString(fullErrorPayload)) {
     return error;
@@ -204,7 +211,7 @@ export type RestoreSuccessResponse = {
 };
 
 export const isRestoreSuccessResponse = (
-  payload: unknown
+  payload: unknown,
 ): payload is RestoreSuccessResponse => {
   if (!isRecord(payload)) {
     return false;

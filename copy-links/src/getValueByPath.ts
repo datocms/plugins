@@ -1,6 +1,6 @@
-import type { ItemFormAdditionalProperties } from "datocms-plugin-sdk";
+import type { ItemFormAdditionalProperties } from 'datocms-plugin-sdk';
 
-type FormValues = ItemFormAdditionalProperties["formValues"];
+type FormValues = ItemFormAdditionalProperties['formValues'];
 
 /**
  * Walks a dot-delimited path into your formValues using a reducer.
@@ -13,7 +13,7 @@ export const getValueByPath = <T = unknown>(
   path: string,
 ): T =>
   path
-    .split(".")
+    .split('.')
     .reduce<unknown>(
       (acc, key) => (acc as Record<string, unknown>)?.[key],
       formValues,

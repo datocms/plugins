@@ -48,6 +48,167 @@ function escapeHtml(unsafe: string) {
     .replace(/'/g, '&#039;');
 }
 
+function buildItemTypeNode(itemType: ItemType) {
+  return new Node(`it-${itemType.id}`, {
+    label: `<
+      <table border="0" align="center" cellspacing="0.5" cellpadding="0">
+        <tr>
+          <td align="center" valign="bottom">
+            <b><font point-size="11">${escapeHtml(
+              itemType.attributes.name,
+            )}</font></b>     <font color="grey50">${
+              itemType.attributes.modular_block ? 'Block model' : 'Model'
+            }</font>
+            <br/>
+            <font color="grey50" face="Courier">${escapeHtml(
+              itemType.attributes.api_key,
+            )}</font>
+          </td>
+        </tr>
+      </table>
+    >`,
+    shape: itemType.attributes.singleton ? 'record' : 'Mrecord',
+  });
+}
+
+function buildFieldNode(field: Field) {
+  return new Node(`f-${field.id}`, {
+    label: `<
+      <table border="0">
+        <tr>
+          <td align="text">
+            <b>${escapeHtml(field.attributes.label)}</b>
+            <br/>
+            <font color="grey50">${fieldTypes[field.attributes.field_type]}</font>
+            <br/>
+            <font color="grey50" face="Courier">${escapeHtml(
+              field.attributes.api_key,
+            )}</font>
+          </td>
+        </tr>
+      </table>
+    >`.replace(/\s+/, ' '),
+    color: '#429e9e',
+    shape: 'record',
+    fixedsize: true,
+    width: 2,
+    height: 0.6,
+  });
+}
+
+/** Returns the linked item-type IDs for a single validator entry, or an empty array. */
+function extractLinkedItemTypeIds(validatorEntry: unknown): string[] {
+  if (
+    validatorEntry !== null &&
+    typeof validatorEntry === 'object' &&
+    'item_types' in validatorEntry
+  ) {
+    const typed = validatorEntry as { item_types: string[] };
+    return typed.item_types;
+  }
+  return [];
+}
+
+/**
+ * Adds link edges from a field node to each linked item-type node.
+ * Returns true if any edges were added (i.e., the field node should be rendered).
+ */
+function addFieldEdges(
+  graph: Digraph,
+  field: Field,
+  validators: string[],
+): boolean {
+  let hasLinks = false;
+
+  for (const validatorCode of validators) {
+    const validatorEntry = field.attributes.validators[validatorCode];
+    const linkedIds = extractLinkedItemTypeIds(validatorEntry);
+
+    for (const itemTypeId of linkedIds) {
+      hasLinks = true;
+      const linkEdge = new Edge(
+        [{ id: `f-${field.id}` }, { id: `it-${itemTypeId}` }],
+        { style: 'dashed', lhead: `cluster-${itemTypeId}` },
+      );
+      graph.addEdge(linkEdge);
+    }
+  }
+
+  return hasLinks;
+}
+
+/** Adds a field node and an edge from its parent item-type node to the subgraph/graph. */
+function addFieldNodeToSubgraph(
+  graph: Digraph,
+  subgraph: Subgraph,
+  field: Field,
+  itemTypeId: string,
+) {
+  const fieldNode = buildFieldNode(field);
+  subgraph.addNode(fieldNode);
+
+  const parentEdge = new Edge([
+    { id: `it-${itemTypeId}` },
+    { id: `f-${field.id}` },
+  ]);
+  graph.addEdge(parentEdge);
+}
+
+function addItemTypeSubgraph(
+  graph: Digraph,
+  itemType: ItemType,
+  fields: Partial<Record<string, Field>>,
+) {
+  const subgraph = new Subgraph(`cluster-${itemType.id}`, {
+    style: 'filled',
+    color: '#f5fbfc',
+  });
+
+  subgraph.attributes.node.apply({
+    fillcolor: 'white',
+    style: 'filled',
+  });
+
+  const itemTypeNode = buildItemTypeNode(itemType);
+  subgraph.addNode(itemTypeNode);
+
+  const itemTypeFields = itemType.relationships.fields.data
+    .map((handle) => fields[handle.id])
+    .filter((x): x is Field => Boolean(x));
+
+  for (const field of itemTypeFields) {
+    const validators = fieldTypeValidators[field.attributes.field_type];
+    if (!validators) {
+      continue;
+    }
+
+    const hasLinks = addFieldEdges(graph, field, validators);
+    if (hasLinks) {
+      addFieldNodeToSubgraph(graph, subgraph, field, itemType.id);
+    }
+  }
+
+  graph.addSubgraph(subgraph);
+}
+
+function buildGraphDefaults(graph: Digraph) {
+  graph.attributes.node.apply({
+    fontsize: 10,
+    fontname: 'Arial',
+    margin: 0.07,
+    penwidth: 1.0,
+  });
+
+  graph.attributes.edge.apply({
+    fontname: 'Arial',
+    fontsize: 7,
+    labelangle: 32,
+    labeldistance: 1.8,
+    arrowtail: 'none',
+    color: 'grey60',
+  });
+}
+
 export function generateGraph({
   itemTypes,
   fields,
@@ -65,124 +226,13 @@ export function generateGraph({
     compound: true,
   });
 
-  graph.attributes.node.apply({
-    fontsize: 10,
-    fontname: 'Arial',
-    margin: 0.07,
-    penwidth: 1.0,
-  });
+  buildGraphDefaults(graph);
 
-  graph.attributes.edge.apply({
-    fontname: 'Arial',
-    fontsize: 7,
-    labelangle: 32,
-    labeldistance: 1.8,
-    arrowtail: 'none',
-    color: 'grey60',
-  });
+  for (const itemType of allEntities(itemTypes)) {
+    addItemTypeSubgraph(graph, itemType, fields);
+  }
 
-  allEntities(itemTypes).forEach((itemType) => {
-    const subgraph = new Subgraph(`cluster-${itemType.id}`, {
-      style: 'filled',
-      color: '#f5fbfc',
-    });
-
-    subgraph.attributes.node.apply({
-      fillcolor: 'white',
-      style: 'filled',
-    });
-
-    const node = new Node(`it-${itemType.id}`, {
-      label: `<
-        <table border="0" align="center" cellspacing="0.5" cellpadding="0">
-          <tr>
-            <td align="center" valign="bottom">
-              <b><font point-size="11">${escapeHtml(
-                itemType.attributes.name,
-              )}</font></b>     <font color="grey50">${
-                itemType.attributes.modular_block ? 'Block model' : 'Model'
-              }</font>
-              <br/>
-              <font color="grey50" face="Courier">${escapeHtml(
-                itemType.attributes.api_key,
-              )}</font>
-            </td>
-          </tr>
-        </table>
-      >`,
-      shape: itemType.attributes.singleton ? 'record' : 'Mrecord',
-    });
-    subgraph.addNode(node);
-
-    const itemTypeFields = itemType.relationships.fields.data
-      .map((handle) => fields[handle.id])
-      .filter((x): x is Field => Boolean(x));
-
-    itemTypeFields.forEach((field) => {
-      const validators = fieldTypeValidators[field.attributes.field_type];
-
-      if (!validators) {
-        return;
-      }
-
-      let found = false;
-
-      validators.forEach((validatorCode) => {
-        const itemTypeIds: string[] = (
-          field.attributes.validators[validatorCode] as any
-        ).item_types;
-
-        itemTypeIds.forEach((itemTypeId) => {
-          found = true;
-          const edge = new Edge(
-            [{ id: `f-${field.id}` }, { id: `it-${itemTypeId}` }],
-            { style: 'dashed', lhead: `cluster-${itemTypeId}` },
-          );
-          graph.addEdge(edge);
-        });
-      });
-
-      if (found) {
-        const node = new Node(`f-${field.id}`, {
-          label: `<
-            <table border="0">
-              <tr>
-                <td align="text">
-                  <b>${escapeHtml(field.attributes.label)}</b>
-                  <br/>
-                  <font color="grey50">${
-                    fieldTypes[field.attributes.field_type]
-                  }</font>
-                  <br/>
-                  <font color="grey50" face="Courier">${escapeHtml(
-                    field.attributes.api_key,
-                  )}</font>
-                </td>
-              </tr>
-            </table>
-          >`.replace(/\s+/, ' '),
-          color: '#429e9e',
-          shape: 'record',
-          fixedsize: true,
-          width: 2,
-          height: 0.6,
-        });
-        subgraph.addNode(node);
-
-        const edge = new Edge([
-          { id: `it-${itemType.id}` },
-          { id: `f-${field.id}` },
-        ]);
-        graph.addEdge(edge);
-      }
-    });
-
-    graph.addSubgraph(subgraph);
-  });
-
-  const dot = toDot(graph);
-
-  return dot;
+  return toDot(graph);
 }
 
 let viz = new Viz({ Module, render });

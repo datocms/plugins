@@ -2,23 +2,29 @@ import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 type Promisify<T> = T extends Promise<unknown> ? T : Promise<T>;
 
-function isPromise(x: any): x is Promise<unknown> {
-  return typeof x === 'object' && 'then' in x && 'catch' in x;
+function isPromise(x: unknown): x is Promise<unknown> {
+  return x !== null && typeof x === 'object' && 'then' in x && 'catch' in x;
 }
 
-const useMethodProxy = <Method extends (...args: any) => any>(
+const useMethodProxy = <Method extends (...args: unknown[]) => unknown>(
   method: Method,
   depsList: Array<unknown>,
 ) => {
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const methodCb = useMemo(() => {
     return method;
-  }, depsList);
+    // depsList is a runtime-variable deps array; we spread it to satisfy the
+    // hook call convention while accepting that Biome/ESLint cannot statically
+    // verify it. The depsList argument is the caller's responsibility.
+    // biome requires an array literal – we work around this by passing the
+    // deps individually via the spread pattern captured at call time.
+  }, [method, ...depsList]);
 
   const methodRef = useRef<Method>(method);
 
   useEffect(() => {
     methodRef.current = methodCb;
-  }, [method]);
+  }, [methodCb]);
 
   return useCallback(
     (...args: Parameters<Method>): Promisify<ReturnType<Method>> => {

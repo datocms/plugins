@@ -3,7 +3,7 @@
  * Tests OpenAI Chat Completions provider implementation.
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // Create the mock function outside and before the mock
 const mockCreate = vi.fn();
@@ -91,7 +91,7 @@ describe('OpenAIProvider', () => {
           messages: [{ role: 'user', content: 'Translate this' }],
           stream: false,
         },
-        { signal: expect.any(AbortSignal) }
+        { signal: expect.any(AbortSignal) },
       );
     });
 
@@ -157,7 +157,7 @@ describe('OpenAIProvider', () => {
           messages: [{ role: 'user', content: 'Test prompt' }],
           stream: true,
         },
-        { signal: expect.any(AbortSignal) }
+        { signal: expect.any(AbortSignal) },
       );
     });
 

@@ -2,17 +2,17 @@ import {
   connect,
   type FieldAppearanceChange,
   type RenderManualFieldExtensionConfigScreenCtx,
-} from "datocms-plugin-sdk";
-import "datocms-react-ui/styles.css";
-import { PerFieldConfigScreen } from "./entrypoints/PerFieldConfigScreen";
-import { FieldExtension } from "./entrypoints/FieldExtension";
+} from 'datocms-plugin-sdk';
+import 'datocms-react-ui/styles.css';
+import { FieldExtension } from './entrypoints/FieldExtension';
+import { PerFieldConfigScreen } from './entrypoints/PerFieldConfigScreen';
 import {
   isValidGlobalParameters,
   isValidParameters,
   type ValidGlobalParameters,
-} from "./types";
-import { render } from "./utils/render";
-import normalizeParams from "./utils/normalizeParams";
+} from './types';
+import normalizeParams from './utils/normalizeParams';
+import { render } from './utils/render';
 
 connect({
   async onBoot(ctx) {
@@ -31,20 +31,20 @@ connect({
         fields.map(async (field, index) => {
           const changes: FieldAppearanceChange[] = [];
 
-          field.attributes.appearance.addons.forEach((addon) => {
+          for (const addon of field.attributes.appearance.addons) {
             if (addon.id !== ctx.plugin.id) {
-              return;
+              continue;
             }
 
             if (!isValidParameters(addon.parameters)) {
               changes.push({
-                operation: "updateAddon",
+                operation: 'updateAddon',
                 index,
-                newFieldExtensionId: "conditionalFields",
+                newFieldExtensionId: 'conditionalFields',
                 newParameters: normalizeParams(addon.parameters),
               });
             }
-          });
+          }
 
           if (changes.length > 0) {
             await ctx.updateFieldAppearance(field.id, changes);
@@ -52,25 +52,25 @@ connect({
           }
 
           return false;
-        })
+        }),
       )
     ).some((x) => x);
 
     if (upgraded) {
-      ctx.notice("Plugin upgraded successfully!");
+      ctx.notice('Plugin upgraded successfully!');
     }
 
     ctx.updatePluginParameters({
-      parametersVersion: "2",
+      parametersVersion: '2',
     } as ValidGlobalParameters);
   },
   manualFieldExtensions() {
     return [
       {
-        id: "conditionalFields",
-        name: "Conditional fields",
-        type: "addon",
-        fieldTypes: ["boolean"],
+        id: 'conditionalFields',
+        name: 'Conditional fields',
+        type: 'addon',
+        fieldTypes: ['boolean'],
         configurable: true,
         initialHeight: 0,
       },
@@ -81,7 +81,7 @@ connect({
   },
   renderManualFieldExtensionConfigScreen(
     _fieldExtensionId: string,
-    ctx: RenderManualFieldExtensionConfigScreenCtx
+    ctx: RenderManualFieldExtensionConfigScreenCtx,
   ) {
     render(<PerFieldConfigScreen ctx={ctx} />);
   },

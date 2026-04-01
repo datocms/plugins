@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
+
+import { useOperationQueue } from '@hooks/useOperationQueue';
 import { act, StrictMode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useOperationQueue } from '@hooks/useOperationQueue';
-import { render, renderHook, flushPromises } from '../testUtils/react';
+import { flushPromises, render, renderHook } from '../testUtils/react';
 
 function createCtx() {
   return {
@@ -31,12 +32,12 @@ describe('useOperationQueue', () => {
         ctx,
         onRecordCreated: vi.fn(),
         resolveCommentsModelId: vi.fn().mockResolvedValue(null),
-      })
+      }),
     );
 
     let didEnqueue = false;
     act(() => {
-      didEnqueue = result.current!.enqueue({
+      didEnqueue = result.current?.enqueue({
         type: 'ADD_COMMENT',
         comment: {
           id: 'comment-1',
@@ -76,11 +77,11 @@ describe('useOperationQueue', () => {
         ctx,
         onRecordCreated: vi.fn(),
         resolveCommentsModelId: vi.fn().mockResolvedValue('comments-model'),
-      })
+      }),
     );
 
     act(() => {
-      result.current!.enqueue({
+      result.current?.enqueue({
         type: 'EDIT_COMMENT',
         id: 'comment-1',
         newContent: [{ type: 'text', content: 'Updated' }],
@@ -118,11 +119,11 @@ describe('useOperationQueue', () => {
         ctx,
         onRecordCreated,
         resolveCommentsModelId,
-      })
+      }),
     );
 
     act(() => {
-      result.current!.enqueue({
+      result.current?.enqueue({
         type: 'ADD_COMMENT',
         comment: {
           id: 'comment-1',
@@ -190,11 +191,11 @@ describe('useOperationQueue', () => {
     const view = render(
       <StrictMode>
         <HookHarness />
-      </StrictMode>
+      </StrictMode>,
     );
 
     act(() => {
-      latestHook!.enqueue({
+      latestHook?.enqueue({
         type: 'ADD_COMMENT',
         comment: {
           id: 'comment-1',

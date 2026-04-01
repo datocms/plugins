@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
+
+import { useCommentActions } from '@hooks/useCommentActions';
 import { act } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { useCommentActions } from '@hooks/useCommentActions';
 import { renderHook } from '../testUtils/react';
 
 describe('useCommentActions', () => {
@@ -23,12 +24,12 @@ describe('useCommentActions', () => {
           item: { id: 'record-1' },
           alert: vi.fn(),
         } as never,
-      })
+      }),
     );
 
     let accepted = true;
     act(() => {
-      accepted = result.current!.submitNewComment();
+      accepted = result.current?.submitNewComment();
     });
 
     expect(accepted).toBe(false);

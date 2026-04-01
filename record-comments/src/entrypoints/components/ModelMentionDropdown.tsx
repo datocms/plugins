@@ -1,7 +1,7 @@
 import type { ModelInfo } from '@hooks/useMentions';
-import { MentionDropdownBase } from './shared/MentionDropdownBase';
-import { cn } from '@/utils/cn';
 import styles from '@styles/comment.module.css';
+import { cn } from '@/utils/cn';
+import { MentionDropdownBase } from './shared/MentionDropdownBase';
 
 type ModelMentionDropdownProps = {
   models: ModelInfo[];
@@ -20,7 +20,9 @@ const ModelMentionDropdown = ({
   onClose,
   position = 'below',
 }: ModelMentionDropdownProps) => {
-  const emptyMessage = query ? `No models matching "${query}"` : 'No models available';
+  const emptyMessage = query
+    ? `No models matching "${query}"`
+    : 'No models available';
 
   return (
     <MentionDropdownBase
@@ -35,7 +37,10 @@ const ModelMentionDropdown = ({
         <button
           ref={isSelected ? selectedRef : null}
           type="button"
-          className={cn(styles.mentionOption, isSelected && styles.mentionOptionSelected)}
+          className={cn(
+            styles.mentionOption,
+            isSelected && styles.mentionOptionSelected,
+          )}
           onMouseDown={(e) => {
             // Prevent blur on textarea
             e.preventDefault();

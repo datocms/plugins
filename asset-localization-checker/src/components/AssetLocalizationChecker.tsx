@@ -1,14 +1,20 @@
-import { Canvas, Spinner } from "datocms-react-ui";
+import type { Upload } from '@datocms/cma-client/dist/types/generated/SimpleSchemaTypes';
+import { buildClient } from '@datocms/cma-client-browser';
 import type {
   FileFieldValue,
   RenderFieldExtensionCtx,
-} from "datocms-plugin-sdk";
-import type { Upload } from "@datocms/cma-client/dist/types/generated/SimpleSchemaTypes";
-import { buildClient } from "@datocms/cma-client-browser";
-import { type MouseEventHandler, useEffect, useMemo, useState } from "react";
-import { humanReadableLocale } from "../utils/humanReadableLocale.ts";
-import s from "./AssetLocalizationChecker.module.css";
-import { getMaybeLocalizedValue } from "../utils/getMaybeLocalizedValue.ts";
+} from 'datocms-plugin-sdk';
+import { Canvas, Spinner } from 'datocms-react-ui';
+import {
+  type MouseEventHandler,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from 'react';
+import { getMaybeLocalizedValue } from '../utils/getMaybeLocalizedValue.ts';
+import { humanReadableLocale } from '../utils/humanReadableLocale.ts';
+import s from './AssetLocalizationChecker.module.css';
 
 type MetadataByLocale = {
   [locale: string]: {
@@ -42,33 +48,19 @@ export const AssetLocalizationChecker = ({
     locale: currentLocale,
   } = ctx;
 
-  /** Make sure we have the token. We need this for CMA lookups. Exit early if not. **/
-  if (!currentUserAccessToken) {
-    (async () => {
-      await ctx.alert(
-        "The Asset Localization Checker plugin does not have access to your user token. Please check the plugin settings.",
-      );
-    })();
-
-    return (
-      <Canvas ctx={ctx}>
-        <p>
-          Asset Localization Checker error: No `currentUserAccessToken`
-          provided. Please check your plugin settings.
-        </p>
-      </Canvas>
-    );
-  }
-
-  /** Initialize the plugin **/
-  // Set up CMA client
-  const client = buildClient({
-    apiToken: currentUserAccessToken,
-    ...(environment ? { environment } : {}),
-  });
-
-  // States
+  // All hooks must be declared before any conditional return
   const [fetchedImageData, setFetchedImageData] = useState<Upload>();
+
+  // Build a stable client reference from token; client is null when token is absent
+  const client = useMemo(() => {
+    if (!currentUserAccessToken) {
+      return null;
+    }
+    return buildClient({
+      apiToken: currentUserAccessToken,
+      ...(environment ? { environment } : {}),
+    });
+  }, [currentUserAccessToken, environment]);
 
   // Variables and calculations
   const imageField = getMaybeLocalizedValue(
@@ -81,8 +73,7 @@ export const AssetLocalizationChecker = ({
   const isTitleRequired: boolean = !!typedValidators?.required_alt_title?.title;
   const isAltRequired: boolean = !!typedValidators?.required_alt_title?.alt;
   const isReady =
-    fetchedImageData?.default_field_metadata &&
-    localesInThisRecord;
+    fetchedImageData?.default_field_metadata && localesInThisRecord;
 
   const metadataByLocale = useMemo<MetadataByLocale>(() => {
     if (!fetchedImageData?.default_field_metadata) {
@@ -107,7 +98,10 @@ export const AssetLocalizationChecker = ({
   }, [fetchedImageData?.default_field_metadata, localesInThisRecord]);
 
   // Function to look up asset metadata from the CMA
-  const fetchAsset = async () => {
+  const fetchAsset = useCallback(async () => {
+    if (!client) {
+      return;
+    }
     try {
       const asset = await client.uploads.find(upload_id);
       if (asset) {
@@ -121,7 +115,12 @@ export const AssetLocalizationChecker = ({
       console.error(error);
       await ctx.alert(`Error: ${error}`);
     }
-  };
+  }, [client, upload_id, ctx]);
+
+  // Initial metadata fetch
+  useEffect(() => {
+    fetchAsset();
+  }, [fetchAsset]);
 
   // Function to open the image editor (for setting alt & title)
   const editImage: MouseEventHandler<HTMLAnchorElement> = async (event) => {
@@ -147,10 +146,17 @@ export const AssetLocalizationChecker = ({
     }
   };
 
-  // Initial metadata fetch
-  useEffect(() => {
-    fetchAsset();
-  }, [fetchAsset]);
+  /** Guard: no token available */
+  if (!currentUserAccessToken) {
+    return (
+      <Canvas ctx={ctx}>
+        <p>
+          Asset Localization Checker error: No `currentUserAccessToken`
+          provided. Please check your plugin settings.
+        </p>
+      </Canvas>
+    );
+  }
 
   const displayText = ({
     text,
@@ -163,7 +169,7 @@ export const AssetLocalizationChecker = ({
       return (
         <div>
           <p className={s.warning}>
-            ❌ Missing, set in{" "}
+            ❌ Missing, set in{' '}
             <a href="" onClick={editImage}>
               {fetchedImageData?.filename ? (
                 <code>{fetchedImageData?.filename}</code>
@@ -180,10 +186,10 @@ export const AssetLocalizationChecker = ({
       return (
         <div>
           <p className={s.overriddenTrue}>
-            ⚠️ Overridden by{" "}
+            ⚠️ Overridden by{' '}
             <a href="" onClick={editFieldMetadata}>
               <code>{fieldLabel}</code>
-            </a>{" "}
+            </a>{' '}
             field
           </p>
           <p className={s.snippet}>{overrideText}</p>
@@ -218,14 +224,14 @@ export const AssetLocalizationChecker = ({
               Title
               <br />
               <span className={s.helperText}>
-                ({isTitleRequired ? "Required" : "Optional"})
+                ({isTitleRequired ? 'Required' : 'Optional'})
               </span>
             </th>
             <th>
               Alt Text
               <br />
               <span className={s.helperText}>
-                ({isAltRequired ? "Required" : "Optional"})
+                ({isAltRequired ? 'Required' : 'Optional'})
               </span>
             </th>
           </tr>

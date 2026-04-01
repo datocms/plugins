@@ -3,16 +3,25 @@
  * Allows users to select which fields should display copy buttons
  * in the record editing interface.
  */
-import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
-import { Canvas, Button, SelectField, Form, FieldGroup, Section, Spinner } from 'datocms-react-ui';
-import { useState, useEffect, useMemo, useCallback } from 'react';
+
 import { buildClient } from '@datocms/cma-client-browser';
+import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
+import {
+  Button,
+  Canvas,
+  FieldGroup,
+  Form,
+  Section,
+  SelectField,
+  Spinner,
+} from 'datocms-react-ui';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ErrorBoundary } from '../components/ErrorBoundary';
-import { 
-  type FieldCopyConfig, 
-  type ModelOption, 
-  type FieldOption, 
-  getErrorMessage
+import {
+  type FieldCopyConfig,
+  type FieldOption,
+  getErrorMessage,
+  type ModelOption,
 } from '../types';
 
 /**
@@ -51,12 +60,12 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         // Fetch all models (excluding modular blocks)
         const models = await client.itemTypes.list();
         const modelOptions = models
-          .filter(model => !model.modular_block)
-          .map(model => ({
+          .filter((model) => !model.modular_block)
+          .map((model) => ({
             label: model.name,
-            value: model.id
+            value: model.id,
           }));
-        
+
         setAvailableModels(modelOptions);
         setIsLoading(false);
       } catch (error) {
@@ -90,19 +99,22 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
 
         // Fetch fields for the selected model
         const fields = await client.fields.list(selectedModel.value);
-        
+
         // Filter only localized fields and exclude already configured fields
         const configuredFieldIds = savedConfigs
-          .filter(config => config.modelId === selectedModel.value)
-          .map(config => config.fieldId);
-        
+          .filter((config) => config.modelId === selectedModel.value)
+          .map((config) => config.fieldId);
+
         const fieldOptions = fields
-          .filter(field => field.localized && !configuredFieldIds.includes(field.id))
-          .map(field => ({
+          .filter(
+            (field) =>
+              field.localized && !configuredFieldIds.includes(field.id),
+          )
+          .map((field) => ({
             label: field.label,
-            value: field.id
+            value: field.id,
           }));
-        
+
         setAvailableFields(fieldOptions);
       } catch (error) {
         console.error('Error loading fields:', error);
@@ -126,7 +138,9 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
 
     // Check if this configuration already exists
     const exists = savedConfigs.some(
-      config => config.modelId === selectedModel.value && config.fieldId === selectedField.value
+      (config) =>
+        config.modelId === selectedModel.value &&
+        config.fieldId === selectedField.value,
     );
 
     if (exists) {
@@ -135,12 +149,15 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     }
 
     // Add new configuration
-    setSavedConfigs([...savedConfigs, {
-      modelId: selectedModel.value,
-      modelLabel: selectedModel.label,
-      fieldId: selectedField.value,
-      fieldLabel: selectedField.label
-    }]);
+    setSavedConfigs([
+      ...savedConfigs,
+      {
+        modelId: selectedModel.value,
+        modelLabel: selectedModel.label,
+        fieldId: selectedField.value,
+        fieldLabel: selectedField.label,
+      },
+    ]);
 
     // Reset selections
     setSelectedModel(null);
@@ -150,10 +167,13 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   /**
    * Remove a field configuration from the list
    */
-  const handleRemoveConfiguration = useCallback((index: number) => {
-    const newConfigs = savedConfigs.filter((_, i) => i !== index);
-    setSavedConfigs(newConfigs);
-  }, [savedConfigs]);
+  const handleRemoveConfiguration = useCallback(
+    (index: number) => {
+      const newConfigs = savedConfigs.filter((_, i) => i !== index);
+      setSavedConfigs(newConfigs);
+    },
+    [savedConfigs],
+  );
 
   /**
    * Save all field configurations to the plugin parameters
@@ -163,9 +183,9 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     try {
       await ctx.updatePluginParameters({
         ...ctx.plugin.attributes.parameters,
-        fieldConfigs: savedConfigs
+        fieldConfigs: savedConfigs,
       });
-      
+
       setOriginalConfigs(savedConfigs);
       ctx.notice('Configuration saved successfully');
     } catch (error) {
@@ -183,22 +203,27 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     if (savedConfigs.length !== originalConfigs.length) {
       return true;
     }
-    
+
     return savedConfigs.some((config, index) => {
       const original = originalConfigs[index];
-      return !original || 
-        config.modelId !== original.modelId || 
-        config.fieldId !== original.fieldId;
+      return (
+        !original ||
+        config.modelId !== original.modelId ||
+        config.fieldId !== original.fieldId
+      );
     });
   }, [savedConfigs, originalConfigs]);
 
   /**
    * Get model name by ID for display purposes
    */
-  const getModelName = useCallback((modelId: string) => {
-    const model = availableModels.find(m => m.value === modelId);
-    return model?.label || modelId;
-  }, [availableModels]);
+  const getModelName = useCallback(
+    (modelId: string) => {
+      const model = availableModels.find((m) => m.value === modelId);
+      return model?.label || modelId;
+    },
+    [availableModels],
+  );
 
   /**
    * Handle model selection change
@@ -219,18 +244,22 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
    * Navigate to mass duplication page
    */
   const handleNavigateToMassDuplication = useCallback(() => {
-    ctx.navigateTo(`/configuration/p/${ctx.plugin.id}/pages/massLocaleDuplication`);
+    ctx.navigateTo(
+      `/configuration/p/${ctx.plugin.id}/pages/massLocaleDuplication`,
+    );
   }, [ctx]);
 
   if (isLoading) {
     return (
       <Canvas ctx={ctx}>
-        <div style={{ 
-          display: 'flex', 
-          justifyContent: 'center', 
-          alignItems: 'center', 
-          minHeight: '200px' 
-        }}>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            minHeight: '200px',
+          }}
+        >
           <Spinner />
         </div>
       </Canvas>
@@ -240,167 +269,205 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   return (
     <ErrorBoundary ctx={ctx}>
       <Canvas ctx={ctx}>
-      <Form>
-        <Section title="Field Copy Configuration">
-          <FieldGroup>
-            <p style={{ marginBottom: 'var(--spacing-m)' }}>
-              Configure which fields should have copy buttons in the record editing interface. 
-              Select a model and a localized field to enable the copy functionality.
-            </p>
+        <Form>
+          <Section title="Field Copy Configuration">
+            <FieldGroup>
+              <p style={{ marginBottom: 'var(--spacing-m)' }}>
+                Configure which fields should have copy buttons in the record
+                editing interface. Select a model and a localized field to
+                enable the copy functionality.
+              </p>
 
-            <div style={{ display: 'flex', gap: 'var(--spacing-m)', marginBottom: 'var(--spacing-m)' }}>
-              <div style={{ flex: 1 }}>
-                <SelectField
-                  name="model"
-                  id="model"
-                  label="Model"
-                  hint="Select a model"
-                  value={selectedModel}
-                  selectInputProps={{
-                    isMulti: false,
-                    options: availableModels,
-                  }}
-                  onChange={(newValue) => handleModelChange(newValue as ModelOption | null)}
-                />
-              </div>
-
-              <div style={{ flex: 1, position: 'relative' }}>
-                <div style={{ 
-                  opacity: isLoadingFields ? 0.6 : 1,
-                  transition: 'opacity 0.2s ease',
-                  pointerEvents: isLoadingFields ? 'none' : 'auto'
-                }}>
+              <div
+                style={{
+                  display: 'flex',
+                  gap: 'var(--spacing-m)',
+                  marginBottom: 'var(--spacing-m)',
+                }}
+              >
+                <div style={{ flex: 1 }}>
                   <SelectField
-                    name="field"
-                    id="field"
-                    label="Localized Field"
-                    hint={isLoadingFields ? "Loading fields..." : "Select a localized field"}
-                    value={selectedField}
+                    name="model"
+                    id="model"
+                    label="Model"
+                    hint="Select a model"
+                    value={selectedModel}
                     selectInputProps={{
-                      isDisabled: !selectedModel || isLoadingFields,
                       isMulti: false,
-                      options: availableFields,
-                      isLoading: isLoadingFields,
-                      placeholder: isLoadingFields ? "Loading..." : "Select...",
+                      options: availableModels,
                     }}
-                    onChange={(newValue) => handleFieldChange(newValue as FieldOption | null)}
+                    onChange={(newValue) =>
+                      handleModelChange(newValue as ModelOption | null)
+                    }
                   />
                 </div>
-                {isLoadingFields && (
-                  <div style={{
-                    position: 'absolute',
-                    top: '38px',
-                    right: '48px'
-                  }}>
-                    <Spinner size={16} />
-                  </div>
-                )}
-              </div>
-            </div>
 
-            <Button
-              buttonType="primary"
-              buttonSize="s"
-              onClick={handleAddConfiguration}
-              disabled={!selectedModel || !selectedField}
-            >
-              Add Configuration
-            </Button>
-          </FieldGroup>
-        </Section>
-
-        <Section title="Configured Fields">
-          <FieldGroup>
-            {savedConfigs.length === 0 ? (
-              <p style={{ 
-                textAlign: 'center', 
-                padding: 'var(--spacing-l)',
-                color: 'var(--light-body-color)',
-                backgroundColor: 'var(--light-bg-color)',
-                borderRadius: 'var(--border-radius)'
-              }}>
-                No fields configured yet. Add a configuration above to get started.
-              </p>
-            ) : (
-              <div style={{ marginBottom: 'var(--spacing-m)' }}>
-                {savedConfigs.map((config, index) => (
-                  <div 
-                    key={`${config.modelId}-${config.fieldId}`}
-                    style={{ 
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      padding: 'var(--spacing-s)',
-                      backgroundColor: 'var(--light-bg-color)',
-                      borderRadius: 'var(--border-radius)',
-                      marginBottom: 'var(--spacing-xs)'
+                <div style={{ flex: 1, position: 'relative' }}>
+                  <div
+                    style={{
+                      opacity: isLoadingFields ? 0.6 : 1,
+                      transition: 'opacity 0.2s ease',
+                      pointerEvents: isLoadingFields ? 'none' : 'auto',
                     }}
                   >
-                    <div>
-                      <strong>{config.modelLabel || getModelName(config.modelId)}</strong>
-                      <span style={{ margin: '0 var(--spacing-xs)' }}>→</span>
-                      <span>{config.fieldLabel || `Field ID: ${config.fieldId}`}</span>
-                    </div>
-                    <Button
-                      buttonType="negative"
-                      buttonSize="xs"
-                      onClick={() => handleRemoveConfiguration(index)}
-                    >
-                      Remove
-                    </Button>
+                    <SelectField
+                      name="field"
+                      id="field"
+                      label="Localized Field"
+                      hint={
+                        isLoadingFields
+                          ? 'Loading fields...'
+                          : 'Select a localized field'
+                      }
+                      value={selectedField}
+                      selectInputProps={{
+                        isDisabled: !selectedModel || isLoadingFields,
+                        isMulti: false,
+                        options: availableFields,
+                        isLoading: isLoadingFields,
+                        placeholder: isLoadingFields
+                          ? 'Loading...'
+                          : 'Select...',
+                      }}
+                      onChange={(newValue) =>
+                        handleFieldChange(newValue as FieldOption | null)
+                      }
+                    />
                   </div>
-                ))}
+                  {isLoadingFields && (
+                    <div
+                      style={{
+                        position: 'absolute',
+                        top: '38px',
+                        right: '48px',
+                      }}
+                    >
+                      <Spinner size={16} />
+                    </div>
+                  )}
+                </div>
               </div>
-            )}
 
-            <Button
-              fullWidth
-              buttonType="primary"
-              buttonSize="m"
-              onClick={handleSave}
-              disabled={isSaving || !hasConfigurationChanged}
-              style={{ marginTop: 'var(--spacing-l)' }}
-            >
-              {isSaving ? 'Saving...' : 'Save Configuration'}
-            </Button>
-          </FieldGroup>
-        </Section>
+              <Button
+                buttonType="primary"
+                buttonSize="s"
+                onClick={handleAddConfiguration}
+                disabled={!selectedModel || !selectedField}
+              >
+                Add Configuration
+              </Button>
+            </FieldGroup>
+          </Section>
 
-        <Section title="Mass Locale Duplication">
-          <FieldGroup>
-            <div style={{
-              backgroundColor: 'var(--light-bg-color)',
-              padding: 'var(--spacing-m)',
-              borderRadius: 'var(--border-radius)',
-              marginBottom: 'var(--spacing-m)'
-            }}>
-              <p style={{ 
-                margin: '0 0 var(--spacing-s) 0',
-                fontSize: 'var(--font-size-s)'
-              }}>
-                Need to duplicate content across all records in a model? Use the Mass Locale Duplication feature to copy all content from one locale to another in bulk. This is useful for setting up new locales or creating baseline translations.
-              </p>
-              <p style={{ 
-                margin: '0',
-                fontSize: 'var(--font-size-s)',
-                color: 'var(--light-body-color)'
-              }}>
-                <strong>Note:</strong> Mass duplication will overwrite all existing content in the target locale.
-              </p>
-            </div>
-            
-            <Button
-              fullWidth
-              buttonType="muted"
-              buttonSize="m"
-              onClick={handleNavigateToMassDuplication}
-            >
-              Go to Mass Locale Duplication
-            </Button>
-          </FieldGroup>
-        </Section>
-      </Form>
-    </Canvas>
+          <Section title="Configured Fields">
+            <FieldGroup>
+              {savedConfigs.length === 0 ? (
+                <p
+                  style={{
+                    textAlign: 'center',
+                    padding: 'var(--spacing-l)',
+                    color: 'var(--light-body-color)',
+                    backgroundColor: 'var(--light-bg-color)',
+                    borderRadius: 'var(--border-radius)',
+                  }}
+                >
+                  No fields configured yet. Add a configuration above to get
+                  started.
+                </p>
+              ) : (
+                <div style={{ marginBottom: 'var(--spacing-m)' }}>
+                  {savedConfigs.map((config, index) => (
+                    <div
+                      key={`${config.modelId}-${config.fieldId}`}
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        padding: 'var(--spacing-s)',
+                        backgroundColor: 'var(--light-bg-color)',
+                        borderRadius: 'var(--border-radius)',
+                        marginBottom: 'var(--spacing-xs)',
+                      }}
+                    >
+                      <div>
+                        <strong>
+                          {config.modelLabel || getModelName(config.modelId)}
+                        </strong>
+                        <span style={{ margin: '0 var(--spacing-xs)' }}>→</span>
+                        <span>
+                          {config.fieldLabel || `Field ID: ${config.fieldId}`}
+                        </span>
+                      </div>
+                      <Button
+                        buttonType="negative"
+                        buttonSize="xs"
+                        onClick={() => handleRemoveConfiguration(index)}
+                      >
+                        Remove
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <Button
+                fullWidth
+                buttonType="primary"
+                buttonSize="m"
+                onClick={handleSave}
+                disabled={isSaving || !hasConfigurationChanged}
+                style={{ marginTop: 'var(--spacing-l)' }}
+              >
+                {isSaving ? 'Saving...' : 'Save Configuration'}
+              </Button>
+            </FieldGroup>
+          </Section>
+
+          <Section title="Mass Locale Duplication">
+            <FieldGroup>
+              <div
+                style={{
+                  backgroundColor: 'var(--light-bg-color)',
+                  padding: 'var(--spacing-m)',
+                  borderRadius: 'var(--border-radius)',
+                  marginBottom: 'var(--spacing-m)',
+                }}
+              >
+                <p
+                  style={{
+                    margin: '0 0 var(--spacing-s) 0',
+                    fontSize: 'var(--font-size-s)',
+                  }}
+                >
+                  Need to duplicate content across all records in a model? Use
+                  the Mass Locale Duplication feature to copy all content from
+                  one locale to another in bulk. This is useful for setting up
+                  new locales or creating baseline translations.
+                </p>
+                <p
+                  style={{
+                    margin: '0',
+                    fontSize: 'var(--font-size-s)',
+                    color: 'var(--light-body-color)',
+                  }}
+                >
+                  <strong>Note:</strong> Mass duplication will overwrite all
+                  existing content in the target locale.
+                </p>
+              </div>
+
+              <Button
+                fullWidth
+                buttonType="muted"
+                buttonSize="m"
+                onClick={handleNavigateToMassDuplication}
+              >
+                Go to Mass Locale Duplication
+              </Button>
+            </FieldGroup>
+          </Section>
+        </Form>
+      </Canvas>
     </ErrorBoundary>
   );
 }

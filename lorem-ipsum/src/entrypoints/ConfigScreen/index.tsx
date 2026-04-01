@@ -1,18 +1,18 @@
+import { faPlus, faTrash } from '@fortawesome/free-solid-svg-icons';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import {
   Button,
   Canvas,
-  TextField,
-  SelectField,
-  Form,
   FieldGroup,
+  Form,
   Section,
+  SelectField,
+  TextField,
 } from 'datocms-react-ui';
-import { Form as FormHandler, Field } from 'react-final-form';
 import arrayMutators from 'final-form-arrays';
+import { Field, Form as FormHandler } from 'react-final-form';
 import { FieldArray } from 'react-final-form-arrays';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faPlus, faTrash } from '@fortawesome/free-solid-svg-icons';
 import type { GroupBase } from 'react-select';
 import type { Config } from '../../types';
 import s from './styles.module.css';

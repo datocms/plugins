@@ -1,12 +1,12 @@
-import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
-import type { Client } from '@datocms/cma-client-browser';
 import type { CommentType } from '@ctypes/comments';
 import { COMMENTS_QUERY } from '@ctypes/comments';
+import type { Client } from '@datocms/cma-client-browser';
+import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
 import {
-  useCommentsSubscription,
-  type SubscriptionStatus,
   type SubscriptionErrorInfo,
+  type SubscriptionStatus,
   type UseCommentsSubscriptionReturn,
+  useCommentsSubscription,
 } from './useCommentsSubscription';
 
 type UseCommentsDataParams = {
@@ -39,8 +39,20 @@ type UseCommentsDataReturn = {
   fullResult: UseCommentsSubscriptionReturn;
 };
 
-export function useCommentsData(params: UseCommentsDataParams): UseCommentsDataReturn {
-  const { realTimeEnabled, cdaToken, client, commentsModelId, isSyncAllowed, currentUserId, onOrphanedDraft, onBeforeSync, onAfterSync } = params;
+export function useCommentsData(
+  params: UseCommentsDataParams,
+): UseCommentsDataReturn {
+  const {
+    realTimeEnabled,
+    cdaToken,
+    client,
+    commentsModelId,
+    isSyncAllowed,
+    currentUserId,
+    onOrphanedDraft,
+    onBeforeSync,
+    onAfterSync,
+  } = params;
 
   const modelId = params.ctx.itemType.id;
   const recordId = params.ctx.item?.id ?? '';

@@ -1,29 +1,29 @@
 /**
  * Field Conversion Handlers
- * 
+ *
  * Functions for converting modular content and structured text fields
  * to links fields during block-to-model conversion.
- * 
+ *
  * @module utils/converter/field-handlers
  */
 
 import type {
-  CMAClient,
   BlockMigrationMapping,
+  CMAClient,
   ModularContentFieldInfo,
   NestedBlockPath,
 } from '../../types';
-import { traverseAndRemoveBlocks } from './traverse';
 import {
   migrateFieldData,
   migrateFieldDataAppend,
   migrateNestedBlockFieldData,
   migrateNestedBlockFieldDataAppend,
-  migrateStructuredTextFieldData,
-  migrateStructuredTextFieldDataPartial,
   migrateNestedStructuredTextFieldData,
   migrateNestedStructuredTextFieldDataPartial,
+  migrateStructuredTextFieldData,
+  migrateStructuredTextFieldDataPartial,
 } from './migrate';
+import { traverseAndRemoveBlocks } from './traverse';
 
 // =============================================================================
 // Types
@@ -58,17 +58,17 @@ export interface FieldConversionContext {
 /**
  * Converts a modular content field to a links field, including data migration.
  * Handles both top-level fields and nested fields inside blocks.
- * 
+ *
  * For structured_text fields, transforms the DAST in-place and updates validators
  * rather than creating a separate links field.
- * 
+ *
  * @param ctx - Field conversion context
  */
 export async function convertModularContentToLinksField(
-  ctx: FieldConversionContext
+  ctx: FieldConversionContext,
 ): Promise<void> {
   const { client, mcField, blockIdToRemove } = ctx;
-  
+
   const currentField = await client.fields.find(mcField.id);
   const originalLabel = currentField.label;
   const originalApiKey = mcField.apiKey;
@@ -76,12 +76,18 @@ export async function convertModularContentToLinksField(
   const originalHint = currentField.hint || undefined;
   const originalFieldset = currentField.fieldset;
 
-  const remainingBlockIds = mcField.allowedBlockIds.filter((id) => id !== blockIdToRemove);
+  const remainingBlockIds = mcField.allowedBlockIds.filter(
+    (id) => id !== blockIdToRemove,
+  );
   const isSingleBlock = mcField.fieldType === 'single_block';
 
   // Handle structured text fields differently
   if (mcField.fieldType === 'structured_text') {
-    await handleStructuredTextFieldConversion(ctx, currentField, remainingBlockIds);
+    await handleStructuredTextFieldConversion(
+      ctx,
+      currentField,
+      remainingBlockIds,
+    );
     return;
   }
 
@@ -99,7 +105,7 @@ export async function convertModularContentToLinksField(
       originalApiKey,
       originalPosition,
       originalFieldset,
-      isSingleBlock
+      isSingleBlock,
     );
   } else if (remainingBlockIds.length > 0 && !isSingleBlock) {
     // Partial replacement: Other block types remain, update validators
@@ -110,7 +116,7 @@ export async function convertModularContentToLinksField(
       originalApiKey,
       originalPosition,
       originalFieldset,
-      remainingBlockIds
+      remainingBlockIds,
     );
   } else {
     // Full replacement: Delete original and replace with links field
@@ -122,7 +128,7 @@ export async function convertModularContentToLinksField(
       originalPosition,
       originalHint,
       originalFieldset,
-      isSingleBlock
+      isSingleBlock,
     );
   }
 }
@@ -133,95 +139,63 @@ export async function convertModularContentToLinksField(
 
 /**
  * Handles conversion of structured text fields.
- * 
+ *
  * Unlike modular content fields, structured text fields:
  * 1. Keep the same field type (structured_text)
  * 2. Transform the DAST document in-place
  * 3. Update validators to add/remove block and link types
  */
-async function handleStructuredTextFieldConversion(
+/**
+ * Migrates structured text data for either partial or full replacement mode.
+ */
+async function migrateStructuredTextData(
   ctx: FieldConversionContext,
-  currentField: { id: string; validators: Record<string, unknown>; [key: string]: unknown },
-  remainingBlockIds: string[]
+  isPartialMode: boolean,
 ): Promise<void> {
   const {
     client,
     mcField,
-    newModelId,
     blockIdToRemove,
     mapping,
     nestedPaths,
     availableLocales,
-    fullyReplace,
     recordsToPublish,
   } = ctx;
 
-  const validators = currentField.validators as Record<string, unknown>;
-  const currentBlocksValidator = validators.structured_text_blocks as { item_types?: string[] } | undefined;
-  const currentLinksValidator = validators.structured_text_links as { item_types?: string[] } | undefined;
-
-  // PHASE 1: Add the new model to allowed links (keep block type for now)
-  const phase1Validators: Record<string, unknown> = { ...validators };
-
-  const existingLinkTypes = currentLinksValidator?.item_types || [];
-  if (!existingLinkTypes.includes(newModelId)) {
-    phase1Validators.structured_text_links = {
-      ...currentLinksValidator,
-      item_types: [...existingLinkTypes, newModelId],
-    };
-  }
-
-  // Preserve block type during data migration
-  if (currentBlocksValidator) {
-    phase1Validators.structured_text_blocks = currentBlocksValidator;
-  }
-
-  await client.fields.update(mcField.id, {
-    validators: phase1Validators,
-  });
-
-  // PARTIAL MODE: Add inlineItem nodes alongside blocks
-  if (!fullyReplace) {
-    if (mcField.parentIsBlock) {
-      const nestedPath = findNestedPathForField(nestedPaths, mcField);
-      if (nestedPath) {
-        await migrateNestedStructuredTextFieldDataPartial(
-          client,
-          nestedPath,
-          mcField.apiKey,
-          blockIdToRemove,
-          mapping,
-          recordsToPublish
-        );
-      }
-    } else {
-      await migrateStructuredTextFieldDataPartial(
-        client,
-        mcField.parentModelId,
-        mcField.apiKey,
-        mcField.localized,
-        blockIdToRemove,
-        mapping,
-        availableLocales,
-        recordsToPublish
-      );
-    }
-    return;
-  }
-
-  // PHASE 2: Migrate DAST data (transform blocks to inlineItems)
   if (mcField.parentIsBlock) {
     const nestedPath = findNestedPathForField(nestedPaths, mcField);
-    if (nestedPath) {
+    if (!nestedPath) return;
+
+    if (isPartialMode) {
+      await migrateNestedStructuredTextFieldDataPartial(
+        client,
+        nestedPath,
+        mcField.apiKey,
+        blockIdToRemove,
+        mapping,
+        recordsToPublish,
+      );
+    } else {
       await migrateNestedStructuredTextFieldData(
         client,
         nestedPath,
         mcField.apiKey,
         blockIdToRemove,
         mapping,
-        recordsToPublish
+        recordsToPublish,
       );
     }
+  } else if (isPartialMode) {
+    await migrateStructuredTextFieldDataPartial(
+      client,
+      mcField.parentModelId,
+      mcField.apiKey,
+      mcField.localized,
+      blockIdToRemove,
+      mapping,
+      availableLocales,
+      recordsToPublish,
+    );
   } else {
     await migrateStructuredTextFieldData(
       client,
@@ -231,27 +205,61 @@ async function handleStructuredTextFieldConversion(
       blockIdToRemove,
       mapping,
       availableLocales,
-      recordsToPublish
+      recordsToPublish,
     );
   }
+}
 
-  // PHASE 3: Remove block type from validators
-  const phase3Validators: Record<string, unknown> = { ...phase1Validators };
-  
-  if (remainingBlockIds.length > 0) {
-    phase3Validators.structured_text_blocks = {
-      ...currentBlocksValidator,
-      item_types: remainingBlockIds,
-    };
-  } else {
-    phase3Validators.structured_text_blocks = {
-      ...currentBlocksValidator,
-      item_types: [],
+async function handleStructuredTextFieldConversion(
+  ctx: FieldConversionContext,
+  currentField: {
+    id: string;
+    validators: Record<string, unknown>;
+    [key: string]: unknown;
+  },
+  remainingBlockIds: string[],
+): Promise<void> {
+  const { client, mcField, newModelId, fullyReplace } = ctx;
+
+  const validators = currentField.validators as Record<string, unknown>;
+  const currentBlocksValidator = validators.structured_text_blocks as
+    | { item_types?: string[] }
+    | undefined;
+  const currentLinksValidator = validators.structured_text_links as
+    | { item_types?: string[] }
+    | undefined;
+
+  // PHASE 1: Add the new model to allowed links (keep block type for now)
+  const phase1Validators: Record<string, unknown> = { ...validators };
+  const existingLinkTypes = currentLinksValidator?.item_types ?? [];
+  if (!existingLinkTypes.includes(newModelId)) {
+    phase1Validators.structured_text_links = {
+      ...currentLinksValidator,
+      item_types: [...existingLinkTypes, newModelId],
     };
   }
-  
+  if (currentBlocksValidator) {
+    phase1Validators.structured_text_blocks = currentBlocksValidator;
+  }
+
+  await client.fields.update(mcField.id, { validators: phase1Validators });
+
+  // PHASE 2: Migrate DAST data
+  await migrateStructuredTextData(ctx, !fullyReplace);
+
+  if (!fullyReplace) return;
+
+  // PHASE 3: Remove block type from validators
+  const updatedBlockItemTypes =
+    remainingBlockIds.length > 0 ? remainingBlockIds : [];
   await client.fields.update(mcField.id, {
-    validators: phase3Validators,
+    validators: {
+      ...phase1Validators,
+      structured_text_blocks: {
+        ...currentBlocksValidator,
+        item_types: updatedBlockItemTypes,
+      },
+    },
   });
 }
 
@@ -264,13 +272,102 @@ async function handleStructuredTextFieldConversion(
  * Creates a new links field alongside the original modular content field
  * WITHOUT modifying or deleting the original field.
  */
+/**
+ * Creates a links field (single link or multi-links) alongside the original field.
+ */
+async function createLinksFieldAlongsideOriginal(
+  ctx: FieldConversionContext,
+  originalLabel: string,
+  originalApiKey: string,
+  originalPosition: number,
+  originalFieldset: { id: string; type: 'fieldset' } | null,
+  isSingleBlock: boolean,
+): Promise<{ api_key: string }> {
+  const { client, mcField, newModelId } = ctx;
+  const expectedLinksApiKey = `${originalApiKey}_links`;
+
+  const sharedBase = {
+    label: `${originalLabel} (Links)`,
+    api_key: expectedLinksApiKey,
+    localized: mcField.localized,
+    appearance: { parameters: {}, addons: [] } as Record<string, unknown>,
+    position: originalPosition + 1,
+    fieldset: originalFieldset ?? undefined,
+  };
+
+  if (isSingleBlock) {
+    return client.fields.create(mcField.parentModelId, {
+      ...sharedBase,
+      field_type: 'link' as const,
+      validators: { item_item_type: { item_types: [newModelId] } },
+      appearance: { editor: 'link_embed' as const, parameters: {}, addons: [] },
+    });
+  }
+
+  return client.fields.create(mcField.parentModelId, {
+    ...sharedBase,
+    field_type: 'links' as const,
+    validators: { items_item_type: { item_types: [newModelId] } },
+    appearance: { editor: 'links_embed' as const, parameters: {}, addons: [] },
+  });
+}
+
+/**
+ * Migrates block field data (either nested or flat) to the target links field API key.
+ */
+async function migrateBlockFieldDataToTarget(
+  ctx: FieldConversionContext,
+  originalApiKey: string,
+  targetLinksApiKey: string,
+  isSingleBlock: boolean,
+): Promise<void> {
+  const {
+    client,
+    mcField,
+    blockIdToRemove,
+    mapping,
+    nestedPaths,
+    availableLocales,
+    recordsToPublish,
+  } = ctx;
+
+  if (mcField.parentIsBlock) {
+    const nestedPath = findNestedPathForField(nestedPaths, mcField);
+    if (nestedPath) {
+      await migrateNestedBlockFieldData(
+        client,
+        nestedPath,
+        originalApiKey,
+        targetLinksApiKey,
+        blockIdToRemove,
+        mapping,
+        isSingleBlock,
+        availableLocales,
+        recordsToPublish,
+      );
+    }
+  } else {
+    await migrateFieldData(
+      client,
+      mcField.parentModelId,
+      originalApiKey,
+      targetLinksApiKey,
+      mcField.localized,
+      blockIdToRemove,
+      mapping,
+      isSingleBlock,
+      recordsToPublish,
+    );
+  }
+}
+
 async function handleNonDestructiveConversion(
   ctx: FieldConversionContext,
   originalLabel: string,
   originalApiKey: string,
   originalPosition: number,
   originalFieldset: { id: string; type: 'fieldset' } | null,
-  isSingleBlock: boolean
+  isSingleBlock: boolean,
 ): Promise<void> {
   const {
     client,
@@ -285,27 +382,30 @@ async function handleNonDestructiveConversion(
 
   const existingFields = await client.fields.list(mcField.parentModelId);
   const expectedLinksApiKey = `${originalApiKey}_links`;
-  const existingLinksField = existingFields.find(f => f.api_key === expectedLinksApiKey);
+  const existingLinksField = existingFields.find(
+    (f) => f.api_key === expectedLinksApiKey,
+  );
 
   if (existingLinksField) {
-    // APPEND MODE: Links field already exists, just append data
-    // Update validators to include new model
-    const currentValidators = existingLinksField.validators as Record<string, unknown>;
-    const currentItemsValidator = currentValidators.items_item_type as { item_types?: string[] } | undefined;
-    const currentItemTypes = currentItemsValidator?.item_types || [];
-    
+    // APPEND MODE: Links field already exists — update validators and append data
+    const currentValidators = existingLinksField.validators as Record<
+      string,
+      unknown
+    >;
+    const currentItemsValidator = currentValidators.items_item_type as
+      | { item_types?: string[] }
+      | undefined;
+    const currentItemTypes = currentItemsValidator?.item_types ?? [];
+
     if (!currentItemTypes.includes(newModelId)) {
       await client.fields.update(existingLinksField.id, {
         validators: {
           ...currentValidators,
-          items_item_type: {
-            item_types: [...currentItemTypes, newModelId],
-          },
+          items_item_type: { item_types: [...currentItemTypes, newModelId] },
         },
       });
     }
-    
-    // Append data to existing links field
+
     if (mcField.parentIsBlock) {
       const nestedPath = findNestedPathForField(nestedPaths, mcField);
       if (nestedPath) {
@@ -317,7 +417,7 @@ async function handleNonDestructiveConversion(
           blockIdToRemove,
           mapping,
           availableLocales,
-          recordsToPublish
+          recordsToPublish,
         );
       }
     } else {
@@ -329,80 +429,28 @@ async function handleNonDestructiveConversion(
         mcField.localized,
         blockIdToRemove,
         mapping,
-        recordsToPublish
+        recordsToPublish,
       );
     }
   } else {
     // CREATE MODE: Create new links field alongside original
-    let newLinksField: { api_key: string };
-    
-    if (isSingleBlock) {
-      const singleLinkFieldData = {
-        label: `${originalLabel} (Links)`,
-        api_key: expectedLinksApiKey,
-        field_type: 'link' as const,
-        localized: mcField.localized,
-        validators: { item_item_type: { item_types: [newModelId] } },
-        appearance: {
-          editor: 'link_embed' as const,
-          parameters: {},
-          addons: [],
-        },
-        position: originalPosition + 1,
-        fieldset: originalFieldset || undefined,
-      };
-      newLinksField = await client.fields.create(mcField.parentModelId, singleLinkFieldData);
-    } else {
-      const multiLinksFieldData = {
-        label: `${originalLabel} (Links)`,
-        api_key: expectedLinksApiKey,
-        field_type: 'links' as const,
-        localized: mcField.localized,
-        validators: { items_item_type: { item_types: [newModelId] } },
-        appearance: {
-          editor: 'links_embed' as const,
-          parameters: {},
-          addons: [],
-        },
-        position: originalPosition + 1,
-        fieldset: originalFieldset || undefined,
-      };
-      newLinksField = await client.fields.create(mcField.parentModelId, multiLinksFieldData);
-    }
-
-    // Migrate data to new links field
-    if (mcField.parentIsBlock) {
-      const nestedPath = findNestedPathForField(nestedPaths, mcField);
-      if (nestedPath) {
-        await migrateNestedBlockFieldData(
-          client,
-          nestedPath,
-          originalApiKey,
-          newLinksField.api_key,
-          blockIdToRemove,
-          mapping,
-          isSingleBlock,
-          availableLocales,
-          recordsToPublish
-        );
-      }
-    } else {
-      await migrateFieldData(
-        client,
-        mcField.parentModelId,
-        originalApiKey,
-        newLinksField.api_key,
-        mcField.localized,
-        blockIdToRemove,
-        mapping,
-        isSingleBlock,
-        recordsToPublish
-      );
-    }
+    const newLinksField = await createLinksFieldAlongsideOriginal(
+      ctx,
+      originalLabel,
+      originalApiKey,
+      originalPosition,
+      originalFieldset,
+      isSingleBlock,
+    );
+    await migrateBlockFieldDataToTarget(
+      ctx,
+      originalApiKey,
+      newLinksField.api_key,
+      isSingleBlock,
+    );
   }
-  
-  // NOTE: We intentionally do NOT modify or delete the original field here
-  // The original modular content field remains intact with all its data
+
+  // NOTE: The original modular content field is intentionally left intact
 }
 
 /**
@@ -411,18 +459,24 @@ async function handleNonDestructiveConversion(
  */
 async function handlePartialModularContentConversion(
   ctx: FieldConversionContext,
-  currentField: { id: string; validators: Record<string, unknown>; [key: string]: unknown },
+  currentField: {
+    id: string;
+    validators: Record<string, unknown>;
+    [key: string]: unknown;
+  },
   originalLabel: string,
   originalApiKey: string,
   originalPosition: number,
   originalFieldset: { id: string; type: 'fieldset' } | null,
-  remainingBlockIds: string[]
+  remainingBlockIds: string[],
 ): Promise<void> {
   const { client, mcField, blockIdToRemove, mapping } = ctx;
 
   const existingFields = await client.fields.list(mcField.parentModelId);
   const expectedLinksApiKey = `${originalApiKey}_links`;
-  const existingLinksField = existingFields.find(f => f.api_key === expectedLinksApiKey);
+  const existingLinksField = existingFields.find(
+    (f) => f.api_key === expectedLinksApiKey,
+  );
 
   if (existingLinksField) {
     // APPEND MODE: Links field already exists
@@ -431,7 +485,7 @@ async function handlePartialModularContentConversion(
       existingLinksField,
       originalApiKey,
       blockIdToRemove,
-      mapping
+      mapping,
     );
   } else {
     // CREATE MODE: Create new links field
@@ -441,7 +495,7 @@ async function handlePartialModularContentConversion(
       originalApiKey,
       originalPosition,
       originalFieldset,
-      blockIdToRemove
+      blockIdToRemove,
     );
   }
 
@@ -460,120 +514,109 @@ async function handlePartialModularContentConversion(
  * Handles full replacement when this is the last/only block type.
  * Either appends to existing links field or creates a temp field and replaces.
  */
-async function handleFullModularContentReplacement(
+/**
+ * Creates a temp links field, migrates data to it, deletes the old field, then renames the temp.
+ */
+async function replaceSingleBlockFieldWithTempRename(
   ctx: FieldConversionContext,
-  _currentField: { id: string; validators: Record<string, unknown>; [key: string]: unknown },
   originalLabel: string,
   originalApiKey: string,
   originalPosition: number,
   originalHint: string | undefined,
   originalFieldset: { id: string; type: 'fieldset' } | null,
-  isSingleBlock: boolean
+  isSingleBlock: boolean,
 ): Promise<void> {
-  const {
-    client,
-    mcField,
-    newModelId,
-    blockIdToRemove,
-    mapping,
-    nestedPaths,
-    availableLocales,
-    recordsToPublish,
-  } = ctx;
+  const { client, mcField, newModelId } = ctx;
+  const tempApiKey = `${originalApiKey}_temp_links`;
+
+  const tempFieldData = {
+    label: `${originalLabel} (Temp)`,
+    api_key: tempApiKey,
+    field_type: isSingleBlock ? 'link' : 'links',
+    localized: mcField.localized,
+    validators: isSingleBlock
+      ? { item_item_type: { item_types: [newModelId] } }
+      : { items_item_type: { item_types: [newModelId] } },
+    appearance: {
+      editor: isSingleBlock ? 'link_embed' : 'links_embed',
+      parameters: {},
+      addons: [],
+    },
+    position: originalPosition + 1,
+    fieldset: originalFieldset ?? undefined,
+  } as Parameters<typeof client.fields.create>[1];
+
+  await client.fields.create(mcField.parentModelId, tempFieldData);
+  await migrateBlockFieldDataToTarget(
+    ctx,
+    originalApiKey,
+    tempApiKey,
+    isSingleBlock,
+  );
+  await client.fields.destroy(mcField.id);
+
+  const fieldsAfterDelete = await client.fields.list(mcField.parentModelId);
+  const tempField = fieldsAfterDelete.find((f) => f.api_key === tempApiKey);
+  if (tempField) {
+    const updateData: Parameters<typeof client.fields.update>[1] = {
+      label: originalLabel,
+      api_key: originalApiKey,
+      position: originalPosition,
+      hint: originalHint,
+    };
+    if (originalFieldset) {
+      updateData.fieldset = originalFieldset;
+    }
+    await client.fields.update(tempField.id, updateData);
+  }
+}
+
+async function handleFullModularContentReplacement(
+  ctx: FieldConversionContext,
+  _currentField: {
+    id: string;
+    validators: Record<string, unknown>;
+    [key: string]: unknown;
+  },
+  originalLabel: string,
+  originalApiKey: string,
+  originalPosition: number,
+  originalHint: string | undefined,
+  originalFieldset: { id: string; type: 'fieldset' } | null,
+  isSingleBlock: boolean,
+): Promise<void> {
+  const { client, mcField, blockIdToRemove, mapping } = ctx;
 
   const existingFields = await client.fields.list(mcField.parentModelId);
   const expectedLinksApiKey = `${originalApiKey}_links`;
-  const existingLinksField = existingFields.find(f => f.api_key === expectedLinksApiKey);
+  const existingLinksField = existingFields.find(
+    (f) => f.api_key === expectedLinksApiKey,
+  );
 
   if (existingLinksField) {
-    // Append to existing links field, then delete original
+    // Append to existing links field, delete original, move links field to original position
     await appendToExistingLinksField(
       ctx,
       existingLinksField,
       originalApiKey,
       blockIdToRemove,
-      mapping
+      mapping,
     );
-    
     await client.fields.destroy(mcField.id);
-    
     await client.fields.update(existingLinksField.id, {
       position: originalPosition,
     });
   } else {
-    // Create temp field, migrate data, delete old, rename temp
-    const newFieldType = isSingleBlock ? 'link' : 'links';
-    const tempApiKey = `${originalApiKey}_temp_links`;
-    
-    const tempFieldData = {
-      label: `${originalLabel} (Temp)`,
-      api_key: tempApiKey,
-      field_type: newFieldType,
-      localized: mcField.localized,
-      validators: isSingleBlock 
-        ? { item_item_type: { item_types: [newModelId] } }
-        : { items_item_type: { item_types: [newModelId] } },
-      appearance: {
-        editor: isSingleBlock ? 'link_embed' : 'links_embed',
-        parameters: {},
-        addons: [],
-      },
-      position: originalPosition + 1,
-      fieldset: originalFieldset || undefined,
-    } as Parameters<typeof client.fields.create>[1];
-    
-    await client.fields.create(mcField.parentModelId, tempFieldData);
-
-    // Migrate data to temp field
-    if (mcField.parentIsBlock) {
-      const nestedPath = findNestedPathForField(nestedPaths, mcField);
-      if (nestedPath) {
-        await migrateNestedBlockFieldData(
-          client,
-          nestedPath,
-          originalApiKey,
-          tempApiKey,
-          blockIdToRemove,
-          mapping,
-          isSingleBlock,
-          availableLocales,
-          recordsToPublish
-        );
-      }
-    } else {
-      await migrateFieldData(
-        client,
-        mcField.parentModelId,
-        originalApiKey,
-        tempApiKey,
-        mcField.localized,
-        blockIdToRemove,
-        mapping,
-        isSingleBlock,
-        recordsToPublish
-      );
-    }
-
-    // Delete old field
-    await client.fields.destroy(mcField.id);
-
-    // Rename temp field to original
-    const fieldsAfterDelete = await client.fields.list(mcField.parentModelId);
-    const tempField = fieldsAfterDelete.find(f => f.api_key === tempApiKey);
-    if (tempField) {
-      const updateData: Parameters<typeof client.fields.update>[1] = {
-        label: originalLabel,
-        api_key: originalApiKey,
-        position: originalPosition,
-        hint: originalHint,
-      };
-      
-      if (originalFieldset) {
-        updateData.fieldset = originalFieldset;
-      }
-      
-      await client.fields.update(tempField.id, updateData);
-    }
+    // Create temp field, migrate, delete old, rename temp to original
+    await replaceSingleBlockFieldWithTempRename(
+      ctx,
+      originalLabel,
+      originalApiKey,
+      originalPosition,
+      originalHint,
+      originalFieldset,
+      isSingleBlock,
+    );
   }
 }
 
@@ -586,18 +629,34 @@ async function handleFullModularContentReplacement(
  */
 async function appendToExistingLinksField(
   ctx: FieldConversionContext,
-  existingLinksField: { id: string; validators: Record<string, unknown>; api_key: string },
+  existingLinksField: {
+    id: string;
+    validators: Record<string, unknown>;
+    api_key: string;
+  },
   originalApiKey: string,
   blockIdToRemove: string,
-  mapping: BlockMigrationMapping
+  mapping: BlockMigrationMapping,
 ): Promise<void> {
-  const { client, mcField, newModelId, nestedPaths, availableLocales, recordsToPublish } = ctx;
+  const {
+    client,
+    mcField,
+    newModelId,
+    nestedPaths,
+    availableLocales,
+    recordsToPublish,
+  } = ctx;
 
   // Update validators to include new model
-  const currentValidators = existingLinksField.validators as Record<string, unknown>;
-  const currentItemsValidator = currentValidators.items_item_type as { item_types?: string[] } | undefined;
+  const currentValidators = existingLinksField.validators as Record<
+    string,
+    unknown
+  >;
+  const currentItemsValidator = currentValidators.items_item_type as
+    | { item_types?: string[] }
+    | undefined;
   const currentItemTypes = currentItemsValidator?.item_types || [];
-  
+
   if (!currentItemTypes.includes(newModelId)) {
     await client.fields.update(existingLinksField.id, {
       validators: {
@@ -608,7 +667,7 @@ async function appendToExistingLinksField(
       },
     });
   }
-  
+
   // Append data
   if (mcField.parentIsBlock) {
     const nestedPath = findNestedPathForField(nestedPaths, mcField);
@@ -621,7 +680,7 @@ async function appendToExistingLinksField(
         blockIdToRemove,
         mapping,
         availableLocales,
-        recordsToPublish
+        recordsToPublish,
       );
     }
   } else {
@@ -633,7 +692,7 @@ async function appendToExistingLinksField(
       mcField.localized,
       blockIdToRemove,
       mapping,
-      recordsToPublish
+      recordsToPublish,
     );
   }
 }
@@ -647,9 +706,17 @@ async function createNewLinksField(
   originalApiKey: string,
   originalPosition: number,
   originalFieldset: { id: string; type: 'fieldset' } | null,
-  blockIdToRemove: string
+  blockIdToRemove: string,
 ): Promise<void> {
-  const { client, mcField, newModelId, mapping, nestedPaths, availableLocales, recordsToPublish } = ctx;
+  const {
+    client,
+    mcField,
+    newModelId,
+    mapping,
+    nestedPaths,
+    availableLocales,
+    recordsToPublish,
+  } = ctx;
 
   const newLinksFieldData: Parameters<typeof client.fields.create>[1] = {
     label: `${originalLabel} (Links)`,
@@ -668,12 +735,15 @@ async function createNewLinksField(
     },
     position: originalPosition + 1,
   };
-  
+
   if (originalFieldset) {
     newLinksFieldData.fieldset = originalFieldset;
   }
-  
-  const newLinksField = await client.fields.create(mcField.parentModelId, newLinksFieldData);
+
+  const newLinksField = await client.fields.create(
+    mcField.parentModelId,
+    newLinksFieldData,
+  );
 
   // Migrate data
   if (mcField.parentIsBlock) {
@@ -688,7 +758,7 @@ async function createNewLinksField(
         mapping,
         false,
         availableLocales,
-        recordsToPublish
+        recordsToPublish,
       );
     }
   } else {
@@ -701,7 +771,7 @@ async function createNewLinksField(
       blockIdToRemove,
       mapping,
       false,
-      recordsToPublish
+      recordsToPublish,
     );
   }
 }
@@ -711,12 +781,14 @@ async function createNewLinksField(
  */
 export function findNestedPathForField(
   nestedPaths: NestedBlockPath[],
-  mcField: ModularContentFieldInfo
+  mcField: ModularContentFieldInfo,
 ): NestedBlockPath | undefined {
-  return nestedPaths.find(path => {
+  return nestedPaths.find((path) => {
     const lastStep = path.path[path.path.length - 1];
-    return lastStep.fieldApiKey === mcField.apiKey && 
-           path.fieldInfo.parentModelId === mcField.parentModelId;
+    return (
+      lastStep.fieldApiKey === mcField.apiKey &&
+      path.fieldInfo.parentModelId === mcField.parentModelId
+    );
   });
 }
 
@@ -726,18 +798,22 @@ export function findNestedPathForField(
 async function cleanupTempFields(
   client: CMAClient,
   parentModelId: string,
-  originalApiKey: string
+  originalApiKey: string,
 ): Promise<void> {
   const existingFields = await client.fields.list(parentModelId);
-  for (const field of existingFields) {
-    if (field.api_key === `${originalApiKey}_temp_links`) {
+  const tempFields = existingFields.filter(
+    (field) => field.api_key === `${originalApiKey}_temp_links`,
+  );
+
+  await Promise.all(
+    tempFields.map(async (field) => {
       try {
         await client.fields.destroy(field.id);
       } catch (e) {
         console.warn(`Could not clean up existing field ${field.api_key}:`, e);
       }
-    }
-  }
+    }),
+  );
 }
 
 // =============================================================================
@@ -747,7 +823,7 @@ async function cleanupTempFields(
 /**
  * Cleans up nested blocks from the original modular content field.
  * Used when doing partial replacement (keeping both fields).
- * 
+ *
  * @param client - DatoCMS CMA client
  * @param rootModelId - ID of the root model
  * @param paths - Nested paths for cleanup
@@ -759,7 +835,7 @@ export async function cleanupNestedBlocksFromOriginalField(
   rootModelId: string,
   paths: NestedBlockPath[],
   targetBlockId: string,
-  recordsToPublish?: Set<string>
+  recordsToPublish?: Set<string>,
 ): Promise<void> {
   for await (const record of client.items.listPagedIterator({
     filter: { type: rootModelId },
@@ -779,7 +855,7 @@ export async function cleanupNestedBlocksFromOriginalField(
         rootFieldValue,
         path.path,
         0,
-        targetBlockId
+        targetBlockId,
       );
 
       if (result.updated) {
@@ -794,4 +870,3 @@ export async function cleanupNestedBlocksFromOriginalField(
     }
   }
 }
-

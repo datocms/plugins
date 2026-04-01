@@ -67,7 +67,7 @@ export function useExportSelection({
     setSelectedItemTypes(
       selectedIds.map((id) => itemTypesById.get(id)).filter(isDefined),
     );
-  }, [enabled, itemTypesById, selectedIds.join('-')]);
+  }, [enabled, itemTypesById, selectedIds.map]);
 
   return {
     allItemTypes,

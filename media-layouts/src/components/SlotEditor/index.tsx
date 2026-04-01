@@ -1,12 +1,15 @@
-import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import type { RenderFieldExtensionCtx, Upload } from 'datocms-plugin-sdk';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import type {
   LayoutConfig,
   LayoutSlot,
   SlotAssignment,
   WidthOption,
 } from '../../types';
-import { calculateOutputHeight, getEffectiveRatio } from '../../utils/aspectRatio';
+import {
+  calculateOutputHeight,
+  getEffectiveRatio,
+} from '../../utils/aspectRatio';
 import SlotCard from './SlotCard';
 import s from './styles.module.css';
 
@@ -39,7 +42,7 @@ export default function SlotEditor({
   });
   const getAssignmentForSlot = useCallback(
     (slotId: string) => assignments.find((a) => a.slotId === slotId),
-    [assignments]
+    [assignments],
   );
 
   const handleSelectAssetForSlot = useCallback(
@@ -56,7 +59,7 @@ export default function SlotEditor({
         slot.aspectRatio,
         slot.customAspectRatio,
         attrs.width,
-        attrs.height
+        attrs.height,
       );
 
       const newAssignment: SlotAssignment = {
@@ -81,11 +84,11 @@ export default function SlotEditor({
 
       // Replace existing assignment for this slot or add new
       const filteredAssignments = assignments.filter(
-        (a) => a.slotId !== slot.id
+        (a) => a.slotId !== slot.id,
       );
       onAssignmentsChange([...filteredAssignments, newAssignment]);
     },
-    [ctx, assignments, onAssignmentsChange, enableCssClass, enableLazyLoading]
+    [ctx, assignments, onAssignmentsChange, enableCssClass, enableLazyLoading],
   );
 
   const handleAssignmentChange = useCallback(
@@ -93,18 +96,18 @@ export default function SlotEditor({
       const assignment = getAssignmentForSlot(slotId);
       if (!assignment) return;
       const nextAssignments = assignments.map((item) =>
-        item.slotId === slotId ? { ...assignment, ...updates } : item
+        item.slotId === slotId ? { ...assignment, ...updates } : item,
       );
       onAssignmentsChange(nextAssignments);
     },
-    [assignments, getAssignmentForSlot, onAssignmentsChange]
+    [assignments, getAssignmentForSlot, onAssignmentsChange],
   );
 
   const handleRemoveAssetFromSlot = useCallback(
     (slotId: string) => {
       onAssignmentsChange(assignments.filter((a) => a.slotId !== slotId));
     },
-    [assignments, onAssignmentsChange]
+    [assignments, onAssignmentsChange],
   );
 
   const handleEditMetadata = useCallback(
@@ -120,7 +123,7 @@ export default function SlotEditor({
           focal_point: assignment.focalPoint,
           custom_data: {},
         },
-        ctx.locale
+        ctx.locale,
       );
 
       if (result) {
@@ -132,12 +135,12 @@ export default function SlotEditor({
                 title: result.title,
                 focalPoint: result.focal_point,
               }
-            : a
+            : a,
         );
         onAssignmentsChange(updatedAssignments);
       }
     },
-    [ctx, assignments, getAssignmentForSlot, onAssignmentsChange]
+    [ctx, assignments, getAssignmentForSlot, onAssignmentsChange],
   );
 
   const getSlotSpan = useCallback(
@@ -148,10 +151,13 @@ export default function SlotEditor({
         typeof slot.colSpan === 'number' && slot.colSpan > 0 ? slot.colSpan : 1;
       return {
         rowSpan: Math.min(rowSpan, Math.max(1, layoutConfig.rows - slot.row)),
-        colSpan: Math.min(colSpan, Math.max(1, layoutConfig.columns - slot.col)),
+        colSpan: Math.min(
+          colSpan,
+          Math.max(1, layoutConfig.columns - slot.col),
+        ),
       };
     },
-    [layoutConfig.columns, layoutConfig.rows]
+    [layoutConfig.columns, layoutConfig.rows],
   );
 
   useLayoutEffect(() => {
@@ -192,10 +198,10 @@ export default function SlotEditor({
       const height = itemWidth / safeRatio;
       return Math.max(
         1,
-        Math.ceil((height + gap) / (MASONRY_ROW_HEIGHT + gap))
+        Math.ceil((height + gap) / (MASONRY_ROW_HEIGHT + gap)),
       );
     },
-    [gridMetrics.columnWidth, gridMetrics.gap]
+    [gridMetrics.columnWidth, gridMetrics.gap],
   );
 
   // Sort slots by row and column for display

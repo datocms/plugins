@@ -1,9 +1,9 @@
-import { Button, useCtx } from 'datocms-react-ui';
-import s from './styles.module.css';
-import type { Product } from '../../utils/ShopifyClient';
-import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faSearch } from '@fortawesome/free-solid-svg-icons';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
+import { Button, useCtx } from 'datocms-react-ui';
+import type { Product } from '../../utils/ShopifyClient';
+import s from './styles.module.css';
 
 export type EmptyProps = {
   onSelect: (product: Product) => void;

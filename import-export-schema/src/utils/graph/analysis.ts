@@ -40,6 +40,32 @@ export function buildUndirectedAdjacency(graph: Graph): Adjacency {
   return adj;
 }
 
+/**
+ * BFS from a single starting node, collecting all reachable node IDs into `comp`.
+ */
+function bfsFromNode(
+  startId: string,
+  adj: Adjacency,
+  seen: Set<string>,
+  comp: string[],
+) {
+  const queue: string[] = [startId];
+  seen.add(startId);
+  while (queue.length) {
+    const cur = queue.shift();
+    if (cur === undefined) break;
+    comp.push(cur);
+    const neighbors = adj.get(cur);
+    if (!neighbors) continue;
+    for (const nb of neighbors) {
+      if (!seen.has(nb)) {
+        seen.add(nb);
+        queue.push(nb);
+      }
+    }
+  }
+}
+
 export function getConnectedComponents(graph: Graph): string[][] {
   const adj = buildUndirectedAdjacency(graph);
   const seen = new Set<string>();
@@ -48,18 +74,7 @@ export function getConnectedComponents(graph: Graph): string[][] {
   for (const id of adj.keys()) {
     if (seen.has(id)) continue;
     const comp: string[] = [];
-    const queue: string[] = [id];
-    seen.add(id);
-    while (queue.length) {
-      const cur = queue.shift()!;
-      comp.push(cur);
-      for (const nb of adj.get(cur)!) {
-        if (!seen.has(nb)) {
-          seen.add(nb);
-          queue.push(nb);
-        }
-      }
-    }
+    bfsFromNode(id, adj, seen, comp);
     components.push(comp);
   }
 
@@ -76,6 +91,38 @@ export function getStronglyConnectedComponents(graph: Graph): string[][] {
   const stack: string[] = [];
   const sccs: string[][] = [];
 
+  function getLowlink(id: string) {
+    return lowlink.get(id) ?? 0;
+  }
+
+  function getIndex(id: string) {
+    return indices.get(id) ?? 0;
+  }
+
+  function visitNeighbors(v: string) {
+    const neighbors = adj.get(v) ?? new Set<string>();
+    for (const w of neighbors) {
+      if (!indices.has(w)) {
+        strongconnect(w);
+        lowlink.set(v, Math.min(getLowlink(v), getLowlink(w)));
+      } else if (onStack.has(w)) {
+        lowlink.set(v, Math.min(getLowlink(v), getIndex(w)));
+      }
+    }
+  }
+
+  function popScc(v: string) {
+    const comp: string[] = [];
+    let w: string | undefined;
+    do {
+      w = stack.pop();
+      if (w === undefined) break;
+      onStack.delete(w);
+      comp.push(w);
+    } while (w !== v);
+    sccs.push(comp);
+  }
+
   function strongconnect(v: string) {
     indices.set(v, index);
     lowlink.set(v, index);
@@ -83,25 +130,10 @@ export function getStronglyConnectedComponents(graph: Graph): string[][] {
     stack.push(v);
     onStack.add(v);
 
-    for (const w of adj.get(v)!) {
-      if (!indices.has(w)) {
-        strongconnect(w);
-        lowlink.set(v, Math.min(lowlink.get(v)!, lowlink.get(w)!));
-      } else if (onStack.has(w)) {
-        lowlink.set(v, Math.min(lowlink.get(v)!, indices.get(w)!));
-      }
-    }
+    visitNeighbors(v);
 
-    if (lowlink.get(v) === indices.get(v)) {
-      const comp: string[] = [];
-      let w: string | undefined;
-      do {
-        w = stack.pop();
-        if (w === undefined) break;
-        onStack.delete(w);
-        comp.push(w);
-      } while (w !== v);
-      sccs.push(comp);
+    if (getLowlink(v) === getIndex(v)) {
+      popScc(v);
     }
   }
 

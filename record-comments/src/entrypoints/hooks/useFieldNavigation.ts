@@ -1,17 +1,30 @@
-import { useEffect, useState, useCallback, useMemo, useRef, type Dispatch, type SetStateAction } from 'react';
-import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
-import type { FieldInfo } from './useMentions';
 import type { BlockInfo } from '@ctypes/mentions';
 import {
+  getBlockAttributesAtPath,
   getBlocksForField,
   getFieldsForBlock,
-  getBlockAttributesAtPath,
 } from '@utils/fieldLoader';
+import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
+import {
+  type Dispatch,
+  type SetStateAction,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import type { FieldInfo } from './useMentions';
 
 export type NavigationStep =
   | { type: 'field'; field: FieldInfo }
   | { type: 'locale'; locale: string }
-  | { type: 'block'; blockIndex: number; blockModelId: string; blockModelName: string };
+  | {
+      type: 'block';
+      blockIndex: number;
+      blockModelId: string;
+      blockModelName: string;
+    };
 
 function getCurrentField(stack: NavigationStep[]): FieldInfo | null {
   for (let i = stack.length - 1; i >= 0; i--) {
@@ -75,7 +88,11 @@ function getCurrentViewMode(stack: NavigationStep[]): ViewMode {
 
   if (lastStep.type === 'field') {
     const field = lastStep.field;
-    if (field.localized && field.availableLocales && field.availableLocales.length > 1) {
+    if (
+      field.localized &&
+      field.availableLocales &&
+      field.availableLocales.length > 1
+    ) {
       return 'locales';
     }
     if (field.isBlockContainer) {
@@ -106,7 +123,7 @@ export function handleListKeyNav(
   setIndex: Dispatch<SetStateAction<number>>,
   listLength: number,
   onSelect: () => void,
-  onBack: () => void
+  onBack: () => void,
 ): boolean {
   switch (key) {
     case 'ArrowDown':
@@ -182,15 +199,29 @@ export function useFieldNavigation({
   const [localSelectedIndex, setLocalSelectedIndex] = useState(0);
 
   const [currentBlocks, setCurrentBlocks] = useState<BlockInfo[]>([]);
-  const [currentNestedFields, setCurrentNestedFields] = useState<FieldInfo[]>([]);
+  const [currentNestedFields, setCurrentNestedFields] = useState<FieldInfo[]>(
+    [],
+  );
   const [isLoadingBlocks, setIsLoadingBlocks] = useState(false);
 
   const loadOperationRef = useRef(0);
 
-  const viewMode = useMemo(() => getCurrentViewMode(navigationStack), [navigationStack]);
-  const currentField = useMemo(() => getCurrentField(navigationStack), [navigationStack]);
-  const selectedLocale = useMemo(() => getSelectedLocale(navigationStack), [navigationStack]);
-  const breadcrumb = useMemo(() => buildBreadcrumb(navigationStack), [navigationStack]);
+  const viewMode = useMemo(
+    () => getCurrentViewMode(navigationStack),
+    [navigationStack],
+  );
+  const currentField = useMemo(
+    () => getCurrentField(navigationStack),
+    [navigationStack],
+  );
+  const selectedLocale = useMemo(
+    () => getSelectedLocale(navigationStack),
+    [navigationStack],
+  );
+  const breadcrumb = useMemo(
+    () => buildBreadcrumb(navigationStack),
+    [navigationStack],
+  );
 
   // Notify parent when navigation path changes (for editor text preview)
   const onPathChangeRef = useRef(onPathChange);
@@ -230,7 +261,12 @@ export function useFieldNavigation({
     }
 
     setIsLoadingBlocks(true);
-    const blocks = getBlocksForField(ctx, currentField.fieldPath, currentField.blockFieldType, selectedLocale);
+    const blocks = getBlocksForField(
+      ctx,
+      currentField.fieldPath,
+      currentField.blockFieldType,
+      selectedLocale,
+    );
     setCurrentBlocks(blocks);
     setLocalSelectedIndex(0);
     setIsLoadingBlocks(false);
@@ -244,30 +280,37 @@ export function useFieldNavigation({
 
     let isMounted = true;
 
+    const findLastBlockStep = (
+      stack: NavigationStep[],
+    ): Extract<NavigationStep, { type: 'block' }> | null => {
+      for (let i = stack.length - 1; i >= 0; i--) {
+        const step = stack[i];
+        if (step.type === 'block') {
+          return step;
+        }
+      }
+      return null;
+    };
+
+    const isOperationCurrent = (op: number) =>
+      isMounted && loadOperationRef.current === op;
+
+    const setEmptyNestedFields = () => {
+      setCurrentNestedFields([]);
+      setIsLoadingBlocks(false);
+    };
+
     const loadNestedFields = async () => {
       const currentOperation = ++loadOperationRef.current;
 
       setIsLoadingBlocks(true);
 
-      let lastBlockStep: NavigationStep | null = null;
-      for (let i = navigationStack.length - 1; i >= 0; i--) {
-        if (navigationStack[i].type === 'block') {
-          lastBlockStep = navigationStack[i];
-          break;
-        }
-      }
+      const lastBlockStep = findLastBlockStep(navigationStack);
+      const blockFieldType = currentField?.blockFieldType;
 
-      if (!lastBlockStep || lastBlockStep.type !== 'block') {
-        if (!isMounted || loadOperationRef.current !== currentOperation) return;
-        setCurrentNestedFields([]);
-        setIsLoadingBlocks(false);
-        return;
-      }
-
-      if (!currentField?.blockFieldType) {
-        if (!isMounted || loadOperationRef.current !== currentOperation) return;
-        setCurrentNestedFields([]);
-        setIsLoadingBlocks(false);
+      if (!lastBlockStep || !blockFieldType) {
+        if (!isOperationCurrent(currentOperation)) return;
+        setEmptyNestedFields();
         return;
       }
 
@@ -275,8 +318,8 @@ export function useFieldNavigation({
         ctx,
         currentField.fieldPath,
         lastBlockStep.blockIndex,
-        currentField.blockFieldType,
-        selectedLocale
+        blockFieldType,
+        selectedLocale,
       );
 
       // Use buildFieldPath to get the full path including locales
@@ -287,10 +330,10 @@ export function useFieldNavigation({
         ctx,
         lastBlockStep.blockModelId,
         blockAttrs,
-        basePath
+        basePath,
       );
 
-      if (!isMounted || loadOperationRef.current !== currentOperation) return;
+      if (!isOperationCurrent(currentOperation)) return;
 
       setCurrentNestedFields(nestedFields);
       setLocalSelectedIndex(0);
@@ -305,7 +348,11 @@ export function useFieldNavigation({
   }, [navigationStack, ctx, currentField, viewMode, selectedLocale]);
 
   useEffect(() => {
-    if (pendingFieldForLocale?.isBlockContainer && !pendingFieldForLocale.localized && navigationStack.length === 0) {
+    if (
+      pendingFieldForLocale?.isBlockContainer &&
+      !pendingFieldForLocale.localized &&
+      navigationStack.length === 0
+    ) {
       setNavigationStack([{ type: 'field', field: pendingFieldForLocale }]);
       setLocalSelectedIndex(0);
       onClearPendingField?.();
@@ -320,41 +367,53 @@ export function useFieldNavigation({
     onClearPendingField?.();
   }, [navigationStack.length, onClearPendingField]);
 
-  const handleFieldClick = useCallback((field: FieldInfo) => {
-    if (field.isBlockContainer) {
-      setNavigationStack((prev) => [...prev, { type: 'field', field }]);
-      setLocalSelectedIndex(0);
-      return;
-    }
+  const handleFieldClick = useCallback(
+    (field: FieldInfo) => {
+      if (field.isBlockContainer) {
+        setNavigationStack((prev) => [...prev, { type: 'field', field }]);
+        setLocalSelectedIndex(0);
+        return;
+      }
 
-    if (field.localized && field.availableLocales && field.availableLocales.length > 1) {
-      setNavigationStack((prev) => [...prev, { type: 'field', field }]);
-      setLocalSelectedIndex(0);
-      return;
-    }
+      if (
+        field.localized &&
+        field.availableLocales &&
+        field.availableLocales.length > 1
+      ) {
+        setNavigationStack((prev) => [...prev, { type: 'field', field }]);
+        setLocalSelectedIndex(0);
+        return;
+      }
 
-    const currentPath = buildFieldPath(navigationStack);
-    const finalPath = currentPath ? `${currentPath}.${field.apiKey}` : field.fieldPath;
+      const currentPath = buildFieldPath(navigationStack);
+      const finalPath = currentPath
+        ? `${currentPath}.${field.apiKey}`
+        : field.fieldPath;
 
-    const finalField: FieldInfo = {
-      ...field,
-      fieldPath: finalPath,
-      localized: field.localized || !!selectedLocale,
-    };
+      const finalField: FieldInfo = {
+        ...field,
+        fieldPath: finalPath,
+        localized: field.localized || !!selectedLocale,
+      };
 
-    onSelect(finalField, selectedLocale);
-    setNavigationStack([]);
-  }, [navigationStack, selectedLocale, onSelect]);
-
-  const handleLocaleClick = useCallback((locale: string) => {
-    if (currentField?.isBlockContainer) {
-      setNavigationStack((prev) => [...prev, { type: 'locale', locale }]);
-      setLocalSelectedIndex(0);
-    } else if (currentField) {
-      onSelect(currentField, locale);
+      onSelect(finalField, selectedLocale);
       setNavigationStack([]);
-    }
-  }, [currentField, onSelect]);
+    },
+    [navigationStack, selectedLocale, onSelect],
+  );
+
+  const handleLocaleClick = useCallback(
+    (locale: string) => {
+      if (currentField?.isBlockContainer) {
+        setNavigationStack((prev) => [...prev, { type: 'locale', locale }]);
+        setLocalSelectedIndex(0);
+      } else if (currentField) {
+        onSelect(currentField, locale);
+        setNavigationStack([]);
+      }
+    },
+    [currentField, onSelect],
+  );
 
   const handleSelectEntireField = useCallback(() => {
     if (!currentField) return;
@@ -376,21 +435,24 @@ export function useFieldNavigation({
     setLocalSelectedIndex(0);
   }, []);
 
-  const handlePendingLocaleSelection = useCallback((locale: string) => {
-    if (!pendingFieldForLocale) return;
+  const handlePendingLocaleSelection = useCallback(
+    (locale: string) => {
+      if (!pendingFieldForLocale) return;
 
-    if (pendingFieldForLocale.isBlockContainer) {
-      setNavigationStack([
-        { type: 'field', field: pendingFieldForLocale },
-        { type: 'locale', locale },
-      ]);
-      setLocalSelectedIndex(0);
-      onClearPendingField?.();
-    } else {
-      onSelect(pendingFieldForLocale, locale);
-      onClearPendingField?.();
-    }
-  }, [pendingFieldForLocale, onSelect, onClearPendingField]);
+      if (pendingFieldForLocale.isBlockContainer) {
+        setNavigationStack([
+          { type: 'field', field: pendingFieldForLocale },
+          { type: 'locale', locale },
+        ]);
+        setLocalSelectedIndex(0);
+        onClearPendingField?.();
+      } else {
+        onSelect(pendingFieldForLocale, locale);
+        onClearPendingField?.();
+      }
+    },
+    [pendingFieldForLocale, onSelect, onClearPendingField],
+  );
 
   const resetNavigation = useCallback(() => {
     loadOperationRef.current++;
@@ -399,95 +461,123 @@ export function useFieldNavigation({
   }, []);
 
   useEffect(() => {
-    if (pendingFieldForLocale?.availableLocales && navigationStack.length === 0) {
+    if (
+      pendingFieldForLocale?.availableLocales &&
+      navigationStack.length === 0
+    ) {
       setLocalSelectedIndex(0);
     }
   }, [pendingFieldForLocale, navigationStack.length]);
 
-  const handleKeyboardNavigation = useCallback((key: string): boolean => {
-    if (pendingFieldForLocale?.availableLocales && navigationStack.length === 0) {
-      const localesLength = pendingFieldForLocale.availableLocales.length;
-
-      if (key === 'ArrowDown') {
-        if (localesLength > 0) {
-          setLocalSelectedIndex((prev) => (prev + 1) % localesLength);
-        }
-        return true;
-      }
-      if (key === 'ArrowUp') {
-        if (localesLength > 0) {
-          setLocalSelectedIndex((prev) => (prev - 1 + localesLength) % localesLength);
-        }
-        return true;
-      }
-      if (key === 'Enter' || key === 'Tab') {
-        const locale = pendingFieldForLocale.availableLocales[localSelectedIndex];
+  const handlePendingLocaleKeyNav = useCallback(
+    (key: string, locales: string[]): boolean => {
+      const selectCurrentLocale = () => {
+        const locale = locales[localSelectedIndex];
         if (locale) {
           handlePendingLocaleSelection(locale);
         }
-        return true;
-      }
-      if (key === 'Escape') {
-        onClearPendingField?.();
-        return true;
-      }
-      return false;
-    }
+      };
 
-    if (viewMode === 'blocks') {
-      const totalItems = currentBlocks.length + 1;
       return handleListKeyNav(
         key,
         setLocalSelectedIndex,
-        totalItems,
-        () => {
-          if (localSelectedIndex === 0) {
-            handleSelectEntireField();
-          } else {
-            const blockIndex = localSelectedIndex - 1;
-            if (blockIndex < currentBlocks.length) {
-              handleBlockClick(currentBlocks[blockIndex]);
+        locales.length,
+        selectCurrentLocale,
+        () => onClearPendingField?.(),
+      );
+    },
+    [localSelectedIndex, handlePendingLocaleSelection, onClearPendingField],
+  );
+
+  const handleViewModeKeyNav = useCallback(
+    (key: string): boolean => {
+      if (viewMode === 'blocks') {
+        const totalItems = currentBlocks.length + 1;
+        return handleListKeyNav(
+          key,
+          setLocalSelectedIndex,
+          totalItems,
+          () => {
+            if (localSelectedIndex === 0) {
+              handleSelectEntireField();
+            } else {
+              const blockIndex = localSelectedIndex - 1;
+              if (blockIndex < currentBlocks.length) {
+                handleBlockClick(currentBlocks[blockIndex]);
+              }
             }
-          }
-        },
-        handleBack
-      );
-    }
+          },
+          handleBack,
+        );
+      }
 
-    if (viewMode === 'nestedFields') {
-      return handleListKeyNav(
-        key,
-        setLocalSelectedIndex,
-        currentNestedFields.length,
-        () => {
-          if (localSelectedIndex < currentNestedFields.length) {
-            handleFieldClick(currentNestedFields[localSelectedIndex]);
-          }
-        },
-        handleBack
-      );
-    }
+      if (viewMode === 'nestedFields') {
+        return handleListKeyNav(
+          key,
+          setLocalSelectedIndex,
+          currentNestedFields.length,
+          () => {
+            if (localSelectedIndex < currentNestedFields.length) {
+              handleFieldClick(currentNestedFields[localSelectedIndex]);
+            }
+          },
+          handleBack,
+        );
+      }
 
-    if (viewMode === 'locales' && currentField?.availableLocales) {
-      return handleListKeyNav(
-        key,
-        setLocalSelectedIndex,
-        currentField.availableLocales.length,
-        () => {
-          if (localSelectedIndex < currentField.availableLocales!.length) {
-            handleLocaleClick(currentField.availableLocales![localSelectedIndex]);
-          }
-        },
-        handleBack
-      );
-    }
+      if (viewMode === 'locales' && currentField?.availableLocales) {
+        return handleListKeyNav(
+          key,
+          setLocalSelectedIndex,
+          currentField.availableLocales.length,
+          () => {
+            if (localSelectedIndex < currentField.availableLocales?.length) {
+              handleLocaleClick(
+                currentField.availableLocales?.[localSelectedIndex],
+              );
+            }
+          },
+          handleBack,
+        );
+      }
 
-    return false;
-  }, [
-    viewMode, localSelectedIndex, currentBlocks, currentNestedFields, currentField, 
-    handleSelectEntireField, handleBlockClick, handleFieldClick, handleLocaleClick, handleBack, 
-    pendingFieldForLocale, navigationStack, onClearPendingField, handlePendingLocaleSelection
-  ]);
+      return false;
+    },
+    [
+      viewMode,
+      localSelectedIndex,
+      currentBlocks,
+      currentNestedFields,
+      currentField,
+      handleSelectEntireField,
+      handleBlockClick,
+      handleFieldClick,
+      handleLocaleClick,
+      handleBack,
+    ],
+  );
+
+  const handleKeyboardNavigation = useCallback(
+    (key: string): boolean => {
+      if (
+        pendingFieldForLocale?.availableLocales &&
+        navigationStack.length === 0
+      ) {
+        return handlePendingLocaleKeyNav(
+          key,
+          pendingFieldForLocale.availableLocales,
+        );
+      }
+
+      return handleViewModeKeyNav(key);
+    },
+    [
+      pendingFieldForLocale,
+      navigationStack.length,
+      handlePendingLocaleKeyNav,
+      handleViewModeKeyNav,
+    ],
+  );
 
   return {
     navigationStack,

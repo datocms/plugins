@@ -1,16 +1,21 @@
 // @vitest-environment jsdom
+
+import { useCommentsSubscription } from '@hooks/useCommentsSubscription';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { useCommentsSubscription } from '@hooks/useCommentsSubscription';
-import { renderHook, flushPromises } from '../testUtils/react';
+import { flushPromises, renderHook } from '../testUtils/react';
 
 const useQuerySubscriptionMock = vi.fn();
 
 vi.mock('react-datocms/use-query-subscription', () => ({
-  useQuerySubscription: (...args: unknown[]) => useQuerySubscriptionMock(...args),
+  useQuerySubscription: (...args: unknown[]) =>
+    useQuerySubscriptionMock(...args),
 }));
 
-function createSidebarCtx(recordId: string | null, includeCommentsModel = true) {
+function createSidebarCtx(
+  recordId: string | null,
+  includeCommentsModel = true,
+) {
   return {
     item: recordId ? { id: recordId } : null,
     itemType: { id: 'model-1' },
@@ -56,7 +61,7 @@ describe('useCommentsSubscription', () => {
         filterParams: { modelId: 'model-1', recordId: 'record-1' },
         subscriptionEnabled: true,
         currentUserId: 'user-1',
-      })
+      }),
     );
 
     const initialCallCount = useQuerySubscriptionMock.mock.calls.length;
@@ -72,7 +77,9 @@ describe('useCommentsSubscription', () => {
       vi.advanceTimersByTime(1000);
     });
 
-    expect(useQuerySubscriptionMock.mock.calls.length).toBe(afterRetryCallCount);
+    expect(useQuerySubscriptionMock.mock.calls.length).toBe(
+      afterRetryCallCount,
+    );
     unmount();
   });
 
@@ -118,7 +125,7 @@ describe('useCommentsSubscription', () => {
         filterParams: { modelId: 'model-1', recordId: recordId ?? '' },
         subscriptionEnabled: true,
         currentUserId: 'user-1',
-      })
+      }),
     );
 
     await flushPromises();
@@ -176,7 +183,7 @@ describe('useCommentsSubscription', () => {
         filterParams: { modelId: 'model-1', recordId: 'record-1' },
         subscriptionEnabled: true,
         currentUserId: 'user-1',
-      })
+      }),
     );
 
     await flushPromises();

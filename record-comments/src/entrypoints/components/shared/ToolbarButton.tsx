@@ -1,6 +1,6 @@
+import styles from '@styles/commentbar.module.css';
 import { memo, type ReactNode } from 'react';
 import { cn } from '@/utils/cn';
-import styles from '@styles/commentbar.module.css';
 
 type ToolbarButtonProps = {
   /** The icon to display inside the button (typically an SVG element) */
@@ -35,7 +35,7 @@ function ToolbarButtonComponent({
         type="button"
         className={cn(
           buttonClassName,
-          disabled && styles.toolbarButtonDisabled
+          disabled && styles.toolbarButtonDisabled,
         )}
         onClick={disabled ? undefined : onClick}
         disabled={disabled}

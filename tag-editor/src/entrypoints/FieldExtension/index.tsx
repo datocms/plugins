@@ -1,6 +1,7 @@
 import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
 import { Canvas } from 'datocms-react-ui';
 import get from 'lodash-es/get';
+import type { Tag } from 'react-tag-input';
 import { WithContext as ReactTags } from 'react-tag-input';
 import s from './styles.module.css';
 
@@ -8,25 +9,24 @@ type Props = {
   ctx: RenderFieldExtensionCtx;
 };
 
-type TagValue = {
-  id: string;
+// TagValue satisfies the library's Tag interface: { id, className, [key: string]: string }
+type TagValue = Tag & {
   text: string;
-  className: string;
 };
 
-function isValidJson(value: any): value is string[] {
+function isValidJson(value: unknown): value is string[] {
   return (
     Array.isArray(value) && value.every((item) => typeof item === 'string')
   );
 }
 
-function deserialize(value: any, fieldType: 'json' | 'string'): TagValue[] {
+function deserialize(value: unknown, fieldType: 'json' | 'string'): TagValue[] {
   if (!value) {
     return [];
   }
 
   if (fieldType === 'json') {
-    const parsed = JSON.parse(value);
+    const parsed = JSON.parse(String(value));
 
     if (!isValidJson(parsed)) {
       throw new Error('Incompatible value!');
@@ -109,11 +109,11 @@ export default function FieldExtension({ ctx }: Props) {
     <Canvas ctx={ctx}>
       {tags ? (
         <ReactTags
-          tags={tags as any}
+          tags={tags}
           autofocus={false}
           placeholder="Add new string"
-          handleAddition={handleAddition as any}
-          handleDrag={handleDrag as any}
+          handleAddition={handleAddition}
+          handleDrag={handleDrag}
           handleDelete={handleDelete}
           classNames={{
             tags: s.tags,

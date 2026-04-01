@@ -33,7 +33,7 @@ export interface StreamOptions {
  */
 export function createTimeoutSignal(
   timeoutMs: number,
-  externalSignal?: AbortSignal
+  externalSignal?: AbortSignal,
 ): { signal: AbortSignal; cleanup: () => void } {
   const controller = new AbortController();
 
@@ -51,7 +51,9 @@ export function createTimeoutSignal(
     if (externalSignal.aborted) {
       controller.abort(externalSignal.reason);
     } else {
-      externalSignal.addEventListener('abort', externalAbortHandler, { once: true });
+      externalSignal.addEventListener('abort', externalAbortHandler, {
+        once: true,
+      });
     }
   }
 
@@ -116,7 +118,10 @@ export interface TranslationProvider {
    * Optional batch translation for providers that support it natively.
    * When present, translateArray() will use this instead of building prompts.
    */
-  translateArray?(texts: string[], options: BatchTranslationOptions): Promise<string[]>;
+  translateArray?(
+    texts: string[],
+    options: BatchTranslationOptions,
+  ): Promise<string[]>;
 }
 
 /**
@@ -220,6 +225,8 @@ export class ProviderConfigurationError extends Error {
  * @param err - The error to check.
  * @returns True if the error is a ProviderConfigurationError.
  */
-export function isProviderConfigurationError(err: unknown): err is ProviderConfigurationError {
+export function isProviderConfigurationError(
+  err: unknown,
+): err is ProviderConfigurationError {
   return err instanceof ProviderConfigurationError;
 }

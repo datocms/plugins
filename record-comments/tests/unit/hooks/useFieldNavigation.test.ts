@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
 import { handleListKeyNav } from '@hooks/useFieldNavigation';
+import { describe, expect, it, vi } from 'vitest';
 
 describe('handleListKeyNav', () => {
   it('returns false for unhandled keys', () => {

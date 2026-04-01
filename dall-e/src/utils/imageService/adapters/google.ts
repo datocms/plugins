@@ -44,20 +44,23 @@ export const googleAdapter: ImageProviderAdapter = {
 
     if (details.status === 401 || details.status === 403) {
       return {
-        message: 'Google rejected the API key. Check the plugin settings and try again.',
+        message:
+          'Google rejected the API key. Check the plugin settings and try again.',
       };
     }
 
     if (details.status === 429) {
       return {
-        message: 'Google rate limited this request. Wait a moment and try again.',
+        message:
+          'Google rate limited this request. Wait a moment and try again.',
       };
     }
 
     if (details.status === 400) {
       return {
         message:
-          details.message || 'Google rejected this request. Adjust it and try again.',
+          details.message ||
+          'Google rejected this request. Adjust it and try again.',
       };
     }
 
@@ -68,7 +71,8 @@ export const googleAdapter: ImageProviderAdapter = {
     }
 
     return {
-      message: details.message || 'Something went wrong while talking to Google.',
+      message:
+        details.message || 'Something went wrong while talking to Google.',
     };
   },
 };

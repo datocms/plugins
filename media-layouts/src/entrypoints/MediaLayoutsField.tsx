@@ -1,25 +1,25 @@
 import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
 import { Canvas } from 'datocms-react-ui';
 import { useCallback } from 'react';
+import EmptyState from '../components/EmptyState';
+import GalleryEditor from '../components/GalleryEditor';
+import SingleAssetEditor from '../components/SingleAssetEditor';
+import SlotEditor from '../components/SlotEditor';
 import type {
+  FieldParams,
+  LayoutFieldValue,
   MediaLayoutItem,
   MultipleFieldValue,
-  FieldParams,
   SlotAssignment,
-  LayoutFieldValue,
 } from '../types';
+import { calculateOutputHeight } from '../utils/aspectRatio';
 import {
-  normalizeFieldParams,
-  normalizeGlobalParams,
   getEffectiveDefaults,
   isValidLayoutConfig,
+  normalizeFieldParams,
+  normalizeGlobalParams,
 } from '../utils/fieldParams';
-import { calculateOutputHeight } from '../utils/aspectRatio';
 import { buildWidthOptions } from '../utils/width';
-import SingleAssetEditor from '../components/SingleAssetEditor';
-import GalleryEditor from '../components/GalleryEditor';
-import SlotEditor from '../components/SlotEditor';
-import EmptyState from '../components/EmptyState';
 import s from './styles.module.css';
 
 type Props = {
@@ -122,10 +122,11 @@ export default function MediaLayoutsField({ ctx }: Props) {
         defaults.aspectRatio,
         undefined,
         originalWidth,
-        originalHeight
+        originalHeight,
       );
 
       return {
+        _itemId: `${upload.id}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         uploadId: upload.id,
         url: attrs.url as string,
         filename: attrs.filename as string,
@@ -143,7 +144,7 @@ export default function MediaLayoutsField({ ctx }: Props) {
         originalHeight,
       };
     },
-    [ctx.locale, defaults, enableCssClass, enableLazyLoading]
+    [ctx.locale, defaults, enableCssClass, enableLazyLoading],
   );
 
   const handleSelectAssetForMultiple = useCallback(async () => {
@@ -152,7 +153,7 @@ export default function MediaLayoutsField({ ctx }: Props) {
     if (!result) return;
 
     const newItems: MediaLayoutItem[] = result.map((upload) =>
-      createMediaLayoutItem(upload)
+      createMediaLayoutItem(upload),
     );
 
     const existingItems = Array.isArray(currentValue) ? currentValue : [];
@@ -183,10 +184,10 @@ export default function MediaLayoutsField({ ctx }: Props) {
       const layoutConfig = layoutValue?.layout ?? layoutParams.layoutConfig;
       ctx.setFieldValue(
         ctx.fieldPath,
-        JSON.stringify({ layout: layoutConfig, assignments })
+        JSON.stringify({ layout: layoutConfig, assignments }),
       );
     },
-    [ctx, isLayout, layoutParams, layoutValue]
+    [ctx, isLayout, layoutParams, layoutValue],
   );
 
   // Handle layout mode

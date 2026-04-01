@@ -1,5 +1,5 @@
-import React from 'react';
 import styles from '@styles/comment.module.css';
+import React from 'react';
 import { logError } from '@/utils/errorLogger';
 
 type Props = {
@@ -28,7 +28,9 @@ export class CommentErrorBoundary extends React.Component<Props, State> {
 
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo): void {
     // Log the error for debugging
-    logError('Comment rendering failed', error, { componentStack: errorInfo.componentStack });
+    logError('Comment rendering failed', error, {
+      componentStack: errorInfo.componentStack,
+    });
   }
 
   render(): React.ReactNode {

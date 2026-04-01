@@ -30,17 +30,25 @@ export function isBlockValue(value: unknown): value is BlockValue {
   return hasIdentifier && hasValidAttributes;
 }
 
-export function isPlainObject(value: unknown): value is Record<string, unknown> {
+export function isPlainObject(
+  value: unknown,
+): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-export function isFieldValueRecord(value: unknown): value is Record<string, FieldValue> {
+export function isFieldValueRecord(
+  value: unknown,
+): value is Record<string, FieldValue> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
 export function isBlockContainerType(
-  fieldType: string
-): fieldType is 'modular_content' | 'structured_text' | 'single_block' | 'rich_text' {
+  fieldType: string,
+): fieldType is
+  | 'modular_content'
+  | 'structured_text'
+  | 'single_block'
+  | 'rich_text' {
   return (
     fieldType === 'modular_content' ||
     fieldType === 'structured_text' ||
@@ -50,15 +58,25 @@ export function isBlockContainerType(
 }
 
 export function hasBlockAttributes(
-  block: BlockValue
+  block: BlockValue,
 ): block is BlockValue & { attributes: Record<string, unknown> } {
-  return block.attributes !== undefined && typeof block.attributes === 'object' && block.attributes !== null;
+  return (
+    block.attributes !== undefined &&
+    typeof block.attributes === 'object' &&
+    block.attributes !== null
+  );
 }
 
 export function isStructuredTextBlock(
-  block: BlockValue
-): block is BlockValue & { __isStructuredTextBlock: true; __dastIndex: number } {
-  return block.__isStructuredTextBlock === true && typeof block.__dastIndex === 'number';
+  block: BlockValue,
+): block is BlockValue & {
+  __isStructuredTextBlock: true;
+  __dastIndex: number;
+} {
+  return (
+    block.__isStructuredTextBlock === true &&
+    typeof block.__dastIndex === 'number'
+  );
 }
 
 // DatoCMS SDK types validators/appearance as `unknown`; type guards below provide runtime validation
@@ -72,30 +90,28 @@ export type FieldAppearance = {
   editor?: string;
 };
 
+function isValidItemTypesGroup(value: unknown): boolean {
+  if (!isPlainObject(value)) return false;
+  const group = value as Record<string, unknown>;
+  if (!Array.isArray(group.item_types)) return false;
+  return (group.item_types as unknown[]).every((t) => typeof t === 'string');
+}
+
 export function isFieldValidators(value: unknown): value is FieldValidators {
   if (!value || typeof value !== 'object') return false;
 
   const obj = value as Record<string, unknown>;
 
   if (obj.item_item_type !== undefined) {
-    if (!isPlainObject(obj.item_item_type)) return false;
-    const itemType = obj.item_item_type as Record<string, unknown>;
-    if (!Array.isArray(itemType.item_types)) return false;
-    if (!itemType.item_types.every((t) => typeof t === 'string')) return false;
+    if (!isValidItemTypesGroup(obj.item_item_type)) return false;
   }
 
   if (obj.rich_text_blocks !== undefined) {
-    if (!isPlainObject(obj.rich_text_blocks)) return false;
-    const richText = obj.rich_text_blocks as Record<string, unknown>;
-    if (!Array.isArray(richText.item_types)) return false;
-    if (!richText.item_types.every((t) => typeof t === 'string')) return false;
+    if (!isValidItemTypesGroup(obj.rich_text_blocks)) return false;
   }
 
   if (obj.structured_text_blocks !== undefined) {
-    if (!isPlainObject(obj.structured_text_blocks)) return false;
-    const structText = obj.structured_text_blocks as Record<string, unknown>;
-    if (!Array.isArray(structText.item_types)) return false;
-    if (!structText.item_types.every((t) => typeof t === 'string')) return false;
+    if (!isValidItemTypesGroup(obj.structured_text_blocks)) return false;
   }
 
   return true;
@@ -117,7 +133,9 @@ export function getEditorType(appearance: unknown): string | undefined {
   return appearance.editor;
 }
 
-export function getValidators(validators: unknown): FieldValidators | undefined {
+export function getValidators(
+  validators: unknown,
+): FieldValidators | undefined {
   if (!isFieldValidators(validators)) return undefined;
   return validators;
 }
@@ -139,7 +157,9 @@ const BLOCK_METADATA_KEYS = new Set([
 ]);
 
 /** Extracts block attributes, filtering out metadata properties. */
-export function safeGetBlockAttributes(block: BlockValue): Record<string, FieldValue> {
+export function safeGetBlockAttributes(
+  block: BlockValue,
+): Record<string, FieldValue> {
   if (block.attributes && typeof block.attributes === 'object') {
     return block.attributes as Record<string, FieldValue>;
   }
@@ -157,7 +177,7 @@ export function safeGetBlockAttributes(block: BlockValue): Record<string, FieldV
 
 export function extractBlocksFromFieldValue(
   fieldValue: FieldValue,
-  fieldType: string
+  fieldType: string,
 ): BlockValue[] {
   if (!fieldValue) return [];
 

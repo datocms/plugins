@@ -1,7 +1,7 @@
-import { memo } from 'react';
-import type { ReactNode } from 'react';
-import { cn } from '@/utils/cn';
 import styles from '@styles/comment.module.css';
+import type { ReactNode } from 'react';
+import { memo } from 'react';
+import { cn } from '@/utils/cn';
 
 type ComposerBoxProps = {
   compact?: boolean;
@@ -13,7 +13,9 @@ const ComposerBox = memo(function ComposerBox({
   children,
 }: ComposerBoxProps) {
   return (
-    <div className={cn(styles.composerBox, compact && styles.composerBoxCompact)}>
+    <div
+      className={cn(styles.composerBox, compact && styles.composerBoxCompact)}
+    >
       {children}
     </div>
   );

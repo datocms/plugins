@@ -1,10 +1,49 @@
-import { Button, Canvas, Spinner } from "datocms-react-ui";
-import type { RenderUploadSidebarPanelCtx } from "datocms-plugin-sdk";
-import { useEffect, useMemo, useState } from "react";
-import { ApiError, buildClient, LogLevel } from "@datocms/cma-client-browser";
-import type { EnvironmentInstancesTargetSchema } from "@datocms/cma-client/dist/types/generated/ApiTypes";
-import { EnvItem } from "./EnvItem.tsx";
-import { sortByEnvUpdateTime } from "../utils/sortByEnvUpdateTime.ts";
+import type { EnvironmentInstancesTargetSchema } from '@datocms/cma-client/dist/types/generated/ApiTypes';
+import { ApiError, buildClient, LogLevel } from '@datocms/cma-client-browser';
+import type { RenderUploadSidebarPanelCtx } from 'datocms-plugin-sdk';
+import { Button, Canvas, Spinner } from 'datocms-react-ui';
+import { useEffect, useMemo, useState } from 'react';
+import { sortByEnvUpdateTime } from '../utils/sortByEnvUpdateTime.ts';
+import { EnvItem } from './EnvItem.tsx';
+
+type EnvUploadLookupResult =
+  | { found: true; envId: string }
+  | { found: false; envId: string; error?: string };
+
+async function checkUploadExistsInEnv(
+  apiToken: string,
+  envId: string,
+  uploadId: string,
+): Promise<EnvUploadLookupResult> {
+  const client = buildClient({ apiToken, environment: envId });
+  try {
+    const upload = await client.uploads.find(uploadId);
+    return { found: !!upload, envId };
+  } catch (e) {
+    if (e instanceof ApiError && e.errors[0]?.attributes.code === 'NOT_FOUND') {
+      return { found: false, envId };
+    }
+    throw e;
+  }
+}
+
+type EnvDeletionResult =
+  | { success: true; envId: string }
+  | { success: false; envId: string; error: ApiError | unknown };
+
+async function deleteUploadFromEnv(
+  apiToken: string,
+  envId: string,
+  uploadId: string,
+): Promise<EnvDeletionResult> {
+  const client = buildClient({ apiToken, environment: envId });
+  try {
+    await client.uploads.destroy(uploadId);
+    return { success: true, envId };
+  } catch (e) {
+    return { success: false, envId, error: e };
+  }
+}
 
 export const AssetDeletionSidebar = ({
   ctx,
@@ -86,7 +125,7 @@ export const AssetDeletionSidebar = ({
   const [envsWithUpload, setEnvsWithUpload] =
     useState<EnvironmentInstancesTargetSchema>([]);
   const [loadingMessage, setLoadingMessage] = useState<string | null>(
-    "Loading...",
+    'Loading...',
   );
 
   // Build the client once per token.
@@ -109,11 +148,7 @@ export const AssetDeletionSidebar = ({
   }, [client, currentEnv]);
 
   useEffect(() => {
-    if (
-      !currentUserAccessToken ||
-      !allOtherEnvsInProject ||
-      !allOtherEnvsInProject.length
-    ) {
+    if (!currentUserAccessToken || !allOtherEnvsInProject?.length) {
       return;
     }
 
@@ -121,48 +156,56 @@ export const AssetDeletionSidebar = ({
       setLoadingMessage(
         `Checking ${allOtherEnvsInProject.length} environment(s) for this asset...`,
       );
-      const envsWithUpload: EnvironmentInstancesTargetSchema = [];
-      const lookups = allOtherEnvsInProject.map(async (env) => {
-        const client = buildClient({
-          apiToken: currentUserAccessToken,
-          environment: env.id,
-        });
 
-        try {
-          const upload = await client.uploads.find(uploadId);
-          if (upload) {
-            envsWithUpload.push(env);
-          }
-        } catch (e) {
-          if (e instanceof ApiError) {
-            if (e.errors[0].attributes.code === "NOT_FOUND") {
-              // Do nothing; that env just doesn't have this image (expected behavior)
-              return;
-            } else {
-              await ctx.alert(
-                `Error: ${JSON.stringify(e.errors[0].attributes.details)}`,
-              );
-              return;
-            }
-          } else {
-            await ctx.alert(
-              `Unhandled error. Please contact support@datocms.com for help.`,
+      const lookupResults = await Promise.allSettled(
+        allOtherEnvsInProject.map((env) =>
+          checkUploadExistsInEnv(currentUserAccessToken, env.id, uploadId),
+        ),
+      );
+
+      const foundEnvIds = new Set(
+        lookupResults
+          .filter(
+            (r): r is PromiseFulfilledResult<EnvUploadLookupResult> =>
+              r.status === 'fulfilled' && r.value.found,
+          )
+          .map((r) => r.value.envId),
+      );
+
+      const rejectedLookups = lookupResults.filter(
+        (r): r is PromiseRejectedResult => r.status === 'rejected',
+      );
+
+      await Promise.all(
+        rejectedLookups.map((rejected) => {
+          const error = rejected.reason;
+          if (error instanceof ApiError) {
+            return ctx.alert(
+              `Error: ${JSON.stringify(error.errors[0]?.attributes.details)}`,
             );
-            //@ts-expect-error The cause should be valid
-            throw new Error("Unhandled error", { cause: e });
           }
-        }
-      });
+          return ctx.alert(
+            'Unhandled error. Please contact support@datocms.com for help.',
+          );
+        }),
+      );
 
-      await Promise.all(lookups);
-      setEnvsWithUpload(envsWithUpload.sort(sortByEnvUpdateTime));
+      const matchingEnvs = allOtherEnvsInProject.filter((env) =>
+        foundEnvIds.has(env.id),
+      );
+
+      setEnvsWithUpload(matchingEnvs.sort(sortByEnvUpdateTime));
       setLoadingMessage(null);
     })();
   }, [allOtherEnvsInProject, currentUserAccessToken, uploadId, ctx.alert]);
 
   // TODO permissions
   // Exit early if missing permissions
-  if (!currentUserAccessToken || !currentRole || currentRole?.attributes.environments_access !== 'all') {
+  if (
+    !currentUserAccessToken ||
+    !currentRole ||
+    currentRole?.attributes.environments_access !== 'all'
+  ) {
     return (
       <Canvas ctx={ctx}>
         <p>
@@ -173,59 +216,84 @@ export const AssetDeletionSidebar = ({
     );
   }
 
+  const handleDeletionResults = async (
+    results: PromiseSettledResult<EnvDeletionResult>[],
+  ) => {
+    const failedResults = results
+      .filter(
+        (
+          r,
+        ): r is PromiseFulfilledResult<
+          EnvDeletionResult & { success: false }
+        > => r.status === 'fulfilled' && !r.value.success,
+      )
+      .map((r) => r.value);
+
+    const rejectedResults = results.filter(
+      (r): r is PromiseRejectedResult => r.status === 'rejected',
+    );
+
+    await Promise.all(
+      failedResults.map((failed) => {
+        if (failed.error instanceof ApiError) {
+          return ctx.alert(
+            `Error: ${JSON.stringify(failed.error.errors[0]?.attributes.details)}`,
+          );
+        }
+        return ctx.alert(
+          'Unhandled error. Please contact support@datocms.com for help.',
+        );
+      }),
+    );
+
+    await Promise.all(
+      rejectedResults.map((rejected) =>
+        ctx.alert(
+          `Unhandled error: ${rejected.reason}. Please contact support@datocms.com for help.`,
+        ),
+      ),
+    );
+
+    const successCount = results.filter(
+      (r) => r.status === 'fulfilled' && r.value.success,
+    ).length;
+
+    return successCount;
+  };
+
   const deleteFromAllEnvs = async () => {
-    const confirm = (await ctx.openConfirm({
+    const userConfirmed = await ctx.openConfirm({
       title: `Delete ${envsWithUpload.length} other copies?`,
       content: `Are you sure? This will delete the asset from ${envsWithUpload.length} other environments. Then you'll still have to manually delete this last copy in the current environment.`,
       choices: [
         {
-          label: "Delete all",
-          value: "deleteAll",
-          intent: "negative",
+          label: 'Delete all',
+          value: 'deleteAll',
+          intent: 'negative',
         },
       ],
-      cancel: { label: "Go back", value: "cancel" },
-    })) as unknown as "deleteAll" | "cancel";
+      cancel: { label: 'Go back', value: 'cancel' },
+    });
 
-    if (confirm === "deleteAll") {
-      setLoadingMessage(
-        `Deleting from ${envsWithUpload.length} environments...`,
-      );
-
-      let copiesDeleted: number = 0;
-
-      for (const env of envsWithUpload) {
-        try {
-          const client = buildClient({
-            apiToken: currentUserAccessToken,
-            environment: env.id,
-          });
-          const deletionAttempt = await client.uploads.destroy(uploadId);
-          if (deletionAttempt) {
-            copiesDeleted++;
-          }
-        } catch (e) {
-          if (e instanceof ApiError) {
-            await ctx.alert(
-              `Error: ${JSON.stringify(e.errors[0].attributes.details)}`,
-            );
-            return;
-          } else {
-            await ctx.alert(
-              `Unhandled error. Please contact support@datocms.com for help.`,
-            );
-            //@ts-expect-error The cause should be valid
-            throw new Error("Unhandled error", { cause: e });
-          }
-        }
-      }
-
-      ctx.notice(
-        `Deleted ${copiesDeleted} other copies. You must delete the last copy in the current environment manually.`,
-      );
-      window.location.href = "/";
-      setLoadingMessage(null);
+    if (userConfirmed !== 'deleteAll') {
+      return;
     }
+
+    setLoadingMessage(`Deleting from ${envsWithUpload.length} environments...`);
+
+    const deletionResults = await Promise.allSettled(
+      envsWithUpload.map((env) =>
+        deleteUploadFromEnv(currentUserAccessToken, env.id, uploadId),
+      ),
+    );
+
+    const copiesDeleted = await handleDeletionResults(deletionResults);
+
+    ctx.notice(
+      `Deleted ${copiesDeleted} other copies. You must delete the last copy in the current environment manually.`,
+    );
+    window.location.href = '/';
+    setLoadingMessage(null);
   };
 
   if (loadingMessage?.length) {
@@ -244,7 +312,7 @@ export const AssetDeletionSidebar = ({
     return (
       <Canvas ctx={ctx}>
         <p>
-          This is the last remaining copy of this asset.{" "}
+          This is the last remaining copy of this asset.{' '}
           <strong>
             You must delete it manually using the regular "Delete" link at the
             top of this sidebar.

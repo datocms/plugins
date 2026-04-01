@@ -7,15 +7,15 @@ import { BrowserWrapper } from '../../../components/Browser/BrowserWrapper';
 import { IframeContainer } from '../../../components/Browser/IframeContainer';
 import { Toolbar } from '../../../components/Browser/Toolbar';
 import { ToolbarSlot } from '../../../components/Browser/Toolbar/ToolbarSlot';
-import { ViewportCustomizer } from '../../../components/Browser/ViewportCustomizer';
 import type { ViewportSize } from '../../../components/Browser/ViewportCustomizer';
+import { ViewportCustomizer } from '../../../components/Browser/ViewportCustomizer';
 import { ViewportSelector } from '../../../components/Browser/ViewportSelector';
 import {
   type Frontend,
-  type Parameters,
-  type Viewport,
   getVisualEditingFrontends,
   normalizeParameters,
+  type Parameters,
+  type Viewport,
 } from '../../../types';
 import { inspectorUrl } from '../../../utils/urls';
 import { useContentLink } from '../ContentLinkContext';
@@ -44,7 +44,12 @@ const UI: React.FC = () => {
     return visualEditingFrontends[0];
   });
 
-  const currentVisualEditing = selectedFrontend.visualEditing!;
+  if (!selectedFrontend.visualEditing) {
+    throw new Error(
+      `Frontend "${selectedFrontend.name}" is missing visualEditing configuration.`,
+    );
+  }
+  const currentVisualEditing = selectedFrontend.visualEditing;
   const fallbackPath = currentVisualEditing.initialPath || '/';
 
   const { iframeRef, iframeState, setIframeState, reloadIframe, contentLink } =
@@ -114,10 +119,7 @@ const UI: React.FC = () => {
         'Connection to the website has been lost. You may have navigated away from the original site by clicking an external link. Please reload to reconnect.',
       );
     }
-  }, [
-    contentLink.type,
-    contentLink.type === 'error' ? contentLink.reason : undefined,
-  ]);
+  }, [contentLink.type, ctx.alert, contentLink.reason]);
 
   // Handle frontend deletion while Inspector open
   useEffect(() => {
@@ -143,7 +145,10 @@ const UI: React.FC = () => {
             frontends={visualEditingFrontends}
             onFrontendChange={(frontend) => {
               setSelectedFrontend(frontend);
-              const frontendVisualEditing = frontend.visualEditing!;
+              const frontendVisualEditing = frontend.visualEditing ?? {
+                enableDraftModeUrl: '',
+                initialPath: '/',
+              };
               const path = normalizePathForVisualEditing({
                 path: frontendVisualEditing.initialPath,
                 draftModeUrl: frontendVisualEditing.enableDraftModeUrl,

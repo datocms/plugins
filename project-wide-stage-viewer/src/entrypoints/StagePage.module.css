@@ -8,7 +8,6 @@
   background: var(--base-background-color);
 }
 
-
 .controlsRow {
   display: flex;
   flex-wrap: wrap;
@@ -199,7 +198,10 @@
   padding: 6px var(--spacing-m);
   border-radius: 6px;
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
 }
 
 .pageButton:hover {
@@ -266,7 +268,13 @@
 }
 
 .recordId {
-  font-family: var(--monospace-font-family, Menlo, Consolas, 'Liberation Mono', monospace);
+  font-family: var(
+    --monospace-font-family,
+    Menlo,
+    Consolas,
+    "Liberation Mono",
+    monospace
+  );
   font-size: 0.95rem;
   color: var(--light-body-color);
 }

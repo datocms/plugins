@@ -1,51 +1,67 @@
-import {
-  forwardRef,
-  useImperativeHandle,
-  useState,
-  useCallback,
-  useRef,
-  useEffect,
-  useMemo,
-} from 'react';
-import { useEditor, EditorContent } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import Placeholder from '@tiptap/extension-placeholder';
+import type {
+  AssetMention,
+  CommentSegment,
+  FieldMention,
+  Mention,
+  ModelMention,
+  RecordMention,
+  UserMention,
+} from '@ctypes/mentions';
+import type {
+  ActiveSlashCommand,
+  SlashCommandDefinition,
+} from '@ctypes/slashCommands';
+import { SLASH_COMMANDS } from '@ctypes/slashCommands';
+import type { FieldInfo, ModelInfo, UserInfo } from '@hooks/useMentions';
 import type { Editor } from '@tiptap/core';
-import type { SuggestionProps, SuggestionKeyDownProps } from '@tiptap/suggestion';
-import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
-
-import { createMentionNodeExtension } from './extensions/createMentionExtension';
-import { createSlashSuggestionExtension } from './extensions/createSlashSuggestionExtension';
+import Placeholder from '@tiptap/extension-placeholder';
+import { EditorContent, useEditor } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import type {
+  SuggestionKeyDownProps,
+  SuggestionProps,
+} from '@tiptap/suggestion';
+import { areSegmentsEqual } from '@utils/comparisonHelpers';
 import {
-  UserMentionNodeView,
-  FieldMentionNodeView,
-  AssetMentionNodeView,
-  RecordMentionNodeView,
-  ModelMentionNodeView,
-} from './MentionNodeView';
-import { MentionClickContext } from './MentionClickContext';
+  filterFields,
+  filterModels,
+  filterUsers,
+} from '@utils/mentions/filters';
 import {
+  filterSlashCommands,
+  parseSlashQuery,
+} from '@utils/slashCommandParser';
+import {
+  MENTION_NODE_TYPES,
   segmentsToTipTapDoc,
   tipTapDocToFullSegments,
-  MENTION_NODE_TYPES,
 } from '@utils/tipTapSerializer';
-import { filterUsers, filterFields, filterModels } from '@utils/mentions';
-import { areSegmentsEqual } from '@utils/comparisonHelpers';
-
-import type { CommentSegment, Mention, UserMention, FieldMention, ModelMention, AssetMention, RecordMention } from '@ctypes/mentions';
-import type { UserInfo, FieldInfo, ModelInfo } from '@hooks/useMentions';
+import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useNavigationContext } from '@/entrypoints/contexts/NavigationCallbacksContext';
-
-import UserMentionDropdown from '../UserMentionDropdown';
+import { cn } from '@/utils/cn';
 import FieldMentionDropdown from '../FieldMentionDropdown';
 import ModelMentionDropdown from '../ModelMentionDropdown';
-import { SlashCommandMenu } from '../slash-command';
-
-import type { ActiveSlashCommand, SlashCommandDefinition } from '@ctypes/slashCommands';
-import { SLASH_COMMANDS } from '@ctypes/slashCommands';
-import { parseSlashQuery, filterSlashCommands } from '@utils/slashCommandParser';
-
-import { cn } from '@/utils/cn';
+import { SlashCommandMenu } from '../slash-command/SlashCommandMenu';
+import UserMentionDropdown from '../UserMentionDropdown';
+import { createMentionNodeExtension } from './extensions/createMentionExtension';
+import { createSlashSuggestionExtension } from './extensions/createSlashSuggestionExtension';
+import { MentionClickContext } from './MentionClickContext';
+import {
+  AssetMentionNodeView,
+  FieldMentionNodeView,
+  ModelMentionNodeView,
+  RecordMentionNodeView,
+  UserMentionNodeView,
+} from './MentionNodeView';
 import styles from './TipTapComposer.module.css';
 
 type TipTapComposerProps = {
@@ -81,7 +97,10 @@ export type TipTapComposerRef = {
   triggerMentionType: (type: 'user' | 'field' | 'model') => void;
 };
 
-export const TipTapComposer = forwardRef<TipTapComposerRef, TipTapComposerProps>(
+export const TipTapComposer = forwardRef<
+  TipTapComposerRef,
+  TipTapComposerProps
+>(
   (
     {
       segments,
@@ -103,18 +122,20 @@ export const TipTapComposer = forwardRef<TipTapComposerRef, TipTapComposerProps>
       dropdownPosition = 'below',
       ctx,
     },
-    ref
+    ref,
   ) => {
     const nav = useNavigationContext();
 
     // Slash command state
-    const [activeSlashCommand, setActiveSlashCommand] = useState<ActiveSlashCommand | null>(null);
+    const [activeSlashCommand, setActiveSlashCommand] =
+      useState<ActiveSlashCommand | null>(null);
     const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
     const [selectedItemIndex, setSelectedItemIndex] = useState(0);
     const activeSlashCommandRef = useRef<ActiveSlashCommand | null>(null);
 
     const fieldKeyHandlerRef = useRef<((key: string) => boolean) | null>(null);
-    const [pendingFieldForLocale, setPendingFieldForLocale] = useState<FieldInfo | null>(null);
+    const [pendingFieldForLocale, setPendingFieldForLocale] =
+      useState<FieldInfo | null>(null);
 
     useEffect(() => {
       activeSlashCommandRef.current = activeSlashCommand;
@@ -142,7 +163,14 @@ export const TipTapComposer = forwardRef<TipTapComposerRef, TipTapComposerProps>
       onAssetTriggerRef.current = onAssetTrigger;
       onRecordTriggerRef.current = onRecordTrigger;
       onSegmentsChangeRef.current = onSegmentsChange;
-    }, [onSubmit, onCancel, onBlur, onAssetTrigger, onRecordTrigger, onSegmentsChange]);
+    }, [
+      onSubmit,
+      onCancel,
+      onBlur,
+      onAssetTrigger,
+      onRecordTrigger,
+      onSegmentsChange,
+    ]);
 
     const projectUsersRef = useRef(projectUsers);
     const modelFieldsRef = useRef(modelFields);
@@ -159,7 +187,11 @@ export const TipTapComposer = forwardRef<TipTapComposerRef, TipTapComposerProps>
       return SLASH_COMMANDS.filter((cmd) => {
         if (cmd.name === 'asset' && !canMentionAssets) return false;
         if (cmd.name === 'model' && !canMentionModels) return false;
-        if (cmd.name === 'field' && (!canMentionFields || modelFields.length === 0)) return false;
+        if (
+          cmd.name === 'field' &&
+          (!canMentionFields || modelFields.length === 0)
+        )
+          return false;
         return true;
       });
     }, [canMentionAssets, canMentionModels, canMentionFields, modelFields]);
@@ -167,18 +199,23 @@ export const TipTapComposer = forwardRef<TipTapComposerRef, TipTapComposerProps>
     const isCommandAvailable = useCallback(
       (name: SlashCommandDefinition['name']) =>
         availableCommands.some((cmd) => cmd.name === name),
-      [availableCommands]
+      [availableCommands],
     );
 
     const getAvailableMatchingCommands = useCallback(
       (query: string) =>
-        filterSlashCommands(query).filter((cmd) => isCommandAvailable(cmd.name)),
-      [isCommandAvailable]
+        filterSlashCommands(query).filter((cmd) =>
+          isCommandAvailable(cmd.name),
+        ),
+      [isCommandAvailable],
     );
 
     // Filtered slash commands for command_selection phase
     const filteredCommands = useMemo(() => {
-      if (!activeSlashCommand || activeSlashCommand.phase !== 'command_selection') {
+      if (
+        !activeSlashCommand ||
+        activeSlashCommand.phase !== 'command_selection'
+      ) {
         return availableCommands;
       }
       return getAvailableMatchingCommands(activeSlashCommand.commandPart);
@@ -186,21 +223,30 @@ export const TipTapComposer = forwardRef<TipTapComposerRef, TipTapComposerProps>
 
     // Filtered items for type_selection phase
     const filteredUsers = useMemo(() => {
-      if (activeSlashCommand?.phase !== 'type_selection' || activeSlashCommand.selectedType !== 'user') {
+      if (
+        activeSlashCommand?.phase !== 'type_selection' ||
+        activeSlashCommand.selectedType !== 'user'
+      ) {
         return [];
       }
       return filterUsers(projectUsers, activeSlashCommand.searchQuery);
     }, [projectUsers, activeSlashCommand]);
 
     const filteredFields = useMemo(() => {
-      if (activeSlashCommand?.phase !== 'type_selection' || activeSlashCommand.selectedType !== 'field') {
+      if (
+        activeSlashCommand?.phase !== 'type_selection' ||
+        activeSlashCommand.selectedType !== 'field'
+      ) {
         return [];
       }
       return filterFields(modelFields, activeSlashCommand.searchQuery);
     }, [modelFields, activeSlashCommand]);
 
     const filteredModels = useMemo(() => {
-      if (activeSlashCommand?.phase !== 'type_selection' || activeSlashCommand.selectedType !== 'model') {
+      if (
+        activeSlashCommand?.phase !== 'type_selection' ||
+        activeSlashCommand.selectedType !== 'model'
+      ) {
         return [];
       }
       return filterModels(projectModels, activeSlashCommand.searchQuery);
@@ -218,45 +264,58 @@ export const TipTapComposer = forwardRef<TipTapComposerRef, TipTapComposerProps>
 
     const editorRef = useRef<Editor | null>(null);
 
-    const registerFieldKeyHandler = useCallback((handler: (key: string) => boolean) => {
-      fieldKeyHandlerRef.current = handler;
-    }, []);
+    const registerFieldKeyHandler = useCallback(
+      (handler: (key: string) => boolean) => {
+        fieldKeyHandlerRef.current = handler;
+      },
+      [],
+    );
 
     const clearPendingFieldForLocale = useCallback(() => {
       setPendingFieldForLocale(null);
     }, []);
 
-    const handleMentionClick = useCallback((mention: Mention) => {
-      switch (mention.type) {
-        case 'user':
-          nav.handleNavigateToUsers();
-          break;
-        case 'field': {
-          const fieldMention = mention as FieldMention;
-          nav.handleScrollToField?.(fieldMention.fieldPath, fieldMention.localized, fieldMention.locale);
-          break;
+    const handleMentionClick = useCallback(
+      (mention: Mention) => {
+        switch (mention.type) {
+          case 'user':
+            nav.handleNavigateToUsers();
+            break;
+          case 'field': {
+            const fieldMention = mention as FieldMention;
+            nav.handleScrollToField?.(
+              fieldMention.fieldPath,
+              fieldMention.localized,
+              fieldMention.locale,
+            );
+            break;
+          }
+          case 'asset': {
+            const assetMention = mention as AssetMention;
+            nav.handleOpenAsset(assetMention.id);
+            break;
+          }
+          case 'record': {
+            const recordMention = mention as RecordMention;
+            nav.handleOpenRecord(recordMention.id, recordMention.modelId);
+            break;
+          }
+          case 'model': {
+            const modelMention = mention as ModelMention;
+            nav.handleNavigateToModel(
+              modelMention.id,
+              modelMention.isBlockModel,
+            );
+            break;
+          }
         }
-        case 'asset': {
-          const assetMention = mention as AssetMention;
-          nav.handleOpenAsset(assetMention.id);
-          break;
-        }
-        case 'record': {
-          const recordMention = mention as RecordMention;
-          nav.handleOpenRecord(recordMention.id, recordMention.modelId);
-          break;
-        }
-        case 'model': {
-          const modelMention = mention as ModelMention;
-          nav.handleNavigateToModel(modelMention.id, modelMention.isBlockModel);
-          break;
-        }
-      }
-    }, [nav]);
+      },
+      [nav],
+    );
 
     const mentionClickContextValue = useMemo(
       () => ({ onMentionClick: handleMentionClick }),
-      [handleMentionClick]
+      [handleMentionClick],
     );
 
     // Handle command selection in the slash command menu
@@ -311,7 +370,426 @@ export const TipTapComposer = forwardRef<TipTapComposerRef, TipTapComposerProps>
         });
         setSelectedItemIndex(0);
       },
-      [isCommandAvailable]
+      [isCommandAvailable],
+    );
+
+    const triggerExternalPicker = useCallback(
+      (
+        commandName: string,
+        range: SuggestionProps['range'],
+        clearCommandOnPicker: boolean,
+      ) => {
+        const currentEditor = editorRef.current;
+        if (currentEditor) {
+          currentEditor.chain().focus().deleteRange(range).run();
+        }
+        if (clearCommandOnPicker) {
+          setActiveSlashCommand(null);
+        }
+        if (commandName === 'record') {
+          onRecordTriggerRef.current?.();
+        } else {
+          onAssetTriggerRef.current?.();
+        }
+      },
+      [],
+    );
+
+    const triggerPickerOrSetTypeSelection = useCallback(
+      (
+        props: SuggestionProps,
+        parsed: ReturnType<typeof parseSlashQuery>,
+        clearCommandOnPicker: boolean,
+      ) => {
+        if (!parsed.exactMatch) return;
+
+        const commandName = parsed.exactMatch.name;
+        const isExternalPickerCommand =
+          commandName === 'record' || commandName === 'asset';
+
+        if (isExternalPickerCommand) {
+          triggerExternalPicker(commandName, props.range, clearCommandOnPicker);
+          return;
+        }
+
+        setActiveSlashCommand({
+          phase: 'type_selection',
+          rawQuery: props.query,
+          commandPart: parsed.commandPart,
+          searchQuery: parsed.searchQuery,
+          selectedType: commandName,
+          range: props.range,
+          clientRect: props.clientRect ?? null,
+        });
+        setSelectedItemIndex(0);
+      },
+      [triggerExternalPicker],
+    );
+
+    const handleSlashSuggestionStart = useCallback(
+      (props: SuggestionProps) => {
+        const parsed = parseSlashQuery(props.query);
+
+        if (parsed.isComplete && parsed.exactMatch) {
+          if (!isCommandAvailable(parsed.exactMatch.name)) {
+            setActiveSlashCommand({
+              phase: 'command_selection',
+              rawQuery: props.query,
+              commandPart: parsed.commandPart,
+              searchQuery: parsed.searchQuery,
+              selectedType: null,
+              range: props.range,
+              clientRect: props.clientRect ?? null,
+            });
+            setSelectedCommandIndex(0);
+            return;
+          }
+
+          triggerPickerOrSetTypeSelection(props, parsed, false);
+          return;
+        }
+
+        setActiveSlashCommand({
+          phase: 'command_selection',
+          rawQuery: props.query,
+          commandPart: parsed.commandPart,
+          searchQuery: parsed.searchQuery,
+          selectedType: null,
+          range: props.range,
+          clientRect: props.clientRect ?? null,
+        });
+        setSelectedCommandIndex(0);
+        setSelectedItemIndex(0);
+      },
+      [isCommandAvailable, triggerPickerOrSetTypeSelection],
+    );
+
+    const handleSlashSuggestionUpdate = useCallback(
+      (props: SuggestionProps) => {
+        const parsed = parseSlashQuery(props.query);
+        const currentCommand = activeSlashCommandRef.current;
+
+        if (
+          parsed.isComplete &&
+          parsed.exactMatch &&
+          currentCommand?.phase === 'command_selection'
+        ) {
+          if (!isCommandAvailable(parsed.exactMatch.name)) {
+            setActiveSlashCommand((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    rawQuery: props.query,
+                    commandPart: parsed.commandPart,
+                    searchQuery: parsed.searchQuery,
+                    selectedType: null,
+                    range: props.range,
+                    clientRect: props.clientRect ?? null,
+                  }
+                : null,
+            );
+            setSelectedCommandIndex(0);
+            return;
+          }
+
+          triggerPickerOrSetTypeSelection(props, parsed, true);
+          return;
+        }
+
+        setActiveSlashCommand((prev) =>
+          prev
+            ? {
+                ...prev,
+                rawQuery: props.query,
+                commandPart: parsed.commandPart,
+                searchQuery: parsed.searchQuery,
+                range: props.range,
+                clientRect: props.clientRect ?? null,
+              }
+            : null,
+        );
+
+        if (currentCommand?.phase === 'command_selection') {
+          setSelectedCommandIndex(0);
+        } else {
+          setSelectedItemIndex(0);
+        }
+      },
+      [isCommandAvailable, triggerPickerOrSetTypeSelection],
+    );
+
+    const getFilteredListForType = useCallback(
+      (selectedType: string | null, searchQuery: string) => {
+        let currentList: UserInfo[] | FieldInfo[] | ModelInfo[] = [];
+        if (selectedType === 'user') {
+          currentList = filterUsers(projectUsersRef.current, searchQuery);
+        } else if (selectedType === 'field') {
+          currentList = filterFields(modelFieldsRef.current, searchQuery);
+        } else if (selectedType === 'model') {
+          currentList = filterModels(projectModelsRef.current, searchQuery);
+        }
+        return currentList;
+      },
+      [],
+    );
+
+    const insertSelectedItemFromKeyboard = useCallback(
+      (
+        selectedType: string | null,
+        selectedItem: UserInfo | FieldInfo | ModelInfo,
+        range: SuggestionProps['range'],
+      ) => {
+        const currentEditor = editorRef.current;
+        if (!currentEditor) return;
+
+        if (selectedType === 'user') {
+          const user = selectedItem as UserInfo;
+          currentEditor
+            .chain()
+            .focus()
+            .deleteRange(range)
+            .insertContent([
+              {
+                type: MENTION_NODE_TYPES.user,
+                attrs: {
+                  type: 'user',
+                  id: user.id,
+                  name: user.name,
+                  email: user.email,
+                  avatarUrl: user.avatarUrl,
+                },
+              },
+              { type: 'text', text: ' ' },
+            ])
+            .run();
+          setActiveSlashCommand(null);
+        } else if (selectedType === 'model') {
+          const model = selectedItem as ModelInfo;
+          currentEditor
+            .chain()
+            .focus()
+            .deleteRange(range)
+            .insertContent([
+              {
+                type: MENTION_NODE_TYPES.model,
+                attrs: {
+                  type: 'model',
+                  id: model.id,
+                  apiKey: model.apiKey,
+                  name: model.name,
+                  isBlockModel: model.isBlockModel,
+                },
+              },
+              { type: 'text', text: ' ' },
+            ])
+            .run();
+          setActiveSlashCommand(null);
+        } else if (selectedType === 'field') {
+          const field = selectedItem as FieldInfo;
+          const needsDrillDown =
+            field.isBlockContainer ||
+            (field.localized &&
+              field.availableLocales &&
+              field.availableLocales.length > 1);
+
+          if (needsDrillDown) {
+            setPendingFieldForLocale(field);
+            setSelectedItemIndex(0);
+          } else {
+            currentEditor
+              .chain()
+              .focus()
+              .deleteRange(range)
+              .insertContent([
+                {
+                  type: MENTION_NODE_TYPES.field,
+                  attrs: {
+                    type: 'field',
+                    apiKey: field.apiKey,
+                    label: field.label,
+                    localized: field.localized,
+                    fieldPath: field.fieldPath,
+                    locale: field.availableLocales?.[0],
+                    fieldType: field.fieldType,
+                  },
+                },
+                { type: 'text', text: ' ' },
+              ])
+              .run();
+            setActiveSlashCommand(null);
+          }
+        }
+      },
+      [],
+    );
+
+    const handleCommandSelectionKeyDown = useCallback(
+      (event: KeyboardEvent, commandPart: string): boolean => {
+        const commands = getAvailableMatchingCommands(commandPart);
+
+        switch (event.key) {
+          case 'ArrowDown':
+            if (commands.length > 0) {
+              setSelectedCommandIndex((prev) => (prev + 1) % commands.length);
+            }
+            return true;
+
+          case 'ArrowUp':
+            if (commands.length > 0) {
+              setSelectedCommandIndex(
+                (prev) => (prev - 1 + commands.length) % commands.length,
+              );
+            }
+            return true;
+
+          case 'Enter':
+          case 'Tab': {
+            event.preventDefault();
+            const selectedCommand = commands[selectedCommandIndexRef.current];
+            if (selectedCommand) {
+              handleSelectCommand(selectedCommand);
+            }
+            return true;
+          }
+
+          case 'Escape':
+            setActiveSlashCommand(null);
+            return true;
+
+          default:
+            return false;
+        }
+      },
+      [getAvailableMatchingCommands, handleSelectCommand],
+    );
+
+    const handleTypeSelectionNavigationKey = useCallback(
+      (
+        key: string,
+        currentCommand: Extract<
+          NonNullable<ActiveSlashCommand>,
+          { phase: 'type_selection' }
+        >,
+        range: SuggestionProps['range'],
+      ): boolean | null => {
+        const currentList = getFilteredListForType(
+          currentCommand.selectedType,
+          currentCommand.searchQuery,
+        );
+
+        switch (key) {
+          case 'ArrowDown':
+            if (currentList.length > 0) {
+              setSelectedItemIndex((prev) => (prev + 1) % currentList.length);
+            }
+            return true;
+
+          case 'ArrowUp':
+            if (currentList.length > 0) {
+              setSelectedItemIndex(
+                (prev) => (prev - 1 + currentList.length) % currentList.length,
+              );
+            }
+            return true;
+
+          case 'Enter':
+          case 'Tab': {
+            const selectedItem = currentList[selectedItemIndexRef.current];
+            if (selectedItem) {
+              insertSelectedItemFromKeyboard(
+                currentCommand.selectedType,
+                selectedItem,
+                range,
+              );
+            }
+            return true;
+          }
+
+          case 'Escape':
+            setActiveSlashCommand(null);
+            return true;
+
+          default:
+            return null;
+        }
+      },
+      [getFilteredListForType, insertSelectedItemFromKeyboard],
+    );
+
+    const handleTypeSelectionKeyDown = useCallback(
+      (
+        event: KeyboardEvent,
+        currentCommand: Extract<
+          NonNullable<ActiveSlashCommand>,
+          { phase: 'type_selection' }
+        >,
+        range: SuggestionProps['range'],
+      ): boolean => {
+        if (
+          currentCommand.selectedType === 'field' &&
+          fieldKeyHandlerRef.current
+        ) {
+          const handled = fieldKeyHandlerRef.current(event.key);
+          if (handled) {
+            event.preventDefault();
+            return true;
+          }
+        }
+
+        if (event.key === 'Enter' || event.key === 'Tab') {
+          event.preventDefault();
+        }
+
+        const navResult = handleTypeSelectionNavigationKey(
+          event.key,
+          currentCommand,
+          range,
+        );
+        if (navResult !== null) return navResult;
+
+        if (event.key === 'Backspace' && !currentCommand.searchQuery) {
+          setActiveSlashCommand({
+            ...currentCommand,
+            phase: 'command_selection',
+            selectedType: null,
+          });
+          setSelectedCommandIndex(0);
+          return true;
+        }
+
+        return false;
+      },
+      [handleTypeSelectionNavigationKey],
+    );
+
+    const handleSlashSuggestionKeyDown = useCallback(
+      (props: SuggestionKeyDownProps): boolean => {
+        const { event, range } = props;
+        const currentCommand = activeSlashCommandRef.current;
+
+        if (!currentCommand) return false;
+
+        if (currentCommand.phase === 'command_selection') {
+          return handleCommandSelectionKeyDown(
+            event,
+            currentCommand.commandPart,
+          );
+        }
+
+        if (currentCommand.phase === 'type_selection') {
+          return handleTypeSelectionKeyDown(
+            event,
+            currentCommand as Extract<
+              NonNullable<ActiveSlashCommand>,
+              { phase: 'type_selection' }
+            >,
+            range,
+          );
+        }
+
+        return false;
+      },
+      [handleCommandSelectionKeyDown, handleTypeSelectionKeyDown],
     );
 
     // Create slash suggestion handler
@@ -323,140 +801,9 @@ export const TipTapComposer = forwardRef<TipTapComposerRef, TipTapComposerProps>
         items: () => [],
 
         render: () => ({
-          onStart: (props: SuggestionProps) => {
-            const parsed = parseSlashQuery(props.query);
+          onStart: handleSlashSuggestionStart,
 
-            // If starting with a complete command (e.g., from toolbar inserting "/user "),
-            // skip directly to type_selection phase
-            if (parsed.isComplete && parsed.exactMatch) {
-              if (!isCommandAvailable(parsed.exactMatch.name)) {
-                setActiveSlashCommand({
-                  phase: 'command_selection',
-                  rawQuery: props.query,
-                  commandPart: parsed.commandPart,
-                  searchQuery: parsed.searchQuery,
-                  selectedType: null,
-                  range: props.range,
-                  clientRect: props.clientRect ?? null,
-                });
-                setSelectedCommandIndex(0);
-                return;
-              }
-
-              // Special handling for record/asset - trigger picker immediately
-              if (parsed.exactMatch.name === 'record' || parsed.exactMatch.name === 'asset') {
-                const currentEditor = editorRef.current;
-                if (currentEditor) {
-                  currentEditor.chain().focus().deleteRange(props.range).run();
-                }
-                if (parsed.exactMatch.name === 'record') {
-                  onRecordTriggerRef.current?.();
-                } else {
-                  onAssetTriggerRef.current?.();
-                }
-                return;
-              }
-
-              setActiveSlashCommand({
-                phase: 'type_selection',
-                rawQuery: props.query,
-                commandPart: parsed.commandPart,
-                searchQuery: parsed.searchQuery,
-                selectedType: parsed.exactMatch.name,
-                range: props.range,
-                clientRect: props.clientRect ?? null,
-              });
-              setSelectedItemIndex(0);
-              return;
-            }
-
-            setActiveSlashCommand({
-              phase: 'command_selection',
-              rawQuery: props.query,
-              commandPart: parsed.commandPart,
-              searchQuery: parsed.searchQuery,
-              selectedType: null,
-              range: props.range,
-              clientRect: props.clientRect ?? null,
-            });
-            setSelectedCommandIndex(0);
-            setSelectedItemIndex(0);
-          },
-
-          onUpdate: (props: SuggestionProps) => {
-            const parsed = parseSlashQuery(props.query);
-            const currentCommand = activeSlashCommandRef.current;
-
-            // Auto-transition to type_selection if command is complete
-            if (parsed.isComplete && parsed.exactMatch && currentCommand?.phase === 'command_selection') {
-              if (!isCommandAvailable(parsed.exactMatch.name)) {
-                setActiveSlashCommand((prev) =>
-                  prev
-                    ? {
-                        ...prev,
-                        rawQuery: props.query,
-                        commandPart: parsed.commandPart,
-                        searchQuery: parsed.searchQuery,
-                        selectedType: null,
-                        range: props.range,
-                        clientRect: props.clientRect ?? null,
-                      }
-                    : null
-                );
-                setSelectedCommandIndex(0);
-                return;
-              }
-
-              // Special handling for record/asset - trigger picker immediately
-              if (parsed.exactMatch.name === 'record' || parsed.exactMatch.name === 'asset') {
-                const currentEditor = editorRef.current;
-                if (currentEditor) {
-                  currentEditor.chain().focus().deleteRange(props.range).run();
-                }
-                setActiveSlashCommand(null);
-
-                if (parsed.exactMatch.name === 'record') {
-                  onRecordTriggerRef.current?.();
-                } else {
-                  onAssetTriggerRef.current?.();
-                }
-                return;
-              }
-
-              setActiveSlashCommand({
-                phase: 'type_selection',
-                rawQuery: props.query,
-                commandPart: parsed.commandPart,
-                searchQuery: parsed.searchQuery,
-                selectedType: parsed.exactMatch.name,
-                range: props.range,
-                clientRect: props.clientRect ?? null,
-              });
-              setSelectedItemIndex(0);
-              return;
-            }
-
-            // Update state without phase transition
-            setActiveSlashCommand((prev) =>
-              prev
-                ? {
-                    ...prev,
-                    rawQuery: props.query,
-                    commandPart: parsed.commandPart,
-                    searchQuery: parsed.searchQuery,
-                    range: props.range,
-                    clientRect: props.clientRect ?? null,
-                  }
-                : null
-            );
-
-            // Reset selection index when query changes
-            if (currentCommand?.phase === 'command_selection') {
-              setSelectedCommandIndex(0);
-            } else {
-              setSelectedItemIndex(0);
-            }
-          },
+          onUpdate: handleSlashSuggestionUpdate,
 
           onExit: () => {
             setActiveSlashCommand(null);
@@ -466,193 +813,14 @@ export const TipTapComposer = forwardRef<TipTapComposerRef, TipTapComposerProps>
             fieldKeyHandlerRef.current = null;
           },
 
-          onKeyDown: (props: SuggestionKeyDownProps) => {
-            const { event, range } = props;
-            const currentCommand = activeSlashCommandRef.current;
-
-            if (!currentCommand) return false;
-
-            // Phase 1: Command selection
-            if (currentCommand.phase === 'command_selection') {
-              const commands = getAvailableMatchingCommands(currentCommand.commandPart);
-
-              if (event.key === 'ArrowDown') {
-                if (commands.length > 0) {
-                  setSelectedCommandIndex((prev) => (prev + 1) % commands.length);
-                }
-                return true;
-              }
-
-              if (event.key === 'ArrowUp') {
-                if (commands.length > 0) {
-                  setSelectedCommandIndex((prev) => (prev - 1 + commands.length) % commands.length);
-                }
-                return true;
-              }
-
-              if (event.key === 'Enter' || event.key === 'Tab') {
-                event.preventDefault();
-                const idx = selectedCommandIndexRef.current;
-                const selectedCommand = commands[idx];
-                if (selectedCommand) {
-                  handleSelectCommand(selectedCommand);
-                }
-                return true;
-              }
-
-              if (event.key === 'Escape') {
-                setActiveSlashCommand(null);
-                return true;
-              }
-
-              return false;
-            }
-
-            // Phase 2: Type selection
-            if (currentCommand.phase === 'type_selection') {
-              // Handle field dropdown key navigation
-              if (currentCommand.selectedType === 'field' && fieldKeyHandlerRef.current) {
-                const handled = fieldKeyHandlerRef.current(event.key);
-                if (handled) {
-                  event.preventDefault();
-                  return true;
-                }
-              }
-
-              // Get the appropriate list for the selected type
-              let currentList: UserInfo[] | FieldInfo[] | ModelInfo[] = [];
-              if (currentCommand.selectedType === 'user') {
-                currentList = filterUsers(projectUsersRef.current, currentCommand.searchQuery);
-              } else if (currentCommand.selectedType === 'field') {
-                currentList = filterFields(modelFieldsRef.current, currentCommand.searchQuery);
-              } else if (currentCommand.selectedType === 'model') {
-                currentList = filterModels(projectModelsRef.current, currentCommand.searchQuery);
-              }
-
-              if (event.key === 'ArrowDown') {
-                if (currentList.length > 0) {
-                  setSelectedItemIndex((prev) => (prev + 1) % currentList.length);
-                }
-                return true;
-              }
-
-              if (event.key === 'ArrowUp') {
-                if (currentList.length > 0) {
-                  setSelectedItemIndex((prev) => (prev - 1 + currentList.length) % currentList.length);
-                }
-                return true;
-              }
-
-              if (event.key === 'Enter' || event.key === 'Tab') {
-                event.preventDefault();
-                const idx = selectedItemIndexRef.current;
-                const selectedItem = currentList[idx];
-                const currentEditor = editorRef.current;
-
-                if (selectedItem && currentEditor) {
-                  if (currentCommand.selectedType === 'user') {
-                    const user = selectedItem as UserInfo;
-                    currentEditor
-                      .chain()
-                      .focus()
-                      .deleteRange(range)
-                      .insertContent([
-                        {
-                          type: MENTION_NODE_TYPES.user,
-                          attrs: {
-                            type: 'user',
-                            id: user.id,
-                            name: user.name,
-                            email: user.email,
-                            avatarUrl: user.avatarUrl,
-                          },
-                        },
-                        { type: 'text', text: ' ' },
-                      ])
-                      .run();
-                    setActiveSlashCommand(null);
-                  } else if (currentCommand.selectedType === 'model') {
-                    const model = selectedItem as ModelInfo;
-                    currentEditor
-                      .chain()
-                      .focus()
-                      .deleteRange(range)
-                      .insertContent([
-                        {
-                          type: MENTION_NODE_TYPES.model,
-                          attrs: {
-                            type: 'model',
-                            id: model.id,
-                            apiKey: model.apiKey,
-                            name: model.name,
-                            isBlockModel: model.isBlockModel,
-                          },
-                        },
-                        { type: 'text', text: ' ' },
-                      ])
-                      .run();
-                    setActiveSlashCommand(null);
-                  } else if (currentCommand.selectedType === 'field') {
-                    const field = selectedItem as FieldInfo;
-                    const needsDrillDown =
-                      field.isBlockContainer ||
-                      (field.localized && field.availableLocales && field.availableLocales.length > 1);
-
-                    if (needsDrillDown) {
-                      setPendingFieldForLocale(field);
-                      setSelectedItemIndex(0);
-                    } else {
-                      currentEditor
-                        .chain()
-                        .focus()
-                        .deleteRange(range)
-                        .insertContent([
-                          {
-                            type: MENTION_NODE_TYPES.field,
-                            attrs: {
-                              type: 'field',
-                              apiKey: field.apiKey,
-                              label: field.label,
-                              localized: field.localized,
-                              fieldPath: field.fieldPath,
-                              locale: field.availableLocales?.[0],
-                              fieldType: field.fieldType,
-                            },
-                          },
-                          { type: 'text', text: ' ' },
-                        ])
-                        .run();
-                      setActiveSlashCommand(null);
-                    }
-                  }
-                }
-                return true;
-              }
-
-              // Backspace with empty search returns to command selection
-              if (event.key === 'Backspace' && !currentCommand.searchQuery) {
-                setActiveSlashCommand({
-                  ...currentCommand,
-                  phase: 'command_selection',
-                  selectedType: null,
-                });
-                setSelectedCommandIndex(0);
-                return true;
-              }
-
-              if (event.key === 'Escape') {
-                setActiveSlashCommand(null);
-                return true;
-              }
-
-              return false;
-            }
-
-            return false;
-          },
+          onKeyDown: handleSlashSuggestionKeyDown,
         }),
       }),
-      [handleSelectCommand, getAvailableMatchingCommands, isCommandAvailable]
+      [
+        handleSlashSuggestionStart,
+        handleSlashSuggestionUpdate,
+        handleSlashSuggestionKeyDown,
+      ],
     );
 
     // Create mention node extensions (without suggestion handlers)
@@ -718,7 +886,11 @@ export const TipTapComposer = forwardRef<TipTapComposerRef, TipTapComposerProps>
       editorProps: {
         handleKeyDown: (_view, event) => {
           // Submit on Enter (when not in slash command mode)
-          if (event.key === 'Enter' && !event.shiftKey && !activeSlashCommandRef.current) {
+          if (
+            event.key === 'Enter' &&
+            !event.shiftKey &&
+            !activeSlashCommandRef.current
+          ) {
             event.preventDefault();
             onSubmitRef.current?.();
             return true;
@@ -751,7 +923,8 @@ export const TipTapComposer = forwardRef<TipTapComposerRef, TipTapComposerProps>
     const handleSelectUser = useCallback(
       (user: UserInfo) => {
         const slashCommand = activeSlashCommandRef.current;
-        if (!editor || !slashCommand || slashCommand.selectedType !== 'user') return;
+        if (!editor || !slashCommand || slashCommand.selectedType !== 'user')
+          return;
 
         const mention: UserMention = {
           type: 'user',
@@ -776,13 +949,14 @@ export const TipTapComposer = forwardRef<TipTapComposerRef, TipTapComposerProps>
 
         setActiveSlashCommand(null);
       },
-      [editor]
+      [editor],
     );
 
     const handleSelectField = useCallback(
       (field: FieldInfo, locale?: string) => {
         const slashCommand = activeSlashCommandRef.current;
-        if (!editor || !slashCommand || slashCommand.selectedType !== 'field') return;
+        if (!editor || !slashCommand || slashCommand.selectedType !== 'field')
+          return;
 
         const mention: FieldMention = {
           type: 'field',
@@ -809,13 +983,14 @@ export const TipTapComposer = forwardRef<TipTapComposerRef, TipTapComposerProps>
 
         setActiveSlashCommand(null);
       },
-      [editor]
+      [editor],
     );
 
     const handleSelectModel = useCallback(
       (model: ModelInfo) => {
         const slashCommand = activeSlashCommandRef.current;
-        if (!editor || !slashCommand || slashCommand.selectedType !== 'model') return;
+        if (!editor || !slashCommand || slashCommand.selectedType !== 'model')
+          return;
 
         const mention: ModelMention = {
           type: 'model',
@@ -840,7 +1015,7 @@ export const TipTapComposer = forwardRef<TipTapComposerRef, TipTapComposerProps>
 
         setActiveSlashCommand(null);
       },
-      [editor]
+      [editor],
     );
 
     const handleCloseDropdown = useCallback(() => {
@@ -848,43 +1023,45 @@ export const TipTapComposer = forwardRef<TipTapComposerRef, TipTapComposerProps>
     }, []);
 
     // Update editor text when field navigation path changes
-    const handleFieldPathChange = useCallback(
-      (breadcrumb: string) => {
-        const currentEditor = editorRef.current;
-        const currentCommand = activeSlashCommandRef.current;
+    const handleFieldPathChange = useCallback((breadcrumb: string) => {
+      const currentEditor = editorRef.current;
+      const currentCommand = activeSlashCommandRef.current;
 
-        if (!currentEditor || !currentCommand || currentCommand.selectedType !== 'field') return;
+      if (
+        !currentEditor ||
+        !currentCommand ||
+        currentCommand.selectedType !== 'field'
+      )
+        return;
 
-        // Build new text: "/field " or "/field Label > Locale > Block #1"
-        const newText = breadcrumb ? `/field ${breadcrumb}` : '/field ';
-        const rangeStart = currentCommand.range.from;
+      // Build new text: "/field " or "/field Label > Locale > Block #1"
+      const newText = breadcrumb ? `/field ${breadcrumb}` : '/field ';
+      const rangeStart = currentCommand.range.from;
 
-        // Replace current text with updated path
-        currentEditor
-          .chain()
-          .focus()
-          .deleteRange(currentCommand.range)
-          .insertContentAt(rangeStart, newText)
-          .run();
+      // Replace current text with updated path
+      currentEditor
+        .chain()
+        .focus()
+        .deleteRange(currentCommand.range)
+        .insertContentAt(rangeStart, newText)
+        .run();
 
-        // Update range to cover the new text
-        const newRange = {
-          from: rangeStart,
-          to: rangeStart + newText.length,
-        };
+      // Update range to cover the new text
+      const newRange = {
+        from: rangeStart,
+        to: rangeStart + newText.length,
+      };
 
-        setActiveSlashCommand((prev) =>
-          prev
-            ? {
-                ...prev,
-                range: newRange,
-                rawQuery: breadcrumb ? `field ${breadcrumb}` : 'field ',
-              }
-            : null
-        );
-      },
-      []
-    );
+      setActiveSlashCommand((prev) =>
+        prev
+          ? {
+              ...prev,
+              range: newRange,
+              rawQuery: breadcrumb ? `field ${breadcrumb}` : 'field ',
+            }
+          : null,
+      );
+    }, []);
 
     useImperativeHandle(
       ref,
@@ -903,10 +1080,11 @@ export const TipTapComposer = forwardRef<TipTapComposerRef, TipTapComposerProps>
           const nodeType = MENTION_NODE_TYPES[mention.type];
 
           const currentSegments = tipTapDocToFullSegments(editor.getJSON());
-          const isEffectivelyEmpty = currentSegments.length === 0 ||
+          const isEffectivelyEmpty =
+            currentSegments.length === 0 ||
             (currentSegments.length === 1 &&
-             currentSegments[0].type === 'text' &&
-             !currentSegments[0].content.trim());
+              currentSegments[0].type === 'text' &&
+              !currentSegments[0].content.trim());
 
           if (isEffectivelyEmpty) {
             editor
@@ -976,7 +1154,7 @@ export const TipTapComposer = forwardRef<TipTapComposerRef, TipTapComposerProps>
           setSelectedItemIndex(0);
         },
       }),
-      [editor]
+      [editor],
     );
 
     const segmentsRef = useRef(segments);
@@ -1071,7 +1249,7 @@ export const TipTapComposer = forwardRef<TipTapComposerRef, TipTapComposerProps>
         </div>
       </MentionClickContext.Provider>
     );
-  }
+  },
 );
 
 TipTapComposer.displayName = 'TipTapComposer';

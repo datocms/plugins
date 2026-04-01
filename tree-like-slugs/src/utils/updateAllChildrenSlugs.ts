@@ -1,4 +1,4 @@
-import { buildClient, type Client } from "@datocms/cma-client-browser";
+import { buildClient, type Client } from '@datocms/cma-client-browser';
 
 /**
  * Recursively updates slugs for all descendant records in a tree hierarchy.
@@ -16,7 +16,7 @@ async function updateChildrenRecursively(
   modelID: string,
   parentID: string,
   slugFieldKey: string,
-  updatedSlug: string
+  updatedSlug: string,
 ) {
   // Fetch all direct children of the parent record
   const records = await client.items.list({
@@ -30,32 +30,31 @@ async function updateChildrenRecursively(
     },
   });
 
-  for (const record of records) {
-    const existingSlug = record[slugFieldKey];
+  const updateTasks = records
+    .filter((record) => typeof record[slugFieldKey] === 'string')
+    .map(async (record) => {
+      const existingSlug = record[slugFieldKey] as string;
 
-    // Skip records with missing or invalid slug values
-    if (typeof existingSlug !== "string") {
-      continue;
-    }
+      // Extract the child's own slug segment (last part after splitting by "/")
+      const slugParts = existingSlug.split('/');
+      const childOwnSlug = slugParts[slugParts.length - 1];
+      const newChildSlug = `${updatedSlug}/${childOwnSlug}`;
 
-    // Extract the child's own slug segment (last part after splitting by "/")
-    const slugParts = existingSlug.split("/");
-    const childOwnSlug = slugParts[slugParts.length - 1];
-    const newChildSlug = `${updatedSlug}/${childOwnSlug}`;
+      await client.items.update(record.id, {
+        [slugFieldKey]: newChildSlug,
+      });
 
-    await client.items.update(record.id, {
-      [slugFieldKey]: newChildSlug,
+      // Recursively update this child's descendants
+      await updateChildrenRecursively(
+        client,
+        modelID,
+        record.id,
+        slugFieldKey,
+        newChildSlug,
+      );
     });
 
-    // Recursively update this child's descendants
-    await updateChildrenRecursively(
-      client,
-      modelID,
-      record.id,
-      slugFieldKey,
-      newChildSlug
-    );
-  }
+  await Promise.all(updateTasks);
 }
 
 /**
@@ -75,7 +74,7 @@ export default async function updateAllChildrenSlugs(
   modelID: string,
   parentID: string,
   slugFieldKey: string,
-  updatedSlug: string
+  updatedSlug: string,
 ) {
   const client = buildClient({
     apiToken,
@@ -87,6 +86,6 @@ export default async function updateAllChildrenSlugs(
     modelID,
     parentID,
     slugFieldKey,
-    updatedSlug
+    updatedSlug,
   );
 }

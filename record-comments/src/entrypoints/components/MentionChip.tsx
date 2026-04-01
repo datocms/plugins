@@ -1,6 +1,6 @@
-import { memo } from 'react';
 import type { Mention } from '@ctypes/mentions';
 import type { UserInfo } from '@hooks/useMentions';
+import { memo } from 'react';
 import { MentionDisplay } from './shared/MentionDisplay';
 
 type MentionChipProps = {
@@ -12,7 +12,12 @@ type MentionChipProps = {
 };
 
 /** Renders a styled mention chip. Memoized; MentionDisplay handles deep comparison. */
-const MentionChipComponent = ({ mention, onClick, isInComposer = false, projectUsers }: MentionChipProps) => {
+const MentionChipComponent = ({
+  mention,
+  onClick,
+  isInComposer = false,
+  projectUsers,
+}: MentionChipProps) => {
   const handleClick = (e: React.MouseEvent) => {
     onClick?.(mention, e);
   };

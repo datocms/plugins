@@ -43,10 +43,7 @@ export function normalizeParams(params: ConfigParameters): ValidParameters {
   }
 
   return {
-    yandexApiKey:
-      'yandexApiKey' in params
-        ? params.yandexApiKey
-        : '',
+    yandexApiKey: 'yandexApiKey' in params ? params.yandexApiKey : '',
     parametersVersion: '2',
     autoApplyRules: [],
   };

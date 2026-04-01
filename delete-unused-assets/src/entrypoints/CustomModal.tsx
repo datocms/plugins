@@ -1,4 +1,7 @@
-import { buildClient } from '@datocms/cma-client-browser';
+import {
+  buildClient,
+  type SimpleSchemaTypes,
+} from '@datocms/cma-client-browser';
 import type { RenderModalCtx } from 'datocms-plugin-sdk';
 import { Button, Canvas, Spinner } from 'datocms-react-ui';
 import { useEffect, useState } from 'react';
@@ -9,7 +12,9 @@ type PropTypes = {
 };
 
 export default function CustomModal({ ctx }: PropTypes) {
-  const [unusedAssets, setUnusedAssets] = useState<Array<any>>([]);
+  const [unusedAssets, setUnusedAssets] = useState<SimpleSchemaTypes.Upload[]>(
+    [],
+  );
   const [isLoading, setIsLoading] = useState(true);
 
   const client = buildClient({
@@ -29,8 +34,7 @@ export default function CustomModal({ ctx }: PropTypes) {
         setUnusedAssets(result);
         setIsLoading(false);
       });
-  }, [client.uploads
-      .list]);
+  }, [client.uploads.list]);
 
   return (
     <Canvas ctx={ctx}>
@@ -47,7 +51,7 @@ export default function CustomModal({ ctx }: PropTypes) {
               {unusedAssets.map((asset) => {
                 return (
                   <li key={asset.id}>
-                    <a href={asset.url} target="_blank">
+                    <a href={asset.url} target="_blank" rel="noopener">
                       {asset.filename}
                     </a>
                   </li>

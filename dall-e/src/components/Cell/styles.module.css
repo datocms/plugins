@@ -26,12 +26,13 @@
 }
 
 .cellSelected::after {
-  content: '';
+  content: "";
   position: absolute;
   inset: 0;
   z-index: 1;
   background: color-mix(in srgb, var(--ig-accent) 12%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ig-accent) 18%, transparent);
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--ig-accent) 18%, transparent);
   pointer-events: none;
 }
 
@@ -88,7 +89,7 @@
 }
 
 .selectionMarkSelected .selectionIcon::after {
-  content: '';
+  content: "";
   position: absolute;
   left: 50%;
   top: 50%;

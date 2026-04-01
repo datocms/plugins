@@ -3,14 +3,14 @@
  * Tests text extraction, object reconstruction, and structured text utilities.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
-  isEmptyStructuredText,
-  extractTextValues,
-  removeIds,
-  reconstructObject,
-  insertObjectAtIndex,
   deleteItemIdKeys,
+  extractTextValues,
+  insertObjectAtIndex,
+  isEmptyStructuredText,
+  reconstructObject,
+  removeIds,
 } from './utils';
 
 describe('utils.ts', () => {
@@ -37,7 +37,7 @@ describe('utils.ts', () => {
               },
             ],
           },
-        })
+        }),
       ).toBe(true);
     });
 
@@ -60,9 +60,7 @@ describe('utils.ts', () => {
     });
 
     it('should return true for non-paragraph types without visible content', () => {
-      const heading = [
-        { type: 'heading', children: [{ text: '' }] },
-      ];
+      const heading = [{ type: 'heading', children: [{ text: '' }] }];
       expect(isEmptyStructuredText(heading)).toBe(true);
     });
 
@@ -74,9 +72,7 @@ describe('utils.ts', () => {
     });
 
     it('should return false when there are embedded blocks', () => {
-      const withBlock = [
-        { type: 'block', item: 'block-1' },
-      ];
+      const withBlock = [{ type: 'block', item: 'block-1' }];
       expect(isEmptyStructuredText(withBlock)).toBe(false);
     });
 
@@ -102,11 +98,7 @@ describe('utils.ts', () => {
 
     it('should extract text from nested structures', () => {
       const data = {
-        children: [
-          { text: 'Hello' },
-          { text: ' ' },
-          { text: 'World' },
-        ],
+        children: [{ text: 'Hello' }, { text: ' ' }, { text: 'World' }],
       };
       expect(extractTextValues(data)).toEqual(['Hello', ' ', 'World']);
     });
@@ -138,11 +130,7 @@ describe('utils.ts', () => {
     });
 
     it('should handle arrays at root level', () => {
-      const data = [
-        { text: 'One' },
-        { text: 'Two' },
-        { text: 'Three' },
-      ];
+      const data = [{ text: 'One' }, { text: 'Two' }, { text: 'Three' }];
       expect(extractTextValues(data)).toEqual(['One', 'Two', 'Three']);
     });
 
@@ -163,10 +151,7 @@ describe('utils.ts', () => {
 
     it('should extract empty strings as text values', () => {
       const data = {
-        children: [
-          { text: '' },
-          { text: 'Hello' },
-        ],
+        children: [{ text: '' }, { text: 'Hello' }],
       };
       expect(extractTextValues(data)).toEqual(['', 'Hello']);
     });
@@ -199,10 +184,7 @@ describe('utils.ts', () => {
         { id: '1', text: 'One' },
         { id: '2', text: 'Two' },
       ];
-      expect(removeIds(data)).toEqual([
-        { text: 'One' },
-        { text: 'Two' },
-      ]);
+      expect(removeIds(data)).toEqual([{ text: 'One' }, { text: 'Two' }]);
     });
 
     it('should preserve id when object has only id and value properties', () => {
@@ -244,42 +226,30 @@ describe('utils.ts', () => {
   describe('reconstructObject', () => {
     it('should replace text values in order', () => {
       const original = {
-        children: [
-          { text: 'Hello' },
-          { text: 'World' },
-        ],
+        children: [{ text: 'Hello' }, { text: 'World' }],
       };
       const translations = ['Hola', 'Mundo'];
 
       const result = reconstructObject(original, translations);
 
       expect(result).toEqual({
-        children: [
-          { text: 'Hola' },
-          { text: 'Mundo' },
-        ],
+        children: [{ text: 'Hola' }, { text: 'Mundo' }],
       });
     });
 
     it('should replace value strings in order', () => {
-      const original = [
-        { type: 'node', value: 'Original value' },
-      ];
+      const original = [{ type: 'node', value: 'Original value' }];
       const translations = ['Translated value'];
 
       const result = reconstructObject(original, translations);
 
-      expect(result).toEqual([
-        { type: 'node', value: 'Translated value' },
-      ]);
+      expect(result).toEqual([{ type: 'node', value: 'Translated value' }]);
     });
 
     it('should preserve non-text properties', () => {
       const original = {
         type: 'paragraph',
-        children: [
-          { text: 'Hello', bold: true },
-        ],
+        children: [{ text: 'Hello', bold: true }],
       };
       const translations = ['Bonjour'];
 
@@ -287,9 +257,7 @@ describe('utils.ts', () => {
 
       expect(result).toEqual({
         type: 'paragraph',
-        children: [
-          { text: 'Bonjour', bold: true },
-        ],
+        children: [{ text: 'Bonjour', bold: true }],
       });
     });
 
@@ -324,7 +292,10 @@ describe('utils.ts', () => {
       (obj.nested as Record<string, unknown>).parent = obj;
 
       const translations = ['Hola'];
-      const result = reconstructObject(obj, translations) as Record<string, unknown>;
+      const result = reconstructObject(obj, translations) as Record<
+        string,
+        unknown
+      >;
 
       expect((result as { text: string }).text).toBe('Hola');
     });

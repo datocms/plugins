@@ -1,8 +1,8 @@
+import type { Mention as MentionType } from '@ctypes/mentions';
 import { Node } from '@tiptap/core';
 import Mention from '@tiptap/extension-mention';
-import { ReactNodeViewRenderer } from '@tiptap/react';
 import type { ReactNodeViewProps } from '@tiptap/react';
-import type { Mention as MentionType } from '@ctypes/mentions';
+import { ReactNodeViewRenderer } from '@tiptap/react';
 
 type MentionNodeViewComponent = React.ComponentType<ReactNodeViewProps>;
 
@@ -25,7 +25,10 @@ const BASE_ATTRS = {
   type: { default: null },
 } as const;
 
-const MENTION_TYPE_ATTRS: Record<MentionType['type'], Record<string, { default?: unknown }>> = {
+const MENTION_TYPE_ATTRS: Record<
+  MentionType['type'],
+  Record<string, { default?: unknown }>
+> = {
   user: {
     id: { default: null },
     name: { default: null },

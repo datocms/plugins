@@ -1,12 +1,12 @@
-import { memo, type RefObject } from 'react';
-import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
-import Comment from './Comment';
-import { CommentErrorBoundary } from './shared/CommentErrorBoundary';
 import type { ResolvedCommentType } from '@ctypes/comments';
 import type { CommentSegment } from '@ctypes/mentions';
-import type { FieldInfo, UserInfo, ModelInfo } from '@hooks/useMentions';
-import type { TipTapComposerRef } from './tiptap/TipTapComposer';
+import type { FieldInfo, ModelInfo, UserInfo } from '@hooks/useMentions';
 import styles from '@styles/commentbar.module.css';
+import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
+import { memo, type RefObject } from 'react';
+import Comment from './Comment';
+import { CommentErrorBoundary } from './shared/CommentErrorBoundary';
+import type { TipTapComposerRef } from './tiptap/TipTapComposer';
 
 type CommentsListProps = {
   comments: ResolvedCommentType[];
@@ -17,14 +17,25 @@ type CommentsListProps = {
   projectUsers: UserInfo[];
   projectModels: ModelInfo[];
   deleteComment: (id: string, parentCommentId?: string) => boolean;
-  editComment: (id: string, newContent: CommentSegment[], parentCommentId?: string) => boolean;
-  upvoteComment: (id: string, userUpvoted: boolean, parentCommentId?: string) => boolean;
+  editComment: (
+    id: string,
+    newContent: CommentSegment[],
+    parentCommentId?: string,
+  ) => boolean;
+  upvoteComment: (
+    id: string,
+    userUpvoted: boolean,
+    parentCommentId?: string,
+  ) => boolean;
   replyComment: (parentCommentId: string) => boolean;
-  onPickerRequest?: (type: 'asset' | 'record', composerRef: RefObject<TipTapComposerRef | null>) => void;
+  onPickerRequest?: (
+    type: 'asset' | 'record',
+    composerRef: RefObject<TipTapComposerRef | null>,
+  ) => void;
   /** Callback when a model is selected for record mention - opens record picker */
   onRecordModelSelect?: (
     model: ModelInfo,
-    composerRef: RefObject<TipTapComposerRef | null>
+    composerRef: RefObject<TipTapComposerRef | null>,
   ) => void;
   /** Models available for record mentions */
   readableModels?: ModelInfo[];

@@ -15,19 +15,22 @@ import { IframeContainer } from '../../components/Browser/IframeContainer';
 import { Toolbar } from '../../components/Browser/Toolbar';
 import { ToolbarButton } from '../../components/Browser/Toolbar/ToolbarButton';
 import { ToolbarSlot } from '../../components/Browser/Toolbar/ToolbarSlot';
-import { ViewportCustomizer } from '../../components/Browser/ViewportCustomizer';
 import type { ViewportSize } from '../../components/Browser/ViewportCustomizer';
+import { ViewportCustomizer } from '../../components/Browser/ViewportCustomizer';
 import { ViewportSelector } from '../../components/Browser/ViewportSelector';
 import { ButtonGroup, ButtonGroupButton } from '../../components/ButtonGroup';
 import {
+  normalizeParameters,
   type Parameters,
   type PreviewLinkWithFrontend,
   type Viewport,
-  normalizeParameters,
 } from '../../types';
 import { useStatusByFrontend } from '../../utils/common';
 import { usePersistedSidebarWidth } from '../../utils/persistedWidth';
-import { extractRedirectFromDraftModePreviewUrl, inspectorUrl } from '../../utils/urls';
+import {
+  extractRedirectFromDraftModePreviewUrl,
+  inspectorUrl,
+} from '../../utils/urls';
 import { PreviewLinkSelector } from './PreviewLinkSelector';
 
 type PropTypes = {
@@ -104,7 +107,6 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
     setTimeout(forceReload, delayInMs);
   }, [
     forceReload,
-    ctx.item?.meta.current_version,
     currentPreviewLink,
     currentPreviewLink?.reloadPreviewOnRecordUpdate,
   ]);

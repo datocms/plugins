@@ -2,17 +2,17 @@ import type {
   AutomaticBackupsScheduleState,
   BackupCadence,
   BackupScheduleConfig,
-} from "../types/types";
+} from '../types/types';
 
 export const BACKUP_SCHEDULE_VERSION = 1 as const;
 export const BACKUP_CADENCES: BackupCadence[] = [
-  "daily",
-  "weekly",
-  "biweekly",
-  "monthly",
+  'daily',
+  'weekly',
+  'biweekly',
+  'monthly',
 ];
-export const DEFAULT_ENABLED_CADENCES: BackupCadence[] = ["daily", "weekly"];
-const FALLBACK_TIMEZONE = "UTC";
+export const DEFAULT_ENABLED_CADENCES: BackupCadence[] = ['daily', 'weekly'];
+const FALLBACK_TIMEZONE = 'UTC';
 const DATE_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 type LocalDateParts = {
@@ -22,14 +22,14 @@ type LocalDateParts = {
 };
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
+  typeof value === 'object' && value !== null && !Array.isArray(value);
 
 export const isBackupCadence = (value: unknown): value is BackupCadence => {
   return BACKUP_CADENCES.includes(value as BackupCadence);
 };
 
 const ensureTimezone = (value: unknown, fallback: string): string => {
-  if (typeof value === "string" && value.trim()) {
+  if (typeof value === 'string' && value.trim()) {
     return value.trim();
   }
 
@@ -60,7 +60,7 @@ const parseLocalDateKey = (value: string): LocalDateParts | null => {
     return null;
   }
 
-  const [year, month, day] = value.split("-").map((part) => Number(part));
+  const [year, month, day] = value.split('-').map((part) => Number(part));
   if (!year || !month || !day) {
     return null;
   }
@@ -73,7 +73,7 @@ const parseLocalDateKey = (value: string): LocalDateParts | null => {
   return { year, month, day };
 };
 
-const pad2 = (value: number): string => String(value).padStart(2, "0");
+const pad2 = (value: number): string => String(value).padStart(2, '0');
 
 const toLocalDateKeyFromParts = (parts: LocalDateParts): string =>
   `${parts.year}-${pad2(parts.month)}-${pad2(parts.day)}`;
@@ -97,16 +97,16 @@ const compareDateKeys = (left: string, right: string): number => {
 };
 
 const toLocalDateParts = (date: Date, timezone: string): LocalDateParts => {
-  const formatter = new Intl.DateTimeFormat("en-CA", {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
     timeZone: timezone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
   });
   const parts = formatter.formatToParts(date);
-  const year = Number(parts.find((part) => part.type === "year")?.value);
-  const month = Number(parts.find((part) => part.type === "month")?.value);
-  const day = Number(parts.find((part) => part.type === "day")?.value);
+  const year = Number(parts.find((part) => part.type === 'year')?.value);
+  const month = Number(parts.find((part) => part.type === 'month')?.value);
+  const day = Number(parts.find((part) => part.type === 'day')?.value);
 
   if (!year || !month || !day) {
     const fallbackParts = {
@@ -133,11 +133,11 @@ const isValidCadenceArray = (value: unknown): value is BackupCadence[] => {
 };
 
 const BACKUP_SCHEDULE_KEYS = new Set([
-  "version",
-  "enabledCadences",
-  "timezone",
-  "anchorLocalDate",
-  "updatedAt",
+  'version',
+  'enabledCadences',
+  'timezone',
+  'anchorLocalDate',
+  'updatedAt',
 ]);
 
 export const normalizeBackupScheduleConfig = ({
@@ -168,7 +168,7 @@ export const normalizeBackupScheduleConfig = ({
 
   const timezone = ensureTimezone(value.timezone, fallbackTimezone);
   const anchorLocalDate =
-    typeof value.anchorLocalDate === "string" &&
+    typeof value.anchorLocalDate === 'string' &&
     parseLocalDateKey(value.anchorLocalDate.trim())
       ? value.anchorLocalDate.trim()
       : toLocalDateKey(now, timezone);
@@ -178,15 +178,19 @@ export const normalizeBackupScheduleConfig = ({
     timezone,
     anchorLocalDate,
     updatedAt:
-      typeof value.updatedAt === "string" && value.updatedAt.trim()
+      typeof value.updatedAt === 'string' && value.updatedAt.trim()
         ? value.updatedAt.trim()
         : fallbackUpdatedAt,
   };
 
-  const rawTimezone = typeof value.timezone === "string" ? value.timezone.trim() : "";
+  const rawTimezone =
+    typeof value.timezone === 'string' ? value.timezone.trim() : '';
   const rawAnchor =
-    typeof value.anchorLocalDate === "string" ? value.anchorLocalDate.trim() : "";
-  const rawUpdatedAt = typeof value.updatedAt === "string" ? value.updatedAt.trim() : "";
+    typeof value.anchorLocalDate === 'string'
+      ? value.anchorLocalDate.trim()
+      : '';
+  const rawUpdatedAt =
+    typeof value.updatedAt === 'string' ? value.updatedAt.trim() : '';
   const hasUnexpectedKeys = Object.keys(value).some(
     (key) => !BACKUP_SCHEDULE_KEYS.has(key),
   );
@@ -203,14 +207,14 @@ export const normalizeBackupScheduleConfig = ({
 
 export const getCadenceLabel = (cadence: BackupCadence): string => {
   switch (cadence) {
-    case "daily":
-      return "Daily";
-    case "weekly":
-      return "Weekly";
-    case "biweekly":
-      return "Bi-weekly";
-    case "monthly":
-      return "Monthly";
+    case 'daily':
+      return 'Daily';
+    case 'weekly':
+      return 'Weekly';
+    case 'biweekly':
+      return 'Bi-weekly';
+    case 'monthly':
+      return 'Monthly';
   }
 };
 
@@ -279,19 +283,19 @@ const isCadenceScheduledOnDate = ({
   localDate: string;
 }): boolean => {
   if (!parseLocalDateKey(anchorLocalDate) || !parseLocalDateKey(localDate)) {
-    return cadence === "daily";
+    return cadence === 'daily';
   }
 
   if (compareDateKeys(localDate, anchorLocalDate) < 0) {
     return false;
   }
 
-  if (cadence === "daily") {
+  if (cadence === 'daily') {
     return true;
   }
 
-  if (cadence === "weekly" || cadence === "biweekly") {
-    const interval = cadence === "weekly" ? 7 : 14;
+  if (cadence === 'weekly' || cadence === 'biweekly') {
+    const interval = cadence === 'weekly' ? 7 : 14;
     const diffDays = getDayDiff(anchorLocalDate, localDate);
     return diffDays >= 0 && diffDays % interval === 0;
   }
@@ -320,7 +324,10 @@ export const isCadenceDueNow = ({
   currentLocalDate: string;
   lastRunLocalDate?: string;
 }): boolean => {
-  if (lastRunLocalDate && compareDateKeys(lastRunLocalDate, currentLocalDate) === 0) {
+  if (
+    lastRunLocalDate &&
+    compareDateKeys(lastRunLocalDate, currentLocalDate) === 0
+  ) {
     return false;
   }
 
@@ -329,6 +336,82 @@ export const isCadenceDueNow = ({
     anchorLocalDate,
     localDate: currentLocalDate,
   });
+};
+
+const getNextDueForIntervalCadence = ({
+  cadence,
+  anchorLocalDate,
+  currentLocalDate,
+}: {
+  cadence: 'weekly' | 'biweekly';
+  anchorLocalDate: string;
+  currentLocalDate: string;
+}): string => {
+  const interval = cadence === 'weekly' ? 7 : 14;
+  const diffDays = getDayDiff(anchorLocalDate, currentLocalDate);
+
+  if (diffDays < 0) {
+    return anchorLocalDate;
+  }
+
+  const offset = interval - (diffDays % interval);
+  return addDaysToDateKey(currentLocalDate, offset);
+};
+
+const getNextDueForMonthlyCadence = ({
+  anchorLocalDate,
+  currentLocalDate,
+  alreadyRanToday,
+}: {
+  anchorLocalDate: string;
+  currentLocalDate: string;
+  alreadyRanToday: boolean;
+}): string => {
+  const currentParts = parseLocalDateKey(currentLocalDate);
+  const anchorParts = parseLocalDateKey(anchorLocalDate);
+
+  if (!currentParts || !anchorParts) {
+    return currentLocalDate;
+  }
+
+  const dueThisMonth = toLocalDateKeyFromParts({
+    year: currentParts.year,
+    month: currentParts.month,
+    day: Math.min(
+      anchorParts.day,
+      getDaysInMonth(currentParts.year, currentParts.month),
+    ),
+  });
+
+  const dueThisMonthComparison = compareDateKeys(
+    dueThisMonth,
+    currentLocalDate,
+  );
+  const dueThisMonthIsViable =
+    dueThisMonthComparison > 0 ||
+    (dueThisMonthComparison === 0 && !alreadyRanToday);
+
+  if (dueThisMonthIsViable) {
+    return dueThisMonth;
+  }
+
+  const firstOfCurrentMonth = toLocalDateKeyFromParts({
+    year: currentParts.year,
+    month: currentParts.month,
+    day: 1,
+  });
+  const firstOfNextMonth = addMonthsToDateKey(firstOfCurrentMonth, 1);
+  const nextMonthParts = parseLocalDateKey(firstOfNextMonth);
+
+  if (!nextMonthParts) {
+    return firstOfNextMonth;
+  }
+
+  return buildMonthlyDueDateKey(
+    nextMonthParts.year,
+    nextMonthParts.month,
+    anchorParts.day,
+  );
 };
 
 export const getNextDueLocalDate = ({
@@ -343,71 +426,38 @@ export const getNextDueLocalDate = ({
   lastRunLocalDate?: string;
 }): string => {
   const alreadyRanToday =
-    typeof lastRunLocalDate === "string" &&
+    typeof lastRunLocalDate === 'string' &&
     compareDateKeys(lastRunLocalDate, currentLocalDate) === 0;
 
-  if (
+  const isDueToday =
     !alreadyRanToday &&
     isCadenceScheduledOnDate({
       cadence,
       anchorLocalDate,
       localDate: currentLocalDate,
-    })
-  ) {
+    });
+
+  if (isDueToday) {
     return currentLocalDate;
   }
 
-  if (cadence === "daily") {
+  if (cadence === 'daily') {
     return addDaysToDateKey(currentLocalDate, 1);
   }
 
-  if (cadence === "weekly" || cadence === "biweekly") {
-    const interval = cadence === "weekly" ? 7 : 14;
-    const diffDays = getDayDiff(anchorLocalDate, currentLocalDate);
-
-    if (diffDays < 0) {
-      return anchorLocalDate;
-    }
-
-    const offset = interval - (diffDays % interval);
-    return addDaysToDateKey(currentLocalDate, offset);
+  if (cadence === 'weekly' || cadence === 'biweekly') {
+    return getNextDueForIntervalCadence({
+      cadence,
+      anchorLocalDate,
+      currentLocalDate,
+    });
   }
 
-  const currentParts = parseLocalDateKey(currentLocalDate);
-  const anchorParts = parseLocalDateKey(anchorLocalDate);
-  if (!currentParts || !anchorParts) {
-    return currentLocalDate;
-  }
-
-  const dueThisMonth = toLocalDateKeyFromParts({
-    year: currentParts.year,
-    month: currentParts.month,
-    day: Math.min(anchorParts.day, getDaysInMonth(currentParts.year, currentParts.month)),
+  return getNextDueForMonthlyCadence({
+    anchorLocalDate,
+    currentLocalDate,
+    alreadyRanToday,
   });
-
-  if (
-    compareDateKeys(dueThisMonth, currentLocalDate) > 0 ||
-    (compareDateKeys(dueThisMonth, currentLocalDate) === 0 && !alreadyRanToday)
-  ) {
-    return dueThisMonth;
-  }
-
-  const firstOfCurrentMonth = toLocalDateKeyFromParts({
-    year: currentParts.year,
-    month: currentParts.month,
-    day: 1,
-  });
-  const firstOfNextMonth = addMonthsToDateKey(firstOfCurrentMonth, 1);
-  const nextMonthParts = parseLocalDateKey(firstOfNextMonth);
-  if (!nextMonthParts) {
-    return firstOfNextMonth;
-  }
-
-  return buildMonthlyDueDateKey(
-    nextMonthParts.year,
-    nextMonthParts.month,
-    anchorParts.day,
-  );
 };
 
 export const getLastRunLocalDateForCadence = ({
@@ -420,20 +470,23 @@ export const getLastRunLocalDateForCadence = ({
   now: Date;
 }): string | undefined => {
   const byCadence = scheduleState.lastRunLocalDateByCadence?.[cadence];
-  if (typeof byCadence === "string" && parseLocalDateKey(byCadence)) {
+  if (typeof byCadence === 'string' && parseLocalDateKey(byCadence)) {
     return byCadence;
   }
 
-  if (cadence === "daily") {
+  if (cadence === 'daily') {
     if (
-      typeof scheduleState.dailyLastRunDate === "string" &&
+      typeof scheduleState.dailyLastRunDate === 'string' &&
       parseLocalDateKey(scheduleState.dailyLastRunDate)
     ) {
       return scheduleState.dailyLastRunDate;
     }
   }
 
-  if (cadence === "weekly" && typeof scheduleState.weeklyLastRunKey === "string") {
+  if (
+    cadence === 'weekly' &&
+    typeof scheduleState.weeklyLastRunKey === 'string'
+  ) {
     const currentWeekKey = toUtcIsoWeekKey(now);
     if (scheduleState.weeklyLastRunKey === currentWeekKey) {
       return toLocalDateKey(now, FALLBACK_TIMEZONE);
@@ -455,14 +508,18 @@ export const toUtcIsoWeekKey = (date: Date): string => {
     ((workingDate.getTime() - yearStart.getTime()) / 86400000 + 1) / 7,
   );
 
-  return `${workingDate.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
+  return `${workingDate.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
 };
 
-export const toUtcDateFromLocalDateKey = (localDateKey: string): Date | undefined => {
+export const toUtcDateFromLocalDateKey = (
+  localDateKey: string,
+): Date | undefined => {
   const parsed = parseLocalDateKey(localDateKey);
   if (!parsed) {
     return undefined;
   }
 
-  return new Date(Date.UTC(parsed.year, parsed.month - 1, parsed.day, 0, 0, 0, 0));
+  return new Date(
+    Date.UTC(parsed.year, parsed.month - 1, parsed.day, 0, 0, 0, 0),
+  );
 };

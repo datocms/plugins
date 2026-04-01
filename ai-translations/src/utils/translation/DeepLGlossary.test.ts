@@ -3,7 +3,7 @@
  * Tests glossary map parsing and ID resolution for DeepL translations.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { parseGlossaryMap, resolveGlossaryId } from './DeepLGlossary';
 
 describe('DeepLGlossary.ts', () => {

@@ -3,8 +3,8 @@
  * Tests locale code mapping for DeepL and formality support checking.
  */
 
-import { describe, it, expect } from 'vitest';
-import { mapDatoToDeepL, isFormalitySupported } from './DeepLMap';
+import { describe, expect, it } from 'vitest';
+import { isFormalitySupported, mapDatoToDeepL } from './DeepLMap';
 
 describe('DeepLMap.ts', () => {
   describe('mapDatoToDeepL', () => {

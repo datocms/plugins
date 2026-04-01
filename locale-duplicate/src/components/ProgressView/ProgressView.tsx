@@ -1,5 +1,5 @@
-import { Section, Spinner, Button } from 'datocms-react-ui';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
+import { Button, Section, Spinner } from 'datocms-react-ui';
 import styles from './ProgressView.module.css';
 
 /**
@@ -33,7 +33,7 @@ export function ProgressView({
   sourceLocale,
   targetLocale,
   getLocaleLabel,
-  onAbort
+  onAbort,
 }: ProgressViewProps) {
   const latestUpdate = progressUpdates[progressUpdates.length - 1];
 
@@ -41,9 +41,10 @@ export function ProgressView({
     <div className={styles.progressWrapper}>
       <div className={styles.progressContainer}>
         <h2 className={styles.progressHeading}>
-          Duplicating content from {getLocaleLabel(sourceLocale)} to {getLocaleLabel(targetLocale)}
+          Duplicating content from {getLocaleLabel(sourceLocale)} to{' '}
+          {getLocaleLabel(targetLocale)}
         </h2>
-        
+
         <Section title="Progress Status">
           {/* Custom progress bar to show overall completion status */}
           <div className={styles.progressStatusBox}>
@@ -54,15 +55,15 @@ export function ProgressView({
               </div>
               <Spinner size={24} />
             </div>
-            
+
             {/* Progress bar */}
             <div className={styles.progressBarContainer}>
-              <div 
+              <div
                 className={styles.progressBar}
-                style={{ width: `${progressPercentage}%` }} 
+                style={{ width: `${progressPercentage}%` }}
               />
             </div>
-            
+
             {/* Current operation description */}
             <div className={styles.currentOperation}>
               {latestUpdate?.message}
@@ -84,12 +85,12 @@ export function ProgressView({
                   {progressUpdates.length} operations
                 </span>
               </h3>
-              
+
               {/* Progress updates log */}
               <div className={styles.progressLog}>
-                {progressUpdates.map((update, index) => (
-                  <div 
-                    key={`${update.timestamp}-${index}`} 
+                {progressUpdates.map((update) => (
+                  <div
+                    key={`${update.timestamp}-${update.message}`}
                     className={`${styles.progressItem} ${styles[update.type]}`}
                   >
                     <span className={styles.progressIcon}>
@@ -97,7 +98,9 @@ export function ProgressView({
                       {update.type === 'error' && '✗'}
                       {update.type === 'info' && '•'}
                     </span>
-                    <span className={styles.progressMessage}>{update.message}</span>
+                    <span className={styles.progressMessage}>
+                      {update.message}
+                    </span>
                   </div>
                 ))}
               </div>

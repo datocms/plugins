@@ -1,11 +1,11 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { buildClient } from "@datocms/cma-client-browser";
+import { buildClient } from '@datocms/cma-client-browser';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   isLambdaLessRestoreError,
   restoreRecordWithoutLambda,
-} from "./lambdaLessRestore";
+} from './lambdaLessRestore';
 
-vi.mock("@datocms/cma-client-browser", () => ({
+vi.mock('@datocms/cma-client-browser', () => ({
   buildClient: vi.fn(),
 }));
 
@@ -28,16 +28,16 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("restoreRecordWithoutLambda", () => {
-  it("restores a record, sanitizes payload and removes trash item", async () => {
+describe('restoreRecordWithoutLambda', () => {
+  it('restores a record, sanitizes payload and removes trash item', async () => {
     const clientMock = createClientMock();
     clientMock.items.rawCreate.mockResolvedValue({
       data: {
-        id: "restored-item-id",
+        id: 'restored-item-id',
         relationships: {
           item_type: {
             data: {
-              id: "restored-model-id",
+              id: 'restored-model-id',
             },
           },
         },
@@ -46,31 +46,31 @@ describe("restoreRecordWithoutLambda", () => {
     clientMock.items.destroy.mockResolvedValue({});
 
     vi.mocked(buildClient).mockReturnValue(
-      clientMock as unknown as ReturnType<typeof buildClient>
+      clientMock as unknown as ReturnType<typeof buildClient>,
     );
 
     const recordBody = {
-      event_type: "to_be_restored",
-      environment: "main",
+      event_type: 'to_be_restored',
+      environment: 'main',
       entity: {
-        type: "item",
-        id: "deleted-item-id",
+        type: 'item',
+        id: 'deleted-item-id',
         attributes: {
-          title: "Old title",
-          created_at: "2024-01-01T00:00:00.000Z",
-          updated_at: "2024-01-02T00:00:00.000Z",
+          title: 'Old title',
+          created_at: '2024-01-01T00:00:00.000Z',
+          updated_at: '2024-01-02T00:00:00.000Z',
           content: [
             {
-              id: "block-id",
-              type: "item",
+              id: 'block-id',
+              type: 'item',
               attributes: {
-                text: "Nested block",
+                text: 'Nested block',
               },
               relationships: {
                 item_type: {
                   data: {
-                    type: "item_type",
-                    id: "block-model-id",
+                    type: 'item_type',
+                    id: 'block-model-id',
                   },
                 },
               },
@@ -80,41 +80,41 @@ describe("restoreRecordWithoutLambda", () => {
         relationships: {
           item_type: {
             data: {
-              type: "item_type",
-              id: "article-model-id",
+              type: 'item_type',
+              id: 'article-model-id',
             },
           },
           creator: {
             data: {
-              type: "user",
-              id: "user-id",
+              type: 'user',
+              id: 'user-id',
             },
           },
         },
         meta: {
-          created_at: "2024-01-01T00:00:00.000Z",
+          created_at: '2024-01-01T00:00:00.000Z',
           first_published_at: null,
-          status: "published",
+          status: 'published',
         },
       },
     };
 
     const result = await restoreRecordWithoutLambda({
-      currentUserAccessToken: "token",
-      currentEnvironment: "main",
+      currentUserAccessToken: 'token',
+      currentEnvironment: 'main',
       recordBody,
-      trashRecordID: "trash-id",
+      trashRecordID: 'trash-id',
     });
 
     expect(result).toEqual({
       restoredRecord: {
-        id: "restored-item-id",
-        modelID: "restored-model-id",
+        id: 'restored-item-id',
+        modelID: 'restored-model-id',
       },
     });
     expect(buildClient).toHaveBeenCalledWith({
-      apiToken: "token",
-      environment: "main",
+      apiToken: 'token',
+      environment: 'main',
     });
 
     const createPayload = clientMock.items.rawCreate.mock.calls[0][0];
@@ -123,25 +123,25 @@ describe("restoreRecordWithoutLambda", () => {
     expect(createPayload.data.attributes.updated_at).toBeUndefined();
     expect(createPayload.data.relationships.creator).toBeUndefined();
     expect(createPayload.data.meta).toEqual({
-      created_at: "2024-01-01T00:00:00.000Z",
+      created_at: '2024-01-01T00:00:00.000Z',
       first_published_at: null,
     });
     expect(createPayload.data.attributes.content[0].id).toBeUndefined();
     expect(
-      createPayload.data.attributes.content[0].relationships.item_type.data.id
-    ).toBe("block-model-id");
-    expect(clientMock.items.destroy).toHaveBeenCalledWith("trash-id");
+      createPayload.data.attributes.content[0].relationships.item_type.data.id,
+    ).toBe('block-model-id');
+    expect(clientMock.items.destroy).toHaveBeenCalledWith('trash-id');
   });
 
-  it("supports raw entity payloads without webhook envelope", async () => {
+  it('supports raw entity payloads without webhook envelope', async () => {
     const clientMock = createClientMock();
     clientMock.items.rawCreate.mockResolvedValue({
       data: {
-        id: "restored-item-id",
+        id: 'restored-item-id',
         relationships: {
           item_type: {
             data: {
-              id: "restored-model-id",
+              id: 'restored-model-id',
             },
           },
         },
@@ -150,49 +150,49 @@ describe("restoreRecordWithoutLambda", () => {
     clientMock.items.destroy.mockResolvedValue({});
 
     vi.mocked(buildClient).mockReturnValue(
-      clientMock as unknown as ReturnType<typeof buildClient>
+      clientMock as unknown as ReturnType<typeof buildClient>,
     );
 
     await restoreRecordWithoutLambda({
-      currentUserAccessToken: "token",
-      currentEnvironment: "fallback-env",
+      currentUserAccessToken: 'token',
+      currentEnvironment: 'fallback-env',
       recordBody: {
-        type: "item",
-        id: "item-id",
+        type: 'item',
+        id: 'item-id',
         attributes: {
-          title: "Standalone payload",
+          title: 'Standalone payload',
         },
         relationships: {
           item_type: {
             data: {
-              type: "item_type",
-              id: "model-id",
+              type: 'item_type',
+              id: 'model-id',
             },
           },
         },
         meta: {
-          created_at: "2024-01-01T00:00:00.000Z",
+          created_at: '2024-01-01T00:00:00.000Z',
           first_published_at: null,
         },
       },
-      trashRecordID: "trash-id",
+      trashRecordID: 'trash-id',
     });
 
     expect(buildClient).toHaveBeenCalledWith({
-      apiToken: "token",
-      environment: "fallback-env",
+      apiToken: 'token',
+      environment: 'fallback-env',
     });
   });
 
-  it("always uses the current UI environment for client initialization", async () => {
+  it('always uses the current UI environment for client initialization', async () => {
     const clientMock = createClientMock();
     clientMock.items.rawCreate.mockResolvedValue({
       data: {
-        id: "restored-item-id",
+        id: 'restored-item-id',
         relationships: {
           item_type: {
             data: {
-              id: "restored-model-id",
+              id: 'restored-model-id',
             },
           },
         },
@@ -201,54 +201,54 @@ describe("restoreRecordWithoutLambda", () => {
     clientMock.items.destroy.mockResolvedValue({});
 
     vi.mocked(buildClient).mockReturnValue(
-      clientMock as unknown as ReturnType<typeof buildClient>
+      clientMock as unknown as ReturnType<typeof buildClient>,
     );
 
     await restoreRecordWithoutLambda({
-      currentUserAccessToken: "token",
-      currentEnvironment: "sandbox",
+      currentUserAccessToken: 'token',
+      currentEnvironment: 'sandbox',
       recordBody: {
-        event_type: "to_be_restored",
-        environment: "main",
+        event_type: 'to_be_restored',
+        environment: 'main',
         entity: {
-          type: "item",
-          id: "item-id",
+          type: 'item',
+          id: 'item-id',
           attributes: {
-            title: "Cross-environment payload",
+            title: 'Cross-environment payload',
           },
           relationships: {
             item_type: {
               data: {
-                type: "item_type",
-                id: "model-id",
+                type: 'item_type',
+                id: 'model-id',
               },
             },
           },
           meta: {
-            created_at: "2024-01-01T00:00:00.000Z",
+            created_at: '2024-01-01T00:00:00.000Z',
             first_published_at: null,
           },
         },
       },
-      trashRecordID: "trash-id",
+      trashRecordID: 'trash-id',
     });
 
     expect(buildClient).toHaveBeenCalledWith({
-      apiToken: "token",
-      environment: "sandbox",
+      apiToken: 'token',
+      environment: 'sandbox',
     });
   });
 
-  it("throws LambdaLessRestoreError with lambda-like payload on rawCreate errors", async () => {
+  it('throws LambdaLessRestoreError with lambda-like payload on rawCreate errors', async () => {
     const clientMock = createClientMock();
     clientMock.items.rawCreate.mockRejectedValue({
       errors: [
         {
           attributes: {
-            code: "VALIDATION_INVALID",
+            code: 'VALIDATION_INVALID',
             details: {
-              code: "INVALID_FIELD",
-              field: "title",
+              code: 'INVALID_FIELD',
+              field: 'title',
             },
           },
         },
@@ -256,48 +256,48 @@ describe("restoreRecordWithoutLambda", () => {
     });
 
     vi.mocked(buildClient).mockReturnValue(
-      clientMock as unknown as ReturnType<typeof buildClient>
+      clientMock as unknown as ReturnType<typeof buildClient>,
     );
 
     await expect(
       restoreRecordWithoutLambda({
-        currentUserAccessToken: "token",
-        currentEnvironment: "main",
+        currentUserAccessToken: 'token',
+        currentEnvironment: 'main',
         recordBody: {
-          event_type: "to_be_restored",
-          environment: "main",
+          event_type: 'to_be_restored',
+          environment: 'main',
           entity: {
-            type: "item",
-            id: "item-id",
+            type: 'item',
+            id: 'item-id',
             attributes: {
-              title: "Broken payload",
+              title: 'Broken payload',
             },
             relationships: {
               item_type: {
                 data: {
-                  type: "item_type",
-                  id: "model-id",
+                  type: 'item_type',
+                  id: 'model-id',
                 },
               },
             },
             meta: {
-              created_at: "2024-01-01T00:00:00.000Z",
+              created_at: '2024-01-01T00:00:00.000Z',
               first_published_at: null,
             },
           },
         },
-        trashRecordID: "trash-id",
-      })
+        trashRecordID: 'trash-id',
+      }),
     ).rejects.toSatisfy((error: unknown) => {
       if (!isLambdaLessRestoreError(error)) {
         return false;
       }
 
       expect(error.restorationError.simplifiedError.code).toBe(
-        "VALIDATION_INVALID"
+        'VALIDATION_INVALID',
       );
       expect(error.restorationError.fullErrorPayload).toContain(
-        "VALIDATION_INVALID"
+        'VALIDATION_INVALID',
       );
       return true;
     });

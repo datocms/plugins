@@ -67,6 +67,86 @@ function isValidApiKey(apiKey: string) {
 }
 
 /**
+ * Validate all plugin conflict fields, returning errors for missing strategies.
+ */
+function validatePluginFields(
+  values: FormValues,
+  pluginIds: string[],
+  errors: Record<string, string>,
+) {
+  for (const pluginId of pluginIds) {
+    const fieldPrefix = `plugin-${pluginId}`;
+    if (!get(values, [fieldPrefix, 'strategy'])) {
+      set(errors, [fieldPrefix, 'strategy'], 'Required!');
+    }
+  }
+}
+
+/**
+ * Validate item type conflict fields synchronously. Returns true if any item type
+ * uses the 'rename' strategy (requiring an async collision check).
+ */
+function validateItemTypeFieldsSync(
+  values: FormValues,
+  itemTypeIds: string[],
+  errors: Record<string, string>,
+): boolean {
+  let hasRename = false;
+  for (const itemTypeId of itemTypeIds) {
+    const fieldPrefix = `itemType-${itemTypeId}`;
+    const strategy = get(values, [fieldPrefix, 'strategy']);
+    if (!strategy) {
+      set(errors, [fieldPrefix, 'strategy'], 'Required!');
+    }
+    if (strategy === 'rename') {
+      hasRename = true;
+      const name = get(values, [fieldPrefix, 'name']);
+      if (!name) {
+        set(errors, [fieldPrefix, 'name'], 'Required!');
+      }
+      const apiKey = get(values, [fieldPrefix, 'apiKey']);
+      if (!apiKey) {
+        set(errors, [fieldPrefix, 'apiKey'], 'Required!');
+      } else if (!isValidApiKey(apiKey)) {
+        set(errors, [fieldPrefix, 'apiKey'], 'Invalid format');
+      }
+    }
+  }
+  return hasRename;
+}
+
+/**
+ * Check renamed item types against existing project names and api_keys.
+ */
+async function checkRenameCollisions(
+  schema: ProjectSchema,
+  values: FormValues,
+  itemTypeIds: string[],
+  errors: Record<string, string>,
+) {
+  const projectItemTypes = await schema.getAllItemTypes();
+  const itemTypesByName = keyBy(projectItemTypes, 'attributes.name');
+  const itemTypesByApiKey = keyBy(projectItemTypes, 'attributes.api_key');
+
+  for (const itemTypeId of itemTypeIds) {
+    const fieldPrefix = `itemType-${itemTypeId}`;
+    const strategy = get(values, [fieldPrefix, 'strategy']);
+    if (strategy !== 'rename') continue;
+
+    const name = get(values, [fieldPrefix, 'name']);
+    if (name && name in itemTypesByName) {
+      set(errors, [fieldPrefix, 'name'], 'Already used in project!');
+    }
+    const apiKey = get(values, [fieldPrefix, 'apiKey']);
+    if (apiKey) {
+      if (apiKey in itemTypesByApiKey) {
+        set(errors, [fieldPrefix, 'apiKey'], 'Already used in project!');
+      }
+    }
+  }
+}
+
+/**
  * Hosts the conflict resolution form and exposes helpers for components to read state.
  */
 export default function ResolutionsForm({ schema, children, onSubmit }: Props) {
@@ -100,37 +180,47 @@ export default function ResolutionsForm({ schema, children, onSubmit }: Props) {
     [conflicts],
   );
 
-  async function handleSubmit(values: FormValues) {
-    const resolutions: Resolutions = { itemTypes: {}, plugins: {} };
-
-    if (!conflicts) {
-      return resolutions;
-    }
-
+  function resolvePlugins(values: FormValues): Resolutions['plugins'] {
+    const plugins: Resolutions['plugins'] = {};
+    if (!conflicts) return plugins;
     for (const pluginId of Object.keys(conflicts.plugins)) {
       const result = get(values, [`plugin-${pluginId}`]) as PluginValues;
       if (result?.strategy) {
-        resolutions.plugins[pluginId] = {
+        plugins[pluginId] = {
           strategy: result.strategy as 'reuseExisting' | 'skip',
         };
       }
     }
+    return plugins;
+  }
 
+  function resolveItemTypes(values: FormValues): Resolutions['itemTypes'] {
+    const itemTypes: Resolutions['itemTypes'] = {};
+    if (!conflicts) return itemTypes;
     for (const itemTypeId of Object.keys(conflicts.itemTypes)) {
       const fieldPrefix = `itemType-${itemTypeId}`;
       const result = get(values, fieldPrefix) as ItemTypeValues;
-
       if (result?.strategy === 'reuseExisting') {
-        resolutions.itemTypes[itemTypeId] = { strategy: 'reuseExisting' };
+        itemTypes[itemTypeId] = { strategy: 'reuseExisting' };
       } else if (result?.strategy === 'rename') {
-        resolutions.itemTypes[itemTypeId] = {
+        itemTypes[itemTypeId] = {
           strategy: 'rename',
-          apiKey: result.apiKey!,
-          name: result.name!,
+          apiKey: result.apiKey ?? '',
+          name: result.name ?? '',
         };
       }
     }
+    return itemTypes;
+  }
 
+  async function handleSubmit(values: FormValues) {
+    if (!conflicts) {
+      return { itemTypes: {}, plugins: {} };
+    }
+    const resolutions: Resolutions = {
+      plugins: resolvePlugins(values),
+      itemTypes: resolveItemTypes(values),
+    };
     await onSubmit(resolutions);
   }
 
@@ -157,34 +247,13 @@ export default function ResolutionsForm({ schema, children, onSubmit }: Props) {
         }
 
         // Synchronous required checks for strategies across plugins/item types.
-        for (const pluginId of pluginIds) {
-          const fieldPrefix = `plugin-${pluginId}`;
-          if (!get(values, [fieldPrefix, 'strategy'])) {
-            set(errors, [fieldPrefix, 'strategy'], 'Required!');
-          }
-        }
+        validatePluginFields(values, pluginIds, errors);
 
-        let hasRename = false;
-        for (const itemTypeId of itemTypeIds) {
-          const fieldPrefix = `itemType-${itemTypeId}`;
-          const strategy = get(values, [fieldPrefix, 'strategy']);
-          if (!strategy) {
-            set(errors, [fieldPrefix, 'strategy'], 'Required!');
-          }
-          if (strategy === 'rename') {
-            hasRename = true;
-            const name = get(values, [fieldPrefix, 'name']);
-            if (!name) {
-              set(errors, [fieldPrefix, 'name'], 'Required!');
-            }
-            const apiKey = get(values, [fieldPrefix, 'apiKey']);
-            if (!apiKey) {
-              set(errors, [fieldPrefix, 'apiKey'], 'Required!');
-            } else if (!isValidApiKey(apiKey)) {
-              set(errors, [fieldPrefix, 'apiKey'], 'Invalid format');
-            }
-          }
-        }
+        const hasRename = validateItemTypeFieldsSync(
+          values,
+          itemTypeIds,
+          errors,
+        );
 
         // If there are no rename validations to check against the project
         // (or there were only required/format errors), return synchronously to
@@ -195,33 +264,9 @@ export default function ResolutionsForm({ schema, children, onSubmit }: Props) {
 
         // Only now perform the async lookup needed to check for collisions
         // against existing project item types.
-        return (async () => {
-          const projectItemTypes = await schema.getAllItemTypes();
-          const itemTypesByName = keyBy(projectItemTypes, 'attributes.name');
-          const itemTypesByApiKey = keyBy(
-            projectItemTypes,
-            'attributes.api_key',
-          );
-
-          for (const itemTypeId of itemTypeIds) {
-            const fieldPrefix = `itemType-${itemTypeId}`;
-            const strategy = get(values, [fieldPrefix, 'strategy']);
-            if (strategy !== 'rename') continue;
-
-            const name = get(values, [fieldPrefix, 'name']);
-            if (name && name in itemTypesByName) {
-              set(errors, [fieldPrefix, 'name'], 'Already used in project!');
-            }
-            const apiKey = get(values, [fieldPrefix, 'apiKey']);
-            if (apiKey) {
-              if (apiKey in itemTypesByApiKey) {
-                set(errors, [fieldPrefix, 'apiKey'], 'Already used in project!');
-              }
-            }
-          }
-
-          return errors;
-        })();
+        return checkRenameCollisions(schema, values, itemTypeIds, errors).then(
+          () => errors,
+        );
       }}
       onSubmit={handleSubmit}
     >

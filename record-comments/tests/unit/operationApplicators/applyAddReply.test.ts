@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
 import { applyOperation } from '@utils/operationApplicators';
+import { beforeEach, describe, expect, it } from 'vitest';
 import {
   createBaseComment,
   createCommentWithReplies,
@@ -25,7 +25,7 @@ describe('applyAddReply', () => {
       const result = applyOperation([parent], op);
 
       expect(result.comments[0].replies).toHaveLength(1);
-      expect(result.comments[0].replies![0]).toEqual(reply);
+      expect(result.comments[0].replies?.[0]).toEqual(reply);
     });
 
     it('returns status "applied"', () => {
@@ -45,7 +45,7 @@ describe('applyAddReply', () => {
   describe('adding reply to comment with existing replies', () => {
     it('prepends new reply to start of replies array', () => {
       const parent = createCommentWithReplies(2, { id: 'parent' });
-      const existingReplyIds = parent.replies!.map((r) => r.id);
+      const existingReplyIds = parent.replies?.map((r) => r.id);
       const newReply = createBaseComment({
         id: 'newest-reply',
         content: [createTextSegment('I should be first')],
@@ -56,15 +56,15 @@ describe('applyAddReply', () => {
       const result = applyOperation([parent], op);
 
       expect(result.comments[0].replies).toHaveLength(3);
-      expect(result.comments[0].replies![0].id).toBe('newest-reply');
+      expect(result.comments[0].replies?.[0].id).toBe('newest-reply');
       // Existing replies should follow
-      expect(result.comments[0].replies![1].id).toBe(existingReplyIds[0]);
-      expect(result.comments[0].replies![2].id).toBe(existingReplyIds[1]);
+      expect(result.comments[0].replies?.[1].id).toBe(existingReplyIds[0]);
+      expect(result.comments[0].replies?.[2].id).toBe(existingReplyIds[1]);
     });
 
     it('preserves existing replies', () => {
       const parent = createCommentWithReplies(2, { id: 'parent' });
-      const existingReplies = [...parent.replies!];
+      const existingReplies = [...(parent.replies ?? [])];
       const newReply = createBaseComment({
         id: 'new-reply',
         parentCommentId: 'parent',
@@ -73,7 +73,7 @@ describe('applyAddReply', () => {
 
       const result = applyOperation([parent], op);
 
-      expect(result.comments[0].replies!.slice(1)).toEqual(existingReplies);
+      expect(result.comments[0].replies?.slice(1)).toEqual(existingReplies);
     });
   });
 
@@ -97,7 +97,7 @@ describe('applyAddReply', () => {
       const result = applyOperation([parent], op);
 
       expect(result.comments[0].replies).toHaveLength(1);
-      expect(result.comments[0].replies![0]).toEqual(existingReply);
+      expect(result.comments[0].replies?.[0]).toEqual(existingReply);
     });
 
     it('returns status "no_op_idempotent" when reply already exists', () => {
@@ -226,7 +226,7 @@ describe('applyAddReply', () => {
 
       const result = applyOperation([parent], op);
 
-      expect(result.comments[0].replies![0]).toEqual(reply);
+      expect(result.comments[0].replies?.[0]).toEqual(reply);
     });
   });
 
@@ -258,7 +258,7 @@ describe('applyAddReply', () => {
 
       expect(result.comments[0].replies).toBeUndefined();
       expect(result.comments[1].replies).toHaveLength(1);
-      expect(result.comments[1].replies![0]).toEqual(reply);
+      expect(result.comments[1].replies?.[0]).toEqual(reply);
     });
   });
 });

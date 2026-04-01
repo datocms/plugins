@@ -1,17 +1,17 @@
-import { describe, it, expect } from 'vitest';
 import {
-  isValidUserMentionAttrs,
-  isValidFieldMentionAttrs,
   isValidAssetMentionAttrs,
-  isValidRecordMentionAttrs,
+  isValidFieldMentionAttrs,
   isValidModelMentionAttrs,
+  isValidRecordMentionAttrs,
+  isValidUserMentionAttrs,
 } from '@utils/typeGuards';
+import { describe, expect, it } from 'vitest';
 import {
-  createUserMention,
-  createFieldMention,
   createAssetMention,
-  createRecordMention,
+  createFieldMention,
   createModelMention,
+  createRecordMention,
+  createUserMention,
 } from '../fixtures/mentions';
 
 describe('isValidUserMentionAttrs', () => {
@@ -27,7 +27,9 @@ describe('isValidUserMentionAttrs', () => {
     });
 
     it('accepts avatarUrl as string', () => {
-      const attrs = createUserMention({ avatarUrl: 'https://example.com/avatar.png' });
+      const attrs = createUserMention({
+        avatarUrl: 'https://example.com/avatar.png',
+      });
       expect(isValidUserMentionAttrs(attrs)).toBe(true);
     });
 
@@ -44,32 +46,44 @@ describe('isValidUserMentionAttrs', () => {
   describe('invalid user mention attributes', () => {
     it('rejects missing id', () => {
       const { id: _id, ...attrs } = createUserMention();
-      expect(isValidUserMentionAttrs(attrs as any)).toBe(false);
+      expect(isValidUserMentionAttrs(attrs as Record<string, unknown>)).toBe(
+        false,
+      );
     });
 
     it('rejects non-string id', () => {
       const attrs = { ...createUserMention(), id: 123 };
-      expect(isValidUserMentionAttrs(attrs as any)).toBe(false);
+      expect(isValidUserMentionAttrs(attrs as Record<string, unknown>)).toBe(
+        false,
+      );
     });
 
     it('rejects missing name', () => {
       const { name: _name, ...attrs } = createUserMention();
-      expect(isValidUserMentionAttrs(attrs as any)).toBe(false);
+      expect(isValidUserMentionAttrs(attrs as Record<string, unknown>)).toBe(
+        false,
+      );
     });
 
     it('rejects missing email', () => {
       const { email: _email, ...attrs } = createUserMention();
-      expect(isValidUserMentionAttrs(attrs as any)).toBe(false);
+      expect(isValidUserMentionAttrs(attrs as Record<string, unknown>)).toBe(
+        false,
+      );
     });
 
     it('rejects undefined avatarUrl', () => {
       const attrs = { ...createUserMention(), avatarUrl: undefined };
-      expect(isValidUserMentionAttrs(attrs as any)).toBe(false);
+      expect(isValidUserMentionAttrs(attrs as Record<string, unknown>)).toBe(
+        false,
+      );
     });
 
     it('rejects non-string avatarUrl (except null)', () => {
       const attrs = { ...createUserMention(), avatarUrl: 123 };
-      expect(isValidUserMentionAttrs(attrs as any)).toBe(false);
+      expect(isValidUserMentionAttrs(attrs as Record<string, unknown>)).toBe(
+        false,
+      );
     });
   });
 });
@@ -94,45 +108,59 @@ describe('isValidFieldMentionAttrs', () => {
     it('accepts undefined for optional boolean localized', () => {
       const { localized: _localized, ...base } = createFieldMention();
       const attrs = { ...base };
-      expect(isValidFieldMentionAttrs(attrs as any)).toBe(true);
+      expect(isValidFieldMentionAttrs(attrs as Record<string, unknown>)).toBe(
+        true,
+      );
     });
 
     it('accepts undefined for optional locale', () => {
       const attrs = createFieldMention();
-      delete (attrs as any).locale;
+      delete (attrs as Record<string, unknown>).locale;
       expect(isValidFieldMentionAttrs(attrs)).toBe(true);
     });
 
     it('accepts null for optional locale (TipTap behavior)', () => {
       const attrs = { ...createFieldMention(), locale: null };
-      expect(isValidFieldMentionAttrs(attrs as any)).toBe(true);
+      expect(isValidFieldMentionAttrs(attrs as Record<string, unknown>)).toBe(
+        true,
+      );
     });
   });
 
   describe('invalid field mention attributes', () => {
     it('rejects missing apiKey', () => {
       const { apiKey: _apiKey, ...attrs } = createFieldMention();
-      expect(isValidFieldMentionAttrs(attrs as any)).toBe(false);
+      expect(isValidFieldMentionAttrs(attrs as Record<string, unknown>)).toBe(
+        false,
+      );
     });
 
     it('rejects missing label', () => {
       const { label: _label, ...attrs } = createFieldMention();
-      expect(isValidFieldMentionAttrs(attrs as any)).toBe(false);
+      expect(isValidFieldMentionAttrs(attrs as Record<string, unknown>)).toBe(
+        false,
+      );
     });
 
     it('rejects missing fieldPath', () => {
       const { fieldPath: _fieldPath, ...attrs } = createFieldMention();
-      expect(isValidFieldMentionAttrs(attrs as any)).toBe(false);
+      expect(isValidFieldMentionAttrs(attrs as Record<string, unknown>)).toBe(
+        false,
+      );
     });
 
     it('rejects non-boolean localized', () => {
       const attrs = { ...createFieldMention(), localized: 'true' };
-      expect(isValidFieldMentionAttrs(attrs as any)).toBe(false);
+      expect(isValidFieldMentionAttrs(attrs as Record<string, unknown>)).toBe(
+        false,
+      );
     });
 
     it('rejects non-string fieldType', () => {
       const attrs = { ...createFieldMention(), fieldType: 123 };
-      expect(isValidFieldMentionAttrs(attrs as any)).toBe(false);
+      expect(isValidFieldMentionAttrs(attrs as Record<string, unknown>)).toBe(
+        false,
+      );
     });
   });
 });
@@ -150,36 +178,56 @@ describe('isValidAssetMentionAttrs', () => {
     });
 
     it('accepts various mime types', () => {
-      expect(isValidAssetMentionAttrs(createAssetMention({ mimeType: 'image/jpeg' }))).toBe(true);
-      expect(isValidAssetMentionAttrs(createAssetMention({ mimeType: 'application/pdf' }))).toBe(true);
-      expect(isValidAssetMentionAttrs(createAssetMention({ mimeType: 'video/mp4' }))).toBe(true);
+      expect(
+        isValidAssetMentionAttrs(
+          createAssetMention({ mimeType: 'image/jpeg' }),
+        ),
+      ).toBe(true);
+      expect(
+        isValidAssetMentionAttrs(
+          createAssetMention({ mimeType: 'application/pdf' }),
+        ),
+      ).toBe(true);
+      expect(
+        isValidAssetMentionAttrs(createAssetMention({ mimeType: 'video/mp4' })),
+      ).toBe(true);
     });
   });
 
   describe('invalid asset mention attributes', () => {
     it('rejects missing id', () => {
       const { id: _id, ...attrs } = createAssetMention();
-      expect(isValidAssetMentionAttrs(attrs as any)).toBe(false);
+      expect(isValidAssetMentionAttrs(attrs as Record<string, unknown>)).toBe(
+        false,
+      );
     });
 
     it('rejects missing filename', () => {
       const { filename: _filename, ...attrs } = createAssetMention();
-      expect(isValidAssetMentionAttrs(attrs as any)).toBe(false);
+      expect(isValidAssetMentionAttrs(attrs as Record<string, unknown>)).toBe(
+        false,
+      );
     });
 
     it('rejects missing url', () => {
       const { url: _url, ...attrs } = createAssetMention();
-      expect(isValidAssetMentionAttrs(attrs as any)).toBe(false);
+      expect(isValidAssetMentionAttrs(attrs as Record<string, unknown>)).toBe(
+        false,
+      );
     });
 
     it('rejects missing mimeType', () => {
       const { mimeType: _mimeType, ...attrs } = createAssetMention();
-      expect(isValidAssetMentionAttrs(attrs as any)).toBe(false);
+      expect(isValidAssetMentionAttrs(attrs as Record<string, unknown>)).toBe(
+        false,
+      );
     });
 
     it('rejects undefined thumbnailUrl', () => {
       const attrs = { ...createAssetMention(), thumbnailUrl: undefined };
-      expect(isValidAssetMentionAttrs(attrs as any)).toBe(false);
+      expect(isValidAssetMentionAttrs(attrs as Record<string, unknown>)).toBe(
+        false,
+      );
     });
   });
 });
@@ -218,7 +266,7 @@ describe('isValidRecordMentionAttrs', () => {
 
     it('accepts undefined isSingleton', () => {
       const attrs = createRecordMention();
-      delete (attrs as any).isSingleton;
+      delete (attrs as Record<string, unknown>).isSingleton;
       expect(isValidRecordMentionAttrs(attrs)).toBe(true);
     });
   });
@@ -226,32 +274,44 @@ describe('isValidRecordMentionAttrs', () => {
   describe('invalid record mention attributes', () => {
     it('rejects missing id', () => {
       const { id: _id, ...attrs } = createRecordMention();
-      expect(isValidRecordMentionAttrs(attrs as any)).toBe(false);
+      expect(isValidRecordMentionAttrs(attrs as Record<string, unknown>)).toBe(
+        false,
+      );
     });
 
     it('rejects missing title', () => {
       const { title: _title, ...attrs } = createRecordMention();
-      expect(isValidRecordMentionAttrs(attrs as any)).toBe(false);
+      expect(isValidRecordMentionAttrs(attrs as Record<string, unknown>)).toBe(
+        false,
+      );
     });
 
     it('rejects missing modelId', () => {
       const { modelId: _modelId, ...attrs } = createRecordMention();
-      expect(isValidRecordMentionAttrs(attrs as any)).toBe(false);
+      expect(isValidRecordMentionAttrs(attrs as Record<string, unknown>)).toBe(
+        false,
+      );
     });
 
     it('rejects missing modelApiKey', () => {
       const { modelApiKey: _modelApiKey, ...attrs } = createRecordMention();
-      expect(isValidRecordMentionAttrs(attrs as any)).toBe(false);
+      expect(isValidRecordMentionAttrs(attrs as Record<string, unknown>)).toBe(
+        false,
+      );
     });
 
     it('rejects missing modelName', () => {
       const { modelName: _modelName, ...attrs } = createRecordMention();
-      expect(isValidRecordMentionAttrs(attrs as any)).toBe(false);
+      expect(isValidRecordMentionAttrs(attrs as Record<string, unknown>)).toBe(
+        false,
+      );
     });
 
     it('rejects non-boolean isSingleton', () => {
       const attrs = { ...createRecordMention(), isSingleton: 'true' };
-      expect(isValidRecordMentionAttrs(attrs as any)).toBe(false);
+      expect(isValidRecordMentionAttrs(attrs as Record<string, unknown>)).toBe(
+        false,
+      );
     });
   });
 });
@@ -276,34 +336,46 @@ describe('isValidModelMentionAttrs', () => {
     it('accepts undefined isBlockModel (TipTap omits default false)', () => {
       const { isBlockModel: _isBlockModel, ...base } = createModelMention();
       const attrs = { ...base };
-      expect(isValidModelMentionAttrs(attrs as any)).toBe(true);
+      expect(isValidModelMentionAttrs(attrs as Record<string, unknown>)).toBe(
+        true,
+      );
     });
   });
 
   describe('invalid model mention attributes', () => {
     it('rejects missing id', () => {
       const { id: _id, ...attrs } = createModelMention();
-      expect(isValidModelMentionAttrs(attrs as any)).toBe(false);
+      expect(isValidModelMentionAttrs(attrs as Record<string, unknown>)).toBe(
+        false,
+      );
     });
 
     it('rejects missing apiKey', () => {
       const { apiKey: _apiKey, ...attrs } = createModelMention();
-      expect(isValidModelMentionAttrs(attrs as any)).toBe(false);
+      expect(isValidModelMentionAttrs(attrs as Record<string, unknown>)).toBe(
+        false,
+      );
     });
 
     it('rejects missing name', () => {
       const { name: _name, ...attrs } = createModelMention();
-      expect(isValidModelMentionAttrs(attrs as any)).toBe(false);
+      expect(isValidModelMentionAttrs(attrs as Record<string, unknown>)).toBe(
+        false,
+      );
     });
 
     it('rejects non-boolean isBlockModel', () => {
       const attrs = { ...createModelMention(), isBlockModel: 'true' };
-      expect(isValidModelMentionAttrs(attrs as any)).toBe(false);
+      expect(isValidModelMentionAttrs(attrs as Record<string, unknown>)).toBe(
+        false,
+      );
     });
 
     it('rejects null isBlockModel', () => {
       const attrs = { ...createModelMention(), isBlockModel: null };
-      expect(isValidModelMentionAttrs(attrs as any)).toBe(false);
+      expect(isValidModelMentionAttrs(attrs as Record<string, unknown>)).toBe(
+        false,
+      );
     });
   });
 });
@@ -311,26 +383,36 @@ describe('isValidModelMentionAttrs', () => {
 describe('cross-mention type validation', () => {
   it('user mention attrs do not pass field validation', () => {
     const userAttrs = createUserMention();
-    expect(isValidFieldMentionAttrs(userAttrs as any)).toBe(false);
+    expect(isValidFieldMentionAttrs(userAttrs as Record<string, unknown>)).toBe(
+      false,
+    );
   });
 
   it('field mention attrs do not pass asset validation', () => {
     const fieldAttrs = createFieldMention();
-    expect(isValidAssetMentionAttrs(fieldAttrs as any)).toBe(false);
+    expect(
+      isValidAssetMentionAttrs(fieldAttrs as Record<string, unknown>),
+    ).toBe(false);
   });
 
   it('asset mention attrs do not pass record validation', () => {
     const assetAttrs = createAssetMention();
-    expect(isValidRecordMentionAttrs(assetAttrs as any)).toBe(false);
+    expect(
+      isValidRecordMentionAttrs(assetAttrs as Record<string, unknown>),
+    ).toBe(false);
   });
 
   it('record mention attrs do not pass model validation', () => {
     const recordAttrs = createRecordMention();
-    expect(isValidModelMentionAttrs(recordAttrs as any)).toBe(false);
+    expect(
+      isValidModelMentionAttrs(recordAttrs as Record<string, unknown>),
+    ).toBe(false);
   });
 
   it('model mention attrs do not pass user validation', () => {
     const modelAttrs = createModelMention();
-    expect(isValidUserMentionAttrs(modelAttrs as any)).toBe(false);
+    expect(isValidUserMentionAttrs(modelAttrs as Record<string, unknown>)).toBe(
+      false,
+    );
   });
 });

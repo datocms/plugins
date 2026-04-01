@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
 import { applyOperation } from '@utils/operationApplicators';
+import { beforeEach, describe, expect, it } from 'vitest';
 import {
   createBaseComment,
   createCommentWithReplies,
@@ -8,10 +8,10 @@ import {
 } from '../fixtures/comments';
 import {
   createAddCommentOp,
+  createAddReplyOp,
   createDeleteCommentOp,
   createEditCommentOp,
   createUpvoteCommentOp,
-  createAddReplyOp,
 } from '../fixtures/operations';
 
 describe('applyOperation (dispatcher)', () => {
@@ -48,7 +48,9 @@ describe('applyOperation (dispatcher)', () => {
 
       const result = applyOperation([comment], op);
 
-      expect(result.comments[0].content).toEqual([createTextSegment('Updated')]);
+      expect(result.comments[0].content).toEqual([
+        createTextSegment('Updated'),
+      ]);
     });
 
     it('handles UPVOTE_COMMENT operations', () => {
@@ -86,13 +88,19 @@ describe('applyOperation (dispatcher)', () => {
       expect(comments).toHaveLength(1);
 
       // Add upvote
-      const upvoteOp = createUpvoteCommentOp('comment-1', 'add', 'voter-user-1');
+      const upvoteOp = createUpvoteCommentOp(
+        'comment-1',
+        'add',
+        'voter-user-1',
+      );
       result = applyOperation(comments, upvoteOp);
       comments = result.comments;
       expect(comments[0].upvoterIds).toHaveLength(1);
 
       // Edit content
-      const editOp = createEditCommentOp('comment-1', [createTextSegment('Edited')]);
+      const editOp = createEditCommentOp('comment-1', [
+        createTextSegment('Edited'),
+      ]);
       result = applyOperation(comments, editOp);
       comments = result.comments;
       expect(comments[0].content).toEqual([createTextSegment('Edited')]);
@@ -148,7 +156,7 @@ describe('applyOperation (dispatcher)', () => {
 
     it('does not mutate original replies array', () => {
       const parent = createCommentWithReplies(2, { id: 'parent' });
-      const originalRepliesLength = parent.replies!.length;
+      const originalRepliesLength = parent.replies?.length;
       const newReply = createBaseComment({
         id: 'new-reply',
         parentCommentId: 'parent',
@@ -158,7 +166,9 @@ describe('applyOperation (dispatcher)', () => {
       const result = applyOperation([parent], op);
 
       expect(parent.replies).toHaveLength(originalRepliesLength);
-      expect(result.comments[0].replies).toHaveLength(originalRepliesLength + 1);
+      expect(result.comments[0].replies).toHaveLength(
+        originalRepliesLength + 1,
+      );
     });
   });
 

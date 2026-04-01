@@ -1,6 +1,6 @@
-import { useCallback, useMemo, useState } from 'react';
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import { Button, SelectField, TextField } from 'datocms-react-ui';
+import { useCallback, useMemo, useState } from 'react';
 import type { ConfigParameters, NormalizedConfigParameters } from '../types';
 import {
   normalizeConfigParameters,
@@ -11,10 +11,12 @@ import {
 import {
   getModelOptions,
   providerOptions,
-  type ProviderId,
-  type SelectOption,
-  type SupportedImageModel,
-} from '../utils/imageService';
+} from '../utils/imageService/catalog';
+import type {
+  ProviderId,
+  SelectOption,
+  SupportedImageModel,
+} from '../utils/imageService/types';
 import s from './styles.module.css';
 
 type Props = {
@@ -31,10 +33,10 @@ export default function ConfigScreen({ ctx }: Props) {
     [ctx.plugin.attributes.parameters],
   );
 
-  const [values, setValues] = useState<NormalizedConfigParameters>(initialValues);
-  const [savedValues, setSavedValues] = useState<NormalizedConfigParameters>(
-    initialValues,
-  );
+  const [values, setValues] =
+    useState<NormalizedConfigParameters>(initialValues);
+  const [savedValues, setSavedValues] =
+    useState<NormalizedConfigParameters>(initialValues);
   const [activeProvider, setActiveProvider] = useState<ProviderId>(
     initialValues.defaultProvider,
   );
@@ -47,7 +49,8 @@ export default function ConfigScreen({ ctx }: Props) {
     [activeProvider],
   );
   const isDirty =
-    serializeConfigParameters(values) !== serializeConfigParameters(savedValues);
+    serializeConfigParameters(values) !==
+    serializeConfigParameters(savedValues);
 
   const handleProviderChange = useCallback((selectedOption: unknown) => {
     const nextProvider = getSelectOptionValue<ProviderId>(selectedOption);
@@ -76,7 +79,8 @@ export default function ConfigScreen({ ctx }: Props) {
 
   const handleModelChange = useCallback(
     (selectedOption: unknown) => {
-      const nextModel = getSelectOptionValue<SupportedImageModel>(selectedOption);
+      const nextModel =
+        getSelectOptionValue<SupportedImageModel>(selectedOption);
 
       if (!nextModel) {
         return;
@@ -97,7 +101,8 @@ export default function ConfigScreen({ ctx }: Props) {
 
       const nextValues = sanitizeConfigParameters(values);
       const hasAnyKey = Boolean(
-        nextValues.providers.openai.apiKey || nextValues.providers.google.apiKey,
+        nextValues.providers.openai.apiKey ||
+          nextValues.providers.google.apiKey,
       );
 
       if (!hasAnyKey) {

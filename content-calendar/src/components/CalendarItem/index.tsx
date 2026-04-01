@@ -1,3 +1,4 @@
+import type { SchemaTypes } from '@datocms/cma-client';
 import { format } from 'date-fns';
 import { useCtx } from 'datocms-react-ui';
 import { type CSSProperties, useContext, useEffect, useMemo } from 'react';
@@ -5,7 +6,6 @@ import { HoverItemContext } from '../../context/HoverItemContext';
 import type { Criteria } from '../../types';
 import { colorForModel } from '../../utils/colorForModel';
 import s from './styles.module.css';
-import type { SchemaTypes } from '@datocms/cma-client';
 
 type PropTypes = {
   item: SchemaTypes.Item;

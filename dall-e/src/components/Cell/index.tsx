@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
 import type { RenderAssetSourceCtx } from 'datocms-plugin-sdk';
 import { useCtx } from 'datocms-react-ui';
-import type { NormalizedGenerationImage } from '../../utils/imageService';
+import { useEffect, useState } from 'react';
+import type { NormalizedGenerationImage } from '../../utils/imageService/types';
 import s from './styles.module.css';
 
 type Props = {
@@ -10,11 +10,7 @@ type Props = {
   onToggleSelected: () => void;
 };
 
-export default function Cell({
-  image,
-  selected,
-  onToggleSelected,
-}: Props) {
+export default function Cell({ image, selected, onToggleSelected }: Props) {
   const ctx = useCtx<RenderAssetSourceCtx>();
   const [previewFailed, setPreviewFailed] = useState(false);
 
@@ -67,10 +63,7 @@ export default function Cell({
       onClick={onToggleSelected}
       type="button"
     >
-      <span
-        aria-hidden="true"
-        className={selectionMarkClassName}
-      >
+      <span aria-hidden="true" className={selectionMarkClassName}>
         <span className={s.selectionIcon} />
       </span>
       <img

@@ -1,5 +1,5 @@
 import { findIconDefinition } from '@fortawesome/fontawesome-svg-core';
-import { type IconName, fas } from '@fortawesome/free-solid-svg-icons';
+import { fas, type IconName } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import type { RenderModalCtx } from 'datocms-plugin-sdk';
 import { Canvas, TextInput } from 'datocms-react-ui';

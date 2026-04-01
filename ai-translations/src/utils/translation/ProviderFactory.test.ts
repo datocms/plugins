@@ -4,9 +4,9 @@
  * Provider instantiation requires complex mocking that's brittle.
  */
 
-import { describe, it, expect } from 'vitest';
-import { isProviderConfigured } from './ProviderFactory';
+import { describe, expect, it } from 'vitest';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
+import { isProviderConfigured } from './ProviderFactory';
 
 describe('ProviderFactory', () => {
   const baseParams: ctxParamsType = {

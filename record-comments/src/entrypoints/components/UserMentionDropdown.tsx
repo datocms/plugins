@@ -1,7 +1,7 @@
 import type { UserInfo } from '@hooks/useMentions';
-import { MentionDropdownBase } from './shared/MentionDropdownBase';
-import { cn } from '@/utils/cn';
 import styles from '@styles/comment.module.css';
+import { cn } from '@/utils/cn';
+import { MentionDropdownBase } from './shared/MentionDropdownBase';
 
 type UserMentionDropdownProps = {
   users: UserInfo[];
@@ -20,7 +20,9 @@ const UserMentionDropdown = ({
   onClose,
   position = 'below',
 }: UserMentionDropdownProps) => {
-  const emptyMessage = query ? `No users matching "${query}"` : 'No users available';
+  const emptyMessage = query
+    ? `No users matching "${query}"`
+    : 'No users available';
 
   return (
     <MentionDropdownBase
@@ -35,7 +37,10 @@ const UserMentionDropdown = ({
         <button
           ref={isSelected ? selectedRef : null}
           type="button"
-          className={cn(styles.mentionOption, isSelected && styles.mentionOptionSelected)}
+          className={cn(
+            styles.mentionOption,
+            isSelected && styles.mentionOptionSelected,
+          )}
           onMouseDown={(e) => {
             // Prevent blur on textarea
             e.preventDefault();

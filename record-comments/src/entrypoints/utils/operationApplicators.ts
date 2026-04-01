@@ -1,20 +1,26 @@
 import type { CommentType } from '@ctypes/comments';
 import type {
-  CommentOperation,
   AddCommentOp,
+  AddReplyOp,
+  CommentOperation,
   DeleteCommentOp,
   EditCommentOp,
-  UpvoteCommentOp,
-  AddReplyOp,
   OperationResult,
+  UpvoteCommentOp,
 } from '@ctypes/operations';
 import { logWarn } from '@/utils/errorLogger';
 
-function findTopLevelComment(comments: CommentType[], id: string): CommentType | undefined {
+function findTopLevelComment(
+  comments: CommentType[],
+  id: string,
+): CommentType | undefined {
   return comments.find((c) => c.id === id);
 }
 
-function findReply(parent: CommentType, replyId: string): CommentType | undefined {
+function findReply(
+  parent: CommentType,
+  replyId: string,
+): CommentType | undefined {
   return parent.replies?.find((r) => r.id === replyId);
 }
 
@@ -54,13 +60,13 @@ function resolveCommentTarget(
   comments: CommentType[],
   targetId: string,
   parentCommentId: string | undefined,
-  config: ResolutionFailureConfig
+  config: ResolutionFailureConfig,
 ): CommentResolution {
   if (parentCommentId) {
     const parent = findTopLevelComment(comments, parentCommentId);
     if (!parent) {
       logWarn(
-        `${config.operationName}: parent ${parentCommentId} not found - parent may have been deleted by another user`
+        `${config.operationName}: parent ${parentCommentId} not found - parent may have been deleted by another user`,
       );
       return {
         success: false,
@@ -80,7 +86,9 @@ function resolveCommentTarget(
           result: { comments, status: 'no_op_idempotent' },
         };
       }
-      logWarn(`${config.operationName}: reply ${targetId} not found in parent ${parentCommentId}`);
+      logWarn(
+        `${config.operationName}: reply ${targetId} not found in parent ${parentCommentId}`,
+      );
       return {
         success: false,
         result: {
@@ -120,13 +128,18 @@ function applyCommentUpdate(
   comments: CommentType[],
   targetId: string,
   parentCommentId: string | undefined,
-  updateFn: (comment: CommentType) => CommentType
+  updateFn: (comment: CommentType) => CommentType,
 ): CommentType[] {
   if (parentCommentId) {
     return comments.map((c) =>
       c.id === parentCommentId
-        ? { ...c, replies: c.replies?.map((r) => (r.id === targetId ? updateFn(r) : r)) }
-        : c
+        ? {
+            ...c,
+            replies: c.replies?.map((r) =>
+              r.id === targetId ? updateFn(r) : r,
+            ),
+          }
+        : c,
     );
   }
   return comments.map((c) => (c.id === targetId ? updateFn(c) : c));
@@ -134,7 +147,7 @@ function applyCommentUpdate(
 
 export function applyOperation(
   comments: CommentType[],
-  op: CommentOperation
+  op: CommentOperation,
 ): OperationResult {
   switch (op.type) {
     case 'ADD_COMMENT':
@@ -150,14 +163,20 @@ export function applyOperation(
   }
 }
 
-function applyAddComment(comments: CommentType[], op: AddCommentOp): OperationResult {
+function applyAddComment(
+  comments: CommentType[],
+  op: AddCommentOp,
+): OperationResult {
   if (comments.some((c) => c.id === op.comment.id)) {
     return { comments, status: 'no_op_idempotent' };
   }
   return { comments: [op.comment, ...comments], status: 'applied' };
 }
 
-function applyDeleteComment(comments: CommentType[], op: DeleteCommentOp): OperationResult {
+function applyDeleteComment(
+  comments: CommentType[],
+  op: DeleteCommentOp,
+): OperationResult {
   const resolution = resolveCommentTarget(comments, op.id, op.parentCommentId, {
     operationName: 'DELETE_COMMENT',
     parentMissingReason: 'The comment thread was deleted by another user.',
@@ -173,15 +192,21 @@ function applyDeleteComment(comments: CommentType[], op: DeleteCommentOp): Opera
     const newComments = comments.map((c) =>
       c.id === op.parentCommentId
         ? { ...c, replies: c.replies?.filter((r) => r.id !== op.id) }
-        : c
+        : c,
     );
     return { comments: newComments, status: 'applied' };
   }
 
-  return { comments: comments.filter((c) => c.id !== op.id), status: 'applied' };
+  return {
+    comments: comments.filter((c) => c.id !== op.id),
+    status: 'applied',
+  };
 }
 
-function applyEditComment(comments: CommentType[], op: EditCommentOp): OperationResult {
+function applyEditComment(
+  comments: CommentType[],
+  op: EditCommentOp,
+): OperationResult {
   const resolution = resolveCommentTarget(comments, op.id, op.parentCommentId, {
     operationName: 'EDIT_COMMENT',
     parentMissingReason:
@@ -199,12 +224,15 @@ function applyEditComment(comments: CommentType[], op: EditCommentOp): Operation
     comments,
     op.id,
     op.parentCommentId,
-    (comment) => ({ ...comment, content: op.newContent })
+    (comment) => ({ ...comment, content: op.newContent }),
   );
   return { comments: newComments, status: 'applied' };
 }
 
-function applyUpvoteComment(comments: CommentType[], op: UpvoteCommentOp): OperationResult {
+function applyUpvoteComment(
+  comments: CommentType[],
+  op: UpvoteCommentOp,
+): OperationResult {
   const resolution = resolveCommentTarget(comments, op.id, op.parentCommentId, {
     operationName: 'UPVOTE_COMMENT',
     parentMissingReason: 'The comment thread was deleted by another user.',
@@ -231,19 +259,28 @@ function applyUpvoteComment(comments: CommentType[], op: UpvoteCommentOp): Opera
     comments,
     op.id,
     op.parentCommentId,
-    (comment) => ({ ...comment, upvoterIds: modifyUpvotes(comment.upvoterIds) })
+    (comment) => ({
+      ...comment,
+      upvoterIds: modifyUpvotes(comment.upvoterIds),
+    }),
   );
   return { comments: newComments, status: 'applied' };
 }
 
-function applyAddReply(comments: CommentType[], op: AddReplyOp): OperationResult {
+function applyAddReply(
+  comments: CommentType[],
+  op: AddReplyOp,
+): OperationResult {
   const parent = findTopLevelComment(comments, op.parentCommentId);
   if (!parent) {
-    logWarn(`ADD_REPLY: parent ${op.parentCommentId} not found - user's reply content is lost`);
+    logWarn(
+      `ADD_REPLY: parent ${op.parentCommentId} not found - user's reply content is lost`,
+    );
     return {
       comments,
       status: 'failed_parent_missing',
-      failureReason: 'Your reply could not be saved because the comment was deleted by another user.',
+      failureReason:
+        'Your reply could not be saved because the comment was deleted by another user.',
     };
   }
 

@@ -3,10 +3,10 @@
  * Tests translation of simple text fields.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import { translateDefaultFieldValue } from './DefaultTranslation';
 import type { TranslationProvider } from './types';
-import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 
 // Mock translateArray
 vi.mock('./translateArray', () => ({
@@ -49,7 +49,7 @@ describe('DefaultTranslation', () => {
           mockPluginParams,
           'de',
           'en',
-          mockProvider
+          mockProvider,
         );
 
         expect(result).toBe(null);
@@ -62,7 +62,7 @@ describe('DefaultTranslation', () => {
           mockPluginParams,
           'de',
           'en',
-          mockProvider
+          mockProvider,
         );
 
         expect(result).toBe(undefined);
@@ -75,7 +75,7 @@ describe('DefaultTranslation', () => {
           mockPluginParams,
           'de',
           'en',
-          mockProvider
+          mockProvider,
         );
 
         expect(result).toBe('');
@@ -92,7 +92,7 @@ describe('DefaultTranslation', () => {
           mockPluginParams,
           'de',
           'en',
-          mockProvider
+          mockProvider,
         );
 
         expect(result).toBe('Hallo Welt');
@@ -102,7 +102,7 @@ describe('DefaultTranslation', () => {
           ['Hello World'],
           'en',
           'de',
-          { isHTML: false, recordContext: '' }
+          { isHTML: false, recordContext: '' },
         );
       });
 
@@ -116,7 +116,7 @@ describe('DefaultTranslation', () => {
           'en',
           mockProvider,
           undefined,
-          'This is a product description'
+          'This is a product description',
         );
 
         expect(translateArray).toHaveBeenCalledWith(
@@ -125,7 +125,7 @@ describe('DefaultTranslation', () => {
           ['Original'],
           'en',
           'de',
-          { isHTML: false, recordContext: 'This is a product description' }
+          { isHTML: false, recordContext: 'This is a product description' },
         );
       });
 
@@ -137,7 +137,7 @@ describe('DefaultTranslation', () => {
           mockPluginParams,
           'de',
           'en',
-          mockProvider
+          mockProvider,
         );
 
         expect(translateArray).toHaveBeenCalledWith(
@@ -146,7 +146,7 @@ describe('DefaultTranslation', () => {
           ['123'],
           'en',
           'de',
-          expect.any(Object)
+          expect.any(Object),
         );
         expect(result).toBe('123');
       });
@@ -162,8 +162,8 @@ describe('DefaultTranslation', () => {
             mockPluginParams,
             'de',
             'en',
-            mockProvider
-          )
+            mockProvider,
+          ),
         ).rejects.toThrow();
       });
     });
@@ -177,7 +177,7 @@ describe('DefaultTranslation', () => {
           mockPluginParams,
           'fr',
           'en',
-          mockProvider
+          mockProvider,
         );
 
         expect(translateArray).toHaveBeenCalledWith(
@@ -186,7 +186,7 @@ describe('DefaultTranslation', () => {
           ['Hello'],
           'en',
           'fr',
-          expect.any(Object)
+          expect.any(Object),
         );
       });
 
@@ -198,7 +198,7 @@ describe('DefaultTranslation', () => {
           mockPluginParams,
           'pt-BR',
           'en-US',
-          mockProvider
+          mockProvider,
         );
 
         expect(translateArray).toHaveBeenCalledWith(
@@ -207,7 +207,7 @@ describe('DefaultTranslation', () => {
           ['Hello'],
           'en-US',
           'pt-BR',
-          expect.any(Object)
+          expect.any(Object),
         );
       });
     });
@@ -227,7 +227,7 @@ describe('DefaultTranslation', () => {
           'de',
           'en',
           mockProvider,
-          callbacks
+          callbacks,
         );
 
         // The function accepts callbacks but translateArray doesn't use them directly

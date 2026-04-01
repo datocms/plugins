@@ -3,10 +3,10 @@
  * Tests translation of structured text fields with complex node structures.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import { translateStructuredTextValue } from './StructuredTextTranslation';
 import type { TranslationProvider } from './types';
-import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 
 // Mock translateArray
 vi.mock('./translateArray', () => ({
@@ -18,8 +18,8 @@ vi.mock('./TranslateField', () => ({
   translateFieldValue: vi.fn(),
 }));
 
-import { translateArray } from './translateArray';
 import { translateFieldValue } from './TranslateField';
+import { translateArray } from './translateArray';
 
 describe('StructuredTextTranslation', () => {
   const mockPluginParams: ctxParamsType = {
@@ -57,7 +57,7 @@ describe('StructuredTextTranslation', () => {
           'en',
           mockProvider,
           'api-token',
-          'main'
+          'main',
         );
 
         expect(result).toBe(null);
@@ -72,7 +72,7 @@ describe('StructuredTextTranslation', () => {
           'en',
           mockProvider,
           'api-token',
-          'main'
+          'main',
         );
 
         expect(result).toEqual([]);
@@ -87,7 +87,7 @@ describe('StructuredTextTranslation', () => {
           'en',
           mockProvider,
           'api-token',
-          'main'
+          'main',
         );
 
         expect(result).toBe('not an array');
@@ -112,7 +112,7 @@ describe('StructuredTextTranslation', () => {
           'en',
           mockProvider,
           'api-token',
-          'main'
+          'main',
         );
 
         expect(translateArray).toHaveBeenCalledWith(
@@ -121,7 +121,7 @@ describe('StructuredTextTranslation', () => {
           ['Hello World'],
           'en',
           'de',
-          { isHTML: false, recordContext: '' }
+          { isHTML: false, recordContext: '' },
         );
 
         expect(result).toEqual([
@@ -138,11 +138,7 @@ describe('StructuredTextTranslation', () => {
         const structuredText = [
           {
             type: 'paragraph',
-            children: [
-              { text: 'One' },
-              { text: 'Two' },
-              { text: 'Three' },
-            ],
+            children: [{ text: 'One' }, { text: 'Two' }, { text: 'Three' }],
           },
         ];
 
@@ -153,10 +149,12 @@ describe('StructuredTextTranslation', () => {
           'en',
           mockProvider,
           'api-token',
-          'main'
+          'main',
         );
 
-        const firstParagraph = (result as Array<{ children: Array<{ text: string }> }>)[0];
+        const firstParagraph = (
+          result as Array<{ children: Array<{ text: string }> }>
+        )[0];
         expect(firstParagraph.children[0].text).toBe('Eins');
         expect(firstParagraph.children[1].text).toBe('Zwei');
         expect(firstParagraph.children[2].text).toBe('Drei');
@@ -188,7 +186,7 @@ describe('StructuredTextTranslation', () => {
           'en',
           mockProvider,
           'api-token',
-          'main'
+          'main',
         );
 
         expect(translateArray).toHaveBeenCalledWith(
@@ -197,10 +195,17 @@ describe('StructuredTextTranslation', () => {
           ['Click here'],
           'en',
           'it',
-          expect.any(Object)
+          expect.any(Object),
         );
 
-        const link = (result as Array<{ children: Array<{ meta: Array<{ value: string }>; children: Array<{ value: string }> }> }>)[0].children[0];
+        const link = (
+          result as Array<{
+            children: Array<{
+              meta: Array<{ value: string }>;
+              children: Array<{ value: string }>;
+            }>;
+          }>
+        )[0].children[0];
         expect(link.children[0].value).toBe('Clicca qui');
         expect(link.meta[0].value).toBe('_blank');
       });
@@ -234,7 +239,7 @@ describe('StructuredTextTranslation', () => {
           'en',
           mockProvider,
           'api-token',
-          'main'
+          'main',
         );
 
         expect(translateArray).toHaveBeenCalledWith(
@@ -243,7 +248,7 @@ describe('StructuredTextTranslation', () => {
           ['Click ', 'here', ' for more.'],
           'en',
           'de',
-          expect.any(Object)
+          expect.any(Object),
         );
 
         // Verify structure is preserved
@@ -271,10 +276,14 @@ describe('StructuredTextTranslation', () => {
           'en',
           mockProvider,
           'api-token',
-          'main'
+          'main',
         );
 
-        const paragraph = (result as Array<{ children: Array<{ text: string; bold?: boolean; italic?: boolean }> }>)[0];
+        const paragraph = (
+          result as Array<{
+            children: Array<{ text: string; bold?: boolean; italic?: boolean }>;
+          }>
+        )[0];
         expect(paragraph.children[0].text).toBe('Fett');
         expect(paragraph.children[0].bold).toBe(true);
         expect(paragraph.children[1].text).toBe('Kursiv');
@@ -311,7 +320,7 @@ describe('StructuredTextTranslation', () => {
           'en',
           mockProvider,
           'api-token',
-          'main'
+          'main',
         );
 
         expect(translateFieldValue).toHaveBeenCalled();
@@ -330,7 +339,7 @@ describe('StructuredTextTranslation', () => {
           undefined,
           '',
           undefined,
-          { bypassFieldTypeAllowlist: true }
+          { bypassFieldTypeAllowlist: true },
         );
       });
     });
@@ -342,11 +351,7 @@ describe('StructuredTextTranslation', () => {
         const structuredText = [
           {
             type: 'paragraph',
-            children: [
-              { text: 'One' },
-              { text: 'Two' },
-              { text: 'Three' },
-            ],
+            children: [{ text: 'One' }, { text: 'Two' }, { text: 'Three' }],
           },
         ];
 
@@ -357,10 +362,12 @@ describe('StructuredTextTranslation', () => {
           'en',
           mockProvider,
           'api-token',
-          'main'
+          'main',
         );
 
-        const paragraph = (result as Array<{ children: Array<{ text: string }> }>)[0];
+        const paragraph = (
+          result as Array<{ children: Array<{ text: string }> }>
+        )[0];
         expect(paragraph.children).toHaveLength(3);
         expect(paragraph.children[0].text).toBe('Eins');
         // Remaining should be originals
@@ -379,10 +386,7 @@ describe('StructuredTextTranslation', () => {
         const structuredText = [
           {
             type: 'paragraph',
-            children: [
-              { text: 'One' },
-              { text: 'Two' },
-            ],
+            children: [{ text: 'One' }, { text: 'Two' }],
           },
         ];
 
@@ -393,10 +397,12 @@ describe('StructuredTextTranslation', () => {
           'en',
           mockProvider,
           'api-token',
-          'main'
+          'main',
         );
 
-        const paragraph = (result as Array<{ children: Array<{ text: string }> }>)[0];
+        const paragraph = (
+          result as Array<{ children: Array<{ text: string }> }>
+        )[0];
         expect(paragraph.children).toHaveLength(2);
       });
     });
@@ -423,10 +429,12 @@ describe('StructuredTextTranslation', () => {
           'en',
           mockProvider,
           'api-token',
-          'main'
+          'main',
         );
 
-        const paragraph = (result as Array<{ children: Array<{ text: string }> }>)[0];
+        const paragraph = (
+          result as Array<{ children: Array<{ text: string }> }>
+        )[0];
         // Middle space should be preserved
         expect(paragraph.children[1].text).toBe(' ');
       });
@@ -452,10 +460,12 @@ describe('StructuredTextTranslation', () => {
           'en',
           mockProvider,
           'api-token',
-          'main'
+          'main',
         );
 
-        const paragraph = (result as Array<{ children: Array<{ text: string }> }>)[0];
+        const paragraph = (
+          result as Array<{ children: Array<{ text: string }> }>
+        )[0];
         // Should restore trailing space that was on original
         expect(paragraph.children[0].text.endsWith(' ')).toBe(true);
       });
@@ -480,10 +490,13 @@ describe('StructuredTextTranslation', () => {
           'en',
           mockProvider,
           'api-token',
-          'main'
+          'main',
         );
 
-        const paragraph = result as Array<{ id?: string; children: Array<{ id?: string }> }>;
+        const paragraph = result as Array<{
+          id?: string;
+          children: Array<{ id?: string }>;
+        }>;
         expect(paragraph[0].id).toBeUndefined();
         expect(paragraph[0].children[0].id).toBeUndefined();
       });
@@ -513,7 +526,7 @@ describe('StructuredTextTranslation', () => {
           'en',
           mockProvider,
           'api-token',
-          'main'
+          'main',
         );
 
         // Should return in the same format
@@ -541,8 +554,8 @@ describe('StructuredTextTranslation', () => {
             'en',
             mockProvider,
             'api-token',
-            'main'
-          )
+            'main',
+          ),
         ).rejects.toThrow();
       });
     });
@@ -572,7 +585,7 @@ describe('StructuredTextTranslation', () => {
           mockProvider,
           'api-token',
           'main',
-          callbacks
+          callbacks,
         );
 
         expect(translateFieldValue).toHaveBeenCalledWith(
@@ -589,7 +602,7 @@ describe('StructuredTextTranslation', () => {
           callbacks,
           '',
           undefined,
-          { bypassFieldTypeAllowlist: true }
+          { bypassFieldTypeAllowlist: true },
         );
       });
     });
@@ -611,7 +624,7 @@ describe('StructuredTextTranslation', () => {
           'api-token',
           'main',
           undefined,
-          'Blog post content'
+          'Blog post content',
         );
 
         expect(translateArray).toHaveBeenCalledWith(
@@ -620,7 +633,7 @@ describe('StructuredTextTranslation', () => {
           ['Original'],
           'en',
           'de',
-          { isHTML: false, recordContext: 'Blog post content' }
+          { isHTML: false, recordContext: 'Blog post content' },
         );
       });
     });
@@ -640,7 +653,7 @@ describe('StructuredTextTranslation', () => {
           'en',
           mockProvider,
           'api-token',
-          'main'
+          'main',
         );
 
         expect(translateArray).not.toHaveBeenCalled();

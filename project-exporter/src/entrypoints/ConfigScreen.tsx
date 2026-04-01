@@ -1,3 +1,4 @@
+import { buildClient } from '@datocms/cma-client-browser';
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import {
   Button,
@@ -10,12 +11,11 @@ import {
   SelectField,
   TextField,
 } from 'datocms-react-ui';
-import s from './styles.module.css';
 import { useEffect, useState } from 'react';
-import downloadAllRecords from '../utils/downloadAllRecords';
 import downloadAllAssets from '../utils/downloadAllAssets';
-import { buildClient } from '@datocms/cma-client-browser';
+import downloadAllRecords from '../utils/downloadAllRecords';
 import LoadingOverlay from './LoadingOverlay';
+import s from './styles.module.css';
 
 type Props = {
   ctx: RenderConfigScreenCtx;
@@ -32,19 +32,24 @@ export default function ConfigScreen({ ctx }: Props) {
   const [isLoading, setLoading] = useState(false);
   const [loadingStatus, setLoadingStatus] = useState('');
   const [loadingProgress, setLoadingProgress] = useState<number | undefined>(
-    undefined
+    undefined,
   );
   const [isFilteredExportOpen, setIsFilteredExportOpen] = useState(false);
   const [selectedModels, setSelectedModels] = useState<ModelObject[]>([]);
   const [allModels, setAllModels] = useState<ModelObject[]>([]);
   const [selectedFormat, setSelectedFormat] = useState<AvailableFormats>(
-    (ctx.plugin.attributes.parameters.format as AvailableFormats) ?? 'JSON'
+    (ctx.plugin.attributes.parameters.format as AvailableFormats) ?? 'JSON',
   );
   const [textQuery, setTextQuery] = useState('');
 
   useEffect(() => {
+    const accessToken = ctx.currentUserAccessToken;
+    if (!accessToken) {
+      return;
+    }
+
     const client = buildClient({
-      apiToken: ctx.currentUserAccessToken!,
+      apiToken: accessToken,
     });
 
     client.itemTypes.list().then((models) => {
@@ -53,26 +58,27 @@ export default function ConfigScreen({ ctx }: Props) {
           .filter((model) => !model.modular_block)
           .map((model) => {
             return { name: model.name, id: model.id };
-          })
+          }),
       );
     });
   }, [ctx.currentUserAccessToken]);
 
   const handleRecordDownload = async (
-    options: { modelIDs?: string[]; textQuery?: string } = {}
+    options: { modelIDs?: string[]; textQuery?: string } = {},
   ) => {
     setLoading(true);
     setLoadingStatus('Initializing download...');
     setLoadingProgress(0);
 
+    const accessToken = ctx.currentUserAccessToken ?? '';
     await downloadAllRecords(
-      ctx.currentUserAccessToken!,
+      accessToken,
       selectedFormat,
       options,
       (progress, msg) => {
         setLoadingStatus(msg);
         setLoadingProgress(progress);
-      }
+      },
     );
 
     setLoading(false);
@@ -90,7 +96,7 @@ export default function ConfigScreen({ ctx }: Props) {
       (progress, msg) => {
         setLoadingStatus(msg);
         setLoadingProgress(progress);
-      }
+      },
     );
 
     setLoading(false);
@@ -240,7 +246,7 @@ export default function ConfigScreen({ ctx }: Props) {
                     setSelectedModels(
                       newValue.map((model) => {
                         return { name: model.label, id: model.value };
-                      })
+                      }),
                     )
                   }
                 />

@@ -45,7 +45,7 @@ function AddressBar({
   onFrontendChange,
 }: AddressBarProps) {
   const visualEditingOrigin = new URL(
-    frontend.visualEditing!.enableDraftModeUrl,
+    frontend.visualEditing?.enableDraftModeUrl,
   ).origin;
 
   const { contentLink, iframeState } = useContentLink();

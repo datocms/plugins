@@ -1,13 +1,13 @@
-import ISO6391 from 'iso-639-1';
 import * as countryList from 'country-list';
+import ISO6391 from 'iso-639-1';
 
 /**
  * Get a human-readable label for a locale code.
  * Handles language codes (e.g., 'en') and language-country codes (e.g., 'en-US')
- * 
+ *
  * @param locale - The locale code to get a label for
  * @returns A formatted, human-readable label for the locale
- * 
+ *
  * @example
  * getLocaleLabel('en') // returns 'English'
  * getLocaleLabel('en-US') // returns 'English (United States)'
@@ -22,17 +22,23 @@ export function getLocaleLabel(locale: string): string {
   const countryCode = parts[1];
 
   // Get the language name
-  const languageName = ISO6391.getName(languageCode) || languageCode.toUpperCase();
+  const languageName =
+    ISO6391.getName(languageCode) || languageCode.toUpperCase();
 
   // If there's a country code, append the country name
   if (countryCode) {
-    const countryName = countryList.getName(countryCode.toUpperCase()) || countryCode.toUpperCase();
+    const countryName =
+      countryList.getName(countryCode.toUpperCase()) ||
+      countryCode.toUpperCase();
     return `${languageName} (${countryName})`;
   }
 
   // If there's only a language code, check if it's uppercase (like 'DE' instead of 'de')
   // This handles cases where a country code is used as a language code
-  if (languageCode.length === 2 && languageCode === languageCode.toUpperCase()) {
+  if (
+    languageCode.length === 2 &&
+    languageCode === languageCode.toUpperCase()
+  ) {
     const countryName = countryList.getName(languageCode);
     if (countryName) {
       return countryName;

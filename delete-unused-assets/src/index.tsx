@@ -1,6 +1,6 @@
-import { type RenderModalCtx, connect } from 'datocms-plugin-sdk';
-import { render } from './utils/render';
+import { connect, type RenderModalCtx } from 'datocms-plugin-sdk';
 import ConfigScreen from './entrypoints/ConfigScreen';
+import { render } from './utils/render';
 import 'datocms-react-ui/styles.css';
 import CustomModal from './entrypoints/CustomModal';
 

@@ -1,1 +1,0 @@
-export { ConfigurationForm } from './ConfigurationForm';

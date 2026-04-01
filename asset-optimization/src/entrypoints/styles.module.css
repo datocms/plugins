@@ -32,8 +32,14 @@
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; transform: translateY(-10px); }
-  to { opacity: 1; transform: translateY(0); }
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .assetListCard:hover {
@@ -173,7 +179,8 @@
   flex-wrap: wrap;
 }
 
-.sizeBefore, .sizeAfter {
+.sizeBefore,
+.sizeAfter {
   display: flex;
   align-items: center;
   gap: 4px;
@@ -325,7 +332,11 @@
 
 .progressBarFill {
   height: 100%;
-  background: linear-gradient(to right, var(--accent-color), rgba(108, 92, 231, 0.7));
+  background: linear-gradient(
+    to right,
+    var(--accent-color),
+    rgba(108, 92, 231, 0.7)
+  );
   transition: width 0.3s ease;
   border-radius: 5px;
   position: absolute;
@@ -457,7 +468,9 @@
 
 .clickable {
   cursor: pointer;
-  transition: transform 0.2s, box-shadow 0.2s;
+  transition:
+    transform 0.2s,
+    box-shadow 0.2s;
   border: 2px solid transparent;
 }
 
@@ -594,7 +607,9 @@
   padding: var(--spacing-s) var(--spacing-m);
   border: 1px solid var(--accent-color);
   border-radius: var(--border-radius);
-  transition: background-color 0.2s, color 0.2s;
+  transition:
+    background-color 0.2s,
+    color 0.2s;
   font-weight: 500;
   display: inline-block;
   min-width: 100px;
@@ -683,15 +698,15 @@
     flex-wrap: wrap;
     justify-content: space-between;
   }
-  
+
   .buttonGroup > button:first-child {
     flex: 1;
   }
-  
+
   .buttonGroup > button:nth-child(2) {
     flex: 2;
   }
-  
+
   .buttonGroup > button:last-child {
     flex: 2;
   }
@@ -773,7 +788,7 @@
 }
 
 .clickableStatsCard::after {
-  content: '';
+  content: "";
   position: absolute;
   bottom: 0;
   left: 0;
@@ -1072,7 +1087,9 @@
   left: 50%;
   transform: translateX(-50%);
   opacity: 0;
-  transition: opacity 0.2s, visibility 0.2s;
+  transition:
+    opacity 0.2s,
+    visibility 0.2s;
   font-size: var(--font-size-xxs);
   font-family: var(--mono-font-family, monospace);
   pointer-events: none;

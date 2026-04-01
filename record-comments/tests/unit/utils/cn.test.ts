@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { cn } from '@/utils/cn';
 
 describe('cn', () => {
@@ -78,7 +78,7 @@ describe('cn', () => {
         'button',
         isActive && 'button--active',
         isDisabled && 'button--disabled',
-        isLarge && 'button--large'
+        isLarge && 'button--large',
       );
 
       expect(result).toBe('button button--active button--large');
@@ -107,7 +107,11 @@ describe('cn', () => {
 
     it('handles numeric zero as falsy', () => {
       // 0 is not a valid class type, but testing edge behavior
-      const classes: Array<string | false | null | undefined> = ['class1', false, 'class2'];
+      const classes: Array<string | false | null | undefined> = [
+        'class1',
+        false,
+        'class2',
+      ];
       const result = cn(...classes);
 
       expect(result).toBe('class1 class2');
@@ -124,7 +128,7 @@ describe('cn', () => {
         'btn',
         `btn--${variant}`,
         `btn--${size}`,
-        disabled && 'btn--disabled'
+        disabled && 'btn--disabled',
       );
 
       expect(result).toBe('btn btn--primary btn--large');
@@ -137,7 +141,7 @@ describe('cn', () => {
       const result = cn(
         'card',
         isSelected && 'card--selected',
-        isHighlighted && 'card--highlighted'
+        isHighlighted && 'card--highlighted',
       );
 
       expect(result).toBe('card card--selected');

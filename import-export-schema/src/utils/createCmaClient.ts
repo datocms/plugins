@@ -14,8 +14,13 @@ export function createCmaClient(
   ctx: CtxWithAuth,
   overrides?: Partial<ClientConfigOptions>,
 ): Client {
+  const apiToken = ctx.currentUserAccessToken;
+  if (!apiToken) {
+    throw new Error('No access token available for the current user.');
+  }
+
   return buildClient({
-    apiToken: ctx.currentUserAccessToken!,
+    apiToken,
     environment: ctx.environment,
     // Sensible defaults for plugin usage
     autoRetry: true,

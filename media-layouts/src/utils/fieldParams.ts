@@ -1,21 +1,21 @@
 import {
   DEFAULT_ASPECT_RATIO,
-  DEFAULT_WIDTH,
   DEFAULT_COLUMNS,
   DEFAULT_ROWS,
+  DEFAULT_WIDTH,
 } from '../constants';
-import { isWidthValue, normalizeWidthPresets } from './width';
 import type {
-  ValidGlobalParams,
   FieldParams,
-  FieldParamsLegacy,
   FieldParamsLayout,
-  ValidFieldParams,
+  FieldParamsLegacy,
   LayoutConfig,
+  ValidFieldParams,
+  ValidGlobalParams,
 } from '../types';
+import { isWidthValue, normalizeWidthPresets } from './width';
 
 export function isValidGlobalParams(
-  params: Record<string, unknown>
+  params: Record<string, unknown>,
 ): params is ValidGlobalParams {
   return (
     params &&
@@ -27,7 +27,7 @@ export function isValidGlobalParams(
 }
 
 export function normalizeGlobalParams(
-  params: Record<string, unknown>
+  params: Record<string, unknown>,
 ): ValidGlobalParams {
   if (isValidGlobalParams(params)) {
     return {
@@ -42,14 +42,15 @@ export function normalizeGlobalParams(
       typeof params?.defaultAspectRatio === 'string'
         ? params.defaultAspectRatio
         : DEFAULT_ASPECT_RATIO,
-    defaultWidth:
-      isWidthValue(params?.defaultWidth) ? params.defaultWidth : DEFAULT_WIDTH,
+    defaultWidth: isWidthValue(params?.defaultWidth)
+      ? params.defaultWidth
+      : DEFAULT_WIDTH,
     widthPresets: normalizeWidthPresets(params?.widthPresets),
   };
 }
 
 export function isValidFieldParamsLegacy(
-  params: Record<string, unknown>
+  params: Record<string, unknown>,
 ): params is FieldParamsLegacy {
   return (
     params &&
@@ -59,7 +60,7 @@ export function isValidFieldParamsLegacy(
 }
 
 export function isValidFieldParamsLayout(
-  params: Record<string, unknown>
+  params: Record<string, unknown>,
 ): params is FieldParamsLayout {
   return (
     params &&
@@ -69,9 +70,7 @@ export function isValidFieldParamsLayout(
   );
 }
 
-export function isValidLayoutConfig(
-  config: unknown
-): config is LayoutConfig {
+export function isValidLayoutConfig(config: unknown): config is LayoutConfig {
   if (!config || typeof config !== 'object') return false;
   const c = config as Record<string, unknown>;
   return (
@@ -102,19 +101,19 @@ export function isValidLayoutConfig(
           typeof (slot as Record<string, unknown>).colSpan === 'number') &&
         ((slot as Record<string, unknown>).autoSpan === undefined ||
           typeof (slot as Record<string, unknown>).autoSpan === 'boolean') &&
-        typeof (slot as Record<string, unknown>).required === 'boolean'
+        typeof (slot as Record<string, unknown>).required === 'boolean',
     )
   );
 }
 
 export function isValidFieldParams(
-  params: Record<string, unknown>
+  params: Record<string, unknown>,
 ): params is FieldParams {
   return isValidFieldParamsLegacy(params) || isValidFieldParamsLayout(params);
 }
 
 export function normalizeFieldParams(
-  params: Record<string, unknown>
+  params: Record<string, unknown>,
 ): ValidFieldParams {
   const enableCssClass =
     typeof params.enableCssClass === 'boolean' ? params.enableCssClass : false;
@@ -124,7 +123,9 @@ export function normalizeFieldParams(
       : false;
   // Handle layout mode
   if (params.mode === 'layout') {
-    const rawConfig = params.layoutConfig as Record<string, unknown> | undefined;
+    const rawConfig = params.layoutConfig as
+      | Record<string, unknown>
+      | undefined;
     const layoutConfig = normalizeLayoutConfig(rawConfig);
     return {
       mode: 'layout',
@@ -143,10 +144,9 @@ export function normalizeFieldParams(
       typeof fieldParams.overrideDefaultAspectRatio === 'string'
         ? fieldParams.overrideDefaultAspectRatio
         : null,
-    width:
-      isWidthValue(fieldParams.overrideDefaultWidth)
-        ? fieldParams.overrideDefaultWidth
-        : null,
+    width: isWidthValue(fieldParams.overrideDefaultWidth)
+      ? fieldParams.overrideDefaultWidth
+      : null,
     enableCssClass,
     enableLazyLoading,
   };
@@ -161,8 +161,34 @@ export function createDefaultLayoutConfig(): LayoutConfig {
   };
 }
 
+function normalizeLayoutSlot(
+  slot: unknown,
+  rows: number,
+  columns: number,
+): unknown {
+  if (!slot || typeof slot !== 'object') return slot;
+  const raw = slot as Record<string, unknown>;
+  const rowSpan =
+    typeof raw.rowSpan === 'number' && raw.rowSpan > 0 ? raw.rowSpan : 1;
+  const colSpan =
+    typeof raw.colSpan === 'number' && raw.colSpan > 0 ? raw.colSpan : 1;
+  const row = typeof raw.row === 'number' ? raw.row : 0;
+  const col = typeof raw.col === 'number' ? raw.col : 0;
+  const autoSpan = typeof raw.autoSpan === 'boolean' ? raw.autoSpan : false;
+  const width = isWidthValue(raw.width) ? raw.width : DEFAULT_WIDTH;
+  return {
+    ...raw,
+    width,
+    row,
+    col,
+    rowSpan: Math.min(rowSpan, Math.max(1, rows - row)),
+    colSpan: Math.min(colSpan, Math.max(1, columns - col)),
+    autoSpan,
+  };
+}
+
 export function normalizeLayoutConfig(
-  config: Record<string, unknown> | undefined
+  config: Record<string, unknown> | undefined,
 ): LayoutConfig {
   if (!config) {
     return createDefaultLayoutConfig();
@@ -171,8 +197,7 @@ export function normalizeLayoutConfig(
   const columns =
     typeof config.columns === 'number' ? config.columns : DEFAULT_COLUMNS;
   const rows = typeof config.rows === 'number' ? config.rows : DEFAULT_ROWS;
-  const layoutStyle =
-    config.layoutStyle === 'masonry' ? 'masonry' : 'grid';
+  const layoutStyle = config.layoutStyle === 'masonry' ? 'masonry' : 'grid';
   const layoutAspectRatio =
     typeof config.layoutAspectRatio === 'string'
       ? config.layoutAspectRatio
@@ -185,28 +210,7 @@ export function normalizeLayoutConfig(
     typeof config.layoutWidth === 'number' ? config.layoutWidth : undefined;
 
   const slots = Array.isArray(config.slots)
-    ? config.slots.map((slot) => {
-        if (!slot || typeof slot !== 'object') return slot;
-        const raw = slot as Record<string, unknown>;
-        const rowSpan =
-          typeof raw.rowSpan === 'number' && raw.rowSpan > 0 ? raw.rowSpan : 1;
-        const colSpan =
-          typeof raw.colSpan === 'number' && raw.colSpan > 0 ? raw.colSpan : 1;
-        const row = typeof raw.row === 'number' ? raw.row : 0;
-        const col = typeof raw.col === 'number' ? raw.col : 0;
-        const autoSpan =
-          typeof raw.autoSpan === 'boolean' ? raw.autoSpan : false;
-        const width = isWidthValue(raw.width) ? raw.width : DEFAULT_WIDTH;
-        return {
-          ...raw,
-          width,
-          row,
-          col,
-          rowSpan: Math.min(rowSpan, Math.max(1, rows - row)),
-          colSpan: Math.min(colSpan, Math.max(1, columns - col)),
-          autoSpan,
-        };
-      })
+    ? config.slots.map((slot) => normalizeLayoutSlot(slot, rows, columns))
     : [];
 
   return {
@@ -222,7 +226,7 @@ export function normalizeLayoutConfig(
 
 export function getEffectiveDefaults(
   fieldParams: ValidFieldParams,
-  globalParams: ValidGlobalParams
+  globalParams: ValidGlobalParams,
 ): { aspectRatio: string; width: ValidGlobalParams['defaultWidth'] } {
   if (fieldParams.mode === 'layout') {
     // Layout mode doesn't use global defaults - each slot has its own settings

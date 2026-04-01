@@ -1,13 +1,13 @@
-import type { Client } from '@datocms/cma-client-browser';
-import { getThumbnailUrl } from '@/utils/helpers';
-import { logError } from '@/utils/errorLogger';
 import type { RecordMention } from '@ctypes/mentions';
+import type { Client } from '@datocms/cma-client-browser';
+import { logError } from '@/utils/errorLogger';
+import { getThumbnailUrl } from '@/utils/helpers';
 import { extractLeadingEmoji } from './emojiUtils';
 import { extractLocalizedValue } from './fieldLoader';
 import {
   extractTitleFromRecordData,
-  type TitleFieldConfig,
   type NormalizedField,
+  type TitleFieldConfig,
 } from './recordTitleUtils';
 
 function hasUploadId(value: unknown): value is { upload_id: string } {
@@ -58,14 +58,15 @@ function extractRecordTitle(
   itemType: ItemTypeWithRelationships | undefined,
   fields: RecordField[],
   modelName: string,
-  mainLocale: string
+  mainLocale: string,
 ) {
   if (!itemType) {
     return `Record #${record.id}`;
   }
 
   const titleFieldConfig: TitleFieldConfig = {
-    presentationTitleFieldId: itemType.relationships.presentation_title_field.data?.id ?? null,
+    presentationTitleFieldId:
+      itemType.relationships.presentation_title_field.data?.id ?? null,
     titleFieldId: itemType.relationships.title_field.data?.id ?? null,
   };
 
@@ -83,18 +84,23 @@ function extractRecordTitle(
     normalizedFields,
     modelName,
     mainLocale,
-    isSingleton
+    isSingleton,
   );
 }
 
-function getUploadIdFromFieldValue(fieldValue: unknown, mainLocale: string): string | null {
+function getUploadIdFromFieldValue(
+  fieldValue: unknown,
+  mainLocale: string,
+): string | null {
   if (fieldValue === null || fieldValue === undefined) {
     return null;
   }
 
   const isFileValue = !Array.isArray(fieldValue) && hasUploadId(fieldValue);
 
-  const resolvedValue = isFileValue ? fieldValue : extractLocalizedValue(fieldValue, mainLocale);
+  const resolvedValue = isFileValue
+    ? fieldValue
+    : extractLocalizedValue(fieldValue, mainLocale);
 
   if (!resolvedValue) {
     return null;
@@ -118,16 +124,39 @@ function getUploadIdFromFieldValue(fieldValue: unknown, mainLocale: string): str
 // Record thumbnails display at 18x18px, so 48px width covers 2x retina with buffer
 const RECORD_THUMBNAIL_WIDTH = 48;
 
-async function fetchThumbnailFromUpload(client: Client, uploadId: string): Promise<string | null> {
+async function fetchThumbnailFromUpload(
+  client: Client,
+  uploadId: string,
+): Promise<string | null> {
   try {
     const upload = await client.uploads.find(uploadId);
     const mimeType = upload.mime_type ?? '';
     const url = upload.url ?? '';
-    return getThumbnailUrl(mimeType, url, upload.mux_playback_id, RECORD_THUMBNAIL_WIDTH);
+    return getThumbnailUrl(
+      mimeType,
+      url,
+      upload.mux_playback_id,
+      RECORD_THUMBNAIL_WIDTH,
+    );
   } catch (error) {
     logError('Failed to fetch thumbnail for upload:', error, { uploadId });
     return null;
   }
+}
+
+async function getThumbnailForField(
+  client: Client,
+  record: RecordWithAttributes,
+  field: RecordField,
+  mainLocale: string,
+): Promise<string | null> {
+  const fieldApiKey = field.attributes.api_key;
+  const uploadId = getUploadIdFromFieldValue(
+    record.attributes[fieldApiKey],
+    mainLocale,
+  );
+  if (!uploadId) return null;
+  return fetchThumbnailFromUpload(client, uploadId);
 }
 
 async function extractRecordThumbnail(
@@ -135,7 +164,7 @@ async function extractRecordThumbnail(
   itemType: ItemTypeWithRelationships | undefined,
   fields: RecordField[],
   mainLocale: string,
-  client: Client | null
+  client: Client | null,
 ) {
   if (!itemType || !client) {
     return null;
@@ -146,26 +175,29 @@ async function extractRecordThumbnail(
     return null;
   }
 
-  const presentationImageFieldId = itemType.relationships.presentation_image_field.data?.id;
-  const imagePreviewFieldId = itemType.relationships.image_preview_field.data?.id;
+  const presentationImageFieldId =
+    itemType.relationships.presentation_image_field.data?.id;
+  const imagePreviewFieldId =
+    itemType.relationships.image_preview_field.data?.id;
   const imageFieldId = presentationImageFieldId ?? imagePreviewFieldId;
 
   if (imageFieldId) {
     const imageField = fields.find((f) => f.id === imageFieldId);
     if (imageField) {
-      const fieldApiKey = imageField.attributes.api_key;
-      const uploadId = getUploadIdFromFieldValue(record.attributes[fieldApiKey], mainLocale);
-      if (uploadId) {
-        const thumbnail = await fetchThumbnailFromUpload(client, uploadId);
-        if (thumbnail) {
-          return thumbnail;
-        }
+      const thumbnail = await getThumbnailForField(
+        client,
+        record,
+        imageField,
+        mainLocale,
+      );
+      if (thumbnail) {
+        return thumbnail;
       }
     }
   }
 
   const sortedFields = [...fields].sort(
-    (a, b) => (a.attributes.position ?? 0) - (b.attributes.position ?? 0)
+    (a, b) => (a.attributes.position ?? 0) - (b.attributes.position ?? 0),
   );
   const firstImageField = sortedFields.find((f) => {
     const fieldType = f.attributes.field_type;
@@ -173,11 +205,7 @@ async function extractRecordThumbnail(
   });
 
   if (firstImageField) {
-    const fieldApiKey = firstImageField.attributes.api_key;
-    const uploadId = getUploadIdFromFieldValue(record.attributes[fieldApiKey], mainLocale);
-    if (uploadId) {
-      return await fetchThumbnailFromUpload(client, uploadId);
-    }
+    return getThumbnailForField(client, record, firstImageField, mainLocale);
   }
 
   return null;
@@ -190,14 +218,27 @@ export async function createRecordMention(
   fields: RecordField[],
   mainLocale: string,
   client: Client | null,
-  modelEmojiOverride?: string | null
+  modelEmojiOverride?: string | null,
 ): Promise<RecordMention> {
   const isSingleton = itemType?.attributes.singleton ?? false;
 
-  const recordTitle = extractRecordTitle(record, itemType, fields, model.name, mainLocale);
-  const recordThumbnailUrl = await extractRecordThumbnail(record, itemType, fields, mainLocale, client);
+  const recordTitle = extractRecordTitle(
+    record,
+    itemType,
+    fields,
+    model.name,
+    mainLocale,
+  );
+  const recordThumbnailUrl = await extractRecordThumbnail(
+    record,
+    itemType,
+    fields,
+    mainLocale,
+    client,
+  );
 
-  const modelEmoji = modelEmojiOverride ?? extractLeadingEmoji(model.name).emoji;
+  const modelEmoji =
+    modelEmojiOverride ?? extractLeadingEmoji(model.name).emoji;
 
   return {
     type: 'record',

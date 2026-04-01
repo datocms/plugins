@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseComments } from '@ctypes/comments';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('parseComments', () => {
   beforeEach(() => {

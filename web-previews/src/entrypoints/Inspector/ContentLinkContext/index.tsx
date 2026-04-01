@@ -2,8 +2,8 @@ import cuid from 'cuid';
 import type { RenderInspectorCtx } from 'datocms-plugin-sdk';
 import { useCtx } from 'datocms-react-ui';
 import {
-  type ReactNode,
   createContext,
+  type ReactNode,
   useCallback,
   useContext,
   useEffect,
@@ -65,7 +65,12 @@ const editUrlRegExp =
 export function ContentLinkContextProvider({ children, frontend }: Props) {
   const ctx = useCtx<RenderInspectorCtx>();
 
-  const currentVisualEditing = frontend.visualEditing!;
+  if (!frontend.visualEditing) {
+    throw new Error(
+      `Frontend "${frontend.name}" is missing visualEditing configuration.`,
+    );
+  }
+  const currentVisualEditing = frontend.visualEditing;
   const fallbackPath = currentVisualEditing.initialPath || '/';
 
   const [contentLinkState, setContentLinkState] = useState<
@@ -196,7 +201,7 @@ export function ContentLinkContextProvider({ children, frontend }: Props) {
         scrollToNearestTarget: true,
       });
     }
-  }, [highlightedItemId]);
+  }, [highlightedItemId, connection.methods.flashItem, connection.type]);
 
   useEffect(() => {
     const itemId = ctx.highlightedItemId;
@@ -239,6 +244,12 @@ export function ContentLinkContextProvider({ children, frontend }: Props) {
     contentLinkState?.path,
     contentLinkState?.clickToEditEnabled,
     connection,
+    currentVisualEditing.enableDraftModeUrl,
+    frontend.name,
+    fallbackPath,
+    ctx.setInspectorMode,
+    ctx.navigateTo,
+    ctx,
   ]);
 
   const reloadIframe = useCallback(() => {

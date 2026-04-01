@@ -1,7 +1,11 @@
-import { Button } from 'datocms-react-ui';
 import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
+import { Button } from 'datocms-react-ui';
 import { useCallback } from 'react';
-import type { MediaLayoutItem, MultipleFieldValue, WidthOption } from '../../types';
+import type {
+  MediaLayoutItem,
+  MultipleFieldValue,
+  WidthOption,
+} from '../../types';
 import { calculateOutputHeight } from '../../utils/aspectRatio';
 import AssetCard from '../AssetCard';
 import s from './styles.module.css';
@@ -28,18 +32,19 @@ export default function GalleryEditor({
   const handleLayoutChange = useCallback(
     (index: number, newLayout: Partial<MediaLayoutItem>) => {
       const merged = { ...items[index], ...newLayout };
-      const height = calculateOutputHeight(
-        merged.width,
-        merged.aspectRatio,
-        merged.customAspectRatio,
-        merged.originalWidth,
-        merged.originalHeight
-      ) || merged.height;
+      const height =
+        calculateOutputHeight(
+          merged.width,
+          merged.aspectRatio,
+          merged.customAspectRatio,
+          merged.originalWidth,
+          merged.originalHeight,
+        ) || merged.height;
       const newItems = [...items];
       newItems[index] = { ...merged, height };
       ctx.setFieldValue(ctx.fieldPath, JSON.stringify(newItems));
     },
-    [items, ctx]
+    [items, ctx],
   );
 
   const handleRemove = useCallback(
@@ -47,7 +52,7 @@ export default function GalleryEditor({
       const newItems = items.filter((_, i) => i !== index);
       ctx.setFieldValue(ctx.fieldPath, JSON.stringify(newItems));
     },
-    [items, ctx]
+    [items, ctx],
   );
 
   const handleEditMetadata = useCallback(
@@ -61,7 +66,7 @@ export default function GalleryEditor({
           focal_point: item.focalPoint,
           custom_data: {},
         },
-        ctx.locale
+        ctx.locale,
       );
       if (result) {
         const newItems = [...items];
@@ -74,7 +79,7 @@ export default function GalleryEditor({
         ctx.setFieldValue(ctx.fieldPath, JSON.stringify(newItems));
       }
     },
-    [items, ctx]
+    [items, ctx],
   );
 
   return (
@@ -97,7 +102,7 @@ export default function GalleryEditor({
       <div className={s.assetList}>
         {items.map((item, index) => (
           <AssetCard
-            key={`${item.uploadId}-${index}`}
+            key={item._itemId ?? item.uploadId}
             ctx={ctx}
             item={item}
             onLayoutChange={(layout) => handleLayoutChange(index, layout)}

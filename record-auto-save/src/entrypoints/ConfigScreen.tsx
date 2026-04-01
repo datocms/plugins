@@ -1,4 +1,4 @@
-import type { RenderConfigScreenCtx } from "datocms-plugin-sdk";
+import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import {
   Button,
   Canvas,
@@ -7,9 +7,9 @@ import {
   SelectField,
   SwitchField,
   TextField,
-} from "datocms-react-ui";
-import { useEffect, useState } from "react";
-import type { ActionMeta, GroupBase, MultiValue } from "react-select";
+} from 'datocms-react-ui';
+import { useEffect, useState } from 'react';
+import type { ActionMeta, GroupBase, MultiValue } from 'react-select';
 
 type PropTypes = {
   ctx: RenderConfigScreenCtx;
@@ -32,20 +32,20 @@ function ConfigScreen({ ctx }: PropTypes) {
     .parameters as PluginParametersType;
 
   const [selectedModels, setSelectedModels] = useState(
-    pluginParameters.selectedModels || []
+    pluginParameters.selectedModels || [],
   );
   const [autoSaveInterval, setAutoSaveInterval] = useState(
-    pluginParameters.autoSaveInterval.toString()
+    pluginParameters.autoSaveInterval.toString(),
   );
   const [showNotification, setShowNotification] = useState(
-    pluginParameters.showNotification
+    pluginParameters.showNotification,
   );
   const [hasAValidationError, setHasAValidationError] = useState(false);
   const [formIsSubmited, setFormIsSubmited] = useState(true);
 
   const allModels: ModelOptionType[] = [];
 
-  Object.keys(ctx.itemTypes).forEach((key) => {
+  for (const key of Object.keys(ctx.itemTypes)) {
     const itemType = ctx.itemTypes[key];
     if (itemType && !itemType.attributes.modular_block) {
       allModels.push({
@@ -53,24 +53,24 @@ function ConfigScreen({ ctx }: PropTypes) {
         value: itemType.attributes.api_key,
       });
     }
-  });
+  }
 
   const modelSelectHandler = (
     newValue: MultiValue<ModelOptionType>,
-    actionMeta: ActionMeta<ModelOptionType>
+    actionMeta: ActionMeta<ModelOptionType>,
   ) => {
     setSelectedModels((oldSelectedModels: ModelOptionType[]) => {
       let newSelectedModels = [...oldSelectedModels];
       switch (actionMeta.action) {
-        case "select-option":
+        case 'select-option':
           newSelectedModels.push(newValue[selectedModels.length]);
           break;
-        case "clear":
+        case 'clear':
           newSelectedModels = [];
           break;
-        case "remove-value":
+        case 'remove-value':
           newSelectedModels = newSelectedModels.filter(
-            (item) => item.value !== actionMeta.removedValue?.value
+            (item) => item.value !== actionMeta.removedValue?.value,
           );
       }
       return newSelectedModels;
@@ -83,7 +83,7 @@ function ConfigScreen({ ctx }: PropTypes) {
 
   const showNotificationHandler = () => {
     setShowNotification(
-      (previousShowNotification) => !previousShowNotification
+      (previousShowNotification) => !previousShowNotification,
     );
   };
 
@@ -99,11 +99,11 @@ function ConfigScreen({ ctx }: PropTypes) {
       parametersHaveBeenSet: true,
     });
     setFormIsSubmited(true);
-    await ctx.notice("Settings saved");
+    await ctx.notice('Settings saved');
   };
 
   const errorMessage = hasAValidationError
-    ? "The interval must be a number greater than one"
+    ? 'The interval must be a number greater than one'
     : null;
 
   useEffect(() => {

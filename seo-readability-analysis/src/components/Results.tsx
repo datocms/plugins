@@ -1,5 +1,5 @@
-import type { AnalysisAssessment, AnalysisResult } from '../types';
 import * as interpreters from 'yoastseo/build/scoring/interpreters';
+import type { AnalysisAssessment, AnalysisResult } from '../types';
 import ResultGroup, { type Group } from './ResultGroup';
 
 const scoreKeyToTitle: Partial<Record<string, string>> = {
@@ -12,7 +12,7 @@ const scoreKeyToTitle: Partial<Record<string, string>> = {
 function groupResults(results: AnalysisResult[]) {
   let groupedResults: Record<string, Group> = {};
 
-  results.forEach((result) => {
+  for (const result of results) {
     const scoreKey: string = interpreters.scoreToRating(result.score);
 
     if (groupedResults[scoreKey]) {
@@ -30,12 +30,16 @@ function groupResults(results: AnalysisResult[]) {
         },
       };
     }
-  });
+  }
 
   return groupedResults;
 }
 
-export default function Results({ assessment }: { assessment: AnalysisAssessment | undefined }) {
+export default function Results({
+  assessment,
+}: {
+  assessment: AnalysisAssessment | undefined;
+}) {
   if (!assessment) {
     return null;
   }

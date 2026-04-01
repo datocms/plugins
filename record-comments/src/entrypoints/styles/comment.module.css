@@ -89,7 +89,10 @@
   background-color: var(--lighter-bg-color);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-lg);
-  transition: background-color var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+  transition:
+    background-color var(--transition-fast),
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
   overflow: visible;
 }
 
@@ -121,7 +124,9 @@
   resize: none;
   outline: none;
   box-sizing: border-box;
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
 }
 
 .textarea:focus {
@@ -180,11 +185,11 @@
 
 /* Custom tooltip */
 .tooltip {
-  composes: tooltipBase from './utilities.css';
+  composes: tooltipBase from "./utilities.css";
 }
 
 .tooltipArrow {
-  composes: tooltipArrowDown from './utilities.css';
+  composes: tooltipArrowDown from "./utilities.css";
 }
 
 .reactionWrapper:hover .tooltip {
@@ -257,7 +262,9 @@
   height: 10px;
   color: var(--accent-color);
   opacity: 0.7;
-  transition: transform var(--transition-normal), opacity var(--transition-fast);
+  transition:
+    transform var(--transition-normal),
+    opacity var(--transition-fast);
   flex-shrink: 0;
 }
 
@@ -288,7 +295,9 @@
   visibility: hidden;
   z-index: var(--z-above);
   /* Delay before hiding - gives users time to reach the menu */
-  transition: opacity 0.15s ease 0.2s, visibility 0s linear 0.35s;
+  transition:
+    opacity 0.15s ease 0.2s,
+    visibility 0s linear 0.35s;
 }
 
 /* Show actionsWrapper only when THIS comment is hovered or focused within */
@@ -297,14 +306,18 @@
   opacity: 1;
   visibility: visible;
   /* Remove delay when showing */
-  transition: opacity 0.1s ease, visibility 0s linear;
+  transition:
+    opacity 0.1s ease,
+    visibility 0s linear;
 }
 
 /* Keep wrapper visible when hovering over it (for the expanded menu) */
 .actionsWrapper:hover {
   opacity: 1;
   visibility: visible;
-  transition: opacity 0.1s ease, visibility 0s linear;
+  transition:
+    opacity 0.1s ease,
+    visibility 0s linear;
 }
 
 /* Full action bar - light gray theme */
@@ -323,7 +336,9 @@
   opacity: 0;
   visibility: hidden;
   /* Smooth transition with delay before collapsing */
-  transition: opacity 0.15s ease 0.15s, visibility 0s linear 0.3s;
+  transition:
+    opacity 0.15s ease 0.15s,
+    visibility 0s linear 0.3s;
 }
 
 /* Collapsed trigger - three-dot icon button */
@@ -338,7 +353,9 @@
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-subtle);
   cursor: pointer;
-  transition: background-color 0.15s ease, transform 0.1s ease;
+  transition:
+    background-color 0.15s ease,
+    transform 0.1s ease;
 }
 
 .actionsTrigger svg {
@@ -360,7 +377,9 @@
 .actionsWrapper:focus-within .actionsTrigger {
   opacity: 0;
   visibility: hidden;
-  transition: opacity 0.1s ease, visibility 0s linear 0.1s;
+  transition:
+    opacity 0.1s ease,
+    visibility 0s linear 0.1s;
 }
 
 .actionsWrapper:hover .actions,
@@ -368,7 +387,9 @@
   opacity: 1;
   visibility: visible;
   /* Show immediately without delay */
-  transition: opacity 0.1s ease, visibility 0s linear;
+  transition:
+    opacity 0.1s ease,
+    visibility 0s linear;
 }
 
 .actionBtn {
@@ -420,7 +441,7 @@
 
 /* Curve connector for each reply */
 .reply::before {
-  content: '';
+  content: "";
   position: absolute;
   left: -20px;
   top: 6px;
@@ -433,7 +454,7 @@
 
 /* Vertical line going DOWN to next reply (not on last child) */
 .reply:not(:last-child)::after {
-  content: '';
+  content: "";
   position: absolute;
   left: -20px;
   top: 6px;
@@ -444,7 +465,7 @@
 
 /* Vertical line going UP to parent (from first reply) */
 .reply:first-child .commentBody::before {
-  content: '';
+  content: "";
   position: absolute;
   left: -20px;
   top: -12px;
@@ -513,8 +534,8 @@
   overflow-y: auto;
   flex: 1;
   /* Scroll shadows to indicate more content */
+  /* Top shadow when scrolled */
   background:
-    /* Top shadow when scrolled */
     linear-gradient(to bottom, var(--bg-primary) 30%, transparent) center top,
     /* Bottom shadow when more content below */
     linear-gradient(to top, var(--bg-primary) 30%, transparent) center bottom,
@@ -523,7 +544,11 @@
     /* Bottom shadow overlay */
     linear-gradient(to top, rgba(0, 0, 0, 0.06), transparent) center bottom;
   background-repeat: no-repeat;
-  background-size: 100% 20px, 100% 20px, 100% 8px, 100% 8px;
+  background-size:
+    100% 20px,
+    100% 20px,
+    100% 8px,
+    100% 8px;
   background-attachment: local, local, scroll, scroll;
 }
 
@@ -582,7 +607,7 @@
 .mentionFieldApiKey {
   font-size: calc(var(--font-size-xxs) + 1px);
   color: var(--light-body-color);
-  font-family: 'SF Mono', Monaco, 'Courier New', monospace;
+  font-family: "SF Mono", Monaco, "Courier New", monospace;
 }
 
 .mentionOptionSelected .mentionFieldApiKey {
@@ -647,11 +672,11 @@
 }
 
 .fieldMentionTooltip {
-  composes: tooltipBase from './utilities.css';
+  composes: tooltipBase from "./utilities.css";
 }
 
 .fieldMentionTooltipArrow {
-  composes: tooltipArrowDown from './utilities.css';
+  composes: tooltipArrowDown from "./utilities.css";
 }
 
 .fieldMentionWrapper:hover .fieldMentionTooltip {
@@ -779,11 +804,11 @@
 }
 
 .userMentionTooltip {
-  composes: tooltipBase from './utilities.css';
+  composes: tooltipBase from "./utilities.css";
 }
 
 .userMentionTooltipArrow {
-  composes: tooltipArrowDown from './utilities.css';
+  composes: tooltipArrowDown from "./utilities.css";
 }
 
 .userMentionWrapper:hover .userMentionTooltip {
@@ -849,11 +874,11 @@
 }
 
 .assetMentionTooltip {
-  composes: tooltipBase from './utilities.css';
+  composes: tooltipBase from "./utilities.css";
 }
 
 .assetMentionTooltipArrow {
-  composes: tooltipArrowDown from './utilities.css';
+  composes: tooltipArrowDown from "./utilities.css";
 }
 
 .assetMentionWrapper:hover .assetMentionTooltip {
@@ -886,7 +911,9 @@
   background: var(--mention-asset-bg);
   cursor: pointer;
   font-family: inherit;
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
 }
 
 .assetMentionBlock:hover {
@@ -1046,11 +1073,11 @@
 }
 
 .recordMentionTooltip {
-  composes: tooltipBase from './utilities.css';
+  composes: tooltipBase from "./utilities.css";
 }
 
 .recordMentionTooltipArrow {
-  composes: tooltipArrowDown from './utilities.css';
+  composes: tooltipArrowDown from "./utilities.css";
 }
 
 .recordMentionWrapper:hover .recordMentionTooltip {
@@ -1112,11 +1139,11 @@
 }
 
 .modelMentionTooltip {
-  composes: tooltipBase from './utilities.css';
+  composes: tooltipBase from "./utilities.css";
 }
 
 .modelMentionTooltipArrow {
-  composes: tooltipArrowDown from './utilities.css';
+  composes: tooltipArrowDown from "./utilities.css";
 }
 
 .modelMentionWrapper:hover .modelMentionTooltip {
@@ -1143,7 +1170,9 @@
   border-radius: var(--radius-md);
   outline: none;
   box-sizing: border-box;
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  transition:
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast);
 }
 
 .recordModelSearchInput:focus {

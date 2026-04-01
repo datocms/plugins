@@ -1,44 +1,49 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
-import ReactTimeAgo from 'react-time-ago';
-
-// Components
-import CommentContentRenderer from './CommentContentRenderer';
-import CommentActions from './CommentActions';
-import ComposerBox from './ComposerBox';
-import ComposerToolbar from './ComposerToolbar';
-import RecordModelSelectorDropdown from './RecordModelSelectorDropdown';
-import { TipTapComposer, type TipTapComposerRef } from './tiptap/TipTapComposer';
-import { UpvoteIcon, ChevronDownIcon } from './Icons';
-
-// Hooks
-import type { UserInfo, FieldInfo, ModelInfo } from '@hooks/useMentions';
-import { useCommentEditor } from '@hooks/useCommentEditor';
-
-// Types and utilities
-import type { CommentSegment } from '@ctypes/mentions';
 import type { ResolvedCommentType } from '@ctypes/comments';
 import { isContentEmpty } from '@ctypes/comments';
-import { getGravatarUrl, normalizeForComparison } from '@/utils/helpers';
-import {
-  areSegmentsEqual,
-  areRepliesEqual,
-} from '@utils/comparisonHelpers';
-import { cn } from '@/utils/cn';
-import { TIMING, UI } from '@/constants';
+// Types and utilities
+import type { CommentSegment } from '@ctypes/mentions';
+import { useCommentEditor } from '@hooks/useCommentEditor';
+// Hooks
+import type { FieldInfo, ModelInfo, UserInfo } from '@hooks/useMentions';
 import styles from '@styles/comment.module.css';
+import { areRepliesEqual, areSegmentsEqual } from '@utils/comparisonHelpers';
+import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
+import {
+  memo,
+  type RefObject,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import ReactTimeAgo from 'react-time-ago';
+import { TIMING, UI } from '@/constants';
+import { cn } from '@/utils/cn';
+import { getGravatarUrl, normalizeForComparison } from '@/utils/helpers';
+import CommentActions from './CommentActions';
+// Components
+import CommentContentRenderer from './CommentContentRenderer';
+import ComposerBox from './ComposerBox';
+import ComposerToolbar from './ComposerToolbar';
+import { ChevronDownIcon, UpvoteIcon } from './Icons';
+import RecordModelSelectorDropdown from './RecordModelSelectorDropdown';
+import {
+  TipTapComposer,
+  type TipTapComposerRef,
+} from './tiptap/TipTapComposer';
 
 type CommentProps = {
   deleteComment: (id: string, parentCommentId?: string) => boolean;
   editComment: (
     id: string,
     newContent: CommentSegment[],
-    parentCommentId?: string
+    parentCommentId?: string,
   ) => boolean;
   upvoteComment: (
     id: string,
     userUpvotedThisComment: boolean,
-    parentCommentId?: string
+    parentCommentId?: string,
   ) => boolean;
   replyComment: (parentCommentId: string) => boolean;
   commentObject: ResolvedCommentType;
@@ -52,12 +57,12 @@ type CommentProps = {
   // Picker request callback for asset mentions in edit mode
   onPickerRequest?: (
     type: 'asset' | 'record',
-    composerRef: RefObject<TipTapComposerRef | null>
+    composerRef: RefObject<TipTapComposerRef | null>,
   ) => void;
   /** Callback when a model is selected for record mention - opens record picker */
   onRecordModelSelect?: (
     model: ModelInfo,
-    composerRef: RefObject<TipTapComposerRef | null>
+    composerRef: RefObject<TipTapComposerRef | null>,
   ) => void;
   /** Models available for record mentions */
   readableModels?: ModelInfo[];
@@ -81,14 +86,22 @@ function arePropsEqual(prev: CommentProps, next: CommentProps): boolean {
   if (!areSegmentsEqual(prevComment.content, nextComment.content)) return false;
   // Compare upvoters arrays (resolved authors)
   if (prevComment.upvoters.length !== nextComment.upvoters.length) return false;
-  if (!prevComment.upvoters.every((u, i) => u.email === nextComment.upvoters[i].email)) return false;
+  if (
+    !prevComment.upvoters.every(
+      (u, i) => u.email === nextComment.upvoters[i].email,
+    )
+  )
+    return false;
   if (!areRepliesEqual(prevComment.replies, nextComment.replies)) return false;
 
   return compareRemainingProps(prev, next);
 }
 
 // ctx excluded - recreated every render, only used in editing mode
-function compareRemainingProps(prev: CommentProps, next: CommentProps): boolean {
+function compareRemainingProps(
+  prev: CommentProps,
+  next: CommentProps,
+): boolean {
   return (
     prev.currentUserId === next.currentUserId &&
     prev.isReply === next.isReply &&
@@ -107,6 +120,101 @@ function compareRemainingProps(prev: CommentProps, next: CommentProps): boolean 
     prev.replyComment === next.replyComment &&
     prev.onPickerRequest === next.onPickerRequest &&
     prev.onRecordModelSelect === next.onRecordModelSelect
+  );
+}
+
+function CommentUpvoteButton({
+  upvoterCount,
+  userUpvoted,
+  upvoterNames,
+  onUpvote,
+  styles: s,
+}: {
+  upvoterCount: number;
+  userUpvoted: boolean;
+  upvoterNames: string;
+  onUpvote: () => void;
+  styles: Record<string, string>;
+}) {
+  if (upvoterCount === 0) return null;
+
+  return (
+    <div className={s.reactionWrapper}>
+      <button
+        type="button"
+        className={cn(s.reaction, userUpvoted && s.reactionActive)}
+        onClick={onUpvote}
+        aria-label={
+          userUpvoted
+            ? `Remove upvote from comment. ${upvoterCount} upvote${upvoterCount === 1 ? '' : 's'}`
+            : `Upvote comment. ${upvoterCount} upvote${upvoterCount === 1 ? '' : 's'}`
+        }
+      >
+        <UpvoteIcon aria-hidden="true" />
+        <span>{upvoterCount}</span>
+      </button>
+      <div className={s.tooltip}>
+        {upvoterNames}
+        <div className={s.tooltipArrow} />
+      </div>
+    </div>
+  );
+}
+
+function CommentReplyToggle({
+  replyCount,
+  repliesExpanded,
+  uniqueReplierAvatars,
+  onToggle,
+  styles: s,
+}: {
+  replyCount: number;
+  repliesExpanded: boolean;
+  uniqueReplierAvatars: Array<{
+    id: string;
+    avatarUrl: string;
+    name: string;
+    fallbackUrl: string;
+  }>;
+  onToggle: () => void;
+  styles: Record<string, string>;
+}) {
+  if (replyCount === 0) return null;
+
+  return (
+    <button
+      type="button"
+      className={s.replyToggle}
+      onClick={onToggle}
+      aria-expanded={repliesExpanded}
+      aria-label={`${repliesExpanded ? 'Collapse' : 'Expand'} ${replyCount} ${replyCount === 1 ? 'reply' : 'replies'}`}
+    >
+      <div className={s.replyAvatars}>
+        {uniqueReplierAvatars.map((replier, idx) => (
+          <img
+            key={replier.id}
+            src={replier.avatarUrl}
+            alt={replier.name}
+            className={s.replyAvatar}
+            style={{ zIndex: UI.MAX_VISIBLE_REPLIER_AVATARS - idx }}
+            onError={(e) => {
+              const target = e.currentTarget;
+              target.onerror = null;
+              target.src = replier.fallbackUrl;
+            }}
+          />
+        ))}
+      </div>
+      <div className={s.replyMeta}>
+        <span className={s.replyText}>
+          {replyCount} {replyCount === 1 ? 'reply' : 'replies'}
+        </span>
+      </div>
+      <ChevronDownIcon
+        className={cn(s.chevron, repliesExpanded && s.chevronExpanded)}
+        aria-hidden="true"
+      />
+    </button>
   );
 }
 
@@ -133,7 +241,7 @@ const Comment = memo(function Comment({
 }: CommentProps) {
   const [isRecordSelectorOpen, setIsRecordSelectorOpen] = useState(false);
   const userUpvotedThisComment = commentObject.upvoters.some(
-    (u) => u.id === currentUserId
+    (u) => u.id === currentUserId,
   );
 
   const isNewComment = isContentEmpty(commentObject.content);
@@ -141,7 +249,7 @@ const Comment = memo(function Comment({
   const parentId = isTopLevel ? undefined : commentObject.parentCommentId;
   const userIsAuthor = commentObject.author.id === currentUserId;
 
-  const replies = isTopLevel ? commentObject.replies ?? [] : [];
+  const replies = isTopLevel ? (commentObject.replies ?? []) : [];
   const replyCount = replies.length;
   const hasNewReply = replies.some((r) => isContentEmpty(r.content));
 
@@ -184,13 +292,10 @@ const Comment = memo(function Comment({
   // Upvoter names are pre-resolved
   const upvoterNames = useMemo(
     () => commentObject.upvoters.map((u) => u.name).join(', '),
-    [commentObject.upvoters]
+    [commentObject.upvoters],
   );
 
-  const isSegmentsEmpty = useMemo(
-    () => isContentEmpty(segments),
-    [segments]
-  );
+  const isSegmentsEmpty = useMemo(() => isContentEmpty(segments), [segments]);
 
   // Extract unique repliers for collapsed reply preview (max 3 avatars)
   // Reply authors are pre-resolved
@@ -211,7 +316,10 @@ const Comment = memo(function Comment({
       if (seenUsers.has(userKey)) continue;
       seenUsers.add(userKey);
 
-      const fallbackUrl = getGravatarUrl(reply.author.email, UI.AVATAR_SIZE_THUMBNAIL);
+      const fallbackUrl = getGravatarUrl(
+        reply.author.email,
+        UI.AVATAR_SIZE_THUMBNAIL,
+      );
 
       result.push({
         id: reply.id,
@@ -261,7 +369,9 @@ const Comment = memo(function Comment({
 
   const commentRef = useRef<HTMLDivElement>(null);
   const repliesRef = useRef<HTMLDivElement>(null);
-  const replyScrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const replyScrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const blurTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -321,7 +431,11 @@ const Comment = memo(function Comment({
     }
 
     blurTimeoutRef.current = setTimeout(() => {
-      if (isSegmentsEmptyRef.current && isNewCommentRef.current && !isPickerActiveRef.current) {
+      if (
+        isSegmentsEmptyRef.current &&
+        isNewCommentRef.current &&
+        !isPickerActiveRef.current
+      ) {
         // For empty new comments, just delete without confirmation
         deleteComment(commentObject.id, parentId);
       }
@@ -355,12 +469,15 @@ const Comment = memo(function Comment({
     setIsRecordSelectorOpen(true);
   }, []);
 
-  const handleRecordModelSelected = useCallback((model: ModelInfo) => {
-    setIsRecordSelectorOpen(false);
-    if (onRecordModelSelect) {
-      onRecordModelSelect(model, composerRef);
-    }
-  }, [onRecordModelSelect, composerRef]);
+  const handleRecordModelSelected = useCallback(
+    (model: ModelInfo) => {
+      setIsRecordSelectorOpen(false);
+      if (onRecordModelSelect) {
+        onRecordModelSelect(model, composerRef);
+      }
+    },
+    [onRecordModelSelect, composerRef],
+  );
 
   const handleRecordSelectorClose = useCallback(() => {
     setIsRecordSelectorOpen(false);
@@ -370,7 +487,11 @@ const Comment = memo(function Comment({
   return (
     <div
       ref={commentRef}
-      className={cn(styles.comment, isReply && styles.reply, userIsAuthor && styles.ownComment)}
+      className={cn(
+        styles.comment,
+        isReply && styles.reply,
+        userIsAuthor && styles.ownComment,
+      )}
       data-comment-id={commentObject.id}
     >
       {!isEditing && (
@@ -386,7 +507,10 @@ const Comment = memo(function Comment({
         />
       )}
 
-      <div className={styles.commentBody} style={{ gridTemplateColumns: `${avatarSize}px 1fr` }}>
+      <div
+        className={styles.commentBody}
+        style={{ gridTemplateColumns: `${avatarSize}px 1fr` }}
+      >
         <div className={styles.avatarContainer}>
           <img
             className={styles.avatar}
@@ -396,7 +520,10 @@ const Comment = memo(function Comment({
             onError={(e) => {
               const target = e.currentTarget;
               target.onerror = null; // Prevent infinite loop
-              target.src = getGravatarUrl(commentObject.author.email, avatarSize * 2);
+              target.src = getGravatarUrl(
+                commentObject.author.email,
+                avatarSize * 2,
+              );
             }}
           />
         </div>
@@ -456,69 +583,29 @@ const Comment = memo(function Comment({
             </div>
           ) : (
             <div className={styles.text}>
-              <CommentContentRenderer
-                segments={commentObject.content}
-              />
+              <CommentContentRenderer segments={commentObject.content} />
             </div>
           )}
 
           <div className={styles.footer}>
-            {commentObject.upvoters.length > 0 && !isEditing && (
-              <div className={styles.reactionWrapper}>
-                  <button
-                    type="button"
-                    className={cn(styles.reaction, userUpvotedThisComment && styles.reactionActive)}
-                    onClick={handleUpvote}
-                    aria-label={
-                      userUpvotedThisComment
-                        ? `Remove upvote from comment. ${commentObject.upvoters.length} upvote${commentObject.upvoters.length === 1 ? '' : 's'}`
-                        : `Upvote comment. ${commentObject.upvoters.length} upvote${commentObject.upvoters.length === 1 ? '' : 's'}`
-                    }
-                  >
-                  <UpvoteIcon aria-hidden="true" />
-                  <span>{commentObject.upvoters.length}</span>
-                </button>
-                <div className={styles.tooltip}>
-                  {upvoterNames}
-                  <div className={styles.tooltipArrow} />
-                </div>
-              </div>
+            {!isEditing && (
+              <CommentUpvoteButton
+                upvoterCount={commentObject.upvoters.length}
+                userUpvoted={userUpvotedThisComment}
+                upvoterNames={upvoterNames}
+                onUpvote={handleUpvote}
+                styles={styles}
+              />
             )}
 
-            {isTopLevel && replyCount > 0 && !isEditing && (
-              <button
-                type="button"
-                className={styles.replyToggle}
-                onClick={toggleReplies}
-                aria-expanded={repliesExpanded}
-                aria-label={`${repliesExpanded ? 'Collapse' : 'Expand'} ${replyCount} ${replyCount === 1 ? 'reply' : 'replies'}`}
-              >
-                <div className={styles.replyAvatars}>
-                  {uniqueReplierAvatars.map((replier, idx) => (
-                    <img
-                      key={replier.id}
-                      src={replier.avatarUrl}
-                      alt={replier.name}
-                      className={styles.replyAvatar}
-                      style={{ zIndex: UI.MAX_VISIBLE_REPLIER_AVATARS - idx }}
-                      onError={(e) => {
-                        const target = e.currentTarget;
-                        target.onerror = null;
-                        target.src = replier.fallbackUrl;
-                      }}
-                    />
-                  ))}
-                </div>
-                <div className={styles.replyMeta}>
-                  <span className={styles.replyText}>
-                    {replyCount} {replyCount === 1 ? 'reply' : 'replies'}
-                  </span>
-                </div>
-                <ChevronDownIcon
-                  className={cn(styles.chevron, repliesExpanded && styles.chevronExpanded)}
-                  aria-hidden="true"
-                />
-              </button>
+            {isTopLevel && !isEditing && (
+              <CommentReplyToggle
+                replyCount={replyCount}
+                repliesExpanded={repliesExpanded}
+                uniqueReplierAvatars={uniqueReplierAvatars}
+                onToggle={toggleReplies}
+                styles={styles}
+              />
             )}
           </div>
         </div>

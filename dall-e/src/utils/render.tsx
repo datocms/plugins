@@ -1,10 +1,10 @@
-import type React from 'react';
-import { StrictMode } from 'react';
 import type {
   RenderAssetSourceCtx,
   RenderConfigScreenCtx,
 } from 'datocms-plugin-sdk';
 import { Canvas } from 'datocms-react-ui';
+import type React from 'react';
+import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 
 const container = document.getElementById('root');

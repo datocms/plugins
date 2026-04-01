@@ -1,6 +1,10 @@
 import OpenAI from 'openai';
-import type { TranslationProvider, VendorId, StreamOptions } from '../types';
-import { isEmptyPrompt, withTimeout, withTimeoutGenerator } from '../providerUtils';
+import {
+  isEmptyPrompt,
+  withTimeout,
+  withTimeoutGenerator,
+} from '../providerUtils';
+import type { StreamOptions, TranslationProvider, VendorId } from '../types';
 
 type OpenAIProviderConfig = {
   apiKey: string;
@@ -40,7 +44,10 @@ export default class OpenAIProvider implements TranslationProvider {
    * @param options - Optional abort signal.
    * @returns Async iterable of text deltas.
    */
-  async *streamText(prompt: string, options?: StreamOptions): AsyncIterable<string> {
+  async *streamText(
+    prompt: string,
+    options?: StreamOptions,
+  ): AsyncIterable<string> {
     if (isEmptyPrompt(prompt)) {
       return;
     }
@@ -55,7 +62,7 @@ export default class OpenAIProvider implements TranslationProvider {
           messages: [{ role: 'user', content: prompt }],
           stream: true,
         },
-        { signal }
+        { signal },
       );
 
       for await (const chunk of stream) {
@@ -87,7 +94,7 @@ export default class OpenAIProvider implements TranslationProvider {
           messages: [{ role: 'user', content: prompt }],
           stream: false,
         },
-        { signal }
+        { signal },
       );
       return resp.choices?.[0]?.message?.content ?? '';
     });

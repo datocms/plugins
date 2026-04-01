@@ -1,17 +1,17 @@
-import classNames from 'classnames';
 import type { SchemaTypes } from '@datocms/cma-client';
+import classNames from 'classnames';
 import { Button, useCtx } from 'datocms-react-ui';
 import { type CSSProperties, useCallback, useMemo } from 'react';
 import { useHoverModelId } from '../../context/HoverItemContext';
 import useDebouncedEffect from '../../hooks/useDebouncedEffect';
 import type { ActiveModels } from '../../types';
-import { colorForModel } from '../../utils/colorForModel';
-import s from './styles.module.css';
 import {
   buildPermissions,
   canReadAtLeastSomeItem,
   type Permissions,
 } from '../../utils/canRead';
+import { colorForModel } from '../../utils/colorForModel';
+import s from './styles.module.css';
 
 type ActiveModelsPanelProps = {
   activeModels: ActiveModels;
@@ -50,7 +50,9 @@ export function ActiveModelsPanel({
     [ctx.currentRole, ctx.environment],
   );
 
-  const allSortedModels = (Object.values(ctx.itemTypes) as SchemaTypes.ItemType[])
+  const allSortedModels = (
+    Object.values(ctx.itemTypes) as SchemaTypes.ItemType[]
+  )
     .filter((model) => !model.attributes.modular_block)
     .filter((model) => canReadAtLeastSomeItem(permissions, model))
     .sort((a, b) => a.attributes.name.localeCompare(b.attributes.name));

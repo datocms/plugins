@@ -3,7 +3,7 @@ import type {
   OpenAiGenerateModel,
   ProviderId,
   SupportedImageModel,
-} from './utils/imageService';
+} from './utils/imageService/types';
 
 /**
  * Raw plugin settings, including legacy single-provider fields kept for backward compatibility.

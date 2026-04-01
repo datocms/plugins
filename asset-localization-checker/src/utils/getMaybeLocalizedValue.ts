@@ -1,7 +1,12 @@
 export const getMaybeLocalizedValue = (
-  formValues: Record<string, any>,
+  formValues: Record<string, unknown>,
   fieldPath: string,
 ): unknown => {
-  const [field, locale] = fieldPath.split(".");
-  return locale ? formValues[field][locale] : formValues[field];
+  const [field, locale] = fieldPath.split('.');
+  const fieldValue = formValues[field];
+  if (locale) {
+    const localizedRecord = fieldValue as Record<string, unknown>;
+    return localizedRecord[locale];
+  }
+  return fieldValue;
 };

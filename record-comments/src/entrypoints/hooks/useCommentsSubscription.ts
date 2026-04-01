@@ -1,16 +1,21 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
-import { useQuerySubscription } from 'react-datocms/use-query-subscription';
-import type { Client } from '@datocms/cma-client-browser';
-import { COMMENTS_MODEL_API_KEY, CMA_FETCH, TIMING } from '@/constants';
-import { findCommentsModel } from '@utils/itemTypeUtils';
-import { type CommentType, type QueryResult, parseComments, isContentEmpty } from '@ctypes/comments';
-import { logDebug, logError } from '@/utils/errorLogger';
 import {
-  type SubscriptionErrorType,
+  type CommentType,
+  isContentEmpty,
+  parseComments,
+  type QueryResult,
+} from '@ctypes/comments';
+import type { Client } from '@datocms/cma-client-browser';
+import {
   categorizeSubscriptionError,
   normalizeError,
+  type SubscriptionErrorType,
 } from '@utils/errorCategorization';
+import { findCommentsModel } from '@utils/itemTypeUtils';
+import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useQuerySubscription } from 'react-datocms/use-query-subscription';
+import { CMA_FETCH, COMMENTS_MODEL_API_KEY, TIMING } from '@/constants';
+import { logDebug, logError } from '@/utils/errorLogger';
 
 type Draft = {
   comment: CommentType;
@@ -21,7 +26,10 @@ type Draft = {
  * Extracts draft comments (empty content by current user) from comments list.
  * Returns both top-level drafts and reply drafts with their parent IDs.
  */
-function extractDrafts(comments: CommentType[], currentUserId: string): Draft[] {
+function extractDrafts(
+  comments: CommentType[],
+  currentUserId: string,
+): Draft[] {
   const drafts: Draft[] = [];
 
   for (const comment of comments) {
@@ -48,11 +56,36 @@ type MergeResult = {
   orphanedDrafts: Draft[];
 };
 
+function mergeReplyDraft(
+  mergedComments: CommentType[],
+  draft: Draft,
+  orphanedDrafts: Draft[],
+): void {
+  const parentIndex = mergedComments.findIndex((c) => c.id === draft.parentId);
+  if (parentIndex === -1) {
+    orphanedDrafts.push(draft);
+    return;
+  }
+
+  const parent = mergedComments[parentIndex];
+  const replies = parent.replies ?? [];
+  const replyExists = replies.some((r) => r.id === draft.comment.id);
+  if (!replyExists) {
+    mergedComments[parentIndex] = {
+      ...parent,
+      replies: [...replies, draft.comment],
+    };
+  }
+}
+
 /**
  * Merges server comments with preserved drafts.
  * Returns the merged comments and any orphaned drafts (replies whose parent was deleted).
  */
-function mergeWithDrafts(serverComments: CommentType[], drafts: Draft[]): MergeResult {
+function mergeWithDrafts(
+  serverComments: CommentType[],
+  drafts: Draft[],
+): MergeResult {
   const orphanedDrafts: Draft[] = [];
   const mergedComments = [...serverComments];
 
@@ -64,23 +97,7 @@ function mergeWithDrafts(serverComments: CommentType[], drafts: Draft[]): MergeR
         mergedComments.push(draft.comment);
       }
     } else {
-      // Reply draft - find parent and add reply
-      const parentIndex = mergedComments.findIndex((c) => c.id === draft.parentId);
-      if (parentIndex === -1) {
-        // Parent was deleted - this is an orphaned draft
-        orphanedDrafts.push(draft);
-      } else {
-        // Add reply to parent if not already present
-        const parent = mergedComments[parentIndex];
-        const replies = parent.replies ?? [];
-        const replyExists = replies.some((r) => r.id === draft.comment.id);
-        if (!replyExists) {
-          mergedComments[parentIndex] = {
-            ...parent,
-            replies: [...replies, draft.comment],
-          };
-        }
-      }
+      mergeReplyDraft(mergedComments, draft, orphanedDrafts);
     }
   }
 
@@ -122,7 +139,8 @@ export const SUBSCRIPTION_STATUS = {
   CLOSED: 'closed',
 } as const;
 
-export type SubscriptionStatus = (typeof SUBSCRIPTION_STATUS)[keyof typeof SUBSCRIPTION_STATUS];
+export type SubscriptionStatus =
+  (typeof SUBSCRIPTION_STATUS)[keyof typeof SUBSCRIPTION_STATUS];
 
 export type UseCommentsSubscriptionReturn = {
   comments: CommentType[];
@@ -156,21 +174,29 @@ export function useCommentsSubscription({
   onAfterSync,
 }: UseCommentsSubscriptionParams): UseCommentsSubscriptionReturn {
   const [comments, setComments] = useState<CommentType[]>([]);
-  const [commentRecordId, setCommentRecordIdInternal] = useState<string | null>(null);
+  const [commentRecordId, setCommentRecordIdInternal] = useState<string | null>(
+    null,
+  );
   const [isLoading, setIsLoading] = useState(true);
 
-  const setCommentRecordId = useCallback((id: string | null) => {
-    setCommentRecordIdInternal(id);
-    onCommentRecordIdChange?.(id);
-  }, [onCommentRecordIdChange]);
+  const setCommentRecordId = useCallback(
+    (id: string | null) => {
+      setCommentRecordIdInternal(id);
+      onCommentRecordIdChange?.(id);
+    },
+    [onCommentRecordIdChange],
+  );
 
   const [subscriptionKey, setSubscriptionKey] = useState(0);
   const consecutiveErrorCount = useRef(0);
   const previousErrorRef = useRef<unknown>(null);
   const [isAutoReconnecting, setIsAutoReconnecting] = useState(false);
-  const autoReconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoReconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
-  const isRealtimeSubscriptionEnabled = subscriptionEnabled && !!cdaToken && realTimeEnabled;
+  const isRealtimeSubscriptionEnabled =
+    subscriptionEnabled && !!cdaToken && realTimeEnabled;
   const requestContext = {
     modelId: filterParams.modelId,
     recordId: filterParams.recordId,
@@ -303,9 +329,13 @@ export function useCommentsSubscription({
 
   useEffect(() => {
     if (error) {
-      const currentErrorMessage = error instanceof Error ? error.message : String(error);
+      const currentErrorMessage =
+        error instanceof Error ? error.message : String(error);
       const previousError = previousErrorRef.current;
-      const previousErrorMessage = previousError instanceof Error ? previousError.message : String(previousError ?? '');
+      const previousErrorMessage =
+        previousError instanceof Error
+          ? previousError.message
+          : String(previousError ?? '');
 
       if (!previousError || currentErrorMessage !== previousErrorMessage) {
         consecutiveErrorCount.current += 1;
@@ -375,11 +405,14 @@ export function useCommentsSubscription({
           // If tab was hidden for longer than threshold, force subscription refresh
           // This ensures we get fresh data after long periods of inactivity
           if (hiddenDuration > TIMING.VISIBILITY_REFRESH_THRESHOLD_MS) {
-            logDebug('Refreshing comments subscription after tab visibility change', {
-              hiddenDurationMs: hiddenDuration,
-              modelId: requestContext.modelId,
-              recordId: requestContext.recordId,
-            });
+            logDebug(
+              'Refreshing comments subscription after tab visibility change',
+              {
+                hiddenDurationMs: hiddenDuration,
+                modelId: requestContext.modelId,
+                recordId: requestContext.recordId,
+              },
+            );
             setSubscriptionKey((prev) => prev + 1);
           }
         }
@@ -399,6 +432,40 @@ export function useCommentsSubscription({
   // WARNING: Real-time API can be 5-10s delayed - don't overwrite optimistic updates
   // Critical: We must check if subscription data was received AFTER our last operation started
   // to prevent stale data from overwriting fresh local state (the "disappearing comment" bug)
+
+  const isSubscriptionDataStale = useCallback(
+    (dataReceivedAt: number, syncBlockedAt: number): boolean => {
+      return (
+        syncBlockedAt > 0 &&
+        dataReceivedAt > 0 &&
+        dataReceivedAt < syncBlockedAt
+      );
+    },
+    [],
+  );
+
+  const applyRealtimeSync = useCallback(
+    (
+      recordContent: unknown,
+      userId: string,
+      orphanedDraftCallback: (() => void) | undefined,
+    ) => {
+      setComments((prevComments) => {
+        const drafts = extractDrafts(prevComments, userId);
+        const serverComments = parseComments(recordContent);
+        const { comments: mergedComments, orphanedDrafts } = mergeWithDrafts(
+          serverComments,
+          drafts,
+        );
+        if (orphanedDrafts.length > 0 && orphanedDraftCallback) {
+          orphanedDraftCallback();
+        }
+        return mergedComments;
+      });
+    },
+    [],
+  );
+
   useEffect(() => {
     if (!isRealtimeSubscriptionEnabled) return;
 
@@ -409,25 +476,19 @@ export function useCommentsSubscription({
     if (!record) {
       setCommentRecordId(null);
       onBeforeSync?.();
-      setComments((prevComments) => (prevComments.length === 0 ? prevComments : []));
+      setComments((prevComments) =>
+        prevComments.length === 0 ? prevComments : [],
+      );
       if (onAfterSync) {
         requestAnimationFrame(onAfterSync);
       }
       return;
     }
 
-    // CRITICAL FIX: Check if subscription data is fresh enough
-    // If we had an operation (syncBlockedAtRef > 0) and the data was received BEFORE
-    // that operation started, the data is stale and could overwrite our local changes.
-    // This prevents the "disappearing comment" bug where stale subscription data
-    // overwrites optimistic updates after cooldown expires.
     const dataReceivedAt = dataReceivedAtRef.current;
     const syncBlockedAt = syncBlockedAtRef.current;
 
-    if (syncBlockedAt > 0 && dataReceivedAt > 0 && dataReceivedAt < syncBlockedAt) {
-      // Data is stale - it was received before our operation started.
-      // Skip this sync and wait for fresh subscription data.
-      // The subscription should eventually deliver updated data.
+    if (isSubscriptionDataStale(dataReceivedAt, syncBlockedAt)) {
       logDebug('Skipped stale realtime sync update', {
         commentRecordId: record.id,
         dataReceivedAt,
@@ -442,29 +503,26 @@ export function useCommentsSubscription({
     syncBlockedAtRef.current = 0;
 
     setCommentRecordId(record.id);
-
-    // Notify before sync so component can save scroll position
     onBeforeSync?.();
+    applyRealtimeSync(record.content, currentUserId, onOrphanedDraft);
 
-    // Preserve drafts during sync
-    setComments((prevComments) => {
-      const drafts = extractDrafts(prevComments, currentUserId);
-      const serverComments = parseComments(record.content);
-      const { comments: mergedComments, orphanedDrafts } = mergeWithDrafts(serverComments, drafts);
-
-      // Notify about orphaned drafts (parent comment was deleted)
-      if (orphanedDrafts.length > 0 && onOrphanedDraft) {
-        onOrphanedDraft();
-      }
-
-      return mergedComments;
-    });
-
-    // Schedule after-sync callback for next frame (after React re-render)
     if (onAfterSync) {
       requestAnimationFrame(onAfterSync);
     }
-  }, [data, isSyncAllowed, isRealtimeSubscriptionEnabled, setCommentRecordId, currentUserId, onOrphanedDraft, onBeforeSync, onAfterSync, requestContext.modelId, requestContext.recordId]);
+  }, [
+    data,
+    isSyncAllowed,
+    isRealtimeSubscriptionEnabled,
+    setCommentRecordId,
+    currentUserId,
+    onOrphanedDraft,
+    onBeforeSync,
+    onAfterSync,
+    requestContext.modelId,
+    requestContext.recordId,
+    applyRealtimeSync,
+    isSubscriptionDataStale,
+  ]);
 
   const [cmaFetchError, setCmaFetchError] = useState<Error | null>(null);
   const [_cmaRetryKey, setCmaRetryKey] = useState(0);
@@ -474,7 +532,9 @@ export function useCommentsSubscription({
     if (isRealtimeSubscriptionEnabled) return;
     if (!client || !effectiveCommentsModelId || !filterParams.recordId) {
       setCommentRecordId(null);
-      setComments((prevComments) => (prevComments.length === 0 ? prevComments : []));
+      setComments((prevComments) =>
+        prevComments.length === 0 ? prevComments : [],
+      );
       setCmaFetchError(null);
       setIsLoading(false);
       return;
@@ -483,6 +543,120 @@ export function useCommentsSubscription({
     let isMounted = true;
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
     let retryTimeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const syncAfterFetch = () => {
+      if (onAfterSync) {
+        requestAnimationFrame(onAfterSync);
+      }
+    };
+
+    const applyRecordFound = (
+      firstRecord: Awaited<ReturnType<typeof client.items.list>>[number],
+    ) => {
+      if (typeof firstRecord.id === 'string') {
+        setCommentRecordId(firstRecord.id);
+      }
+      onBeforeSync?.();
+      applyRealtimeSync(firstRecord.content, currentUserId, onOrphanedDraft);
+      syncAfterFetch();
+    };
+
+    const applyNoRecordsFound = () => {
+      setCommentRecordId(null);
+      onBeforeSync?.();
+      setComments((prevComments) =>
+        prevComments.length === 0 ? prevComments : [],
+      );
+      syncAfterFetch();
+    };
+
+    const applyFetchedRecords = (
+      records: Awaited<ReturnType<typeof client.items.list>>,
+      attempt: number,
+    ) => {
+      cmaRetryCountRef.current = 0;
+      logDebug('Comments fetched via CMA fallback', {
+        attempt: attempt + 1,
+        commentRecordId: records[0]?.id ?? null,
+        modelId: requestContext.modelId,
+        recordId: requestContext.recordId,
+        recordsFound: records.length,
+      });
+
+      if (records.length > 0) {
+        applyRecordFound(records[0]);
+      } else {
+        applyNoRecordsFound();
+      }
+
+      setIsLoading(false);
+    };
+
+    const scheduleRetry = (
+      attempt: number,
+      normalizedErr: Error,
+      retryFn: (next: number) => void,
+    ) => {
+      cmaRetryCountRef.current = attempt + 1;
+      const delayMs = Math.min(1000 * 2 ** attempt, 8000);
+
+      logError(
+        `CMA fetch failed (attempt ${attempt + 1}/${CMA_FETCH.MAX_RETRIES + 1}), retrying in ${delayMs}ms`,
+        normalizedErr,
+        { modelId: filterParams.modelId, recordId: filterParams.recordId },
+      );
+      logDebug('CMA fallback retry scheduled', {
+        attempt: attempt + 1,
+        delayMs,
+        errorMessage: normalizedErr.message,
+        modelId: requestContext.modelId,
+        recordId: requestContext.recordId,
+      });
+
+      retryTimeoutId = setTimeout(() => {
+        if (isMounted) {
+          retryFn(attempt + 1);
+        }
+      }, delayMs);
+    };
+
+    const handleFetchError = (
+      error: unknown,
+      attempt: number,
+      retryFn: (next: number) => void,
+    ) => {
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      if (!isMounted) return;
+
+      const normalizedErr =
+        error instanceof Error ? error : new Error(String(error));
+
+      if (attempt < CMA_FETCH.MAX_RETRIES) {
+        scheduleRetry(attempt, normalizedErr, retryFn);
+        return;
+      }
+
+      logError(
+        'Failed to fetch comments (CMA fallback) after max retries',
+        normalizedErr,
+        {
+          modelId: filterParams.modelId,
+          recordId: filterParams.recordId,
+          attempts: attempt + 1,
+        },
+      );
+      logDebug('CMA fallback retries exhausted', {
+        attempts: attempt + 1,
+        errorMessage: normalizedErr.message,
+        modelId: requestContext.modelId,
+        recordId: requestContext.recordId,
+      });
+      setCmaFetchError(normalizedErr);
+      setIsLoading(false);
+    };
 
     const fetchComments = async (attempt = 0): Promise<void> => {
       if (!isMounted) return;
@@ -500,7 +674,11 @@ export function useCommentsSubscription({
       const timeoutPromise = new Promise<never>((_, reject) => {
         timeoutId = setTimeout(() => {
           if (isMounted) {
-            reject(new Error(`CMA fetch timed out after ${CMA_FETCH.TIMEOUT_MS / 1000} seconds`));
+            reject(
+              new Error(
+                `CMA fetch timed out after ${CMA_FETCH.TIMEOUT_MS / 1000} seconds`,
+              ),
+            );
           }
         }, CMA_FETCH.TIMEOUT_MS);
       });
@@ -524,96 +702,9 @@ export function useCommentsSubscription({
         }
         if (!isMounted) return;
 
-        cmaRetryCountRef.current = 0;
-        logDebug('Comments fetched via CMA fallback', {
-          attempt: attempt + 1,
-          commentRecordId: records[0]?.id ?? null,
-          modelId: requestContext.modelId,
-          recordId: requestContext.recordId,
-          recordsFound: records.length,
-        });
-        if (records.length > 0) {
-          const firstRecord = records[0];
-          if (typeof firstRecord.id === 'string') {
-            setCommentRecordId(firstRecord.id);
-          }
-
-          // Notify before sync so component can save scroll position
-          onBeforeSync?.();
-
-          // Preserve drafts during sync
-          setComments((prevComments) => {
-            const drafts = extractDrafts(prevComments, currentUserId);
-            const serverComments = parseComments(firstRecord.content);
-            const { comments: mergedComments, orphanedDrafts } = mergeWithDrafts(serverComments, drafts);
-
-            // Notify about orphaned drafts (parent comment was deleted)
-            if (orphanedDrafts.length > 0 && onOrphanedDraft) {
-              onOrphanedDraft();
-            }
-
-            return mergedComments;
-          });
-
-          // Schedule after-sync callback for next frame (after React re-render)
-          if (onAfterSync) {
-            requestAnimationFrame(onAfterSync);
-          }
-        } else {
-          setCommentRecordId(null);
-          onBeforeSync?.();
-          setComments((prevComments) => (prevComments.length === 0 ? prevComments : []));
-          if (onAfterSync) {
-            requestAnimationFrame(onAfterSync);
-          }
-        }
-        setIsLoading(false);
+        applyFetchedRecords(records, attempt);
       } catch (error) {
-        if (timeoutId !== null) {
-          clearTimeout(timeoutId);
-          timeoutId = null;
-        }
-        if (!isMounted) return;
-
-        const normalizedErr = error instanceof Error ? error : new Error(String(error));
-
-        if (attempt < CMA_FETCH.MAX_RETRIES) {
-          cmaRetryCountRef.current = attempt + 1;
-          const delayMs = Math.min(1000 * 2 ** attempt, 8000);
-
-          logError(`CMA fetch failed (attempt ${attempt + 1}/${CMA_FETCH.MAX_RETRIES + 1}), retrying in ${delayMs}ms`, normalizedErr, {
-            modelId: filterParams.modelId,
-            recordId: filterParams.recordId,
-          });
-          logDebug('CMA fallback retry scheduled', {
-            attempt: attempt + 1,
-            delayMs,
-            errorMessage: normalizedErr.message,
-            modelId: requestContext.modelId,
-            recordId: requestContext.recordId,
-          });
-
-          retryTimeoutId = setTimeout(() => {
-            if (isMounted) {
-              fetchComments(attempt + 1);
-            }
-          }, delayMs);
-          return;
-        }
-
-        logError('Failed to fetch comments (CMA fallback) after max retries', normalizedErr, {
-          modelId: filterParams.modelId,
-          recordId: filterParams.recordId,
-          attempts: attempt + 1,
-        });
-        logDebug('CMA fallback retries exhausted', {
-          attempts: attempt + 1,
-          errorMessage: normalizedErr.message,
-          modelId: requestContext.modelId,
-          recordId: requestContext.recordId,
-        });
-        setCmaFetchError(normalizedErr);
-        setIsLoading(false);
+        handleFetchError(error, attempt, fetchComments);
       }
     };
 
@@ -630,7 +721,21 @@ export function useCommentsSubscription({
         retryTimeoutId = null;
       }
     };
-  }, [isRealtimeSubscriptionEnabled, client, filterParams.modelId, filterParams.recordId, effectiveCommentsModelId, setCommentRecordId, currentUserId, onOrphanedDraft, onBeforeSync, onAfterSync, requestContext.modelId, requestContext.recordId]);
+  }, [
+    isRealtimeSubscriptionEnabled,
+    client,
+    filterParams.modelId,
+    filterParams.recordId,
+    effectiveCommentsModelId,
+    setCommentRecordId,
+    currentUserId,
+    onOrphanedDraft,
+    onBeforeSync,
+    onAfterSync,
+    requestContext.modelId,
+    requestContext.recordId,
+    applyRealtimeSync,
+  ]);
 
   const normalizedError = error ? normalizeError(error) : cmaFetchError;
   const errorInfo: SubscriptionErrorInfo | null = normalizedError

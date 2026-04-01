@@ -1,16 +1,16 @@
 import type { Mention, MentionType } from '@ctypes/mentions';
-import {
-  isValidUserMentionAttrs,
-  isValidFieldMentionAttrs,
-  isValidAssetMentionAttrs,
-  isValidRecordMentionAttrs,
-  isValidModelMentionAttrs,
-} from './typeGuards';
+import { logWarn } from '@/utils/errorLogger';
 import {
   applyFieldMentionDefaults,
   applyModelMentionDefaults,
 } from './tiptapDefaults';
-import { logWarn } from '@/utils/errorLogger';
+import {
+  isValidAssetMentionAttrs,
+  isValidFieldMentionAttrs,
+  isValidModelMentionAttrs,
+  isValidRecordMentionAttrs,
+  isValidUserMentionAttrs,
+} from './typeGuards';
 
 /**
  * Converts raw node attributes to a typed Mention object.
@@ -18,7 +18,7 @@ import { logWarn } from '@/utils/errorLogger';
  */
 export function attrsToMention(
   mentionType: MentionType,
-  attrs: Record<string, unknown>
+  attrs: Record<string, unknown>,
 ): Mention | null {
   switch (mentionType) {
     case 'user':
@@ -90,7 +90,9 @@ export function attrsToMention(
         id: attrs.id,
         apiKey: attrs.apiKey,
         name: attrs.name,
-        isBlockModel: applyModelMentionDefaults.isBlockModel(attrs.isBlockModel),
+        isBlockModel: applyModelMentionDefaults.isBlockModel(
+          attrs.isBlockModel,
+        ),
       };
 
     default:

@@ -1,5 +1,5 @@
-import type { MutableRefObject, ReactNode } from 'react';
 import styles from '@styles/comment.module.css';
+import type { MutableRefObject, ReactNode } from 'react';
 
 type FieldDropdownHeaderProps = {
   title: string;

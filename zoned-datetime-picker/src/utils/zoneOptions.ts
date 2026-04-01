@@ -1,7 +1,7 @@
-import { DateTime } from "luxon";
-import { getZoneLongName, utcOffsetStringForZone } from "./datetime";
-import { groupForTimeZone } from "./timezones";
-import { makeSearchHaystack } from "./search";
+import { DateTime } from 'luxon';
+import { getZoneLongName, utcOffsetStringForZone } from './datetime';
+import { makeSearchHaystack } from './search';
+import { groupForTimeZone } from './timezones';
 
 /**
  * Option shape consumed by the time zone autocomplete.
@@ -44,7 +44,7 @@ export type ZoneOption = {
  */
 export function makeZoneLabel(
   tz: string,
-  kind: "suggested" | "regular",
+  kind: 'suggested' | 'regular',
   cfg: {
     now: Date;
     locale?: string;
@@ -67,10 +67,10 @@ export function makeZoneLabel(
   const offset = utcOffsetStringForZone(tz, now);
   const localized = getZoneLongName(locale, tz, now) ?? tz;
   const cc = zoneToCountry.get(tz) ?? null;
-  const flag = cc ? `${toFlagEmoji(cc)} ` : "";
-  const base = `${tz} (${offset}${localized && localized !== tz ? `, ${localized}` : ""})`;
-  if (tz === "UTC") return `🌍 ${base}`;
-  if (kind === "suggested") {
+  const flag = cc ? `${toFlagEmoji(cc)} ` : '';
+  const base = `${tz} (${offset}${localized && localized !== tz ? `, ${localized}` : ''})`;
+  if (tz === 'UTC') return `🌍 ${base}`;
+  if (kind === 'suggested') {
     if (tz === browserTimeZone) return `${flag}${labels.browser}: ${base}`;
     if (siteTimeZone && tz === siteTimeZone)
       return `${flag}${labels.site}: ${base}`;
@@ -135,12 +135,13 @@ export function buildZoneOptions(params: {
       const offset = DateTime.fromJSDate(now, { zone: tz }).offset;
       offsetCache.set(tz, offset);
     }
-    return offsetCache.get(tz)!;
+    // The map always has `tz` at this point because we set it above
+    return offsetCache.get(tz) ?? 0;
   };
 
   const suggested: ZoneOption[] = suggestedTimeZones.map((tz) => {
     const offsetMin = getOffset(tz);
-    const label = makeZoneLabel(tz, "suggested", {
+    const label = makeZoneLabel(tz, 'suggested', {
       now,
       locale,
       zoneToCountry,
@@ -158,7 +159,7 @@ export function buildZoneOptions(params: {
     };
   });
   const priorityOf = (tz: string) =>
-    tz === "UTC"
+    tz === 'UTC'
       ? 0
       : siteTimeZone && tz === siteTimeZone
         ? 1
@@ -169,7 +170,7 @@ export function buildZoneOptions(params: {
 
   const regular: ZoneOption[] = timeZones.map((tz) => {
     const offsetMin = getOffset(tz);
-    const label = makeZoneLabel(tz, "regular", {
+    const label = makeZoneLabel(tz, 'regular', {
       now,
       locale,
       zoneToCountry,

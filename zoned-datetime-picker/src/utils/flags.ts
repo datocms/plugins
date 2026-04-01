@@ -25,7 +25,7 @@
  * ```
  */
 export function toFlagEmoji(countryCode: string): string {
-  if (!countryCode || countryCode.length !== 2) return "";
+  if (!countryCode || countryCode.length !== 2) return '';
   const cc = countryCode.toUpperCase();
   // Base code point for Unicode Regional Indicator Symbols: 'A' = U+1F1E6.
   // This is the magic offset that anchors the A–Z block.
@@ -36,6 +36,6 @@ export function toFlagEmoji(countryCode: string): string {
     REGIONAL_INDICATOR_A + (ch.charCodeAt(0) - ASCII_UPPERCASE_A);
   return String.fromCodePoint(
     regionalIndicatorFor(cc[0]),
-    regionalIndicatorFor(cc[1])
+    regionalIndicatorFor(cc[1]),
   );
 }

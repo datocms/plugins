@@ -1,4 +1,4 @@
-import type { Environment } from "@datocms/cma-client/dist/types/generated/ApiTypes";
+import type { Environment } from '@datocms/cma-client/dist/types/generated/ApiTypes';
 
 type EnvItemsProps = {
   env: Environment;
@@ -25,9 +25,9 @@ export const EnvItem = ({
       : `https://${projectDomain}/environments/${env.id}/media/assets/${uploadId}`;
 
   return (
-    <li style={{ fontWeight: isCurrent ? "bold" : "unset" }}>
+    <li style={{ fontWeight: isCurrent ? 'bold' : 'unset' }}>
       <a href={uploadUrlInEnv} target="_top">
-        {env.id} {isPrimary && <span>(primary)</span>}{" "}
+        {env.id} {isPrimary && <span>(primary)</span>}{' '}
         {isCurrent && <span>(current)</span>}
       </a>
     </li>

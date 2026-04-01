@@ -1,10 +1,10 @@
-import { memo, useCallback, useMemo } from 'react';
 import type { CommentSegment, Mention, UserMention } from '@ctypes/mentions';
 import { areSegmentsEqual } from '@utils/comparisonHelpers';
+import type { NavigableUserType } from '@utils/navigationHelpers';
+import { memo, useCallback, useMemo } from 'react';
 import { useNavigationContext } from '@/entrypoints/contexts/NavigationCallbacksContext';
 import { useProjectDataContext } from '@/entrypoints/contexts/ProjectDataContext';
 import { MentionDisplay } from './shared/MentionDisplay';
-import type { NavigableUserType } from '@utils/navigationHelpers';
 
 type CommentContentRendererProps = {
   segments: CommentSegment[];
@@ -12,7 +12,7 @@ type CommentContentRendererProps = {
 
 function arePropsEqual(
   prev: CommentContentRendererProps,
-  next: CommentContentRendererProps
+  next: CommentContentRendererProps,
 ): boolean {
   return areSegmentsEqual(prev.segments, next.segments);
 }
@@ -45,7 +45,7 @@ const CommentContentRenderer = memo(function CommentContentRenderer({
           return 'owner';
       }
     },
-    [typedUsers]
+    [typedUsers],
   );
 
   const userMentionTypes = useMemo(() => {
@@ -69,19 +69,25 @@ const CommentContentRenderer = memo(function CommentContentRenderer({
         case 'field': {
           if (!nav.handleScrollToField) return undefined;
           const fieldPath = mention.fieldPath ?? mention.apiKey;
-          return () => nav.handleScrollToField?.(fieldPath, mention.localized, mention.locale);
+          return () =>
+            nav.handleScrollToField?.(
+              fieldPath,
+              mention.localized,
+              mention.locale,
+            );
         }
         case 'asset':
           return () => nav.handleOpenAsset(mention.id);
         case 'record':
           return () => nav.handleOpenRecord(mention.id, mention.modelId);
         case 'model':
-          return () => nav.handleNavigateToModel(mention.id, mention.isBlockModel);
+          return () =>
+            nav.handleNavigateToModel(mention.id, mention.isBlockModel);
         default:
           return undefined;
       }
     },
-    [nav, userMentionTypes]
+    [nav, userMentionTypes],
   );
 
   // Index keys acceptable: segments are immutable and never reordered
@@ -125,7 +131,11 @@ const CommentContentRenderer = memo(function CommentContentRenderer({
   );
 }, arePropsEqual);
 
-function getMentionIdentifier(mention: Mention, index: number, prefix: string): string {
+function getMentionIdentifier(
+  mention: Mention,
+  index: number,
+  prefix: string,
+): string {
   const base = (() => {
     switch (mention.type) {
       case 'user':

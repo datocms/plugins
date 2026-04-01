@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
 import { applyOperation } from '@utils/operationApplicators';
+import { beforeEach, describe, expect, it } from 'vitest';
 import {
   createBaseComment,
   createCommentWithReplies,
@@ -57,18 +57,18 @@ describe('applyDeleteComment', () => {
   describe('deleting reply', () => {
     it('removes reply from parent replies array', () => {
       const parent = createCommentWithReplies(2, { id: 'parent' });
-      const replyId = parent.replies![0].id;
+      const replyId = parent.replies?.[0].id;
       const op = createDeleteCommentOp(replyId, 'parent');
 
       const result = applyOperation([parent], op);
 
       expect(result.comments[0].replies).toHaveLength(1);
-      expect(result.comments[0].replies![0].id).not.toBe(replyId);
+      expect(result.comments[0].replies?.[0].id).not.toBe(replyId);
     });
 
     it('returns status "applied"', () => {
       const parent = createCommentWithReplies(1, { id: 'parent' });
-      const replyId = parent.replies![0].id;
+      const replyId = parent.replies?.[0].id;
       const op = createDeleteCommentOp(replyId, 'parent');
 
       const result = applyOperation([parent], op);
@@ -78,7 +78,7 @@ describe('applyDeleteComment', () => {
 
     it('preserves parent comment', () => {
       const parent = createCommentWithReplies(1, { id: 'parent' });
-      const replyId = parent.replies![0].id;
+      const replyId = parent.replies?.[0].id;
       const op = createDeleteCommentOp(replyId, 'parent');
 
       const result = applyOperation([parent], op);
@@ -89,7 +89,7 @@ describe('applyDeleteComment', () => {
 
     it('preserves other replies', () => {
       const parent = createCommentWithReplies(3, { id: 'parent' });
-      const replyToDelete = parent.replies![1].id;
+      const replyToDelete = parent.replies?.[1].id;
       const op = createDeleteCommentOp(replyToDelete, 'parent');
 
       const result = applyOperation([parent], op);

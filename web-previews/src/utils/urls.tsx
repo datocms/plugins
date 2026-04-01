@@ -11,10 +11,7 @@ export function extractRedirectFromDraftModePreviewUrl(
   const url = new URL(urlString);
   const draftMode = new URL(draftModeUrl);
 
-  if (
-    url.origin === draftMode.origin &&
-    url.pathname === draftMode.pathname
-  ) {
+  if (url.origin === draftMode.origin && url.pathname === draftMode.pathname) {
     return url.searchParams.get('redirect') ?? undefined;
   }
 

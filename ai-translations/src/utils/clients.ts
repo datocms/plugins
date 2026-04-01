@@ -13,6 +13,6 @@ import { buildClient } from '@datocms/cma-client-browser';
 export function buildDatoCMSClient(accessToken: string, environment: string) {
   return buildClient({
     apiToken: accessToken,
-    environment
+    environment,
   });
 }

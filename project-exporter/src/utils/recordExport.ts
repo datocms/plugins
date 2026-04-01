@@ -6,8 +6,8 @@ import {
   ASSET_ZIP_FILENAME_TEMPLATE,
   MAX_FILES_PER_ZIP,
   MAX_ZIP_BYTES,
-  SIZE_SAFETY_FACTOR,
   readLastAssetExportSnapshot,
+  SIZE_SAFETY_FACTOR,
 } from './assetExport';
 
 export const RECORD_EXPORT_VERSION = '2.1.0';
@@ -315,7 +315,10 @@ function appendPath(basePath: string, segment: string): string {
   return `${basePath}["${escaped}"]`;
 }
 
-function createSyntheticBlockId(recordSourceId: string, jsonPath: string): string {
+function createSyntheticBlockId(
+  recordSourceId: string,
+  jsonPath: string,
+): string {
   return `synthetic::${recordSourceId}::${jsonPath}`;
 }
 
@@ -336,7 +339,7 @@ function getContextKey(
   context: Pick<
     ReferenceContext,
     'recordSourceId' | 'sourceBlockId' | 'fieldApiKey' | 'locale' | 'jsonPath'
-  >
+  >,
 ): string {
   return [
     context.recordSourceId,
@@ -351,7 +354,7 @@ function addRecordReference(
   collector: ReferenceCollector,
   context: ReferenceContext,
   targetSourceId: string,
-  kind: string
+  kind: string,
 ) {
   const key = `${getContextKey(context)}|${targetSourceId}|${kind}`;
   if (collector.recordRefKeys.has(key)) {
@@ -370,7 +373,7 @@ function addUploadReference(
   collector: ReferenceCollector,
   context: ReferenceContext,
   targetSourceId: string,
-  kind: string
+  kind: string,
 ) {
   const key = `${getContextKey(context)}|${targetSourceId}|${kind}`;
   if (collector.uploadRefKeys.has(key)) {
@@ -390,7 +393,7 @@ function addStructuredTextReference(
   context: ReferenceContext,
   targetSourceId: string,
   targetType: 'record' | 'block',
-  kind: 'link' | 'block'
+  kind: 'link' | 'block',
 ) {
   const key = `${getContextKey(context)}|${targetSourceId}|${targetType}|${kind}`;
   if (collector.structuredTextRefKeys.has(key)) {
@@ -413,7 +416,7 @@ function addBlockReference(
   blockModelId: string | null,
   parentBlockSourceId: string | null,
   kind: string,
-  synthetic: boolean
+  synthetic: boolean,
 ) {
   const key = `${getContextKey(context)}|${blockSourceId}|${
     blockModelId ?? ''
@@ -461,7 +464,7 @@ function normalizeFieldDefinitions(fields: JsonObject[]): FieldDefinition[] {
 }
 
 function indexFieldsByItemType(
-  fields: FieldDefinition[]
+  fields: FieldDefinition[],
 ): Map<string, FieldDefinition[]> {
   const byItemType = new Map<string, FieldDefinition[]>();
 
@@ -478,7 +481,7 @@ function inspectLinkValue(
   value: unknown,
   context: ReferenceContext,
   collector: ReferenceCollector,
-  kind: string
+  kind: string,
 ) {
   const targetSourceId = extractEntityId(value);
   if (!targetSourceId) {
@@ -492,7 +495,7 @@ function inspectLinksValue(
   value: unknown,
   context: ReferenceContext,
   collector: ReferenceCollector,
-  kind: string
+  kind: string,
 ) {
   if (Array.isArray(value)) {
     value.forEach((entry, index) => {
@@ -500,7 +503,7 @@ function inspectLinksValue(
         entry,
         { ...context, jsonPath: appendPath(context.jsonPath, `[${index}]`) },
         collector,
-        kind
+        kind,
       );
     });
     return;
@@ -513,7 +516,7 @@ function inspectUploadValue(
   value: unknown,
   context: ReferenceContext,
   collector: ReferenceCollector,
-  kind: string
+  kind: string,
 ) {
   const targetSourceId = extractUploadId(value);
   if (!targetSourceId) {
@@ -527,7 +530,7 @@ function inspectUploadsValue(
   value: unknown,
   context: ReferenceContext,
   collector: ReferenceCollector,
-  kind: string
+  kind: string,
 ) {
   if (Array.isArray(value)) {
     value.forEach((entry, index) => {
@@ -535,7 +538,7 @@ function inspectUploadsValue(
         entry,
         { ...context, jsonPath: appendPath(context.jsonPath, `[${index}]`) },
         collector,
-        kind
+        kind,
       );
     });
     return;
@@ -549,7 +552,7 @@ function inspectUnknownValue(
   context: ReferenceContext,
   fieldDefinitionsByItemType: Map<string, FieldDefinition[]>,
   collector: ReferenceCollector,
-  parentBlockSourceId: string | null
+  parentBlockSourceId: string | null,
 ) {
   if (value === null || typeof value === 'undefined') {
     return;
@@ -562,7 +565,7 @@ function inspectUnknownValue(
         { ...context, jsonPath: appendPath(context.jsonPath, `[${index}]`) },
         fieldDefinitionsByItemType,
         collector,
-        parentBlockSourceId
+        parentBlockSourceId,
       );
     });
     return;
@@ -584,7 +587,7 @@ function inspectUnknownValue(
       fieldDefinitionsByItemType,
       collector,
       'nested_block',
-      parentBlockSourceId
+      parentBlockSourceId,
     );
     return;
   }
@@ -606,7 +609,71 @@ function inspectUnknownValue(
       { ...context, jsonPath: appendPath(context.jsonPath, key) },
       fieldDefinitionsByItemType,
       collector,
-      parentBlockSourceId
+      parentBlockSourceId,
+    );
+  }
+}
+
+function handleItemLinkOrInlineItemNode(
+  nodeType: string,
+  nodeItem: unknown,
+  context: ReferenceContext,
+  collector: ReferenceCollector,
+) {
+  const targetSourceId = extractEntityId(nodeItem);
+  if (!targetSourceId) {
+    return;
+  }
+  addRecordReference(
+    collector,
+    context,
+    targetSourceId,
+    `structured_text_${nodeType}`,
+  );
+  addStructuredTextReference(
+    collector,
+    context,
+    targetSourceId,
+    'record',
+    'link',
+  );
+}
+
+function handleBlockNode(
+  nodeItem: unknown,
+  context: ReferenceContext,
+  fieldDefinitionsByItemType: Map<string, FieldDefinition[]>,
+  collector: ReferenceCollector,
+  parentBlockSourceId: string | null,
+) {
+  const blockSourceId = extractEntityId(nodeItem);
+  if (blockSourceId) {
+    addBlockReference(
+      collector,
+      context,
+      blockSourceId,
+      null,
+      parentBlockSourceId,
+      'structured_text_block',
+      false,
+    );
+    addStructuredTextReference(
+      collector,
+      context,
+      blockSourceId,
+      'block',
+      'block',
+    );
+  }
+
+  if (isObject(nodeItem)) {
+    inspectBlockObject(
+      nodeItem,
+      { ...context, jsonPath: appendPath(context.jsonPath, 'item') },
+      fieldDefinitionsByItemType,
+      collector,
+      'structured_text_block',
+      parentBlockSourceId,
     );
   }
 }
@@ -616,7 +683,7 @@ function inspectStructuredTextNode(
   context: ReferenceContext,
   fieldDefinitionsByItemType: Map<string, FieldDefinition[]>,
   collector: ReferenceCollector,
-  parentBlockSourceId: string | null
+  parentBlockSourceId: string | null,
 ) {
   if (node === null || typeof node === 'undefined') {
     return;
@@ -629,7 +696,7 @@ function inspectStructuredTextNode(
         { ...context, jsonPath: appendPath(context.jsonPath, `[${index}]`) },
         fieldDefinitionsByItemType,
         collector,
-        parentBlockSourceId
+        parentBlockSourceId,
       );
     });
     return;
@@ -643,55 +710,17 @@ function inspectStructuredTextNode(
   const nodeItem = node.item;
 
   if (nodeType === 'itemLink' || nodeType === 'inlineItem') {
-    const targetSourceId = extractEntityId(nodeItem);
-    if (targetSourceId) {
-      addRecordReference(
-        collector,
-        context,
-        targetSourceId,
-        `structured_text_${nodeType}`
-      );
-      addStructuredTextReference(
-        collector,
-        context,
-        targetSourceId,
-        'record',
-        'link'
-      );
-    }
+    handleItemLinkOrInlineItemNode(nodeType, nodeItem, context, collector);
   }
 
   if (nodeType === 'block') {
-    const blockSourceId = extractEntityId(nodeItem);
-    if (blockSourceId) {
-      addBlockReference(
-        collector,
-        context,
-        blockSourceId,
-        null,
-        parentBlockSourceId,
-        'structured_text_block',
-        false
-      );
-      addStructuredTextReference(
-        collector,
-        context,
-        blockSourceId,
-        'block',
-        'block'
-      );
-    }
-
-    if (isObject(nodeItem)) {
-      inspectBlockObject(
-        nodeItem,
-        { ...context, jsonPath: appendPath(context.jsonPath, 'item') },
-        fieldDefinitionsByItemType,
-        collector,
-        'structured_text_block',
-        parentBlockSourceId
-      );
-    }
+    handleBlockNode(
+      nodeItem,
+      context,
+      fieldDefinitionsByItemType,
+      collector,
+      parentBlockSourceId,
+    );
   }
 
   for (const [key, value] of Object.entries(node)) {
@@ -704,7 +733,7 @@ function inspectStructuredTextNode(
       { ...context, jsonPath: appendPath(context.jsonPath, key) },
       fieldDefinitionsByItemType,
       collector,
-      parentBlockSourceId
+      parentBlockSourceId,
     );
   }
 }
@@ -714,7 +743,7 @@ function inspectStructuredTextValue(
   context: ReferenceContext,
   fieldDefinitionsByItemType: Map<string, FieldDefinition[]>,
   collector: ReferenceCollector,
-  parentBlockSourceId: string | null
+  parentBlockSourceId: string | null,
 ) {
   if (!isObject(value)) {
     return;
@@ -729,21 +758,24 @@ function inspectStructuredTextValue(
 
       const refContext = {
         ...context,
-        jsonPath: appendPath(appendPath(context.jsonPath, 'links'), `[${index}]`),
+        jsonPath: appendPath(
+          appendPath(context.jsonPath, 'links'),
+          `[${index}]`,
+        ),
       };
 
       addRecordReference(
         collector,
         refContext,
         targetSourceId,
-        'structured_text_links_array'
+        'structured_text_links_array',
       );
       addStructuredTextReference(
         collector,
         refContext,
         targetSourceId,
         'record',
-        'link'
+        'link',
       );
     });
   }
@@ -752,7 +784,10 @@ function inspectStructuredTextValue(
     value.blocks.forEach((entry, index) => {
       const refContext = {
         ...context,
-        jsonPath: appendPath(appendPath(context.jsonPath, 'blocks'), `[${index}]`),
+        jsonPath: appendPath(
+          appendPath(context.jsonPath, 'blocks'),
+          `[${index}]`,
+        ),
       };
 
       const blockSourceId = extractEntityId(entry);
@@ -764,14 +799,14 @@ function inspectStructuredTextValue(
           null,
           parentBlockSourceId,
           'structured_text_blocks_array',
-          false
+          false,
         );
         addStructuredTextReference(
           collector,
           refContext,
           blockSourceId,
           'block',
-          'block'
+          'block',
         );
       }
 
@@ -782,7 +817,7 @@ function inspectStructuredTextValue(
           fieldDefinitionsByItemType,
           collector,
           'structured_text_block',
-          parentBlockSourceId
+          parentBlockSourceId,
         );
       }
     });
@@ -794,7 +829,7 @@ function inspectStructuredTextValue(
       { ...context, jsonPath: appendPath(context.jsonPath, 'document') },
       fieldDefinitionsByItemType,
       collector,
-      parentBlockSourceId
+      parentBlockSourceId,
     );
   } else {
     inspectStructuredTextNode(
@@ -802,7 +837,7 @@ function inspectStructuredTextValue(
       context,
       fieldDefinitionsByItemType,
       collector,
-      parentBlockSourceId
+      parentBlockSourceId,
     );
   }
 }
@@ -813,7 +848,7 @@ function inspectFieldValue(
   context: ReferenceContext,
   fieldDefinitionsByItemType: Map<string, FieldDefinition[]>,
   collector: ReferenceCollector,
-  parentBlockSourceId: string | null
+  parentBlockSourceId: string | null,
 ) {
   if (value === null || typeof value === 'undefined') {
     return;
@@ -831,7 +866,7 @@ function inspectFieldValue(
         },
         fieldDefinitionsByItemType,
         collector,
-        parentBlockSourceId
+        parentBlockSourceId,
       );
     }
     return;
@@ -857,7 +892,7 @@ function inspectFieldValue(
         context,
         fieldDefinitionsByItemType,
         collector,
-        parentBlockSourceId
+        parentBlockSourceId,
       );
       break;
     case 'modular_content':
@@ -867,7 +902,7 @@ function inspectFieldValue(
         fieldDefinitionsByItemType,
         collector,
         'modular_content',
-        parentBlockSourceId
+        parentBlockSourceId,
       );
       break;
     case 'single_block':
@@ -877,7 +912,7 @@ function inspectFieldValue(
         fieldDefinitionsByItemType,
         collector,
         'single_block',
-        parentBlockSourceId
+        parentBlockSourceId,
       );
       break;
     default:
@@ -886,7 +921,7 @@ function inspectFieldValue(
         context,
         fieldDefinitionsByItemType,
         collector,
-        parentBlockSourceId
+        parentBlockSourceId,
       );
       break;
   }
@@ -898,11 +933,12 @@ function inspectBlockObject(
   fieldDefinitionsByItemType: Map<string, FieldDefinition[]>,
   collector: ReferenceCollector,
   kind: string,
-  parentBlockSourceId: string | null
+  parentBlockSourceId: string | null,
 ) {
   const existingId = extractEntityId(value);
   const blockSourceId =
-    existingId ?? createSyntheticBlockId(context.recordSourceId, context.jsonPath);
+    existingId ??
+    createSyntheticBlockId(context.recordSourceId, context.jsonPath);
   const blockModelId = extractItemTypeId(value);
   const synthetic = !existingId;
 
@@ -913,7 +949,7 @@ function inspectBlockObject(
     blockModelId,
     parentBlockSourceId,
     kind,
-    synthetic
+    synthetic,
   );
 
   if (!blockModelId) {
@@ -922,7 +958,7 @@ function inspectBlockObject(
       { ...context, sourceBlockId: blockSourceId },
       fieldDefinitionsByItemType,
       collector,
-      blockSourceId
+      blockSourceId,
     );
     return;
   }
@@ -948,7 +984,7 @@ function inspectBlockObject(
       blockFieldContext,
       fieldDefinitionsByItemType,
       collector,
-      blockSourceId
+      blockSourceId,
     );
 
     processedFieldKeys.add(fieldDefinition.apiKey);
@@ -969,7 +1005,7 @@ function inspectBlockObject(
       },
       fieldDefinitionsByItemType,
       collector,
-      blockSourceId
+      blockSourceId,
     );
   }
 }
@@ -980,7 +1016,7 @@ function inspectBlockCollection(
   fieldDefinitionsByItemType: Map<string, FieldDefinition[]>,
   collector: ReferenceCollector,
   kind: string,
-  parentBlockSourceId: string | null
+  parentBlockSourceId: string | null,
 ) {
   if (Array.isArray(value)) {
     value.forEach((entry, index) => {
@@ -996,7 +1032,7 @@ function inspectBlockCollection(
           fieldDefinitionsByItemType,
           collector,
           kind,
-          parentBlockSourceId
+          parentBlockSourceId,
         );
         return;
       }
@@ -1010,7 +1046,7 @@ function inspectBlockCollection(
           null,
           parentBlockSourceId,
           kind,
-          false
+          false,
         );
       }
     });
@@ -1024,14 +1060,79 @@ function inspectBlockCollection(
       fieldDefinitionsByItemType,
       collector,
       kind,
-      parentBlockSourceId
+      parentBlockSourceId,
+    );
+  }
+}
+
+function inspectSingleRecord(
+  record: JsonObject,
+  recordIndex: number,
+  ignoredKeys: Set<string>,
+  fieldDefinitionsByItemType: Map<string, FieldDefinition[]>,
+  collector: ReferenceCollector,
+) {
+  const recordSourceId = extractEntityId(record.id);
+  if (!recordSourceId) {
+    return;
+  }
+
+  const itemTypeId = extractItemTypeId(record);
+  const recordPath = `$.records[${recordIndex}]`;
+  const fieldDefinitions = itemTypeId
+    ? (fieldDefinitionsByItemType.get(itemTypeId) ?? [])
+    : [];
+  const processedFieldKeys = new Set<string>();
+
+  for (const fieldDefinition of fieldDefinitions) {
+    if (!(fieldDefinition.apiKey in record)) {
+      continue;
+    }
+
+    const context: ReferenceContext = {
+      recordSourceId,
+      sourceBlockId: null,
+      fieldApiKey: fieldDefinition.apiKey,
+      locale: null,
+      jsonPath: appendPath(recordPath, fieldDefinition.apiKey),
+    };
+
+    inspectFieldValue(
+      record[fieldDefinition.apiKey],
+      fieldDefinition,
+      context,
+      fieldDefinitionsByItemType,
+      collector,
+      null,
+    );
+
+    processedFieldKeys.add(fieldDefinition.apiKey);
+  }
+
+  for (const [key, value] of Object.entries(record)) {
+    if (processedFieldKeys.has(key) || ignoredKeys.has(key)) {
+      continue;
+    }
+
+    inspectUnknownValue(
+      value,
+      {
+        recordSourceId,
+        sourceBlockId: null,
+        fieldApiKey: key,
+        locale: null,
+        jsonPath: appendPath(recordPath, key),
+      },
+      fieldDefinitionsByItemType,
+      collector,
+      null,
     );
   }
 }
 
 function collectReferenceIndex(
   records: JsonObject[],
-  fieldDefinitionsByItemType: Map<string, FieldDefinition[]>
+  fieldDefinitionsByItemType: Map<string, FieldDefinition[]>,
 ) {
   const collector = createReferenceCollector();
   const ignoredKeys = new Set([
@@ -1046,64 +1147,16 @@ function collectReferenceIndex(
     'creator',
   ]);
 
-  records.forEach((record, recordIndex) => {
-    const recordSourceId = extractEntityId(record.id);
-    if (!recordSourceId) {
-      return;
-    }
-
-    const itemTypeId = extractItemTypeId(record);
-    const recordPath = `$.records[${recordIndex}]`;
-    const fieldDefinitions = itemTypeId
-      ? fieldDefinitionsByItemType.get(itemTypeId) ?? []
-      : [];
-    const processedFieldKeys = new Set<string>();
-
-    for (const fieldDefinition of fieldDefinitions) {
-      if (!(fieldDefinition.apiKey in record)) {
-        continue;
-      }
-
-      const context: ReferenceContext = {
-        recordSourceId,
-        sourceBlockId: null,
-        fieldApiKey: fieldDefinition.apiKey,
-        locale: null,
-        jsonPath: appendPath(recordPath, fieldDefinition.apiKey),
-      };
-
-      inspectFieldValue(
-        record[fieldDefinition.apiKey],
-        fieldDefinition,
-        context,
-        fieldDefinitionsByItemType,
-        collector,
-        null
-      );
-
-      processedFieldKeys.add(fieldDefinition.apiKey);
-    }
-
-    for (const [key, value] of Object.entries(record)) {
-      if (processedFieldKeys.has(key) || ignoredKeys.has(key)) {
-        continue;
-      }
-
-      inspectUnknownValue(
-        value,
-        {
-          recordSourceId,
-          sourceBlockId: null,
-          fieldApiKey: key,
-          locale: null,
-          jsonPath: appendPath(recordPath, key),
-        },
-        fieldDefinitionsByItemType,
-        collector,
-        null
-      );
-    }
-  });
+  for (let recordIndex = 0; recordIndex < records.length; recordIndex++) {
+    const record = records[recordIndex];
+    inspectSingleRecord(
+      record,
+      recordIndex,
+      ignoredKeys,
+      fieldDefinitionsByItemType,
+      collector,
+    );
+  }
 
   return {
     recordRefs: collector.recordRefs,
@@ -1114,24 +1167,33 @@ function collectReferenceIndex(
 }
 
 function extractSiteManifestInfoFromSitePayload(
-  sitePayload: JsonObject | null
+  sitePayload: JsonObject | null,
 ): SiteManifestInfo {
   if (!sitePayload) {
     return emptySiteManifestInfo();
   }
 
-  const attributes = isObject(sitePayload.attributes) ? sitePayload.attributes : {};
+  const attributes = isObject(sitePayload.attributes)
+    ? sitePayload.attributes
+    : {};
 
   const locales = Array.isArray(attributes.locales)
-    ? attributes.locales.filter((locale): locale is string => typeof locale === 'string')
+    ? attributes.locales.filter(
+        (locale): locale is string => typeof locale === 'string',
+      )
     : [];
   const defaultLocale =
-    asString(attributes.default_locale) ?? asString(attributes.locale) ?? locales[0] ?? null;
+    asString(attributes.default_locale) ??
+    asString(attributes.locale) ??
+    locales[0] ??
+    null;
 
   return {
     sourceProjectId: asString(sitePayload.id) ?? null,
     sourceEnvironment:
-      asString(attributes.environment) ?? asString(attributes.internal_subdomain) ?? null,
+      asString(attributes.environment) ??
+      asString(attributes.internal_subdomain) ??
+      null,
     defaultLocale,
     locales,
   };
@@ -1139,7 +1201,7 @@ function extractSiteManifestInfoFromSitePayload(
 
 function getScheduledTimestamp(
   record: JsonObject,
-  key: 'publication_scheduled_at' | 'unpublishing_scheduled_at'
+  key: 'publication_scheduled_at' | 'unpublishing_scheduled_at',
 ): string | null {
   const directValue = asString(record[key]);
   if (directValue) {
@@ -1156,7 +1218,7 @@ function getScheduledTimestamp(
 
 function collectScheduledActions(
   records: JsonObject[],
-  key: 'publication_scheduled_at' | 'unpublishing_scheduled_at'
+  key: 'publication_scheduled_at' | 'unpublishing_scheduled_at',
 ): ScheduledActionSummary[] {
   const actions: ScheduledActionSummary[] = [];
 
@@ -1246,7 +1308,7 @@ export async function fetchProjectConfigurationExport(args: {
         });
         return [];
       }
-    })
+    }),
   );
 
   const [
@@ -1313,11 +1375,11 @@ export async function fetchProjectConfigurationExport(args: {
     site,
     scheduledPublications: collectScheduledActions(
       args.records,
-      'publication_scheduled_at'
+      'publication_scheduled_at',
     ),
     scheduledUnpublishings: collectScheduledActions(
       args.records,
-      'unpublishing_scheduled_at'
+      'unpublishing_scheduled_at',
     ),
     fieldsets: fieldsetGroups.flat(),
     menuItems,
@@ -1338,7 +1400,7 @@ export async function fetchProjectConfigurationExport(args: {
 }
 
 export async function fetchSiteManifestInfo(
-  apiToken: string
+  apiToken: string,
 ): Promise<SiteManifestInfo> {
   try {
     const response = await fetch('https://site-api.datocms.com/site', {
@@ -1385,7 +1447,7 @@ export function buildRecordExportEnvelope(args: {
 
       return acc;
     },
-    {}
+    {},
   );
 
   const fieldIdToApiKey = normalizedFields.reduce<Record<string, string>>(
@@ -1393,7 +1455,7 @@ export function buildRecordExportEnvelope(args: {
       acc[field.fieldId] = field.apiKey;
       return acc;
     },
-    {}
+    {},
   );
 
   const fieldsByItemType = normalizedFields.reduce<

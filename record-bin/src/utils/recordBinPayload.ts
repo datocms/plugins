@@ -1,39 +1,41 @@
-const SYNTHETIC_PAYLOAD_VERSION = "2026-02-25";
+const SYNTHETIC_PAYLOAD_VERSION = '2026-02-25';
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
-  Boolean(value) && typeof value === "object" && !Array.isArray(value);
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
 const parseUnknownPayload = (payload: unknown): unknown => {
-  if (typeof payload !== "string") {
+  if (typeof payload !== 'string') {
     return payload;
   }
 
   return JSON.parse(payload);
 };
 
-const looksLikeEntityPayload = (value: unknown): value is Record<string, unknown> =>
+const looksLikeEntityPayload = (
+  value: unknown,
+): value is Record<string, unknown> =>
   isRecord(value) &&
-  typeof value.type === "string" &&
+  typeof value.type === 'string' &&
   isRecord(value.relationships) &&
   isRecord(value.attributes);
 
 const getNestedRecord = (
   value: Record<string, unknown>,
-  key: string
+  key: string,
 ): Record<string, unknown> | undefined => {
   const candidate = value[key];
   return isRecord(candidate) ? candidate : undefined;
 };
 
 export type RecordBinCompatiblePayload = {
-  event_type: "to_be_restored";
-  entity_type: "item";
+  event_type: 'to_be_restored';
+  entity_type: 'item';
   environment: string;
   entity: Record<string, unknown>;
   event_triggered_at: string;
   related_entities: unknown[];
   __record_bin: {
-    source: "onBeforeItemsDestroy";
+    source: 'onBeforeItemsDestroy';
     version: string;
   };
 };
@@ -55,26 +57,26 @@ export const buildRecordBinCompatiblePayload = ({
   entity,
   capturedAt = new Date().toISOString(),
 }: BuildRecordBinCompatiblePayloadInput): RecordBinCompatiblePayload => ({
-  event_type: "to_be_restored",
-  entity_type: "item",
+  event_type: 'to_be_restored',
+  entity_type: 'item',
   environment,
   entity,
   event_triggered_at: capturedAt,
   related_entities: [],
   __record_bin: {
-    source: "onBeforeItemsDestroy",
+    source: 'onBeforeItemsDestroy',
     version: SYNTHETIC_PAYLOAD_VERSION,
   },
 });
 
 export const normalizeRecordBinPayload = (
   payload: unknown,
-  fallbackEnvironment: string
+  fallbackEnvironment: string,
 ): NormalizedRecordBinPayload => {
   const parsedPayload = parseUnknownPayload(payload);
 
   if (!isRecord(parsedPayload)) {
-    throw new Error("Record body is not a JSON object.");
+    throw new Error('Record body is not a JSON object.');
   }
 
   if (looksLikeEntityPayload(parsedPayload)) {
@@ -84,19 +86,19 @@ export const normalizeRecordBinPayload = (
     };
   }
 
-  const entity = getNestedRecord(parsedPayload, "entity");
+  const entity = getNestedRecord(parsedPayload, 'entity');
   if (!entity) {
-    throw new Error("Record body does not include an entity payload.");
+    throw new Error('Record body does not include an entity payload.');
   }
 
   const environment =
-    typeof parsedPayload.environment === "string" &&
+    typeof parsedPayload.environment === 'string' &&
     parsedPayload.environment.trim().length > 0
       ? parsedPayload.environment
       : fallbackEnvironment;
 
   const eventType =
-    typeof parsedPayload.event_type === "string"
+    typeof parsedPayload.event_type === 'string'
       ? parsedPayload.event_type
       : undefined;
 
@@ -108,29 +110,29 @@ export const normalizeRecordBinPayload = (
 };
 
 export const extractEntityModelId = (
-  entity: Record<string, unknown>
+  entity: Record<string, unknown>,
 ): string | undefined => {
-  const relationships = getNestedRecord(entity, "relationships");
+  const relationships = getNestedRecord(entity, 'relationships');
   if (!relationships) {
     return undefined;
   }
 
-  const itemType = getNestedRecord(relationships, "item_type");
+  const itemType = getNestedRecord(relationships, 'item_type');
   if (!itemType) {
     return undefined;
   }
 
-  const data = getNestedRecord(itemType, "data");
+  const data = getNestedRecord(itemType, 'data');
   if (!data) {
     return undefined;
   }
 
-  return typeof data.id === "string" ? data.id : undefined;
+  return typeof data.id === 'string' ? data.id : undefined;
 };
 
 export const extractEntityAttributes = (
-  entity: Record<string, unknown>
+  entity: Record<string, unknown>,
 ): Record<string, unknown> => {
-  const attributes = getNestedRecord(entity, "attributes");
+  const attributes = getNestedRecord(entity, 'attributes');
   return attributes ?? {};
 };

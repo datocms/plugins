@@ -7,18 +7,12 @@ import {
   SwitchInput,
 } from 'datocms-react-ui';
 import { get } from 'lodash-es';
+import { useDeferredValue, useEffect, useId, useMemo, useState } from 'react';
 import {
-  useDeferredValue,
-  useEffect,
-  useId,
-  useMemo,
-  useState,
-} from 'react';
-import {
+  type AnalyticsFieldType,
   analyzeFieldValue,
   summarizeWordFrequencies,
   supportsStopwordFiltering,
-  type AnalyticsFieldType,
 } from '../lib/analyzeText';
 import s from './styles.module.css';
 
@@ -151,7 +145,9 @@ export default function FieldExtension({ ctx }: Props) {
         <div className={s.summaryBar}>
           <div className={s.summaryMetrics}>
             <span className={s.summaryMetric}>
-              <span className={s.summaryValue}>{formatMetric(characterCount)}</span>{' '}
+              <span className={s.summaryValue}>
+                {formatMetric(characterCount)}
+              </span>{' '}
               <span className={s.summaryLabel}>characters</span>
             </span>
             {isDetailedField && (
@@ -243,7 +239,11 @@ export default function FieldExtension({ ctx }: Props) {
                 {commonWordsSummary.topWords.length > 0 ? (
                   <div className={s.wordList} role="list">
                     {commonWordsSummary.topWords.map((word) => (
-                      <div className={s.wordRow} role="listitem" key={word.word}>
+                      <div
+                        className={s.wordRow}
+                        role="listitem"
+                        key={word.word}
+                      >
                         <span className={s.word}>{word.word}</span>
                         <span className={s.wordCount}>
                           {formatMetric(word.count)}

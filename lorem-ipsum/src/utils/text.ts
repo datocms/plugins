@@ -1,7 +1,3 @@
-import { loremIpsum } from 'lorem-ipsum';
-import intersperse from 'intersperse';
-import names from './names';
-import { emailDomains, domainSuffixes } from './domains';
 import type {
   Blockquote,
   Heading,
@@ -12,9 +8,13 @@ import type {
   Paragraph,
   Text,
 } from 'datocms-structured-text-slate-utils';
+import intersperse from 'intersperse';
+import { loremIpsum } from 'lorem-ipsum';
+import { domainSuffixes, emailDomains } from './domains';
+import names from './names';
 
 // A Tag object wraps a 'tag' and child elements for flexible transformations
-export type Tag = { tag: string; children: any[] };
+export type Tag = { tag: string; children: Array<Tag | string> };
 
 // Returns an array of n indices, useful for repeating generation
 export function times(n: number) {
@@ -27,7 +27,7 @@ export function rand(min: number, max: number) {
 }
 
 // Creates a Tag object with provided children
-export function t(tag: string, ...children: any[]): Tag {
+export function t(tag: string, ...children: Array<Tag | string>): Tag {
   return { tag, children };
 }
 
@@ -54,7 +54,10 @@ export function sentence(
       return t('strong', word);
     }
 
-    if (die === 2 && (buttons.includes('italic') || buttons.includes('emphasis'))) {
+    if (
+      die === 2 &&
+      (buttons.includes('italic') || buttons.includes('emphasis'))
+    ) {
       return t('em', word);
     }
 
@@ -166,13 +169,18 @@ export function url() {
 
 // Overloads to handle creation of structured text data from different Tag inputs
 export function toStructuredText(tree: Tag): Node;
-export function toStructuredText(tree: Tag[]): Node[];
+export function toStructuredText(tree: Array<Tag | string>): Node[];
 export function toStructuredText(tree: string): Node;
 
 /**
  * Recursively transforms a Tag-based tree into a DatoCMS-structured-text format.
+ * By construction, each tag produces children that are valid for the corresponding
+ * DatoCMS node type. We use type guard helpers to narrow the Node[] to the specific
+ * child array shapes required by each node type without unsafe casts.
  */
-export function toStructuredText(tree: Tag | Tag[] | string): Node[] | Node {
+export function toStructuredText(
+  tree: Tag | Array<Tag | string> | string,
+): Node[] | Node {
   if (typeof tree === 'string') {
     return { text: tree };
   }
@@ -181,12 +189,12 @@ export function toStructuredText(tree: Tag | Tag[] | string): Node[] | Node {
     return tree.flatMap(toStructuredText);
   }
 
-  const content = toStructuredText(tree.children);
+  const childNodes = toStructuredText(tree.children);
 
   if (tree.tag === 'p') {
     return {
       type: 'paragraph',
-      children: content as any as Paragraph['children'],
+      children: childNodes as Paragraph['children'],
     };
   }
 
@@ -194,7 +202,7 @@ export function toStructuredText(tree: Tag | Tag[] | string): Node[] | Node {
     return {
       type: 'list',
       style: 'bulleted',
-      children: content as any as List['children'],
+      children: childNodes as List['children'],
     };
   }
 
@@ -202,7 +210,7 @@ export function toStructuredText(tree: Tag | Tag[] | string): Node[] | Node {
     return {
       type: 'heading',
       level: 1,
-      children: content as any as Heading['children'],
+      children: childNodes as Heading['children'],
     };
   }
 
@@ -210,14 +218,14 @@ export function toStructuredText(tree: Tag | Tag[] | string): Node[] | Node {
     return {
       type: 'heading',
       level: 2,
-      children: content as any as Heading['children'],
+      children: childNodes as Heading['children'],
     };
   }
 
   if (tree.tag === 'li') {
     return {
       type: 'listItem',
-      children: content as any as ListItem['children'],
+      children: childNodes as ListItem['children'],
     };
   }
 
@@ -225,25 +233,26 @@ export function toStructuredText(tree: Tag | Tag[] | string): Node[] | Node {
     return {
       type: 'link',
       url: '#',
-      children: content as any as Link['children'],
+      children: childNodes as Link['children'],
     };
   }
 
   if (tree.tag === 'blockquote') {
     return {
       type: 'blockquote',
-      children: content as any as Blockquote['children'],
+      children: childNodes as Blockquote['children'],
     };
   }
 
-  if (tree.tag === 'em') {
-    const textNode = content[0] as any as Text;
-    return { ...textNode, emphasis: true };
+  const firstChildNode = Array.isArray(childNodes) ? childNodes[0] : childNodes;
+  const isTextNode = (node: Node): node is Text => 'text' in node;
+
+  if (tree.tag === 'em' && isTextNode(firstChildNode)) {
+    return { ...firstChildNode, emphasis: true };
   }
 
-  if (tree.tag === 'strong') {
-    const textNode = content[0] as any as Text;
-    return { ...textNode, strong: true };
+  if (tree.tag === 'strong' && isTextNode(firstChildNode)) {
+    return { ...firstChildNode, strong: true };
   }
 
   return { text: '' };

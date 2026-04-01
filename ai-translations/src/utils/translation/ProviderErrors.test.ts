@@ -3,10 +3,14 @@
  * Tests error normalization and formatting for different providers.
  */
 
-import { describe, it, expect, vi } from 'vitest';
-import { normalizeProviderError, formatErrorForUser, handleTranslationError } from './ProviderErrors';
-import { ProviderError } from './types';
+import { describe, expect, it, vi } from 'vitest';
 import type { Logger } from '../logging/Logger';
+import {
+  formatErrorForUser,
+  handleTranslationError,
+  normalizeProviderError,
+} from './ProviderErrors';
+import { ProviderError } from './types';
 
 /**
  * Creates a mock Logger for testing.
@@ -98,10 +102,10 @@ describe('ProviderErrors.ts', () => {
         const vendors = ['openai', 'google', 'anthropic', 'deepl'] as const;
         const error = { status: 429 };
 
-        vendors.forEach((vendor) => {
+        for (const vendor of vendors) {
           const result = normalizeProviderError(error, vendor);
           expect(result.hint).toBeDefined();
-        });
+        }
       });
     });
 
@@ -377,12 +381,20 @@ describe('ProviderErrors.ts', () => {
       const mockLogger = createMockLogger();
 
       try {
-        handleTranslationError(new Error('Test'), 'openai', mockLogger, 'Custom context');
+        handleTranslationError(
+          new Error('Test'),
+          'openai',
+          mockLogger,
+          'Custom context',
+        );
       } catch {
         // Expected
       }
 
-      expect(mockLogger.error).toHaveBeenCalledWith('Custom context', expect.any(Object));
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        'Custom context',
+        expect.any(Object),
+      );
     });
   });
 });

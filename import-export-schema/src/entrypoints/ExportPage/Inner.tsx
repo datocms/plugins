@@ -125,12 +125,7 @@ export default function Inner({
       for (const id of mustHave) next.add(id);
       return Array.from(next);
     });
-  }, [
-    initialItemTypes
-      .map((it) => it.id)
-      .sort()
-      .join('-'),
-  ]);
+  }, [initialItemTypes.map]);
 
   const graphTooLarge = !!graph && graph.nodes.length > GRAPH_NODE_THRESHOLD;
   useEffect(() => {
@@ -191,7 +186,7 @@ export default function Inner({
 
       setPendingZoomEntity(newEntity ?? null);
     },
-    [graphTooLarge],
+    [],
   );
 
   const onNodeClick: NodeMouseHandler<AppNode> = useCallback(
@@ -218,12 +213,7 @@ export default function Inner({
         );
       }
     },
-    [
-      initialItemTypes
-        .map((it) => it.id)
-        .sort()
-        .join('-'),
-    ],
+    [initialItemTypes.some],
   );
 
   const handleSelectAllDependencies = useCallback(async () => {

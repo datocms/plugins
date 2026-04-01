@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
-import type { CommentSegment } from '@ctypes/mentions';
 import type { TipTapComposerRef } from '@components/tiptap/TipTapComposer';
+import type { CommentSegment } from '@ctypes/mentions';
+import { useEffect, useRef, useState } from 'react';
 
 type UseCommentEditorParams = {
   commentContent: CommentSegment[];

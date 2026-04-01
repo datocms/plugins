@@ -1,12 +1,12 @@
 type PluginParameters = Record<string, unknown> | undefined;
 
-const isString = (value: unknown): value is string => typeof value === "string";
+const isString = (value: unknown): value is string => typeof value === 'string';
 
 export const getDeploymentUrlFromParameters = (
-  parameters: PluginParameters
+  parameters: PluginParameters,
 ): string => {
   if (!parameters) {
-    return "";
+    return '';
   }
 
   if (isString(parameters.deploymentURL) && parameters.deploymentURL.trim()) {
@@ -17,5 +17,5 @@ export const getDeploymentUrlFromParameters = (
     return parameters.vercelURL;
   }
 
-  return "";
+  return '';
 };

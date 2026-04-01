@@ -1,6 +1,6 @@
+import { Button, TextField } from 'datocms-react-ui';
 import type { AnalysisAssessment } from '../types';
 import Results from './Results';
-import { TextField, Button } from 'datocms-react-ui';
 
 type PropTypes = {
   analysis?: AnalysisAssessment;

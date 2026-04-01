@@ -1,15 +1,19 @@
-import React from 'react';
-import { Canvas, Button } from 'datocms-react-ui';
-import type { 
-  RenderConfigScreenCtx, 
-  RenderFieldExtensionCtx, 
+import type {
+  RenderConfigScreenCtx,
+  RenderFieldExtensionCtx,
   RenderManualFieldExtensionConfigScreenCtx,
-  RenderPageCtx 
+  RenderPageCtx,
 } from 'datocms-plugin-sdk';
+import { Button, Canvas } from 'datocms-react-ui';
+import React from 'react';
 import styles from './ErrorBoundary.module.css';
 
 interface ErrorBoundaryProps {
-  ctx: RenderConfigScreenCtx | RenderFieldExtensionCtx | RenderManualFieldExtensionConfigScreenCtx | RenderPageCtx;
+  ctx:
+    | RenderConfigScreenCtx
+    | RenderFieldExtensionCtx
+    | RenderManualFieldExtensionConfigScreenCtx
+    | RenderPageCtx;
   children: React.ReactNode;
   fallback?: (error: Error, reset: () => void) => React.ReactNode;
 }
@@ -19,7 +23,10 @@ interface ErrorBoundaryState {
   error: Error | null;
 }
 
-export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+export class ErrorBoundary extends React.Component<
+  ErrorBoundaryProps,
+  ErrorBoundaryState
+> {
   constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = { hasError: false, error: null };
@@ -40,22 +47,18 @@ export class ErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoun
   render() {
     if (this.state.hasError) {
       if (this.props.fallback) {
-        return this.props.fallback(this.state.error!, this.handleReset);
+        const currentError = this.state.error ?? new Error('Unknown error');
+        return this.props.fallback(currentError, this.handleReset);
       }
 
       return (
         <Canvas ctx={this.props.ctx}>
           <div className={styles.errorContainer}>
-            <h2 className={styles.errorTitle}>
-              Something went wrong
-            </h2>
+            <h2 className={styles.errorTitle}>Something went wrong</h2>
             <p className={styles.errorMessage}>
               {this.state.error?.message || 'An unexpected error occurred'}
             </p>
-            <Button 
-              buttonType="primary"
-              onClick={this.handleReset}
-            >
+            <Button buttonType="primary" onClick={this.handleReset}>
               Try again
             </Button>
           </div>

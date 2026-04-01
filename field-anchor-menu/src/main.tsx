@@ -45,31 +45,42 @@ connect({
       normalizeGlobalParams(ctx.plugin.attributes.parameters),
     );
 
-    if (upgradedFields.length > 0) {
-      for (let i = 0; i < upgradedFields.length; i++) {
-        const field = upgradedFields[i];
-        const itemType = ctx.itemTypes[field.relationships.item_type.data.id]!;
-
-        const result = await ctx.customToast({
-          type: 'warning',
-          message:
-            i === 0
-              ? `Plugin upgraded successfully, you can now remove ${upgradedFields.length} fields. Go to the first one and remove it!`
-              : `Great! ${upgradedFields.length - i} more to remove:`,
-          dismissOnPageChange: false,
-          dismissAfterTimeout: false,
-          cta: {
-            label: `${itemType.attributes.name} > ${field.attributes.label}`,
-            value: 'remove',
-          },
-        });
-
-        if (result === 'remove') {
-          ctx.navigateTo(`/admin/item_types/${itemType.id}#f${field.id}`);
-        } else {
-          break;
-        }
+    const promptNextFieldRemoval = async (index: number): Promise<void> => {
+      if (index >= upgradedFields.length) {
+        return;
       }
+
+      const field = upgradedFields[index];
+      const itemTypeId = field.relationships.item_type.data.id;
+      const itemType = ctx.itemTypes[itemTypeId];
+
+      if (!itemType) {
+        await promptNextFieldRemoval(index + 1);
+        return;
+      }
+
+      const result = await ctx.customToast({
+        type: 'warning',
+        message:
+          index === 0
+            ? `Plugin upgraded successfully, you can now remove ${upgradedFields.length} fields. Go to the first one and remove it!`
+            : `Great! ${upgradedFields.length - index} more to remove:`,
+        dismissOnPageChange: false,
+        dismissAfterTimeout: false,
+        cta: {
+          label: `${itemType.attributes.name} > ${field.attributes.label}`,
+          value: 'remove',
+        },
+      });
+
+      if (result === 'remove') {
+        ctx.navigateTo(`/admin/item_types/${itemType.id}#f${field.id}`);
+        await promptNextFieldRemoval(index + 1);
+      }
+    };
+
+    if (upgradedFields.length > 0) {
+      await promptNextFieldRemoval(0);
     }
   },
   renderConfigScreen(ctx) {

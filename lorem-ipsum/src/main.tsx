@@ -1,12 +1,57 @@
 import {
   connect,
-  type FieldDropdownActionsCtx,
   type ExecuteFieldDropdownActionCtx,
+  type Field,
+  type FieldDropdownActionsCtx,
 } from 'datocms-plugin-sdk';
-import { render } from './utils/render';
 import ConfigScreen from './entrypoints/ConfigScreen';
+import { render } from './utils/render';
 import 'datocms-react-ui/styles.css';
 import generateDummyText from './utils/generateDummyText';
+
+const loremIpsumDropdownAction = [
+  {
+    id: 'loremIpsum',
+    label: 'Generate dummy text',
+    icon: 'font',
+  },
+] as const;
+
+// Checks if any auto-apply rule matches the given field, returning the action if so
+function checkAutoApplyRules(
+  field: Field,
+  pluginParams: Record<string, unknown>,
+) {
+  if (!Array.isArray(pluginParams.autoApplyRules)) {
+    return null;
+  }
+
+  for (const rule of pluginParams.autoApplyRules) {
+    const fieldTypeMatches = rule.fieldTypes?.includes(
+      field.attributes.field_type,
+    );
+    if (!fieldTypeMatches) {
+      continue;
+    }
+    try {
+      const regex = new RegExp(rule.apiKeyRegexp);
+      if (regex.test(field.attributes.api_key)) {
+        return loremIpsumDropdownAction;
+      }
+    } catch (_e) {
+      // If regex is invalid, skip this rule
+    }
+  }
+
+  return null;
+}
+
+// Checks if the field has the loremIpsum addon manually applied
+function hasLoremIpsumAddon(field: Field) {
+  return field.attributes.appearance?.addons?.some(
+    (addon) => addon.field_extension === 'loremIpsum',
+  );
+}
 
 // The core plugin connection logic
 connect({
@@ -18,42 +63,18 @@ connect({
   fieldDropdownActions(field, ctx: FieldDropdownActionsCtx) {
     const pluginParams = ctx.plugin.attributes.parameters;
 
-    if (pluginParams && Array.isArray(pluginParams.autoApplyRules)) {
-      for (const rule of pluginParams.autoApplyRules) {
-        if (
-          rule.fieldTypes?.includes(field.attributes.field_type)
-        ) {
-          try {
-            const regex = new RegExp(rule.apiKeyRegexp);
-            if (regex.test(field.attributes.api_key)) {
-              return [
-                {
-                  id: 'loremIpsum',
-                  label: 'Generate dummy text',
-                  icon: 'font',
-                },
-              ];
-            }
-          } catch (_e) {
-            // If regex is invalid, skip this rule
-          }
-        }
+    if (pluginParams) {
+      const autoApplyResult = checkAutoApplyRules(
+        field,
+        pluginParams as Record<string, unknown>,
+      );
+      if (autoApplyResult) {
+        return autoApplyResult;
       }
     }
 
-    // Also add dropdown action if the manual field extension is applied
-    if (
-      field.attributes.appearance?.addons?.some(
-        (addon) => addon.field_extension === 'loremIpsum'
-      )
-    ) {
-      return [
-        {
-          id: 'loremIpsum',
-          label: 'Generate dummy text',
-          icon: 'font',
-        },
-      ];
+    if (hasLoremIpsumAddon(field)) {
+      return loremIpsumDropdownAction;
     }
 
     return [];
@@ -61,7 +82,7 @@ connect({
   // Executes the chosen dropdown action, filling the field with dummy text
   async executeFieldDropdownAction(
     actionId,
-    ctx: ExecuteFieldDropdownActionCtx
+    ctx: ExecuteFieldDropdownActionCtx,
   ) {
     if (actionId === 'loremIpsum') {
       const generated = generateDummyText(ctx.field);

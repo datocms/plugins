@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import type { Basic as Photo } from 'unsplash-js/dist/methods/photos/types';
 import { BlurhashCanvas } from 'react-blurhash';
+import type { Basic as Photo } from 'unsplash-js/dist/methods/photos/types';
 import s from './styles.module.css';
 
 const Cell = ({ photo, onClick }: { photo: Photo; onClick: () => void }) => {

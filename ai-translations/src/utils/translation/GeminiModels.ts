@@ -16,7 +16,10 @@ function stripPrefix(id: string): string {
 
 function isRelevantGeminiModel(m: GeminiModelInfo): boolean {
   const id = stripPrefix(m.name).toLowerCase();
-  if (m.supportedGenerationMethods && !m.supportedGenerationMethods.includes('generateContent')) {
+  if (
+    m.supportedGenerationMethods &&
+    !m.supportedGenerationMethods.includes('generateContent')
+  ) {
     return false;
   }
   // Exclude embeddings and text-only utility models
@@ -46,18 +49,25 @@ function scoreGemini(id: string): number {
  * @param apiKey - Google API key for Generative Language API.
  * @returns Sorted list of model ids without the `models/` prefix.
  */
-export async function listRelevantGeminiModels(apiKey: string): Promise<string[]> {
+export async function listRelevantGeminiModels(
+  apiKey: string,
+): Promise<string[]> {
   try {
-    const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models', {
-      headers: {
-        'x-goog-api-key': apiKey,
+    const res = await fetch(
+      'https://generativelanguage.googleapis.com/v1beta/models',
+      {
+        headers: {
+          'x-goog-api-key': apiKey,
+        },
       },
-    });
+    );
     if (!res.ok) {
       throw new Error(`Failed to list Gemini models (${res.status})`);
     }
     const json = await res.json();
-    const models: GeminiModelInfo[] = Array.isArray(json.models) ? json.models : [];
+    const models: GeminiModelInfo[] = Array.isArray(json.models)
+      ? json.models
+      : [];
     const ids = models
       .filter(isRelevantGeminiModel)
       .map((m) => stripPrefix(m.name));

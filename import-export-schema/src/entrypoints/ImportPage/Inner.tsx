@@ -40,8 +40,7 @@ type Props = {
  */
 export function Inner({ exportSchema, schema, ctx: _ctx }: Props) {
   const { fitBounds, fitView, setNodes, setEdges } = useReactFlow();
-  const { skippedItemTypeIds, skippedPluginIds } =
-    useSkippedItemsAndPluginIds();
+  const { skippedItemTypeIds } = useSkippedItemsAndPluginIds();
 
   const [graph, setGraph] = useState<Graph | undefined>();
   const [forceRenderGraph, setForceRenderGraph] = useState(false);
@@ -56,7 +55,7 @@ export function Inner({ exportSchema, schema, ctx: _ctx }: Props) {
     }
 
     run();
-  }, [exportSchema, skippedItemTypeIds.join('-'), skippedPluginIds.join('-')]);
+  }, [exportSchema, skippedItemTypeIds]);
 
   const [selectedEntity, setSelectedEntity] = useState<
     undefined | SchemaTypes.ItemType | SchemaTypes.Plugin
@@ -163,7 +162,7 @@ export function Inner({ exportSchema, schema, ctx: _ctx }: Props) {
     }
     const timeout = window.setTimeout(() => fitView(), 100);
     return () => window.clearTimeout(timeout);
-  }, [fitView, showGraph, graph?.nodes.length]);
+  }, [fitView, showGraph]);
 
   const handleSelectEntity = useCallback(
     (
@@ -178,7 +177,7 @@ export function Inner({ exportSchema, schema, ctx: _ctx }: Props) {
 
       setPendingZoomEntity(newEntity ?? null);
     },
-    [graphTooLarge],
+    [],
   );
 
   return (

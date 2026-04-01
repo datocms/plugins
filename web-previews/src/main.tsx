@@ -11,9 +11,9 @@ import Inspector from './entrypoints/Inspector';
 import InspectorLoading from './entrypoints/InspectorLoading';
 import WrongEnvironmentPanel from './entrypoints/WrongEnvironmentPanel';
 import {
-  type Parameters,
   getVisualEditingFrontends,
   normalizeParameters,
+  type Parameters,
 } from './types';
 import { readSidebarWidth } from './utils/persistedWidth';
 

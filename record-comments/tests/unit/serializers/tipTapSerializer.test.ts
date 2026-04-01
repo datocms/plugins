@@ -1,19 +1,19 @@
-import { describe, it, expect } from 'vitest';
-import {
-  segmentsToTipTapDoc,
-  tipTapDocToSegments,
-  createEmptyDoc,
-  isDocEmpty,
-} from '@utils/tipTapSerializer';
 import type { CommentSegment } from '@ctypes/mentions';
 import {
-  createUserMention,
-  createFieldMention,
+  createEmptyDoc,
+  isDocEmpty,
+  segmentsToTipTapDoc,
+  tipTapDocToSegments,
+} from '@utils/tipTapSerializer';
+import { describe, expect, it } from 'vitest';
+import {
   createAssetMention,
-  createRecordMention,
-  createModelMention,
+  createFieldMention,
   createMentionSegment,
+  createModelMention,
+  createRecordMention,
   createTextSegment,
+  createUserMention,
   mentionFixtures,
   segmentFixtures,
 } from '../fixtures/mentions';
@@ -24,7 +24,7 @@ describe('createEmptyDoc', () => {
 
     expect(doc.type).toBe('doc');
     expect(doc.content).toHaveLength(1);
-    expect(doc.content![0].type).toBe('paragraph');
+    expect(doc.content?.[0].type).toBe('paragraph');
   });
 
   it('creates consistent structure', () => {
@@ -123,8 +123,8 @@ describe('segmentsToTipTapDoc', () => {
 
       expect(doc.type).toBe('doc');
       expect(doc.content).toHaveLength(1);
-      expect(doc.content![0].type).toBe('paragraph');
-      expect(doc.content![0].content).toBeUndefined();
+      expect(doc.content?.[0].type).toBe('paragraph');
+      expect(doc.content?.[0].content).toBeUndefined();
     });
   });
 
@@ -134,8 +134,8 @@ describe('segmentsToTipTapDoc', () => {
 
       const doc = segmentsToTipTapDoc(segments);
 
-      expect(doc.content![0].content).toHaveLength(1);
-      expect(doc.content![0].content![0]).toEqual({
+      expect(doc.content?.[0].content).toHaveLength(1);
+      expect(doc.content?.[0].content?.[0]).toEqual({
         type: 'text',
         text: 'Hello world',
       });
@@ -149,14 +149,14 @@ describe('segmentsToTipTapDoc', () => {
 
       const doc = segmentsToTipTapDoc(segments);
 
-      expect(doc.content![0].content).toHaveLength(2);
+      expect(doc.content?.[0].content).toHaveLength(2);
     });
 
     it('converts newlines to hardBreak nodes', () => {
       const segments: CommentSegment[] = [createTextSegment('Line 1\nLine 2')];
 
       const doc = segmentsToTipTapDoc(segments);
-      const content = doc.content![0].content!;
+      const content = doc.content?.[0].content ?? [];
 
       expect(content).toHaveLength(3);
       expect(content[0]).toEqual({ type: 'text', text: 'Line 1' });
@@ -168,7 +168,7 @@ describe('segmentsToTipTapDoc', () => {
       const segments: CommentSegment[] = [createTextSegment('A\n\nB')];
 
       const doc = segmentsToTipTapDoc(segments);
-      const content = doc.content![0].content!;
+      const content = doc.content?.[0].content ?? [];
 
       // A, hardBreak, hardBreak, B
       expect(content).toHaveLength(4);
@@ -182,7 +182,7 @@ describe('segmentsToTipTapDoc', () => {
       const segments: CommentSegment[] = [createTextSegment('\nHello')];
 
       const doc = segmentsToTipTapDoc(segments);
-      const content = doc.content![0].content!;
+      const content = doc.content?.[0].content ?? [];
 
       // hardBreak, Hello
       expect(content).toHaveLength(2);
@@ -197,7 +197,7 @@ describe('segmentsToTipTapDoc', () => {
       const segments: CommentSegment[] = [createMentionSegment(mention)];
 
       const doc = segmentsToTipTapDoc(segments);
-      const content = doc.content![0].content!;
+      const content = doc.content?.[0].content ?? [];
 
       expect(content).toHaveLength(1);
       expect(content[0].type).toBe('userMention');
@@ -210,7 +210,7 @@ describe('segmentsToTipTapDoc', () => {
 
       const doc = segmentsToTipTapDoc(segments);
 
-      expect(doc.content![0].content![0].type).toBe('fieldMention');
+      expect(doc.content?.[0].content?.[0].type).toBe('fieldMention');
     });
 
     it('converts asset mention', () => {
@@ -219,7 +219,7 @@ describe('segmentsToTipTapDoc', () => {
 
       const doc = segmentsToTipTapDoc(segments);
 
-      expect(doc.content![0].content![0].type).toBe('assetMention');
+      expect(doc.content?.[0].content?.[0].type).toBe('assetMention');
     });
 
     it('converts record mention', () => {
@@ -228,7 +228,7 @@ describe('segmentsToTipTapDoc', () => {
 
       const doc = segmentsToTipTapDoc(segments);
 
-      expect(doc.content![0].content![0].type).toBe('recordMention');
+      expect(doc.content?.[0].content?.[0].type).toBe('recordMention');
     });
 
     it('converts model mention', () => {
@@ -237,7 +237,7 @@ describe('segmentsToTipTapDoc', () => {
 
       const doc = segmentsToTipTapDoc(segments);
 
-      expect(doc.content![0].content![0].type).toBe('modelMention');
+      expect(doc.content?.[0].content?.[0].type).toBe('modelMention');
     });
   });
 
@@ -246,7 +246,7 @@ describe('segmentsToTipTapDoc', () => {
       const segments = segmentFixtures.singleUserMention;
 
       const doc = segmentsToTipTapDoc(segments);
-      const content = doc.content![0].content!;
+      const content = doc.content?.[0].content ?? [];
 
       expect(content).toHaveLength(3);
       expect(content[0]).toEqual({ type: 'text', text: 'Hello ' });
@@ -258,11 +258,11 @@ describe('segmentsToTipTapDoc', () => {
       const segments = segmentFixtures.allMentionTypes;
 
       const doc = segmentsToTipTapDoc(segments);
-      const content = doc.content![0].content!;
+      const content = doc.content?.[0].content ?? [];
 
       const mentionTypes = content
-        .filter((n: any) => n.type.endsWith('Mention'))
-        .map((n: any) => n.type);
+        .filter((n: { type: string }) => n.type.endsWith('Mention'))
+        .map((n: { type: string }) => n.type);
 
       expect(mentionTypes).toContain('userMention');
       expect(mentionTypes).toContain('fieldMention');
@@ -384,7 +384,10 @@ describe('tipTapDocToSegments', () => {
 
       expect(segments).toHaveLength(1);
       expect(segments[0].type).toBe('mention');
-      expect((segments[0] as any).mention.type).toBe('user');
+      const firstSegment = segments[0];
+      if (firstSegment.type === 'mention') {
+        expect(firstSegment.mention.type).toBe('user');
+      }
     });
 
     it('extracts field mention as slim stored format (no localized property)', () => {
@@ -402,9 +405,14 @@ describe('tipTapDocToSegments', () => {
       const segments = tipTapDocToSegments(doc);
 
       // StoredFieldMention doesn't include localized - only fieldPath, locale?, modelId
-      expect((segments[0] as any).mention.type).toBe('field');
-      expect((segments[0] as any).mention.fieldPath).toBe(mention.fieldPath);
-      expect((segments[0] as any).mention).not.toHaveProperty('localized');
+      const firstSegment = segments[0];
+      if (firstSegment.type === 'mention') {
+        expect(firstSegment.mention.type).toBe('field');
+        if (firstSegment.mention.type === 'field') {
+          expect(firstSegment.mention.fieldPath).toBe(mention.fieldPath);
+        }
+        expect(firstSegment.mention).not.toHaveProperty('localized');
+      }
     });
 
     it('extracts model mention as slim stored format (no isBlockModel property)', () => {
@@ -422,9 +430,14 @@ describe('tipTapDocToSegments', () => {
       const segments = tipTapDocToSegments(doc);
 
       // StoredModelMention doesn't include isBlockModel - only id
-      expect((segments[0] as any).mention.type).toBe('model');
-      expect((segments[0] as any).mention.id).toBe(mention.id);
-      expect((segments[0] as any).mention).not.toHaveProperty('isBlockModel');
+      const firstSegment = segments[0];
+      if (firstSegment.type === 'mention') {
+        expect(firstSegment.mention.type).toBe('model');
+        if (firstSegment.mention.type === 'model') {
+          expect(firstSegment.mention.id).toBe(mention.id);
+        }
+        expect(firstSegment.mention).not.toHaveProperty('isBlockModel');
+      }
     });
 
     it('skips invalid mention nodes', () => {
@@ -551,14 +564,22 @@ describe('round-trip conversion', () => {
   });
 
   it('preserves user mention through round-trip', () => {
-    const original: CommentSegment[] = [createMentionSegment(mentionFixtures.userJohn)];
+    const original: CommentSegment[] = [
+      createMentionSegment(mentionFixtures.userJohn),
+    ];
 
     const doc = segmentsToTipTapDoc(original);
     const result = tipTapDocToSegments(doc);
 
     expect(result).toHaveLength(1);
     expect(result[0].type).toBe('mention');
-    expect((result[0] as any).mention.id).toBe(mentionFixtures.userJohn.id);
+    const firstResult = result[0];
+    if (firstResult.type === 'mention') {
+      expect(firstResult.mention.type).toBe('user');
+      if (firstResult.mention.type === 'user') {
+        expect(firstResult.mention.id).toBe(mentionFixtures.userJohn.id);
+      }
+    }
   });
 
   it('preserves mixed content through round-trip', () => {
@@ -574,7 +595,9 @@ describe('round-trip conversion', () => {
   });
 
   it('preserves newlines through round-trip', () => {
-    const original: CommentSegment[] = [createTextSegment('Line 1\nLine 2\nLine 3')];
+    const original: CommentSegment[] = [
+      createTextSegment('Line 1\nLine 2\nLine 3'),
+    ];
 
     const doc = segmentsToTipTapDoc(original);
     const result = tipTapDocToSegments(doc);
@@ -583,34 +606,25 @@ describe('round-trip conversion', () => {
   });
 
   it('preserves all mention types through round-trip', () => {
-    const mentionTypes = ['user', 'field', 'asset', 'record', 'model'];
+    const mentionCreators = [
+      { type: 'user', create: createUserMention },
+      { type: 'field', create: createFieldMention },
+      { type: 'asset', create: createAssetMention },
+      { type: 'record', create: createRecordMention },
+      { type: 'model', create: createModelMention },
+    ] as const;
 
-    for (const type of mentionTypes) {
-      let mention;
-      switch (type) {
-        case 'user':
-          mention = createUserMention();
-          break;
-        case 'field':
-          mention = createFieldMention();
-          break;
-        case 'asset':
-          mention = createAssetMention();
-          break;
-        case 'record':
-          mention = createRecordMention();
-          break;
-        case 'model':
-          mention = createModelMention();
-          break;
-      }
-
-      const original: CommentSegment[] = [createMentionSegment(mention!)];
+    for (const { type, create } of mentionCreators) {
+      const mention = create();
+      const original: CommentSegment[] = [createMentionSegment(mention)];
       const doc = segmentsToTipTapDoc(original);
       const result = tipTapDocToSegments(doc);
 
       expect(result[0].type).toBe('mention');
-      expect((result[0] as any).mention.type).toBe(type);
+      const firstResult = result[0];
+      if (firstResult.type === 'mention') {
+        expect(firstResult.mention.type).toBe(type);
+      }
     }
   });
 });

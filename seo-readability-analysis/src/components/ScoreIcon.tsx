@@ -11,7 +11,7 @@ const scoreRatingColorMapping: Partial<Record<string, string>> = {
 type PropTypes = {
   score?: number | null;
   rating?: string | null;
-}
+};
 export default function ScoreIcon({ rating, score }: PropTypes) {
   const scoreRating = rating || interpreters.scoreToRating(score);
   const scoreColor =

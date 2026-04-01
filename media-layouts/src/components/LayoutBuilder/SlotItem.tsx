@@ -1,7 +1,7 @@
 import { ASPECT_RATIO_OPTIONS } from '../../constants';
+import type { LayoutSlot, WidthOption } from '../../types';
 import { formatDimensions, getEffectiveRatio } from '../../utils/aspectRatio';
 import { getWidthLabel, resolveWidthValue } from '../../utils/width';
-import type { LayoutSlot, WidthOption } from '../../types';
 import s from './styles.module.css';
 
 type Props = {
@@ -39,7 +39,7 @@ export default function SlotItem({
 }: Props) {
   // Get the aspect ratio for visual preview
   const aspectOption = ASPECT_RATIO_OPTIONS.find(
-    (opt) => opt.value === slot.aspectRatio
+    (opt) => opt.value === slot.aspectRatio,
   );
   const aspectLabel = aspectOption?.label.split(' ')[0] || slot.aspectRatio;
   const ratio =
@@ -94,10 +94,7 @@ export default function SlotItem({
           </div>
         )}
         <div className={s.dragHandle}>
-          <svg
-            viewBox="0 0 24 24"
-            fill="currentColor"
-          >
+          <svg viewBox="0 0 24 24" fill="currentColor">
             <circle cx="9" cy="6" r="1.5" />
             <circle cx="15" cy="6" r="1.5" />
             <circle cx="9" cy="12" r="1.5" />

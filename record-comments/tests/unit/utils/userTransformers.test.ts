@@ -1,15 +1,16 @@
-import { describe, it, expect, vi } from 'vitest';
 import {
+  getCurrentUserInfo,
+  ownerToUserInfo,
   regularUserToUserInfo,
   ssoUserToUserInfo,
-  ownerToUserInfo,
-  getCurrentUserInfo,
   transformUsersToUserInfo,
 } from '@utils/userTransformers';
+import { describe, expect, it, vi } from 'vitest';
 
 // Mock the getGravatarUrl function
 vi.mock('@/utils/helpers', () => ({
-  getGravatarUrl: (email: string, size: number) => `https://gravatar.com/${email}?s=${size}`,
+  getGravatarUrl: (email: string, size: number) =>
+    `https://gravatar.com/${email}?s=${size}`,
 }));
 
 describe('regularUserToUserInfo', () => {
@@ -162,7 +163,9 @@ describe('ssoUserToUserInfo', () => {
 
       const result = ssoUserToUserInfo(user);
 
-      expect(result.avatarUrl).toBe('https://gravatar.com/john@company.com?s=48');
+      expect(result.avatarUrl).toBe(
+        'https://gravatar.com/john@company.com?s=48',
+      );
     });
 
     it('returns null when username is not email-like', () => {
@@ -401,7 +404,11 @@ describe('transformUsersToUserInfo', () => {
     const ssoUsers = [
       {
         id: 'sso-1',
-        attributes: { username: 'sso@example.com', first_name: 'SSO', last_name: 'User' },
+        attributes: {
+          username: 'sso@example.com',
+          first_name: 'SSO',
+          last_name: 'User',
+        },
       },
     ];
 
@@ -430,9 +437,7 @@ describe('transformUsersToUserInfo', () => {
   });
 
   it('handles only SSO users', () => {
-    const ssoUsers = [
-      { id: 'sso-1', attributes: { username: 'sso-user' } },
-    ];
+    const ssoUsers = [{ id: 'sso-1', attributes: { username: 'sso-user' } }];
 
     const result = transformUsersToUserInfo([], ssoUsers);
 

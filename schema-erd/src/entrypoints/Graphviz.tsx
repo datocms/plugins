@@ -1,36 +1,27 @@
+import { Scheduler } from 'async-scheduler';
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import { Button, Canvas, Spinner } from 'datocms-react-ui';
-import s from './styles.module.css';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  type ReactZoomPanPinchContentRef,
+  TransformComponent,
+  TransformWrapper,
+} from 'react-zoom-pan-pinch';
+import { encode } from 'universal-base64';
 import {
   allEntities,
   download,
   generateGraph,
   withViz,
 } from '../utils/generateGraph';
-import {
-  promiseAllWithProgress,
-  useAsyncEffect,
-} from '../utils/useAsyncEffect';
-import { useEffect, useRef, useState } from 'react';
-import { encode } from 'universal-base64';
-import {
-  TransformWrapper,
-  TransformComponent,
-  type ReactZoomPanPinchContentRef,
-} from 'react-zoom-pan-pinch';
-import { Scheduler } from 'async-scheduler';
+import { promiseAllWithProgress } from '../utils/useAsyncEffect';
+import s from './styles.module.css';
 
 const queue = new Scheduler(10);
 
 type Props = {
   ctx: RenderPageCtx;
 };
-
-function toIds(entities: Partial<Record<string, { id: string }>>) {
-  return allEntities(entities)
-    .map((e) => e.id)
-    .join('-');
-}
 
 const Controls: React.FC<ReactZoomPanPinchContentRef> = ({
   zoomIn,
@@ -62,84 +53,113 @@ export default function Graphviz({ ctx }: Props) {
   const firstRun = useRef(true);
   const [loadingState, setLoadingState] = useState<
     | {
-      total: number;
-      completed: number;
-    }
+        total: number;
+        completed: number;
+      }
     | undefined
   >();
   const [dot, setDot] = useState<undefined | string>();
   const [svg, setSvg] = useState<undefined | string>();
   const [size, setSize] = useState<undefined | [number, number]>();
-  const [containerElement, setContainerElement] = useState<HTMLDivElement | null>(null);
+  const [containerElement, setContainerElement] =
+    useState<HTMLDivElement | null>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
-  useAsyncEffect(async () => {
+  // A stable re-throw mechanism so errors bubble to the React error boundary
+  const [, setErrorState] = useState<boolean>();
+  const throwAsync = useCallback((error: unknown) => {
+    setErrorState(() => {
+      throw error;
+    });
+  }, []);
+
+  useEffect(() => {
     if (!firstRun.current) {
       return;
     }
 
     firstRun.current = false;
 
-    const promises = allEntities(ctx.itemTypes).map((itemType) => {
-      if (
-        itemType.relationships.fields.data.length === 0 ||
-        ctx.fields[itemType.relationships.fields.data[0].id]
-      ) {
-        return Promise.resolve();
-      }
+    async function loadFields() {
+      const promises = allEntities(ctx.itemTypes).map((itemType) => {
+        if (
+          itemType.relationships.fields.data.length === 0 ||
+          ctx.fields[itemType.relationships.fields.data[0].id]
+        ) {
+          return Promise.resolve();
+        }
 
-      return queue.enqueue(() => ctx.loadItemTypeFields(itemType.id));
-    });
+        return queue.enqueue(() => ctx.loadItemTypeFields(itemType.id));
+      });
 
-    await promiseAllWithProgress(promises, (completed, total) =>
-      setLoadingState({ total, completed }),
-    );
-  }, []);
+      await promiseAllWithProgress(promises, (completed, total) =>
+        setLoadingState({ total, completed }),
+      );
+    }
 
-  useAsyncEffect(async () => {
+    loadFields().catch(throwAsync);
+  }, [ctx.itemTypes, ctx.fields, ctx.loadItemTypeFields, throwAsync]);
+
+  useEffect(() => {
     if (!loadingState || loadingState.completed !== loadingState.total) {
       return;
     }
 
-    const dot = await generateGraph({
-      itemTypes: ctx.itemTypes,
-      fields: ctx.fields,
-    });
+    async function buildGraph() {
+      const generatedDot = await generateGraph({
+        itemTypes: ctx.itemTypes,
+        fields: ctx.fields,
+      });
 
-    setDot(dot);
-  }, [loadingState, toIds(ctx.itemTypes), toIds(ctx.fields)]);
+      setDot(generatedDot);
+    }
 
-  useAsyncEffect(async () => {
+    buildGraph().catch(throwAsync);
+  }, [loadingState, ctx.itemTypes, ctx.fields, throwAsync]);
+
+  useEffect(() => {
     if (!dot) {
       return;
     }
 
-    const svg = await withViz(async (viz) => {
-      return await viz.renderString(dot);
-    });
+    async function renderSvg() {
+      const renderedSvg = await withViz(async (viz) => {
+        return await viz.renderString(dot as string);
+      });
 
-    setSvg(svg);
-  }, [dot]);
+      setSvg(renderedSvg);
+    }
 
-  useAsyncEffect(async () => {
+    renderSvg().catch(throwAsync);
+  }, [dot, throwAsync]);
+
+  useEffect(() => {
     if (!svg) {
       return;
     }
 
-    const element = document.createElement('svg');
-    element.innerHTML = svg;
+    async function measureSvg() {
+      const element = document.createElement('svg');
+      element.innerHTML = svg as string;
 
-    const svgElement = element.firstElementChild! as HTMLElement &
-      SVGRectElement;
+      const rawFirstChild = element.firstElementChild;
+      if (!rawFirstChild) {
+        return;
+      }
 
-    // force layout calculation
-    svgElement.getBoundingClientRect();
+      const svgElement = rawFirstChild as HTMLElement & SVGRectElement;
 
-    const width = svgElement.width.baseVal.value;
-    const height = svgElement.height.baseVal.value;
+      // force layout calculation
+      svgElement.getBoundingClientRect();
 
-    setSize([width, height]);
-  }, [svg]);
+      const width = svgElement.width.baseVal.value;
+      const height = svgElement.height.baseVal.value;
+
+      setSize([width, height]);
+    }
+
+    measureSvg().catch(throwAsync);
+  }, [svg, throwAsync]);
 
   async function downloadAsDotLanguage() {
     if (!dot) {
@@ -178,9 +198,10 @@ export default function Graphviz({ ctx }: Props) {
     return () => observer.disconnect();
   }, [containerElement]);
 
-  const minScale = size && containerSize.width && containerSize.height
-    ? Math.min(containerSize.width / size[0], containerSize.height / size[1])
-    : undefined;
+  const minScale =
+    size && containerSize.width && containerSize.height
+      ? Math.min(containerSize.width / size[0], containerSize.height / size[1])
+      : undefined;
 
   return (
     <Canvas ctx={ctx}>
@@ -229,7 +250,7 @@ export default function Graphviz({ ctx }: Props) {
           )}
           {loadingState && loadingState.completed < loadingState.total && (
             <div className={s.progress}>
-              <Spinner placement='inline' /> Loading models and block models...
+              <Spinner placement="inline" /> Loading models and block models...
               ({loadingState.completed}/{loadingState.total})
             </div>
           )}

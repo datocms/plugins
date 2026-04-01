@@ -1,6 +1,3 @@
-import type { Column } from 'react-table';
-import type { Actions, Row } from '../../types';
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faCog,
   faLongArrowAltLeft,
@@ -9,6 +6,7 @@ import {
   faTimes,
   faTrashAlt,
 } from '@fortawesome/free-solid-svg-icons';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   Button,
   Dropdown,
@@ -18,8 +16,10 @@ import {
   TextField,
   useCtx,
 } from 'datocms-react-ui';
-import s from './style.module.css';
 import { useEffect, useState } from 'react';
+import type { Column } from 'react-table';
+import type { Actions, Row } from '../../types';
+import s from './style.module.css';
 
 type Props = Actions & {
   value: string;
@@ -38,10 +38,10 @@ export default function EditableHeader({
 }: Props) {
   const ctx = useCtx();
   const [panel, setPanel] = useState('root');
-  const [nameValue, setNameValue] = useState(id!);
+  const [nameValue, setNameValue] = useState(id ?? '');
 
   useEffect(() => {
-    setNameValue(id!);
+    setNameValue(id ?? '');
   }, [id]);
 
   const handleChangeName = (e: React.FormEvent<HTMLFormElement>) => {
@@ -56,89 +56,93 @@ export default function EditableHeader({
       return;
     }
 
-    onColumnRename(id!, nameValue);
+    if (!id) {
+      return;
+    }
+
+    onColumnRename(id, nameValue);
   };
 
   const columnIndex = columns.findIndex((c) => c.id === id);
 
   return (
     <Dropdown
-        renderTrigger={({ onClick }) => (
-          <button onClick={onClick} className={s.button}>
-            <span>{id}</span>
-            <FontAwesomeIcon icon={faCog} />
-          </button>
-        )}
+      renderTrigger={({ onClick }) => (
+        <button onClick={onClick} className={s.button}>
+          <span>{id}</span>
+          <FontAwesomeIcon icon={faCog} />
+        </button>
+      )}
+    >
+      <DropdownMenu
+        alignment={columnIndex >= columns.length / 2 ? 'right' : 'left'}
       >
-        <DropdownMenu
-          alignment={columnIndex >= columns.length / 2 ? 'right' : 'left'}
-        >
-          {panel === 'root' && (
-            <>
-              <DropdownOption
-                closeMenuOnClick={false}
-                onClick={() => {
-                  setPanel('rename');
-                }}
-              >
-                <FontAwesomeIcon icon={faPen} /> Rename column
-              </DropdownOption>
-              <DropdownOption red onClick={onRemoveColumn.bind(null, id!)}>
-                <FontAwesomeIcon icon={faTrashAlt} /> Remove column
-              </DropdownOption>
-              <DropdownSeparator />
+        {panel === 'root' && id && (
+          <>
+            <DropdownOption
+              closeMenuOnClick={false}
+              onClick={() => {
+                setPanel('rename');
+              }}
+            >
+              <FontAwesomeIcon icon={faPen} /> Rename column
+            </DropdownOption>
+            <DropdownOption red onClick={onRemoveColumn.bind(null, id)}>
+              <FontAwesomeIcon icon={faTrashAlt} /> Remove column
+            </DropdownOption>
+            <DropdownSeparator />
 
-              <DropdownOption
-                onClick={onMoveColumn.bind(null, id!, false)}
-                disabled={columnIndex === columns.length - 1}
-              >
-                <FontAwesomeIcon icon={faLongArrowAltRight} /> Move column to
-                the right
-              </DropdownOption>
-              <DropdownOption
-                onClick={onMoveColumn.bind(null, id!, true)}
-                disabled={columnIndex === 0}
-              >
-                <FontAwesomeIcon icon={faLongArrowAltLeft} /> Move column to the
-                left
-              </DropdownOption>
-              <DropdownSeparator />
-              <DropdownOption onClick={onAddColumn.bind(null, id!, false)}>
-                <FontAwesomeIcon icon={faLongArrowAltRight} /> Add column to the
-                right
-              </DropdownOption>
-              <DropdownOption onClick={onAddColumn.bind(null, id!, true)}>
-                <FontAwesomeIcon icon={faLongArrowAltLeft} /> Add column to the
-                left
-              </DropdownOption>
-            </>
-          )}
-          {panel === 'rename' && (
-            <>
-              <form className={s.editForm} onSubmit={handleChangeName}>
-                <TextField
-                  id="newName"
-                  name="newName"
-                  label="Rename column:"
-                  value={nameValue}
-                  onChange={(newName) => setNameValue(newName)}
-                />
-                <Button type="submit" buttonSize="xxs" fullWidth>
-                  Rename
-                </Button>
-              </form>
-              <DropdownSeparator />
-              <DropdownOption
-                closeMenuOnClick={false}
-                onClick={() => {
-                  setPanel('root');
-                }}
-              >
-                <FontAwesomeIcon icon={faTimes} /> Cancel
-              </DropdownOption>
-            </>
-          )}
-        </DropdownMenu>
-      </Dropdown>
+            <DropdownOption
+              onClick={onMoveColumn.bind(null, id, false)}
+              disabled={columnIndex === columns.length - 1}
+            >
+              <FontAwesomeIcon icon={faLongArrowAltRight} /> Move column to the
+              right
+            </DropdownOption>
+            <DropdownOption
+              onClick={onMoveColumn.bind(null, id, true)}
+              disabled={columnIndex === 0}
+            >
+              <FontAwesomeIcon icon={faLongArrowAltLeft} /> Move column to the
+              left
+            </DropdownOption>
+            <DropdownSeparator />
+            <DropdownOption onClick={onAddColumn.bind(null, id, false)}>
+              <FontAwesomeIcon icon={faLongArrowAltRight} /> Add column to the
+              right
+            </DropdownOption>
+            <DropdownOption onClick={onAddColumn.bind(null, id, true)}>
+              <FontAwesomeIcon icon={faLongArrowAltLeft} /> Add column to the
+              left
+            </DropdownOption>
+          </>
+        )}
+        {panel === 'rename' && (
+          <>
+            <form className={s.editForm} onSubmit={handleChangeName}>
+              <TextField
+                id="newName"
+                name="newName"
+                label="Rename column:"
+                value={nameValue}
+                onChange={(newName) => setNameValue(newName)}
+              />
+              <Button type="submit" buttonSize="xxs" fullWidth>
+                Rename
+              </Button>
+            </form>
+            <DropdownSeparator />
+            <DropdownOption
+              closeMenuOnClick={false}
+              onClick={() => {
+                setPanel('root');
+              }}
+            >
+              <FontAwesomeIcon icon={faTimes} /> Cancel
+            </DropdownOption>
+          </>
+        )}
+      </DropdownMenu>
+    </Dropdown>
   );
 }

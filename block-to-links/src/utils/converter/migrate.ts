@@ -1,38 +1,42 @@
 /**
  * Data Migration Utilities
- * 
+ *
  * Functions for migrating block data to new records and updating field values.
  * Handles both standard and nested block scenarios, as well as localized contexts.
- * 
+ *
  * @module utils/converter/migrate
  */
 
 import type {
-  CMAClient,
   BlockMigrationMapping,
-  NestedBlockPath,
+  CMAClient,
   GroupedBlockInstance,
+  NestedBlockPath,
   StructuredTextValue,
 } from '../../types';
-import { getBlockTypeId, getBlockId } from '../blocks';
-import { wrapFieldsInLocalizedHash, mergeLocaleData, completeLocalizedUpdate } from '../locale';
+import { findBlocksAtPath } from '../analyzer';
+import { getBlockId, getBlockTypeId } from '../blocks';
+import {
+  addInlineItemsAlongsideBlocks,
+  extractLinksFromStructuredText,
+  isStructuredTextValue,
+  transformDastBlocksToLinks,
+} from '../dast';
+import {
+  completeLocalizedUpdate,
+  mergeLocaleData,
+  wrapFieldsInLocalizedHash,
+} from '../locale';
 import {
   sanitizeFieldValuesForCreation,
   sanitizeLocalizedFieldValuesForCreation,
 } from './sanitize';
 import {
-  traverseAndUpdateNestedBlocks,
-  traverseAndUpdateNestedBlocksAtLevel,
   getNestedFieldValueFromBlock,
   setNestedFieldValueInBlock,
+  traverseAndUpdateNestedBlocks,
+  traverseAndUpdateNestedBlocksAtLevel,
 } from './traverse';
-import {
-  isStructuredTextValue,
-  transformDastBlocksToLinks,
-  extractLinksFromStructuredText,
-  addInlineItemsAlongsideBlocks,
-} from '../dast';
-import { findBlocksAtPath } from '../analyzer';
 
 // =============================================================================
 // Types
@@ -55,7 +59,7 @@ export interface MigrationOptions {
 /**
  * Migrates block instances to new records using nested paths.
  * Creates a new record for each unique block instance found.
- * 
+ *
  * @param client - DatoCMS CMA client
  * @param nestedPath - Path from root model to target blocks
  * @param blockId - ID of the block type being converted
@@ -72,46 +76,56 @@ export async function migrateBlocksToRecordsNested(
   newModelId: string,
   existingMapping: BlockMigrationMapping,
   onMigrated: (count: number) => void,
-  options: MigrationOptions = {}
+  options: MigrationOptions = {},
 ): Promise<BlockMigrationMapping> {
   const { forceLocalizedFields = false, availableLocales = [] } = options;
   const mapping: BlockMigrationMapping = {};
   let migratedCount = Object.keys(existingMapping).length;
 
   // Get all block instances following the nested path
-  const blockInstances = await getAllBlockInstancesNested(client, nestedPath, blockId);
+  const blockInstances = await getAllBlockInstancesNested(
+    client,
+    nestedPath,
+    blockId,
+  );
 
   // Filter out blocks that were already migrated
   const uniqueBlocks = new Map<string, (typeof blockInstances)[0]>();
   for (const instance of blockInstances) {
-    if (!uniqueBlocks.has(instance.blockId) && !existingMapping[instance.blockId]) {
+    if (
+      !uniqueBlocks.has(instance.blockId) &&
+      !existingMapping[instance.blockId]
+    ) {
       uniqueBlocks.set(instance.blockId, instance);
     }
   }
 
   const blocksArray = Array.from(uniqueBlocks.values());
 
-  for (const instance of blocksArray) {
-    // Sanitize the block data
-    const sanitizedData = sanitizeFieldValuesForCreation(instance.blockData);
-    
-    // Wrap in localized hash if needed
-    let recordData: Record<string, unknown>;
-    if (forceLocalizedFields && availableLocales.length > 0) {
-      recordData = wrapFieldsInLocalizedHash(sanitizedData, availableLocales);
-    } else {
-      recordData = sanitizedData;
-    }
+  // Create records for all unique block instances in parallel
+  const createdEntries = await Promise.all(
+    blocksArray.map(async (instance) => {
+      const sanitizedData = sanitizeFieldValuesForCreation(instance.blockData);
 
-    const newRecord = await client.items.create({
-      item_type: { type: 'item_type', id: newModelId },
-      ...recordData,
-    });
+      const recordData =
+        forceLocalizedFields && availableLocales.length > 0
+          ? wrapFieldsInLocalizedHash(sanitizedData, availableLocales)
+          : sanitizedData;
 
-    mapping[instance.blockId] = newRecord.id;
+      const newRecord = await client.items.create({
+        item_type: { type: 'item_type', id: newModelId },
+        ...recordData,
+      });
+
+      return { blockId: instance.blockId, recordId: newRecord.id };
+    }),
+  );
+
+  for (const { blockId, recordId } of createdEntries) {
+    mapping[blockId] = recordId;
     migratedCount++;
-    onMigrated(migratedCount);
   }
+  onMigrated(migratedCount);
 
   return mapping;
 }
@@ -119,7 +133,7 @@ export async function migrateBlocksToRecordsNested(
 /**
  * Migrates grouped block instances (from localized contexts) to records.
  * Creates ONE record per block position, merging locale data into localized fields.
- * 
+ *
  * @param client - DatoCMS CMA client
  * @param groupedInstances - Block instances grouped by position
  * @param newModelId - ID of the new model to create records in
@@ -134,51 +148,52 @@ export async function migrateGroupedBlocksToRecords(
   newModelId: string,
   availableLocales: string[],
   existingMapping: BlockMigrationMapping,
-  onMigrated: (count: number) => void
+  onMigrated: (count: number) => void,
 ): Promise<BlockMigrationMapping> {
   const mapping: BlockMigrationMapping = {};
   let migratedCount = Object.keys(existingMapping).length;
 
   // Filter out groups where all block IDs were already migrated
-  const groupsToMigrate = groupedInstances.filter(group => {
-    return !group.allBlockIds.every(id => existingMapping[id]);
+  const groupsToMigrate = groupedInstances.filter((group) => {
+    return !group.allBlockIds.every((id) => existingMapping[id]);
   });
 
-  for (const group of groupsToMigrate) {
-    // Get all field keys from all locales
-    const allFieldKeys = new Set<string>();
-    for (const localeKey of Object.keys(group.localeData)) {
-      for (const fieldKey of Object.keys(group.localeData[localeKey])) {
-        allFieldKeys.add(fieldKey);
+  // Create one record per group in parallel — groups are independent of each other
+  const createdGroups = await Promise.all(
+    groupsToMigrate.map(async (group) => {
+      const allFieldKeys = new Set<string>();
+      for (const localeKey of Object.keys(group.localeData)) {
+        for (const fieldKey of Object.keys(group.localeData[localeKey])) {
+          allFieldKeys.add(fieldKey);
+        }
       }
-    }
 
-    // Build localized field values from the group's locale data
-    const localizedFieldData = mergeLocaleData(
-      group.localeData,
-      allFieldKeys,
-      availableLocales
-    );
+      const localizedFieldData = mergeLocaleData(
+        group.localeData,
+        allFieldKeys,
+        availableLocales,
+      );
 
-    // Sanitize the localized field data
-    const sanitizedData = sanitizeLocalizedFieldValuesForCreation(localizedFieldData);
+      const sanitizedData =
+        sanitizeLocalizedFieldValuesForCreation(localizedFieldData);
 
-    const newRecord = await client.items.create({
-      item_type: { type: 'item_type', id: newModelId },
-      ...sanitizedData,
-    });
+      const newRecord = await client.items.create({
+        item_type: { type: 'item_type', id: newModelId },
+        ...sanitizedData,
+      });
 
-    // Map ALL original block IDs from all locales to this single new record
+      return { group, recordId: newRecord.id };
+    }),
+  );
+
+  for (const { group, recordId } of createdGroups) {
     for (const blockInstanceId of group.allBlockIds) {
-      mapping[blockInstanceId] = newRecord.id;
+      mapping[blockInstanceId] = recordId;
     }
-    
-    // Also map the group key for easy reference
-    mapping[group.groupKey] = newRecord.id;
-    
+    mapping[group.groupKey] = recordId;
     migratedCount++;
-    onMigrated(migratedCount);
   }
+  onMigrated(migratedCount);
 
   return mapping;
 }
@@ -190,7 +205,7 @@ export async function migrateGroupedBlocksToRecords(
 /**
  * Migrates data from an old modular content field to a new links field.
  * Reads blocks from the old field, maps them to new record IDs, and writes to the new field.
- * 
+ *
  * @param client - DatoCMS CMA client
  * @param modelId - ID of the model containing the fields
  * @param oldFieldApiKey - API key of the source field
@@ -210,7 +225,7 @@ export async function migrateFieldData(
   targetBlockId: string,
   mapping: BlockMigrationMapping,
   isSingleValue: boolean,
-  recordsToPublish?: Set<string>
+  recordsToPublish?: Set<string>,
 ): Promise<void> {
   for await (const record of client.items.listPagedIterator({
     filter: { type: modelId },
@@ -222,21 +237,32 @@ export async function migrateFieldData(
 
     let newValue: unknown;
 
-    if (isLocalized && typeof oldValue === 'object' && !Array.isArray(oldValue)) {
+    if (
+      isLocalized &&
+      typeof oldValue === 'object' &&
+      !Array.isArray(oldValue)
+    ) {
       // Localized field - process each locale
       const localizedValue: Record<string, unknown> = {};
-      for (const [locale, localeValue] of Object.entries(oldValue as Record<string, unknown>)) {
+      for (const [locale, localeValue] of Object.entries(
+        oldValue as Record<string, unknown>,
+      )) {
         localizedValue[locale] = extractLinksFromValue(
           localeValue,
           targetBlockId,
           mapping,
-          isSingleValue
+          isSingleValue,
         );
       }
       newValue = localizedValue;
     } else {
       // Non-localized field
-      newValue = extractLinksFromValue(oldValue, targetBlockId, mapping, isSingleValue);
+      newValue = extractLinksFromValue(
+        oldValue,
+        targetBlockId,
+        mapping,
+        isSingleValue,
+      );
     }
 
     try {
@@ -253,7 +279,7 @@ export async function migrateFieldData(
 /**
  * Appends links from a new block conversion to an existing links field.
  * Unlike migrateFieldData which replaces, this preserves existing links.
- * 
+ *
  * @param client - DatoCMS CMA client
  * @param modelId - ID of the model containing the fields
  * @param oldFieldApiKey - API key of the source modular content field
@@ -263,6 +289,38 @@ export async function migrateFieldData(
  * @param mapping - Block ID to record ID mapping
  * @param recordsToPublish - Optional set to track records for publishing
  */
+/**
+ * Merges new block links with existing links for a localized field.
+ */
+function mergeLocalizedLinksForAppend(
+  oldValueLocalized: Record<string, unknown>,
+  existingLocalized: Record<string, unknown>,
+  targetBlockId: string,
+  mapping: BlockMigrationMapping,
+): Record<string, unknown> {
+  const localizedValue: Record<string, unknown> = {};
+  const allLocales = new Set([
+    ...Object.keys(oldValueLocalized),
+    ...Object.keys(existingLocalized),
+  ]);
+
+  for (const locale of allLocales) {
+    const localeValue = oldValueLocalized[locale];
+    const newLinks = localeValue
+      ? (extractLinksFromValue(
+          localeValue,
+          targetBlockId,
+          mapping,
+          false,
+        ) as string[])
+      : [];
+    const existingLinks = normalizeLinksArray(existingLocalized[locale]);
+    localizedValue[locale] = combineLinks(existingLinks, newLinks);
+  }
+
+  return localizedValue;
+}
+
 export async function migrateFieldDataAppend(
   client: CMAClient,
   modelId: string,
@@ -271,7 +329,7 @@ export async function migrateFieldDataAppend(
   isLocalized: boolean,
   targetBlockId: string,
   mapping: BlockMigrationMapping,
-  recordsToPublish?: Set<string>
+  recordsToPublish?: Set<string>,
 ): Promise<void> {
   // Read WITHOUT nested to get raw field values for existing links
   for await (const record of client.items.listPagedIterator({
@@ -279,35 +337,40 @@ export async function migrateFieldDataAppend(
     version: 'current',
   })) {
     // Fetch same record with nested: true for block data
-    const nestedRecord = await client.items.find(record.id, { nested: true, version: 'current' });
+    const nestedRecord = await client.items.find(record.id, {
+      nested: true,
+      version: 'current',
+    });
     const oldValue = nestedRecord[oldFieldApiKey];
     const existingLinksValue = record[linksFieldApiKey];
-    
+
     if (!oldValue) continue;
 
     let newValue: unknown;
 
-    if (isLocalized && typeof oldValue === 'object' && !Array.isArray(oldValue)) {
-      const localizedValue: Record<string, unknown> = {};
-      const existingLocalized = (existingLinksValue || {}) as Record<string, unknown>;
+    if (
+      isLocalized &&
+      typeof oldValue === 'object' &&
+      !Array.isArray(oldValue)
+    ) {
+      const existingLocalized = (existingLinksValue || {}) as Record<
+        string,
+        unknown
+      >;
       const oldValueLocalized = oldValue as Record<string, unknown>;
-      
-      const allLocales = new Set([
-        ...Object.keys(oldValueLocalized),
-        ...Object.keys(existingLocalized),
-      ]);
-      
-      for (const locale of allLocales) {
-        const localeValue = oldValueLocalized[locale];
-        const newLinks = localeValue 
-          ? extractLinksFromValue(localeValue, targetBlockId, mapping, false) as string[]
-          : [];
-        const existingLinks = normalizeLinksArray(existingLocalized[locale]);
-        localizedValue[locale] = combineLinks(existingLinks, newLinks);
-      }
-      newValue = localizedValue;
+      newValue = mergeLocalizedLinksForAppend(
+        oldValueLocalized,
+        existingLocalized,
+        targetBlockId,
+        mapping,
+      );
     } else {
-      const newLinks = extractLinksFromValue(oldValue, targetBlockId, mapping, false) as string[];
+      const newLinks = extractLinksFromValue(
+        oldValue,
+        targetBlockId,
+        mapping,
+        false,
+      ) as string[];
       const existingLinks = normalizeLinksArray(existingLinksValue);
       newValue = combineLinks(existingLinks, newLinks);
     }
@@ -330,7 +393,7 @@ export async function migrateFieldDataAppend(
 /**
  * Migrates data for fields inside nested blocks.
  * Queries records from the root model and navigates into nested block structures.
- * 
+ *
  * @param client - DatoCMS CMA client
  * @param nestedPath - Path from root model to the field
  * @param oldFieldApiKey - API key of the source field in the block
@@ -350,7 +413,7 @@ export async function migrateNestedBlockFieldData(
   mapping: BlockMigrationMapping,
   isSingleValue: boolean,
   availableLocales: string[],
-  recordsToPublish?: Set<string>
+  recordsToPublish?: Set<string>,
 ): Promise<void> {
   // Path to parent block (stop one level before the final block)
   const pathToParentBlock = nestedPath.path.slice(0, -1);
@@ -366,11 +429,18 @@ export async function migrateNestedBlockFieldData(
     if (!rootFieldValue) continue;
 
     // Update function for parent blocks
-    const updateBlockFn = (blockData: Record<string, unknown>): Record<string, unknown> => {
+    const updateBlockFn = (
+      blockData: Record<string, unknown>,
+    ): Record<string, unknown> => {
       const oldValue = getNestedFieldValueFromBlock(blockData, oldFieldApiKey);
       if (!oldValue) return blockData;
 
-      const newValue = extractLinksFromValue(oldValue, targetBlockId, mapping, isSingleValue);
+      const newValue = extractLinksFromValue(
+        oldValue,
+        targetBlockId,
+        mapping,
+        isSingleValue,
+      );
       return setNestedFieldValueInBlock(blockData, newFieldApiKey, newValue);
     };
 
@@ -380,29 +450,33 @@ export async function migrateNestedBlockFieldData(
       result = traverseAndUpdateNestedBlocksAtLevel(
         rootFieldValue,
         nestedPath.path[0],
-        updateBlockFn
+        updateBlockFn,
       );
     } else {
       result = traverseAndUpdateNestedBlocks(
         rootFieldValue,
         pathToParentBlock,
         0,
-        updateBlockFn
+        updateBlockFn,
       );
     }
 
     if (result.updated) {
       // Ensure all locales are present
       let updateValue = result.newValue;
-      
-      if (nestedPath.path[0].localized && typeof result.newValue === 'object' && !Array.isArray(result.newValue)) {
+
+      if (
+        nestedPath.path[0].localized &&
+        typeof result.newValue === 'object' &&
+        !Array.isArray(result.newValue)
+      ) {
         updateValue = completeLocalizedUpdate(
           result.newValue as Record<string, unknown>,
           rootFieldValue as Record<string, unknown>,
-          availableLocales
+          availableLocales,
         );
       }
-      
+
       await client.items.update(record.id, {
         [rootFieldApiKey]: updateValue,
       });
@@ -423,21 +497,35 @@ export async function migrateNestedBlockFieldDataAppend(
   targetBlockId: string,
   mapping: BlockMigrationMapping,
   availableLocales: string[],
-  recordsToPublish?: Set<string>
+  recordsToPublish?: Set<string>,
 ): Promise<void> {
   const pathToParentBlock = nestedPath.path.slice(0, -1);
 
-  const updateBlockFn = (blockData: Record<string, unknown>): Record<string, unknown> => {
+  const updateBlockFn = (
+    blockData: Record<string, unknown>,
+  ): Record<string, unknown> => {
     const oldValue = getNestedFieldValueFromBlock(blockData, oldFieldApiKey);
-    const existingLinksValue = getNestedFieldValueFromBlock(blockData, linksFieldApiKey);
-    
+    const existingLinksValue = getNestedFieldValueFromBlock(
+      blockData,
+      linksFieldApiKey,
+    );
+
     if (!oldValue) return blockData;
 
-    const newLinks = extractLinksFromValue(oldValue, targetBlockId, mapping, false) as string[];
+    const newLinks = extractLinksFromValue(
+      oldValue,
+      targetBlockId,
+      mapping,
+      false,
+    ) as string[];
     const existingLinks = (existingLinksValue || []) as string[];
     const combinedLinks = combineLinks(existingLinks, newLinks);
 
-    return setNestedFieldValueInBlock(blockData, linksFieldApiKey, combinedLinks);
+    return setNestedFieldValueInBlock(
+      blockData,
+      linksFieldApiKey,
+      combinedLinks,
+    );
   };
 
   for await (const record of client.items.listPagedIterator({
@@ -456,28 +544,32 @@ export async function migrateNestedBlockFieldDataAppend(
       result = traverseAndUpdateNestedBlocksAtLevel(
         rootFieldValue,
         nestedPath.path[0],
-        updateBlockFn
+        updateBlockFn,
       );
     } else {
       result = traverseAndUpdateNestedBlocks(
         rootFieldValue,
         pathToParentBlock,
         0,
-        updateBlockFn
+        updateBlockFn,
       );
     }
 
     if (result.updated) {
       let updateValue = result.newValue;
-      
-      if (nestedPath.path[0].localized && typeof result.newValue === 'object' && !Array.isArray(result.newValue)) {
+
+      if (
+        nestedPath.path[0].localized &&
+        typeof result.newValue === 'object' &&
+        !Array.isArray(result.newValue)
+      ) {
         updateValue = completeLocalizedUpdate(
           result.newValue as Record<string, unknown>,
           rootFieldValue as Record<string, unknown>,
-          availableLocales
+          availableLocales,
         );
       }
-      
+
       await client.items.update(record.id, {
         [rootFieldApiKey]: updateValue,
       });
@@ -493,7 +585,7 @@ export async function migrateNestedBlockFieldDataAppend(
 /**
  * Migrates structured text field data by transforming the DAST document.
  * Replaces block/inlineBlock nodes with inlineItem nodes pointing to new records.
- * 
+ *
  * @param client - DatoCMS CMA client
  * @param modelId - ID of the model containing the field
  * @param fieldApiKey - API key of the structured text field
@@ -503,6 +595,58 @@ export async function migrateNestedBlockFieldDataAppend(
  * @param availableLocales - Available locales in the project
  * @param recordsToPublish - Optional set to track records for publishing
  */
+/**
+ * Transforms a single locale's structured text value by replacing block nodes with inlineItems.
+ * Returns the transformed value and whether any changes were made.
+ */
+function transformStructuredTextLocaleValue(
+  localeValue: unknown,
+  targetBlockId: string,
+  mapping: BlockMigrationMapping,
+): { transformed: unknown; changed: boolean } {
+  if (localeValue === undefined) {
+    return { transformed: null, changed: false };
+  }
+  if (!isStructuredTextValue(localeValue)) {
+    return { transformed: localeValue, changed: false };
+  }
+  const result = transformDastBlocksToLinks(
+    localeValue as StructuredTextValue,
+    targetBlockId,
+    mapping,
+  );
+  if (result) {
+    return { transformed: result, changed: true };
+  }
+  return { transformed: localeValue, changed: false };
+}
+
+/**
+ * Transforms all locales of a localized structured text field (full replacement mode).
+ */
+function transformLocalizedStructuredTextField(
+  sourceLocaleValues: Record<string, unknown>,
+  availableLocales: string[],
+  targetBlockId: string,
+  mapping: BlockMigrationMapping,
+): { localizedValue: Record<string, unknown>; hasChanges: boolean } {
+  const localizedValue: Record<string, unknown> = {};
+  let hasChanges = false;
+
+  for (const locale of availableLocales) {
+    const localeValue = sourceLocaleValues[locale];
+    const { transformed, changed } = transformStructuredTextLocaleValue(
+      localeValue,
+      targetBlockId,
+      mapping,
+    );
+    localizedValue[locale] = transformed;
+    if (changed) hasChanges = true;
+  }
+
+  return { localizedValue, hasChanges };
+}
+
 export async function migrateStructuredTextFieldData(
   client: CMAClient,
   modelId: string,
@@ -511,7 +655,7 @@ export async function migrateStructuredTextFieldData(
   targetBlockId: string,
   mapping: BlockMigrationMapping,
   availableLocales: string[],
-  recordsToPublish?: Set<string>
+  recordsToPublish?: Set<string>,
 ): Promise<void> {
   for await (const record of client.items.listPagedIterator({
     filter: { type: modelId },
@@ -524,41 +668,25 @@ export async function migrateStructuredTextFieldData(
     let newValue: unknown = null;
     let hasChanges = false;
 
-    if (isLocalized && typeof fieldValue === 'object' && !Array.isArray(fieldValue)) {
-      // Localized field
-      const localizedValue: Record<string, unknown> = {};
+    if (
+      isLocalized &&
+      typeof fieldValue === 'object' &&
+      !Array.isArray(fieldValue)
+    ) {
       const sourceLocaleValues = fieldValue as Record<string, unknown>;
-      
-      for (const locale of availableLocales) {
-        const localeValue = sourceLocaleValues[locale];
-        
-        if (localeValue !== undefined) {
-          if (isStructuredTextValue(localeValue)) {
-            const transformed = transformDastBlocksToLinks(
-              localeValue as StructuredTextValue,
-              targetBlockId,
-              mapping
-            );
-            if (transformed) {
-              localizedValue[locale] = transformed;
-              hasChanges = true;
-            } else {
-              localizedValue[locale] = localeValue;
-            }
-          } else {
-            localizedValue[locale] = localeValue;
-          }
-        } else {
-          localizedValue[locale] = null;
-        }
-      }
-      
-      newValue = localizedValue;
+      const result = transformLocalizedStructuredTextField(
+        sourceLocaleValues,
+        availableLocales,
+        targetBlockId,
+        mapping,
+      );
+      newValue = result.localizedValue;
+      hasChanges = result.hasChanges;
     } else if (isStructuredTextValue(fieldValue)) {
       const transformed = transformDastBlocksToLinks(
         fieldValue as StructuredTextValue,
         targetBlockId,
-        mapping
+        mapping,
       );
       if (transformed) {
         newValue = transformed;
@@ -579,6 +707,58 @@ export async function migrateStructuredTextFieldData(
  * Migrates structured text field data for PARTIAL mode.
  * Adds inlineItem nodes alongside existing blocks (keeps blocks in place).
  */
+/**
+ * Adds inlineItems alongside blocks in a single locale's structured text value (partial mode).
+ * Returns the transformed value and whether any changes were made.
+ */
+function addInlineItemsToStructuredTextLocale(
+  localeValue: unknown,
+  targetBlockId: string,
+  mapping: BlockMigrationMapping,
+): { transformed: unknown; changed: boolean } {
+  if (localeValue === undefined) {
+    return { transformed: null, changed: false };
+  }
+  if (!isStructuredTextValue(localeValue)) {
+    return { transformed: localeValue, changed: false };
+  }
+  const result = addInlineItemsAlongsideBlocks(
+    localeValue as StructuredTextValue,
+    targetBlockId,
+    mapping,
+  );
+  if (result) {
+    return { transformed: result, changed: true };
+  }
+  return { transformed: localeValue, changed: false };
+}
+
+/**
+ * Adds inlineItems to all locales of a localized structured text field (partial mode).
+ */
+function addInlineItemsToLocalizedStructuredTextField(
+  sourceLocaleValues: Record<string, unknown>,
+  availableLocales: string[],
+  targetBlockId: string,
+  mapping: BlockMigrationMapping,
+): { localizedValue: Record<string, unknown>; hasChanges: boolean } {
+  const localizedValue: Record<string, unknown> = {};
+  let hasChanges = false;
+
+  for (const locale of availableLocales) {
+    const localeValue = sourceLocaleValues[locale];
+    const { transformed, changed } = addInlineItemsToStructuredTextLocale(
+      localeValue,
+      targetBlockId,
+      mapping,
+    );
+    localizedValue[locale] = transformed;
+    if (changed) hasChanges = true;
+  }
+
+  return { localizedValue, hasChanges };
+}
+
 export async function migrateStructuredTextFieldDataPartial(
   client: CMAClient,
   modelId: string,
@@ -587,7 +767,7 @@ export async function migrateStructuredTextFieldDataPartial(
   targetBlockId: string,
   mapping: BlockMigrationMapping,
   availableLocales: string[],
-  recordsToPublish?: Set<string>
+  recordsToPublish?: Set<string>,
 ): Promise<void> {
   for await (const record of client.items.listPagedIterator({
     filter: { type: modelId },
@@ -600,40 +780,25 @@ export async function migrateStructuredTextFieldDataPartial(
     let newValue: unknown = null;
     let hasChanges = false;
 
-    if (isLocalized && typeof fieldValue === 'object' && !Array.isArray(fieldValue)) {
-      const localizedValue: Record<string, unknown> = {};
+    if (
+      isLocalized &&
+      typeof fieldValue === 'object' &&
+      !Array.isArray(fieldValue)
+    ) {
       const sourceLocaleValues = fieldValue as Record<string, unknown>;
-      
-      for (const locale of availableLocales) {
-        const localeValue = sourceLocaleValues[locale];
-        
-        if (localeValue !== undefined) {
-          if (isStructuredTextValue(localeValue)) {
-            const transformed = addInlineItemsAlongsideBlocks(
-              localeValue as StructuredTextValue,
-              targetBlockId,
-              mapping
-            );
-            if (transformed) {
-              localizedValue[locale] = transformed;
-              hasChanges = true;
-            } else {
-              localizedValue[locale] = localeValue;
-            }
-          } else {
-            localizedValue[locale] = localeValue;
-          }
-        } else {
-          localizedValue[locale] = null;
-        }
-      }
-      
-      newValue = localizedValue;
+      const result = addInlineItemsToLocalizedStructuredTextField(
+        sourceLocaleValues,
+        availableLocales,
+        targetBlockId,
+        mapping,
+      );
+      newValue = result.localizedValue;
+      hasChanges = result.hasChanges;
     } else if (isStructuredTextValue(fieldValue)) {
       const transformed = addInlineItemsAlongsideBlocks(
         fieldValue as StructuredTextValue,
         targetBlockId,
-        mapping
+        mapping,
       );
       if (transformed) {
         newValue = transformed;
@@ -659,7 +824,7 @@ export async function migrateNestedStructuredTextFieldDataPartial(
   fieldApiKey: string,
   targetBlockId: string,
   mapping: BlockMigrationMapping,
-  recordsToPublish?: Set<string>
+  recordsToPublish?: Set<string>,
 ): Promise<void> {
   for await (const record of client.items.listPagedIterator({
     filter: { type: nestedPath.rootModelId },
@@ -671,9 +836,11 @@ export async function migrateNestedStructuredTextFieldDataPartial(
 
     if (!rootFieldValue) continue;
 
-    const updateBlockFn = (blockData: Record<string, unknown>): Record<string, unknown> => {
+    const updateBlockFn = (
+      blockData: Record<string, unknown>,
+    ): Record<string, unknown> => {
       const stValue = getNestedFieldValueFromBlock(blockData, fieldApiKey);
-      
+
       if (!stValue || !isStructuredTextValue(stValue)) {
         return blockData;
       }
@@ -681,7 +848,7 @@ export async function migrateNestedStructuredTextFieldDataPartial(
       const transformed = addInlineItemsAlongsideBlocks(
         stValue as StructuredTextValue,
         targetBlockId,
-        mapping
+        mapping,
       );
       if (transformed) {
         return setNestedFieldValueInBlock(blockData, fieldApiKey, transformed);
@@ -691,21 +858,21 @@ export async function migrateNestedStructuredTextFieldDataPartial(
     };
 
     const pathToParentBlock = nestedPath.path.slice(0, -1);
-    
+
     let result: { updated: boolean; newValue: unknown };
 
     if (pathToParentBlock.length === 0) {
       result = traverseAndUpdateNestedBlocksAtLevel(
         rootFieldValue,
         nestedPath.path[0],
-        updateBlockFn
+        updateBlockFn,
       );
     } else {
       result = traverseAndUpdateNestedBlocks(
         rootFieldValue,
         pathToParentBlock,
         0,
-        updateBlockFn
+        updateBlockFn,
       );
     }
 
@@ -727,7 +894,7 @@ export async function migrateNestedStructuredTextFieldData(
   fieldApiKey: string,
   targetBlockId: string,
   mapping: BlockMigrationMapping,
-  recordsToPublish?: Set<string>
+  recordsToPublish?: Set<string>,
 ): Promise<void> {
   for await (const record of client.items.listPagedIterator({
     filter: { type: nestedPath.rootModelId },
@@ -739,9 +906,11 @@ export async function migrateNestedStructuredTextFieldData(
 
     if (!rootFieldValue) continue;
 
-    const updateBlockFn = (blockData: Record<string, unknown>): Record<string, unknown> => {
+    const updateBlockFn = (
+      blockData: Record<string, unknown>,
+    ): Record<string, unknown> => {
       const stValue = getNestedFieldValueFromBlock(blockData, fieldApiKey);
-      
+
       if (!stValue || !isStructuredTextValue(stValue)) {
         return blockData;
       }
@@ -749,7 +918,7 @@ export async function migrateNestedStructuredTextFieldData(
       const transformed = transformDastBlocksToLinks(
         stValue as StructuredTextValue,
         targetBlockId,
-        mapping
+        mapping,
       );
       if (transformed) {
         return setNestedFieldValueInBlock(blockData, fieldApiKey, transformed);
@@ -759,21 +928,21 @@ export async function migrateNestedStructuredTextFieldData(
     };
 
     const pathToParentBlock = nestedPath.path.slice(0, -1);
-    
+
     let result: { updated: boolean; newValue: unknown };
 
     if (pathToParentBlock.length === 0) {
       result = traverseAndUpdateNestedBlocksAtLevel(
         rootFieldValue,
         nestedPath.path[0],
-        updateBlockFn
+        updateBlockFn,
       );
     } else {
       result = traverseAndUpdateNestedBlocks(
         rootFieldValue,
         pathToParentBlock,
         0,
-        updateBlockFn
+        updateBlockFn,
       );
     }
 
@@ -796,7 +965,7 @@ export async function migrateNestedStructuredTextFieldData(
 async function getAllBlockInstancesNested(
   client: CMAClient,
   nestedPath: NestedBlockPath,
-  targetBlockId: string
+  targetBlockId: string,
 ): Promise<
   Array<{
     rootRecordId: string;
@@ -822,7 +991,9 @@ async function getAllBlockInstancesNested(
     const blocks = findBlocksAtPath(record, nestedPath.path, targetBlockId);
 
     for (const { block, pathIndices, locale } of blocks) {
-      const attributes = block.attributes as Record<string, unknown> | undefined;
+      const attributes = block.attributes as
+        | Record<string, unknown>
+        | undefined;
       const blockData = attributes || {};
       const id = getBlockId(block);
 
@@ -840,47 +1011,16 @@ async function getAllBlockInstancesNested(
 }
 
 /**
- * Extracts link IDs from a field value based on the target block type.
+ * Collects link IDs from an array of blocks matching the target block type.
  */
-export function extractLinksFromValue(
-  value: unknown,
+function collectLinkIdsFromBlocksArray(
+  blocks: unknown[],
   targetBlockId: string,
   mapping: BlockMigrationMapping,
-  isSingleValue: boolean
-): unknown {
-  if (!value) {
-    return isSingleValue ? null : [];
-  }
-
-  // Handle structured text fields
-  if (isStructuredTextValue(value)) {
-    const linkIds = extractLinksFromStructuredText(
-      value as StructuredTextValue,
-      targetBlockId,
-      mapping
-    );
-    return isSingleValue ? (linkIds[0] || null) : linkIds;
-  }
-
-  // Handle single block
-  if (isSingleValue && typeof value === 'object' && !Array.isArray(value)) {
-    const blockObj = value as Record<string, unknown>;
-    const blockTypeId = getBlockTypeId(blockObj);
-    const blockId = getBlockId(blockObj);
-    
-    if (blockTypeId === targetBlockId && blockId && mapping[blockId]) {
-      return mapping[blockId];
-    }
-    return null;
-  }
-
-  // Handle array of blocks
-  if (!Array.isArray(value)) {
-    return isSingleValue ? null : [];
-  }
-
+): string[] {
   const linkIds: string[] = [];
-  for (const block of value) {
+
+  for (const block of blocks) {
     if (!block || typeof block !== 'object') continue;
 
     const blockObj = block as Record<string, unknown>;
@@ -892,7 +1032,79 @@ export function extractLinksFromValue(
     }
   }
 
-  return isSingleValue ? (linkIds[0] || null) : linkIds;
+  return linkIds;
+}
+
+/**
+ * Extracts the mapped record ID for a single block value.
+ * Returns the record ID if the block matches the target type, otherwise null.
+ */
+function extractLinkFromSingleBlock(
+  value: Record<string, unknown>,
+  targetBlockId: string,
+  mapping: BlockMigrationMapping,
+): string | null {
+  const blockTypeId = getBlockTypeId(value);
+  const blockId = getBlockId(value);
+
+  if (blockTypeId === targetBlockId && blockId && mapping[blockId]) {
+    return mapping[blockId];
+  }
+  return null;
+}
+
+/**
+ * Extracts link IDs from a structured text field value.
+ */
+function extractLinksFromStructuredTextValue(
+  value: StructuredTextValue,
+  targetBlockId: string,
+  mapping: BlockMigrationMapping,
+  isSingleValue: boolean,
+): unknown {
+  const linkIds = extractLinksFromStructuredText(value, targetBlockId, mapping);
+  return isSingleValue ? (linkIds[0] ?? null) : linkIds;
+}
+
+/**
+ * Extracts link IDs from a field value based on the target block type.
+ */
+export function extractLinksFromValue(
+  value: unknown,
+  targetBlockId: string,
+  mapping: BlockMigrationMapping,
+  isSingleValue: boolean,
+): unknown {
+  if (!value) {
+    return isSingleValue ? null : [];
+  }
+
+  // Handle structured text fields
+  if (isStructuredTextValue(value)) {
+    return extractLinksFromStructuredTextValue(
+      value as StructuredTextValue,
+      targetBlockId,
+      mapping,
+      isSingleValue,
+    );
+  }
+
+  // Handle single block (non-array object)
+  if (isSingleValue && typeof value === 'object' && !Array.isArray(value)) {
+    return extractLinkFromSingleBlock(
+      value as Record<string, unknown>,
+      targetBlockId,
+      mapping,
+    );
+  }
+
+  // Handle array of blocks
+  if (!Array.isArray(value)) {
+    return isSingleValue ? null : [];
+  }
+
+  const linkIds = collectLinkIdsFromBlocksArray(value, targetBlockId, mapping);
+  return isSingleValue ? (linkIds[0] ?? null) : linkIds;
 }
 
 /**
@@ -901,7 +1113,7 @@ export function extractLinksFromValue(
 function normalizeLinksArray(value: unknown): string[] {
   if (!value) return [];
   if (!Array.isArray(value)) return [];
-  
+
   const result: string[] = [];
   for (const link of value) {
     if (typeof link === 'string') {
@@ -925,5 +1137,3 @@ function combineLinks(existing: string[], newLinks: string[]): string[] {
   }
   return combined;
 }
-
-

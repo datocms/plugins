@@ -6,15 +6,39 @@ declare module 'yoastseo/build/worker/createWorker' {
   export default function createWorker(url: string): Worker;
 }
 
+type YoastAnalysisResult = {
+  readability: {
+    score: number;
+    results: {
+      text: string;
+      score: number;
+      _identifier: string;
+      marks?: { _properties: { marked: string; original: string } }[];
+    }[];
+  };
+  seo: Record<
+    string | number,
+    {
+      score: number;
+      results: {
+        text: string;
+        score: number;
+        _identifier: string;
+        marks?: { _properties: { marked: string; original: string } }[];
+      }[];
+    }
+  >;
+};
+
 declare module 'yoastseo/build/worker/AnalysisWorkerWrapper' {
   export default class AnalysisWorkerWrapper {
     constructor(worker: Worker);
     initialize(config: unknown): Promise<unknown>;
-    analyze(paper: unknown): Promise<{ result: any }>;
+    analyze(paper: unknown): Promise<{ result: YoastAnalysisResult }>;
     analyzeRelatedKeywords(
       paper: unknown,
       relatedKeywords: Record<string, unknown>,
-    ): Promise<{ result: any }>;
+    ): Promise<{ result: YoastAnalysisResult }>;
   }
 }
 

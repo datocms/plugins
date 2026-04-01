@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { describe, expect, it } from 'vitest';
+
 import { useAsyncOperation } from '@hooks/useAsyncOperation';
-import { renderHook, flushPromises } from '../testUtils/react';
+import { describe, expect, it } from 'vitest';
+import { flushPromises, renderHook } from '../testUtils/react';
 
 describe('useAsyncOperation', () => {
   it('clears loading when the hook is disabled while work is in flight', async () => {
@@ -17,7 +18,7 @@ describe('useAsyncOperation', () => {
       useAsyncOperation(asyncFn, [], {
         enabled,
         operationName: 'load data',
-      })
+      }),
     );
 
     expect(result.current?.isLoading).toBe(true);

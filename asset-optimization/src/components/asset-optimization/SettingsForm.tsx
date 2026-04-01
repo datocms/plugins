@@ -1,26 +1,33 @@
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
-import { Form, FieldGroup, TextField, SwitchField, Button, SelectField } from 'datocms-react-ui';
+import {
+  Button,
+  FieldGroup,
+  Form,
+  SelectField,
+  SwitchField,
+  TextField,
+} from 'datocms-react-ui';
+import debounce from 'lodash.debounce';
+import { useEffect, useRef } from 'react';
+import type { ActionMeta, MultiValue, SingleValue } from 'react-select';
+import s from '../../entrypoints/styles.module.css';
 import type { OptimizationSettings } from '../../utils/optimizationUtils';
 import { defaultSettings } from '../../utils/optimizationUtils';
-import s from '../../entrypoints/styles.module.css';
-import { useEffect, useRef } from 'react';
-import debounce from 'lodash.debounce';
-import type { ActionMeta, SingleValue, MultiValue } from 'react-select';
-import ParamTooltip from './ParamTooltip';
 import ButtonTooltip from './ButtonTooltip';
+import ParamTooltip from './ParamTooltip';
 
 /**
  * Hint with doc link component
  */
 const HintWithDocLink = ({ hint, url }: { hint: string; url: string }) => {
   const ariaLabel = `Learn more about ${hint}`;
-  
+
   const openDocumentation = () => {
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
   return (
-    <button 
+    <button
       className={s.hintWithDoc}
       onClick={openDocumentation}
       type="button"
@@ -43,6 +50,56 @@ const Hint = ({ hint }: { hint: string }) => {
   );
 };
 
+type NumberSettingKey = keyof Pick<
+  OptimizationSettings,
+  | 'largeAssetThreshold'
+  | 'veryLargeAssetThreshold'
+  | 'qualityLarge'
+  | 'qualityVeryLarge'
+  | 'resizeDimensionLarge'
+  | 'resizeDimensionVeryLarge'
+  | 'minimumReduction'
+>;
+
+const validateNumberSettingValue = (
+  name: NumberSettingKey,
+  value: number,
+): number => {
+  const isQualityField = name === 'qualityLarge' || name === 'qualityVeryLarge';
+  const isPercentageField = name === 'minimumReduction';
+  const isThresholdField =
+    name === 'largeAssetThreshold' || name === 'veryLargeAssetThreshold';
+  const isDimensionField =
+    name === 'resizeDimensionLarge' || name === 'resizeDimensionVeryLarge';
+
+  if (isQualityField || isPercentageField) {
+    return Math.min(Math.max(0, value), 100);
+  }
+  if (isThresholdField) {
+    return Math.max(0.1, value);
+  }
+  if (isDimensionField) {
+    return Math.max(1, value);
+  }
+  return value;
+};
+
+const extractSelectStringValue = (
+  newValue:
+    | SingleValue<{ value: string; label: string }>
+    | MultiValue<{ value: string; label: string }>,
+): string | null => {
+  if (
+    newValue &&
+    typeof newValue === 'object' &&
+    !Array.isArray(newValue) &&
+    'value' in newValue
+  ) {
+    return newValue.value;
+  }
+  return null;
+};
+
 // Documentation URLs
 const docUrls = {
   format: 'https://docs.imgix.com/apis/rendering/format/fm',
@@ -52,7 +109,7 @@ const docUrls = {
   dpr: 'https://docs.imgix.com/apis/rendering/pixel-density/dpr',
   lossless: 'https://docs.imgix.com/apis/rendering/format/lossless',
   chroma: 'https://docs.imgix.com/apis/rendering/format/chroma-subsampling',
-  colorSpace: 'https://docs.imgix.com/apis/rendering/format/color-space'
+  colorSpace: 'https://docs.imgix.com/apis/rendering/format/color-space',
 };
 
 interface SettingsFormProps {
@@ -65,10 +122,10 @@ interface SettingsFormProps {
 
 /**
  * SettingsForm component for configuring optimization settings
- * 
+ *
  * This component provides form controls for adjusting various asset optimization
  * parameters like quality, size thresholds, and format settings.
- * 
+ *
  * @param settings - Current optimization settings
  * @param onSettingsChange - Callback for when settings change
  * @param onStartOptimization - Callback for when the start button is clicked
@@ -76,23 +133,34 @@ interface SettingsFormProps {
  * @param ctx - DatoCMS SDK context
  * @returns Rendered form component
  */
-const SettingsForm = ({ settings, onSettingsChange, onStartOptimization, onPreviewOptimization, ctx }: SettingsFormProps) => {
+const SettingsForm = ({
+  settings,
+  onSettingsChange,
+  onStartOptimization,
+  onPreviewOptimization,
+  ctx,
+}: SettingsFormProps) => {
   // Create debounced function for saving settings to plugin parameters
-  const debouncedSaveSettings = useRef<((settings: OptimizationSettings) => void) | null>(null);
+  const debouncedSaveSettings = useRef<
+    ((settings: OptimizationSettings) => void) | null
+  >(null);
 
   // Update the plugin parameters when settings change
   useEffect(() => {
-    debouncedSaveSettings.current = debounce(async (newSettings: OptimizationSettings) => {
-      try {
-        // Save settings to the plugin parameters
-        await ctx.updatePluginParameters({
-          optimization_settings: JSON.stringify(newSettings)
-        });
-        console.log('Settings saved to plugin parameters:', newSettings);
-      } catch (error) {
-        console.error('Error saving settings:', error);
-      }
-    }, 500); // 500ms debounce
+    debouncedSaveSettings.current = debounce(
+      async (newSettings: OptimizationSettings) => {
+        try {
+          // Save settings to the plugin parameters
+          await ctx.updatePluginParameters({
+            optimization_settings: JSON.stringify(newSettings),
+          });
+          console.log('Settings saved to plugin parameters:', newSettings);
+        } catch (error) {
+          console.error('Error saving settings:', error);
+        }
+      },
+      500,
+    ); // 500ms debounce
 
     return () => {
       // Cancel any pending debounced calls when component unmounts
@@ -113,64 +181,51 @@ const SettingsForm = ({ settings, onSettingsChange, onStartOptimization, onPrevi
   /**
    * Handle changes to text/number input fields
    */
-  const handleNumberChange = (name: keyof Pick<OptimizationSettings, 'largeAssetThreshold' | 'veryLargeAssetThreshold' | 'qualityLarge' | 'qualityVeryLarge' | 'resizeDimensionLarge' | 'resizeDimensionVeryLarge' | 'minimumReduction'>): (newValue: string) => void => (newValue) => {
-    const value = Number.parseFloat(newValue);
-    if (!Number.isNaN(value)) {
-      // Create a new settings object to ensure proper re-rendering
-      let validatedValue = value;
-      
-      // Quality validation: keep between 0-100
-      if (name === 'qualityLarge' || name === 'qualityVeryLarge') {
-        validatedValue = Math.min(Math.max(0, value), 100);
+  const handleNumberChange =
+    (name: NumberSettingKey): ((newValue: string) => void) =>
+    (newValue) => {
+      const value = Number.parseFloat(newValue);
+      if (!Number.isNaN(value)) {
+        const validatedValue = validateNumberSettingValue(name, value);
+        onSettingsChange({ ...settings, [name]: validatedValue });
       }
-      
-      // Minimum reduction validation: keep between 0-100 since it's a percentage
-      if (name === 'minimumReduction') {
-        validatedValue = Math.min(Math.max(0, value), 100);
-      }
-      
-      // Threshold validation: must be at least 0.1
-      if (name === 'largeAssetThreshold' || name === 'veryLargeAssetThreshold') {
-        validatedValue = Math.max(0.1, value);
-      }
-      
-      // Max width validation: must be at least 1px
-      if (name === 'resizeDimensionLarge' || name === 'resizeDimensionVeryLarge') {
-        validatedValue = Math.max(1, value);
-      }
-      
-      onSettingsChange({ ...settings, [name]: validatedValue });
-    }
-  };
+    };
 
   /**
    * Handle changes to switch fields
    */
-  const handleSwitchChange = (name: keyof OptimizationSettings) => (value: boolean) => {
-    onSettingsChange({ ...settings, [name]: value });
-  };
+  const handleSwitchChange =
+    (name: keyof OptimizationSettings) => (value: boolean) => {
+      onSettingsChange({ ...settings, [name]: value });
+    };
 
   /**
    * Handle changes to select fields
    */
-  const handleSelectChange = (name: keyof OptimizationSettings) => (
-    newValue: SingleValue<{ value: string; label: string }> | MultiValue<{ value: string; label: string }>,
-    _actionMeta: ActionMeta<{ value: string; label: string }>
-  ) => {
-    // The SelectField can return null when cleared, or an object with value
-    if (newValue && typeof newValue === 'object' && !Array.isArray(newValue) && 'value' in newValue) {
-      onSettingsChange({ ...settings, [name]: newValue.value });
-    }
-  };
+  const handleSelectChange =
+    (name: keyof OptimizationSettings) =>
+    (
+      newValue:
+        | SingleValue<{ value: string; label: string }>
+        | MultiValue<{ value: string; label: string }>,
+      _actionMeta: ActionMeta<{ value: string; label: string }>,
+    ) => {
+      const selectedValue = extractSelectStringValue(newValue);
+      if (selectedValue !== null) {
+        onSettingsChange({ ...settings, [name]: selectedValue });
+      }
+    };
 
   // Format options for the dropdown
   const formatOptions = [
     { label: 'WebP', value: 'webp' },
-    { label: 'AVIF', value: 'avif' }
+    { label: 'AVIF', value: 'avif' },
   ];
-  
+
   // Selected format option based on current settings
-  const selectedFormatOption = formatOptions.find(option => option.value === settings.targetFormat) || formatOptions[0];
+  const selectedFormatOption =
+    formatOptions.find((option) => option.value === settings.targetFormat) ||
+    formatOptions[0];
 
   return (
     <Form className={s.settingsForm}>
@@ -185,7 +240,9 @@ const SettingsForm = ({ settings, onSettingsChange, onStartOptimization, onPrevi
               value={settings.largeAssetThreshold.toString()}
               onChange={handleNumberChange('largeAssetThreshold')}
             />
-            <Hint hint={`Assets above ${settings.largeAssetThreshold}MB will be optimized`} />
+            <Hint
+              hint={`Assets above ${settings.largeAssetThreshold}MB will be optimized`}
+            />
           </div>
           <div className={s.field}>
             <TextField
@@ -195,7 +252,9 @@ const SettingsForm = ({ settings, onSettingsChange, onStartOptimization, onPrevi
               value={settings.veryLargeAssetThreshold.toString()}
               onChange={handleNumberChange('veryLargeAssetThreshold')}
             />
-            <Hint hint={`Assets above ${settings.veryLargeAssetThreshold}MB get stronger optimization`} />
+            <Hint
+              hint={`Assets above ${settings.veryLargeAssetThreshold}MB get stronger optimization`}
+            />
           </div>
         </div>
         <div className={s.field}>
@@ -214,7 +273,14 @@ const SettingsForm = ({ settings, onSettingsChange, onStartOptimization, onPrevi
         <h4>Basic Optimization</h4>
         <div className={s.fieldRow}>
           <div className={s.field}>
-            <ParamTooltip paramName="fm" paramValue={settings.preserveOriginalFormat ? undefined : settings.targetFormat}>
+            <ParamTooltip
+              paramName="fm"
+              paramValue={
+                settings.preserveOriginalFormat
+                  ? undefined
+                  : settings.targetFormat
+              }
+            >
               <SwitchField
                 id="preserveOriginalFormat"
                 name="preserveOriginalFormat"
@@ -223,7 +289,10 @@ const SettingsForm = ({ settings, onSettingsChange, onStartOptimization, onPrevi
                 onChange={handleSwitchChange('preserveOriginalFormat')}
               />
             </ParamTooltip>
-            <HintWithDocLink hint="Keep original image format (JPG, PNG, etc.)" url={docUrls.format} />
+            <HintWithDocLink
+              hint="Keep original image format (JPG, PNG, etc.)"
+              url={docUrls.format}
+            />
           </div>
           <div className={s.field}>
             <ParamTooltip paramName="auto" paramValue="compress">
@@ -235,7 +304,10 @@ const SettingsForm = ({ settings, onSettingsChange, onStartOptimization, onPrevi
                 onChange={handleSwitchChange('useAutoCompress')}
               />
             </ParamTooltip>
-            <HintWithDocLink hint="Use Imgix's auto compression features" url={docUrls.auto} />
+            <HintWithDocLink
+              hint="Use Imgix's auto compression features"
+              url={docUrls.auto}
+            />
           </div>
         </div>
 
@@ -249,25 +321,34 @@ const SettingsForm = ({ settings, onSettingsChange, onStartOptimization, onPrevi
                 value={selectedFormatOption}
                 onChange={handleSelectChange('targetFormat')}
                 selectInputProps={{
-                  options: formatOptions
+                  options: formatOptions,
                 }}
               />
             </ParamTooltip>
             <Hint hint="Format to convert images to" />
           </div>
         )}
-        
+
         <p className={s.infoText}>
-          <strong>Format Settings:</strong> {settings.preserveOriginalFormat 
-            ? "Original image formats will be preserved while optimizing quality and file size." 
-            : `Images will be converted to ${settings.targetFormat.toUpperCase()} format for better compression.`
-          }
-          {settings.useAutoCompress && <span> Auto compression is enabled, letting Imgix automatically optimize each image.</span>}
+          <strong>Format Settings:</strong>{' '}
+          {settings.preserveOriginalFormat
+            ? 'Original image formats will be preserved while optimizing quality and file size.'
+            : `Images will be converted to ${settings.targetFormat.toUpperCase()} format for better compression.`}
+          {settings.useAutoCompress && (
+            <span>
+              {' '}
+              Auto compression is enabled, letting Imgix automatically optimize
+              each image.
+            </span>
+          )}
         </p>
 
         <div className={s.fieldRow}>
           <div className={s.field}>
-            <ParamTooltip paramName="max-w" paramValue={settings.resizeLargeImages ? 'value' : undefined}>
+            <ParamTooltip
+              paramName="max-w"
+              paramValue={settings.resizeLargeImages ? 'value' : undefined}
+            >
               <SwitchField
                 id="resizeLargeImages"
                 name="resizeLargeImages"
@@ -276,17 +357,23 @@ const SettingsForm = ({ settings, onSettingsChange, onStartOptimization, onPrevi
                 onChange={handleSwitchChange('resizeLargeImages')}
               />
             </ParamTooltip>
-            <HintWithDocLink hint="Reduce image dimensions to save space" url={docUrls.resize} />
+            <HintWithDocLink
+              hint="Reduce image dimensions to save space"
+              url={docUrls.resize}
+            />
           </div>
         </div>
       </FieldGroup>
-      
+
       {settings.resizeLargeImages && (
         <FieldGroup>
           <h4>Resize Dimensions</h4>
           <div className={s.fieldRow}>
             <div className={s.field}>
-              <ParamTooltip paramName="max-w" paramValue={settings.resizeDimensionLarge}>
+              <ParamTooltip
+                paramName="max-w"
+                paramValue={settings.resizeDimensionLarge}
+              >
                 <TextField
                   id="resizeDimensionLarge"
                   name="resizeDimensionLarge"
@@ -298,7 +385,10 @@ const SettingsForm = ({ settings, onSettingsChange, onStartOptimization, onPrevi
               <Hint hint="Max dimension for large images" />
             </div>
             <div className={s.field}>
-              <ParamTooltip paramName="max-w" paramValue={settings.resizeDimensionVeryLarge}>
+              <ParamTooltip
+                paramName="max-w"
+                paramValue={settings.resizeDimensionVeryLarge}
+              >
                 <TextField
                   id="resizeDimensionVeryLarge"
                   name="resizeDimensionVeryLarge"
@@ -315,7 +405,7 @@ const SettingsForm = ({ settings, onSettingsChange, onStartOptimization, onPrevi
 
       <FieldGroup>
         <h4>Compression Settings</h4>
-        {!(settings.useLossless) && (
+        {!settings.useLossless && (
           <div className={s.fieldRow}>
             <div className={s.field}>
               <ParamTooltip paramName="q" paramValue={settings.qualityLarge}>
@@ -327,10 +417,16 @@ const SettingsForm = ({ settings, onSettingsChange, onStartOptimization, onPrevi
                   onChange={handleNumberChange('qualityLarge')}
                 />
               </ParamTooltip>
-              <HintWithDocLink hint="Quality for large images (0-100)" url={docUrls.quality} />
+              <HintWithDocLink
+                hint="Quality for large images (0-100)"
+                url={docUrls.quality}
+              />
             </div>
             <div className={s.field}>
-              <ParamTooltip paramName="q" paramValue={settings.qualityVeryLarge}>
+              <ParamTooltip
+                paramName="q"
+                paramValue={settings.qualityVeryLarge}
+              >
                 <TextField
                   id="qualityVeryLarge"
                   name="qualityVeryLarge"
@@ -339,22 +435,29 @@ const SettingsForm = ({ settings, onSettingsChange, onStartOptimization, onPrevi
                   onChange={handleNumberChange('qualityVeryLarge')}
                 />
               </ParamTooltip>
-              <HintWithDocLink hint="Quality for very large images (0-100)" url={docUrls.quality} />
+              <HintWithDocLink
+                hint="Quality for very large images (0-100)"
+                url={docUrls.quality}
+              />
             </div>
           </div>
         )}
-        {(settings.useLossless) && (
+        {settings.useLossless && (
           <p className={s.infoText} style={{ marginBottom: 0 }}>
-            <strong>Lossless Mode:</strong> Standard quality settings are disabled when using Lossless Mode.
+            <strong>Lossless Mode:</strong> Standard quality settings are
+            disabled when using Lossless Mode.
           </p>
         )}
       </FieldGroup>
-      
+
       <FieldGroup className={s.advancedOptionsGroup}>
         <h4>Advanced Options</h4>
         <div className={s.optionsGrid}>
           <div className={s.optionItem}>
-            <ParamTooltip paramName="lossless" paramValue={settings.useLossless ? 1 : undefined}>
+            <ParamTooltip
+              paramName="lossless"
+              paramValue={settings.useLossless ? 1 : undefined}
+            >
               <SwitchField
                 id="useLossless"
                 name="useLossless"
@@ -363,10 +466,16 @@ const SettingsForm = ({ settings, onSettingsChange, onStartOptimization, onPrevi
                 onChange={handleSwitchChange('useLossless')}
               />
             </ParamTooltip>
-            <HintWithDocLink hint="Use lossless compression when possible" url={docUrls.lossless} />
+            <HintWithDocLink
+              hint="Use lossless compression when possible"
+              url={docUrls.lossless}
+            />
           </div>
           <div className={s.optionItem}>
-            <ParamTooltip paramName="dpr" paramValue={settings.useDpr ? 2 : undefined}>
+            <ParamTooltip
+              paramName="dpr"
+              paramValue={settings.useDpr ? 2 : undefined}
+            >
               <SwitchField
                 id="useDpr"
                 name="useDpr"
@@ -375,10 +484,16 @@ const SettingsForm = ({ settings, onSettingsChange, onStartOptimization, onPrevi
                 onChange={handleSwitchChange('useDpr')}
               />
             </ParamTooltip>
-            <HintWithDocLink hint="Optimize for high-resolution displays (Retina)" url={docUrls.dpr} />
+            <HintWithDocLink
+              hint="Optimize for high-resolution displays (Retina)"
+              url={docUrls.dpr}
+            />
           </div>
           <div className={s.optionItem}>
-            <ParamTooltip paramName="chromasub" paramValue={settings.useChromaSubsampling ? 444 : undefined}>
+            <ParamTooltip
+              paramName="chromasub"
+              paramValue={settings.useChromaSubsampling ? 444 : undefined}
+            >
               <SwitchField
                 id="useChromaSubsampling"
                 name="useChromaSubsampling"
@@ -387,10 +502,16 @@ const SettingsForm = ({ settings, onSettingsChange, onStartOptimization, onPrevi
                 onChange={handleSwitchChange('useChromaSubsampling')}
               />
             </ParamTooltip>
-            <HintWithDocLink hint="Use higher quality chroma subsampling (444) for JPEGs" url={docUrls.chroma} />
+            <HintWithDocLink
+              hint="Use higher quality chroma subsampling (444) for JPEGs"
+              url={docUrls.chroma}
+            />
           </div>
           <div className={s.optionItem}>
-            <ParamTooltip paramName="cs" paramValue={settings.preserveColorProfile ? 'origin' : undefined}>
+            <ParamTooltip
+              paramName="cs"
+              paramValue={settings.preserveColorProfile ? 'origin' : undefined}
+            >
               <SwitchField
                 id="preserveColorProfile"
                 name="preserveColorProfile"
@@ -399,11 +520,14 @@ const SettingsForm = ({ settings, onSettingsChange, onStartOptimization, onPrevi
                 onChange={handleSwitchChange('preserveColorProfile')}
               />
             </ParamTooltip>
-            <HintWithDocLink hint="Maintain accurate colors from original image" url={docUrls.colorSpace} />
+            <HintWithDocLink
+              hint="Maintain accurate colors from original image"
+              url={docUrls.colorSpace}
+            />
           </div>
         </div>
       </FieldGroup>
-      
+
       <div className={s.formActionContainer}>
         <div className={s.buttonGroup}>
           <Button
@@ -414,17 +538,17 @@ const SettingsForm = ({ settings, onSettingsChange, onStartOptimization, onPrevi
             Restore Defaults
           </Button>
           <ButtonTooltip tooltip="Calculate potential improvements with current settings without replacing any assets">
-            <Button 
-              buttonType="muted" 
-              buttonSize="l" 
+            <Button
+              buttonType="muted"
+              buttonSize="l"
               onClick={onPreviewOptimization}
             >
               Preview Optimization
             </Button>
           </ButtonTooltip>
-          <Button 
-            buttonType="primary" 
-            buttonSize="l" 
+          <Button
+            buttonType="primary"
+            buttonSize="l"
             onClick={onStartOptimization}
             fullWidth
           >

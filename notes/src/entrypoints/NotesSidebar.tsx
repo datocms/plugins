@@ -1,8 +1,8 @@
-import type { RenderFieldExtensionCtx } from "datocms-plugin-sdk";
-import { Canvas } from "datocms-react-ui";
-import { useEffect, useState } from "react";
-import Note from "./Note";
-import styles from "./notesSidebar.module.css";
+import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
+import { Canvas } from 'datocms-react-ui';
+import { useEffect, useState } from 'react';
+import Note from './Note';
+import styles from './notesSidebar.module.css';
 
 type PropTypes = {
   ctx: RenderFieldExtensionCtx;
@@ -16,7 +16,7 @@ export type NoteType = {
 const Notes = ({ ctx }: PropTypes) => {
   const initialState = ctx.formValues[ctx.field.attributes.api_key]
     ? (JSON.parse(
-        ctx.formValues[ctx.field.attributes.api_key] as string
+        ctx.formValues[ctx.field.attributes.api_key] as string,
       ) as NoteType[])
     : [];
 
@@ -24,7 +24,7 @@ const Notes = ({ ctx }: PropTypes) => {
 
   const createNoteHandler = () => {
     const noteDate = new Date().toISOString();
-    const note = { comment: "", timestamp: noteDate };
+    const note = { comment: '', timestamp: noteDate };
 
     setSavedNotes((oldNotes: NoteType[]) => {
       const newNotes = [...oldNotes];
@@ -43,10 +43,12 @@ const Notes = ({ ctx }: PropTypes) => {
 
   const editNoteHandler = (timestamp: string, newValue: string) => {
     setSavedNotes((oldNotes: NoteType[]) => {
-      const newNotes = [...oldNotes];
-      newNotes.find((note) => note.timestamp === timestamp)!.comment! =
-        newValue;
-      return newNotes;
+      return oldNotes.map((note) => {
+        if (note.timestamp === timestamp) {
+          return { ...note, comment: newValue };
+        }
+        return note;
+      });
     });
   };
 
@@ -69,17 +71,17 @@ const Notes = ({ ctx }: PropTypes) => {
   return (
     <Canvas ctx={ctx}>
       {savedNotes?.map((note) => {
-          return (
-            <Note
-              key={note.timestamp}
-              deleteNotes={deleteNoteHandler}
-              editNotes={editNoteHandler}
-              value={note.comment}
-              date={note.timestamp}
-            />
-          );
-        })}
-      <button className={styles["add-note-button"]} onClick={createNoteHandler}>
+        return (
+          <Note
+            key={note.timestamp}
+            deleteNotes={deleteNoteHandler}
+            editNotes={editNoteHandler}
+            value={note.comment}
+            date={note.timestamp}
+          />
+        );
+      })}
+      <button className={styles['add-note-button']} onClick={createNoteHandler}>
         Add a new note...
       </button>
     </Canvas>

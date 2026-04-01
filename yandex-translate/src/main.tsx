@@ -1,9 +1,17 @@
 import { connect, type FieldAppearanceChange } from 'datocms-plugin-sdk';
-import { render } from './utils/render';
 import ConfigScreen from './entrypoints/ConfigScreen';
 import FieldExtension from './entrypoints/FieldExtension';
-import { isValidParameters, normalizeParams } from './types';
+import {
+  isValidParameters,
+  normalizeParams,
+  type ValidFieldType,
+} from './types';
+import { render } from './utils/render';
 import 'datocms-react-ui/styles.css';
+
+function isValidFieldType(value: string): value is ValidFieldType {
+  return value === 'string' || value === 'text';
+}
 
 connect({
   async onBoot(ctx) {
@@ -22,9 +30,9 @@ connect({
         fields.map(async (field, index) => {
           const changes: FieldAppearanceChange[] = [];
 
-          field.attributes.appearance.addons.forEach((addon) => {
+          for (const addon of field.attributes.appearance.addons) {
             if (addon.id !== ctx.plugin.id || addon.field_extension) {
-              return;
+              continue;
             }
 
             changes.push({
@@ -32,7 +40,7 @@ connect({
               index,
               newFieldExtensionId: 'yandexTranslate',
             });
-          });
+          }
 
           if (changes.length > 0) {
             await ctx.updateFieldAppearance(field.id, changes);
@@ -71,7 +79,8 @@ connect({
     const foundRule = parameters.autoApplyRules.find(
       (rule) =>
         new RegExp(rule.apiKeyRegexp).test(field.attributes.api_key) &&
-        rule.fieldTypes.includes(field.attributes.field_type as any) &&
+        isValidFieldType(field.attributes.field_type) &&
+        rule.fieldTypes.includes(field.attributes.field_type) &&
         field.attributes.localized,
     );
 

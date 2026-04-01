@@ -1,7 +1,7 @@
 import { connect } from 'datocms-plugin-sdk';
 import { Canvas } from 'datocms-react-ui';
-import { render } from './utils/render';
 import AssetBrowser from './entrypoints/AssetBrowser';
+import { render } from './utils/render';
 import 'datocms-react-ui/styles.css';
 
 connect({

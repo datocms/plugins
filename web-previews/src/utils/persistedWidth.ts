@@ -21,5 +21,5 @@ export function usePersistedSidebarWidth(site: Site) {
 
   useEffect(() => {
     saveSidebarWidth(site, width);
-  }, [site.id, width]);
+  }, [site.id, width, site]);
 }

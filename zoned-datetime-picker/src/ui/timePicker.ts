@@ -1,4 +1,4 @@
-import { renderTimeViewClock } from "@mui/x-date-pickers/timeViewRenderers";
+import { renderTimeViewClock } from '@mui/x-date-pickers/timeViewRenderers';
 
 /**
  * Use the clock UI for all time views to provide a consistent, compact

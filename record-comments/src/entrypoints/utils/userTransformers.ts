@@ -39,11 +39,15 @@ function extractEmailLocalPart(emailOrUsername: string): string {
   return atIndex > 0 ? emailOrUsername.slice(0, atIndex) : emailOrUsername;
 }
 
-export function regularUserToUserInfo(user: RegularUser, avatarSize = 48): UserInfo {
+export function regularUserToUserInfo(
+  user: RegularUser,
+  avatarSize = 48,
+): UserInfo {
   return {
     id: user.id,
     email: user.attributes.email,
-    name: user.attributes.full_name ?? extractEmailLocalPart(user.attributes.email),
+    name:
+      user.attributes.full_name ?? extractEmailLocalPart(user.attributes.email),
     avatarUrl: getGravatarUrl(user.attributes.email, avatarSize),
   };
 }
@@ -55,9 +59,13 @@ export function ssoUserToUserInfo(user: SsoUser, avatarSize = 48): UserInfo {
 
   const firstName = user.attributes.first_name ?? '';
   const lastName = user.attributes.last_name ?? '';
-  const fullName = [firstName, lastName].filter(Boolean).join(' ') || extractEmailLocalPart(username);
+  const fullName =
+    [firstName, lastName].filter(Boolean).join(' ') ||
+    extractEmailLocalPart(username);
   const looksLikeEmail = username.includes('@');
-  const avatarUrl = looksLikeEmail ? getGravatarUrl(username, avatarSize) : null;
+  const avatarUrl = looksLikeEmail
+    ? getGravatarUrl(username, avatarSize)
+    : null;
 
   return {
     id: user.id,
@@ -71,15 +79,20 @@ export function ssoUserToUserInfo(user: SsoUser, avatarSize = 48): UserInfo {
 // and structure varies (account vs org, top level vs attributes). getString() ensures safety.
 export function ownerToUserInfo(
   owner: { id: string; type: string } & Record<string, unknown>,
-  avatarSize = 48
+  avatarSize = 48,
 ): UserInfo {
   const attrs = (owner.attributes ?? {}) as Record<string, unknown>;
 
   if (owner.type === 'account') {
     const email = getString(owner.email) ?? getString(attrs.email) ?? '';
-    const firstName = getString(owner.first_name) ?? getString(attrs.first_name) ?? '';
-    const lastName = getString(owner.last_name) ?? getString(attrs.last_name) ?? '';
-    const fullName = [firstName, lastName].filter(Boolean).join(' ') || extractEmailLocalPart(email) || 'Account Owner';
+    const firstName =
+      getString(owner.first_name) ?? getString(attrs.first_name) ?? '';
+    const lastName =
+      getString(owner.last_name) ?? getString(attrs.last_name) ?? '';
+    const fullName =
+      [firstName, lastName].filter(Boolean).join(' ') ||
+      extractEmailLocalPart(email) ||
+      'Account Owner';
     return {
       id: String(owner.id),
       email,
@@ -88,7 +101,8 @@ export function ownerToUserInfo(
     };
   }
 
-  const orgName = getString(owner.name) ?? getString(attrs.name) ?? 'Organization';
+  const orgName =
+    getString(owner.name) ?? getString(attrs.name) ?? 'Organization';
   return {
     id: String(owner.id),
     email: '',
@@ -104,7 +118,11 @@ function createUserIdIdentifier(userId: string) {
   return `${USER_ID_PREFIX}${userId}${USER_ID_SUFFIX}`;
 }
 
-export function getCurrentUserInfo(currentUser: CurrentUser): { id: string; email: string; name: string } {
+export function getCurrentUserInfo(currentUser: CurrentUser): {
+  id: string;
+  email: string;
+  name: string;
+} {
   const attrs = currentUser.attributes;
   const id = currentUser.id;
   const actualEmail = getString(attrs.email);
@@ -113,9 +131,10 @@ export function getCurrentUserInfo(currentUser: CurrentUser): { id: string; emai
   const email = actualEmail ?? createUserIdIdentifier(id);
 
   // For name: prefer full_name, then name attr, then email local part (if real email), then "User"
-  const name = getString(attrs.full_name)
-    ?? getString(attrs.name)
-    ?? (actualEmail ? extractEmailLocalPart(actualEmail) : 'User');
+  const name =
+    getString(attrs.full_name) ??
+    getString(attrs.name) ??
+    (actualEmail ? extractEmailLocalPart(actualEmail) : 'User');
 
   return { id, email, name };
 }
@@ -125,7 +144,10 @@ export function getCurrentUserInfo(currentUser: CurrentUser): { id: string; emai
  * This ensures the current user can be resolved even if they're not in the regular/SSO users list
  * (e.g., organization owners).
  */
-export function currentUserToUserInfo(currentUser: CurrentUser, avatarSize = 48): UserInfo {
+export function currentUserToUserInfo(
+  currentUser: CurrentUser,
+  avatarSize = 48,
+): UserInfo {
   const { id, email, name } = getCurrentUserInfo(currentUser);
   const actualEmail = getString(currentUser.attributes.email);
 
@@ -140,7 +162,7 @@ export function currentUserToUserInfo(currentUser: CurrentUser, avatarSize = 48)
 export function transformUsersToUserInfo(
   regularUsers: RegularUser[],
   ssoUsers: SsoUser[],
-  avatarSize = 48
+  avatarSize = 48,
 ): UserInfo[] {
   return [
     ...regularUsers.map((user) => regularUserToUserInfo(user, avatarSize)),

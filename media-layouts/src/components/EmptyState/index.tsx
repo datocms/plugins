@@ -31,11 +31,7 @@ export default function EmptyState({
       <p className={s.text}>
         {isGallery ? 'No assets selected' : 'No asset selected'}
       </p>
-      <Button
-        onClick={onSelectAsset}
-        disabled={disabled}
-        buttonSize="s"
-      >
+      <Button onClick={onSelectAsset} disabled={disabled} buttonSize="s">
         {isGallery ? 'Add assets' : 'Browse assets'}
       </Button>
     </div>

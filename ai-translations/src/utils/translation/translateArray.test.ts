@@ -3,10 +3,10 @@
  * Tests placeholder tokenization, detokenization, and array translation.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import { tokenize, translateArray } from './translateArray';
 import type { TranslationProvider } from './types';
-import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 
 describe('translateArray.ts', () => {
   describe('tokenize', () => {
@@ -106,9 +106,7 @@ describe('translateArray.ts', () => {
 
     describe('mixed placeholders', () => {
       it('should tokenize all placeholder types together', () => {
-        const result = tokenize(
-          'Hello {{name}}, {greeting}, %s, :slug'
-        );
+        const result = tokenize('Hello {{name}}, {greeting}, %s, :slug');
 
         expect(result.map).toHaveLength(4);
         expect(result.map.map((m) => m.orig)).toEqual([
@@ -148,7 +146,11 @@ describe('translateArray.ts', () => {
 
         // The complex ICU structure should not be fully replaced
         // Only simple {var} patterns are tokenized
-        expect(result.map.some((m) => m.orig === '{gender, select, male {He} female {She}}')).toBe(false);
+        expect(
+          result.map.some(
+            (m) => m.orig === '{gender, select, male {He} female {She}}',
+          ),
+        ).toBe(false);
       });
     });
   });
@@ -184,7 +186,7 @@ describe('translateArray.ts', () => {
           mockPluginParams,
           [],
           'en',
-          'de'
+          'de',
         );
 
         expect(result).toEqual([]);
@@ -197,7 +199,7 @@ describe('translateArray.ts', () => {
           mockPluginParams,
           null as unknown as string[],
           'en',
-          'de'
+          'de',
         );
 
         expect(result).toEqual(null);
@@ -207,7 +209,7 @@ describe('translateArray.ts', () => {
     describe('chat vendor translation (JSON array prompt)', () => {
       it('should translate array via completeText for chat vendors', async () => {
         vi.mocked(mockProvider.completeText).mockResolvedValue(
-          '["Hallo", "Welt"]'
+          '["Hallo", "Welt"]',
         );
 
         const result = await translateArray(
@@ -215,7 +217,7 @@ describe('translateArray.ts', () => {
           mockPluginParams,
           ['Hello', 'World'],
           'en',
-          'de'
+          'de',
         );
 
         expect(mockProvider.completeText).toHaveBeenCalled();
@@ -224,7 +226,7 @@ describe('translateArray.ts', () => {
 
       it('should protect and restore placeholders', async () => {
         vi.mocked(mockProvider.completeText).mockResolvedValue(
-          '["Hallo ⟦PH_0⟧"]'
+          '["Hallo ⟦PH_0⟧"]',
         );
 
         const result = await translateArray(
@@ -232,7 +234,7 @@ describe('translateArray.ts', () => {
           mockPluginParams,
           ['Hello {{name}}'],
           'en',
-          'de'
+          'de',
         );
 
         expect(result).toEqual(['Hallo {{name}}']);
@@ -240,7 +242,7 @@ describe('translateArray.ts', () => {
 
       it('should handle model returning extra text around JSON', async () => {
         vi.mocked(mockProvider.completeText).mockResolvedValue(
-          'Here is the translation:\n["Hallo", "Welt"]\nDone!'
+          'Here is the translation:\n["Hallo", "Welt"]\nDone!',
         );
 
         const result = await translateArray(
@@ -248,7 +250,7 @@ describe('translateArray.ts', () => {
           mockPluginParams,
           ['Hello', 'World'],
           'en',
-          'de'
+          'de',
         );
 
         expect(result).toEqual(['Hallo', 'Welt']);
@@ -262,21 +264,23 @@ describe('translateArray.ts', () => {
           mockPluginParams,
           ['Hello', 'World'],
           'en',
-          'de'
+          'de',
         );
 
         expect(result).toEqual(['Hallo', 'World']);
       });
 
       it('should handle non-string values in response', async () => {
-        vi.mocked(mockProvider.completeText).mockResolvedValue('[123, null, "Welt"]');
+        vi.mocked(mockProvider.completeText).mockResolvedValue(
+          '[123, null, "Welt"]',
+        );
 
         const result = await translateArray(
           mockProvider,
           mockPluginParams,
           ['Hello', 'Goodbye', 'World'],
           'en',
-          'de'
+          'de',
         );
 
         // Non-strings should be replaced with originals
@@ -285,16 +289,20 @@ describe('translateArray.ts', () => {
 
       it('should throw if model returns valid JSON non-array', async () => {
         // Return valid JSON that's not an array (e.g., a string or object)
-        vi.mocked(mockProvider.completeText).mockResolvedValue('"just a string"');
+        vi.mocked(mockProvider.completeText).mockResolvedValue(
+          '"just a string"',
+        );
 
         await expect(
-          translateArray(mockProvider, mockPluginParams, ['Hello'], 'en', 'de')
+          translateArray(mockProvider, mockPluginParams, ['Hello'], 'en', 'de'),
         ).rejects.toThrow('Model did not return a JSON array');
       });
     });
 
     describe('DeepL provider translation', () => {
-      let mockDeepLProvider: Required<Pick<TranslationProvider, 'translateArray'>> &
+      let mockDeepLProvider: Required<
+        Pick<TranslationProvider, 'translateArray'>
+      > &
         Omit<TranslationProvider, 'translateArray'> & {
           translateArray: ReturnType<typeof vi.fn>;
         };
@@ -316,7 +324,7 @@ describe('translateArray.ts', () => {
           mockPluginParams,
           ['Hello', 'World'],
           'en',
-          'de'
+          'de',
         );
 
         expect(mockDeepLProvider.translateArray).toHaveBeenCalled();
@@ -332,7 +340,7 @@ describe('translateArray.ts', () => {
           mockPluginParams,
           ['Hello {{name}}'],
           'en',
-          'de'
+          'de',
         );
 
         expect(result).toEqual(['Hallo {{name}}']);
@@ -347,7 +355,7 @@ describe('translateArray.ts', () => {
           ['Hello'],
           'en',
           'de',
-          { isHTML: true, formality: 'more' }
+          { isHTML: true, formality: 'more' },
         );
 
         expect(mockDeepLProvider.translateArray).toHaveBeenCalledWith(
@@ -358,7 +366,7 @@ describe('translateArray.ts', () => {
             isHTML: true,
             formality: 'more',
             preserveFormatting: true,
-          })
+          }),
         );
       });
     });
@@ -371,7 +379,7 @@ describe('translateArray.ts', () => {
         });
 
         await expect(
-          translateArray(mockProvider, mockPluginParams, ['Hello'], 'en', 'de')
+          translateArray(mockProvider, mockPluginParams, ['Hello'], 'en', 'de'),
         ).rejects.toThrow('Rate limit');
       });
 
@@ -385,7 +393,7 @@ describe('translateArray.ts', () => {
             mockPluginParams,
             ['Hello'],
             'en',
-            'de'
+            'de',
           );
           expect.fail('Should have thrown');
         } catch (e) {
@@ -403,7 +411,7 @@ describe('translateArray.ts', () => {
           mockPluginParams,
           ['Hello'],
           'en',
-          'fr'
+          'fr',
         );
 
         const prompt = vi.mocked(mockProvider.completeText).mock.calls[0][0];
@@ -421,7 +429,7 @@ describe('translateArray.ts', () => {
           mockPluginParams,
           [null as unknown as string, 'World'],
           'en',
-          'de'
+          'de',
         );
 
         expect(result).toBeDefined();
@@ -437,7 +445,7 @@ describe('translateArray.ts', () => {
           mockPluginParams,
           ['Hello'],
           'en',
-          'de'
+          'de',
         );
 
         // Falls back to original since empty response defaults to []

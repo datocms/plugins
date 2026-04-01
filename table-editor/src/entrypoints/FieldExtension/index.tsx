@@ -1,12 +1,12 @@
 import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
 import { Canvas } from 'datocms-react-ui';
-import get from 'lodash-es/get';
 import deepEqual from 'fast-deep-equal';
+import get from 'lodash-es/get';
 import { useRef, useState } from 'react';
 import { useDeepCompareEffect } from 'use-deep-compare';
 import { Empty } from '../../components/Empty';
 import TableEditor from '../../components/TableEditor';
-import { type Value, isValue } from '../../types';
+import { isValue, type Value } from '../../types';
 
 type Props = {
   ctx: RenderFieldExtensionCtx;

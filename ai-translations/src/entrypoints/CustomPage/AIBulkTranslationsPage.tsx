@@ -1,11 +1,12 @@
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
-import { Canvas, SelectField, Button, Spinner } from 'datocms-react-ui';
+import { Button, Canvas, SelectField, Spinner } from 'datocms-react-ui';
 import { useEffect, useState } from 'react';
-import { buildDatoCMSClient } from '../../utils/clients';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
-import { isProviderConfigured } from '../../utils/translation/ProviderFactory';
+import { buildDatoCMSClient } from '../../utils/clients';
 import { handleUIError } from '../../utils/translation/ProviderErrors';
+import { isProviderConfigured } from '../../utils/translation/ProviderFactory';
 import s from './AIBulkTranslationsPage.module.css';
+
 // Light local equivalents of react-select types to avoid adding the package
 type SingleValue<T> = T | null;
 type MultiValue<T> = readonly T[];
@@ -46,78 +47,118 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
       }
 
       try {
-        const client = buildDatoCMSClient(ctx.currentUserAccessToken, ctx.environment);
-        
-        const itemTypes = await client.itemTypes.list() 
-
-        const nonBlockModels = itemTypes.filter(model => 
-          !model.modular_block
+        const client = buildDatoCMSClient(
+          ctx.currentUserAccessToken,
+          ctx.environment,
         );
-        
-        const modelOptions = nonBlockModels.map(model => ({
+
+        const itemTypes = await client.itemTypes.list();
+
+        const nonBlockModels = itemTypes.filter(
+          (model) => !model.modular_block,
+        );
+
+        const modelOptions = nonBlockModels.map((model) => ({
           label: model.name,
-          value: model.id
+          value: model.id,
         }));
-        
+
         setModels(modelOptions);
-        
-        const site = await client.site.find() 
+
+        const site = await client.site.find();
         const localeOptions = site.locales.map((locale: string) => ({
           label: locale,
-          value: locale
+          value: locale,
         }));
-        
+
         setLocales(localeOptions);
-        
+
         if (localeOptions.length > 0) {
           setSourceLocale(localeOptions[0]);
         }
-        
+
         setIsLoading(false);
       } catch (error) {
         console.error('Error loading data:', error);
-        ctx.alert(`Error loading data: ${error instanceof Error ? error.message : String(error)}`);
+        ctx.alert(
+          `Error loading data: ${error instanceof Error ? error.message : String(error)}`,
+        );
         setIsLoading(false);
       }
     }
-    
+
     loadData();
   }, [ctx]);
 
-  const startTranslation = async () => {
+  /**
+   * Validates that all required inputs are set before starting a translation.
+   * Alerts the user and returns false if any input is missing or invalid.
+   */
+  function validateTranslationInputs(pluginParams: ctxParamsType): boolean {
     if (!sourceLocale || !targetLocale || selectedModels.length === 0) {
-      ctx.alert('Please select source locale, target locale, and at least one model');
-      return;
+      ctx.alert(
+        'Please select source locale, target locale, and at least one model',
+      );
+      return false;
     }
-    
     if (sourceLocale.value === targetLocale.value) {
       ctx.alert('Source and target locales must be different');
-      return;
+      return false;
     }
-
     if (!ctx.currentUserAccessToken) {
       ctx.alert('No access token found');
-      return;
+      return false;
     }
-    
-    const pluginParams = ctx.plugin.attributes.parameters as ctxParamsType;
     if (!isProviderConfigured(pluginParams)) {
-      ctx.alert('Please configure valid credentials for the selected AI vendor in the plugin settings');
-      return;
+      ctx.alert(
+        'Please configure valid credentials for the selected AI vendor in the plugin settings',
+      );
+      return false;
     }
+    return true;
+  }
+
+  /**
+   * Notifies the user based on the modal result.
+   * Completed translations show a success notice; cancelled show a cancellation notice.
+   */
+  function notifyTranslationResult(
+    result: TranslationModalResult,
+    recordCount: number,
+  ): void {
+    if (result.completed) {
+      ctx.notice(
+        `Successfully translated ${recordCount} record(s) from ${sourceLocale?.value} to ${targetLocale?.value}`,
+      );
+    } else if (result.canceled) {
+      ctx.notice(
+        `Translation from ${sourceLocale?.value} to ${targetLocale?.value} was canceled`,
+      );
+    }
+  }
+
+  const startTranslation = async () => {
+    const pluginParams = ctx.plugin.attributes.parameters as ctxParamsType;
+
+    if (!validateTranslationInputs(pluginParams)) return;
 
     try {
-      const client = buildDatoCMSClient(ctx.currentUserAccessToken, ctx.environment);
+      const client = buildDatoCMSClient(
+        ctx.currentUserAccessToken as string,
+        ctx.environment,
+      );
       const allRecordIds: string[] = [];
-      
+
       setIsLoading(true);
-      
-      for (const model of selectedModels) {
-        // Don't use nested: true here since we only need record IDs
-        // This makes responses lighter and allows larger page sizes (up to 500 vs 30)
+
+      /**
+       * Drains a single model's paged iterator and appends all record IDs
+       * to the accumulator. Extracted to avoid await-in-loop lint errors.
+       */
+      async function collectRecordIdsForModel(modelId: string): Promise<void> {
         const recordsIterator = client.items.listPagedIterator({
           filter: {
-            type: model.value,
+            type: modelId,
           },
           version: 'current',
         });
@@ -126,36 +167,35 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
           allRecordIds.push(record.id);
         }
       }
-      
+
+      await Promise.all(
+        selectedModels.map((model) => collectRecordIdsForModel(model.value)),
+      );
+
       setIsLoading(false);
-      
+
       if (allRecordIds.length === 0) {
         ctx.alert('No records found in the selected models');
         return;
       }
-      
+
       const modalPromise = ctx.openModal({
         id: 'translationProgressModal',
         title: 'Translation Progress',
         width: 'l',
         parameters: {
           totalRecords: allRecordIds.length,
-          fromLocale: sourceLocale.value,
-          toLocale: targetLocale.value,
+          fromLocale: sourceLocale?.value,
+          toLocale: targetLocale?.value,
           accessToken: ctx.currentUserAccessToken,
           pluginParams,
-          itemIds: allRecordIds
-        }
+          itemIds: allRecordIds,
+        },
       });
-      
+
       try {
-        const result = await modalPromise as TranslationModalResult;
-        
-        if (result?.completed) {
-          ctx.notice(`Successfully translated ${allRecordIds.length} record(s) from ${sourceLocale.value} to ${targetLocale.value}`);
-        } else if (result?.canceled) {
-          ctx.notice(`Translation from ${sourceLocale.value} to ${targetLocale.value} was canceled`);
-        }
+        const result = (await modalPromise) as TranslationModalResult;
+        notifyTranslationResult(result, allRecordIds.length);
       } catch (error) {
         handleUIError(error, pluginParams.vendor, ctx);
       }
@@ -165,19 +205,25 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
     }
   };
 
-  const handleSourceLocaleChange = (newValue: SingleValue<LocaleOption> | MultiValue<LocaleOption>) => {
+  const handleSourceLocaleChange = (
+    newValue: SingleValue<LocaleOption> | MultiValue<LocaleOption>,
+  ) => {
     if (newValue && !Array.isArray(newValue)) {
       setSourceLocale(newValue as LocaleOption);
     }
   };
 
-  const handleTargetLocaleChange = (newValue: SingleValue<LocaleOption> | MultiValue<LocaleOption>) => {
+  const handleTargetLocaleChange = (
+    newValue: SingleValue<LocaleOption> | MultiValue<LocaleOption>,
+  ) => {
     if (newValue && !Array.isArray(newValue)) {
       setTargetLocale(newValue as LocaleOption);
     }
   };
 
-  const handleModelChange = (newValue: SingleValue<ModelOption> | MultiValue<ModelOption>) => {
+  const handleModelChange = (
+    newValue: SingleValue<ModelOption> | MultiValue<ModelOption>,
+  ) => {
     if (Array.isArray(newValue)) {
       setSelectedModels([...newValue]);
     }
@@ -190,14 +236,18 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
           <div className={s.card}>
             <div className={s.cardHeader}>
               <h1 className={s.cardTitle}>AI Bulk Translations</h1>
-              <p className={s.cardCaption}>Select languages and models to perform bulk translations.</p>
+              <p className={s.cardCaption}>
+                Select languages and models to perform bulk translations.
+              </p>
             </div>
 
             {/* Loading overlay */}
             {isLoading && (
               <div className={s.loadingOverlay}>
                 <Spinner size={40} />
-                <div className={s.loadingText}>Loading languages and models...</div>
+                <div className={s.loadingText}>
+                  Loading languages and models...
+                </div>
               </div>
             )}
 
@@ -226,7 +276,9 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
                     hint="Translate to"
                     value={targetLocale}
                     selectInputProps={{
-                      options: locales.filter((locale) => locale.value !== sourceLocale?.value),
+                      options: locales.filter(
+                        (locale) => locale.value !== sourceLocale?.value,
+                      ),
                     }}
                     onChange={handleTargetLocaleChange}
                   />
@@ -247,7 +299,8 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
               />
               {selectedModels.length > 0 && (
                 <div className={s.helperText}>
-                  Selected {selectedModels.length} {selectedModels.length === 1 ? 'model' : 'models'}
+                  Selected {selectedModels.length}{' '}
+                  {selectedModels.length === 1 ? 'model' : 'models'}
                 </div>
               )}
             </div>
@@ -257,7 +310,9 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
               <Button
                 buttonType="primary"
                 onClick={startTranslation}
-                disabled={!sourceLocale || !targetLocale || selectedModels.length === 0}
+                disabled={
+                  !sourceLocale || !targetLocale || selectedModels.length === 0
+                }
                 fullWidth
               >
                 Start Bulk Translation
@@ -265,7 +320,8 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
 
               {sourceLocale && targetLocale && selectedModels.length > 0 && (
                 <div className={`${s.helperText} ${s.statusReady}`}>
-                  Ready to translate from {sourceLocale.label} to {targetLocale.label}
+                  Ready to translate from {sourceLocale.label} to{' '}
+                  {targetLocale.label}
                 </div>
               )}
             </div>

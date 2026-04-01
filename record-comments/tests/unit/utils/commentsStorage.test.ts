@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
+import { COMMENT_FIELDS, COMMENTS_MODEL_API_KEY } from '@/constants';
 import {
   ensureCommentsModelExists,
   ensureCommentsModelExistsWithClient,
 } from '@/utils/commentsStorage';
-import { COMMENTS_MODEL_API_KEY, COMMENT_FIELDS } from '@/constants';
 
 function createClientMock() {
   return {
@@ -34,7 +34,9 @@ describe('ensureCommentsModelExistsWithClient', () => {
     client.itemTypes.list.mockResolvedValue([
       { id: 'comments-model', api_key: COMMENTS_MODEL_API_KEY },
     ]);
-    client.fields.list.mockResolvedValue([{ id: 'field-model', api_key: COMMENT_FIELDS.MODEL_ID }]);
+    client.fields.list.mockResolvedValue([
+      { id: 'field-model', api_key: COMMENT_FIELDS.MODEL_ID },
+    ]);
     client.fields.create.mockImplementation(async (_itemTypeId, body) => ({
       id: `created-${body.api_key}`,
       api_key: body.api_key,
@@ -48,12 +50,12 @@ describe('ensureCommentsModelExistsWithClient', () => {
     expect(client.fields.create).toHaveBeenNthCalledWith(
       1,
       'comments-model',
-      expect.objectContaining({ api_key: COMMENT_FIELDS.RECORD_ID })
+      expect.objectContaining({ api_key: COMMENT_FIELDS.RECORD_ID }),
     );
     expect(client.fields.create).toHaveBeenNthCalledWith(
       2,
       'comments-model',
-      expect.objectContaining({ api_key: COMMENT_FIELDS.CONTENT })
+      expect.objectContaining({ api_key: COMMENT_FIELDS.CONTENT }),
     );
   });
 
@@ -61,7 +63,9 @@ describe('ensureCommentsModelExistsWithClient', () => {
     const client = createClientMock();
     client.itemTypes.list
       .mockResolvedValueOnce([])
-      .mockResolvedValueOnce([{ id: 'comments-model', api_key: COMMENTS_MODEL_API_KEY }]);
+      .mockResolvedValueOnce([
+        { id: 'comments-model', api_key: COMMENTS_MODEL_API_KEY },
+      ]);
     client.itemTypes.create.mockRejectedValue(new Error('duplicate model'));
     client.fields.list.mockResolvedValue([
       { id: 'field-model', api_key: COMMENT_FIELDS.MODEL_ID },
@@ -85,7 +89,9 @@ describe('ensureCommentsModelExistsWithClient', () => {
       { id: 'comments-model', api_key: COMMENTS_MODEL_API_KEY },
     ]);
     client.fields.list
-      .mockResolvedValueOnce([{ id: 'field-model', api_key: COMMENT_FIELDS.MODEL_ID }])
+      .mockResolvedValueOnce([
+        { id: 'field-model', api_key: COMMENT_FIELDS.MODEL_ID },
+      ])
       .mockResolvedValueOnce([
         { id: 'field-model', api_key: COMMENT_FIELDS.MODEL_ID },
         { id: 'field-record', api_key: COMMENT_FIELDS.RECORD_ID },
@@ -96,7 +102,10 @@ describe('ensureCommentsModelExistsWithClient', () => {
       ]);
     client.fields.create
       .mockRejectedValueOnce(new Error('duplicate field'))
-      .mockResolvedValueOnce({ id: 'field-content', api_key: COMMENT_FIELDS.CONTENT });
+      .mockResolvedValueOnce({
+        id: 'field-content',
+        api_key: COMMENT_FIELDS.CONTENT,
+      });
 
     const result = await ensureCommentsModelExistsWithClient(client);
 
@@ -105,12 +114,12 @@ describe('ensureCommentsModelExistsWithClient', () => {
     expect(client.fields.create).toHaveBeenNthCalledWith(
       1,
       'comments-model',
-      expect.objectContaining({ api_key: COMMENT_FIELDS.RECORD_ID })
+      expect.objectContaining({ api_key: COMMENT_FIELDS.RECORD_ID }),
     );
     expect(client.fields.create).toHaveBeenNthCalledWith(
       2,
       'comments-model',
-      expect.objectContaining({ api_key: COMMENT_FIELDS.CONTENT })
+      expect.objectContaining({ api_key: COMMENT_FIELDS.CONTENT }),
     );
   });
 });

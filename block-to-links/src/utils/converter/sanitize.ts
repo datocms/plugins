@@ -1,10 +1,10 @@
 /**
  * Data Sanitization Utilities
- * 
+ *
  * Functions for sanitizing block and record data before creating new records
  * via the DatoCMS CMA. Removes read-only properties like `id` and restructures
  * block references to the format expected by the API.
- * 
+ *
  * @module utils/converter/sanitize
  */
 
@@ -17,13 +17,13 @@ import { getBlockTypeId } from '../blocks';
 /** Properties that should be removed from blocks when creating new records */
 const BLOCK_SKIP_KEYS = new Set([
   'id',
-  'item_type', 
+  'item_type',
   '__itemTypeId',
   'relationships',
   'type',
   'meta',
   'creator',
-  'attributes'
+  'attributes',
 ]);
 
 // =============================================================================
@@ -33,15 +33,15 @@ const BLOCK_SKIP_KEYS = new Set([
 /**
  * Recursively sanitizes block data to remove properties that shouldn't be included
  * when creating new records (like `id`, `item_type`, `relationships`, etc.).
- * 
+ *
  * This function handles:
  * - Removing block instance IDs
  * - Restructuring item_type references for the CMA
  * - Recursively sanitizing nested blocks (e.g., blocks within modular content fields)
- * 
+ *
  * @param data - The data to sanitize (can be any value type)
  * @returns Sanitized data ready for record creation
- * 
+ *
  * @example
  * const sanitized = sanitizeBlockDataForCreation({
  *   id: 'block123',
@@ -65,7 +65,7 @@ export function sanitizeBlockDataForCreation(data: unknown): unknown {
   // Handle objects
   if (typeof data === 'object') {
     const obj = data as Record<string, unknown>;
-    
+
     // Check if this looks like a block object
     const isBlock = isBlockObject(obj);
 
@@ -87,32 +87,34 @@ export function sanitizeBlockDataForCreation(data: unknown): unknown {
 
 /**
  * Checks if an object looks like a DatoCMS block.
- * 
+ *
  * @param obj - Object to check
  * @returns True if the object appears to be a block
  */
 function isBlockObject(obj: Record<string, unknown>): boolean {
   if (obj.__itemTypeId !== undefined) return true;
   if (obj.item_type !== undefined) return true;
-  
+
   if (obj.relationships && typeof obj.relationships === 'object') {
     const relationships = obj.relationships as Record<string, unknown>;
     if (relationships.item_type !== undefined) return true;
   }
-  
+
   return false;
 }
 
 /**
  * Sanitizes a block object for creation via the CMA.
  * Removes IDs and restructures the item_type reference.
- * 
+ *
  * @param obj - Block object to sanitize
  * @returns Sanitized block object
  */
-function sanitizeBlockObject(obj: Record<string, unknown>): Record<string, unknown> {
+function sanitizeBlockObject(
+  obj: Record<string, unknown>,
+): Record<string, unknown> {
   const sanitized: Record<string, unknown> = {};
-  
+
   // Extract the item_type ID using the shared utility
   const itemTypeId = getBlockTypeId(obj);
 
@@ -135,14 +137,16 @@ function sanitizeBlockObject(obj: Record<string, unknown>): Record<string, unkno
   if (attributes) {
     // Attributes wrapper exists - sanitize its contents
     for (const [key, value] of Object.entries(attributes)) {
-      (sanitized.attributes as Record<string, unknown>)[key] = sanitizeBlockDataForCreation(value);
+      (sanitized.attributes as Record<string, unknown>)[key] =
+        sanitizeBlockDataForCreation(value);
     }
   } else {
     // No attributes wrapper - check for field values directly on the object
     // (this can happen with different CMA client versions)
     for (const [key, value] of Object.entries(obj)) {
       if (!BLOCK_SKIP_KEYS.has(key)) {
-        (sanitized.attributes as Record<string, unknown>)[key] = sanitizeBlockDataForCreation(value);
+        (sanitized.attributes as Record<string, unknown>)[key] =
+          sanitizeBlockDataForCreation(value);
       }
     }
   }
@@ -157,10 +161,10 @@ function sanitizeBlockObject(obj: Record<string, unknown>): Record<string, unkno
 /**
  * Sanitizes field values for creating a new top-level record.
  * This is simpler than block sanitization - we just need to sanitize nested blocks.
- * 
+ *
  * @param data - Record field data to sanitize
  * @returns Sanitized field data ready for record creation
- * 
+ *
  * @example
  * const sanitized = sanitizeFieldValuesForCreation({
  *   title: 'My Article',
@@ -169,10 +173,10 @@ function sanitizeBlockObject(obj: Record<string, unknown>): Record<string, unkno
  * });
  */
 export function sanitizeFieldValuesForCreation(
-  data: Record<string, unknown>
+  data: Record<string, unknown>,
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {};
-  
+
   for (const [key, value] of Object.entries(data)) {
     if (Array.isArray(value)) {
       // Could be an array of blocks (modular content field)
@@ -188,7 +192,7 @@ export function sanitizeFieldValuesForCreation(
     } else if (value && typeof value === 'object') {
       // Could be a single block, structured text, or other complex value
       const obj = value as Record<string, unknown>;
-      
+
       // Check for structured text (has document and possibly blocks)
       if ('document' in obj || 'blocks' in obj) {
         result[key] = sanitizeStructuredTextValue(obj);
@@ -200,22 +204,24 @@ export function sanitizeFieldValuesForCreation(
       result[key] = value;
     }
   }
-  
+
   return result;
 }
 
 /**
  * Sanitizes a structured text field value.
  * Preserves the document structure while sanitizing blocks.
- * 
+ *
  * @param value - Structured text value to sanitize
  * @returns Sanitized structured text value
  */
-function sanitizeStructuredTextValue(value: Record<string, unknown>): Record<string, unknown> {
+function sanitizeStructuredTextValue(
+  value: Record<string, unknown>,
+): Record<string, unknown> {
   return {
     ...value,
-    blocks: value.blocks 
-      ? (value.blocks as unknown[]).map(b => sanitizeBlockDataForCreation(b)) 
+    blocks: value.blocks
+      ? (value.blocks as unknown[]).map((b) => sanitizeBlockDataForCreation(b))
       : undefined,
   };
 }
@@ -227,54 +233,47 @@ function sanitizeStructuredTextValue(value: Record<string, unknown>): Record<str
 /**
  * Sanitizes localized field values for creating a new top-level record.
  * Each field value is expected to be an object with locale keys.
- * 
+ *
  * @param data - Localized field data to sanitize
  * @returns Sanitized localized field data
- * 
+ *
  * @example
  * const sanitized = sanitizeLocalizedFieldValuesForCreation({
  *   title: { en: 'Hello', es: 'Hola' },
  *   content: { en: [...blocks...], es: [...blocks...] }
  * });
  */
+/**
+ * Sanitizes a single locale field value.
+ */
+function sanitizeSingleLocaleValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => sanitizeBlockDataForCreation(item));
+  }
+  if (value && typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    if ('document' in obj || 'blocks' in obj) {
+      return sanitizeStructuredTextValue(obj);
+    }
+    return sanitizeBlockDataForCreation(value);
+  }
+  return value;
+}
+
 export function sanitizeLocalizedFieldValuesForCreation(
-  data: Record<string, Record<string, unknown>>
+  data: Record<string, Record<string, unknown>>,
 ): Record<string, Record<string, unknown>> {
   const result: Record<string, Record<string, unknown>> = {};
 
   for (const [fieldKey, localizedValue] of Object.entries(data)) {
     const sanitizedLocalizedValue: Record<string, unknown> = {};
-    
-    for (const [locale, value] of Object.entries(localizedValue)) {
-      if (Array.isArray(value)) {
-        // Could be an array of blocks (modular content field)
-        sanitizedLocalizedValue[locale] = value.map((item) => {
-          if (item && typeof item === 'object') {
-            const obj = item as Record<string, unknown>;
-            if (isBlockObject(obj)) {
-              return sanitizeBlockDataForCreation(item);
-            }
-          }
-          return sanitizeBlockDataForCreation(item);
-        });
-      } else if (value && typeof value === 'object') {
-        const obj = value as Record<string, unknown>;
 
-        // Check for structured text (has document and possibly blocks)
-        if ('document' in obj || 'blocks' in obj) {
-          sanitizedLocalizedValue[locale] = sanitizeStructuredTextValue(obj);
-        } else {
-          // Regular object or single block
-          sanitizedLocalizedValue[locale] = sanitizeBlockDataForCreation(value);
-        }
-      } else {
-        sanitizedLocalizedValue[locale] = value;
-      }
+    for (const [locale, value] of Object.entries(localizedValue)) {
+      sanitizedLocalizedValue[locale] = sanitizeSingleLocaleValue(value);
     }
-    
+
     result[fieldKey] = sanitizedLocalizedValue;
   }
 
   return result;
 }
-

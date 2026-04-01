@@ -1,17 +1,13 @@
-import { type FieldType, connect } from 'datocms-plugin-sdk';
-import { render } from './utils/render';
+import { connect, type FieldType } from 'datocms-plugin-sdk';
 import FieldExtension from './entrypoints/FieldExtension';
+import { render } from './utils/render';
 import 'datocms-react-ui/styles.css';
 
 const FIELDS_TYPES: FieldType[] = ['slug', 'string', 'text', 'structured_text'];
 
 connect({
   overrideFieldExtensions(field) {
-    if (
-      !FIELDS_TYPES.includes(
-        field.attributes.field_type as FieldType,
-      )
-    ) {
+    if (!FIELDS_TYPES.includes(field.attributes.field_type as FieldType)) {
       return;
     }
 
@@ -19,7 +15,11 @@ connect({
       return;
     }
 
-    if (field.attributes.appearance.addons.find((addon) => addon.field_extension === 'character-count')) {
+    if (
+      field.attributes.appearance.addons.find(
+        (addon) => addon.field_extension === 'character-count',
+      )
+    ) {
       return;
     }
 

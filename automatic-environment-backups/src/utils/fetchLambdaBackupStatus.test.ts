@@ -1,13 +1,13 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   fetchLambdaBackupStatus,
   LambdaBackupStatusError,
-} from "./fetchLambdaBackupStatus";
+} from './fetchLambdaBackupStatus';
 
 const expectRejected = async (promise: Promise<unknown>): Promise<unknown> => {
   try {
     await promise;
-    throw new Error("Expected promise to reject");
+    throw new Error('Expected promise to reject');
   } catch (error) {
     return error;
   }
@@ -19,118 +19,124 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("fetchLambdaBackupStatus", () => {
-  it("returns parsed status when endpoint responds with a valid contract", async () => {
-    const fetchMock = vi.fn(async () =>
-      new Response(
-        JSON.stringify({
-          ok: true,
-          mpi: {
-            message: "DATOCMS_AUTOMATIC_BACKUPS_LAMBDA_STATUS",
-            version: "2026-02-26",
-          },
-          service: "datocms-backups-scheduled-function",
-          status: "ready",
-          scheduler: {
-            provider: "vercel",
-            cadence: "daily",
-          },
-          slots: {
-            daily: {
-              scope: "daily",
-              executionMode: "lambda_cron",
-              lastBackupAt: "2026-02-26T02:05:00.000Z",
-              nextBackupAt: "2026-02-27T02:05:00.000Z",
+describe('fetchLambdaBackupStatus', () => {
+  it('returns parsed status when endpoint responds with a valid contract', async () => {
+    const fetchMock = vi.fn(
+      async () =>
+        new Response(
+          JSON.stringify({
+            ok: true,
+            mpi: {
+              message: 'DATOCMS_AUTOMATIC_BACKUPS_LAMBDA_STATUS',
+              version: '2026-02-26',
             },
-            weekly: {
-              scope: "weekly",
-              executionMode: "lambda_cron",
-              lastBackupAt: "2026-02-20T02:35:00.000Z",
-              nextBackupAt: "2026-02-27T02:35:00.000Z",
+            service: 'datocms-backups-scheduled-function',
+            status: 'ready',
+            scheduler: {
+              provider: 'vercel',
+              cadence: 'daily',
             },
-            biweekly: {
-              scope: "biweekly",
-              executionMode: "lambda_cron",
-              lastBackupAt: "2026-02-12T02:35:00.000Z",
-              nextBackupAt: "2026-03-12T02:35:00.000Z",
+            slots: {
+              daily: {
+                scope: 'daily',
+                executionMode: 'lambda_cron',
+                lastBackupAt: '2026-02-26T02:05:00.000Z',
+                nextBackupAt: '2026-02-27T02:05:00.000Z',
+              },
+              weekly: {
+                scope: 'weekly',
+                executionMode: 'lambda_cron',
+                lastBackupAt: '2026-02-20T02:35:00.000Z',
+                nextBackupAt: '2026-02-27T02:35:00.000Z',
+              },
+              biweekly: {
+                scope: 'biweekly',
+                executionMode: 'lambda_cron',
+                lastBackupAt: '2026-02-12T02:35:00.000Z',
+                nextBackupAt: '2026-03-12T02:35:00.000Z',
+              },
+              monthly: {
+                scope: 'monthly',
+                executionMode: 'lambda_cron',
+                lastBackupAt: null,
+                nextBackupAt: '2026-03-26T02:35:00.000Z',
+              },
             },
-            monthly: {
-              scope: "monthly",
-              executionMode: "lambda_cron",
-              lastBackupAt: null,
-              nextBackupAt: "2026-03-26T02:35:00.000Z",
-            },
-          },
-          checkedAt: "2026-02-26T12:00:00.000Z",
-        }),
-        { status: 200 },
-      ),
+            checkedAt: '2026-02-26T12:00:00.000Z',
+          }),
+          { status: 200 },
+        ),
     );
-    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
 
     const result = await fetchLambdaBackupStatus({
-      baseUrl: "backups.netlify.app",
-      environment: "main",
-      lambdaAuthSecret: "shared-secret",
+      baseUrl: 'backups.netlify.app',
+      environment: 'main',
+      lambdaAuthSecret: 'shared-secret',
     });
 
-    expect(result.scheduler.provider).toBe("vercel");
-    expect(result.slots.daily.executionMode).toBe("lambda_cron");
-    expect(result.slots.biweekly?.scope).toBe("biweekly");
-    expect(result.slots.monthly?.scope).toBe("monthly");
+    expect(result.scheduler.provider).toBe('vercel');
+    expect(result.slots.daily.executionMode).toBe('lambda_cron');
+    expect(result.slots.biweekly?.scope).toBe('biweekly');
+    expect(result.slots.monthly?.scope).toBe('monthly');
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const typedCalls =
-      fetchMock.mock.calls as unknown as Array<[unknown, RequestInit | undefined]>;
+    const typedCalls = fetchMock.mock.calls as unknown as Array<
+      [unknown, RequestInit | undefined]
+    >;
     expect(typedCalls[0]?.[0]).toBe(
-      "https://backups.netlify.app/api/datocms/backup-status",
+      'https://backups.netlify.app/api/datocms/backup-status',
     );
     expect(typedCalls[0]?.[1]?.headers).toMatchObject({
-      "X-Datocms-Backups-Auth": "shared-secret",
+      'X-Datocms-Backups-Auth': 'shared-secret',
     });
   });
 
-  it("throws INVALID_RESPONSE when payload contract is malformed", async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ ok: true }), { status: 200 }));
-    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+  it('throws INVALID_RESPONSE when payload contract is malformed', async () => {
+    const fetchMock = vi.fn(
+      async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
 
     const error = (await expectRejected(
       fetchLambdaBackupStatus({
-        baseUrl: "https://backups.vercel.app",
-        environment: "main",
-        lambdaAuthSecret: "shared-secret",
+        baseUrl: 'https://backups.vercel.app',
+        environment: 'main',
+        lambdaAuthSecret: 'shared-secret',
       }),
     )) as LambdaBackupStatusError;
 
     expect(error).toBeInstanceOf(LambdaBackupStatusError);
-    expect(error.code).toBe("INVALID_RESPONSE");
+    expect(error.code).toBe('INVALID_RESPONSE');
   });
 
-  it("throws HTTP error details when endpoint responds with non-2xx", async () => {
-    const fetchMock = vi.fn(async () => new Response("failed", { status: 500 }));
-    vi.stubGlobal("fetch", fetchMock as unknown as typeof fetch);
+  it('throws HTTP error details when endpoint responds with non-2xx', async () => {
+    const fetchMock = vi.fn(
+      async () => new Response('failed', { status: 500 }),
+    );
+    vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
 
     const error = (await expectRejected(
       fetchLambdaBackupStatus({
-        baseUrl: "https://backups.vercel.app",
-        environment: "main",
-        lambdaAuthSecret: "shared-secret",
+        baseUrl: 'https://backups.vercel.app',
+        environment: 'main',
+        lambdaAuthSecret: 'shared-secret',
       }),
     )) as LambdaBackupStatusError;
 
     expect(error).toBeInstanceOf(LambdaBackupStatusError);
-    expect(error.code).toBe("HTTP");
+    expect(error.code).toBe('HTTP');
     expect(error.httpStatus).toBe(500);
   });
 
-  it("fails when lambda auth secret is missing", async () => {
+  it('fails when lambda auth secret is missing', async () => {
     const error = (await expectRejected(
       fetchLambdaBackupStatus({
-        baseUrl: "https://backups.vercel.app",
-        environment: "main",
-        lambdaAuthSecret: "",
+        baseUrl: 'https://backups.vercel.app',
+        environment: 'main',
+        lambdaAuthSecret: '',
       }),
     )) as LambdaBackupStatusError;
 
-    expect(error.code).toBe("MISSING_AUTH_SECRET");
+    expect(error.code).toBe('MISSING_AUTH_SECRET');
   });
 });

@@ -7,7 +7,9 @@ let rootContainer: HTMLElement | null = null;
 function getRootContainer(): HTMLElement {
   const container = document.getElementById('root');
   if (!container) {
-    throw new Error('Unable to render plugin: root container "#root" was not found.');
+    throw new Error(
+      'Unable to render plugin: root container "#root" was not found.',
+    );
   }
 
   return container;

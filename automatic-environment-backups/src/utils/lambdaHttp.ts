@@ -1,18 +1,18 @@
 export const isAbortError = (error: unknown): boolean =>
-  typeof error === "object" &&
+  typeof error === 'object' &&
   error !== null &&
-  "name" in error &&
-  (error as { name?: string }).name === "AbortError";
+  'name' in error &&
+  (error as { name?: string }).name === 'AbortError';
 
 export const truncateResponseSnippet = (
   value: string,
   maxLength: number,
 ): string => {
   if (!value) {
-    return "";
+    return '';
   }
 
-  const compact = value.replace(/\s+/g, " ").trim();
+  const compact = value.replace(/\s+/g, ' ').trim();
   if (compact.length <= maxLength) {
     return compact;
   }

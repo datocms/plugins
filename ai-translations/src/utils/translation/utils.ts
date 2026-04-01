@@ -1,6 +1,90 @@
 // src/utils/translation/utils.ts
 
 /**
+ * Extracts the top-level children array from a structured text value.
+ *
+ * @param input - A structured text value (array or document object).
+ * @returns The children array if found, or null.
+ */
+function extractStructuredTextChildren(input: unknown): unknown[] | null {
+  if (Array.isArray(input)) return input;
+  if (input && typeof input === 'object') {
+    const document = (input as Record<string, unknown>).document;
+    if (document && typeof document === 'object') {
+      const children = (document as Record<string, unknown>).children;
+      if (Array.isArray(children)) return children;
+    }
+  }
+  return null;
+}
+
+/**
+ * Checks whether a single structured text node contains visible text.
+ *
+ * @param typedNode - The node object to inspect.
+ * @returns True if the node itself carries non-empty text content.
+ */
+function nodeHasVisibleText(typedNode: Record<string, unknown>): boolean {
+  const nodeType =
+    typeof typedNode.type === 'string' ? typedNode.type : undefined;
+
+  if (typeof typedNode.text === 'string' && typedNode.text.trim().length > 0) {
+    return true;
+  }
+  if (
+    nodeType === 'span' &&
+    typeof typedNode.value === 'string' &&
+    typedNode.value.trim().length > 0
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Visits a structured text node tree and sets flags for visible text or blocks.
+ * Modifies the shared state object in place to signal early exit.
+ *
+ * @param node - The current node (may be array, object, or primitive).
+ * @param state - Shared mutable flags updated during traversal.
+ */
+function visitStructuredTextNode(
+  node: unknown,
+  state: { hasVisibleText: boolean; hasBlocks: boolean },
+): void {
+  if (state.hasVisibleText || state.hasBlocks) return;
+
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      visitStructuredTextNode(child, state);
+    }
+    return;
+  }
+
+  if (!node || typeof node !== 'object') return;
+
+  const typedNode = node as Record<string, unknown>;
+  const nodeType =
+    typeof typedNode.type === 'string' ? typedNode.type : undefined;
+
+  if (nodeType === 'block') {
+    state.hasBlocks = true;
+    return;
+  }
+
+  if (nodeHasVisibleText(typedNode)) {
+    state.hasVisibleText = true;
+    return;
+  }
+
+  if (Array.isArray(typedNode.children)) {
+    for (const child of typedNode.children) {
+      visitStructuredTextNode(child, state);
+    }
+  }
+}
+
+/**
  * Checks if a structured text field value is effectively empty.
  * A structured text is considered empty when it has no visible text content
  * and no embedded block nodes.
@@ -9,64 +93,53 @@
  * @returns True if the value represents an empty structured text field.
  */
 export function isEmptyStructuredText(value: unknown): boolean {
-  const extractChildren = (input: unknown): unknown[] | null => {
-    if (Array.isArray(input)) return input;
-    if (input && typeof input === 'object') {
-      const document = (input as Record<string, unknown>).document;
-      if (document && typeof document === 'object') {
-        const children = (document as Record<string, unknown>).children;
-        if (Array.isArray(children)) return children;
-      }
-    }
-    return null;
-  };
-
-  const children = extractChildren(value);
+  const children = extractStructuredTextChildren(value);
   if (!children) return false;
   if (children.length === 0) return true;
 
-  let hasVisibleText = false;
-  let hasBlocks = false;
+  const state = { hasVisibleText: false, hasBlocks: false };
+  visitStructuredTextNode(children, state);
+  return !state.hasVisibleText && !state.hasBlocks;
+}
 
-  const visit = (node: unknown): void => {
-    if (hasVisibleText || hasBlocks) return;
-
-    if (Array.isArray(node)) {
-      node.forEach(visit);
-      return;
+/**
+ * Visits a single node when extracting text values, collecting string content
+ * from `text` and string `value` properties.
+ *
+ * @param obj - The node to inspect.
+ * @param textValues - Accumulator array to push text into.
+ * @param visited - WeakSet of already-visited objects to prevent circular loops.
+ */
+function collectTextFromNode(
+  obj: unknown,
+  textValues: string[],
+  visited: WeakSet<object>,
+): void {
+  if (Array.isArray(obj)) {
+    if (visited.has(obj)) return;
+    visited.add(obj);
+    for (const item of obj) {
+      collectTextFromNode(item, textValues, visited);
     }
+    return;
+  }
 
-    if (!node || typeof node !== 'object') return;
+  if (typeof obj !== 'object' || obj === null) return;
 
-    const typedNode = node as Record<string, unknown>;
-    const nodeType = typeof typedNode.type === 'string' ? typedNode.type : undefined;
+  if (visited.has(obj)) return;
+  visited.add(obj);
 
-    if (nodeType === 'block') {
-      hasBlocks = true;
-      return;
-    }
+  const item = obj as { text?: string; value?: string; [key: string]: unknown };
 
-    if (typeof typedNode.text === 'string' && typedNode.text.trim().length > 0) {
-      hasVisibleText = true;
-      return;
-    }
+  if (item.text !== undefined) {
+    textValues.push(item.text);
+  } else if (item.value !== undefined && typeof item.value === 'string') {
+    textValues.push(item.value);
+  }
 
-    if (
-      nodeType === 'span' &&
-      typeof typedNode.value === 'string' &&
-      typedNode.value.trim().length > 0
-    ) {
-      hasVisibleText = true;
-      return;
-    }
-
-    if (Array.isArray(typedNode.children)) {
-      typedNode.children.forEach(visit);
-    }
-  };
-
-  visit(children);
-  return !hasVisibleText && !hasBlocks;
+  for (const child of Object.values(item)) {
+    collectTextFromNode(child, textValues, visited);
+  }
 }
 
 /**
@@ -82,36 +155,7 @@ export function extractTextValues(data: unknown): string[] {
   const textValues: string[] = [];
   // BUGFIX: Track visited objects to prevent infinite loops from circular references
   const visited = new WeakSet<object>();
-
-  // Define a recursive type for structured text nodes
-  type StructuredTextItem = {
-    text?: string;
-    value?: string;
-    [key: string]: unknown;
-  };
-
-  function traverse(obj: unknown) {
-    if (Array.isArray(obj)) {
-      // Arrays are objects, so we need to track them too
-      if (visited.has(obj)) return;
-      visited.add(obj);
-      obj.forEach(traverse);
-    } else if (typeof obj === 'object' && obj !== null) {
-      // Skip if we've already visited this object (circular reference)
-      if (visited.has(obj)) return;
-      visited.add(obj);
-
-      const item = obj as StructuredTextItem;
-      if (item.text !== undefined) {
-        textValues.push(item.text);
-      } else if (item.value !== undefined && typeof item.value === 'string') {
-        textValues.push(item.value);
-      }
-      Object.values(item).forEach(traverse);
-    }
-  }
-
-  traverse(data);
+  collectTextFromNode(data, textValues, visited);
   return textValues;
 }
 
@@ -126,12 +170,12 @@ export function removeIds(obj: unknown): unknown {
   if (Array.isArray(obj)) {
     return obj.map(removeIds);
   }
-  
+
   if (typeof obj === 'object' && obj !== null) {
     const newObj: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(obj)) {
       // Keep id if it's in a meta array item with a value property
-      if(key === "data"){
+      if (key === 'data') {
         newObj[key] = value;
         continue;
       }
@@ -147,7 +191,83 @@ export function removeIds(obj: unknown): unknown {
     }
     return newObj;
   }
-  
+
+  return obj;
+}
+
+/**
+ * State container for the object reconstruction traversal.
+ */
+type ReconstructState = {
+  index: number;
+  visited: Map<object, unknown>;
+  textValues: string[];
+};
+
+/**
+ * Reconstructs an array node by cloning each element with translated text substituted in.
+ *
+ * @param arr - Source array to reconstruct.
+ * @param state - Shared traversal state (index cursor, visited map, text values).
+ * @returns A new array with translated text values substituted.
+ */
+function reconstructArray(arr: unknown[], state: ReconstructState): unknown[] {
+  if (state.visited.has(arr)) {
+    return state.visited.get(arr) as unknown[];
+  }
+  const clone: unknown[] = [];
+  state.visited.set(arr, clone);
+  for (const item of arr) {
+    clone.push(reconstructNode(item, state));
+  }
+  return clone;
+}
+
+/**
+ * Reconstructs an object node by substituting text/value fields with translated strings.
+ *
+ * @param obj - Source object to reconstruct.
+ * @param state - Shared traversal state (index cursor, visited map, text values).
+ * @returns A new object with translated text values substituted.
+ */
+function reconstructObjectNode(
+  obj: Record<string, unknown>,
+  state: ReconstructState,
+): Record<string, unknown> {
+  if (state.visited.has(obj)) {
+    return state.visited.get(obj) as Record<string, unknown>;
+  }
+  const newObj: Record<string, unknown> = {};
+  state.visited.set(obj, newObj);
+
+  for (const key in obj) {
+    const isTextKey = key === 'text';
+    const isStringValueKey = key === 'value' && typeof obj[key] === 'string';
+    const hasRemainingText = state.index < state.textValues.length;
+
+    if ((isTextKey || isStringValueKey) && hasRemainingText) {
+      newObj[key] = state.textValues[state.index++];
+    } else {
+      newObj[key] = reconstructNode(obj[key], state);
+    }
+  }
+  return newObj;
+}
+
+/**
+ * Routes a single node through the appropriate reconstruction handler.
+ *
+ * @param obj - The node to reconstruct.
+ * @param state - Shared traversal state.
+ * @returns The reconstructed node with translated text inserted.
+ */
+function reconstructNode(obj: unknown, state: ReconstructState): unknown {
+  if (Array.isArray(obj)) {
+    return reconstructArray(obj, state);
+  }
+  if (typeof obj === 'object' && obj !== null) {
+    return reconstructObjectNode(obj as Record<string, unknown>, state);
+  }
   return obj;
 }
 
@@ -165,55 +285,16 @@ export function removeIds(obj: unknown): unknown {
  */
 export function reconstructObject(
   originalObject: unknown,
-  textValues: string[]
+  textValues: string[],
 ): unknown {
-  let index = 0;
   // BUGFIX: Track visited objects to prevent infinite loops from circular references
   // We use Map to store original->clone mapping so circular refs point to the same clone
-  const visited = new Map<object, unknown>();
-
-  type StructuredTextNode = {
-    text?: string;
-    value?: string;
-    [key: string]: unknown;
+  const state: ReconstructState = {
+    index: 0,
+    visited: new Map<object, unknown>(),
+    textValues,
   };
-
-  function traverse(obj: unknown): unknown {
-    if (Array.isArray(obj)) {
-      // Check for circular reference
-      if (visited.has(obj)) {
-        return visited.get(obj);
-      }
-      const clone: unknown[] = [];
-      visited.set(obj, clone);
-      for (const item of obj) {
-        clone.push(traverse(item));
-      }
-      return clone;
-    }
-
-    if (typeof obj === 'object' && obj !== null) {
-      // Check for circular reference
-      if (visited.has(obj)) {
-        return visited.get(obj);
-      }
-
-      const typedObj = obj as StructuredTextNode;
-      const newObj: Record<string, unknown> = {};
-      visited.set(obj, newObj);
-
-      for (const key in typedObj) {
-        if ((key === 'text' || (key === 'value' && typeof typedObj[key] === 'string')) && index < textValues.length) {
-          newObj[key] = textValues[index++];
-        } else {
-          newObj[key] = traverse(typedObj[key]);
-        }
-      }
-      return newObj;
-    }
-    return obj;
-  }
-  return traverse(originalObject);
+  return reconstructNode(originalObject, state);
 }
 
 /**
@@ -228,7 +309,7 @@ export function reconstructObject(
 export function insertObjectAtIndex<T>(
   array: T[],
   object: T,
-  index: number
+  index: number,
 ): T[] {
   return [...array.slice(0, index), object, ...array.slice(index)];
 }
@@ -244,11 +325,11 @@ export function deleteItemIdKeys(obj: unknown): unknown {
   if (Array.isArray(obj)) {
     return obj.map(deleteItemIdKeys);
   }
-  
+
   if (typeof obj === 'object' && obj !== null) {
     const newObj: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
-      if(key === 'data') {
+      if (key === 'data') {
         newObj[key] = value;
         continue;
       }

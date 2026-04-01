@@ -2,7 +2,7 @@
  * Field utility functions for the Locale Duplicate plugin
  */
 
-import { type LocalizedField, isLocalizedField } from '../types';
+import { isLocalizedField, type LocalizedField } from '../types';
 
 /**
  * Checks if a field type is supported for locale duplication
@@ -14,9 +14,9 @@ export function isFieldTypeSupported(fieldType: string): boolean {
     'structured_text',
     'json',
     'seo',
-    'slug'
+    'slug',
   ];
-  
+
   return supportedTypes.includes(fieldType);
 }
 
@@ -25,7 +25,7 @@ export function isFieldTypeSupported(fieldType: string): boolean {
  */
 export function getFieldValue(
   field: LocalizedField | unknown,
-  locale: string
+  locale: string,
 ): unknown {
   if (isLocalizedField(field)) {
     return field[locale];
@@ -39,100 +39,84 @@ export function getFieldValue(
 export function setFieldValue(
   field: LocalizedField | unknown,
   locale: string,
-  value: unknown
+  value: unknown,
 ): LocalizedField {
   if (!isLocalizedField(field)) {
     return { [locale]: value };
   }
-  
+
   return {
     ...field,
-    [locale]: value
+    [locale]: value,
   };
 }
 
+// ─── removeBlockItemIdsImmutable helpers ─────────────────────────────────────
 
 /**
- * Removes block item IDs - version for field extension (creates new objects)
- * This version creates new objects without ID fields, suitable for field-level copying
+ * Processes an array by recursively removing block IDs and filtering out inlineItem nodes.
  */
-export function removeBlockItemIdsImmutable(value: unknown): unknown {
-  // Base case: primitive values or null
-  if (typeof value !== 'object' || value === null) {
-    return value;
-  }
+function processArrayImmutable(arr: unknown[]): unknown[] {
+  return arr
+    .map((item) => removeBlockItemIdsImmutable(item))
+    .filter((item) => {
+      if (typeof item === 'object' && item !== null && 'type' in item) {
+        return (item as { type: unknown }).type !== 'inlineItem';
+      }
+      return true;
+    });
+}
 
-  // Recursively process arrays
-  // Filter out inlineItem nodes as they reference locale-specific items and can't be copied
-  if (Array.isArray(value)) {
-    return value
-      .map(item => removeBlockItemIdsImmutable(item))
-      .filter(item => {
-        // Remove inlineItem nodes completely as they can't be copied between locales
-        if (typeof item === 'object' && item !== null && 'type' in item) {
-          return (item as { type: unknown }).type !== 'inlineItem';
-        }
-        return true;
-      });
-  }
-
-  // Process objects that might contain block or item structures
-  const typedObj = value as Record<string, unknown>;
+/**
+ * Handles a structured-text block node that carries an id directly.
+ */
+function processStructuredTextBlockImmutable(
+  typedObj: Record<string, unknown>,
+): Record<string, unknown> {
+  const { id: _id, ...blockWithoutId } = typedObj;
   const result: Record<string, unknown> = {};
-  
-  // Handle 'block' type objects in structured text (which have 'id' directly on the block)
-  if (typedObj.type === 'block' && 'id' in typedObj) {
-    const { id: _id, ...blockWithoutId } = typedObj;
-    // Recursively process all properties of the block
-    for (const [key, val] of Object.entries(blockWithoutId)) {
+  for (const [key, val] of Object.entries(blockWithoutId)) {
+    result[key] = removeBlockItemIdsImmutable(val);
+  }
+  return result;
+}
+
+/**
+ * Handles a modular-content block node that wraps an item object.
+ */
+function processModularBlockImmutable(
+  typedObj: Record<string, unknown>,
+): Record<string, unknown> {
+  const itemObj = typedObj.item as Record<string, unknown>;
+  const { id: _id, ...itemWithoutId } = itemObj;
+  const result: Record<string, unknown> = {
+    type: typedObj.type,
+    item: removeBlockItemIdsImmutable(itemWithoutId),
+  };
+  for (const [key, val] of Object.entries(typedObj)) {
+    if (key !== 'type' && key !== 'item') {
       result[key] = removeBlockItemIdsImmutable(val);
     }
-    return result;
   }
-  
-  // Handle 'block' type objects which have nested 'item' objects with IDs (modular content)
-  if (
-    typedObj.type === 'block' && 
-    typedObj.item && 
-    typeof typedObj.item === 'object' && 
-    typedObj.item !== null
-  ) {
-    const itemObj = typedObj.item as Record<string, unknown>;
-    // Create a new item object without the 'id' field
-    const { id: _id, ...itemWithoutId } = itemObj;
-    
-    result.type = typedObj.type;
-    result.item = removeBlockItemIdsImmutable(itemWithoutId);
-    
-    // Copy other properties from the block object
-    for (const [key, val] of Object.entries(typedObj)) {
-      if (key !== 'type' && key !== 'item') {
-        result[key] = removeBlockItemIdsImmutable(val);
-      }
-    }
-    return result;
-  }
+  return result;
+}
 
-
-  // Handle 'item' type objects which have direct IDs
-  if (typedObj.type === 'item' && 'id' in typedObj) {
-    const { id: _id, ...itemWithoutId } = typedObj;
-    return removeBlockItemIdsImmutable(itemWithoutId);
-  }
-
-  // For other objects, only remove 'id' if the object has 'itemId' or 'itemTypeId' (modular content blocks)
-  // Otherwise preserve 'id' fields as they may be legitimate metadata (e.g., in 'meta' arrays)
+/**
+ * Handles a plain object, stripping IDs only when modular-content markers are present.
+ */
+function processPlainObjectImmutable(
+  typedObj: Record<string, unknown>,
+): Record<string, unknown> {
   const hasItemId = 'itemId' in typedObj;
   const hasItemTypeId = 'itemTypeId' in typedObj;
   const shouldRemoveId = hasItemId || hasItemTypeId;
 
+  const result: Record<string, unknown> = {};
   for (const [key, val] of Object.entries(typedObj)) {
     if (key === 'id' && shouldRemoveId) {
-      // Skip this id field
       continue;
     }
     if (key === 'itemId') {
-      // Skip itemId field
       continue;
     }
     result[key] = removeBlockItemIdsImmutable(val);
@@ -141,70 +125,122 @@ export function removeBlockItemIdsImmutable(value: unknown): unknown {
 }
 
 /**
- * Removes block item IDs - version for settings area (mutates objects)
- * This version mutates objects in place, suitable for bulk operations
+ * Removes block item IDs - version for field extension (creates new objects).
+ * This version creates new objects without ID fields, suitable for field-level copying.
+ */
+export function removeBlockItemIdsImmutable(value: unknown): unknown {
+  if (typeof value !== 'object' || value === null) {
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    return processArrayImmutable(value);
+  }
+
+  const typedObj = value as Record<string, unknown>;
+
+  if (typedObj.type === 'block' && 'id' in typedObj) {
+    return processStructuredTextBlockImmutable(typedObj);
+  }
+
+  if (
+    typedObj.type === 'block' &&
+    typedObj.item !== null &&
+    typedObj.item !== undefined &&
+    typeof typedObj.item === 'object'
+  ) {
+    return processModularBlockImmutable(typedObj);
+  }
+
+  if (typedObj.type === 'item' && 'id' in typedObj) {
+    const { id: _id, ...itemWithoutId } = typedObj;
+    return removeBlockItemIdsImmutable(itemWithoutId);
+  }
+
+  return processPlainObjectImmutable(typedObj);
+}
+
+// ─── removeBlockItemIdsMutable helpers ────────────────────────────────────────
+
+/**
+ * Removes IDs from a structured-text block node in place.
+ */
+function clearStructuredTextBlockId(typedObj: Record<string, unknown>): void {
+  if (typedObj.type === 'block' && 'id' in typedObj) {
+    (typedObj as { id?: unknown }).id = undefined;
+  }
+}
+
+/**
+ * Removes IDs from a nested modular-content item in place.
+ */
+function clearModularBlockItemId(typedObj: Record<string, unknown>): void {
+  if (
+    typedObj.type === 'block' &&
+    typedObj.item !== null &&
+    typedObj.item !== undefined &&
+    typeof typedObj.item === 'object'
+  ) {
+    const itemObj = typedObj.item as { id?: unknown };
+    if ('id' in itemObj) {
+      itemObj.id = undefined;
+    }
+  }
+}
+
+/**
+ * Nullifies the item reference on inlineItem nodes so DatoCMS keeps the property.
+ */
+function clearInlineItemReference(typedObj: Record<string, unknown>): void {
+  if (typedObj.type === 'inlineItem' && 'item' in typedObj) {
+    (typedObj as { item: unknown }).item = null;
+  }
+}
+
+/**
+ * Removes IDs from item-type objects in place.
+ */
+function clearItemTypeId(typedObj: Record<string, unknown>): void {
+  if (typedObj.type === 'item' && 'id' in typedObj) {
+    (typedObj as { id?: unknown }).id = undefined;
+  }
+}
+
+/**
+ * Removes itemId and, when appropriate, id from modular-content blocks in place.
+ */
+function clearModularContentIds(typedObj: Record<string, unknown>): void {
+  if ('itemId' in typedObj) {
+    (typedObj as { itemId?: unknown }).itemId = undefined;
+  }
+
+  const hasItemId = 'itemId' in typedObj;
+  const hasItemTypeId = 'itemTypeId' in typedObj;
+  const shouldRemoveId = hasItemId || hasItemTypeId;
+
+  if (shouldRemoveId && 'id' in typedObj) {
+    (typedObj as { id?: unknown }).id = undefined;
+  }
+}
+
+/**
+ * Removes block item IDs - version for settings area (mutates objects).
+ * This version mutates objects in place, suitable for bulk operations.
  */
 export function removeBlockItemIdsMutable(obj: unknown): unknown {
-  // Handle array structures recursively
   if (Array.isArray(obj)) {
-    for (let i = 0; i < obj.length; i++) {
-      removeBlockItemIdsMutable(obj[i]);
+    for (const item of obj) {
+      removeBlockItemIdsMutable(item);
     }
-  } else if (obj && typeof obj === 'object') {
-    // Process objects that might contain block or item structures
+  } else if (obj !== null && obj !== undefined && typeof obj === 'object') {
     const typedObj = obj as Record<string, unknown>;
-    
-    // Handle 'block' type objects in structured text (which have 'id' directly on the block)
-    if (typedObj.type === 'block' && 'id' in typedObj) {
-      // Remove the ID by setting to undefined rather than using delete operator
-      (typedObj as { id?: unknown }).id = undefined;
-    }
-    
-    // Handle 'block' type objects which have nested 'item' objects with IDs (modular content)
-    if (
-      typedObj.type === 'block' && 
-      typedObj.item && 
-      typeof typedObj.item === 'object' && 
-      typedObj.item !== null
-    ) {
-      const itemObj = typedObj.item as { id?: unknown };
-      if ('id' in itemObj) {
-        // Remove the ID by setting to undefined rather than using delete operator
-        itemObj.id = undefined;
-      }
-    }
 
-    // Handle 'inlineItem' type objects in structured text (which have 'item' as a string ID)
-    // We need to set 'item' to null instead of removing it, as DatoCMS expects the property to exist
-    if (typedObj.type === 'inlineItem' && 'item' in typedObj) {
-      (typedObj as { item: unknown }).item = null;
-    }
+    clearStructuredTextBlockId(typedObj);
+    clearModularBlockItemId(typedObj);
+    clearInlineItemReference(typedObj);
+    clearItemTypeId(typedObj);
+    clearModularContentIds(typedObj);
 
-    // Handle 'item' type objects which have direct IDs
-    if (
-      typedObj.type === 'item' && 
-      'id' in typedObj
-    ) {
-      // Remove the ID by setting to undefined rather than using delete operator
-      (typedObj as { id?: unknown }).id = undefined;
-    }
-
-    // Remove itemId field (used in modular content blocks), but keep itemTypeId as it's needed to identify block type
-    if ('itemId' in typedObj) {
-      (typedObj as { itemId?: unknown }).itemId = undefined;
-    }
-
-    // Only remove 'id' if the object has 'itemId' or 'itemTypeId' (modular content blocks)
-    // Otherwise preserve 'id' fields as they may be legitimate metadata (e.g., in 'meta' arrays)
-    const hasItemId = 'itemId' in typedObj;
-    const hasItemTypeId = 'itemTypeId' in typedObj;
-    const shouldRemoveId = hasItemId || hasItemTypeId;
-    
-    if (shouldRemoveId && 'id' in typedObj) {
-      (typedObj as { id?: unknown }).id = undefined;
-    }
-
-    // Process all properties of the object recursively
     for (const key in typedObj) {
       removeBlockItemIdsMutable(typedObj[key]);
     }
@@ -227,6 +263,6 @@ export function getLocalesFromField(field: LocalizedField | unknown): string[] {
   if (!isLocalizedField(field)) {
     return [];
   }
-  
+
   return Object.keys(field).filter(isValidLocale);
 }
