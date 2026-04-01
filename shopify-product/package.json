@@ -20,7 +20,7 @@
   "dependencies": {
     "@fortawesome/fontawesome-svg-core": "^7.2.0",
     "@fortawesome/free-solid-svg-icons": "^7.2.0",
-    "@fortawesome/react-fontawesome": "^3.2.0",
+    "@fortawesome/react-fontawesome": "^3.3.0",
     "@types/lodash-es": "^4.17.12",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
@@ -33,7 +33,7 @@
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-final-form": "^7.0.0",
-    "zustand": "^5.0.11"
+    "zustand": "^5.0.12"
   },
   "scripts": {
     "build": "tsc -b && vite build",
@@ -42,7 +42,7 @@
     "preview": "vite preview"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^5.1.4",
+    "@vitejs/plugin-react": "^5.2.0",
     "cross-env": "^10.1.0",
     "globals": "^17.4.0",
     "typescript": "^5.9.3",

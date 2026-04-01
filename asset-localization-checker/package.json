@@ -30,16 +30,16 @@
   },
   "dependencies": {
     "@datocms/cma-client-browser": "^4.0.2",
-    "datocms-plugin-sdk": "^2.0.13",
-    "datocms-react-ui": "^2.0.14",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "datocms-plugin-sdk": "^2.1.1",
+    "datocms-react-ui": "^2.1.4",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
   },
   "devDependencies": {
-    "@types/react": "^19.1.8",
-    "@types/react-dom": "^19.1.6",
-    "@vitejs/plugin-react": "^4.6.0",
-    "typescript": "^5.8.3",
-    "vite": "^7.0.4"
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^4.7.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1"
   }
 }
