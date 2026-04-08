@@ -1,7 +1,7 @@
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import { Button, Canvas, FieldGroup, Form, TextField } from 'datocms-react-ui';
 import { Field, Form as FormHandler } from 'react-final-form';
-import { normalizeConfig, type ValidConfig } from '../types';
+import { parseAndNormalizeConfig, type ValidConfig } from '../types';
 import ShopifyClient from '../utils/ShopifyClient';
 import s from './styles.module.css';
 
@@ -13,7 +13,9 @@ export default function ConfigScreen({ ctx }: Props) {
   return (
     <Canvas ctx={ctx}>
       <FormHandler<ValidConfig>
-        initialValues={normalizeConfig(ctx.plugin.attributes.parameters)}
+        initialValues={parseAndNormalizeConfig(
+          ctx.plugin.attributes.parameters,
+        )}
         validate={(values: ValidConfig) => {
           const errors: Record<string, string> = {};
 

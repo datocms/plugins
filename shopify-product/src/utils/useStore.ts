@@ -1,3 +1,27 @@
+/**
+ * Zustand store for Shopify product data.
+ *
+ * This store manages two normalized caches, both persisted to localStorage:
+ *
+ * - `products`  — keyed by product handle, caches individual Product objects
+ *                 and their fetch status. Shared between the browse modal and
+ *                 the field value display.
+ * - `searches`  — keyed by search query string, caches the list of matching
+ *                 product handles (not full objects) and fetch status.
+ *
+ * Searches store only handles (not full product data) to avoid duplicating
+ * product objects. The full product is always read from `products[handle]`.
+ *
+ * State updates use Immer (`produce`) so reducers can use mutable syntax
+ * while keeping immutable state under the hood.
+ *
+ * IMPORTANT: Zustand 5 uses React's `useSyncExternalStore`, which requires
+ * selectors to return referentially stable values. Methods like `getProduct`
+ * create new objects on each call, so consumers MUST use `useShallow` from
+ * `zustand/react/shallow` when calling them as selectors to prevent infinite
+ * re-render loops. See BrowseProductsModal and Value for examples.
+ */
+
 import { produce } from 'immer';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
@@ -7,25 +31,36 @@ import type { Product } from './ShopifyClient';
 export type Status = 'loading' | 'success' | 'error';
 
 export type State = {
+  /** The current search query displayed in the browse modal. */
   query: string;
+
+  /** Normalized cache of search results, keyed by query string. */
   searches: Record<string, { result: string[] | null; status: Status }>;
+
+  /** Normalized cache of individual products, keyed by handle. */
   products: Record<string, { result: Product | null; status: Status }>;
+
+  /**
+   * Derives a single product's data and fetch status from the cache.
+   * Returns a new object — wrap with `useShallow` when used as a selector.
+   */
   getProduct(handle: string): {
     status: Status;
     product: Product | null;
   };
-  getCurrentSearch(): {
-    query: string;
-    status: Status;
-    products: Product[] | null;
-  };
+
+  /** Fetches a single product by its Shopify handle and caches the result. */
   fetchProductByHandle(client: ShopifyClient, handle: string): Promise<void>;
+
+  /** Searches for products matching a query string and caches the results. */
   fetchProductsMatching(client: ShopifyClient, query: string): Promise<void>;
 };
 
 const useStore = create(
   persist(
     (rawSet, get) => {
+      // Wraps zustand's `set` with Immer's `produce` so state updates
+      // can use mutable syntax while remaining immutable under the hood.
       const set = (setFn: (s: State) => void) => {
         return rawSet(produce(setFn));
       };
@@ -34,6 +69,7 @@ const useStore = create(
         query: '',
         products: {},
         searches: {},
+
         getProduct(handle: string) {
           const selectedProduct = (get() as State).products[handle];
 
@@ -44,24 +80,7 @@ const useStore = create(
             product: selectedProduct?.result,
           };
         },
-        getCurrentSearch() {
-          const state = get() as State;
 
-          const search = state.searches[state.query] || {
-            status: 'loading',
-            result: [],
-          };
-
-          return {
-            query: state.query,
-            status: search.status,
-            products: search.result?.map((id: string) =>
-              state.products[id]?.result
-                ? state.products[id]?.result
-                : undefined,
-            ),
-          };
-        },
         async fetchProductByHandle(client: ShopifyClient, handle: string) {
           set((state) => {
             state.products[handle] = state.products[handle] || { result: null };
@@ -82,6 +101,7 @@ const useStore = create(
             });
           }
         },
+
         async fetchProductsMatching(client: ShopifyClient, query: string) {
           set((state) => {
             state.searches[query] = state.searches[query] || { result: [] };
@@ -94,6 +114,8 @@ const useStore = create(
 
             set((state) => {
               state.searches[query].status = 'success';
+              // Store only handles in the search result; full product data
+              // lives in the products cache to avoid duplication.
               state.searches[query].result = products.map((p) => p.handle);
 
               for (const product of products) {
