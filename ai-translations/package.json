@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-ai-translations",
   "homepage": "https://github.com/datocms/plugins/tree/master/ai-translations#readme",
-  "version": "3.4.0",
+  "version": "3.4.1",
   "author": "DatoCMS <support@datocms.com>",
   "description": "Translate fields and records directly on DatoCMS using AI",
   "keywords": [

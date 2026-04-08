@@ -105,6 +105,11 @@ function tryRepairJsonArray(text: string): unknown[] | null {
  * @returns The parsed array, or throws if no valid array can be recovered.
  */
 function parseResponseArray(trimmedTxt: string): unknown[] {
+  // Empty/blank response — return an empty array so length repair downstream
+  // can fall back to the original segments instead of throwing. This matches
+  // the contract relied on by parseTranslationResponse callers.
+  if (trimmedTxt.length === 0) return [];
+
   try {
     const parsed = JSON.parse(trimmedTxt);
     if (Array.isArray(parsed)) return parsed;
@@ -112,14 +117,12 @@ function parseResponseArray(trimmedTxt: string): unknown[] {
     // fall through to repair
   }
 
-  if (trimmedTxt.length > 0) {
-    const repaired = tryRepairJsonArray(trimmedTxt);
-    if (repaired) {
-      console.info(
-        `[translateArray] Successfully parsed ${repaired.length} segments after JSON repair`,
-      );
-      return repaired;
-    }
+  const repaired = tryRepairJsonArray(trimmedTxt);
+  if (repaired) {
+    console.info(
+      `[translateArray] Successfully parsed ${repaired.length} segments after JSON repair`,
+    );
+    return repaired;
   }
 
   throw new Error('Model did not return a JSON array');

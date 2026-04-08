@@ -45,23 +45,38 @@ interface GlossaryInfo {
 const CORS_PROXY_URL = 'https://cors-proxy.datocms.com';
 
 /**
- * Cache for glossary info to avoid repeated API calls.
- * Key is glossary ID, value is the glossary info.
- */
-const glossaryInfoCache = new Map<string, GlossaryInfo | null>();
-
-/**
- * Tracks glossary IDs that DeepL explicitly rejected as invalid/missing,
- * so callers can distinguish "invalid ID" from "network error" after cache lookup.
- */
-const invalidGlossaryIds = new Set<string>();
-
-/**
  * Maximum number of text segments per DeepL API request.
  * DeepL's API accepts up to 50 segments, but we use 45 to stay safely within limits
  * and account for potential metadata overhead.
  */
 const DEEPL_BATCH_SIZE = 45;
+
+/**
+ * Type guard for the DeepL `/v2/glossaries/{id}` success response shape.
+ * Checks the fields we actually rely on downstream so callers can use the
+ * narrowed value without further casts.
+ */
+function isGlossaryInfo(value: unknown): value is GlossaryInfo {
+  if (!value || typeof value !== 'object') return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.glossary_id === 'string' &&
+    typeof record.source_lang === 'string' &&
+    typeof record.target_lang === 'string'
+  );
+}
+
+/**
+ * Extracts a lowercased `message` field from a parsed JSON response, or
+ * returns an empty string if the response doesn't carry one. Used for
+ * substring-matching against DeepL error messages without trusting the
+ * exact wording.
+ */
+function extractErrorMessage(value: unknown): string {
+  if (!value || typeof value !== 'object') return '';
+  const record = value as Record<string, unknown>;
+  return typeof record.message === 'string' ? record.message.toLowerCase() : '';
+}
 
 /**
  * DeepL API provider with native array translation support. Uses fetch
@@ -74,6 +89,13 @@ export default class DeepLProvider implements TranslationProvider {
   public readonly vendor: VendorId = 'deepl';
   private readonly apiKey: string;
   private readonly baseUrl: string;
+  // Glossary caches are scoped to the provider instance (not module-level) so
+  // their lifetime is tied to credential identity. The ProviderFactory keys
+  // instances by API key + base URL, so changing credentials yields a fresh
+  // provider with empty caches — preventing stale "invalid" entries from
+  // persisting across credential changes.
+  private readonly glossaryInfoCache = new Map<string, GlossaryInfo | null>();
+  private readonly invalidGlossaryIds = new Set<string>();
 
   /**
    * Creates a DeepL provider bound to a base endpoint.
@@ -96,8 +118,8 @@ export default class DeepLProvider implements TranslationProvider {
     glossaryId: string,
   ): Promise<GlossaryInfo | null> {
     // Check cache first
-    if (glossaryInfoCache.has(glossaryId)) {
-      return glossaryInfoCache.get(glossaryId) ?? null;
+    if (this.glossaryInfoCache.has(glossaryId)) {
+      return this.glossaryInfoCache.get(glossaryId) ?? null;
     }
 
     try {
@@ -113,47 +135,41 @@ export default class DeepLProvider implements TranslationProvider {
 
       if (!res.ok) {
         // Glossary not found or other error - cache as null to avoid repeated calls
-        glossaryInfoCache.set(glossaryId, null);
+        this.glossaryInfoCache.set(glossaryId, null);
         return null;
       }
 
       const json: unknown = await res.json();
 
-      // --- Step 1: Check for known, specific error responses ---
-      // The CORS proxy may relay DeepL errors with HTTP 200. Match the exact
-      // shape returned for an invalid glossary ID so we can surface a
-      // targeted message to the user.
+      // The CORS proxy may relay DeepL errors with HTTP 200, so we can't
+      // trust res.ok alone — inspect the body. Match on stable substrings
+      // ("invalid" + "glossary") rather than the full error string, so DeepL
+      // rewording (e.g. "Invalid glossary ID", "glossary id is invalid")
+      // still gets classified correctly. Requiring both keywords keeps the
+      // match tightly scoped and avoids false positives from unrelated
+      // errors that happen to contain "invalid".
+      const errorMessage = extractErrorMessage(json);
       if (
-        json &&
-        typeof json === 'object' &&
-        (json as Record<string, unknown>).message ===
-          'Invalid or missing glossary id'
+        errorMessage.includes('invalid') &&
+        errorMessage.includes('glossary')
       ) {
-        invalidGlossaryIds.add(glossaryId);
-        glossaryInfoCache.set(glossaryId, null);
+        this.invalidGlossaryIds.add(glossaryId);
+        this.glossaryInfoCache.set(glossaryId, null);
         return null;
       }
 
-      // --- Step 2: Validate the expected GlossaryInfo shape ---
       // If the response isn't a known error but also doesn't look like a
       // valid glossary object, treat it as a transient/unknown failure.
-      if (
-        !json ||
-        typeof json !== 'object' ||
-        typeof (json as Record<string, unknown>).glossary_id !== 'string' ||
-        typeof (json as Record<string, unknown>).source_lang !== 'string' ||
-        typeof (json as Record<string, unknown>).target_lang !== 'string'
-      ) {
-        glossaryInfoCache.set(glossaryId, null);
+      if (!isGlossaryInfo(json)) {
+        this.glossaryInfoCache.set(glossaryId, null);
         return null;
       }
 
-      const info = json as GlossaryInfo;
-      glossaryInfoCache.set(glossaryId, info);
-      return info;
+      this.glossaryInfoCache.set(glossaryId, json);
+      return json;
     } catch {
       // Network error or other issue - cache as null
-      glossaryInfoCache.set(glossaryId, null);
+      this.glossaryInfoCache.set(glossaryId, null);
       return null;
     }
   }
@@ -250,7 +266,7 @@ export default class DeepLProvider implements TranslationProvider {
       if (!isValid) {
         // If DeepL explicitly rejected this glossary ID, surface a clear error
         // so the user knows to fix their plugin settings.
-        if (invalidGlossaryIds.has(validatedGlossaryId)) {
+        if (this.invalidGlossaryIds.has(validatedGlossaryId)) {
           // Prefer the original DatoCMS locale codes for a user-friendly message
           const src = opts.originalSourceLocale ?? opts.sourceLang;
           const tgt = opts.originalTargetLocale ?? opts.targetLang;

@@ -6,11 +6,6 @@ This plugin integrates with AI providers and provides on-demand AI-powered trans
 
 ![31841](https://github.com/user-attachments/assets/a1b4e9aa-d79e-4807-8b90-16b06b65852c)
 
-## Changelog
-
-- 3.4.0: Added better error handling for the CORS proxy and DeepL-specific configuration UI improvements. Selecting a glossary to use should be easier now.
-- Prior to 3.4.0: No changelog was kept.
-
 ## Configuration
 
 On the plugin's Settings screen:

@@ -160,35 +160,31 @@ export default function DeepLConfig({
           ? (json as Record<string, unknown>)
           : null;
 
-      // --- Step 1: Check for known, specific error responses ---
-
-      if (
-        body &&
-        body.message ===
-          'Wrong endpoint. Use https://api-free.deepl.com. You can find more info in our docs: https://developers.deepl.com/docs/getting-started/auth'
-      ) {
-        setTestApiKeyStatus('error');
-        setTestApiKeyMessage(
-          'Your API key requires the DeepL Free endpoint. Enable "Use DeepL Free endpoint (api-free.deepl.com)" below, then try again.',
-        );
-        return;
-      }
-
-      if (
-        body &&
-        body.message ===
-          'Forbidden. You can find more info in our docs: https://developers.deepl.com/docs/getting-started/auth'
-      ) {
-        setTestApiKeyStatus('error');
-        setTestApiKeyMessage(
-          'The DeepL API key is invalid. Please check that you entered the correct key.',
-        );
-        return;
-      }
-
-      // --- Step 2: Check for non-specific error responses ---
+      // --- Step 1: Classify any DeepL-reported error message ---
+      // Match on stable substrings rather than full strings, so DeepL rewording
+      // (e.g. changing the docs URL) doesn't silently regress to the generic
+      // handler. Both "wrong endpoint" and "forbidden" are the load-bearing
+      // semantic phrases in DeepL's auth errors.
 
       if (body && typeof body.message === 'string') {
+        const errorMessage = body.message.toLowerCase();
+
+        if (errorMessage.includes('wrong endpoint')) {
+          setTestApiKeyStatus('error');
+          setTestApiKeyMessage(
+            'Your API key requires the DeepL Free endpoint. Enable "Use DeepL Free endpoint (api-free.deepl.com)" below, then try again.',
+          );
+          return;
+        }
+
+        if (errorMessage.includes('forbidden')) {
+          setTestApiKeyStatus('error');
+          setTestApiKeyMessage(
+            'The DeepL API key is invalid. Please check that you entered the correct key.',
+          );
+          return;
+        }
+
         setTestApiKeyStatus('error');
         setTestApiKeyMessage(`DeepL error: ${body.message}`);
         return;
