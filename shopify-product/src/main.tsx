@@ -8,18 +8,32 @@ import ConfigScreen from './entrypoints/ConfigScreen';
 import FieldExtension from './entrypoints/FieldExtension';
 import { render } from './utils/render';
 import 'datocms-react-ui/styles.css';
-import { isValidConfig, normalizeConfig } from './types';
+import {
+  isConfigComplete,
+  isValidConfig,
+  parseAndNormalizeConfig,
+} from './types';
 
 const FIELD_EXTENSION_ID = 'shopifyProduct';
 
 connect({
   async onBoot(ctx: OnBootCtx) {
-    if (
-      !ctx.currentRole.meta.final_permissions.can_edit_schema ||
-      isValidConfig(ctx.plugin.attributes.parameters)
-    ) {
+    if (!ctx.currentRole.meta.final_permissions.can_edit_schema) {
       return;
     }
+
+    const rawParams = ctx.plugin.attributes.parameters;
+
+    if (isValidConfig(rawParams)) {
+      if (!isConfigComplete(rawParams)) {
+        ctx.notice(
+          'Shopify product plugin is missing configuration. Please fill in the settings.',
+        );
+      }
+      return;
+    }
+
+    const normalized = parseAndNormalizeConfig(rawParams);
 
     const fields = await ctx.loadFieldsUsingPlugin();
 
@@ -45,12 +59,16 @@ connect({
       )
     ).some((x) => x);
 
-    await ctx.updatePluginParameters(
-      normalizeConfig(ctx.plugin.attributes.parameters),
-    );
+    await ctx.updatePluginParameters(normalized);
 
     if (someUpgraded) {
       ctx.notice('Plugin upgraded successfully!');
+    }
+
+    if (!isConfigComplete(normalized)) {
+      ctx.notice(
+        'Shopify product plugin is missing configuration. Please fill in the settings.',
+      );
     }
   },
   renderConfigScreen(ctx) {
@@ -67,7 +85,7 @@ connect({
     ];
   },
   overrideFieldExtensions(field, ctx) {
-    const config = normalizeConfig(ctx.plugin.attributes.parameters);
+    const config = parseAndNormalizeConfig(ctx.plugin.attributes.parameters);
 
     if (!['string', 'json'].includes(field.attributes.field_type)) {
       return;
