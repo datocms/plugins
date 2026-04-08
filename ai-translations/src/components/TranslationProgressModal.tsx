@@ -93,6 +93,7 @@ export default function TranslationProgressModal({
   const [isCompleted, setIsCompleted] = useState(false);
   const [isCancelled, setIsCancelled] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [hasFatalError, setHasFatalError] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const updatesRef = useRef<HTMLDivElement | null>(null);
 
@@ -156,9 +157,18 @@ export default function TranslationProgressModal({
           },
           schemaRepository,
         );
-      } catch (_error) {
+      } catch (error) {
         if (isMounted) {
+          setHasFatalError(true);
           setIsProcessing(false);
+          const msg =
+            error instanceof Error ? error.message : String(error);
+          addProgressUpdate({
+            recordIndex: -1,
+            recordId: 'fatal',
+            status: 'error',
+            message: `Translation failed: ${msg}`,
+          });
         }
       }
     };
@@ -223,7 +233,10 @@ export default function TranslationProgressModal({
   }, []);
 
   const handleClose = () => {
-    ctx.resolve({ completed: isCompleted, progress });
+    const hasErrors = hasFatalError || processedRecords.some(
+      (update) => update.status === 'error',
+    );
+    ctx.resolve({ completed: isCompleted && !hasErrors, canceled: false, progress });
   };
 
   const handleCancel = () => {

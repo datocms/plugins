@@ -92,6 +92,10 @@ export interface BatchTranslationOptions {
   glossaryId?: string;
   /** Optional timeout in milliseconds. */
   timeoutMs?: number;
+  /** Original DatoCMS source locale before normalization (for error messages). */
+  originalSourceLocale?: string;
+  /** Original DatoCMS target locale before normalization (for error messages). */
+  originalTargetLocale?: string;
 }
 
 /**

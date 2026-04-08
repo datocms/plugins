@@ -3,69 +3,15 @@
  * Configuration component for DeepL vendor settings.
  */
 
-import { Button, SelectField, SwitchField, TextField } from 'datocms-react-ui';
-import { useMemo, useState } from 'react';
-import ReactTextareaAutosize from 'react-textarea-autosize';
-import { RESPONSE_PREVIEW_MAX_LENGTH } from '../../../utils/constants';
-import { normalizeProviderError } from '../../../utils/translation/ProviderErrors';
-import DeepLProvider from '../../../utils/translation/providers/DeepLProvider';
+import {Button, Section, SelectField, SwitchField, TextField} from 'datocms-react-ui';
+import {useMemo, useState} from 'react';
+import type {ApiTypes} from '@datocms/cma-client-browser';
+import {RESPONSE_PREVIEW_MAX_LENGTH} from '../../../utils/constants';
 import s from '../../styles.module.css';
+import GlossaryPairEditor from './GlossaryPairEditor';
+import {useDeepLGlossaries} from './useDeepLGlossaries';
 
-/**
- * Validates a glossary pair line and returns an error message if invalid.
- * Valid formats:
- * - SOURCE->TARGET=GLOSSARY_ID (e.g., EN->DE=gls-abc123)
- * - SOURCE→TARGET=GLOSSARY_ID (unicode arrow)
- * - *->TARGET=GLOSSARY_ID (wildcard source)
- * - SOURCE->*=GLOSSARY_ID (wildcard target)
- *
- * @param line - A single line from the glossary pairs textarea
- * @returns Error message if invalid, null if valid or empty
- */
-function validateGlossaryPairLine(line: string): string | null {
-  const trimmed = line.trim();
-  if (!trimmed) return null; // Empty lines are OK
-
-  // Normalize arrow variants
-  const normalized = trimmed.replace(/[→⇒–—]/g, '->').replace(/\s+/g, '');
-
-  // Pattern: SOURCE->TARGET=GLOSSARY_ID or SOURCE->TARGET:GLOSSARY_ID
-  const pattern =
-    /^([a-zA-Z*]{1,5}(?:-[a-zA-Z]{2,4})?)->([a-zA-Z*]{1,5}(?:-[a-zA-Z]{2,4})?)(?:=|:)((?:gls-)?[A-Za-z0-9_-]+)$/;
-
-  if (!pattern.test(normalized)) {
-    return `Invalid format: "${trimmed}". Expected: SOURCE->TARGET=gls-ID (e.g., EN->DE=gls-abc123)`;
-  }
-
-  return null;
-}
-
-/**
- * Validates all glossary pair lines and returns validation result.
- *
- * @param text - The full textarea content with multiple lines
- * @returns Object with isValid boolean and array of error messages
- */
-function validateGlossaryPairs(text: string): {
-  isValid: boolean;
-  errors: string[];
-} {
-  if (!text.trim()) {
-    return { isValid: true, errors: [] };
-  }
-
-  const lines = text.split(/[;\n,]/).filter((l) => l.trim());
-  const errors: string[] = [];
-
-  for (let i = 0; i < lines.length; i++) {
-    const error = validateGlossaryPairLine(lines[i]);
-    if (error) {
-      errors.push(`Line ${i + 1}: ${error}`);
-    }
-  }
-
-  return { isValid: errors.length === 0, errors };
-}
+type SelectOption = { label: string; value: string };
 
 export interface DeepLConfigProps {
   deeplApiKey: string;
@@ -86,6 +32,17 @@ export interface DeepLConfigProps {
   setDeeplGlossaryId: (value: string) => void;
   deeplGlossaryPairs: string;
   setDeeplGlossaryPairs: (value: string) => void;
+  siteLocales: ApiTypes.Site['locales'];
+  openConfirm: (options: {
+    title: string;
+    content: string;
+    choices: {
+      label: string;
+      value: unknown;
+      intent?: 'positive' | 'negative';
+    }[];
+    cancel: { label: string; value: unknown };
+  }) => Promise<unknown>;
 }
 
 export default function DeepLConfig({
@@ -107,19 +64,60 @@ export default function DeepLConfig({
   setDeeplGlossaryId,
   deeplGlossaryPairs,
   setDeeplGlossaryPairs,
+  siteLocales,
+  openConfirm,
 }: DeepLConfigProps) {
-  const [showDeeplAdvanced, setShowDeeplAdvanced] = useState(false);
+  const [showTags, setShowTags] = useState(false);
+  const [showGlossary, setShowGlossary] = useState(false);
   const [isTestingApiKey, setIsTestingApiKey] = useState(false);
   const [testApiKeyMessage, setTestApiKeyMessage] = useState('');
   const [testApiKeyStatus, setTestApiKeyStatus] = useState<
     'idle' | 'success' | 'error'
   >('idle');
+  const [autoToggledFree, setAutoToggledFree] = useState(false);
 
-  // Validate glossary pairs in real-time
-  const glossaryValidation = useMemo(
-    () => validateGlossaryPairs(deeplGlossaryPairs),
-    [deeplGlossaryPairs],
+  // Shared glossary data for both the default glossary dropdown and per-pair editor
+  const { glossaries, fetchStatus, fetchError } =
+    useDeepLGlossaries(deeplApiKey, deeplUseFree);
+
+  const glossaryOptions: SelectOption[] = useMemo(
+    () =>
+      glossaries.map((g) => ({
+        label: `${g.name} (${g.source_lang}\u2192${g.target_lang}, ${g.entry_count} entries)`,
+        value: g.glossary_id,
+      })),
+    [glossaries],
   );
+
+  // Build value for the default glossary dropdown
+  const defaultGlossaryValue = deeplGlossaryId
+    ? glossaryOptions.find((o) => o.value === deeplGlossaryId) ?? {
+        label: deeplGlossaryId,
+        value: deeplGlossaryId,
+      }
+    : null;
+
+  // Validate the current default glossary ID against fetched list
+  const defaultGlossaryError =
+    deeplGlossaryId &&
+    fetchStatus === 'success' &&
+    !glossaries.some((g) => g.glossary_id === deeplGlossaryId)
+      ? `"${deeplGlossaryId}" is not a valid glossary in your DeepL account`
+      : undefined;
+
+  const handleApiKeyChange = (value: string) => {
+    setDeeplApiKey(value);
+    if (testApiKeyStatus === 'error') {
+      setTestApiKeyStatus('idle');
+      setTestApiKeyMessage('');
+    }
+    if (value.endsWith(':fx') && !deeplUseFree) {
+      setDeeplUseFree(true);
+      setAutoToggledFree(true);
+    } else if (!value.endsWith(':fx') && autoToggledFree) {
+      setAutoToggledFree(false);
+    }
+  };
 
   const handleTestApiKey = async () => {
     if (!deeplApiKey) {
@@ -131,17 +129,92 @@ export default function DeepLConfig({
     setTestApiKeyStatus('idle');
     setIsTestingApiKey(true);
     try {
-      const base = deeplUseFree
+      const baseUrl = deeplUseFree
         ? 'https://api-free.deepl.com'
         : 'https://api.deepl.com';
-      const provider = new DeepLProvider({
-        apiKey: deeplApiKey,
-        baseUrl: base,
+      const deeplApiUrl = `${baseUrl}/v2/translate`;
+      const url = `https://cors-proxy.datocms.com/?url=${encodeURIComponent(deeplApiUrl)}`;
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          Authorization: `DeepL-Auth-Key ${deeplApiKey}`,
+        },
+        body: JSON.stringify({ text: ['Hello world'], target_lang: 'DE' }),
       });
-      const out = await provider.translateArray(['Hello world'], {
-        targetLang: 'DE',
-      });
-      const sample = (out?.[0] ?? '').toString();
+
+      let json: unknown;
+      try {
+        json = await res.json();
+      } catch {
+        setTestApiKeyStatus('error');
+        setTestApiKeyMessage(
+          `DeepL returned a non-JSON response (HTTP ${res.status}).`,
+        );
+        return;
+      }
+
+      const body =
+        json && typeof json === 'object'
+          ? (json as Record<string, unknown>)
+          : null;
+
+      // --- Step 1: Classify any DeepL-reported error message ---
+      // Match on stable substrings rather than full strings, so DeepL rewording
+      // (e.g. changing the docs URL) doesn't silently regress to the generic
+      // handler. Both "wrong endpoint" and "forbidden" are the load-bearing
+      // semantic phrases in DeepL's auth errors.
+
+      if (body && typeof body.message === 'string') {
+        const errorMessage = body.message.toLowerCase();
+
+        if (errorMessage.includes('wrong endpoint')) {
+          setTestApiKeyStatus('error');
+          setTestApiKeyMessage(
+            'Your API key requires the DeepL Free endpoint. Enable "Use DeepL Free endpoint (api-free.deepl.com)" below, then try again.',
+          );
+          return;
+        }
+
+        if (errorMessage.includes('forbidden')) {
+          setTestApiKeyStatus('error');
+          setTestApiKeyMessage(
+            'The DeepL API key is invalid. Please check that you entered the correct key.',
+          );
+          return;
+        }
+
+        setTestApiKeyStatus('error');
+        setTestApiKeyMessage(`DeepL error: ${body.message}`);
+        return;
+      }
+
+      if (!res.ok) {
+        setTestApiKeyStatus('error');
+        setTestApiKeyMessage(
+          `DeepL returned an error (HTTP ${res.status}). Verify your API key and endpoint settings.`,
+        );
+        return;
+      }
+
+      // --- Step 3: Positively validate the expected success shape ---
+
+      const translations = body?.translations;
+      if (
+        !Array.isArray(translations) ||
+        translations.length === 0 ||
+        typeof (translations[0] as Record<string, unknown>)?.text !== 'string'
+      ) {
+        setTestApiKeyStatus('error');
+        setTestApiKeyMessage(
+          'DeepL returned an unexpected response. The API key or endpoint may be misconfigured.',
+        );
+        return;
+      }
+
+      const sample = (translations[0] as Record<string, unknown>)
+        .text as string;
       if (sample) {
         setTestApiKeyStatus('success');
         setTestApiKeyMessage(
@@ -152,9 +225,12 @@ export default function DeepLConfig({
         setTestApiKeyMessage('API Key OK. DeepL responded (empty body).');
       }
     } catch (err) {
-      const norm = normalizeProviderError(err, 'deepl');
       setTestApiKeyStatus('error');
-      setTestApiKeyMessage(norm.message + (norm.hint ? ` — ${norm.hint}` : ''));
+      setTestApiKeyMessage(
+        err instanceof Error
+          ? err.message
+          : 'An unexpected error occurred while testing the API key.',
+      );
     } finally {
       setIsTestingApiKey(false);
     }
@@ -170,8 +246,9 @@ export default function DeepLConfig({
           id="deeplApiKey"
           label="DeepL API Key"
           value={deeplApiKey}
-          onChange={setDeeplApiKey}
+          onChange={handleApiKeyChange}
           placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx:fx"
+          error={testApiKeyStatus === 'error' ? testApiKeyMessage : undefined}
         />
         <div className={`${s.switchField} ${s.buttonRow}`}>
           <Button
@@ -182,18 +259,8 @@ export default function DeepLConfig({
             {isTestingApiKey ? 'Testing…' : 'Test API Key'}
           </Button>
         </div>
-        {testApiKeyMessage && (
-          <div
-            className={s.inlineStatus}
-            style={{
-              color:
-                testApiKeyStatus === 'success'
-                  ? '#237804'
-                  : testApiKeyStatus === 'error'
-                    ? '#cf1322'
-                    : undefined,
-            }}
-          >
+        {testApiKeyStatus === 'success' && testApiKeyMessage && (
+          <div className={s.inlineStatus} style={{ color: '#237804' }}>
             {testApiKeyMessage}
           </div>
         )}
@@ -205,6 +272,11 @@ export default function DeepLConfig({
           name="deeplUseFree"
           id="deeplUseFree"
           label="Use DeepL Free endpoint (api-free.deepl.com)"
+          hint={
+            autoToggledFree
+              ? "We toggled this on automatically for you because it looks like you're using a free key ending in :fx"
+              : "You must use this if you're on the DeepL free plan"
+          }
           value={deeplUseFree}
           onChange={(val) => setDeeplUseFree(val)}
         />
@@ -237,135 +309,98 @@ export default function DeepLConfig({
         />
       </div>
 
-      {/* Advanced settings toggle */}
-      <div className={s.switchField}>
-        <Button
-          buttonType="muted"
-          onClick={() => setShowDeeplAdvanced((v) => !v)}
-        >
-          {showDeeplAdvanced
-            ? 'Hide advanced settings'
-            : 'Show advanced settings'}
-        </Button>
-      </div>
-
-      {showDeeplAdvanced && (
-        <div style={{ marginTop: 8 }}>
-          {/* Preserve formatting */}
-          <div className={s.switchField}>
-            <SwitchField
+      <Section title="Tag Settings"  collapsible={{isOpen: showTags, onToggle: () => setShowTags((v) => !v)}}>
+        {/* Preserve formatting */}
+        <div className={s.switchField}>
+          <SwitchField
               name="deeplPreserveFormatting"
               id="deeplPreserveFormatting"
               label="Preserve formatting"
               value={deeplPreserveFormatting}
               onChange={setDeeplPreserveFormatting}
-            />
-          </div>
+          />
+        </div>
 
-          {/* Advanced tags */}
-          <div className={s.fieldSpacing}>
-            <TextField
+        {/* Advanced tags */}
+        <div className={s.fieldSpacing}>
+          <TextField
               name="deeplIgnoreTags"
               id="deeplIgnoreTags"
               label="Ignore tags (CSV)"
               value={deeplIgnoreTags}
               onChange={setDeeplIgnoreTags}
-            />
-          </div>
-          <div className={s.fieldSpacing}>
-            <TextField
+          />
+        </div>
+        <div className={s.fieldSpacing}>
+          <TextField
               name="deeplNonSplittingTags"
               id="deeplNonSplittingTags"
               label="Non-splitting tags (CSV)"
               value={deeplNonSplittingTags}
               onChange={setDeeplNonSplittingTags}
-            />
-          </div>
-          <div className={s.fieldSpacing}>
-            <TextField
+          />
+        </div>
+        <div className={s.fieldSpacing}>
+          <TextField
               name="deeplSplittingTags"
               id="deeplSplittingTags"
               label="Splitting tags (CSV)"
               value={deeplSplittingTags}
               onChange={setDeeplSplittingTags}
-            />
-          </div>
-
-          {/* Glossary settings */}
-          <div className={s.fieldSpacing}>
-            <label
-              className={s.label}
-              htmlFor="deeplGlossaryId"
-              style={{ display: 'flex', alignItems: 'center' }}
-            >
-              Default glossary ID
-              <div className={s.tooltipContainer}>
-                ⓘ
-                <div className={`${s.tooltipText} ${s.leftAnchorTooltip}`}>
-                  Optional DeepL glossary ID (e.g., gls-abc123) applied when
-                  translating with DeepL. You can override per language pair via
-                  the mapping below.
-                </div>
-              </div>
-            </label>
-            <TextField
-              name="deeplGlossaryId"
-              id="deeplGlossaryId"
-              label=""
-              value={deeplGlossaryId}
-              onChange={setDeeplGlossaryId}
-              placeholder="gls-..."
-            />
-          </div>
-
-          <div className={s.fieldSpacing}>
-            <label
-              className={s.label}
-              htmlFor="deeplGlossaryPairs"
-              style={{ display: 'flex', alignItems: 'center' }}
-            >
-              Glossaries by language pair
-              <div className={s.tooltipContainer}>
-                ⓘ
-                <div className={`${s.tooltipText} ${s.leftAnchorTooltip}`}>
-                  One per line. Use either Dato locales or DeepL codes. Supports
-                  wildcards, e.g. *-&gt;pt-BR=gls-123 (any source to pt-BR).
-                  Examples: EN-&gt;DE=gls-abc123, en-US-&gt;pt-BR: gls-xyz789,
-                  *-&gt;de=gls-777
-                </div>
-              </div>
-            </label>
-            <ReactTextareaAutosize
-              className={s.textarea}
-              id="deeplGlossaryPairs"
-              value={deeplGlossaryPairs}
-              onChange={(e) => setDeeplGlossaryPairs(e.target.value)}
-              minRows={2}
-              placeholder={'EN->DE=gls-...\nen-US->pt-BR=gls-...'}
-              style={{
-                borderColor: !glossaryValidation.isValid
-                  ? '#cf1322'
-                  : undefined,
-              }}
-            />
-            {!glossaryValidation.isValid && (
-              <div
-                className={s.inlineStatus}
-                style={{ color: '#cf1322', marginTop: 4 }}
-              >
-                {glossaryValidation.errors.slice(0, 3).map((err) => (
-                  <div key={err}>{err}</div>
-                ))}
-                {glossaryValidation.errors.length > 3 && (
-                  <div>
-                    ...and {glossaryValidation.errors.length - 3} more error(s)
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
+          />
         </div>
-      )}
+      </Section>
+
+
+      <Section title="Glossary Settings"  collapsible={{isOpen: showGlossary, onToggle: () => setShowGlossary((v) => !v)}}>
+        {/* Glossary settings */}
+        <div className={s.fieldSpacing}>
+          <SelectField
+            name="deeplGlossaryId"
+            id="deeplGlossaryId"
+            label="Default glossary"
+            hint="Applied to all translations unless overridden by a language pair mapping below"
+            placeholder={
+              fetchStatus === 'loading'
+                ? 'Loading glossaries...'
+                : 'None (no default glossary)'
+            }
+            value={defaultGlossaryValue}
+            error={defaultGlossaryError}
+            selectInputProps={{
+              options: glossaryOptions,
+              isClearable: true,
+              isLoading: fetchStatus === 'loading',
+            }}
+            onChange={(nv) => {
+              if (!Array.isArray(nv)) {
+                const sel = nv as SelectOption | null;
+                setDeeplGlossaryId(sel?.value ?? '');
+              }
+            }}
+          />
+          {fetchStatus === 'error' && fetchError && (
+            <div
+              className={s.inlineStatus}
+              style={{ color: '#cf1322', marginTop: 4 }}
+            >
+              {fetchError}
+            </div>
+          )}
+        </div>
+
+        <div className={s.fieldSpacing}>
+          <GlossaryPairEditor
+            value={deeplGlossaryPairs}
+            onChange={setDeeplGlossaryPairs}
+            siteLocales={siteLocales}
+            glossaries={glossaries}
+            fetchStatus={fetchStatus}
+            fetchError={fetchError}
+            openConfirm={openConfirm}
+          />
+        </div>
+      </Section>
     </>
   );
 }

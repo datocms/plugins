@@ -6,10 +6,6 @@ This plugin integrates with AI providers and provides on-demand AI-powered trans
 
 ![31841](https://github.com/user-attachments/assets/a1b4e9aa-d79e-4807-8b90-16b06b65852c)
 
-## Changelog
-
-See the [CHANGELOG.md](./CHANGELOG.md) file for details about all the latest features and improvements.
-
 ## Configuration
 
 On the plugin's Settings screen:
@@ -27,11 +23,11 @@ On the plugin's Settings screen:
 5. If you chose DeepL:
    - **DeepL API Key**: Paste your DeepL API key.
    - **Use DeepL Free endpoint**: Enable this if your key ends with `:fx` (Free plan).
-6. **Translatable Field Types**: Pick which field editor types (single_line, markdown, structured_text, etc.) can be translated.
-7. **Translate Whole Record**: Enable the sidebar that translates every localized field in a record.
-8. **Translate Bulk Records**: Enable bulk translations from table view or via the dedicated page.
-9. **AI Bulk Translations Page**: Translate whole models at once.
-10. **Prompt Template** (AI vendors only): Customize how translations are requested. Use `{fieldValue}`, `{fromLocale}`, `{toLocale}`, and `{recordContext}`.
+6. **Prompt Template** (AI vendors only): Customize how translations are requested. Use `{fieldValue}`, `{fromLocale}`, `{toLocale}`, and `{recordContext}`.
+7. **Translatable Field Types**: Pick which field editor types (single_line, markdown, structured_text, etc.) can be translated.
+8. **Translate Whole Record**: Enable the sidebar that translates every localized field in a record.
+9. **Translate Bulk Records**: Enable bulk translations from table view or via the dedicated page.
+10. **AI Bulk Translations Page**: Translate whole models at once.
 
 ### Key Restrictions and Security
 - Keys are stored in plugin settings and used client‑side. Do not share your workspace publicly.
@@ -145,104 +141,36 @@ The plugin supports DeepL glossaries to enforce preferred terminology. You can s
 ### Requirements
 
 - A DeepL API key with access to Glossaries. Check your DeepL account/plan capabilities.
+- Currently only tested against DeepL v2 glossaries. Use v3 at your own risk (https://developers.deepl.com/api-reference/glossaries/v2-vs-v3-endpoints)
 
-### Configure in the Plugin
+### Configure DeepL Glossaries in the Plugin
 
-1. Open Settings → vendor "DeepL".
-2. Enter your DeepL API Key and verify it via "Test API Key".
-3. Expand "Advanced settings".
-4. Optional: set "Default glossary ID" (e.g., `gls-abc123`).
-5. Optional: fill in "Glossaries by language pair" with one mapping per line.
-
-You can use either DatoCMS locales (e.g., `en-US`, `pt-BR`) or DeepL codes (e.g., `EN`, `PT-BR`). The plugin normalizes both to DeepL codes internally.
-
-### Configuration Examples
-
-**Scenario A: Single Language Pair**
-If you only translate from English to German, you only need one glossary.
-- **Default glossary ID**: `gls-12345` (Your EN->DE glossary)
-- **Glossaries by language pair**: *(Leave empty)*
-
-**Scenario B: Multiple Language Pairs**
-If you translate to multiple languages, map each one specifically.
-- **Default glossary ID**: *(Leave empty)*
-- **Glossaries by language pair**:
-  ```text
-  EN->DE=gls-german123
-  EN->FR=gls-french456
-  ```
-
-**Scenario C: Fallback Strategy**
-Use specific glossaries for main languages, and a default for everything else.
-- **Default glossary ID**: `gls-fallback999`
-- **Glossaries by language pair**:
-  ```text
-  EN->DE=gls-german123
-  ```
-*(Note: If the default glossary doesn't match the language pair of a translation, the plugin will automatically retry without it.)*
-
-### Mapping Syntax
-
-One entry per line. Supported forms:
-
-```
-EN->DE=gls-abc123
-en-US->pt-BR=gls-xyz789
-fr→it gls-123                 # alt arrow and delimiter
-*->pt-BR=gls-777              # wildcard: any source to target
-EN->*=gls-555                 # wildcard: source to any target
-pt-BR=gls-777                 # shorthand for *->pt-BR
-```
-
-Delimiters: `=`, `:`, or whitespace. Arrows: `->`, `→`, `⇒` (all treated the same). Case is ignored.
+1. Open the plugin settings and choose the vendor "DeepL".
+2. Enter your DeepL API Key and verify it via the "Test API Key" button.
+3. Expand "Glossary Settings".
+4. We automatically detect glossaries available to your API key.
+5. Optional: Set "Default glossary ID" (e.g., `abc123-efg456-etc`) from the available list. This will only apply to translations of this language pairing, and will be ignored otherwise.
+6. Optional: Specify one or more explicit language pairings using the pairing builder: 
+  ![pairing builder](./public/assets/pairing-builder.png)
 
 ### Resolution Order
 
 When translating from `fromLocale` → `toLocale`, the plugin picks a glossary ID using this precedence:
 
-1. Exact pair match by DeepL codes (e.g., `EN:PT-BR`).
-2. Exact pair match by your raw locales (e.g., `en-US:pt-BR`).
-3. Wildcard any→target (e.g., `*:PT-BR` or `*:pt-BR`).
-4. Wildcard source→any (e.g., `EN:*` or `en-US:*`).
-5. Default glossary ID (if set).
-6. Otherwise, no glossary is used.
+1. Exact pair match by your project locales (e.g., `en-US:pt-BR`).
+2. Wildcard any→target (e.g.`*:pt-BR`).
+3. Wildcard source→any (e.g. `en:*` or `en-US:*`).
+4. Default glossary ID (if set and applicable).
+5. Otherwise, no glossary is used.
 
 If DeepL returns a glossary mismatch (e.g., glossary languages don’t match the current pair) or a missing glossary, the plugin automatically retries the same request once without a glossary so your translation continues. A brief hint is surfaced in the UI logs.
-
-### Finding or Creating a Glossary ID
-
-The plugin only needs the `glossary_id` string. You can create and list glossaries with the DeepL API from your own machine or server. Examples with cURL:
-
-List glossaries
-```
-curl -H "Authorization: DeepL-Auth-Key $DEEPL_AUTH_KEY" \
-     https://api.deepl.com/v2/glossaries
-```
-
-Create a small glossary inline (tab-separated entries)
-```
-curl -X POST https://api.deepl.com/v2/glossaries \
-  -H "Authorization: DeepL-Auth-Key $DEEPL_AUTH_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "name": "Marketing-EN-DE",
-    "source_lang": "EN",
-    "target_lang": "DE",
-    "entries_format": "tsv",
-    "entries": "CTA\tCall-to-Action\nlead magnet\tLeadmagnet"
-  }'
-```
-
-Note: If your account uses the Free endpoint, replace the host with `https://api-free.deepl.com`.
-
-Manage glossaries from your server/CLI or the DeepL dashboard, then paste the resulting IDs into the plugin settings.
 
 ### Tips and Limitations
 
 - Glossaries apply only to the DeepL vendor. OpenAI/Gemini/Anthropic do not use glossaries.
-- The plugin preserves placeholders and HTML tags automatically (`notranslate`, `ph`, etc.). Glossaries will not alter those tokens.
-- If you use DeepL "formality", it is sent only for targets that support it; otherwise omitted.
-- Ensure your API key matches the endpoint setting: Free keys (ending with `:fx`) should have "Use DeepL Free endpoint" enabled.
+- The plugin preserves placeholders and HTML tags automatically (`notranslate`, `ph`, etc.). Glossaries will not alter those tokens. This behavior can be configured in the DeepL Tag Settings.
+- If you set a DeepL "formality" level, it is sent only for targets that support it; otherwise omitted.
+- Ensure you test the API key after entering it to catch any potential errors.
 
 ### Quick Sanity Test
 
