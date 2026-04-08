@@ -199,6 +199,8 @@ async function translateWithNativeBatchProvider(
     nonSplittingTags: ['a', 'code', 'pre', 'strong', 'em', 'ph', 'notranslate'],
     splittingTags: [],
     glossaryId: resolveGlossaryId(pluginParams, fromLocale, toLocale),
+    originalSourceLocale: fromLocale,
+    originalTargetLocale: toLocale,
   });
 }
 

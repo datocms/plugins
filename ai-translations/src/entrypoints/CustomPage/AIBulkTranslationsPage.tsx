@@ -134,6 +134,10 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
       ctx.notice(
         `Translation from ${sourceLocale?.value} to ${targetLocale?.value} was canceled`,
       );
+    } else {
+      ctx.alert(
+        'The bulk translation had errors and did not complete successfully.',
+      );
     }
   }
 

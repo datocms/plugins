@@ -9,11 +9,13 @@
 // - useFeatureToggles: Translation fields and feature flags
 // - useExclusionRules: Model/role/field exclusions
 
-import { buildClient } from '@datocms/cma-client-browser';
+import { buildClient} from '@datocms/cma-client-browser';
+import type {ApiTypes} from '@datocms/cma-client-browser';
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import {
   Button,
   Canvas,
+  Section,
   SelectField,
   Spinner,
   SwitchField,
@@ -305,7 +307,7 @@ const updatePluginParams = async ({
   setIsLoading(true);
   try {
     await ctx.updatePluginParameters(params);
-    ctx.notice('Plugin options updated successfully!');
+    ctx.notice('Plugin options updated successfully!').then();
   } catch (error) {
     console.error('Error updating plugin parameters:', error);
     ctx.alert('Failed to update plugin options. Please try again.');
@@ -838,6 +840,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   }, [ctx.itemTypes]);
 
   const [roles, setRoles] = useState<{ id: string; name: string }[]>([]);
+  const [siteLocales] = useState<ApiTypes.Site['locales']>(ctx.site.attributes.locales);
 
   useEffect(() => {
     const client = buildClient({
@@ -896,6 +899,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           />
         </div>
 
+        <Section title={`Vendor-specific settings for ${getVendorLabel(vendor)}`}>
         {vendor === 'openai' ? (
           <OpenAIConfig
             apiKey={apiKey}
@@ -940,58 +944,91 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
             setDeeplGlossaryId={setDeeplGlossaryId}
             deeplGlossaryPairs={deeplGlossaryPairs}
             setDeeplGlossaryPairs={setDeeplGlossaryPairs}
+            siteLocales={siteLocales}
+            openConfirm={ctx.openConfirm}
           />
         )}
+      </Section>
 
-        {/* Performance: concurrency is automatic with adaptive backoff */}
+      <Section title="General translation settings">
+        {/* Prompt input is not applicable to DeepL; hide for that vendor */}
+        {vendor !== 'deepl' && (
+            <div className={s.promptContainer}>
+              <label
+                  className={s.label}
+                  style={{ display: 'flex', alignItems: 'center' }}
+                  htmlFor="translation-prompt"
+              >
+                Translation prompt*
+                <div className={s.tooltipContainer}>
+                  ⓘ
+                  <div className={`${s.tooltipText} ${s.leftAnchorTooltip}`}>
+                    Use &#123;fieldValue&#125;, &#123;fromLocale&#125;, and
+                    &#123;toLocale&#125; in your prompt to reference the content
+                    and source/target languages. Changing the prompt can break the
+                    plugin, so proceed with caution.
+                  </div>
+                </div>
+              </label>
+              <ReactTextareaAutosize
+                  required
+                  className={s.textarea}
+                  placeholder="Enter your prompt here"
+                  value={prompt}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  id="translation-prompt"
+                  aria-labelledby="translation-prompt"
+              />
+            </div>
+        )}
 
         {/* A multi-select component that lets users choose which field types can be translated */}
         <SelectField
-          name="fieldsWithTranslationOption"
-          id="fieldsWithTranslationOption"
-          label="Fields that can be translated"
-          value={translationFields.map((field) => ({
-            label:
-              translateFieldTypes[field as keyof typeof translateFieldTypes],
-            value: field,
-          }))}
-          selectInputProps={{
-            isMulti: true,
-            options: Object.entries(translateFieldTypes).map(
-              ([value, label]) => ({
-                label,
-                value,
-              }),
-            ),
-          }}
-          onChange={(newValue) => {
-            const selectedFields = newValue.map((v) => v.value);
-            setTranslationFields(selectedFields);
-          }}
+            name="fieldsWithTranslationOption"
+            id="fieldsWithTranslationOption"
+            label="Fields that can be translated"
+            value={translationFields.map((field) => ({
+              label:
+                  translateFieldTypes[field as keyof typeof translateFieldTypes],
+              value: field,
+            }))}
+            selectInputProps={{
+              isMulti: true,
+              options: Object.entries(translateFieldTypes).map(
+                  ([value, label]) => ({
+                    label,
+                    value,
+                  }),
+              ),
+            }}
+            onChange={(newValue) => {
+              const selectedFields = newValue.map((v) => v.value);
+              setTranslationFields(selectedFields);
+            }}
         />
         {/* A switch field to allow translation of the entire record from the sidebar */}
         <div className={s.switchField}>
           <div style={{ display: 'flex', alignItems: 'center' }}>
             <SwitchField
-              name="translateWholeRecord"
-              id="translateWholeRecord"
-              label="Allow translation of the whole record from the sidebar"
-              value={translateWholeRecord}
-              onChange={(newValue) => setTranslateWholeRecord(newValue)}
+                name="translateWholeRecord"
+                id="translateWholeRecord"
+                label="Allow translation of the whole record from the sidebar"
+                value={translateWholeRecord}
+                onChange={(newValue) => setTranslateWholeRecord(newValue)}
             />
             {/* Tooltip container with image for sidebar translation */}
             <div className={s.tooltipContainer}>
               <span
-                role="img"
-                aria-label="Information about sidebar translation"
+                  role="img"
+                  aria-label="Information about sidebar translation"
               >
                 ⓘ
               </span>
               <div className={`${s.tooltipText} ${s.imageTooltip}`}>
                 <img
-                  src="/public/assets/sidebar-translation-example.png"
-                  alt="Screenshot showing the sidebar translation feature with locale selection and translate button"
-                  style={{ width: '100%', maxWidth: '420px' }}
+                    src="/public/assets/sidebar-translation-example.png"
+                    alt="Screenshot showing the sidebar translation feature with locale selection and translate button"
+                    style={{ width: '100%', maxWidth: '420px' }}
                 />
                 <div style={{ marginTop: '10px', fontWeight: 'bold' }}>
                   Sidebar Translation
@@ -1008,11 +1045,11 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         <div className={s.switchField}>
           <div style={{ display: 'flex', alignItems: 'center' }}>
             <SwitchField
-              name="translateBulkRecords"
-              id="translateBulkRecords"
-              label="Allow bulk records translation in tabular view"
-              value={translateBulkRecords}
-              onChange={(newValue) => setTranslateBulkRecords(newValue)}
+                name="translateBulkRecords"
+                id="translateBulkRecords"
+                label="Allow bulk records translation in tabular view"
+                value={translateBulkRecords}
+                onChange={(newValue) => setTranslateBulkRecords(newValue)}
             />
             {/* Tooltip container with image for bulk translation */}
             <div className={s.tooltipContainer}>
@@ -1021,9 +1058,9 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
               </span>
               <div className={`${s.tooltipText} ${s.imageTooltip}`}>
                 <img
-                  src="/public/assets/bulk-translation-example.png"
-                  alt="Screenshot showing bulk translation of multiple records in tabular view"
-                  style={{ width: '100%', maxWidth: '420px' }}
+                    src="/public/assets/bulk-translation-example.png"
+                    alt="Screenshot showing bulk translation of multiple records in tabular view"
+                    style={{ width: '100%', maxWidth: '420px' }}
                 />
                 <div style={{ marginTop: '10px', fontWeight: 'bold' }}>
                   Bulk Translation
@@ -1040,11 +1077,11 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         <div className={s.switchField}>
           <div style={{ display: 'flex', alignItems: 'center' }}>
             <SwitchField
-              name="enableDebugging"
-              id="enableDebugging"
-              label="Enable debug logging"
-              value={enableDebugging}
-              onChange={(newValue) => setEnableDebugging(newValue)}
+                name="enableDebugging"
+                id="enableDebugging"
+                label="Enable debug logging"
+                value={enableDebugging}
+                onChange={(newValue) => setEnableDebugging(newValue)}
             />
             {/* Tooltip container styled like the translation prompt tooltip */}
             <div className={s.tooltipContainer}>
@@ -1061,123 +1098,95 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
 
         {/* Exclusion rules section */}
         <ExclusionRulesSection
-          showExclusionRules={showExclusionRules}
-          setShowExclusionRules={setShowExclusionRules}
-          hasExclusionRules={hasExclusionRules}
-          modelsToBeExcluded={modelsToBeExcluded}
-          setModelsToBeExcluded={setModelsToBeExcluded}
-          rolesToBeExcluded={rolesToBeExcluded}
-          setRolesToBeExcluded={setRolesToBeExcluded}
-          apiKeysToBeExcluded={apiKeysToBeExcluded}
-          setApiKeysToBeExcluded={setApiKeysToBeExcluded}
-          availableModels={availableModels}
-          roles={roles}
-          listOfFields={listOfFields}
+            showExclusionRules={showExclusionRules}
+            setShowExclusionRules={setShowExclusionRules}
+            hasExclusionRules={hasExclusionRules}
+            modelsToBeExcluded={modelsToBeExcluded}
+            setModelsToBeExcluded={setModelsToBeExcluded}
+            rolesToBeExcluded={rolesToBeExcluded}
+            setRolesToBeExcluded={setRolesToBeExcluded}
+            apiKeysToBeExcluded={apiKeysToBeExcluded}
+            setApiKeysToBeExcluded={setApiKeysToBeExcluded}
+            availableModels={availableModels}
+            roles={roles}
+            listOfFields={listOfFields}
         />
+      </Section>
 
-        {/* Prompt input is not applicable to DeepL; hide for that vendor */}
-        {vendor !== 'deepl' && (
-          <div className={s.promptContainer}>
-            <label
-              className={s.label}
-              style={{ display: 'flex', alignItems: 'center' }}
-              htmlFor="translation-prompt"
-            >
-              Translation prompt*
-              <div className={s.tooltipContainer}>
-                ⓘ
-                <div className={`${s.tooltipText} ${s.leftAnchorTooltip}`}>
-                  Use &#123;fieldValue&#125;, &#123;fromLocale&#125;, and
-                  &#123;toLocale&#125; in your prompt to reference the content
-                  and source/target languages. Changing the prompt can break the
-                  plugin, so proceed with caution.
-                </div>
-              </div>
-            </label>
-            <ReactTextareaAutosize
-              required
-              className={s.textarea}
-              placeholder="Enter your prompt here"
-              value={prompt}
-              onChange={(e) => setPrompt(e.target.value)}
-              id="translation-prompt"
-              aria-labelledby="translation-prompt"
-            />
-          </div>
-        )}
 
-        {/* A button to save the configuration updates. It is disabled if nothing changed or if saving is in progress. */}
+      {/* A button to save the configuration updates. It is disabled if nothing changed or if saving is in progress. */}
         <div className={s.buttons}>
           <Button
-            fullWidth
-            disabled={isSaveButtonDisabled}
-            buttonType="muted"
-            onClick={() => {
-              setVendor('openai');
-              // Use first available model if list is loaded, otherwise fallback
-              const firstModel = listOfModels[0];
-              setGptModel(
-                firstModel &&
-                  firstModel !== 'Insert a valid OpenAI API Key' &&
-                  firstModel !== 'Invalid API Key'
-                  ? firstModel
-                  : 'None',
-              );
-              setTranslationFields(Object.keys(translateFieldTypes));
-              setTranslateWholeRecord(true);
-              setTranslateBulkRecords(true);
-              setPrompt(defaultPrompt);
-              setModelsToBeExcluded([]);
-              setRolesToBeExcluded([]);
-              setApiKeysToBeExcluded([]);
-              ctx.notice(
-                '<h1>Plugin options restored to defaults</h1>\n<p>Save to apply changes</p>',
-              );
-            }}
+              fullWidth
+              disabled={isSaveButtonDisabled}
+              buttonType="muted"
+              onClick={() => {
+                setVendor('openai');
+                // Use first available model if list is loaded, otherwise fallback
+                const firstModel = listOfModels[0];
+                setGptModel(
+                    firstModel &&
+                    firstModel !== 'Insert a valid OpenAI API Key' &&
+                    firstModel !== 'Invalid API Key'
+                        ? firstModel
+                        : 'None',
+                );
+                setTranslationFields(Object.keys(translateFieldTypes));
+                setTranslateWholeRecord(true);
+                setTranslateBulkRecords(true);
+                setPrompt(defaultPrompt);
+                setModelsToBeExcluded([]);
+                setRolesToBeExcluded([]);
+                setApiKeysToBeExcluded([]);
+                ctx.notice(
+                    '<h1>Plugin options restored to defaults</h1>\n<p>Save to apply changes</p>',
+                );
+              }}
           >
             Restore to defaults
           </Button>
           <Button
-            disabled={!isFormDirty || isLoading}
-            fullWidth
-            buttonType="primary"
-            onClick={() =>
-              updatePluginParams({
-                ctx,
-                params: {
-                  vendor,
-                  apiKey,
-                  gptModel,
-                  googleApiKey,
-                  geminiModel,
-                  anthropicApiKey,
-                  anthropicModel,
-                  deeplApiKey,
-                  deeplEndpoint: pluginParams.deeplEndpoint ?? 'auto',
-                  deeplUseFree,
-                  deeplFormality,
-                  deeplPreserveFormatting,
-                  deeplIgnoreTags,
-                  deeplNonSplittingTags,
-                  deeplSplittingTags,
-                  deeplGlossaryId,
-                  deeplGlossaryPairs,
-                  translationFields,
-                  translateWholeRecord,
-                  translateBulkRecords,
-                  prompt,
-                  modelsToBeExcludedFromThisPlugin: modelsToBeExcluded,
-                  rolesToBeExcludedFromThisPlugin: rolesToBeExcluded,
-                  apiKeysToBeExcludedFromThisPlugin: apiKeysToBeExcluded,
-                  enableDebugging,
-                },
-                setIsLoading,
-              })
-            }
+              disabled={!isFormDirty || isLoading}
+              fullWidth
+              buttonType="primary"
+              onClick={() =>
+                  updatePluginParams({
+                    ctx,
+                    params: {
+                      vendor,
+                      apiKey,
+                      gptModel,
+                      googleApiKey,
+                      geminiModel,
+                      anthropicApiKey,
+                      anthropicModel,
+                      deeplApiKey,
+                      deeplEndpoint: pluginParams.deeplEndpoint ?? 'auto',
+                      deeplUseFree,
+                      deeplFormality,
+                      deeplPreserveFormatting,
+                      deeplIgnoreTags,
+                      deeplNonSplittingTags,
+                      deeplSplittingTags,
+                      deeplGlossaryId,
+                      deeplGlossaryPairs,
+                      translationFields,
+                      translateWholeRecord,
+                      translateBulkRecords,
+                      prompt,
+                      modelsToBeExcludedFromThisPlugin: modelsToBeExcluded,
+                      rolesToBeExcludedFromThisPlugin: rolesToBeExcluded,
+                      apiKeysToBeExcludedFromThisPlugin: apiKeysToBeExcluded,
+                      enableDebugging,
+                    },
+                    setIsLoading,
+                  })
+              }
           >
             {isLoading ? 'Saving...' : 'Save'}
             {isLoading && <Spinner size={24} />}
           </Button>
+
         </div>
       </div>
     </Canvas>

@@ -51,6 +51,12 @@ const CORS_PROXY_URL = 'https://cors-proxy.datocms.com';
 const glossaryInfoCache = new Map<string, GlossaryInfo | null>();
 
 /**
+ * Tracks glossary IDs that DeepL explicitly rejected as invalid/missing,
+ * so callers can distinguish "invalid ID" from "network error" after cache lookup.
+ */
+const invalidGlossaryIds = new Set<string>();
+
+/**
  * Maximum number of text segments per DeepL API request.
  * DeepL's API accepts up to 50 segments, but we use 45 to stay safely within limits
  * and account for potential metadata overhead.
@@ -111,7 +117,38 @@ export default class DeepLProvider implements TranslationProvider {
         return null;
       }
 
-      const info: GlossaryInfo = await res.json();
+      const json: unknown = await res.json();
+
+      // --- Step 1: Check for known, specific error responses ---
+      // The CORS proxy may relay DeepL errors with HTTP 200. Match the exact
+      // shape returned for an invalid glossary ID so we can surface a
+      // targeted message to the user.
+      if (
+        json &&
+        typeof json === 'object' &&
+        (json as Record<string, unknown>).message ===
+          'Invalid or missing glossary id'
+      ) {
+        invalidGlossaryIds.add(glossaryId);
+        glossaryInfoCache.set(glossaryId, null);
+        return null;
+      }
+
+      // --- Step 2: Validate the expected GlossaryInfo shape ---
+      // If the response isn't a known error but also doesn't look like a
+      // valid glossary object, treat it as a transient/unknown failure.
+      if (
+        !json ||
+        typeof json !== 'object' ||
+        typeof (json as Record<string, unknown>).glossary_id !== 'string' ||
+        typeof (json as Record<string, unknown>).source_lang !== 'string' ||
+        typeof (json as Record<string, unknown>).target_lang !== 'string'
+      ) {
+        glossaryInfoCache.set(glossaryId, null);
+        return null;
+      }
+
+      const info = json as GlossaryInfo;
       glossaryInfoCache.set(glossaryId, info);
       return info;
     } catch {
@@ -211,6 +248,19 @@ export default class DeepLProvider implements TranslationProvider {
         opts.targetLang,
       );
       if (!isValid) {
+        // If DeepL explicitly rejected this glossary ID, surface a clear error
+        // so the user knows to fix their plugin settings.
+        if (invalidGlossaryIds.has(validatedGlossaryId)) {
+          // Prefer the original DatoCMS locale codes for a user-friendly message
+          const src = opts.originalSourceLocale ?? opts.sourceLang;
+          const tgt = opts.originalTargetLocale ?? opts.targetLang;
+          const pair = src ? `"${src}" to "${tgt}"` : `"${tgt}"`;
+          throw new ProviderError(
+            `Glossary ID "${validatedGlossaryId}" is invalid for the language pair ${pair}. Please check the glossary ID in your DeepL plugin settings.`,
+            400,
+            'deepl',
+          );
+        }
         // Glossary doesn't support this language pair - skip it
         validatedGlossaryId = undefined;
       }

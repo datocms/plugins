@@ -407,12 +407,16 @@ connect({
 
       if (isTranslationModalResult(result)) {
         if (result.completed) {
-          ctx.notice(
+          await ctx.notice(
             `Successfully translated ${items.length} record(s) from ${fromLocale} to ${toLocale}`,
           );
         } else if (result.canceled) {
-          ctx.notice(
+          await ctx.notice(
             `Translation from ${fromLocale} to ${toLocale} was canceled`,
+          );
+        } else {
+          await ctx.alert(
+            'The translation failed with errors.',
           );
         }
       }
