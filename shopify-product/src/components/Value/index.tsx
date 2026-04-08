@@ -6,8 +6,9 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import classNames from 'classnames';
 import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
 import { useCtx } from 'datocms-react-ui';
-import { useCallback, useEffect, useMemo } from 'react';
-import { normalizeConfig } from '../../types';
+import { useEffect, useMemo } from 'react';
+import { useShallow } from 'zustand/react/shallow';
+import { parseAndNormalizeConfig } from '../../types';
 import ShopifyClient from '../../utils/ShopifyClient';
 import useStore, { type State } from '../../utils/useStore';
 import Price from '../Price';
@@ -21,7 +22,7 @@ export type ValueProps = {
 export default function Value({ value, onReset }: ValueProps) {
   const ctx = useCtx<RenderFieldExtensionCtx>();
 
-  const { storefrontAccessToken, shopifyDomain } = normalizeConfig(
+  const { storefrontAccessToken, shopifyDomain } = parseAndNormalizeConfig(
     ctx.plugin.attributes.parameters,
   );
 
@@ -30,8 +31,10 @@ export default function Value({ value, onReset }: ValueProps) {
     [storefrontAccessToken, shopifyDomain],
   );
 
+  // getProduct() returns a new object each call; useShallow prevents
+  // infinite re-renders by comparing { status, product } shallowly.
   const { product, status } = useStore(
-    useCallback((state) => (state as State).getProduct(value), [value]),
+    useShallow((state) => (state as State).getProduct(value)),
   );
 
   const fetchProductByHandle = useStore(

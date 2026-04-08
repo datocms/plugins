@@ -4,7 +4,8 @@ import classNames from 'classnames';
 import type { RenderModalCtx } from 'datocms-plugin-sdk';
 import { Button, Canvas, Spinner, TextInput } from 'datocms-react-ui';
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
-import { normalizeConfig } from '../../types';
+import { useShallow } from 'zustand/react/shallow';
+import { parseAndNormalizeConfig } from '../../types';
 import ShopifyClient, { type Product } from '../../utils/ShopifyClient';
 import useStore, { type State } from '../../utils/useStore';
 import s from './styles.module.css';
@@ -13,13 +14,32 @@ export default function BrowseProductsModal({ ctx }: { ctx: RenderModalCtx }) {
   const performSearch = useStore(
     (state) => (state as State).fetchProductsMatching,
   );
-  const { query, status, products } = useStore((state) =>
-    (state as State).getCurrentSearch(),
+
+  // Select primitives directly — these are referentially stable and safe
+  // to use as zustand selectors without useShallow.
+  const query = useStore((state) => (state as State).query);
+  const status = useStore(
+    (state) =>
+      (state as State).searches[(state as State).query]?.status ?? 'loading',
+  );
+
+  // Derives the product list by joining search result handles against the
+  // products cache. Returns a new array each time, so useShallow is required
+  // to compare elements by reference and avoid infinite re-renders.
+  const products = useStore(
+    useShallow((state) => {
+      const s = state as State;
+      const result = s.searches[s.query]?.result;
+      if (!result) return null;
+      return result
+        .map((handle: string) => s.products[handle]?.result)
+        .filter((p): p is Product => !!p);
+    }),
   );
 
   const [sku, setSku] = useState<string>('');
 
-  const { storefrontAccessToken, shopifyDomain } = normalizeConfig(
+  const { storefrontAccessToken, shopifyDomain } = parseAndNormalizeConfig(
     ctx.plugin.attributes.parameters,
   );
 
@@ -60,7 +80,7 @@ export default function BrowseProductsModal({ ctx }: { ctx: RenderModalCtx }) {
           </Button>
         </form>
         <div className={s.container}>
-          {products?.filter((x) => !!x) && (
+          {!!products?.length && (
             <div
               className={classNames(s.products, {
                 [s.products__loading]: status === 'loading',
