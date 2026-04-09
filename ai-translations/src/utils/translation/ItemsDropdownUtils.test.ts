@@ -4,6 +4,7 @@ import {
   buildTranslatedUpdatePayload,
   type DatoCMSRecordFromAPI,
   shouldTranslateField,
+  stripBlockIds,
 } from './ItemsDropdownUtils';
 
 vi.mock('./TranslateField', () => ({
@@ -169,8 +170,36 @@ describe('ItemsDropdownUtils', () => {
       );
     });
 
-    it('copies source value for required non-translatable fields', async () => {
+    it('copies source value for required non-block fields, strips IDs for required block fields', async () => {
       vi.mocked(translateFieldValue).mockResolvedValue('Ciao');
+
+      const bodyWithBlocks = {
+        en: [
+          {
+            type: 'item',
+            id: 'block-1',
+            attributes: { title: 'Hello' },
+            relationships: {
+              item_type: { data: { id: 'model-1', type: 'item_type' } },
+            },
+          },
+        ],
+        de: [
+          {
+            type: 'item',
+            id: 'block-2',
+            attributes: { title: 'Hallo' },
+            relationships: {
+              item_type: { data: { id: 'model-1', type: 'item_type' } },
+            },
+          },
+        ],
+      };
+
+      const recordWithBlocks: DatoCMSRecordFromAPI = {
+        ...record,
+        body: bodyWithBlocks,
+      };
 
       const dictWithRequired = {
         title: {
@@ -180,31 +209,68 @@ describe('ItemsDropdownUtils', () => {
           validators: { required: {} },
         },
         slug: { editor: 'slug', id: 'field-slug', isLocalized: true },
-        body: { editor: 'structured_text', id: 'field-body', isLocalized: true },
+        body: {
+          editor: 'structured_text',
+          id: 'field-body',
+          isLocalized: true,
+          validators: { required: {} },
+        },
       };
 
       const result = await buildTranslatedUpdatePayload(
-        record,
+        recordWithBlocks,
         'en',
         'it',
         dictWithRequired,
         provider,
-        { ...pluginParams, translationFields: ['slug', 'structured_text'] },
+        { ...pluginParams, translationFields: ['slug'] },
         'access-token',
         'main',
       );
 
-      // title is required but not translatable → copies source value
+      // title is required non-block → copies source value
       expect(result.payload.title).toEqual({
         en: 'Hello',
         de: 'Hallo',
         it: 'Hello',
       });
-      // slug and body are translated normally
+      // slug is translated normally
       expect(result.payload.slug).toEqual({
         en: 'hello-world',
         de: 'hallo-welt',
         it: 'Ciao',
+      });
+      // body is required block field → copies source blocks with IDs stripped
+      expect(result.payload.body).toEqual({
+        en: [
+          {
+            type: 'item',
+            id: 'block-1',
+            attributes: { title: 'Hello' },
+            relationships: {
+              item_type: { data: { id: 'model-1', type: 'item_type' } },
+            },
+          },
+        ],
+        de: [
+          {
+            type: 'item',
+            id: 'block-2',
+            attributes: { title: 'Hallo' },
+            relationships: {
+              item_type: { data: { id: 'model-1', type: 'item_type' } },
+            },
+          },
+        ],
+        it: [
+          {
+            type: 'item',
+            attributes: { title: 'Hello' },
+            relationships: {
+              item_type: { data: { id: 'model-1', type: 'item_type' } },
+            },
+          },
+        ],
       });
     });
 
@@ -239,6 +305,81 @@ describe('ItemsDropdownUtils', () => {
         en: 'hello-world',
         it: null,
       });
+    });
+  });
+
+  describe('stripBlockIds', () => {
+    it('strips id from top-level block objects', () => {
+      const block = {
+        type: 'item',
+        id: 'block-1',
+        attributes: { title: 'Hello' },
+        relationships: {
+          item_type: { data: { id: 'model-1', type: 'item_type' } },
+        },
+      };
+      expect(stripBlockIds(block)).toEqual({
+        type: 'item',
+        attributes: { title: 'Hello' },
+        relationships: {
+          item_type: { data: { id: 'model-1', type: 'item_type' } },
+        },
+      });
+    });
+
+    it('recursively strips ids from nested blocks in arrays', () => {
+      const value = [
+        {
+          type: 'item',
+          id: 'outer-1',
+          attributes: {
+            nested: [
+              {
+                type: 'item',
+                id: 'inner-1',
+                attributes: { text: 'Deep' },
+              },
+            ],
+          },
+        },
+      ];
+      expect(stripBlockIds(value)).toEqual([
+        {
+          type: 'item',
+          attributes: {
+            nested: [
+              {
+                type: 'item',
+                attributes: { text: 'Deep' },
+              },
+            ],
+          },
+        },
+      ]);
+    });
+
+    it('leaves non-block objects untouched', () => {
+      const value = { type: 'paragraph', children: [{ text: 'Hello' }] };
+      expect(stripBlockIds(value)).toEqual(value);
+    });
+
+    it('preserves id on non-block objects (e.g., relationships)', () => {
+      const value = {
+        type: 'item_type',
+        id: 'model-1',
+      };
+      // type is not "item", so id should remain
+      expect(stripBlockIds(value)).toEqual({
+        type: 'item_type',
+        id: 'model-1',
+      });
+    });
+
+    it('passes through primitives and null', () => {
+      expect(stripBlockIds(null)).toBeNull();
+      expect(stripBlockIds(undefined)).toBeUndefined();
+      expect(stripBlockIds('hello')).toBe('hello');
+      expect(stripBlockIds(42)).toBe(42);
     });
   });
 });

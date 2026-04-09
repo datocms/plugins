@@ -582,6 +582,42 @@ export async function translateAndUpdateRecords(
 }
 
 /**
+ * Recursively strips `id` from DatoCMS block objects so the value can be
+ * copied to a new locale without creating duplicate-ID references.
+ *
+ * A DatoCMS block in nested response format looks like:
+ *   { type: "item", id: "abc123", attributes: { ... }, relationships: { ... } }
+ *
+ * Stripping the `id` tells the CMA to create a fresh block instance.
+ * Non-block values (strings, numbers, file references, etc.) pass through
+ * unchanged. Arrays and nested objects are recursed into so that deeply
+ * nested blocks (e.g., modular content inside a block) are also handled.
+ */
+export function stripBlockIds(value: unknown): unknown {
+  if (value === null || value === undefined) return value;
+
+  if (Array.isArray(value)) {
+    return value.map(stripBlockIds);
+  }
+
+  if (typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+
+    // Detect a DatoCMS block: { type: "item", id: "..." }
+    const isBlock = obj.type === 'item' && typeof obj.id === 'string';
+
+    const result: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(obj)) {
+      if (isBlock && key === 'id') continue;
+      result[key] = stripBlockIds(val);
+    }
+    return result;
+  }
+
+  return value;
+}
+
+/**
  * Builds an update payload with translated values for an API-fetched record.
  *
  * Context: table/bulk actions using CMA records (client.items.*). Returns a
@@ -699,6 +735,15 @@ export async function buildTranslatedUpdatePayload(
   // DatoCMS requires every localized field to include a value for a new locale
   // (the Locale Sync Rule). Fields that weren't translated still need the
   // target locale key — use null for optional fields, source value for required.
+  // For required block fields, copy source blocks with IDs stripped so DatoCMS
+  // creates fresh block instances for the new locale.
+  const blockEditorTypes = new Set([
+    'rich_text',
+    'structured_text',
+    'framed_single_block',
+    'frameless_single_block',
+  ]);
+
   for (const [field, meta] of Object.entries(fieldTypeDictionary)) {
     if (!meta.isLocalized) continue;
     if (updatePayload[field]) continue;
@@ -708,10 +753,16 @@ export async function buildTranslatedUpdatePayload(
     if (existingTargetKey !== undefined) continue;
 
     const sourceValue = getExactSourceValue(fieldData, fromLocale);
-    const fallbackValue =
-      isFieldRequired(meta.validators) && sourceValue != null
-        ? sourceValue
-        : null;
+    const isRequired =
+      isFieldRequired(meta.validators) && sourceValue != null;
+    const isBlockField = blockEditorTypes.has(meta.editor);
+
+    let fallbackValue: unknown = null;
+    if (isRequired && isBlockField) {
+      fallbackValue = stripBlockIds(sourceValue);
+    } else if (isRequired) {
+      fallbackValue = sourceValue;
+    }
 
     updatePayload[field] = {
       ...fieldData,
