@@ -10,7 +10,10 @@ import {
 import { normalizeProviderError } from './ProviderErrors';
 import {
   type FieldTypeDictionary,
+  type FieldValidators,
+  findExactLocaleKey,
   getExactSourceValue,
+  isFieldRequired,
   prepareFieldTypePrompt,
 } from './SharedFieldUtils';
 // no specific ctx type required here; we accept a minimal ctx shape
@@ -692,6 +695,30 @@ export async function buildTranslatedUpdatePayload(
     Promise.resolve(),
   );
 
+  // Ensure ALL localized fields have the target locale in the payload.
+  // DatoCMS requires every localized field to include a value for a new locale
+  // (the Locale Sync Rule). Fields that weren't translated still need the
+  // target locale key — use null for optional fields, source value for required.
+  for (const [field, meta] of Object.entries(fieldTypeDictionary)) {
+    if (!meta.isLocalized) continue;
+    if (updatePayload[field]) continue;
+
+    const fieldData = (record[field] as Record<string, unknown>) ?? {};
+    const existingTargetKey = findExactLocaleKey(fieldData, toLocale);
+    if (existingTargetKey !== undefined) continue;
+
+    const sourceValue = getExactSourceValue(fieldData, fromLocale);
+    const fallbackValue =
+      isFieldRequired(meta.validators) && sourceValue != null
+        ? sourceValue
+        : null;
+
+    updatePayload[field] = {
+      ...fieldData,
+      [toLocale]: fallbackValue,
+    };
+  }
+
   return {
     payload: updatePayload,
     translatedFieldCount,
@@ -771,12 +798,14 @@ export async function buildFieldTypeDictionary(
         appearance: { editor: string };
         id: string;
         localized: boolean;
+        validators: FieldValidators;
       },
     ) => {
       acc[field.api_key] = {
         editor: field.appearance.editor,
         id: field.id,
         isLocalized: field.localized,
+        validators: field.validators,
       };
       return acc;
     },

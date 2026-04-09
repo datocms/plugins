@@ -3,14 +3,23 @@
  * Small, side-effect-free helpers shared by form and CMA flows.
  */
 
+import type { ApiTypes } from '@datocms/cma-client-browser';
 import { fieldPrompt } from '../../prompts/FieldPrompts';
+
+/** Union of all per-field-type validator shapes from the CMA client. */
+export type FieldValidators = ApiTypes.Field['validators'];
 
 /**
  * Field metadata dictionary keyed by field API key.
  */
 export type FieldTypeDictionary = Record<
   string,
-  { editor: string; id: string; isLocalized: boolean }
+  {
+    editor: string;
+    id: string;
+    isLocalized: boolean;
+    validators?: FieldValidators;
+  }
 >;
 
 /**
@@ -137,6 +146,17 @@ export function prepareFieldTypePrompt(fieldType: string): string {
     fieldTypePrompt += fieldPrompt[fieldType as keyof typeof fieldPrompt] || '';
   }
   return fieldTypePrompt;
+}
+
+/**
+ * Checks whether a field's validators include the `required` constraint.
+ *
+ * @param validators - The validators object from a field's schema metadata.
+ * @returns True when the field is required.
+ */
+export function isFieldRequired(validators: FieldValidators | undefined): boolean {
+  if (!validators) return false;
+  return 'required' in validators;
 }
 
 /**

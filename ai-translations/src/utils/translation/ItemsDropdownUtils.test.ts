@@ -82,7 +82,7 @@ describe('ItemsDropdownUtils', () => {
   });
 
   describe('buildTranslatedUpdatePayload', () => {
-    it('leaves disabled fields untouched in the payload', async () => {
+    it('includes disabled fields with null fallback in the payload (locale sync)', async () => {
       vi.mocked(translateFieldValue).mockResolvedValue('Ciao');
 
       const result = await buildTranslatedUpdatePayload(
@@ -98,11 +98,17 @@ describe('ItemsDropdownUtils', () => {
 
       expect(result.payload).toEqual({
         title: { en: 'Hello', de: 'Hallo', it: 'Ciao' },
+        slug: { en: 'hello-world', de: 'hallo-welt', it: null },
+        body: {
+          en: [{ type: 'paragraph', children: [{ text: 'Body text' }] }],
+          de: [{ type: 'paragraph', children: [{ text: 'Vorhanden' }] }],
+          it: null,
+        },
       });
       expect(result.warnings).toEqual([]);
     });
 
-    it('leaves excluded fields untouched in the payload', async () => {
+    it('includes excluded fields with null fallback in the payload (locale sync)', async () => {
       vi.mocked(translateFieldValue).mockResolvedValue('Ciao');
 
       const result = await buildTranslatedUpdatePayload(
@@ -117,6 +123,7 @@ describe('ItemsDropdownUtils', () => {
       );
 
       expect(result.payload).toEqual({
+        title: { en: 'Hello', de: 'Hallo', it: null },
         slug: { en: 'hello-world', de: 'hallo-welt', it: 'Ciao' },
         body: {
           en: [{ type: 'paragraph', children: [{ text: 'Body text' }] }],
@@ -152,10 +159,86 @@ describe('ItemsDropdownUtils', () => {
         de: 'Hallo',
         it: 'Ciao',
       });
-      expect(result.payload.slug).toBeUndefined();
+      expect(result.payload.slug).toEqual({
+        en: 'hello-world',
+        de: 'hallo-welt',
+        it: null,
+      });
       expect(result.warnings).toContain(
         'Field "slug" was skipped: Translated slug is empty after normalization.',
       );
+    });
+
+    it('copies source value for required non-translatable fields', async () => {
+      vi.mocked(translateFieldValue).mockResolvedValue('Ciao');
+
+      const dictWithRequired = {
+        title: {
+          editor: 'single_line',
+          id: 'field-title',
+          isLocalized: true,
+          validators: { required: {} },
+        },
+        slug: { editor: 'slug', id: 'field-slug', isLocalized: true },
+        body: { editor: 'structured_text', id: 'field-body', isLocalized: true },
+      };
+
+      const result = await buildTranslatedUpdatePayload(
+        record,
+        'en',
+        'it',
+        dictWithRequired,
+        provider,
+        { ...pluginParams, translationFields: ['slug', 'structured_text'] },
+        'access-token',
+        'main',
+      );
+
+      // title is required but not translatable → copies source value
+      expect(result.payload.title).toEqual({
+        en: 'Hello',
+        de: 'Hallo',
+        it: 'Hello',
+      });
+      // slug and body are translated normally
+      expect(result.payload.slug).toEqual({
+        en: 'hello-world',
+        de: 'hallo-welt',
+        it: 'Ciao',
+      });
+    });
+
+    it('skips fallback for fields that already have the target locale', async () => {
+      vi.mocked(translateFieldValue).mockResolvedValue('Ciao');
+
+      const recordWithExistingLocale: DatoCMSRecordFromAPI = {
+        id: 'record-2',
+        item_type: { id: 'item-type-1' },
+        title: { en: 'Hello', it: 'Existing' },
+        slug: { en: 'hello-world' },
+        body: {
+          en: [{ type: 'paragraph', children: [{ text: 'Body text' }] }],
+        },
+      };
+
+      const result = await buildTranslatedUpdatePayload(
+        recordWithExistingLocale,
+        'en',
+        'it',
+        fieldTypeDictionary,
+        provider,
+        { ...pluginParams, translationFields: ['structured_text'] },
+        'access-token',
+        'main',
+      );
+
+      // title already has 'it' → not overwritten
+      expect(result.payload.title).toBeUndefined();
+      // slug does not have 'it' → gets null fallback
+      expect(result.payload.slug).toEqual({
+        en: 'hello-world',
+        it: null,
+      });
     });
   });
 });

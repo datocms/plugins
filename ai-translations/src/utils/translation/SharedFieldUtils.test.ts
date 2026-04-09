@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { isFieldExcluded, normalizeTranslatedSlug } from './SharedFieldUtils';
+import {
+  isFieldExcluded,
+  isFieldRequired,
+  normalizeTranslatedSlug,
+} from './SharedFieldUtils';
 
 describe('SharedFieldUtils', () => {
   describe('normalizeTranslatedSlug', () => {
@@ -38,6 +42,17 @@ describe('SharedFieldUtils', () => {
       expect(isFieldExcluded(['details.en.slug'], ['field-id-1', 'slug'])).toBe(
         true,
       );
+    });
+  });
+
+  describe('isFieldRequired', () => {
+    it('returns true when validators contain the required key', () => {
+      expect(isFieldRequired({ required: {} })).toBe(true);
+    });
+
+    it('returns false when validators are empty or missing required', () => {
+      expect(isFieldRequired({})).toBe(false);
+      expect(isFieldRequired(undefined)).toBe(false);
     });
   });
 });
