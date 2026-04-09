@@ -11,6 +11,7 @@
 
 import type { buildClient } from '@datocms/cma-client-browser';
 import { SchemaRepository } from '@datocms/cma-client-browser';
+import type { FieldValidators } from './translation/SharedFieldUtils';
 
 /**
  * Field metadata shape used by TranslateField.ts for block field lookups.
@@ -19,7 +20,7 @@ export type BlockFieldMeta = {
   editor: string;
   id: string;
   localized?: boolean;
-  validators?: unknown;
+  validators?: FieldValidators;
 };
 
 /**
@@ -113,6 +114,7 @@ export async function buildFieldTypeDictionaryFromRepo(
       editor: field.appearance.editor,
       id: field.id,
       isLocalized: field.localized,
+      validators: field.validators,
     };
     return acc;
   }, {} as FieldTypeDictionary);
