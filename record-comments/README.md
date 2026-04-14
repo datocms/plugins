@@ -62,6 +62,7 @@ To enable realtime updates:
 
 ## Changelog
 
+- 1.0.13: Fix more environment bugs and TypeScript errors
 - 1.0.12: Fix using the plugin in an environment other than primary
 - 1.0.11 and prior: No changelog kept
 

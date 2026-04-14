@@ -170,7 +170,7 @@ describe('applyUpvoteComment', () => {
       const parent = createCommentWithReplies(1, { id: 'parent' });
       const replyId = parent.replies?.[0].id;
       const userId = 'voter-user-1';
-      parent.replies?.[0].upvoterIds = [userId];
+      parent.replies[0].upvoterIds = [userId];
       const op = createUpvoteCommentOp(replyId, 'remove', userId, 'parent');
 
       const result = applyOperation([parent], op);

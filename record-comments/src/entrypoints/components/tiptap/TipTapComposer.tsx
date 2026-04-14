@@ -666,10 +666,7 @@ export const TipTapComposer = forwardRef<
     const handleTypeSelectionNavigationKey = useCallback(
       (
         key: string,
-        currentCommand: Extract<
-          NonNullable<ActiveSlashCommand>,
-          { phase: 'type_selection' }
-        >,
+        currentCommand: ActiveSlashCommand & { phase: 'type_selection' },
         range: SuggestionProps['range'],
       ): boolean | null => {
         const currentList = getFilteredListForType(
@@ -719,10 +716,7 @@ export const TipTapComposer = forwardRef<
     const handleTypeSelectionKeyDown = useCallback(
       (
         event: KeyboardEvent,
-        currentCommand: Extract<
-          NonNullable<ActiveSlashCommand>,
-          { phase: 'type_selection' }
-        >,
+        currentCommand: ActiveSlashCommand & { phase: 'type_selection' },
         range: SuggestionProps['range'],
       ): boolean => {
         if (

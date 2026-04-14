@@ -1,6 +1,7 @@
 import { buildClient } from '@datocms/cma-client-browser';
 import styles from '@styles/configscreen.module.css';
 import {
+  type NormalizedComment,
   migrateCommentsToUuid,
   normalizeCommentIfValid,
 } from '@utils/migrations';
@@ -69,7 +70,7 @@ function normalizeCommentsFromArray(
   record: MigrationRecord,
   modelInfo: ModelWithCommentLog,
   results: MigrationResults,
-): ReturnType<typeof normalizeCommentIfValid>[] {
+): NormalizedComment[] {
   const normalizedComments = commentsArray.flatMap((comment) => {
     const normalizedComment = normalizeCommentIfValid(comment);
     return normalizedComment ? [normalizedComment] : [];
