@@ -62,7 +62,7 @@ connect({
           hasAccessToken: !!ctx.currentUserAccessToken,
         },
       );
-      ctx.notice(
+      await ctx.alert(
         'Comments plugin initialization warning: Unable to verify comment storage. ' +
           'If this is your first time using the plugin, please check your permissions.',
       );

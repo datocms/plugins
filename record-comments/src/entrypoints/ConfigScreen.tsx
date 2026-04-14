@@ -318,8 +318,11 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
 
   const getClient = useCallback(() => {
     if (!ctx.currentUserAccessToken) return null;
-    return buildClient({ apiToken: ctx.currentUserAccessToken });
-  }, [ctx.currentUserAccessToken]);
+    return buildClient({
+      apiToken: ctx.currentUserAccessToken,
+      environment: ctx.environment,
+    });
+  }, [ctx.currentUserAccessToken, ctx.environment]);
 
   const scanSingleModel = useCallback(
     async (
