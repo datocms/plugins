@@ -114,6 +114,9 @@ export async function ensureCommentsModelExists(
 ): Promise<string | null> {
   if (!ctx.currentUserAccessToken) return null;
 
-  const client = buildClient({ apiToken: ctx.currentUserAccessToken });
+  const client = buildClient({
+    apiToken: ctx.currentUserAccessToken,
+    environment: ctx.environment,
+  });
   return ensureCommentsModelExistsWithClient(client);
 }

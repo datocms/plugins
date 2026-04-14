@@ -86,7 +86,10 @@ const CommentsBar = ({ ctx }: Props) => {
     realTimeRequested,
   ]);
 
-  const client = useMemo(() => createApiClient(cmaToken), [cmaToken]);
+  const client = useMemo(
+    () => createApiClient(cmaToken, ctx.environment),
+    [cmaToken, ctx.environment],
+  );
   const { projectUsers, projectModels, modelFields, typedUsers } =
     useProjectData(ctx, { loadFields: true });
   const { canMentionAssets, canMentionModels, readableModels } =
