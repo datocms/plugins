@@ -38,10 +38,10 @@ export function useNavigationCallbacks(
           const fullPath = localeAlreadyInPath
             ? fieldPath
             : `${fieldPath}.${effectiveLocale}`;
-          const path = `${buildRecordEditPath(modelId, recordId)}#fieldPath=${fullPath}`;
+          const path = `${buildRecordEditPath(ctx, modelId, recordId)}#fieldPath=${fullPath}`;
           await ctx.navigateTo(path);
         } else {
-          const path = `${buildRecordEditPath(modelId, recordId)}#fieldPath=${fieldPath}`;
+          const path = `${buildRecordEditPath(ctx, modelId, recordId)}#fieldPath=${fieldPath}`;
           await ctx.navigateTo(path);
         }
       } catch {
@@ -57,7 +57,7 @@ export function useNavigationCallbacks(
       // This prevents field highlight from carrying over to the record edit modal
       const currentRecordId = ctx.item?.id;
       if (currentRecordId) {
-        const cleanPath = buildRecordEditPath(ctx.itemType.id, currentRecordId);
+        const cleanPath = buildRecordEditPath(ctx, ctx.itemType.id, currentRecordId);
         await ctx.navigateTo(cleanPath);
       }
       await ctx.editItem(recordId);

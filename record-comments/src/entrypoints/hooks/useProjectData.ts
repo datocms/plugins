@@ -39,14 +39,6 @@ export function useProjectData(
 ): UseProjectDataReturn {
   const { loadFields = false } = options;
 
-  const _itemTypesStableKey = useMemo(() => {
-    const itemTypes = getValidItemTypes(ctx.itemTypes);
-    return itemTypes
-      .map((it) => it.id)
-      .sort()
-      .join(',');
-  }, [ctx.itemTypes]);
-
   const projectModels = useMemo(() => {
     const itemTypes = getValidItemTypes(ctx.itemTypes);
     return itemTypes.map(
@@ -87,8 +79,6 @@ export function useProjectData(
       errorContext: { itemTypeId },
     },
   );
-
-  const _currentUserId = ctx.currentUser.id;
 
   const buildTypedUsersFromRaw = useCallback(
     (

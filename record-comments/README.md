@@ -60,6 +60,12 @@ To enable realtime updates:
 - Ensure the current user can create and inspect models/fields in the project
 - Reload the plugin after permissions are fixed so it can verify the internal `project_comment` model
 
+## Changelog
+
+- 1.0.13: Fix more environment bugs and TypeScript errors
+- 1.0.12: Fix using the plugin in an environment other than primary
+- 1.0.11 and prior: No changelog kept
+
 ## Support
 
 - [DatoCMS Documentation](https://www.datocms.com/docs)

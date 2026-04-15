@@ -1,6 +1,7 @@
 import { buildClient } from '@datocms/cma-client-browser';
 import styles from '@styles/configscreen.module.css';
 import {
+  type NormalizedComment,
   migrateCommentsToUuid,
   normalizeCommentIfValid,
 } from '@utils/migrations';
@@ -69,7 +70,7 @@ function normalizeCommentsFromArray(
   record: MigrationRecord,
   modelInfo: ModelWithCommentLog,
   results: MigrationResults,
-): ReturnType<typeof normalizeCommentIfValid>[] {
+): NormalizedComment[] {
   const normalizedComments = commentsArray.flatMap((comment) => {
     const normalizedComment = normalizeCommentIfValid(comment);
     return normalizedComment ? [normalizedComment] : [];
@@ -318,8 +319,11 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
 
   const getClient = useCallback(() => {
     if (!ctx.currentUserAccessToken) return null;
-    return buildClient({ apiToken: ctx.currentUserAccessToken });
-  }, [ctx.currentUserAccessToken]);
+    return buildClient({
+      apiToken: ctx.currentUserAccessToken,
+      environment: ctx.environment,
+    });
+  }, [ctx.currentUserAccessToken, ctx.environment]);
 
   const scanSingleModel = useCallback(
     async (

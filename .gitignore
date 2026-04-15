@@ -8,3 +8,5 @@ build
 
 # Personal Claude Code instructions
 CLAUDE.local.md
+
+*.tsbuildinfo

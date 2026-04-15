@@ -526,15 +526,14 @@ export function useFieldNavigation({
       }
 
       if (viewMode === 'locales' && currentField?.availableLocales) {
+        const locales = currentField.availableLocales;
         return handleListKeyNav(
           key,
           setLocalSelectedIndex,
-          currentField.availableLocales.length,
+          locales.length,
           () => {
-            if (localSelectedIndex < currentField.availableLocales?.length) {
-              handleLocaleClick(
-                currentField.availableLocales?.[localSelectedIndex],
-              );
+            if (localSelectedIndex < locales.length) {
+              handleLocaleClick(locales[localSelectedIndex]);
             }
           },
           handleBack,
