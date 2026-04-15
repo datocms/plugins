@@ -199,9 +199,11 @@ const Main = ({ ctx }: PropTypes) => {
           const deserializedResult = {
             readability: removeResultsWithNoText(analyzeResult.readability),
             seo: removeResultsWithNoText(analyzeResult.seo['']),
-            relatedKeywordsSeo: relatedKeywords.map((_, i) =>
-              removeResultsWithNoText(relatedResults.seo[i]),
-            ),
+            relatedKeywordsSeo: relatedResults
+              ? relatedKeywords.map((_, i) =>
+                  removeResultsWithNoText(relatedResults.seo[i]),
+                )
+              : [],
           };
 
           setAnalysis(deserializedResult);

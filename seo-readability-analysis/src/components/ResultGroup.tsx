@@ -14,7 +14,7 @@ const TrustedHtml = ({
   className,
 }: {
   html: string;
-  tag?: keyof JSX.IntrinsicElements;
+  tag?: 'p' | 'div';
   className?: string;
 }) => {
   const ref = useRef<HTMLElement>(null);
