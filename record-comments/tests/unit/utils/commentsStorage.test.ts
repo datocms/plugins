@@ -1,9 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import { COMMENT_FIELDS, COMMENTS_MODEL_API_KEY } from '@/constants';
+import { createApiClient } from '@/utils/cmaClient';
 import {
   ensureCommentsModelExists,
   ensureCommentsModelExistsWithClient,
 } from '@/utils/commentsStorage';
+
+vi.mock('@/utils/cmaClient', () => ({
+  createApiClient: vi.fn(),
+}));
 
 function createClientMock() {
   return {
@@ -25,6 +30,27 @@ describe('ensureCommentsModelExists', () => {
     } as never);
 
     expect(result).toBeNull();
+  });
+
+  it('builds the CMA client with the current environment', async () => {
+    const client = createClientMock();
+    client.itemTypes.list.mockResolvedValue([
+      { id: 'comments-model', api_key: COMMENTS_MODEL_API_KEY },
+    ]);
+    client.fields.list.mockResolvedValue([
+      { id: 'field-model', api_key: COMMENT_FIELDS.MODEL_ID },
+      { id: 'field-record', api_key: COMMENT_FIELDS.RECORD_ID },
+      { id: 'field-content', api_key: COMMENT_FIELDS.CONTENT },
+    ]);
+    vi.mocked(createApiClient).mockReturnValue(client as never);
+
+    const result = await ensureCommentsModelExists({
+      currentUserAccessToken: 'token',
+      environment: 'sandbox-env',
+    } as never);
+
+    expect(result).toBe('comments-model');
+    expect(createApiClient).toHaveBeenCalledWith('token', 'sandbox-env');
   });
 });
 

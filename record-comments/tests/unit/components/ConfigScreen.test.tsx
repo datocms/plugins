@@ -87,6 +87,7 @@ function createCtx(overrides: Record<string, unknown> = {}) {
         },
       },
     },
+    environment: 'main',
     currentUserAccessToken: 'token',
     itemTypes: {},
     loadItemTypeFields: vi.fn().mockResolvedValue([]),

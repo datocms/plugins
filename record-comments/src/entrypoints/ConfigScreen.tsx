@@ -1,4 +1,4 @@
-import { buildClient } from '@datocms/cma-client-browser';
+import type { Client } from '@datocms/cma-client-browser';
 import styles from '@styles/configscreen.module.css';
 import {
   type NormalizedComment,
@@ -17,6 +17,7 @@ import {
 } from 'datocms-react-ui';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { COMMENTS_MODEL_API_KEY } from '@/constants';
+import { createApiClient } from '@/utils/cmaClient';
 import { logDebug, logWarn, setDebugLoggingEnabled } from '@/utils/errorLogger';
 
 type PropTypes = {
@@ -93,7 +94,7 @@ function normalizeCommentsFromArray(
 }
 
 async function createOrSkipCommentRecord(
-  client: ReturnType<typeof buildClient>,
+  client: Client,
   record: MigrationRecord,
   modelInfo: ModelWithCommentLog,
   commentsModelId: string,
@@ -134,7 +135,7 @@ async function createOrSkipCommentRecord(
 }
 
 async function fetchAllRecordsForModel(
-  client: ReturnType<typeof buildClient>,
+  client: Client,
   modelApiKey: string,
 ): Promise<Array<{ id: string; comment_log: unknown }>> {
   const allRecords: Array<{ id: string; comment_log: unknown }> = [];
@@ -318,11 +319,7 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
   };
 
   const getClient = useCallback(() => {
-    if (!ctx.currentUserAccessToken) return null;
-    return buildClient({
-      apiToken: ctx.currentUserAccessToken,
-      environment: ctx.environment,
-    });
+    return createApiClient(ctx.currentUserAccessToken, ctx.environment);
   }, [ctx.currentUserAccessToken, ctx.environment]);
 
   const scanSingleModel = useCallback(
@@ -1152,6 +1149,7 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
           <div className={styles.buttonRow}>
             <Button
               buttonType="primary"
+              fullWidth
               onClick={handleSave}
               disabled={
                 isSaving || !hasChanges || (realTimeEnabled && !trimmedCdaToken)

@@ -1,6 +1,7 @@
-import { buildClient, type Client } from '@datocms/cma-client-browser';
+import type { Client } from '@datocms/cma-client-browser';
 import type { OnBootCtx } from 'datocms-plugin-sdk';
 import { COMMENT_FIELDS, COMMENTS_MODEL_API_KEY } from '@/constants';
+import { createApiClient } from '@/utils/cmaClient';
 
 type CommentsStorageClient = Pick<Client, 'itemTypes' | 'fields'>;
 type CommentsModel = Awaited<
@@ -112,11 +113,8 @@ export async function ensureCommentsModelExistsWithClient(
 export async function ensureCommentsModelExists(
   ctx: OnBootCtx,
 ): Promise<string | null> {
-  if (!ctx.currentUserAccessToken) return null;
+  const client = createApiClient(ctx.currentUserAccessToken, ctx.environment);
+  if (!client) return null;
 
-  const client = buildClient({
-    apiToken: ctx.currentUserAccessToken,
-    environment: ctx.environment,
-  });
   return ensureCommentsModelExistsWithClient(client);
 }
