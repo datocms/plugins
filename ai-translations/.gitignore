@@ -25,6 +25,5 @@ dist-ssr
 
 .tmplr-preview
 
-# Claude Code files
-CLAUDE.md
-AGENTS.md
+# Personal agent instructions
+AGENTS.local.md

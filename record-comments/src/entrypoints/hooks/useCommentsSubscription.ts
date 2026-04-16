@@ -215,6 +215,7 @@ export function useCommentsSubscription({
     query,
     variables,
     token: cdaToken ?? '',
+    environment: ctx.environment,
     enabled: isRealtimeSubscriptionEnabled,
     includeDrafts: true,
     reconnectionPeriod: subscriptionKey > 0 ? 100 : undefined,

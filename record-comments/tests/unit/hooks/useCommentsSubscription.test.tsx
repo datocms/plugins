@@ -17,6 +17,7 @@ function createSidebarCtx(
   includeCommentsModel = true,
 ) {
   return {
+    environment: 'branch-env',
     item: recordId ? { id: recordId } : null,
     itemType: { id: 'model-1' },
     itemTypes: includeCommentsModel
@@ -80,6 +81,38 @@ describe('useCommentsSubscription', () => {
     expect(useQuerySubscriptionMock.mock.calls.length).toBe(
       afterRetryCallCount,
     );
+    unmount();
+  });
+
+  it('passes the current environment to the realtime subscription', () => {
+    useQuerySubscriptionMock.mockReturnValue({
+      data: null,
+      status: 'connecting',
+      error: null,
+    });
+
+    const { unmount } = renderHook(() =>
+      useCommentsSubscription({
+        ctx: createSidebarCtx('record-1'),
+        realTimeEnabled: true,
+        cdaToken: 'token-1',
+        client: null,
+        commentsModelId: 'comments-model',
+        isSyncAllowed: true,
+        query: 'query',
+        variables: { modelId: 'model-1', recordId: 'record-1' },
+        filterParams: { modelId: 'model-1', recordId: 'record-1' },
+        subscriptionEnabled: true,
+        currentUserId: 'user-1',
+      }),
+    );
+
+    expect(useQuerySubscriptionMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        environment: 'branch-env',
+      }),
+    );
+
     unmount();
   });
 

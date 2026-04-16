@@ -6,7 +6,7 @@ build
 # Ignore Jetbrains IDE files
 .idea
 
-# Personal Claude Code instructions
-CLAUDE.local.md
+# Personal agent instructions
+AGENTS.local.md
 
 *.tsbuildinfo

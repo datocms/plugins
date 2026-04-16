@@ -22,7 +22,7 @@ All notable changes to the Locale Duplicate plugin will be documented in this fi
 - **Configuration**: Plugin now has a dedicated configuration screen for field-level copy settings
 
 ### Improved
-- **Documentation**: Updated README and added CLAUDE.md for development guidance
+- **Documentation**: Updated README and added repository guidance for development workflow
 - **User Experience**: Clearer separation between mass duplication and field-level copying features
 
 ## [0.4.0] - 2025-04-01

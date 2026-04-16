@@ -34,5 +34,4 @@ playwright-report/
 playwright/.cache/
 coverage/
 
-CLAUDE.md
-agent.md
+AGENTS.local.md
