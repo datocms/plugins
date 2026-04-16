@@ -1,7 +1,7 @@
 import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
 import { Button } from 'datocms-react-ui';
 import get from 'lodash-es/get';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import * as helpers from 'yoastseo/build/helpers';
 import Paper from 'yoastseo/build/values/Paper';
 import AnalysisWorkerWrapper from 'yoastseo/build/worker/AnalysisWorkerWrapper';
@@ -87,6 +87,23 @@ type PropTypes = {
   ctx: RenderFieldExtensionCtx;
 };
 
+const normalizeFieldValue = (
+  value: Partial<FieldValue> | null | undefined,
+): FieldValue => ({
+  keyword: value?.keyword ?? '',
+  synonyms: value?.synonyms ?? '',
+  relatedKeywords: Array.isArray(value?.relatedKeywords)
+    ? value.relatedKeywords.map((related) => ({
+        keyword: related?.keyword ?? '',
+        synonyms: related?.synonyms ?? '',
+      }))
+    : [],
+});
+
+const serializeFieldValue = (
+  value: Partial<FieldValue> | null | undefined,
+): string => JSON.stringify(normalizeFieldValue(value));
+
 const Main = ({ ctx }: PropTypes) => {
   const { htmlGeneratorUrl } = ctx.plugin.attributes
     .parameters as ValidParameters;
@@ -95,6 +112,7 @@ const Main = ({ ctx }: PropTypes) => {
   const fieldValue = rawFieldValue
     ? (JSON.parse(rawFieldValue) as FieldValue)
     : null;
+  const comparableRawFieldValue = serializeFieldValue(fieldValue);
   const {
     item,
     locale,
@@ -268,20 +286,50 @@ const Main = ({ ctx }: PropTypes) => {
   }, [isWorkerReady, page, keyword, synonyms, relatedKeywords]);
 
   const [activeTab, setActiveTab] = useState(tabs[0].key);
+  const hasMounted = useRef(false);
+  const ctxRef = useRef(ctx);
+  const lastSyncedValue = useRef<string>(comparableRawFieldValue);
 
   useEffect(() => {
+    ctxRef.current = ctx;
+  }, [ctx]);
+
+  useEffect(() => {
+    lastSyncedValue.current = comparableRawFieldValue;
+  }, [comparableRawFieldValue]);
+
+  useEffect(() => {
+    const serializedValue = serializeFieldValue({
+      keyword,
+      synonyms,
+      relatedKeywords,
+    });
+
+    if (!hasMounted.current) {
+      hasMounted.current = true;
+      return;
+    }
+
+    if (lastSyncedValue.current === serializedValue) {
+      return;
+    }
+
     const timeoutId = window.setTimeout(() => {
-      ctx.setFieldValue(
-        ctx.fieldPath,
-        JSON.stringify({
-          keyword,
-          synonyms,
-          relatedKeywords,
-        }),
-      );
+      lastSyncedValue.current = serializedValue;
+      Promise.resolve(
+        ctxRef.current.setFieldValue(ctxRef.current.fieldPath, serializedValue),
+      ).catch((error) => {
+        logPluginError('Field value write failed', error);
+      });
     }, 200);
+
     return () => window.clearTimeout(timeoutId);
-  }, [keyword, synonyms, relatedKeywords, ctx]);
+  }, [
+    keyword,
+    synonyms,
+    relatedKeywords,
+    comparableRawFieldValue,
+  ]);
 
   const validRelatedIndices = relatedKeywords
     .map((related, i) => ({ related, i }))
