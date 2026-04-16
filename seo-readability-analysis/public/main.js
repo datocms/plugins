@@ -1685,9 +1685,9 @@
     "node_modules/lodash/lodash.js"(exports, module) {
       (function() {
         var undefined2;
-        var VERSION = "4.17.23";
+        var VERSION = "4.18.1";
         var LARGE_ARRAY_SIZE = 200;
-        var CORE_ERROR_TEXT = "Unsupported core-js use. Try https://npms.io/search?q=ponyfill.", FUNC_ERROR_TEXT = "Expected a function", INVALID_TEMPL_VAR_ERROR_TEXT = "Invalid `variable` option passed into `_.template`";
+        var CORE_ERROR_TEXT = "Unsupported core-js use. Try https://npms.io/search?q=ponyfill.", FUNC_ERROR_TEXT = "Expected a function", INVALID_TEMPL_VAR_ERROR_TEXT = "Invalid `variable` option passed into `_.template`", INVALID_TEMPL_IMPORTS_ERROR_TEXT = "Invalid `imports` option passed into `_.template`";
         var HASH_UNDEFINED = "__lodash_hash_undefined__";
         var MAX_MEMOIZE_SIZE = 500;
         var PLACEHOLDER = "__lodash_placeholder__";
@@ -3617,19 +3617,12 @@
             if (!length) {
               return true;
             }
-            var isRootPrimitive = object == null || typeof object !== "object" && typeof object !== "function";
             while (++index < length) {
-              var key = path[index];
-              if (typeof key !== "string") {
-                continue;
-              }
+              var key = toKey(path[index]);
               if (key === "__proto__" && !hasOwnProperty2.call(object, "__proto__")) {
                 return false;
               }
-              if (key === "constructor" && index + 1 < length && typeof path[index + 1] === "string" && path[index + 1] === "prototype") {
-                if (isRootPrimitive && index === 0) {
-                  continue;
-                }
+              if ((key === "constructor" || key === "prototype") && index < length - 1) {
                 return false;
               }
             }
@@ -4961,7 +4954,7 @@
             var index = -1, length = pairs == null ? 0 : pairs.length, result2 = {};
             while (++index < length) {
               var pair = pairs[index];
-              result2[pair[0]] = pair[1];
+              baseAssignValue(result2, pair[0], pair[1]);
             }
             return result2;
           }
@@ -6345,8 +6338,13 @@
               options = undefined2;
             }
             string = toString(string);
-            options = assignInWith({}, options, settings, customDefaultsAssignIn);
-            var imports = assignInWith({}, options.imports, settings.imports, customDefaultsAssignIn), importsKeys = keys(imports), importsValues = baseValues(imports, importsKeys);
+            options = assignWith({}, options, settings, customDefaultsAssignIn);
+            var imports = assignWith({}, options.imports, settings.imports, customDefaultsAssignIn), importsKeys = keys(imports), importsValues = baseValues(imports, importsKeys);
+            arrayEach(importsKeys, function(key) {
+              if (reForbiddenIdentifierChars.test(key)) {
+                throw new Error2(INVALID_TEMPL_IMPORTS_ERROR_TEXT);
+              }
+            });
             var isEscaping, isEvaluating, index = 0, interpolate = options.interpolate || reNoMatch, source = "__p += '";
             var reDelimiters = RegExp2(
               (options.escape || reNoMatch).source + "|" + interpolate.source + "|" + (interpolate === reInterpolate ? reEsTemplate : reNoMatch).source + "|" + (options.evaluate || reNoMatch).source + "|$",
@@ -54412,9 +54410,804 @@
     }
   });
 
+  // node_modules/yoastseo/build/languageProcessing/languages/en/config/firstWordExceptions.js
+  var require_firstWordExceptions = __commonJS({
+    "node_modules/yoastseo/build/languageProcessing/languages/en/config/firstWordExceptions.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", {
+        value: true
+      });
+      exports.default = void 0;
+      var _default = exports.default = [
+        // Definite articles:
+        "the",
+        // Indefinite articles:
+        "a",
+        "an",
+        // Numbers 1-10:
+        "one",
+        "two",
+        "three",
+        "four",
+        "five",
+        "six",
+        "seven",
+        "eight",
+        "nine",
+        "ten",
+        // Demonstrative pronouns:
+        "this",
+        "that",
+        "these",
+        "those"
+      ];
+    }
+  });
+
+  // node_modules/yoastseo/build/languageProcessing/languages/en/config/stopWords.js
+  var require_stopWords = __commonJS({
+    "node_modules/yoastseo/build/languageProcessing/languages/en/config/stopWords.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", {
+        value: true
+      });
+      exports.default = void 0;
+      var _default = exports.default = ["to", "which", "who", "whom", "that", "whose", "after", "although", "as", "because", "before", "even if", "even though", "if", "in order that", "inasmuch", "lest", "once", "provided", "since", "so that", "than", "though", "till", "unless", "until", "when", "whenever", "where", "whereas", "wherever", "whether", "while", "why", "by the time", "supposing", "no matter", "how", "what", "won't", "do", "does", "\u2013", "and", "but", "or"];
+    }
+  });
+
+  // node_modules/yoastseo/build/languageProcessing/languages/en/config/twoPartTransitionWords.js
+  var require_twoPartTransitionWords = __commonJS({
+    "node_modules/yoastseo/build/languageProcessing/languages/en/config/twoPartTransitionWords.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", {
+        value: true
+      });
+      exports.default = void 0;
+      var _default = exports.default = [["both", "and"], ["not only", "but also"], ["neither", "nor"], ["either", "or"], ["not", "but"]];
+    }
+  });
+
+  // node_modules/yoastseo/build/languageProcessing/languages/en/config/syllables.json
+  var require_syllables = __commonJS({
+    "node_modules/yoastseo/build/languageProcessing/languages/en/config/syllables.json"(exports, module) {
+      module.exports = {
+        vowels: "aeiouy",
+        deviations: {
+          vowels: [
+            {
+              fragments: [
+                "cial",
+                "tia",
+                "cius",
+                "giu",
+                "ion",
+                "[^bdnprv]iou",
+                "sia$",
+                "[^aeiuot]{2,}ed$",
+                "[aeiouy][^aeiuoyts]{1,}e$",
+                "[a-z]ely$",
+                "[cgy]ed$",
+                "rved$",
+                "[aeiouy][dt]es?$",
+                "eau",
+                "ieu",
+                "oeu",
+                "[aeiouy][^aeiouydt]e[sd]?$",
+                "[aeouy]rse$",
+                "^eye"
+              ],
+              countModifier: -1
+            },
+            {
+              fragments: ["ia", "iu", "ii", "io", "[aeio][aeiou]{2}", "[aeiou]ing", "[^aeiou]ying", "ui[aeou]"],
+              countModifier: 1
+            },
+            {
+              fragments: [
+                "^ree[jmnpqrsx]",
+                "^reele",
+                "^reeva",
+                "riet",
+                "dien",
+                "[aeiouym][bdp]le$",
+                "uei",
+                "uou",
+                "^mc",
+                "ism$",
+                "[^l]lien",
+                "^coa[dglx].",
+                "[^gqauieo]ua[^auieo]",
+                "dn't$",
+                "uity$",
+                "ie(r|st)",
+                "[aeiouw]y[aeiou]",
+                "[^ao]ire[ds]",
+                "[^ao]ire$"
+              ],
+              countModifier: 1
+            },
+            {
+              fragments: ["eoa", "eoo", "ioa", "ioe", "ioo"],
+              countModifier: 1
+            }
+          ],
+          words: {
+            full: [
+              {
+                word: "business",
+                syllables: 2
+              },
+              {
+                word: "coheiress",
+                syllables: 3
+              },
+              {
+                word: "colonel",
+                syllables: 2
+              },
+              {
+                word: "heiress",
+                syllables: 2
+              },
+              {
+                word: "i.e",
+                syllables: 2
+              },
+              {
+                word: "shoreline",
+                syllables: 2
+              },
+              {
+                word: "simile",
+                syllables: 3
+              },
+              {
+                word: "unheired",
+                syllables: 2
+              },
+              {
+                word: "wednesday",
+                syllables: 2
+              }
+            ],
+            fragments: {
+              global: [
+                {
+                  word: "coyote",
+                  syllables: 3
+                },
+                {
+                  word: "graveyard",
+                  syllables: 2
+                },
+                {
+                  word: "lawyer",
+                  syllables: 2
+                }
+              ]
+            }
+          }
+        }
+      };
+    }
+  });
+
+  // node_modules/yoastseo/build/languageProcessing/languages/en/config/internal/passiveVoiceNonVerbEndingEd.js
+  var require_passiveVoiceNonVerbEndingEd = __commonJS({
+    "node_modules/yoastseo/build/languageProcessing/languages/en/config/internal/passiveVoiceNonVerbEndingEd.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", {
+        value: true
+      });
+      exports.default = void 0;
+      var _default = exports.default = ["ablebodied", "abovementioned", "absentminded", "accoladed", "accompanied", "acculturized", "accursed", "acerated", "acerbated", "acetylized", "achromatised", "achromatized", "acidified", "acned", "actualised", "adrenalised", "adulated", "adversed", "aestheticised", "affectioned", "affined", "affricated", "aforementioned", "agerelated", "aggrieved", "airbed", "aircooled", "airspeed", "alcoholized", "alcoved", "alkalised", "allianced", "aluminized", "alveolated", "ambered", "ammonified", "amplified", "anagrammatised", "anagrammatized", "anathematised", "aniseed", "ankled", "annualized", "anonymised", "anthologized", "antlered", "anucleated", "anviled", "anvilshaped", "apostrophised", "apostrophized", "appliqued", "apprized", "arbitrated", "armored", "articled", "ashamed", "assented", "atomised", "atrophied", "auricled", "auriculated", "aurified", "autopsied", "axled", "babied", "backhoed", "badmannered", "badtempered", "balustered", "baned", "barcoded", "bareboned", "barefooted", "barelegged", "barnacled", "based", "bayoneted", "beadyeyed", "beaked", "beaned", "beatified", "beautified", "beavered", "bed", "bedamned", "bedecked", "behoved", "belated", "bellbottomed", "bellshaped", "benighted", "bequeathed", "berried", "bespectacled", "bewhiskered", "bighearted", "bigmouthed", "bigoted", "bindweed", "binucleated", "biopsied", "bioturbed", "biped", "bipinnated", "birdfeed", "birdseed", "bisegmented", "bitterhearted", "blabbermouthed", "blackhearted", "bladed", "blankminded", "blearyeyed", "bleed", "blissed", "blobbed", "blondhaired", "bloodied", "bloodred", "bloodshed", "blueblooded", "boatshaped", "bobsled", "bodied", "boldhearted", "boogied", "boosed", "bosomed", "bottlefed", "bottlefeed", "bottlenecked", "bouldered", "bowlegged", "bowlshaped", "brandied", "bravehearted", "breastfed", "breastfeed", "breed", "brighteyed", "brindled", "broadhearted", "broadleaved", "broadminded", "brokenhearted", "broomed", "broomweed", "buccaned", "buckskinned", "bucktoothed", "buddied", "buffaloed", "bugeyed", "bugleweed", "bugweed", "bulletined", "bunked", "busied", "butterfingered", "cabbed", "caddied", "cairned", "calcified", "canalized", "candied", "cannulated", "canoed", "canopied", "canvased", "caped", "capsulated", "cassocked", "castellated", "catabolised", "catheterised", "caudated", "cellmediated", "cellulosed", "certified", "chagrined", "chambered", "chested", "chevroned", "chickenfeed", "chickenhearted", "chickweed", "chilblained", "childbed", "chinned", "chromatographed", "ciliated", "cindered", "cingulated", "circumstanced", "cisgendered", "citrullinated", "clappered", "clarified", "classified", "clawshaped", "claysized", "cleanhearted", "clearminded", "clearsighted", "cliched", "clodded", "cloistered", "closefisted", "closehearted", "closelipped", "closemouthed", "closeted", "cloudseed", "clubfooted", "clubshaped", "clued", "cockeyed", "codified", "coed", "coevolved", "coffined", "coiffed", "coinfected", "coldblooded", "coldhearted", "collateralised", "colonialised", "colorcoded", "colorised", "colourised", "columned", "commoditized", "compactified", "companioned", "complexioned", "conceited", "concerned", "concussed", "coneshaped", "congested", "contented", "convexed", "coralled", "corymbed", "cottonseed", "countrified", "countrybred", "courtmartialled", "coved", "coveralled", "cowshed", "cozied", "cragged", "crayoned", "credentialed", "creed", "crenulated", "crescentshaped", "cressweed", "crewed", "cricked", "crispated", "crossbarred", "crossbed", "crossbred", "crossbreed", "crossclassified", "crosseyed", "crossfertilised", "crossfertilized", "crossindexed", "crosslegged", "crossshaped", "crossstratified", "crossstriated", "crotched", "crucified", "cruelhearted", "crutched", "cubeshaped", "cubified", "cuckolded", "cucumbershaped", "cumbered", "cuminseed", "cupshaped", "curated", "curded", "curfewed", "curlicued", "curlycued", "curried", "curtsied", "cyclized", "cylindershaped", "damed", "dandified", "dangered", "darkhearted", "daybed", "daylighted", "deacidified", "deacylated", "deadhearted", "deadlined", "deaminized", "deathbed", "decalcified", "decertified", "deckbed", "declassified", "declutched", "decolourated", "decreed", "deed", "deeprooted", "deepseated", "defensed", "defied", "deflexed", "deglamorised", "degunkified", "dehumidified", "deified", "deled", "delegitimised", "demoded", "demystified", "denasalized", "denazified", "denied", "denitrified", "denticulated", "deseed", "desexualised", "desposited", "detoxified", "deuced", "devitrified", "dewlapped", "dezincified", "diagonalised", "dialogued", "died", "digitated", "dignified", "dilled", "dimwitted", "diphthonged", "disaffected", "disaggregated", "disarrayed", "discalced", "discolorated", "discolourated", "discshaped", "diseased", "disembodied", "disencumbered", "disfranchised", "diskshaped", "disproportionated", "disproportioned", "disqualified", "distempered", "districted", "diversified", "diverticulated", "divested", "divvied", "dizzied", "dogged", "dogsbodied", "dogsled", "domeshaped", "domiciled", "dormered", "doublebarrelled", "doublestranded", "doublewalled", "downhearted", "duckbilled", "eared", "echeloned", "eddied", "edified", "eggshaped", "elasticated", "electrified", "elegized", "embed", "embodied", "emceed", "empaneled", "empanelled", "emptyhearted", "emulsified", "engined", "ennobled", "envied", "enzymecatalysed", "enzymecatalyzed", "epitomised", "epoxidized", "epoxied", "etherised", "etherized", "evilhearted", "evilminded", "exceed", "excited", "exemplified", "exponentiated", "expurgated", "extravasated", "extraverted", "extroverted", "fabled", "facelifted", "facsimiled", "fainthearted", "falcated", "falsehearted", "falsified", "famed", "fancified", "fanged", "fanshaped", "fantasied", "farsighted", "fated", "fatted", "fazed", "featherbed", "fed", "federalized", "feeblehearted", "feebleminded", "feeblewitted", "feed", "fendered", "fenestrated", "ferried", "fevered", "fibered", "fibred", "ficklehearted", "fiercehearted", "figged", "filigreed", "filterfeed", "fireweed", "firmhearted", "fissured", "flanged", "flanneled", "flannelled", "flatbed", "flatfooted", "flatted", "flawed", "flaxenhaired", "flaxseed", "flaxweed", "flighted", "floodgenerated", "flowerbed", "fluidised", "fluidized", "flurried", "fobbed", "fonded", "forcefeed", "foreshortened", "foresighted", "forkshaped", "formfeed", "fortified", "fortressed", "foulmouthed", "foureyed", "foxtailed", "fractionalised", "fractionalized", "frankhearted", "freed", "freehearted", "freespirited", "frenzied", "friezed", "frontiered", "fructified", "frumped", "fullblooded", "fullbodied", "fullfledged", "fullhearted", "funnelshaped", "furnaced", "gaitered", "galleried", "gangliated", "ganglionated", "gangrened", "gargoyled", "gasified", "gaunted", "gauntleted", "gauzed", "gavelled", "gelatinised", "gemmed", "genderized", "gentled", "gentlehearted", "gerrymandered", "gladhearted", "glamored", "globed", "gloried", "glorified", "glycosylated", "goateed", "gobletshaped", "godspeed", "goodhearted", "goodhumored", "goodhumoured", "goodnatured", "goodtempered", "goosed", "goosenecked", "goutweed", "grainfed", "grammaticalized", "grapeseed", "gratified", "graved", "gravelbed", "grayhaired", "greathearted", "greed", "greenweed", "grommeted", "groundspeed", "groved", "gruffed", "guiled", "gulled", "gumshoed", "gunkholed", "gussied", "guyed", "gyrostabilized", "hackneyed", "hagged", "haired", "halfcivilized", "halfhearted", "halfwitted", "haloed", "handballed", "handfed", "handfeed", "hardcoded", "hardhearted", "hardnosed", "hared", "harelipped", "hasted", "hatred", "haunched", "hawkeyed", "hayseed", "hayweed", "hearsed", "hearted", "heartshaped", "heavenlyminded", "heavyfooted", "heavyhearted", "heed", "heired", "heisted", "helicoptered", "helmed", "helmeted", "hemagglutinated", "hemolyzed", "hempseed", "hempweed", "heparinised", "heparinized", "herbed", "highheeled", "highminded", "highpriced", "highspeed", "highspirited", "hilled", "hipped", "hispanicised", "hocked", "hoed", "hogweed", "holstered", "homaged", "hoodooed", "hoofed", "hooknosed", "hooved", "horned", "horrified", "horseshoed", "horseweed", "hotbed", "hotblooded", "hothearted", "hotted", "hottempered", "hued", "humansized", "humidified", "humped", "hundred", "hutched", "hyperinflated", "hyperpigmented", "hyperstimulated", "hypertrophied", "hyphened", "hypophysectomised", "hypophysectomized", "hypopigmented", "hypostatised", "hysterectomized", "iconified", "iconised", "iconized", "ideologised", "illbred", "illconceived", "illdefined", "illdisposed", "illequipped", "illfated", "illfavored", "illfavoured", "illflavored", "illfurnished", "illhumored", "illhumoured", "illimited", "illmannered", "illnatured", "illomened", "illproportioned", "illqualified", "illscented", "illtempered", "illumed", "illusioned", "imbed", "imbossed", "imbued", "immatured", "impassioned", "impenetrated", "imperfected", "imperialised", "imperturbed", "impowered", "imputed", "inarticulated", "inbred", "inbreed", "incapsulated", "incased", "incrustated", "incrusted", "indebted", "indeed", "indemnified", "indentured", "indigested", "indisposed", "inexperienced", "infrared", "intensified", "intentioned", "interbedded", "interbred", "interbreed", "interluded", "introverted", "inured", "inventoried", "iodinated", "iodised", "irked", "ironfisted", "ironweed", "itchweed", "ivied", "ivyweed", "jagged", "jellified", "jerseyed", "jetlagged", "jetpropelled", "jeweled", "jewelled", "jewelweed", "jiggered", "jimmyweed", "jimsonweed", "jointweed", "joyweed", "jungled", "juried", "justiceweed", "justified", "karstified", "kerchiefed", "kettleshaped", "kibbled", "kidneyshaped", "kimonoed", "kindhearted", "kindred", "kingsized", "kirtled", "knacked", "knapweed", "kneed", "knobbed", "knobweed", "knopweed", "knotweed", "lakebed", "lakeweed", "lamed", "lamellated", "lanceshaped", "lanceted", "landbased", "lapeled", "lapelled", "largehearted", "lariated", "lased", "latticed", "lauded", "lavaged", "lavendered", "lawned", "led", "lefteyed", "legitimatised", "legitimatized", "leisured", "lensshaped", "leveed", "levied", "lichened", "lichenized", "lidded", "lifesized", "lightfingered", "lightfooted", "lighthearted", "lightminded", "lightspeed", "lignified", "likeminded", "lilylivered", "limbed", "linearised", "linearized", "linefeed", "linseed", "lionhearted", "liquefied", "liquified", "lithified", "liveried", "lobbied", "located", "locoweed", "longarmed", "longhaired", "longhorned", "longlegged", "longnecked", "longsighted", "longwinded", "lopsided", "loudmouthed", "louvered", "louvred", "lowbred", "lowpriced", "lowspirited", "lozenged", "lunated", "lyrated", "lysinated", "maced", "macroaggregated", "macrodissected", "maculated", "madweed", "magnified", "maidenweed", "maladapted", "maladjusted", "malnourished", "malrotated", "maned", "mannered", "manuevered", "manyhued", "manyshaped", "manysided", "masted", "mealymouthed", "meanspirited", "membered", "membraned", "metaled", "metalized", "metallised", "metallized", "metamerized", "metathesized", "meted", "methylated", "mettled", "microbrecciated", "microminiaturized", "microstratified", "middleaged", "midsized", "miffed", "mildhearted", "milkweed", "miniskirted", "misactivated", "misaligned", "mischiefed", "misclassified", "misdeed", "misdemeaned", "mismannered", "misnomered", "misproportioned", "miswired", "mitred", "mitted", "mittened", "moneyed", "monocled", "mononucleated", "monospaced", "monotoned", "monounsaturated", "mortified", "moseyed", "motorised", "motorized", "moussed", "moustached", "muddied", "mugweed", "multiarmed", "multibarreled", "multibladed", "multicelled", "multichambered", "multichanneled", "multichannelled", "multicoated", "multidirected", "multiengined", "multifaceted", "multilaminated", "multilaned", "multilayered", "multilobed", "multilobulated", "multinucleated", "multipronged", "multisegmented", "multisided", "multispeed", "multistemmed", "multistoried", "multitalented", "multitoned", "multitowered", "multivalued", "mummied", "mummified", "mustached", "mustachioed", "mutinied", "myelinated", "mystified", "mythicised", "naked", "narcotised", "narrowminded", "natured", "neaped", "nearsighted", "necrosed", "nectared", "need", "needleshaped", "newfangled", "newlywed", "nibbed", "nimblewitted", "nippled", "nixed", "nobled", "noduled", "noised", "nonaccented", "nonactivated", "nonadsorbed", "nonadulterated", "nonaerated", "nonaffiliated", "nonaliased", "nonalienated", "nonaligned", "nonarchived", "nonarmored", "nonassociated", "nonattenuated", "nonblackened", "nonbreastfed", "nonbrecciated", "nonbuffered", "nonbuttered", "noncarbonated", "noncarbonized", "noncatalogued", "noncatalyzed", "noncategorized", "noncertified", "nonchlorinated", "nonciliated", "noncircumcised", "noncivilized", "nonclassified", "noncoated", "noncodified", "noncoerced", "noncommercialized", "noncommissioned", "noncompacted", "noncompiled", "noncomplicated", "noncomposed", "noncomputed", "noncomputerized", "nonconcerted", "nonconditioned", "nonconfirmed", "noncongested", "nonconjugated", "noncooled", "noncorrugated", "noncoupled", "noncreated", "noncrowded", "noncultured", "noncurated", "noncushioned", "nondecoded", "nondecomposed", "nondedicated", "nondeferred", "nondeflated", "nondegenerated", "nondegraded", "nondelegated", "nondelimited", "nondelineated", "nondemarcated", "nondeodorized", "nondeployed", "nonderivatized", "nonderived", "nondetached", "nondetailed", "nondifferentiated", "nondigested", "nondigitized", "nondilapidated", "nondilated", "nondimensionalised", "nondimensionalized", "nondirected", "nondisabled", "nondisciplined", "nondispersed", "nondisputed", "nondisqualified", "nondisrupted", "nondisseminated", "nondissipated", "nondissolved", "nondistressed", "nondistributed", "nondiversified", "nondiverted", "nondocumented", "nondomesticated", "nondoped", "nondrafted", "nondrugged", "nondubbed", "nonducted", "nonearthed", "noneclipsed", "nonedged", "nonedited", "nonelasticized", "nonelectrified", "nonelectroplated", "nonelectroporated", "nonelevated", "noneliminated", "nonelongated", "nonembedded", "nonembodied", "nonemphasized", "nonencapsulated", "nonencoded", "nonencrypted", "nonendangered", "nonengraved", "nonenlarged", "nonenriched", "nonentangled", "nonentrenched", "nonepithelized", "nonequilibrated", "nonestablished", "nonetched", "nonethoxylated", "nonethylated", "nonetiolated", "nonexaggerated", "nonexcavated", "nonexhausted", "nonexperienced", "nonexpired", "nonfabricated", "nonfalsified", "nonfeathered", "nonfeatured", "nonfed", "nonfederated", "nonfeed", "nonfenestrated", "nonfertilized", "nonfilamented", "nonfinanced", "nonfinished", "nonfinned", "nonfissured", "nonflagellated", "nonflagged", "nonflared", "nonflavored", "nonfluidized", "nonfluorinated", "nonfluted", "nonforested", "nonformalized", "nonformatted", "nonfragmented", "nonfragranced", "nonfranchised", "nonfreckled", "nonfueled", "nonfumigated", "nonfunctionalized", "nonfunded", "nongalvanized", "nongated", "nongelatinized", "nongendered", "nongeneralized", "nongenerated", "nongifted", "nonglazed", "nonglucosated", "nonglucosylated", "nonglycerinated", "nongraded", "nongrounded", "nonhalogenated", "nonhandicapped", "nonhospitalised", "nonhospitalized", "nonhydrated", "nonincorporated", "nonindexed", "noninfected", "noninfested", "noninitialized", "noninitiated", "noninoculated", "noninseminated", "noninstitutionalized", "noninsured", "nonintensified", "noninterlaced", "noninterpreted", "nonintroverted", "noninvestigated", "noninvolved", "nonirrigated", "nonisolated", "nonisomerized", "nonissued", "nonitalicized", "nonitemized", "noniterated", "nonjaded", "nonlabelled", "nonlaminated", "nonlateralized", "nonlayered", "nonlegalized", "nonlegislated", "nonlesioned", "nonlexicalized", "nonliberated", "nonlichenized", "nonlighted", "nonlignified", "nonlimited", "nonlinearized", "nonlinked", "nonlobed", "nonlobotomized", "nonlocalized", "nonlysed", "nonmachined", "nonmalnourished", "nonmandated", "nonmarginalized", "nonmassaged", "nonmatriculated", "nonmatted", "nonmatured", "nonmechanized", "nonmedicated", "nonmedullated", "nonmentioned", "nonmetabolized", "nonmetallized", "nonmetastasized", "nonmetered", "nonmethoxylated", "nonmilled", "nonmineralized", "nonmirrored", "nonmodeled", "nonmoderated", "nonmodified", "nonmonetized", "nonmonitored", "nonmortgaged", "nonmotorized", "nonmottled", "nonmounted", "nonmultithreaded", "nonmutilated", "nonmyelinated", "nonnormalized", "nonnucleated", "nonobjectified", "nonobligated", "nonoccupied", "nonoiled", "nonopinionated", "nonoxygenated", "nonpaginated", "nonpaired", "nonparalyzed", "nonparameterized", "nonparasitized", "nonpasteurized", "nonpatterned", "nonphased", "nonphosphatized", "nonphosphorized", "nonpierced", "nonpigmented", "nonpiloted", "nonpipelined", "nonpitted", "nonplussed", "nonpuffed", "nonrandomized", "nonrated", "nonrefined", "nonregistered", "nonregulated", "nonrelated", "nonretarded", "nonsacred", "nonsalaried", "nonsanctioned", "nonsaturated", "nonscented", "nonscheduled", "nonseasoned", "nonsecluded", "nonsegmented", "nonsegregated", "nonselected", "nonsolidified", "nonspecialized", "nonspored", "nonstandardised", "nonstandardized", "nonstratified", "nonstressed", "nonstriated", "nonstriped", "nonstructured", "nonstylised", "nonstylized", "nonsubmerged", "nonsubscripted", "nonsubsidised", "nonsubsidized", "nonsubstituted", "nonsyndicated", "nonsynthesised", "nontabulated", "nontalented", "nonthreaded", "nontinted", "nontolerated", "nontranslated", "nontunnelled", "nonunified", "nonunionised", "nonupholstered", "nonutilised", "nonutilized", "nonvalued", "nonvaried", "nonverbalized", "nonvitrified", "nonvolatilised", "nonvolatilized", "normed", "nosebleed", "notated", "notified", "nuanced", "nullified", "numerated", "oarweed", "objectified", "obliqued", "obtunded", "occupied", "octupled", "odored", "oilseed", "oinked", "oldfashioned", "onesided", "oophorectomized", "opaqued", "openhearted", "openminded", "openmouthed", "opiated", "opinionated", "oracled", "oreweed", "ossified", "outbreed", "outmoded", "outrigged", "outriggered", "outsized", "outskated", "outspeed", "outtopped", "outtrumped", "outvoiced", "outweed", "ovated", "overadorned", "overaged", "overalled", "overassured", "overbred", "overbreed", "overcomplicated", "overdamped", "overdetailed", "overdiversified", "overdyed", "overequipped", "overfatigued", "overfed", "overfeed", "overindebted", "overintensified", "overinventoried", "overmagnified", "overmodified", "overpreoccupied", "overprivileged", "overproportionated", "overqualified", "overseed", "oversexed", "oversimplified", "oversized", "oversophisticated", "overstudied", "oversulfated", "ovicelled", "ovoidshaped", "ozonated", "pacified", "packeted", "palatalized", "paled", "palsied", "paned", "panicled", "parabled", "parallelepiped", "parallelized", "parallelopiped", "parenthesised", "parodied", "parqueted", "passioned", "paunched", "pauperised", "pedigreed", "pedimented", "pedunculated", "pegged", "peglegged", "penanced", "pencilshaped", "permineralized", "personified", "petrified", "photodissociated", "photoduplicated", "photoed", "photoinduced", "photolysed", "photolyzed", "pied", "pigeoned", "pigtailed", "pigweed", "pilastered", "pillared", "pilloried", "pimpled", "pinealectomised", "pinealectomized", "pinfeathered", "pinnacled", "pinstriped", "pixellated", "pixilated", "pixillated", "plainclothed", "plantarflexed", "pled", "plumaged", "pocked", "pokeweed", "polychlorinated", "polyunsaturated", "ponytailed", "pooched", "poorspirited", "popeyed", "poppyseed", "porcelainized", "porched", "poshed", "pottered", "poxed", "preachified", "precertified", "preclassified", "preconized", "preinoculated", "premed", "prenotified", "preoccupied", "preposed", "prequalified", "preshaped", "presignified", "prespecified", "prettified", "pried", "principled", "proceed", "prophesied", "propounded", "prosed", "protonated", "proudhearted", "proxied", "pulpified", "pumpkinseed", "puppied", "purebred", "pured", "pureed", "purified", "pustuled", "putrefied", "pyjamaed", "quadruped", "qualified", "quantified", "quantised", "quantized", "quarried", "queried", "questoned", "quicktempered", "quickwitted", "quiesced", "quietened", "quizzified", "racemed", "radiosensitised", "ragweed", "raindrenched", "ramped", "rapeseed", "rarefied", "rarified", "ratified", "razoredged", "reaccelerated", "reaccompanied", "reachieved", "reacknowledged", "readdicted", "readied", "reamplified", "reannealed", "reassociated", "rebadged", "rebiopsied", "recabled", "recategorised", "receipted", "recentred", "recertified", "rechoreographed", "reclarified", "reclassified", "reconferred", "recrystalized", "rectified", "recursed", "red", "redblooded", "redefied", "redenied", "rednecked", "redshifted", "redweed", "redyed", "reed", "reembodied", "reenlighted", "refeed", "refereed", "reflexed", "refortified", "refronted", "refuged", "reglorified", "reimpregnated", "reinitialized", "rejustified", "related", "reliquefied", "remedied", "remodified", "remonetized", "remythologized", "renotified", "renullified", "renumerated", "reoccupied", "repacified", "repurified", "reputed", "requalified", "rescinded", "reseed", "reshoed", "resolidified", "resorbed", "respecified", "restudied", "retabulated", "reticulated", "retinted", "retreed", "retroacted", "reunified", "reverified", "revested", "revivified", "rewed", "ridgepoled", "riffled", "rightminded", "rigidified", "rinded", "riped", "rited", "ritualised", "riverbed", "rivered", "roached", "roadbed", "robotised", "robotized", "romanized", "rosetted", "rosined", "roughhearted", "rubied", "ruddied", "runcinated", "russeted", "sabled", "sabred", "sabretoothed", "sacheted", "sacred", "saddlebred", "sainted", "salaried", "samoyed", "sanctified", "satellited", "savvied", "sawtoothed", "scandalled", "scarified", "scarped", "sceptred", "scissored", "screed", "screwshaped", "scrupled", "sculked", "scurried", "scuttled", "seabed", "seaweed", "seed", "seedbed", "selfassured", "selforganized", "semicivilized", "semidetached", "semidisassembled", "semidomesticated", "semipetrified", "semipronated", "semirefined", "semivitrified", "sentineled", "sepaled", "sepalled", "sequinned", "sexed", "shagged", "shaggycoated", "shaggyhaired", "shaled", "shammed", "sharpangled", "sharpclawed", "sharpcornered", "sharpeared", "sharpedged", "sharpeyed", "sharpflavored", "sharplimbed", "sharpnosed", "sharpsighted", "sharptailed", "sharptongued", "sharptoothed", "sharpwitted", "sharpworded", "shed", "shellbed", "shieldshaped", "shimmied", "shinned", "shirted", "shirtsleeved", "shoed", "shortbeaked", "shortbilled", "shortbodied", "shorthaired", "shortlegged", "shortlimbed", "shortnecked", "shortnosed", "shortsighted", "shortsleeved", "shortsnouted", "shortstaffed", "shorttailed", "shorttempered", "shorttoed", "shorttongued", "shortwinded", "shortwinged", "shotted", "shred", "shrewsized", "shrined", "shrinkproofed", "sickbed", "sickleshaped", "sickleweed", "signalised", "signified", "silicified", "siliconized", "silkweed", "siltsized", "silvertongued", "simpleminded", "simplified", "singlebarreled", "singlebarrelled", "singlebed", "singlebladed", "singlebreasted", "singlecelled", "singlefooted", "singlelayered", "singleminded", "singleseeded", "singleshelled", "singlestranded", "singlevalued", "sissified", "sistered", "sixgilled", "sixmembered", "sixsided", "sixstoried", "skulled", "slickered", "slipcased", "slowpaced", "slowwitted", "slurried", "smallminded", "smoothened", "smoothtongued", "snaggletoothed", "snouted", "snowballed", "snowcapped", "snowshed", "snowshoed", "snubnosed", "so-called", "sofabed", "softhearted", "sogged", "soled", "solidified", "soliped", "sorbed", "souled", "spearshaped", "specified", "spectacled", "sped", "speeched", "speechified", "speed", "spied", "spiffied", "spindleshaped", "spiritualised", "spirted", "splayfooted", "spoonfed", "spoonfeed", "spoonshaped", "spreadeagled", "squarejawed", "squareshaped", "squareshouldered", "squaretoed", "squeegeed", "staled", "starshaped", "starspangled", "starstudded", "statechartered", "statesponsored", "statued", "steadied", "steampowered", "steed", "steelhearted", "steepled", "sterned", "stiffnecked", "stilettoed", "stimied", "stinkweed", "stirrupshaped", "stockinged", "storeyed", "storied", "stouthearted", "straitlaced", "stratified", "strawberryflavored", "streambed", "stressinduced", "stretchered", "strictured", "strongbodied", "strongboned", "strongflavored", "stronghearted", "stronglimbed", "strongminded", "strongscented", "strongwilled", "stubbled", "studied", "stultified", "stupefied", "styed", "stymied", "subclassified", "subcommissioned", "subminiaturised", "subsaturated", "subulated", "suburbanised", "suburbanized", "suburbed", "succeed", "sueded", "sugarrelated", "sulfurized", "sunbed", "superhardened", "superinfected", "supersimplified", "surefooted", "sweetscented", "swifted", "swordshaped", "syllabified", "syphilized", "tabularized", "talented", "tarpapered", "tautomerized", "teated", "teed", "teenaged", "teetotaled", "tenderhearted", "tentacled", "tenured", "termed", "ternated", "testbed", "testified", "theatricalised", "theatricalized", "themed", "thicketed", "thickskinned", "thickwalled", "thighed", "thimbled", "thimblewitted", "thonged", "thoroughbred", "thralled", "threated", "throated", "throughbred", "thyroidectomised", "thyroidectomized", "tiaraed", "ticktocked", "tidied", "tightassed", "tightfisted", "tightlipped", "timehonoured", "tindered", "tined", "tinselled", "tippytoed", "tiptoed", "titled", "toed", "tomahawked", "tonged", "toolshed", "toothplated", "toplighted", "torchlighted", "toughhearted", "traditionalized", "trajected", "tranced", "transgendered", "transliterated", "translocated", "transmogrified", "treadled", "treed", "treelined", "tressed", "trialled", "triangled", "trifoliated", "trifoliolated", "trilobed", "trucklebed", "truehearted", "trumpetshaped", "trumpetweed", "tuberculated", "tumbleweed", "tunnelshaped", "turbaned", "turreted", "turtlenecked", "tuskshaped", "tweed", "twigged", "typified", "ulcered", "ultracivilised", "ultracivilized", "ultracooled", "ultradignified", "ultradispersed", "ultrafiltered", "ultrared", "ultrasimplified", "ultrasophisticated", "unabandoned", "unabashed", "unabbreviated", "unabetted", "unabolished", "unaborted", "unabraded", "unabridged", "unabsolved", "unabsorbed", "unaccelerated", "unaccented", "unaccentuated", "unacclimatised", "unacclimatized", "unaccompanied", "unaccomplished", "unaccosted", "unaccredited", "unaccrued", "unaccumulated", "unaccustomed", "unacidulated", "unacquainted", "unacquitted", "unactivated", "unactuated", "unadapted", "unaddicted", "unadjourned", "unadjudicated", "unadjusted", "unadmonished", "unadopted", "unadored", "unadorned", "unadsorbed", "unadulterated", "unadvertised", "unaerated", "unaffiliated", "unaggregated", "unagitated", "unaimed", "unaired", "unaliased", "unalienated", "unaligned", "unallocated", "unalloyed", "unalphabetized", "unamassed", "unamortized", "unamplified", "unanaesthetised", "unanaesthetized", "unaneled", "unanesthetised", "unanesthetized", "unangered", "unannealed", "unannexed", "unannihilated", "unannotated", "unanointed", "unanticipated", "unappareled", "unappendaged", "unapportioned", "unapprenticed", "unapproached", "unappropriated", "unarbitrated", "unarched", "unarchived", "unarmored", "unarmoured", "unarticulated", "unascertained", "unashamed", "unaspirated", "unassembled", "unasserted", "unassessed", "unassociated", "unassorted", "unassuaged", "unastonished", "unastounded", "unatoned", "unattained", "unattainted", "unattenuated", "unattributed", "unauctioned", "unaudited", "unauthenticated", "unautographed", "unaverted", "unawaked", "unawakened", "unawarded", "unawed", "unbaffled", "unbaited", "unbalconied", "unbanded", "unbanished", "unbaptised", "unbaptized", "unbarreled", "unbarrelled", "unbattered", "unbeaded", "unbearded", "unbeneficed", "unbesotted", "unbetrayed", "unbetrothed", "unbiased", "unbiassed", "unbigoted", "unbilled", "unblackened", "unblanketed", "unblasphemed", "unblazoned", "unblistered", "unblockaded", "unbloodied", "unbodied", "unbonded", "unbothered", "unbounded", "unbracketed", "unbranded", "unbreaded", "unbrewed", "unbridged", "unbridled", "unbroached", "unbudgeted", "unbuffed", "unbuffered", "unburnished", "unbutchered", "unbuttered", "uncached", "uncaked", "uncalcified", "uncalibrated", "uncamouflaged", "uncamphorated", "uncanceled", "uncancelled", "uncapitalized", "uncarbonated", "uncarpeted", "uncased", "uncashed", "uncastrated", "uncatalogued", "uncatalysed", "uncatalyzed", "uncategorised", "uncatered", "uncaulked", "uncelebrated", "uncensored", "uncensured", "uncertified", "unchambered", "unchanneled", "unchannelled", "unchaperoned", "uncharacterized", "uncharted", "unchartered", "unchastened", "unchastised", "unchelated", "uncherished", "unchilled", "unchristened", "unchronicled", "uncircumcised", "uncircumscribed", "uncited", "uncivilised", "uncivilized", "unclarified", "unclassed", "unclassified", "uncleaved", "unclimbed", "unclustered", "uncluttered", "uncoagulated", "uncoded", "uncodified", "uncoerced", "uncoined", "uncollapsed", "uncollated", "uncolonised", "uncolonized", "uncolumned", "uncombined", "uncommented", "uncommercialised", "uncommercialized", "uncommissioned", "uncommitted", "uncompacted", "uncompartmentalized", "uncompartmented", "uncompensated", "uncompiled", "uncomplicated", "uncompounded", "uncomprehened", "uncomputed", "unconcealed", "unconceded", "unconcluded", "uncondensed", "unconditioned", "unconfined", "unconfirmed", "uncongested", "unconglomerated", "uncongratulated", "unconjugated", "unconquered", "unconsecrated", "unconsoled", "unconsolidated", "unconstipated", "unconstricted", "unconstructed", "unconsumed", "uncontacted", "uncontracted", "uncontradicted", "uncontrived", "unconverted", "unconveyed", "unconvicted", "uncooked", "uncooled", "uncoordinated", "uncopyrighted", "uncored", "uncorrelated", "uncorroborated", "uncosted", "uncounseled", "uncounselled", "uncounterfeited", "uncoveted", "uncrafted", "uncramped", "uncrannied", "uncrazed", "uncreamed", "uncreased", "uncreated", "uncredentialled", "uncredited", "uncrested", "uncrevassed", "uncrippled", "uncriticised", "uncriticized", "uncropped", "uncrosslinked", "uncrowded", "uncrucified", "uncrumbled", "uncrystalized", "uncrystallised", "uncrystallized", "uncubed", "uncuddled", "uncued", "unculled", "uncultivated", "uncultured", "uncupped", "uncurated", "uncurbed", "uncurried", "uncurtained", "uncushioned", "undamped", "undampened", "undappled", "undarkened", "undated", "undaubed", "undazzled", "undeadened", "undeafened", "undebated", "undebunked", "undeceased", "undecimalized", "undeciphered", "undecked", "undeclared", "undecomposed", "undeconstructed", "undedicated", "undefeated", "undeferred", "undefied", "undefined", "undeflected", "undefrauded", "undefrayed", "undegassed", "undejected", "undelegated", "undeleted", "undelimited", "undelineated", "undemented", "undemolished", "undemonstrated", "undenatured", "undenied", "undented", "undeodorized", "undepicted", "undeputized", "underaged", "underarmed", "underassessed", "underbred", "underbudgeted", "undercapitalised", "undercapitalized", "underdiagnosed", "underdocumented", "underequipped", "underexploited", "underexplored", "underfed", "underfeed", "underfurnished", "undergoverned", "undergrazed", "underinflated", "underinsured", "underinvested", "underived", "undermaintained", "undermentioned", "undermotivated", "underperceived", "underpowered", "underprivileged", "underqualified", "underrehearsed", "underresourced", "underripened", "undersaturated", "undersexed", "undersized", "underspecified", "understaffed", "understocked", "understressed", "understudied", "underutilised", "underventilated", "undescaled", "undesignated", "undetached", "undetailed", "undetained", "undeteriorated", "undeterred", "undetonated", "undevised", "undevoted", "undevoured", "undiagnosed", "undialed", "undialysed", "undialyzed", "undiapered", "undiffracted", "undigested", "undignified", "undiluted", "undiminished", "undimmed", "undipped", "undirected", "undisciplined", "undiscouraged", "undiscussed", "undisfigured", "undisguised", "undisinfected", "undismayed", "undisposed", "undisproved", "undisputed", "undisrupted", "undissembled", "undissipated", "undissociated", "undissolved", "undistilled", "undistorted", "undistracted", "undistributed", "undisturbed", "undiversified", "undiverted", "undivulged", "undoctored", "undocumented", "undomesticated", "undosed", "undramatised", "undrilled", "undrugged", "undubbed", "unduplicated", "uneclipsed", "unedged", "unedited", "unejaculated", "unejected", "unelaborated", "unelapsed", "unelected", "unelectrified", "unelevated", "unelongated", "unelucidated", "unemaciated", "unemancipated", "unemasculated", "unembalmed", "unembed", "unembellished", "unembodied", "unemboldened", "unemerged", "unenacted", "unencoded", "unencrypted", "unencumbered", "unendangered", "unendorsed", "unenergized", "unenfranchised", "unengraved", "unenhanced", "unenlarged", "unenlivened", "unenraptured", "unenriched", "unentangled", "unentitled", "unentombed", "unentranced", "unentwined", "unenumerated", "unenveloped", "unenvied", "unequaled", "unequalised", "unequalized", "unequalled", "unequipped", "unerased", "unerected", "uneroded", "unerupted", "unescorted", "unestablished", "unevaluated", "unexaggerated", "unexampled", "unexcavated", "unexceeded", "unexcelled", "unexecuted", "unexerted", "unexhausted", "unexpensed", "unexperienced", "unexpired", "unexploited", "unexplored", "unexposed", "unexpurgated", "unextinguished", "unfabricated", "unfaceted", "unfanned", "unfashioned", "unfathered", "unfathomed", "unfattened", "unfavored", "unfavoured", "unfazed", "unfeathered", "unfed", "unfeigned", "unfermented", "unfertilised", "unfertilized", "unfilleted", "unfiltered", "unfinished", "unflavored", "unflavoured", "unflawed", "unfledged", "unfleshed", "unflurried", "unflushed", "unflustered", "unfluted", "unfocussed", "unforested", "unformatted", "unformulated", "unfortified", "unfractionated", "unfractured", "unfragmented", "unfrequented", "unfretted", "unfrosted", "unfueled", "unfunded", "unfurnished", "ungarbed", "ungarmented", "ungarnished", "ungeared", "ungerminated", "ungifted", "unglazed", "ungoverned", "ungraded", "ungrasped", "ungratified", "ungroomed", "ungrounded", "ungrouped", "ungummed", "ungusseted", "unhabituated", "unhampered", "unhandicapped", "unhardened", "unharvested", "unhasped", "unhatched", "unheralded", "unhindered", "unhomogenised", "unhomogenized", "unhonored", "unhonoured", "unhooded", "unhusked", "unhyphenated", "unified", "unillustrated", "unimpacted", "unimpaired", "unimpassioned", "unimpeached", "unimpelled", "unimplemented", "unimpregnated", "unimprisoned", "unimpugned", "unincorporated", "unincubated", "unincumbered", "unindemnified", "unindexed", "unindicted", "unindorsed", "uninduced", "unindustrialised", "unindustrialized", "uninebriated", "uninfected", "uninflated", "uninflected", "uninhabited", "uninhibited", "uninitialised", "uninitialized", "uninitiated", "uninoculated", "uninseminated", "uninsulated", "uninsured", "uninterpreted", "unintimidated", "unintoxicated", "unintroverted", "uninucleated", "uninverted", "uninvested", "uninvolved", "unissued", "unjaundiced", "unjointed", "unjustified", "unkeyed", "unkindled", "unlabelled", "unlacquered", "unlamented", "unlaminated", "unlarded", "unlaureled", "unlaurelled", "unleaded", "unleavened", "unled", "unlettered", "unlicenced", "unlighted", "unlimbered", "unlimited", "unlined", "unlipped", "unliquidated", "unlithified", "unlittered", "unliveried", "unlobed", "unlocalised", "unlocalized", "unlocated", "unlogged", "unlubricated", "unmagnified", "unmailed", "unmaimed", "unmaintained", "unmalted", "unmangled", "unmanifested", "unmanipulated", "unmannered", "unmanufactured", "unmapped", "unmarred", "unmastered", "unmatriculated", "unmechanised", "unmechanized", "unmediated", "unmedicated", "unmentioned", "unmerged", "unmerited", "unmetabolised", "unmetabolized", "unmetamorphosed", "unmethylated", "unmineralized", "unmitigated", "unmoderated", "unmodernised", "unmodernized", "unmodified", "unmodulated", "unmolded", "unmolested", "unmonitored", "unmortgaged", "unmotivated", "unmotorised", "unmotorized", "unmounted", "unmutated", "unmutilated", "unmyelinated", "unnaturalised", "unnaturalized", "unnotched", "unnourished", "unobligated", "unobstructed", "unoccupied", "unoiled", "unopposed", "unoptimised", "unordained", "unorganised", "unorganized", "unoriented", "unoriginated", "unornamented", "unoxidized", "unoxygenated", "unpacified", "unpackaged", "unpaired", "unparalleled", "unparallelled", "unparasitized", "unpardoned", "unparodied", "unpartitioned", "unpasteurised", "unpasteurized", "unpatented", "unpaved", "unpedigreed", "unpenetrated", "unpenned", "unperfected", "unperjured", "unpersonalised", "unpersuaded", "unperturbed", "unperverted", "unpestered", "unphosphorylated", "unphotographed", "unpigmented", "unpiloted", "unpledged", "unploughed", "unplumbed", "unpoised", "unpolarized", "unpoliced", "unpolled", "unpopulated", "unposed", "unpowered", "unprecedented", "unpredicted", "unprejudiced", "unpremeditated", "unprescribed", "unpressurised", "unpressurized", "unpriced", "unprimed", "unprincipled", "unprivileged", "unprized", "unprocessed", "unprofaned", "unprofessed", "unprohibited", "unprompted", "unpronounced", "unproposed", "unprospected", "unproved", "unpruned", "unpublicised", "unpublicized", "unpublished", "unpuckered", "unpunctuated", "unpurified", "unqualified", "unquantified", "unquenched", "unquoted", "unranked", "unrated", "unratified", "unrebuked", "unreckoned", "unrecompensed", "unreconciled", "unreconstructed", "unrectified", "unredeemed", "unrefined", "unrefreshed", "unrefrigerated", "unregarded", "unregimented", "unregistered", "unregulated", "unrehearsed", "unrelated", "unrelieved", "unrelinquished", "unrenewed", "unrented", "unrepealed", "unreplicated", "unreprimanded", "unrequited", "unrespected", "unrestricted", "unretained", "unretarded", "unrevised", "unrevived", "unrevoked", "unrifled", "unripened", "unrivaled", "unrivalled", "unroasted", "unroofed", "unrounded", "unruffled", "unsalaried", "unsalted", "unsanctified", "unsanctioned", "unsanded", "unsaponified", "unsated", "unsatiated", "unsatisfied", "unsaturated", "unscaled", "unscarred", "unscathed", "unscented", "unscheduled", "unschooled", "unscreened", "unscripted", "unseamed", "unseared", "unseasoned", "unseeded", "unsegmented", "unsegregated", "unselected", "unserviced", "unsexed", "unshamed", "unshaped", "unsharpened", "unsheared", "unshielded", "unshifted", "unshirted", "unshoed", "unshuttered", "unsifted", "unsighted", "unsilenced", "unsimplified", "unsized", "unskewed", "unskinned", "unslaked", "unsliced", "unsloped", "unsmoothed", "unsoiled", "unsoldered", "unsolicited", "unsolved", "unsophisticated", "unsorted", "unsourced", "unsoured", "unspaced", "unspanned", "unspecialised", "unspecialized", "unspecified", "unspiced", "unstaged", "unstandardised", "unstandardized", "unstapled", "unstarched", "unstarred", "unstated", "unsteadied", "unstemmed", "unsterilised", "unsterilized", "unstickered", "unstiffened", "unstifled", "unstigmatised", "unstigmatized", "unstilted", "unstippled", "unstipulated", "unstirred", "unstocked", "unstoked", "unstoppered", "unstratified", "unstressed", "unstriped", "unstructured", "unstudied", "unstumped", "unsubdued", "unsubmitted", "unsubsidised", "unsubsidized", "unsubstantiated", "unsubstituted", "unsugared", "unsummarized", "unsupervised", "unsuprised", "unsurveyed", "unswayed", "unsweetened", "unsyllabled", "unsymmetrized", "unsynchronised", "unsynchronized", "unsyncopated", "unsyndicated", "unsynthesized", "unsystematized", "untagged", "untainted", "untalented", "untanned", "untaped", "untapered", "untargeted", "untarnished", "untattooed", "untelevised", "untempered", "untenanted", "unterminated", "untextured", "unthickened", "unthinned", "unthrashed", "unthreaded", "unthrottled", "unticketed", "untiled", "untilled", "untilted", "untimbered", "untinged", "untinned", "untinted", "untitled", "untoasted", "untoggled", "untoothed", "untopped", "untoughened", "untracked", "untrammeled", "untrammelled", "untranscribed", "untransduced", "untransferred", "untranslated", "untransmitted", "untraumatized", "untraversed", "untufted", "untuned", "untutored", "unupgraded", "unupholstered", "unutilised", "unutilized", "unuttered", "unvaccinated", "unvacuumed", "unvalidated", "unvalued", "unvandalized", "unvaned", "unvanquished", "unvapourised", "unvapourized", "unvaried", "unvariegated", "unvarnished", "unvented", "unventilated", "unverbalised", "unverbalized", "unverified", "unversed", "unvetted", "unvictimized", "unviolated", "unvitrified", "unvocalized", "unvoiced", "unwaged", "unwarped", "unwarranted", "unwaxed", "unweakened", "unweaned", "unwearied", "unweathered", "unwebbed", "unwed", "unwedded", "unweeded", "unweighted", "unwelded", "unwinterized", "unwired", "unwitnessed", "unwonted", "unwooded", "unworshipped", "unwounded", "unzoned", "uprated", "uprighted", "upsized", "upswelled", "vacuolated", "valanced", "valueoriented", "varied", "vascularised", "vascularized", "vasectomised", "vaunted", "vectorised", "vectorized", "vegged", "verdured", "verified", "vermiculated", "vernacularized", "versified", "verticillated", "vesiculated", "vied", "vilified", "virtualised", "vitrified", "vivified", "volumed", "vulcanised", "wabbled", "wafered", "waisted", "walleyed", "wared", "warmblooded", "warmhearted", "warted", "waterbased", "waterbed", "watercooled", "watersaturated", "watershed", "wavegenerated", "waxweed", "weakhearted", "weakkneed", "weakminded", "wearied", "weatherised", "weatherstriped", "webfooted", "wedgeshaped", "weed", "weeviled", "welladapted", "welladjusted", "wellbred", "wellconducted", "welldefined", "welldisposed", "welldocumented", "wellequipped", "wellestablished", "wellfavored", "wellfed", "wellgrounded", "wellintentioned", "wellmannered", "wellminded", "wellorganised", "wellrounded", "wellshaped", "wellstructured", "whinged", "whinnied", "whiplashed", "whiskered", "wholehearted", "whorled", "widebased", "wideeyed", "widemeshed", "widemouthed", "widenecked", "widespaced", "wilded", "wildered", "wildeyed", "willinghearted", "windspeed", "winterfed", "winterfeed", "winterised", "wirehaired", "wised", "witchweed", "woaded", "wombed", "wooded", "woodshed", "wooled", "woolled", "woollyhaired", "woollystemmed", "woolyhaired", "woolyminded", "wormholed", "wormshaped", "wrappered", "wretched", "wronghearted", "ycleped", "yolked", "zincified", "zinckified", "zinkified", "zombified"];
+    }
+  });
+
+  // node_modules/yoastseo/build/languageProcessing/languages/en/helpers/internal/getParticiples.js
+  var require_getParticiples = __commonJS({
+    "node_modules/yoastseo/build/languageProcessing/languages/en/helpers/internal/getParticiples.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", {
+        value: true
+      });
+      exports.default = getParticiples;
+      var _lodash = require_lodash();
+      var _yoastseo = require_build11();
+      var _passiveVoiceIrregulars = _interopRequireDefault(require_passiveVoiceIrregulars());
+      function _interopRequireDefault(e) {
+        return e && e.__esModule ? e : { default: e };
+      }
+      var {
+        matchRegularParticiples,
+        getWords
+      } = _yoastseo.languageProcessing;
+      function getParticiples(clauseText) {
+        const words = getWords(clauseText);
+        const foundParticiples = [];
+        (0, _lodash.forEach)(words, function(word) {
+          const regex = [/\w+ed($|[ \n\r\t.,'()"+\-;!?:/»«‹›<>])/ig];
+          if (matchRegularParticiples(word, regex).length !== 0 || (0, _lodash.includes)(_passiveVoiceIrregulars.default, word)) {
+            foundParticiples.push(word);
+          }
+        });
+        return foundParticiples;
+      }
+    }
+  });
+
+  // node_modules/yoastseo/build/languageProcessing/languages/en/values/Clause.js
+  var require_Clause2 = __commonJS({
+    "node_modules/yoastseo/build/languageProcessing/languages/en/values/Clause.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", {
+        value: true
+      });
+      exports.default = void 0;
+      var _lodash = require_lodash();
+      var _functionWords = require_functionWords();
+      var _passiveVoiceNonVerbEndingEd = _interopRequireDefault(require_passiveVoiceNonVerbEndingEd());
+      var _getParticiples = _interopRequireDefault(require_getParticiples());
+      var _yoastseo = require_build11();
+      function _interopRequireDefault(e) {
+        return e && e.__esModule ? e : { default: e };
+      }
+      var {
+        precedenceException,
+        directPrecedenceException,
+        values
+      } = _yoastseo.languageProcessing;
+      var Clause = values.Clause;
+      var EnglishClause = class extends Clause {
+        /**
+         * Constructor.
+         *
+         * @param {string} clauseText   The text of the clause.
+         * @param {Array} auxiliaries   The auxiliaries.
+         *
+         * @constructor
+         */
+        constructor(clauseText, auxiliaries) {
+          super(clauseText, auxiliaries);
+          this._participles = (0, _getParticiples.default)(this.getClauseText());
+          this.checkParticiples();
+        }
+        /**
+         * Checks if any exceptions are applicable to this participle that would result in the clause not being passive.
+         * If no exceptions are found, the clause is passive.
+         *
+         * @returns {boolean} Returns true if no exception is found.
+         */
+        checkParticiples() {
+          const clause = this.getClauseText();
+          const passiveParticiples = this.getParticiples().filter((participle) => !(0, _lodash.includes)(_passiveVoiceNonVerbEndingEd.default, participle) && !this.hasRidException(participle) && !directPrecedenceException(clause, participle, _functionWords.cannotDirectlyPrecedePassiveParticiple) && !precedenceException(clause, participle, _functionWords.cannotBeBetweenPassiveAuxiliaryAndParticiple));
+          this.setPassive(passiveParticiples.length > 0);
+        }
+        /**
+         * Checks whether the participle is 'rid' in combination with 'get', 'gets', 'getting', 'got' or 'gotten'.
+         * If this is true, the participle is not passive.
+         *
+         * @param {string} participle   The participle
+         *
+         * @returns {boolean} Returns true if 'rid' is found in combination with a form of 'get'
+         * otherwise returns false.
+         */
+        hasRidException(participle) {
+          if (participle === "rid") {
+            const irregularExclusionArray = ["get", "gets", "getting", "got", "gotten"];
+            return !(0, _lodash.isEmpty)((0, _lodash.intersection)(irregularExclusionArray, this.getAuxiliaries()));
+          }
+          return false;
+        }
+      };
+      var _default = exports.default = EnglishClause;
+    }
+  });
+
+  // node_modules/yoastseo/build/languageProcessing/languages/en/helpers/getClauses.js
+  var require_getClauses2 = __commonJS({
+    "node_modules/yoastseo/build/languageProcessing/languages/en/helpers/getClauses.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", {
+        value: true
+      });
+      exports.default = getEnglishClauses;
+      var _yoastseo = require_build11();
+      var _Clause = _interopRequireDefault(require_Clause2());
+      var _passiveVoiceAuxiliaries = _interopRequireDefault(require_passiveVoiceAuxiliaries());
+      var _stopWords = _interopRequireDefault(require_stopWords());
+      var _lodash = require_lodash();
+      var _stripSpaces = _interopRequireDefault(require_stripSpaces());
+      var _indices = require_indices();
+      function _interopRequireDefault(e) {
+        return e && e.__esModule ? e : { default: e };
+      }
+      var {
+        createRegexFromArray,
+        getClauses
+      } = _yoastseo.languageProcessing;
+      var options = {
+        Clause: _Clause.default,
+        stopwords: _stopWords.default,
+        auxiliaries: _passiveVoiceAuxiliaries.default,
+        ingExclusions: ["king", "cling", "ring", "being", "thing", "something", "anything"],
+        regexes: {
+          auxiliaryRegex: createRegexFromArray(_passiveVoiceAuxiliaries.default),
+          stopCharacterRegex: /([:,]|('ll)|('ve))(?=[ \n\r\t'"+\-»«‹›<>])/ig,
+          verbEndingInIngRegex: /\w+ing(?=$|[ \n\r\t.,'()"+\-;!?:/»«‹›<>])/ig
+        },
+        otherStopWordIndices: []
+      };
+      var getVerbsEndingInIngIndices = function(sentence) {
+        let matches = sentence.match(options.regexes.verbEndingInIngRegex) || [];
+        matches = matches.filter((match) => !(0, _lodash.includes)(options.ingExclusions, (0, _stripSpaces.default)(match)));
+        return (0, _indices.getIndicesByWordList)(matches, sentence);
+      };
+      function getEnglishClauses(sentence) {
+        options.otherStopWordIndices = getVerbsEndingInIngIndices(sentence);
+        return getClauses(sentence, options);
+      }
+    }
+  });
+
+  // node_modules/yoastseo/build/languageProcessing/languages/en/helpers/internal/getAdjectiveStem.js
+  var require_getAdjectiveStem = __commonJS({
+    "node_modules/yoastseo/build/languageProcessing/languages/en/helpers/internal/getAdjectiveStem.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", {
+        value: true
+      });
+      exports.default = _default;
+      var _yoastseo = require_build11();
+      var _countSyllables = require_countSyllables();
+      var _syllables = _interopRequireDefault(require_syllables());
+      function _interopRequireDefault(e) {
+        return e && e.__esModule ? e : { default: e };
+      }
+      var {
+        buildFormRule,
+        createRulesFromArrays
+      } = _yoastseo.languageProcessing;
+      var refineAdjectiveCheck = (word, endsWith, nonStemmingExceptions, forcedStemmingExceptions) => {
+        const countSyllables = (0, _countSyllables.countSyllablesInWord)(word, _syllables.default);
+        if (word.endsWith(endsWith)) {
+          if (countSyllables <= 1) {
+            return false;
+          }
+          const adjectiveEndingInYSuffix = `i${endsWith}`;
+          const isStemEndingInY = word.endsWith(adjectiveEndingInYSuffix);
+          const isForcedStemmingException = forcedStemmingExceptions.includes(word.slice(0, -adjectiveEndingInYSuffix.length)) || forcedStemmingExceptions.includes(word.slice(0, -endsWith.length));
+          const isNonStemmingException = nonStemmingExceptions.includes(word);
+          const maxSyllables = isStemEndingInY ? 3 : 2;
+          if (isForcedStemmingException || countSyllables <= maxSyllables && !isNonStemmingException) {
+            return true;
+          }
+        }
+        return false;
+      };
+      var endsWithAndNoException = (word, endsWith, nonStemmingExceptions) => word.endsWith(endsWith) && !nonStemmingExceptions.includes(word);
+      var constructCanBeFunction = function(endsWith, minimumWordLength, nonStemmingExceptions = [], forcedStemmingExceptions = [], checkFunction = endsWithAndNoException) {
+        return (word) => {
+          const wordLength = word.length;
+          if (wordLength < minimumWordLength) {
+            return false;
+          }
+          return checkFunction(word, endsWith, nonStemmingExceptions, forcedStemmingExceptions);
+        };
+      };
+      function _default(word, regexAdjective, stopAdjectives, multiSyllableAdjWithSuffixes) {
+        const canBeComparative = constructCanBeFunction("er", 4, stopAdjectives.erExceptions, multiSyllableAdjWithSuffixes, refineAdjectiveCheck);
+        if (canBeComparative(word)) {
+          const comparativeToBaseRegex = createRulesFromArrays(regexAdjective.comparativeToBase);
+          return {
+            base: buildFormRule(word, comparativeToBaseRegex) || word,
+            guessedForm: "er"
+          };
+        }
+        const canBeSuperlative = constructCanBeFunction("est", 5, stopAdjectives.estExceptions, multiSyllableAdjWithSuffixes, refineAdjectiveCheck);
+        if (canBeSuperlative(word)) {
+          const superlativeToBaseRegex = createRulesFromArrays(regexAdjective.superlativeToBase);
+          return {
+            base: buildFormRule(word, superlativeToBaseRegex) || word,
+            guessedForm: "est"
+          };
+        }
+        const canBeLyAdverb = constructCanBeFunction("ly", 5, stopAdjectives.lyExceptions);
+        if (canBeLyAdverb(word)) {
+          const adverbToBaseRegex = createRulesFromArrays(regexAdjective.adverbToBase);
+          return {
+            base: buildFormRule(word, adverbToBaseRegex),
+            guessedForm: "ly"
+          };
+        }
+        return {
+          base: word,
+          guessedForm: "base"
+        };
+      }
+    }
+  });
+
+  // node_modules/yoastseo/build/languageProcessing/languages/en/helpers/internal/getVerbStem.js
+  var require_getVerbStem = __commonJS({
+    "node_modules/yoastseo/build/languageProcessing/languages/en/helpers/internal/getVerbStem.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", {
+        value: true
+      });
+      exports.normalizePrefixed = exports.getInfinitive = exports.endsWithIng = exports.checkIrregulars = void 0;
+      var _lodash = require_lodash();
+      var _yoastseo = require_build11();
+      var {
+        buildFormRule,
+        createRulesFromArrays
+      } = _yoastseo.languageProcessing;
+      var vowelRegex = /([aeiouy])/g;
+      var normalizePrefixed = function(word, verbPrefixes) {
+        for (const property in verbPrefixes) {
+          if (verbPrefixes.hasOwnProperty) {
+            verbPrefixes[property] = new RegExp(verbPrefixes[property], "i");
+          }
+        }
+        if (verbPrefixes.sevenLetterHyphenPrefixes.test(word) === true) {
+          return {
+            normalizedWord: word.replace(verbPrefixes.sevenLetterHyphenPrefixes, ""),
+            prefix: word.substring(0, 8)
+          };
+        }
+        if (verbPrefixes.sevenLetterPrefixes.test(word) === true) {
+          return {
+            normalizedWord: word.replace(verbPrefixes.sevenLetterPrefixes, ""),
+            prefix: word.substring(0, 7)
+          };
+        }
+        if (verbPrefixes.fiveLetterHyphenPrefixes.test(word) === true) {
+          return {
+            normalizedWord: word.replace(verbPrefixes.fiveLetterHyphenPrefixes, ""),
+            prefix: word.substring(0, 6)
+          };
+        }
+        if (verbPrefixes.fiveLetterPrefixes.test(word) === true) {
+          return {
+            normalizedWord: word.replace(verbPrefixes.fiveLetterPrefixes, ""),
+            prefix: word.substring(0, 5)
+          };
+        }
+        if (verbPrefixes.fourLetterHyphenPrefixes.test(word) === true) {
+          return {
+            normalizedWord: word.replace(verbPrefixes.fourLetterHyphenPrefixes, ""),
+            prefix: word.substring(0, 5)
+          };
+        }
+        if (verbPrefixes.fourLetterPrefixes.test(word) === true) {
+          return {
+            normalizedWord: word.replace(verbPrefixes.fourLetterPrefixes, ""),
+            prefix: word.substring(0, 4)
+          };
+        }
+        if (verbPrefixes.threeLetterHyphenPrefixes.test(word) === true) {
+          return {
+            normalizedWord: word.replace(verbPrefixes.threeLetterHyphenPrefixes, ""),
+            prefix: word.substring(0, 4)
+          };
+        }
+        if (verbPrefixes.threeLetterPrefixes.test(word) === true) {
+          return {
+            normalizedWord: word.replace(verbPrefixes.threeLetterPrefixes, ""),
+            prefix: word.substring(0, 3)
+          };
+        }
+        if (verbPrefixes.twoLetterHyphenPrefixes.test(word) === true) {
+          return {
+            normalizedWord: word.replace(verbPrefixes.twoLetterHyphenPrefixes, ""),
+            prefix: word.substring(0, 3)
+          };
+        }
+        if (verbPrefixes.twoLetterPrefixes.test(word) === true) {
+          return {
+            normalizedWord: word.replace(verbPrefixes.twoLetterPrefixes, ""),
+            prefix: word.substring(0, 2)
+          };
+        }
+        if (verbPrefixes.oneLetterPrefixes.test(word) === true) {
+          return {
+            normalizedWord: word.replace(verbPrefixes.oneLetterPrefixes, ""),
+            prefix: word.substring(0, 1)
+          };
+        }
+      };
+      exports.normalizePrefixed = normalizePrefixed;
+      var checkIrregulars = function(word, irregularVerbs, verbPrefixes) {
+        let irregulars;
+        irregularVerbs.forEach(function(paradigm) {
+          paradigm.forEach(function(wordInParadigm) {
+            if (wordInParadigm === word) {
+              irregulars = paradigm;
+            }
+          });
+        });
+        if ((0, _lodash.isUndefined)(irregulars)) {
+          const normalizedIrregular = normalizePrefixed(word, verbPrefixes);
+          if (!(0, _lodash.isUndefined)(normalizedIrregular)) {
+            irregularVerbs.forEach(function(paradigm) {
+              paradigm.forEach(function(wordInParadigm) {
+                if (wordInParadigm === normalizedIrregular.normalizedWord) {
+                  irregulars = paradigm.map(function(verb) {
+                    return normalizedIrregular.prefix.concat(verb);
+                  });
+                }
+              });
+            });
+          }
+        }
+        return irregulars;
+      };
+      exports.checkIrregulars = checkIrregulars;
+      var endsWithS = function(word) {
+        const wordLength = word.length;
+        if (wordLength > 3) {
+          return word[word.length - 1] === "s";
+        }
+        return false;
+      };
+      var endsWithIng = function(word) {
+        const vowelCount = (word.match(vowelRegex) || []).length;
+        if (vowelCount > 1 && word.length > 4) {
+          return word.substring(word.length - 3, word.length) === "ing";
+        }
+        return false;
+      };
+      exports.endsWithIng = endsWithIng;
+      var endsWithEd = function(word) {
+        const vowelCount = (word.match(vowelRegex) || []).length;
+        if (vowelCount > 1 || vowelCount === 1 && word.substring(word.length - 3, word.length - 2) !== "e") {
+          return word.substring(word.length - 2, word.length) === "ed";
+        }
+        return false;
+      };
+      var getInfinitive = function(word, regexVerb) {
+        const sFormToInfinitiveRegex = createRulesFromArrays(regexVerb.sFormToInfinitive);
+        const ingFormToInfinitiveRegex = createRulesFromArrays(regexVerb.ingFormToInfinitive);
+        const edFormToInfinitiveRegex = createRulesFromArrays(regexVerb.edFormToInfinitive);
+        if (endsWithS(word)) {
+          return {
+            infinitive: buildFormRule(word, sFormToInfinitiveRegex),
+            guessedForm: "s"
+          };
+        }
+        if (endsWithIng(word)) {
+          return {
+            infinitive: buildFormRule(word, ingFormToInfinitiveRegex),
+            guessedForm: "ing"
+          };
+        }
+        if (endsWithEd(word)) {
+          return {
+            infinitive: buildFormRule(word, edFormToInfinitiveRegex) || word,
+            guessedForm: "ed"
+          };
+        }
+        return {
+          infinitive: word,
+          guessedForm: "inf"
+        };
+      };
+      exports.getInfinitive = getInfinitive;
+    }
+  });
+
+  // node_modules/yoastseo/build/languageProcessing/languages/en/helpers/internal/determineStem.js
+  var require_determineStem = __commonJS({
+    "node_modules/yoastseo/build/languageProcessing/languages/en/helpers/internal/determineStem.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", {
+        value: true
+      });
+      exports.default = void 0;
+      exports.determineIrregularStem = determineIrregularStem;
+      exports.determineIrregularVerbStem = determineIrregularVerbStem;
+      exports.determineRegularStem = determineRegularStem;
+      exports.determineStem = determineStem;
+      exports.findShortestAndAlphabeticallyFirst = findShortestAndAlphabeticallyFirst;
+      var _lodash = require_lodash();
+      var _yoastseo = require_build11();
+      var _getAdjectiveStem = _interopRequireDefault(require_getAdjectiveStem());
+      var _getVerbStem = require_getVerbStem();
+      function _interopRequireDefault(e) {
+        return e && e.__esModule ? e : { default: e };
+      }
+      var {
+        buildFormRule,
+        createRulesFromArrays
+      } = _yoastseo.languageProcessing;
+      function findShortestAndAlphabeticallyFirst(array) {
+        const strings = (0, _lodash.flatten)(array);
+        let result = strings.pop();
+        strings.forEach((str) => {
+          const lengthDifference = str.length - result.length;
+          if (lengthDifference === 0) {
+            if (str.localeCompare(result) < 0) {
+              result = str;
+            }
+          } else if (lengthDifference < 0) {
+            result = str;
+          }
+        });
+        return result;
+      }
+      function determineIrregularStem(word, irregulars) {
+        for (const paradigm of irregulars) {
+          if (paradigm.includes(word)) {
+            return paradigm[0];
+          }
+        }
+        return null;
+      }
+      function determineIrregularVerbStem(word, verbMorphology) {
+        const paradigmIfIrregularVerb = (0, _getVerbStem.checkIrregulars)(word, verbMorphology.irregularVerbs, verbMorphology.regexVerb.verbPrefixes);
+        if (!(0, _lodash.isUndefined)(paradigmIfIrregularVerb)) {
+          return paradigmIfIrregularVerb[0];
+        }
+        return null;
+      }
+      function determineRegularStem(word, morphologyData) {
+        const regexVerb = morphologyData.verbs.regexVerb;
+        const baseIfPluralNoun = buildFormRule(word, createRulesFromArrays(morphologyData.nouns.regexNoun.singularize));
+        if (!(0, _lodash.isUndefined)(baseIfPluralNoun)) {
+          if ((0, _getVerbStem.endsWithIng)(baseIfPluralNoun)) {
+            return buildFormRule(baseIfPluralNoun, createRulesFromArrays(regexVerb.ingFormToInfinitive));
+          }
+          return baseIfPluralNoun;
+        }
+        const regexAdjective = morphologyData.adjectives.regexAdjective;
+        const baseIfIcally = buildFormRule(word, createRulesFromArrays(regexAdjective.icallyToBase));
+        if (!(0, _lodash.isUndefined)(baseIfIcally)) {
+          return baseIfIcally;
+        }
+        const possibleRegularBases = [];
+        const baseIfVerb = (0, _getVerbStem.getInfinitive)(word, regexVerb).infinitive;
+        possibleRegularBases.push(baseIfVerb);
+        const stopAdjectives = morphologyData.adjectives.stopAdjectives;
+        const multiSyllableAdjWithSuffixes = morphologyData.adjectives.multiSyllableAdjectives ? morphologyData.adjectives.multiSyllableAdjectives.list : [];
+        const baseIfAdjective = (0, _getAdjectiveStem.default)(word, regexAdjective, stopAdjectives, multiSyllableAdjWithSuffixes).base;
+        possibleRegularBases.push(baseIfAdjective);
+        return findShortestAndAlphabeticallyFirst(possibleRegularBases);
+      }
+      function determineStem(word, morphologyData) {
+        const nounMorphology = morphologyData.nouns;
+        const baseIfPossessive = buildFormRule(word, createRulesFromArrays(nounMorphology.regexNoun.possessiveToBase));
+        let stem, irregular;
+        if ((0, _lodash.isUndefined)(baseIfPossessive)) {
+          stem = word;
+          irregular = determineIrregularStem(word, nounMorphology.irregularNouns) || determineIrregularStem(word, morphologyData.adjectives.irregularAdjectives) || determineIrregularVerbStem(word, morphologyData.verbs);
+        } else {
+          stem = baseIfPossessive;
+          irregular = determineIrregularStem(baseIfPossessive, nounMorphology.irregularNouns);
+        }
+        if (irregular) {
+          return irregular;
+        }
+        return determineRegularStem(stem, morphologyData);
+      }
+      var _default = exports.default = determineStem;
+    }
+  });
+
+  // node_modules/yoastseo/build/languageProcessing/languages/en/helpers/getStemmer.js
+  var require_getStemmer = __commonJS({
+    "node_modules/yoastseo/build/languageProcessing/languages/en/helpers/getStemmer.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", {
+        value: true
+      });
+      exports.default = getStemmer;
+      var _lodash = require_lodash();
+      var _yoastseo = require_build11();
+      var _determineStem = _interopRequireDefault(require_determineStem());
+      function _interopRequireDefault(e) {
+        return e && e.__esModule ? e : { default: e };
+      }
+      var {
+        baseStemmer
+      } = _yoastseo.languageProcessing;
+      function getStemmer(researcher) {
+        const morphologyData = (0, _lodash.get)(researcher.getData("morphology"), "en", false);
+        if (morphologyData) {
+          return (word) => (0, _determineStem.default)(word, morphologyData);
+        }
+        return baseStemmer;
+      }
+    }
+  });
+
+  // node_modules/yoastseo/build/languageProcessing/languages/en/helpers/calculateFleschReadingScore.js
+  var require_calculateFleschReadingScore = __commonJS({
+    "node_modules/yoastseo/build/languageProcessing/languages/en/helpers/calculateFleschReadingScore.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", {
+        value: true
+      });
+      exports.default = calculateScore;
+      var _yoastseo = require_build11();
+      var {
+        formatNumber
+      } = _yoastseo.helpers;
+      function calculateScore(statistics) {
+        const score = 206.835 - 1.015 * statistics.averageWordsPerSentence - 84.6 * (statistics.numberOfSyllables / statistics.numberOfWords);
+        return formatNumber(score);
+      }
+    }
+  });
+
+  // node_modules/yoastseo/build/languageProcessing/languages/en/Researcher.js
+  var require_Researcher = __commonJS({
+    "node_modules/yoastseo/build/languageProcessing/languages/en/Researcher.js"(exports) {
+      "use strict";
+      Object.defineProperty(exports, "__esModule", {
+        value: true
+      });
+      exports.default = void 0;
+      var _yoastseo = require_build11();
+      var _firstWordExceptions = _interopRequireDefault(require_firstWordExceptions());
+      var _functionWords = require_functionWords();
+      var _stopWords = _interopRequireDefault(require_stopWords());
+      var _transitionWords = _interopRequireDefault(require_transitionWords());
+      var _twoPartTransitionWords = _interopRequireDefault(require_twoPartTransitionWords());
+      var _syllables = _interopRequireDefault(require_syllables());
+      var _getClauses = _interopRequireDefault(require_getClauses2());
+      var _getStemmer = _interopRequireDefault(require_getStemmer());
+      var _calculateFleschReadingScore = _interopRequireDefault(require_calculateFleschReadingScore());
+      function _interopRequireDefault(e) {
+        return e && e.__esModule ? e : { default: e };
+      }
+      var {
+        AbstractResearcher
+      } = _yoastseo.languageProcessing;
+      var Researcher = class extends AbstractResearcher {
+        /**
+         * Constructor
+         * @param {Paper} paper The Paper object that is needed within the researches.
+         * @constructor
+         */
+        constructor(paper) {
+          super(paper);
+          Object.assign(this.config, {
+            language: "en",
+            passiveConstructionType: "periphrastic",
+            firstWordExceptions: _firstWordExceptions.default,
+            functionWords: _functionWords.all,
+            stopWords: _stopWords.default,
+            transitionWords: _transitionWords.default,
+            twoPartTransitionWords: _twoPartTransitionWords.default,
+            syllables: _syllables.default
+          });
+          Object.assign(this.helpers, {
+            getClauses: _getClauses.default,
+            getStemmer: _getStemmer.default,
+            fleschReadingScore: _calculateFleschReadingScore.default
+          });
+        }
+      };
+      exports.default = Researcher;
+    }
+  });
+
   // workerSrc/index.js
   var import_yoastseo = __toESM(require_build11(), 1);
-  var worker = new import_yoastseo.AnalysisWebWorker(self);
+  var import_Researcher = __toESM(require_Researcher(), 1);
+  var resolveConstructor = (value) => {
+    let current = value;
+    while (current && typeof current !== "function" && typeof current === "object" && "default" in current) {
+      current = current.default;
+    }
+    if (typeof current !== "function") {
+      throw new Error("Failed to resolve Yoast researcher constructor");
+    }
+    return current;
+  };
+  var EnglishResearcher = resolveConstructor(import_Researcher.default);
+  var worker = new import_yoastseo.AnalysisWebWorker(self, new EnglishResearcher());
   worker.register();
 })();
 /*! Bundled license information:

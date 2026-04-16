@@ -15,6 +15,46 @@ const worker = new AnalysisWorkerWrapper(
   createWorker(import.meta.env.PROD ? './main.js' : '/main.js'),
 );
 
+const serializeForLog = (value: unknown): string => {
+  try {
+    const seen = new WeakSet<object>();
+    const serialized = JSON.stringify(
+      value,
+      (_key, currentValue: unknown) => {
+        if (currentValue instanceof Error) {
+          return Object.fromEntries(
+            Object.getOwnPropertyNames(currentValue).map((name) => [
+              name,
+              currentValue[name as keyof Error],
+            ]),
+          );
+        }
+
+        if (typeof currentValue === 'object' && currentValue !== null) {
+          if (seen.has(currentValue)) {
+            return '[Circular]';
+          }
+
+          seen.add(currentValue);
+        }
+
+        return currentValue;
+      },
+      2,
+    );
+
+    return serialized ?? String(value);
+  } catch {
+    return String(value);
+  }
+};
+
+const logPluginError = (context: string, error: unknown) => {
+  console.error(
+    `[SEO/Readability Analysis Plugin Error] ${context}: ${serializeForLog(error)}`,
+  );
+};
+
 const removeResultsWithNoText = (
   data: AnalysisAssessment,
 ): AnalysisAssessment => {
@@ -64,8 +104,10 @@ const Main = ({ ctx }: PropTypes) => {
   } = ctx;
 
   const [isWorkerReady, setIsWorkerReady] = useState(false);
+  const [workerError, setWorkerError] = useState<string | null>(null);
   const [page, setPage] = useState<Page | null>(null);
   const [pageError, setPageError] = useState<Error | null>(null);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
 
   const [pageFetchingInProgress, setPageFetchingInProgress] = useState(false);
   const [analysisInProgress, setAnalysisInProgress] = useState(false);
@@ -85,9 +127,13 @@ const Main = ({ ctx }: PropTypes) => {
           contentAnalysisActive: true,
           keywordAnalysisActive: true,
         });
+        setWorkerError(null);
         setIsWorkerReady(true);
       } catch (e) {
-        console.log(`[SEO/Readability Analysis Plugin Error]: ${e}`);
+        const serializedError = serializeForLog(e);
+
+        setWorkerError(serializedError);
+        logPluginError('Failed to initialize web worker', e);
       }
     };
 
@@ -141,7 +187,7 @@ const Main = ({ ctx }: PropTypes) => {
       setPage(response);
     } catch (e) {
       setPageError(e as Error);
-      console.error(`SEO/Readability Analysis plugin error!`, e);
+      logPluginError('Failed to fetch frontend metadata', e);
     } finally {
       setPageFetchingInProgress(false);
     }
@@ -170,6 +216,7 @@ const Main = ({ ctx }: PropTypes) => {
         }
 
         setAnalysisInProgress(true);
+        setAnalysisError(null);
 
         try {
           const paper = new Paper(page.content, {
@@ -208,8 +255,8 @@ const Main = ({ ctx }: PropTypes) => {
 
           setAnalysis(deserializedResult);
         } catch (e) {
-          console.error(`SEO/Readability Analysis plugin error!`, e);
-          throw e;
+          setAnalysisError(serializeForLog(e));
+          logPluginError('Failed to analyze content', e);
         } finally {
           setAnalysisInProgress(false);
         }
@@ -280,16 +327,20 @@ const Main = ({ ctx }: PropTypes) => {
           ))}
         </div>
         <div className="Plugin__bar__status">
-          {!isWorkerReady ? (
+          {workerError ? (
+            <p className="Plugin__bar__status-error">
+              Error loading web worker! More info on console
+            </p>
+          ) : !isWorkerReady ? (
             <p>Loading web worker...</p>
           ) : pageFetchingInProgress ? (
             <p>Extracting content...</p>
           ) : analysisInProgress ? (
             <p>Analyzing content...</p>
           ) : (
-            pageError && (
+            (pageError || analysisError) && (
               <p className="Plugin__bar__status-error">
-                Error fetching data! More info on console
+                Error running analysis! More info on console
               </p>
             )
           )}
