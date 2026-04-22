@@ -13,7 +13,11 @@ type GeneratedImageSource = {
 
 type GeneratedImageMetadata = Pick<
   NormalizedGeneratedImage,
-  'revisedPrompt' | 'returnedFormat' | 'returnedQuality' | 'returnedSize'
+  | 'revisedPrompt'
+  | 'returnedFormat'
+  | 'returnedQuality'
+  | 'returnedSize'
+  | 'returnedCompression'
 >;
 
 export function normalizeGeneratedImages(

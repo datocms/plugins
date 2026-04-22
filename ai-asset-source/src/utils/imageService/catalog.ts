@@ -1,26 +1,16 @@
 import type {
   AspectRatio,
   AspectRatioOption,
-  GoogleGenerateModel,
+  ImageOutputFormat,
+  ImageQuality,
   ImageSize,
   ImageSizeOption,
-  OpenAiGenerateModel,
   ProviderCapabilities,
   ProviderId,
   SelectOption,
   SupportedImageModel,
   VariationOption,
 } from './types';
-
-export const openAiGenerateModels: OpenAiGenerateModel[] = [
-  'gpt-image-1.5',
-  'gpt-image-1',
-  'gpt-image-1-mini',
-];
-
-export const googleGenerateModels: GoogleGenerateModel[] = [
-  'gemini-2.5-flash-image',
-];
 
 export const providerOptions: Array<SelectOption<ProviderId>> = [
   { value: 'openai', label: 'OpenAI' },
@@ -40,25 +30,23 @@ export const variationOptions: VariationOption[] = [
   { value: 4, label: '4' },
 ];
 
-const labelByModel: Record<SupportedImageModel, string> = {
-  'gpt-image-1.5': 'GPT Image 1.5',
-  'gpt-image-1': 'GPT Image 1',
-  'gpt-image-1-mini': 'GPT Image 1 Mini',
-  'gemini-2.5-flash-image': 'Gemini 2.5 Flash Image',
-};
+export const imageQualityOptions: Array<SelectOption<ImageQuality>> = [
+  { value: 'auto', label: 'Auto' },
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+];
+
+export const imageOutputFormatOptions: Array<SelectOption<ImageOutputFormat>> = [
+  { value: 'png', label: 'PNG' },
+  { value: 'jpeg', label: 'JPEG' },
+  { value: 'webp', label: 'WebP' },
+];
 
 const labelByAspectRatio: Record<AspectRatioOption['value'], string> = {
   '1:1': 'Square',
   '2:3': 'Portrait',
   '3:2': 'Landscape',
-};
-
-const providerModels = {
-  openai: openAiGenerateModels,
-  google: googleGenerateModels,
-} satisfies {
-  openai: OpenAiGenerateModel[];
-  google: GoogleGenerateModel[];
 };
 
 const openAiImageSizeOptionsByAspectRatio = {
@@ -82,46 +70,53 @@ const openAiRequestSizeByAspectRatio: Record<
   '3:2': '1536x1024',
 };
 
+const excludedModelSignals = [
+  'audio',
+  'embedding',
+  'moderation',
+  'realtime',
+  'search',
+  'speech',
+  'transcribe',
+  'tts',
+  'video',
+  'vision',
+];
+
 export function getModelLabel(model: SupportedImageModel): string {
-  return labelByModel[model];
+  return stripModelResourcePrefix(model);
 }
 
 export function getAspectRatioLabel(value: AspectRatioOption['value']): string {
   return labelByAspectRatio[value];
 }
 
-export function getSupportedModels(
-  provider: ProviderId,
-): SupportedImageModel[] {
-  return providerModels[provider];
-}
-
-export function getModelOptions(
-  provider: ProviderId,
-): Array<SelectOption<SupportedImageModel>> {
-  return getSupportedModels(provider).map((value) => ({
-    value,
-    label: getModelLabel(value),
-  }));
-}
-
 export function getCapabilities(
   provider: ProviderId,
   model: SupportedImageModel,
 ): ProviderCapabilities {
-  const modelSupported = getSupportedModels(provider).includes(model);
-
   if (provider === 'openai') {
+    const supportsImageEndpoint = isOpenAiImageGenerationModel(model);
+
     return {
-      supportsVariationCount: modelSupported,
+      supportsVariationCount: supportsImageEndpoint,
+      supportsOutputControls: supportsImageEndpoint,
       imageSizeOptionsByAspectRatio: openAiImageSizeOptionsByAspectRatio,
     };
   }
 
   return {
     supportsVariationCount: false,
+    supportsOutputControls: false,
     imageSizeOptionsByAspectRatio: googleImageSizeOptionsByAspectRatio,
   };
+}
+
+export function supportsOutputControls(
+  provider: ProviderId,
+  model: SupportedImageModel,
+): boolean {
+  return getCapabilities(provider, model).supportsOutputControls;
 }
 
 export function getImageSizeOptions(
@@ -159,4 +154,40 @@ export function getOpenAiRequestSize(
   aspectRatio: AspectRatio,
 ): `${number}x${number}` {
   return openAiRequestSizeByAspectRatio[aspectRatio];
+}
+
+export function isOpenAiImageGenerationModel(model: string): boolean {
+  return hasImageFamilySignal(model) && !hasExcludedModelSignal(model);
+}
+
+export function isGoogleImageGenerationModel(model: string): boolean {
+  return hasImageFamilySignal(model) && !hasExcludedModelSignal(model);
+}
+
+export function isGooglePredictImageModel(model: string): boolean {
+  return normalizeModelSignal(model).includes('imagen');
+}
+
+export function hasImageFamilySignal(value: string): boolean {
+  const normalizedValue = normalizeModelSignal(value);
+
+  return (
+    normalizedValue.includes('image') || normalizedValue.includes('imagen')
+  );
+}
+
+export function normalizeModelSignal(value: string): string {
+  return stripModelResourcePrefix(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-');
+}
+
+function hasExcludedModelSignal(model: string): boolean {
+  const normalizedModel = normalizeModelSignal(model);
+
+  return excludedModelSignals.some((signal) => normalizedModel.includes(signal));
+}
+
+function stripModelResourcePrefix(model: string): string {
+  return model.replace(/^models\//, '');
 }

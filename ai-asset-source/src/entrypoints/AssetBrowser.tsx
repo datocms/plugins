@@ -22,12 +22,14 @@ import {
   buildGenerationNotes,
   buildImportFilename,
   generateImages,
+  getImageOutputFormat,
   getProviderCapabilities,
   normalizeProviderError,
 } from '../utils/imageService';
 import {
   aspectRatioOptions,
   getDefaultImageSize,
+  supportsOutputControls,
   variationOptions,
 } from '../utils/imageService/catalog';
 import { createFailedGenerationBatch } from '../utils/imageService/shared';
@@ -45,6 +47,8 @@ const MAX_REQUESTS = 5;
 const GENERATED_IMAGE_TAG = 'generated-image';
 const MISSING_PROVIDER_KEY_MESSAGE =
   'Add a provider API key in plugin settings before generating images.';
+const MISSING_PROVIDER_MODEL_MESSAGE =
+  'Select a model in plugin settings before generating images.';
 const MISSING_PROMPT_MESSAGE = 'Enter a prompt before generating images.';
 const GENERATING_LABEL = 'Generating…';
 const GENERATING_IMAGES_LABEL = 'Generating images…';
@@ -103,7 +107,12 @@ const AssetBrowser = () => {
     () => getProviderCapabilities(provider, model),
     [model, provider],
   );
+  const outputControlsSupported = useMemo(
+    () => supportsOutputControls(provider, model),
+    [model, provider],
+  );
   const hasProviderApiKey = Boolean(providerApiKey);
+  const hasProviderModel = Boolean(model.trim());
   const isSubmitting = status === 'submitted';
   const hasRequests = requests.length > 0;
   const selectedImageIdSet = useMemo(
@@ -151,11 +160,29 @@ const AssetBrowser = () => {
       aspectRatio,
       imageSize: getDefaultImageSize(provider, model, aspectRatio),
       variationCount: capabilities.supportsVariationCount ? variationCount : 1,
+      outputQuality:
+        outputControlsSupported && provider === 'openai'
+          ? parameters.providers.openai.defaultQuality
+          : undefined,
+      outputFormat:
+        outputControlsSupported && provider === 'openai'
+          ? parameters.providers.openai.defaultOutputFormat
+          : undefined,
+      outputCompression:
+        outputControlsSupported &&
+        provider === 'openai' &&
+        parameters.providers.openai.defaultOutputFormat !== 'png'
+          ? parameters.providers.openai.defaultCompression
+          : undefined,
     }),
     [
       aspectRatio,
       capabilities.supportsVariationCount,
       model,
+      outputControlsSupported,
+      parameters.providers.openai.defaultCompression,
+      parameters.providers.openai.defaultOutputFormat,
+      parameters.providers.openai.defaultQuality,
       prompt,
       provider,
       variationCount,
@@ -163,8 +190,13 @@ const AssetBrowser = () => {
   );
 
   const submitValidationError = useMemo(
-    () => getSubmitValidationError(providerApiKey, normalizedRequest.prompt),
-    [normalizedRequest.prompt, providerApiKey],
+    () =>
+      getSubmitValidationError(
+        providerApiKey,
+        normalizedRequest.model,
+        normalizedRequest.prompt,
+      ),
+    [normalizedRequest.model, normalizedRequest.prompt, providerApiKey],
   );
   const canSubmit = !submitValidationError && !isSubmitting;
 
@@ -214,6 +246,7 @@ const AssetBrowser = () => {
 
       const validationError = getSubmitValidationError(
         providerApiKey,
+        normalizedRequest.model,
         normalizedRequest.prompt,
       );
 
@@ -256,6 +289,12 @@ const AssetBrowser = () => {
       {!hasProviderApiKey && (
         <div className={s.message} role="status">
           {MISSING_PROVIDER_KEY_MESSAGE}
+        </div>
+      )}
+
+      {hasProviderApiKey && !hasProviderModel && (
+        <div className={s.message} role="status">
+          {MISSING_PROVIDER_MODEL_MESSAGE}
         </div>
       )}
 
@@ -428,10 +467,15 @@ function getChoiceClassName(
 
 function getSubmitValidationError(
   providerApiKey: string,
+  model: string,
   prompt: string,
 ): string | null {
   if (!providerApiKey) {
     return MISSING_PROVIDER_KEY_MESSAGE;
+  }
+
+  if (!model.trim()) {
+    return MISSING_PROVIDER_MODEL_MESSAGE;
   }
 
   if (!prompt) {
@@ -464,6 +508,11 @@ function buildUpload(
   request: NormalizedGenerationBatch,
   image: NormalizedGeneratedImage,
 ): NewUpload {
+  const outputFormat = getImageOutputFormat(
+    image,
+    request.request.outputFormat,
+  );
+
   return {
     resource: {
       base64: image.previewSrc,
@@ -471,6 +520,7 @@ function buildUpload(
         request.request.prompt,
         request.createdAt,
         request.images.length > 1 ? image.position : undefined,
+        outputFormat,
       ),
     },
     notes: buildGenerationNotes(request, image),

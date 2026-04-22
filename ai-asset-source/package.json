@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-dall-e-asset-source",
   "description": "Generate images with configured providers and insert them directly inside your DatoCMS project",
-  "version": "0.2.2",
+  "version": "0.2.6",
   "private": false,
   "dependencies": {
     "@ai-sdk/google": "^2.0.64",
@@ -21,7 +21,8 @@
   "keywords": [
     "datocms",
     "datocms-plugin",
-    "image-generation"
+    "image-generation",
+    "ai"
   ],
   "scripts": {
     "build": "tsc -b && vite build",
@@ -36,7 +37,7 @@
     "vite": "^7.3.1"
   },
   "datoCmsPlugin": {
-    "title": "Image Generator",
+    "title": "AI Asset Source",
     "coverImage": "docs/cover.png",
     "entryPoint": "dist/index.html"
   },

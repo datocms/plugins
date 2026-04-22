@@ -1,5 +1,7 @@
 import type {
   GoogleGenerateModel,
+  ImageOutputFormat,
+  ImageQuality,
   OpenAiGenerateModel,
   ProviderId,
   SupportedImageModel,
@@ -17,6 +19,9 @@ export type ConfigParameters = {
       apiKey?: string;
       defaultModel?: SupportedImageModel;
       defaultGenerateModel?: OpenAiGenerateModel;
+      defaultQuality?: ImageQuality;
+      defaultOutputFormat?: ImageOutputFormat;
+      defaultCompression?: number;
     };
     google?: {
       apiKey?: string;
@@ -35,6 +40,9 @@ export type NormalizedConfigParameters = {
     openai: {
       apiKey: string;
       defaultModel: OpenAiGenerateModel;
+      defaultQuality: ImageQuality;
+      defaultOutputFormat: ImageOutputFormat;
+      defaultCompression: number;
     };
     google: {
       apiKey: string;

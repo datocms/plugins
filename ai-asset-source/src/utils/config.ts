@@ -1,30 +1,34 @@
 import type { ConfigParameters, NormalizedConfigParameters } from '../types';
-import type { ProviderId, SupportedImageModel } from './imageService';
-import {
-  getSupportedModels,
-  googleGenerateModels,
-  openAiGenerateModels,
-} from './imageService';
+import type {
+  ImageOutputFormat,
+  ImageQuality,
+  ProviderId,
+  SupportedImageModel,
+} from './imageService/types';
 
 const providerFallbackOrder: ProviderId[] = ['openai', 'google'];
-
-type ProviderConfigMap = NormalizedConfigParameters['providers'];
-type ProviderConfig<P extends ProviderId> = ProviderConfigMap[P];
-type ProviderModel<P extends ProviderId> = ProviderConfig<P>['defaultModel'];
+const imageQualityValues = ['auto', 'low', 'medium', 'high'] as const;
+const imageOutputFormatValues = ['png', 'jpeg', 'webp'] as const;
 
 const defaultConfigParameters: NormalizedConfigParameters = {
   defaultProvider: 'openai',
   providers: {
     openai: {
       apiKey: '',
-      defaultModel: openAiGenerateModels[0],
+      defaultModel: '',
+      defaultQuality: 'high',
+      defaultOutputFormat: 'webp',
+      defaultCompression: 100,
     },
     google: {
       apiKey: '',
-      defaultModel: googleGenerateModels[0],
+      defaultModel: '',
     },
   },
 };
+
+type ProviderConfigMap = NormalizedConfigParameters['providers'];
+type ProviderConfig<P extends ProviderId> = ProviderConfigMap[P];
 
 /**
  * Normalizes current and legacy plugin parameters into the shape used by the UI.
@@ -41,15 +45,24 @@ export function normalizeConfigParameters(
     providers: {
       openai: {
         apiKey: openAiApiKey,
-        defaultModel: resolveProviderModel('openai', [
+        defaultModel: resolveProviderModel([
           parameters.providers?.openai?.defaultModel,
           parameters.providers?.openai?.defaultGenerateModel,
           parameters.model,
         ]),
+        defaultQuality: resolveImageQuality(
+          parameters.providers?.openai?.defaultQuality,
+        ),
+        defaultOutputFormat: resolveImageOutputFormat(
+          parameters.providers?.openai?.defaultOutputFormat,
+        ),
+        defaultCompression: resolveCompressionValue(
+          parameters.providers?.openai?.defaultCompression,
+        ),
       },
       google: {
         apiKey: getTrimmedValue(parameters.providers?.google?.apiKey),
-        defaultModel: resolveProviderModel('google', [
+        defaultModel: resolveProviderModel([
           parameters.providers?.google?.defaultModel,
           parameters.providers?.google?.defaultGenerateModel,
         ]),
@@ -69,11 +82,18 @@ export function sanitizeConfigParameters(
     providers: {
       openai: {
         apiKey: getTrimmedValue(values.providers.openai.apiKey),
-        defaultModel: values.providers.openai.defaultModel,
+        defaultModel: getTrimmedValue(values.providers.openai.defaultModel),
+        defaultQuality: resolveImageQuality(values.providers.openai.defaultQuality),
+        defaultOutputFormat: resolveImageOutputFormat(
+          values.providers.openai.defaultOutputFormat,
+        ),
+        defaultCompression: resolveCompressionValue(
+          values.providers.openai.defaultCompression,
+        ),
       },
       google: {
         apiKey: getTrimmedValue(values.providers.google.apiKey),
-        defaultModel: values.providers.google.defaultModel,
+        defaultModel: getTrimmedValue(values.providers.google.defaultModel),
       },
     },
   };
@@ -115,9 +135,7 @@ export function getDefaultModelForProvider(
   parameters: NormalizedConfigParameters,
   provider: ProviderId,
 ): SupportedImageModel {
-  return resolveProviderModel(provider, [
-    parameters.providers[provider].defaultModel,
-  ]);
+  return getTrimmedValue(parameters.providers[provider].defaultModel);
 }
 
 export function getInitialProvider(
@@ -157,18 +175,49 @@ function resolveDefaultProvider(
   return defaultConfigParameters.defaultProvider;
 }
 
-function resolveProviderModel<P extends ProviderId>(
-  provider: P,
-  candidates: readonly unknown[],
-): ProviderModel<P> {
-  const supportedModels = getSupportedModels(provider) as ProviderModel<P>[];
+function resolveProviderModel(candidates: readonly unknown[]): string {
   const model = candidates.find(
-    (candidate): candidate is ProviderModel<P> =>
-      typeof candidate === 'string' &&
-      supportedModels.includes(candidate as ProviderModel<P>),
+    (candidate): candidate is string =>
+      typeof candidate === 'string' && Boolean(candidate.trim()),
   );
 
-  return model || defaultConfigParameters.providers[provider].defaultModel;
+  return getTrimmedValue(model);
+}
+
+function resolveImageQuality(value: unknown): ImageQuality {
+  return isImageQuality(value)
+    ? value
+    : defaultConfigParameters.providers.openai.defaultQuality;
+}
+
+function resolveImageOutputFormat(value: unknown): ImageOutputFormat {
+  return isImageOutputFormat(value)
+    ? value
+    : defaultConfigParameters.providers.openai.defaultOutputFormat;
+}
+
+function resolveCompressionValue(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return defaultConfigParameters.providers.openai.defaultCompression;
+  }
+
+  return Math.min(100, Math.max(0, Math.round(value)));
+}
+
+function isImageQuality(value: unknown): value is ImageQuality {
+  return (
+    typeof value === 'string' &&
+    imageQualityValues.includes(value as (typeof imageQualityValues)[number])
+  );
+}
+
+function isImageOutputFormat(value: unknown): value is ImageOutputFormat {
+  return (
+    typeof value === 'string' &&
+    imageOutputFormatValues.includes(
+      value as (typeof imageOutputFormatValues)[number],
+    )
+  );
 }
 
 function getTrimmedValue(value?: string): string {

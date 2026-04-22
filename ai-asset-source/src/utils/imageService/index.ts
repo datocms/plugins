@@ -7,12 +7,15 @@ import {
 } from './catalog';
 import type {
   ImageOperationRequest,
+  ImageOutputFormat,
   ImageProviderAdapter,
   NormalizedGeneratedImage,
   NormalizedGenerationBatch,
   ProviderId,
   SupportedImageModel,
 } from './types';
+
+export type * from './types';
 
 const adapters: Record<ProviderId, ImageProviderAdapter> = {
   openai: openAiAdapter,
@@ -48,6 +51,7 @@ export function buildImportFilename(
   prompt: string,
   createdAt: string,
   position?: number,
+  outputFormat: ImageOutputFormat = 'png',
 ): string {
   const baseName = slugifyPrompt(prompt);
   const timestamp = createdAt
@@ -55,8 +59,9 @@ export function buildImportFilename(
     .replace('T', '-')
     .replace(/\..+$/, '');
   const suffix = position ? `-${position}` : '';
+  const extension = getFilenameExtension(outputFormat);
 
-  return `image-${baseName}-${timestamp}${suffix}.png`;
+  return `image-${baseName}-${timestamp}${suffix}.${extension}`;
 }
 
 export function buildGenerationNotes(
@@ -80,6 +85,27 @@ export function buildGenerationNotes(
     notes.push(`Variations: ${batch.request.variationCount}`);
   }
 
+  const quality = image?.returnedQuality || batch.request.outputQuality;
+  const outputFormat =
+    readImageOutputFormat(image?.returnedFormat) || batch.request.outputFormat;
+  const compression =
+    image?.returnedCompression ??
+    (outputFormat && outputFormat !== 'png'
+      ? batch.request.outputCompression
+      : undefined);
+
+  if (quality) {
+    notes.push(`Quality: ${quality}`);
+  }
+
+  if (outputFormat) {
+    notes.push(`Output format: ${outputFormat}`);
+  }
+
+  if (typeof compression === 'number') {
+    notes.push(`Compression: ${compression}`);
+  }
+
   if (image?.revisedPrompt) {
     notes.push(`Revised prompt: ${image.revisedPrompt}`);
   }
@@ -88,15 +114,19 @@ export function buildGenerationNotes(
     notes.push(`Returned size: ${image.returnedSize}`);
   }
 
-  if (image?.returnedQuality) {
-    notes.push(`Quality: ${image.returnedQuality}`);
-  }
-
-  if (image?.returnedFormat) {
-    notes.push(`Returned format: ${image.returnedFormat}`);
-  }
-
   return notes.join('\n');
+}
+
+export function getImageOutputFormat(
+  image: NormalizedGeneratedImage,
+  configuredFormat?: ImageOutputFormat,
+): ImageOutputFormat {
+  return (
+    readImageOutputFormat(image.returnedFormat) ||
+    configuredFormat ||
+    readImageOutputFormatFromMediaType(image.mediaType) ||
+    'png'
+  );
 }
 
 function slugifyPrompt(prompt: string): string {
@@ -107,4 +137,36 @@ function slugifyPrompt(prompt: string): string {
     .replace(/^-+|-+$/g, '');
 
   return normalized.slice(0, 48) || 'generated-image';
+}
+
+function getFilenameExtension(format: ImageOutputFormat): string {
+  return format;
+}
+
+function readImageOutputFormat(
+  value: unknown,
+): ImageOutputFormat | undefined {
+  if (value === 'png' || value === 'jpeg' || value === 'webp') {
+    return value;
+  }
+
+  return undefined;
+}
+
+function readImageOutputFormatFromMediaType(
+  mediaType: string,
+): ImageOutputFormat | undefined {
+  if (mediaType === 'image/png') {
+    return 'png';
+  }
+
+  if (mediaType === 'image/jpeg' || mediaType === 'image/jpg') {
+    return 'jpeg';
+  }
+
+  if (mediaType === 'image/webp') {
+    return 'webp';
+  }
+
+  return undefined;
 }

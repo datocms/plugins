@@ -1,6 +1,6 @@
 import { createGoogleGenerativeAI } from '@ai-sdk/google';
-import { generateImage } from 'ai';
-import { getCapabilities } from '../catalog';
+import { generateImage, generateText } from 'ai';
+import { getCapabilities, isGooglePredictImageModel } from '../catalog';
 import {
   createGenerationBatch,
   normalizeGeneratedImages,
@@ -20,14 +20,10 @@ export const googleAdapter: ImageProviderAdapter = {
   },
   async run(apiKey: string, request: ImageOperationRequest) {
     const client = createGoogleGenerativeAI({ apiKey: apiKey.trim() });
-    const result = await generateImage({
-      model: client.image(request.model),
-      prompt: request.prompt,
-      aspectRatio: request.aspectRatio,
-    });
-
     const createdAt = new Date().toISOString();
-    const images = normalizeGeneratedImages(result.images, createdAt);
+    const images = isGooglePredictImageModel(request.model)
+      ? await generatePredictImages(client, request, createdAt)
+      : await generateContentImages(client, request, createdAt);
 
     if (!images.length) {
       throw new Error('Google did not return image data for this request.');
@@ -76,3 +72,47 @@ export const googleAdapter: ImageProviderAdapter = {
     };
   },
 };
+
+type GoogleClient = ReturnType<typeof createGoogleGenerativeAI>;
+
+type GeneratedImage = ReturnType<typeof normalizeGeneratedImages>[number];
+
+async function generatePredictImages(
+  client: GoogleClient,
+  request: ImageOperationRequest,
+  createdAt: string,
+): Promise<GeneratedImage[]> {
+  const result = await generateImage({
+    model: client.image(request.model),
+    prompt: request.prompt,
+    aspectRatio: request.aspectRatio,
+  });
+
+  return normalizeGeneratedImages(result.images, createdAt);
+}
+
+async function generateContentImages(
+  client: GoogleClient,
+  request: ImageOperationRequest,
+  createdAt: string,
+): Promise<GeneratedImage[]> {
+  const responseModalities: Array<'IMAGE'> = ['IMAGE'];
+
+  const result = await generateText({
+    model: client(request.model),
+    prompt: request.prompt,
+    providerOptions: {
+      google: {
+        responseModalities,
+        imageConfig: {
+          aspectRatio: request.aspectRatio,
+        },
+      },
+    },
+  });
+
+  return normalizeGeneratedImages(
+    result.files.filter((file) => file.mediaType.startsWith('image/')),
+    createdAt,
+  );
+}

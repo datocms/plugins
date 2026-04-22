@@ -1,21 +1,23 @@
 export type ProviderId = 'openai' | 'google';
 
-export type OpenAiGenerateModel =
-  | 'gpt-image-1.5'
-  | 'gpt-image-1'
-  | 'gpt-image-1-mini';
-export type GoogleGenerateModel = 'gemini-2.5-flash-image';
-
-export type SupportedImageModel = OpenAiGenerateModel | GoogleGenerateModel;
+export type OpenAiGenerateModel = string;
+export type GoogleGenerateModel = string;
+export type SupportedImageModel = string;
 
 export type AspectRatio = '1:1' | '2:3' | '3:2';
 export type ImageSize = 'native' | '512' | '1k' | '2k' | '4k';
 export type VariationCount = 1 | 2 | 3 | 4;
 export type GenerationStatus = 'idle' | 'submitted' | 'completed' | 'error';
+export type ImageQuality = 'auto' | 'low' | 'medium' | 'high';
+export type ImageOutputFormat = 'png' | 'jpeg' | 'webp';
+export type GoogleGenerationMethod = 'predict' | 'generateContent';
 
 export type SelectOption<T extends string> = {
   value: T;
   label: string;
+  description?: string;
+  unavailable?: boolean;
+  generationMethod?: GoogleGenerationMethod;
 };
 
 export type AspectRatioOption = {
@@ -41,10 +43,14 @@ export type ImageOperationRequest = {
   aspectRatio: AspectRatio;
   imageSize: ImageSize;
   variationCount: VariationCount;
+  outputQuality?: ImageQuality;
+  outputFormat?: ImageOutputFormat;
+  outputCompression?: number;
 };
 
 export type ProviderCapabilities = {
   supportsVariationCount: boolean;
+  supportsOutputControls: boolean;
   imageSizeOptionsByAspectRatio: Record<AspectRatio, ImageSizeOption[]>;
 };
 
@@ -56,9 +62,10 @@ export type NormalizedGeneratedImage = {
   previewSrc: string;
   position: number;
   revisedPrompt?: string;
-  returnedFormat?: string;
-  returnedQuality?: string;
+  returnedFormat?: ImageOutputFormat | string;
+  returnedQuality?: ImageQuality | string;
   returnedSize?: string;
+  returnedCompression?: number;
 };
 
 export type NormalizedFailedImage = {
