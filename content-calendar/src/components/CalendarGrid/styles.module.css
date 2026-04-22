@@ -8,8 +8,8 @@
 
 .calendarWeekDay {
   padding: var(--spacing-m);
-  border-bottom: 1px solid var(--border-color);
-  border-right: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--color--border);
+  border-right: 1px solid var(--color--border);
   font-weight: 500;
   display: flex;
   align-items: center;
@@ -17,19 +17,19 @@
 
 .calendarDayCell {
   padding: var(--spacing-s);
-  border-bottom: 1px solid var(--border-color);
-  border-right: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--color--border);
+  border-right: 1px solid var(--color--border);
   position: relative;
   overflow: auto;
 }
 
 .calendarDayCell--inAdjacentMonth {
-  background: var(--lighter-bg-color);
+  background: var(--color--surface-muted);
 }
 
 .calendarDayCellHeader {
   font-size: var(--font-size-s);
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   text-align: right;
   margin-bottom: 5px;
 }
@@ -49,6 +49,6 @@
 }
 
 .calendarDayCell--isToday .calendarDayCellHeaderDay {
-  background: var(--primary-color);
-  color: white;
+  background: var(--color--primary--surface);
+  color: var(--color--primary--ink);
 }
