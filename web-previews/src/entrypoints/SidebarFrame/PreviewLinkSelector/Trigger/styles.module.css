@@ -17,12 +17,12 @@
 }
 
 .root:hover {
-  background-color: var(--light-bg-color);
+  background-color: var(--color--surface-muted);
 }
 
 .icon {
   width: 12px;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   margin-left: 10px;
   flex-shrink: 0;
 }
@@ -32,10 +32,10 @@
   white-space: nowrap;
   text-overflow: ellipsis;
   overflow: hidden;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 .title {
-  color: var(--base-body-color);
+  color: var(--color--ink);
   font-weight: bold;
 }
