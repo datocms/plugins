@@ -3,7 +3,7 @@
   display: flex;
   align-items: stretch;
   min-height: 45px;
-  background-color: white;
+  background-color: var(--color--surface);
   position: relative;
   z-index: 1;
 }
