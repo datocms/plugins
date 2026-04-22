@@ -7,7 +7,7 @@
   display: flex;
   padding: var(--spacing-m) var(--spacing-m) var(--spacing-m) 0;
   justify-content: space-between;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--color--border);
 }
 
 .options > * {
@@ -16,23 +16,23 @@
 
 .model {
   padding: var(--spacing-s) var(--spacing-l) var(--spacing-s) var(--spacing-m);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--color--border);
   display: flex;
 }
 
 .toggler {
   display: block;
   cursor: pointer;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   flex: 1;
 }
 
 .togglerActive {
-  color: var(--base-body-color);
+  color: var(--color--ink);
 }
 
 .toggler input[type="checkbox"] {
-  accent-color: white;
+  accent-color: var(--color--accent--surface);
 }
 
 .color {
@@ -40,7 +40,7 @@
   height: 20px;
   border-radius: 100%;
   background-color: rgba(var(--color-rgb-components), 0.5);
-  outline: 1px solid var(--border-color);
+  outline: 1px solid var(--color--border);
   border: 2px solid white;
 }
 
@@ -50,6 +50,6 @@
 }
 
 .modelActive {
-  background: var(--light-color);
+  background: var(--color--tinted--surface);
   font-weight: bold;
 }
