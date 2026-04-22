@@ -9,7 +9,7 @@ const ASSET_SOURCE_ID = 'dall-e';
 
 const imageGeneratorAssetSource = {
   id: ASSET_SOURCE_ID,
-  name: 'Image Generator',
+  name: 'AI Asset Source',
   icon: {
     type: 'svg' as const,
     viewBox: '0 0 24 24',
