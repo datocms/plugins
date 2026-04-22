@@ -9,6 +9,6 @@
 
 .text {
   font: inherit;
-  color: var(--base-body-color);
+  color: var(--color--ink);
   white-space: nowrap;
 }

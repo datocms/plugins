@@ -6,16 +6,16 @@
   justify-content: center;
   background: transparent;
   cursor: pointer;
-  color: var(--light-body-color);
-  border-left: 1px solid var(--border-color);
+  color: var(--color--ink-subtle);
+  border-left: 1px solid var(--color--border);
   aspect-ratio: 1;
   font-size: 15px;
   height: 100%;
 }
 
 .toolbarButton:hover {
-  color: var(--base-body-color);
-  background-color: var(--light-bg-color);
+  color: var(--color--ink);
+  background-color: var(--color--surface-muted);
 }
 
 .toolbarButton:disabled {

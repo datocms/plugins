@@ -17,13 +17,13 @@
     0px 0px 16.5px rgba(0, 0, 0, 0.083),
     0px 0px 30.9px rgba(0, 0, 0, 0.101),
     0px 0px 74px rgba(0, 0, 0, 0.14);
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 .dimensionInput {
   width: 60px;
   padding: 4px 8px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color--border);
   border-radius: 4px;
   font-size: 14px;
   color: inherit;
@@ -32,5 +32,5 @@
 
 .dimensionInput:focus {
   outline: none;
-  border-color: var(--accent-color);
+  border-color: var(--color--focus--border);
 }

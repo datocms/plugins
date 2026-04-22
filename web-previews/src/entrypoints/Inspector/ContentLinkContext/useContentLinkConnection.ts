@@ -1,4 +1,4 @@
-import { connectToChild } from 'penpal';
+import { type AsyncMethodReturns, connectToChild } from 'penpal';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import type {
   ContentLinkMethods,
@@ -11,7 +11,7 @@ import useMethodProxy from './useMethodProxy';
 // Connection state for Penpal
 export type ContentLinkConnectionState =
   | { type: 'connecting' }
-  | { type: 'connected'; methods: ContentLinkMethods }
+  | { type: 'connected'; methods: AsyncMethodReturns<ContentLinkMethods> }
   | { type: 'failed' };
 
 export type UseContentLinkConnectionReturn = {

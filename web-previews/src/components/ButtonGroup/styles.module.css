@@ -1,7 +1,7 @@
 .buttonGroup {
   display: flex;
   gap: 0;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color--border);
   border-radius: 4px;
   overflow: hidden;
 }
@@ -14,12 +14,12 @@
   margin: 0;
   background: transparent;
   cursor: pointer;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   display: flex;
   align-items: center;
   justify-content: center;
   text-decoration: none;
-  border-right: 1px solid var(--border-color);
+  border-right: 1px solid var(--color--border);
   width: 38px;
   aspect-ratio: 1.1;
 }
@@ -31,6 +31,6 @@
 
 .buttonGroup > button:hover,
 .buttonGroup > a:hover {
-  background: var(--light-bg-color);
-  color: var(--base-body-color);
+  background: var(--color--surface-muted);
+  color: var(--color--ink);
 }

@@ -1,6 +1,7 @@
 import cuid from 'cuid';
 import type { RenderInspectorCtx } from 'datocms-plugin-sdk';
 import { useCtx } from 'datocms-react-ui';
+import type { AsyncMethodReturns } from 'penpal';
 import {
   createContext,
   type ReactNode,
@@ -30,7 +31,7 @@ interface ContextValue {
     | {
         type: 'connected';
         state: CleanContentLinkState;
-        methods: ContentLinkMethods;
+        methods: AsyncMethodReturns<ContentLinkMethods>;
       }
     | { type: 'error'; reason: 'no-ping' | 'failed-connection' };
 
