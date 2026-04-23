@@ -90,13 +90,40 @@ const CommentsBar = ({ ctx }: Props) => {
     () => createApiClient(cmaToken, ctx.environment),
     [cmaToken, ctx.environment],
   );
-  const { projectUsers, projectModels, modelFields, typedUsers } =
-    useProjectData(ctx, { loadFields: true });
+  const [fieldMentionsRequestKey, setFieldMentionsRequestKey] = useState(0);
+  const {
+    projectUsers,
+    projectModels,
+    modelFields,
+    typedUsers,
+    isLoadingFields,
+    fieldLoadError,
+    retryFields,
+  } = useProjectData(ctx, {
+    fieldsRequestKey: fieldMentionsRequestKey,
+    loadFields: fieldMentionsRequestKey > 0,
+  });
   const { canMentionAssets, canMentionModels, readableModels } =
     useMentionPermissions(ctx, projectModels);
 
+  const handleFieldMentionIntent = useCallback(() => {
+    setFieldMentionsRequestKey((previous) => (previous === 0 ? 1 : previous));
+  }, []);
+
+  const handleFieldMentionsRetry = useCallback(() => {
+    setFieldMentionsRequestKey((previous) => (previous === 0 ? 1 : previous));
+    retryFields();
+  }, [retryFields]);
+
+  const fieldMentionsErrorMessage = fieldLoadError?.message ?? null;
+
   const mainLocale = ctx.site.attributes.locales[0] ?? 'en';
-  const { prefetchEntities, resolveComments } = useEntityResolver({
+  const {
+    prefetchEntities,
+    seedResolvedMentionsFromSegments,
+    resolveComments,
+    cacheVersion,
+  } = useEntityResolver({
     client,
     projectUsers,
     projectModels,
@@ -260,6 +287,7 @@ const CommentsBar = ({ ctx }: Props) => {
     status,
     retry: retrySubscription,
     isAutoReconnecting,
+    storageProblem,
   } = useCommentsData({
     ctx,
     realTimeEnabled,
@@ -292,7 +320,7 @@ const CommentsBar = ({ ctx }: Props) => {
   const visibleComments = useMemo(
     () => resolveComments(visibleStoredComments),
     // cacheVersion triggers re-resolution when async entities (records/assets) are fetched
-    [visibleStoredComments, resolveComments],
+    [visibleStoredComments, resolveComments, cacheVersion],
   );
 
   const hasMoreComments = (hiddenOldCount ?? 0) > 0;
@@ -312,6 +340,7 @@ const CommentsBar = ({ ctx }: Props) => {
     composerSegments,
     setComposerSegments,
     pendingNewReplies,
+    onBeforePersistSegments: seedResolvedMentionsFromSegments,
   });
 
   // Picker modals are DatoCMS-controlled; no timeouts (users may browse 30+ seconds)
@@ -503,86 +532,114 @@ const CommentsBar = ({ ctx }: Props) => {
               </div>
             )}
 
-            <div className={styles.composer}>
-              <CommentErrorBoundary fallbackMessage="Unable to load editor. Please refresh.">
-                {/* Reconnecting banner - full width above composer */}
-                {isAutoReconnecting && (
-                  <SyncStatusIndicator
-                    subscriptionStatus={status}
-                    subscriptionError={null}
-                    retryState={retryState}
-                    onRetry={retrySubscription}
-                    realTimeEnabled={realTimeEnabled}
-                    isAutoReconnecting={true}
-                    variant="banner"
-                  />
+            {storageProblem ? (
+              <div className={styles.migrationRequired} role="alert">
+                <p>
+                  {storageProblem.type === 'migration_required'
+                    ? 'Comments are stored in an older format.'
+                    : 'Comments storage could not be read.'}
+                </p>
+                <span>
+                  Go to the plugin settings screen and run the comment
+                  migration before adding new comments.
+                </span>
+                {storageProblem.type === 'malformed_aggregate' && (
+                  <span className={styles.migrationRequiredDetails}>
+                    {storageProblem.message}
+                  </span>
                 )}
-                <div className={styles.composerInputWrapper}>
-                  <TipTapComposer
-                    ref={composerRef}
-                    segments={composerSegments}
-                    onSegmentsChange={setComposerSegments}
-                    onSubmit={submitNewComment}
-                    placeholder="Add a comment...&#10;Type / for commands"
-                    projectUsers={projectUsers}
-                    modelFields={modelFields}
-                    projectModels={projectModels}
-                    canMentionAssets={canMentionAssets}
-                    canMentionModels={canMentionModels}
-                    canMentionFields={true}
-                    onAssetTrigger={handleAssetTrigger}
-                    onRecordTrigger={handleRecordTrigger}
-                    autoFocus={false}
-                    ctx={ctx}
-                  />
+              </div>
+            ) : (
+              <>
+                <div className={styles.composer}>
+                  <CommentErrorBoundary fallbackMessage="Unable to load editor. Please refresh.">
+                    {isAutoReconnecting && (
+                      <SyncStatusIndicator
+                        subscriptionStatus={status}
+                        subscriptionError={null}
+                        retryState={retryState}
+                        onRetry={retrySubscription}
+                        realTimeEnabled={realTimeEnabled}
+                        isAutoReconnecting={true}
+                        variant="banner"
+                      />
+                    )}
+                    <div className={styles.composerInputWrapper}>
+                      <TipTapComposer
+                        ref={composerRef}
+                        segments={composerSegments}
+                        onSegmentsChange={setComposerSegments}
+                        onSubmit={submitNewComment}
+                        placeholder="Add a comment...&#10;Type / for commands"
+                        projectUsers={projectUsers}
+                        modelFields={modelFields}
+                        projectModels={projectModels}
+                        canMentionAssets={canMentionAssets}
+                        canMentionModels={canMentionModels}
+                        canMentionFields={true}
+                        fieldMentionsLoading={isLoadingFields}
+                        fieldMentionsError={fieldMentionsErrorMessage}
+                        onFieldMentionIntent={handleFieldMentionIntent}
+                        onFieldMentionsRetry={handleFieldMentionsRetry}
+                        onAssetTrigger={handleAssetTrigger}
+                        onRecordTrigger={handleRecordTrigger}
+                        autoFocus={false}
+                        ctx={ctx}
+                      />
 
-                  {isRecordModelSelectorOpen && (
-                    <RecordModelSelectorDropdown
-                      models={readableModels}
-                      onSelect={handleRecordModelSelectForReply}
-                      onClose={handleRecordModelSelectorClose}
-                    />
-                  )}
+                      {isRecordModelSelectorOpen && (
+                        <RecordModelSelectorDropdown
+                          models={readableModels}
+                          onSelect={handleRecordModelSelectForReply}
+                          onClose={handleRecordModelSelectorClose}
+                        />
+                      )}
 
-                  <ComposerToolbar
-                    onUserClick={handleUserToolbarClick}
-                    onFieldClick={handleFieldToolbarClick}
-                    onRecordClick={handleRecordToolbarClick}
-                    onAssetClick={handleAssetToolbarClick}
-                    onModelClick={handleModelToolbarClick}
-                    onSendClick={submitNewComment}
-                    isSendDisabled={isComposerEmptyValue || pendingCount > 0}
-                    canMentionAssets={canMentionAssets}
-                    canMentionModels={canMentionModels}
-                  />
+                      <ComposerToolbar
+                        onUserClick={handleUserToolbarClick}
+                        onFieldClick={handleFieldToolbarClick}
+                        onRecordClick={handleRecordToolbarClick}
+                        onAssetClick={handleAssetToolbarClick}
+                        onModelClick={handleModelToolbarClick}
+                        onSendClick={submitNewComment}
+                        isSendDisabled={isComposerEmptyValue || pendingCount > 0}
+                        canMentionAssets={canMentionAssets}
+                        canMentionModels={canMentionModels}
+                      />
+                    </div>
+                  </CommentErrorBoundary>
                 </div>
-              </CommentErrorBoundary>
-            </div>
 
-            <CommentsList
-              comments={visibleComments}
-              hasMoreComments={hasMoreComments}
-              onLoadMore={() =>
-                setHiddenOldCount((prev) =>
-                  Math.max(0, (prev ?? 0) - COMMENTS_PAGE_SIZE),
-                )
-              }
-              currentUserId={currentUserId}
-              modelFields={modelFields}
-              projectUsers={projectUsers}
-              projectModels={projectModels}
-              deleteComment={deleteComment}
-              editComment={editComment}
-              upvoteComment={upvoteComment}
-              replyComment={replyComment}
-              onPickerRequest={handleReplyPickerRequest}
-              onRecordModelSelect={handleRecordModelSelectFromComment}
-              readableModels={readableModels}
-              canMentionAssets={canMentionAssets}
-              canMentionModels={canMentionModels}
-              ctx={ctx}
-              isPickerActive={isPickerInProgress}
-            />
+                <CommentsList
+                  comments={visibleComments}
+                  hasMoreComments={hasMoreComments}
+                  onLoadMore={() =>
+                    setHiddenOldCount((prev) =>
+                      Math.max(0, (prev ?? 0) - COMMENTS_PAGE_SIZE),
+                    )
+                  }
+                  currentUserId={currentUserId}
+                  modelFields={modelFields}
+                  fieldMentionsLoading={isLoadingFields}
+                  fieldMentionsError={fieldMentionsErrorMessage}
+                  onFieldMentionIntent={handleFieldMentionIntent}
+                  onFieldMentionsRetry={handleFieldMentionsRetry}
+                  projectUsers={projectUsers}
+                  projectModels={projectModels}
+                  deleteComment={deleteComment}
+                  editComment={editComment}
+                  upvoteComment={upvoteComment}
+                  replyComment={replyComment}
+                  onPickerRequest={handleReplyPickerRequest}
+                  onRecordModelSelect={handleRecordModelSelectFromComment}
+                  readableModels={readableModels}
+                  canMentionAssets={canMentionAssets}
+                  canMentionModels={canMentionModels}
+                  ctx={ctx}
+                  isPickerActive={isPickerInProgress}
+                />
+              </>
+            )}
           </div>
         </MentionPermissionsProvider>
       </ProjectDataProvider>

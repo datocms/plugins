@@ -14,6 +14,10 @@ type CommentsListProps = {
   onLoadMore: () => void;
   currentUserId: string;
   modelFields: FieldInfo[];
+  fieldMentionsLoading?: boolean;
+  fieldMentionsError?: string | null;
+  onFieldMentionIntent?: () => void;
+  onFieldMentionsRetry?: () => void;
   projectUsers: UserInfo[];
   projectModels: ModelInfo[];
   deleteComment: (id: string, parentCommentId?: string) => boolean;
@@ -52,6 +56,10 @@ const CommentsListComponent = ({
   onLoadMore,
   currentUserId,
   modelFields,
+  fieldMentionsLoading,
+  fieldMentionsError,
+  onFieldMentionIntent,
+  onFieldMentionsRetry,
   projectUsers,
   projectModels,
   deleteComment,
@@ -87,6 +95,10 @@ const CommentsListComponent = ({
             commentObject={comment}
             currentUserId={currentUserId}
             modelFields={modelFields}
+            fieldMentionsLoading={fieldMentionsLoading}
+            fieldMentionsError={fieldMentionsError}
+            onFieldMentionIntent={onFieldMentionIntent}
+            onFieldMentionsRetry={onFieldMentionsRetry}
             projectUsers={projectUsers}
             projectModels={projectModels}
             onPickerRequest={onPickerRequest}

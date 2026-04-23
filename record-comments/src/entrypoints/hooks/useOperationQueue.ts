@@ -5,8 +5,14 @@ import { calculateBackoffDelay, delay } from '@utils/backoff';
 import { applyOperation } from '@utils/operationApplicators';
 import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ERROR_MESSAGES, RETRY_LIMITS, TIMING } from '@/constants';
+import {
+  ERROR_MESSAGES,
+  RETRY_LIMITS,
+  TIMING,
+} from '@/constants';
 import { logDebug, logError } from '@/utils/errorLogger';
+
+type CommentRecord = Awaited<ReturnType<Client['items']['list']>>[number];
 
 type OperationContext = {
   client: Client;
@@ -22,6 +28,49 @@ type OperationCallbacks = {
   startCooldown: () => void;
 };
 
+function hasNonEmptyAggregateValue(value: unknown): boolean {
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value !== 'string') return value != null;
+
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === '[]') return false;
+
+  return true;
+}
+
+function parseExistingCommentsOrThrow(content: unknown) {
+  const comments = parseComments(content);
+  if (comments.length === 0 && hasNonEmptyAggregateValue(content)) {
+    throw new Error('Existing comment storage is malformed.');
+  }
+  return comments;
+}
+
+async function findAggregateRecord(
+  client: Client,
+  commentsModelId: string,
+  modelId: string,
+  recordId: string,
+): Promise<CommentRecord | null> {
+  const existingRecords = await client.items.list({
+    filter: {
+      type: commentsModelId,
+      fields: {
+        model_id: { eq: modelId },
+        record_id: { eq: recordId },
+      },
+    },
+    page: { limit: 1 },
+  });
+
+  return existingRecords[0] ?? null;
+}
+
+function getCurrentVersion(record: CommentRecord): string | undefined {
+  const currentVersion = record.meta?.current_version;
+  return currentVersion === undefined ? undefined : String(currentVersion);
+}
+
 async function executeWithExistingRecord(
   ctx: OperationContext,
   callbacks: OperationCallbacks,
@@ -32,7 +81,7 @@ async function executeWithExistingRecord(
   const sanitized = sanitizeOperationForLogging(op);
 
   const serverRecord = await client.items.find(currentRecordId);
-  const serverComments = parseComments(serverRecord.content);
+  const serverComments = parseExistingCommentsOrThrow(serverRecord.content);
   const result = applyOperation(serverComments, op);
 
   if (
@@ -53,7 +102,7 @@ async function executeWithExistingRecord(
 
   await client.items.update(currentRecordId, {
     content: JSON.stringify(result.comments),
-    meta: { current_version: serverRecord.meta.current_version },
+    meta: { current_version: getCurrentVersion(serverRecord) },
   });
 
   logDebug('Queued comment operation saved', {
@@ -67,88 +116,118 @@ async function executeWithExistingRecord(
   return true;
 }
 
+async function applyToAggregateRecord(
+  ctx: OperationContext,
+  callbacks: OperationCallbacks,
+  aggregateRecord: CommentRecord,
+): Promise<boolean> {
+  const { client, op, modelId, recordId, onRecordCreated } = ctx;
+  const { alertIfMounted, clearRetryState, startCooldown } = callbacks;
+  const sanitized = sanitizeOperationForLogging(op);
+
+  const existingComments = parseExistingCommentsOrThrow(
+    aggregateRecord.content,
+  );
+  const result = applyOperation(existingComments, op);
+
+  if (
+    result.status === 'failed_parent_missing' ||
+    result.status === 'failed_target_missing'
+  ) {
+    logDebug('Skipping queued comment operation due to missing target', {
+      modelId,
+      op: sanitized,
+      recordId,
+      status: result.status,
+    });
+    if (result.failureReason) alertIfMounted(result.failureReason);
+    clearRetryState();
+    return false;
+  }
+
+  await client.items.update(aggregateRecord.id, {
+    content: JSON.stringify(result.comments),
+    meta: { current_version: getCurrentVersion(aggregateRecord) },
+  });
+
+  logDebug('Queued comment operation saved', {
+    commentRecordId: aggregateRecord.id,
+    modelId,
+    op: sanitized,
+    recordId,
+  });
+  onRecordCreated(aggregateRecord.id);
+  startCooldown();
+  clearRetryState();
+  return true;
+}
+
 async function executeWithoutExistingRecord(
   ctx: OperationContext,
   callbacks: OperationCallbacks,
   currentCommentsModelId: string,
 ): Promise<boolean> {
   const { client, op, modelId, recordId, onRecordCreated } = ctx;
-  const { alertIfMounted, clearRetryState, startCooldown } = callbacks;
+  const { startCooldown, clearRetryState } = callbacks;
   const sanitized = sanitizeOperationForLogging(op);
 
-  const existingRecords = await client.items.list({
-    filter: {
-      type: currentCommentsModelId,
-      fields: {
-        model_id: { eq: modelId },
-        record_id: { eq: recordId },
-      },
-    },
-    page: { limit: 1 },
-  });
+  const existingRecord = await findAggregateRecord(
+    client,
+    currentCommentsModelId,
+    modelId,
+    recordId,
+  );
 
-  if (existingRecords.length > 0) {
-    const existingRecord = existingRecords[0];
+  if (existingRecord) {
     logDebug('Using existing comments record for queued operation', {
       commentRecordId: existingRecord.id,
       modelId,
       op: sanitized,
       recordId,
     });
+    return applyToAggregateRecord(ctx, callbacks, existingRecord);
+  }
 
-    const existingComments = parseComments(existingRecord.content);
-    const result = applyOperation(existingComments, op);
+  const result = applyOperation([], op);
 
-    if (
-      result.status === 'failed_parent_missing' ||
-      result.status === 'failed_target_missing'
-    ) {
-      logDebug('Skipping queued comment operation due to missing target', {
-        modelId,
-        op: sanitized,
-        recordId,
-        status: result.status,
-      });
-      if (result.failureReason) alertIfMounted(result.failureReason);
-      clearRetryState();
-      return false;
-    }
-
-    await client.items.update(existingRecord.id, {
+  try {
+    const newRecord = await client.items.create({
+      item_type: { type: 'item_type', id: currentCommentsModelId },
+      model_id: modelId,
+      record_id: recordId,
       content: JSON.stringify(result.comments),
-      meta: { current_version: existingRecord.meta.current_version },
     });
 
-    logDebug('Queued comment operation saved', {
-      commentRecordId: existingRecord.id,
+    logDebug('Created comments record for queued operation', {
+      commentRecordId: newRecord.id,
       modelId,
       op: sanitized,
       recordId,
     });
-    onRecordCreated(existingRecord.id);
+    onRecordCreated(newRecord.id);
     startCooldown();
     clearRetryState();
     return true;
+  } catch (error) {
+    const recoveredRecord = await findAggregateRecord(
+      client,
+      currentCommentsModelId,
+      modelId,
+      recordId,
+    );
+
+    if (!recoveredRecord) {
+      throw error;
+    }
+
+    logDebug('Recovered from concurrent comments record creation', {
+      commentRecordId: recoveredRecord.id,
+      modelId,
+      op: sanitized,
+      recordId,
+    });
+    return applyToAggregateRecord(ctx, callbacks, recoveredRecord);
   }
-
-  const result = applyOperation([], op);
-  const newRecord = await client.items.create({
-    item_type: { type: 'item_type', id: currentCommentsModelId },
-    model_id: modelId,
-    record_id: recordId,
-    content: JSON.stringify(result.comments),
-  });
-
-  logDebug('Created comments record for queued operation', {
-    commentRecordId: newRecord.id,
-    modelId,
-    op: sanitized,
-    recordId,
-  });
-  onRecordCreated(newRecord.id);
-  startCooldown();
-  clearRetryState();
-  return true;
 }
 
 async function executeSingleAttempt(
@@ -246,8 +325,6 @@ function sanitizeOperationForLogging(
         parentCommentId: op.parentCommentId,
         replyId: op.reply.id,
       };
-    default:
-      return base;
   }
 }
 
@@ -328,8 +405,6 @@ export function useOperationQueue({
   const commentsModelIdRef = useRef(commentsModelId);
   commentsModelIdRef.current = commentsModelId;
 
-  // Ref to break the circular dependency between retryAfterVersionConflict
-  // and executeWithVersionConflictRetry (each calls the other recursively).
   const executeWithVersionConflictRetryRef = useRef<
     (
       op: CommentOperation,
@@ -595,7 +670,6 @@ export function useOperationQueue({
     ],
   );
 
-  // Keep the ref in sync so retryAfterVersionConflict can call the latest version
   executeWithVersionConflictRetryRef.current = executeWithVersionConflictRetry;
 
   const executeWithRetry = useCallback(

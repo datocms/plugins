@@ -24,7 +24,21 @@ type FieldMentionDropdownProps = {
   position?: 'above' | 'below';
   /** Called when field navigation path changes (for updating editor preview) */
   onPathChange?: (path: string) => void;
+  isLoading?: boolean;
+  errorMessage?: string | null;
+  onRetry?: () => void;
 };
+
+function getFieldListMessage(
+  isLoading: boolean,
+  errorMessage: string | null,
+  query: string,
+) {
+  if (isLoading) return 'Loading fields…';
+  if (errorMessage) return errorMessage;
+  if (query) return `No fields matching "${query}"`;
+  return 'No fields available';
+}
 
 const FieldMentionDropdown = ({
   fields,
@@ -38,6 +52,9 @@ const FieldMentionDropdown = ({
   registerKeyHandler,
   position = 'below',
   onPathChange,
+  isLoading = false,
+  errorMessage = null,
+  onRetry,
 }: FieldMentionDropdownProps) => {
   const dropdownClassName = cn(
     styles.mentionDropdown,
@@ -84,6 +101,11 @@ const FieldMentionDropdown = ({
     selectedIndex,
     onPathChange,
   });
+  const fieldListMessage = getFieldListMessage(
+    isLoading,
+    errorMessage,
+    query,
+  );
 
   // Scroll selected item into view
   useEffect(() => {
@@ -122,11 +144,27 @@ const FieldMentionDropdown = ({
   }
 
   // Empty state for field list
-  if (viewMode === 'fields' && fields.length === 0) {
+  if (
+    viewMode === 'fields' &&
+    (isLoading || errorMessage || fields.length === 0)
+  ) {
     return (
       <div ref={dropdownRef} className={dropdownClassName}>
         <div className={styles.mentionEmpty}>
-          {query ? `No fields matching "${query}"` : 'No fields available'}
+          {fieldListMessage}
+          {errorMessage && onRetry && (
+            <button
+              type="button"
+              className={styles.mentionRetryButton}
+              onMouseDown={(event) => {
+                event.preventDefault();
+                justClickedInsideRef.current = true;
+              }}
+              onClick={onRetry}
+            >
+              Retry
+            </button>
+          )}
         </div>
       </div>
     );

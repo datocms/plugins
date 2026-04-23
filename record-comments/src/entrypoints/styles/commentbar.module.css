@@ -379,3 +379,29 @@
   border-color: var(--accent-color);
   box-shadow: 0 0 0 2px var(--accent-color-a30);
 }
+
+.migrationRequired {
+  padding: var(--space-3);
+  margin-bottom: var(--space-3);
+  color: var(--base-body-color);
+  background-color: var(--color-warning-bg);
+  border: 1px solid var(--color-warning-border);
+  border-radius: var(--radius-lg);
+}
+
+.migrationRequired p {
+  margin: 0 0 var(--space-1) 0;
+  font-size: var(--font-size-s);
+  font-weight: 600;
+}
+
+.migrationRequired span {
+  display: block;
+  font-size: var(--font-size-xs);
+  color: var(--light-body-color);
+  line-height: 1.45;
+}
+
+.migrationRequiredDetails {
+  margin-top: var(--space-1);
+}

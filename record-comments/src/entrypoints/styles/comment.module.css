@@ -622,6 +622,22 @@
   text-align: center;
 }
 
+.mentionRetryButton {
+  display: block;
+  margin: var(--space-2) auto 0;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: var(--base-body-color);
+  color: var(--accent-color);
+  font: inherit;
+  cursor: pointer;
+}
+
+.mentionRetryButton:hover {
+  background: var(--light-bg-color);
+}
+
 /* ============================================
    Field Mention Inline (in comment text)
    Slack-like style: #field_name with light highlight

@@ -109,6 +109,7 @@ async function createOrSkipCommentRecord(
         record_id: { eq: record.id },
       },
     },
+    page: { limit: 1 },
   });
 
   if (existing.length > 0) {

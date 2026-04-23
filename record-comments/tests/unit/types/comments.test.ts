@@ -1,4 +1,4 @@
-import { parseComments } from '@ctypes/comments';
+import { COMMENTS_QUERY, parseComments } from '@ctypes/comments';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 describe('parseComments', () => {
@@ -59,5 +59,14 @@ describe('parseComments', () => {
         replies: [],
       },
     ]);
+  });
+});
+
+describe('COMMENTS_QUERY', () => {
+  it('reads the single aggregate comments record', () => {
+    expect(COMMENTS_QUERY).toContain('allProjectComments');
+    expect(COMMENTS_QUERY).toContain('recordId: { eq: $recordId }');
+    expect(COMMENTS_QUERY).toContain('first: 1');
+    expect(COMMENTS_QUERY).not.toContain('targetRecordId');
   });
 });

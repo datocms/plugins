@@ -1,5 +1,6 @@
 import type { BlockInfo } from '@ctypes/mentions';
 import {
+  type FieldLoadCache,
   getBlockAttributesAtPath,
   getBlocksForField,
   getFieldsForBlock,
@@ -205,6 +206,7 @@ export function useFieldNavigation({
   const [isLoadingBlocks, setIsLoadingBlocks] = useState(false);
 
   const loadOperationRef = useRef(0);
+  const fieldCacheRef = useRef<FieldLoadCache>(new Map());
 
   const viewMode = useMemo(
     () => getCurrentViewMode(navigationStack),
@@ -331,6 +333,7 @@ export function useFieldNavigation({
         lastBlockStep.blockModelId,
         blockAttrs,
         basePath,
+        fieldCacheRef.current,
       );
 
       if (!isOperationCurrent(currentOperation)) return;

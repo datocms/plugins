@@ -3,6 +3,7 @@ import { COMMENTS_QUERY } from '@ctypes/comments';
 import type { Client } from '@datocms/cma-client-browser';
 import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
 import {
+  type CommentsStorageProblem,
   type SubscriptionErrorInfo,
   type SubscriptionStatus,
   type UseCommentsSubscriptionReturn,
@@ -36,6 +37,7 @@ type UseCommentsDataReturn = {
   status: SubscriptionStatus;
   retry: () => void;
   isAutoReconnecting: boolean;
+  storageProblem: CommentsStorageProblem | null;
   fullResult: UseCommentsSubscriptionReturn;
 };
 
@@ -85,6 +87,7 @@ export function useCommentsData(
     status: result.status,
     retry: result.retry,
     isAutoReconnecting: result.isAutoReconnecting,
+    storageProblem: result.storageProblem,
     fullResult: result,
   };
 }

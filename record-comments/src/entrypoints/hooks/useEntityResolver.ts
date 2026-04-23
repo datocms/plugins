@@ -64,6 +64,7 @@ type UseEntityResolverParams = {
 type UseEntityResolverReturn = {
   /** Starts async resolution for record/asset mentions found in comments. */
   prefetchEntities: (comments: CommentType[]) => void;
+  seedResolvedMentionsFromSegments: (segments: CommentSegment[]) => void;
   resolveComments: (comments: CommentType[]) => ResolvedCommentType[];
   isResolving: boolean;
   /** Increments when async entities (records/assets) are resolved. Use as useMemo dependency. */
@@ -78,7 +79,7 @@ function resolveAuthorById(
   userId: string,
   projectUsers: UserInfo[],
 ): ResolvedAuthor {
-  const user = projectUsers.find((u) => u.id === userId);
+  const user = projectUsers.find((u) => u.id === userId || u.email === userId);
 
   if (user) {
     return {
@@ -234,6 +235,68 @@ function getAssetThumbnailUrl(mimeType: string, url: string): string | null {
   return null;
 }
 
+function createResolvedRecordFromMention(
+  mention: RecordMention,
+): ResolvedRecord {
+  return {
+    id: mention.id,
+    title: mention.title,
+    modelId: mention.modelId,
+    modelApiKey: mention.modelApiKey,
+    modelName: mention.modelName,
+    modelEmoji: mention.modelEmoji,
+    thumbnailUrl: mention.thumbnailUrl,
+    isSingleton: mention.isSingleton ?? false,
+  };
+}
+
+function createResolvedAssetFromMention(
+  mention: AssetMention,
+): ResolvedAsset {
+  return {
+    id: mention.id,
+    filename: mention.filename,
+    url: mention.url,
+    thumbnailUrl: mention.thumbnailUrl,
+    mimeType: mention.mimeType,
+  };
+}
+
+function isSameResolvedRecord(
+  current: ResolvedRecord | 'loading' | 'error' | undefined,
+  next: ResolvedRecord,
+): boolean {
+  return (
+    current !== undefined &&
+    current !== 'loading' &&
+    current !== 'error' &&
+    current.id === next.id &&
+    current.title === next.title &&
+    current.modelId === next.modelId &&
+    current.modelApiKey === next.modelApiKey &&
+    current.modelName === next.modelName &&
+    current.modelEmoji === next.modelEmoji &&
+    current.thumbnailUrl === next.thumbnailUrl &&
+    current.isSingleton === next.isSingleton
+  );
+}
+
+function isSameResolvedAsset(
+  current: ResolvedAsset | 'loading' | 'error' | undefined,
+  next: ResolvedAsset,
+): boolean {
+  return (
+    current !== undefined &&
+    current !== 'loading' &&
+    current !== 'error' &&
+    current.id === next.id &&
+    current.filename === next.filename &&
+    current.url === next.url &&
+    current.thumbnailUrl === next.thumbnailUrl &&
+    current.mimeType === next.mimeType
+  );
+}
+
 // ============================================================================
 // Hook
 // ============================================================================
@@ -262,6 +325,41 @@ export function useEntityResolver(
 
   // Cache version increments when async entities are resolved, triggering re-renders
   const [cacheVersion, setCacheVersion] = useState(0);
+
+  const seedResolvedMentionsFromSegments = useCallback(
+    (segments: CommentSegment[]) => {
+      let didSeed = false;
+
+      for (const segment of segments) {
+        if (segment.type !== 'mention') continue;
+
+        if (segment.mention.type === 'record') {
+          const next = createResolvedRecordFromMention(segment.mention);
+          const current = cacheRef.current.records.get(segment.mention.id);
+
+          if (!isSameResolvedRecord(current, next)) {
+            cacheRef.current.records.set(segment.mention.id, next);
+            pendingRecordsRef.current.delete(segment.mention.id);
+            didSeed = true;
+          }
+        } else if (segment.mention.type === 'asset') {
+          const next = createResolvedAssetFromMention(segment.mention);
+          const current = cacheRef.current.assets.get(segment.mention.id);
+
+          if (!isSameResolvedAsset(current, next)) {
+            cacheRef.current.assets.set(segment.mention.id, next);
+            pendingAssetsRef.current.delete(segment.mention.id);
+            didSeed = true;
+          }
+        }
+      }
+
+      if (didSeed) {
+        setCacheVersion((n) => n + 1);
+      }
+    },
+    [],
+  );
 
   const resolveMention = useCallback(
     (stored: StoredMention): Mention | null => {
@@ -405,6 +503,10 @@ export function useEntityResolver(
       );
 
       for (const record of recordsToFetch) {
+        if (!pendingRecordsRef.current.has(record.id)) {
+          continue;
+        }
+
         const result = recordResults.get(record.id);
         const model = Object.values(itemTypes).find(
           (it) => it?.id === record.modelId,
@@ -438,6 +540,10 @@ export function useEntityResolver(
       const assetPromises = assetsToFetch.map(async (assetId) => {
         try {
           const upload = await client.uploads.find(assetId);
+          if (!pendingAssetsRef.current.has(assetId)) {
+            return;
+          }
+
           cacheRef.current.assets.set(assetId, {
             id: assetId,
             filename: upload.filename ?? upload.basename ?? `Asset #${assetId}`,
@@ -449,6 +555,10 @@ export function useEntityResolver(
             mimeType: upload.mime_type ?? 'application/octet-stream',
           });
         } catch (error) {
+          if (!pendingAssetsRef.current.has(assetId)) {
+            return;
+          }
+
           logError('Failed to fetch asset', error, { assetId });
           cacheRef.current.assets.set(assetId, 'error');
         } finally {
@@ -533,6 +643,7 @@ export function useEntityResolver(
 
   return {
     prefetchEntities,
+    seedResolvedMentionsFromSegments,
     resolveComments,
     isResolving,
     cacheVersion,

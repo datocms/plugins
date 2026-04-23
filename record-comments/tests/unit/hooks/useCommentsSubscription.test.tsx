@@ -15,6 +15,7 @@ vi.mock('react-datocms/use-query-subscription', () => ({
 function createSidebarCtx(
   recordId: string | null,
   includeCommentsModel = true,
+  formValues: Record<string, unknown> = {},
 ) {
   return {
     environment: 'branch-env',
@@ -28,6 +29,7 @@ function createSidebarCtx(
           },
         }
       : {},
+    formValues,
     site: { attributes: { internal_domain: 'example.admin.datocms.com' } },
   } as never;
 }
@@ -223,8 +225,99 @@ describe('useCommentsSubscription', () => {
     await flushPromises();
 
     expect(client.items.list).toHaveBeenCalledTimes(1);
+    expect(client.items.list).toHaveBeenCalledWith({
+      filter: {
+        type: 'project_comment',
+        fields: {
+          model_id: { eq: 'model-1' },
+          record_id: { eq: 'record-1' },
+        },
+      },
+      page: { limit: 1 },
+    });
     expect(result.current?.comments).toHaveLength(1);
     expect(result.current?.commentsModelId).toBe('comments-model');
+    unmount();
+  });
+
+  it('reports migration-required when only old field comments exist', async () => {
+    useQuerySubscriptionMock.mockReturnValue({
+      data: null,
+      status: 'closed',
+      error: null,
+    });
+
+    const client = {
+      items: {
+        list: vi.fn().mockResolvedValue([]),
+      },
+    } as never;
+
+    const { result, unmount } = renderHook(() =>
+      useCommentsSubscription({
+        ctx: createSidebarCtx('record-1', true, {
+          comment_log: JSON.stringify([{ dateISO: '2024-01-01T00:00:00.000Z' }]),
+        }),
+        realTimeEnabled: false,
+        cdaToken: '',
+        client,
+        commentsModelId: 'comments-model',
+        isSyncAllowed: true,
+        query: 'query',
+        variables: { modelId: 'model-1', recordId: 'record-1' },
+        filterParams: { modelId: 'model-1', recordId: 'record-1' },
+        subscriptionEnabled: true,
+        currentUserId: 'user-1',
+      }),
+    );
+
+    await flushPromises();
+    await flushPromises();
+
+    expect(result.current?.comments).toEqual([]);
+    expect(result.current?.storageProblem?.type).toBe('migration_required');
+    unmount();
+  });
+
+  it('reports malformed aggregate storage without rendering comments', async () => {
+    useQuerySubscriptionMock.mockReturnValue({
+      data: null,
+      status: 'closed',
+      error: null,
+    });
+
+    const client = {
+      items: {
+        list: vi.fn().mockResolvedValue([
+          {
+            id: 'comment-record-1',
+            content: '[{\"bad\": true}]',
+          },
+        ]),
+      },
+    } as never;
+
+    const { result, unmount } = renderHook(() =>
+      useCommentsSubscription({
+        ctx: createSidebarCtx('record-1'),
+        realTimeEnabled: false,
+        cdaToken: '',
+        client,
+        commentsModelId: 'comments-model',
+        isSyncAllowed: true,
+        query: 'query',
+        variables: { modelId: 'model-1', recordId: 'record-1' },
+        filterParams: { modelId: 'model-1', recordId: 'record-1' },
+        subscriptionEnabled: true,
+        currentUserId: 'user-1',
+      }),
+    );
+
+    await flushPromises();
+    await flushPromises();
+
+    expect(result.current?.comments).toEqual([]);
+    expect(result.current?.storageProblem?.type).toBe('malformed_aggregate');
     unmount();
   });
 });

@@ -54,6 +54,10 @@ type CommentProps = {
   projectModels: ModelInfo[];
   ctx: RenderItemFormSidebarCtx;
   canMentionFields?: boolean;
+  fieldMentionsLoading?: boolean;
+  fieldMentionsError?: string | null;
+  onFieldMentionIntent?: () => void;
+  onFieldMentionsRetry?: () => void;
   // Picker request callback for asset mentions in edit mode
   onPickerRequest?: (
     type: 'asset' | 'record',
@@ -106,6 +110,8 @@ function compareRemainingProps(
     prev.currentUserId === next.currentUserId &&
     prev.isReply === next.isReply &&
     prev.canMentionFields === next.canMentionFields &&
+    prev.fieldMentionsLoading === next.fieldMentionsLoading &&
+    prev.fieldMentionsError === next.fieldMentionsError &&
     prev.canMentionAssets === next.canMentionAssets &&
     prev.canMentionModels === next.canMentionModels &&
     prev.isPickerActive === next.isPickerActive &&
@@ -118,6 +124,8 @@ function compareRemainingProps(
     prev.editComment === next.editComment &&
     prev.upvoteComment === next.upvoteComment &&
     prev.replyComment === next.replyComment &&
+    prev.onFieldMentionIntent === next.onFieldMentionIntent &&
+    prev.onFieldMentionsRetry === next.onFieldMentionsRetry &&
     prev.onPickerRequest === next.onPickerRequest &&
     prev.onRecordModelSelect === next.onRecordModelSelect
   );
@@ -231,6 +239,10 @@ const Comment = memo(function Comment({
   projectModels,
   ctx,
   canMentionFields = true,
+  fieldMentionsLoading = false,
+  fieldMentionsError = null,
+  onFieldMentionIntent,
+  onFieldMentionsRetry,
   onPickerRequest,
   onRecordModelSelect,
   readableModels = [],
@@ -448,15 +460,15 @@ const Comment = memo(function Comment({
   };
 
   const handleUserToolbarClick = useCallback(() => {
-    composerRef.current?.insertText('@');
+    composerRef.current?.triggerMentionType('user');
   }, [composerRef]);
 
   const handleFieldToolbarClick = useCallback(() => {
-    composerRef.current?.insertText('#');
+    composerRef.current?.triggerMentionType('field');
   }, [composerRef]);
 
   const handleModelToolbarClick = useCallback(() => {
-    composerRef.current?.insertText('$');
+    composerRef.current?.triggerMentionType('model');
   }, [composerRef]);
 
   const handleAssetToolbarClick = useCallback(() => {
@@ -553,6 +565,10 @@ const Comment = memo(function Comment({
                   canMentionAssets={canMentionAssets}
                   canMentionModels={canMentionModels}
                   canMentionFields={canMentionFields}
+                  fieldMentionsLoading={fieldMentionsLoading}
+                  fieldMentionsError={fieldMentionsError}
+                  onFieldMentionIntent={onFieldMentionIntent}
+                  onFieldMentionsRetry={onFieldMentionsRetry}
                   onAssetTrigger={handleAssetToolbarClick}
                   onRecordTrigger={handleRecordToolbarClick}
                   autoFocus
@@ -628,6 +644,10 @@ const Comment = memo(function Comment({
               projectModels={projectModels}
               ctx={ctx}
               canMentionFields={canMentionFields}
+              fieldMentionsLoading={fieldMentionsLoading}
+              fieldMentionsError={fieldMentionsError}
+              onFieldMentionIntent={onFieldMentionIntent}
+              onFieldMentionsRetry={onFieldMentionsRetry}
               onPickerRequest={onPickerRequest}
               onRecordModelSelect={onRecordModelSelect}
               readableModels={readableModels}

@@ -20,6 +20,25 @@ import {
   safeGetBlockAttributes,
 } from './blockHelpers';
 
+type LoadedItemTypeFields = Awaited<
+  ReturnType<RenderItemFormSidebarCtx['loadItemTypeFields']>
+>;
+
+export type FieldLoadCache = Map<string, Promise<LoadedItemTypeFields>>;
+
+function loadItemTypeFieldsCached(
+  ctx: RenderItemFormSidebarCtx,
+  fieldCache: FieldLoadCache,
+  itemTypeId: string,
+): Promise<LoadedItemTypeFields> {
+  const cached = fieldCache.get(itemTypeId);
+  if (cached) return cached;
+
+  const fieldsPromise = ctx.loadItemTypeFields(itemTypeId);
+  fieldCache.set(itemTypeId, fieldsPromise);
+  return fieldsPromise;
+}
+
 export function extractLocalizedValue<T = unknown>(
   fieldValue: T,
   locale: string | undefined,
@@ -153,15 +172,14 @@ function getAvailableLocales(
 
 interface BlockFieldProcessingConfig {
   ctx: RenderItemFormSidebarCtx;
-  blockFields: Awaited<
-    ReturnType<RenderItemFormSidebarCtx['loadItemTypeFields']>
-  >;
+  blockFields: LoadedItemTypeFields;
   blockAttrs: Record<string, FieldValue>;
   blockModelName: string;
   parentFieldLabel: string;
   basePath: string;
   depth: number;
   allLocales: string[];
+  fieldCache: FieldLoadCache;
   blockIndex?: number;
 }
 
@@ -178,6 +196,7 @@ async function processBlockField(
     basePath,
     depth,
     allLocales,
+    fieldCache,
   } = config;
 
   const blockFieldApiKey = blockField.attributes.api_key;
@@ -231,6 +250,7 @@ async function processBlockField(
       allLocales,
       depth: depth + 1,
       basePath,
+      fieldCache,
     },
   );
 
@@ -262,6 +282,7 @@ interface LoadNestedFieldsConfig {
   allLocales: string[];
   depth: number;
   basePath: string;
+  fieldCache: FieldLoadCache;
 }
 
 async function loadSingleBlockFields(
@@ -278,6 +299,7 @@ async function loadSingleBlockFields(
     allLocales,
     depth,
     basePath,
+    fieldCache,
   } = config;
   const blockModelId = getBlockModelId(fieldValue);
 
@@ -291,7 +313,11 @@ async function loadSingleBlockFields(
     ? `${basePath}.${parentFieldApiKey}`
     : parentFieldApiKey;
   const blockAttrs = safeGetBlockAttributes(fieldValue);
-  const blockFields = await ctx.loadItemTypeFields(blockModelId);
+  const blockFields = await loadItemTypeFieldsCached(
+    ctx,
+    fieldCache,
+    blockModelId,
+  );
 
   return processBlockFields({
     ctx,
@@ -302,6 +328,7 @@ async function loadSingleBlockFields(
     basePath: newBasePath,
     depth,
     allLocales,
+    fieldCache,
   });
 }
 
@@ -310,8 +337,14 @@ async function loadMultiBlockFields(
   blocks: ReturnType<typeof extractBlocksFromFieldValue>,
   config: LoadNestedFieldsConfig,
 ): Promise<FieldInfo[]> {
-  const { parentFieldApiKey, parentFieldLabel, allLocales, depth, basePath } =
-    config;
+  const {
+    parentFieldApiKey,
+    parentFieldLabel,
+    allLocales,
+    depth,
+    basePath,
+    fieldCache,
+  } = config;
 
   const blockPromises = blocks.map(async (block, blockIndex) => {
     const blockModelId = getBlockModelId(block);
@@ -350,7 +383,11 @@ async function loadMultiBlockFields(
       ? `${basePath}.${parentFieldApiKey}.${blockIndex}`
       : `${parentFieldApiKey}.${blockIndex}`;
     const blockAttrs = safeGetBlockAttributes(block);
-    const blockFields = await ctx.loadItemTypeFields(blockModelId);
+    const blockFields = await loadItemTypeFieldsCached(
+      ctx,
+      fieldCache,
+      blockModelId,
+    );
 
     return processBlockFields({
       ctx,
@@ -361,6 +398,7 @@ async function loadMultiBlockFields(
       basePath: newBasePath,
       depth,
       allLocales,
+      fieldCache,
       blockIndex,
     });
   });
@@ -394,11 +432,10 @@ async function loadNestedFieldsUnified(
 
 async function buildTopLevelFieldWithNested(
   ctx: RenderItemFormSidebarCtx,
-  field: Awaited<
-    ReturnType<RenderItemFormSidebarCtx['loadItemTypeFields']>
-  >[number],
+  field: LoadedItemTypeFields[number],
   formValues: Record<string, FieldValue>,
   allLocales: string[],
+  fieldCache: FieldLoadCache,
 ): Promise<FieldInfo[]> {
   const fieldType = field.attributes.field_type;
   const apiKey = field.attributes.api_key;
@@ -441,6 +478,7 @@ async function buildTopLevelFieldWithNested(
     allowedBlockModelIds,
     allLocales,
     1, // depth
+    fieldCache,
   );
 
   return [topLevelEntry, ...nestedFields];
@@ -451,11 +489,22 @@ export async function loadAllFields(
 ): Promise<FieldInfo[]> {
   const formValues = ctx.formValues as Record<string, FieldValue>;
   const allLocales = ctx.site.attributes.locales;
-  const topLevelFields = await ctx.loadItemTypeFields(ctx.itemType.id);
+  const fieldCache: FieldLoadCache = new Map();
+  const topLevelFields = await loadItemTypeFieldsCached(
+    ctx,
+    fieldCache,
+    ctx.itemType.id,
+  );
 
   const fieldArrays = await Promise.all(
     topLevelFields.map((field) =>
-      buildTopLevelFieldWithNested(ctx, field, formValues, allLocales),
+      buildTopLevelFieldWithNested(
+        ctx,
+        field,
+        formValues,
+        allLocales,
+        fieldCache,
+      ),
     ),
   );
 
@@ -471,6 +520,7 @@ async function loadNestedFields(
   allowedBlockModelIds: string[],
   allLocales: string[],
   depth: number,
+  fieldCache: FieldLoadCache,
   pathPrefix = '',
 ): Promise<FieldInfo[]> {
   const accessor = createFormValuesAccessor(formValues, pathPrefix);
@@ -484,6 +534,7 @@ async function loadNestedFields(
     allLocales,
     depth,
     basePath,
+    fieldCache,
   });
 }
 
@@ -569,9 +620,14 @@ export async function getFieldsForBlock(
   blockModelId: string,
   blockValue: Record<string, unknown> | null,
   basePath: string,
+  fieldCache: FieldLoadCache = new Map(),
 ): Promise<FieldInfo[]> {
   const allLocales = ctx.site.attributes.locales;
-  const blockFields = await ctx.loadItemTypeFields(blockModelId);
+  const blockFields = await loadItemTypeFieldsCached(
+    ctx,
+    fieldCache,
+    blockModelId,
+  );
   const blockAttrs = blockValue ?? {};
 
   return blockFields.map((field) => {

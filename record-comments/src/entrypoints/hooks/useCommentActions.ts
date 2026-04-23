@@ -33,6 +33,7 @@ type UseCommentActionsParams = {
   insertPosition?: InsertPosition;
   /** Optional override for reply insertion order. Defaults to insertPosition. */
   replyInsertPosition?: InsertPosition;
+  onBeforePersistSegments?: (segments: CommentSegment[]) => void;
   /**
    * Sidebar context - only required when insertPosition is 'prepend'
    * and record needs to be saved before commenting.
@@ -63,6 +64,7 @@ export function useCommentActions({
   pendingNewReplies,
   insertPosition = 'prepend',
   replyInsertPosition = insertPosition,
+  onBeforePersistSegments,
   ctx,
 }: UseCommentActionsParams): CommentActionsReturn {
   const submitNewComment = useCallback(() => {
@@ -78,6 +80,8 @@ export function useCommentActions({
       ctx.alert(ERROR_MESSAGES.SAVE_RECORD_FIRST);
       return false;
     }
+
+    onBeforePersistSegments?.(composerSegments);
 
     const newComment = createComment(composerSegments, userId);
     const didEnqueue = enqueue({ type: 'ADD_COMMENT', comment: newComment });
@@ -102,6 +106,7 @@ export function useCommentActions({
     enqueue,
     setComposerSegments,
     insertPosition,
+    onBeforePersistSegments,
   ]);
 
   // Authorization is handled at UI layer (visibility) and server (validation)
@@ -135,6 +140,8 @@ export function useCommentActions({
     (id: string, newContent: CommentSegment[], parentCommentId?: string) => {
       const isNewReply = pendingNewReplies.current?.has(id) ?? false;
       const existingComment = findCommentById(comments, id, parentCommentId);
+
+      onBeforePersistSegments?.(newContent);
 
       // Convert to slim format for storage
       const storedContent = segmentsToStoredSegments(newContent);
@@ -179,7 +186,14 @@ export function useCommentActions({
       );
       return true;
     },
-    [userId, comments, setComments, enqueue, pendingNewReplies],
+    [
+      userId,
+      comments,
+      setComments,
+      enqueue,
+      pendingNewReplies,
+      onBeforePersistSegments,
+    ],
   );
 
   const upvoteComment = useCallback(

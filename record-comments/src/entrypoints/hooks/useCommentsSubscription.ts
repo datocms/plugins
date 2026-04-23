@@ -19,13 +19,9 @@ import { logDebug, logError } from '@/utils/errorLogger';
 
 type Draft = {
   comment: CommentType;
-  parentId?: string; // undefined for top-level drafts
+  parentId?: string;
 };
 
-/**
- * Extracts draft comments (empty content by current user) from comments list.
- * Returns both top-level drafts and reply drafts with their parent IDs.
- */
 function extractDrafts(
   comments: CommentType[],
   currentUserId: string,
@@ -33,12 +29,10 @@ function extractDrafts(
   const drafts: Draft[] = [];
 
   for (const comment of comments) {
-    // Check if this is a top-level draft
     if (isContentEmpty(comment.content) && comment.authorId === currentUserId) {
       drafts.push({ comment });
     }
 
-    // Check replies for drafts
     if (comment.replies) {
       for (const reply of comment.replies) {
         if (isContentEmpty(reply.content) && reply.authorId === currentUserId) {
@@ -78,10 +72,6 @@ function mergeReplyDraft(
   }
 }
 
-/**
- * Merges server comments with preserved drafts.
- * Returns the merged comments and any orphaned drafts (replies whose parent was deleted).
- */
 function mergeWithDrafts(
   serverComments: CommentType[],
   drafts: Draft[],
@@ -91,7 +81,6 @@ function mergeWithDrafts(
 
   for (const draft of drafts) {
     if (!draft.parentId) {
-      // Top-level draft - add to end if not already present
       const exists = mergedComments.some((c) => c.id === draft.comment.id);
       if (!exists) {
         mergedComments.push(draft.comment);
@@ -102,6 +91,48 @@ function mergeWithDrafts(
   }
 
   return { comments: mergedComments, orphanedDrafts };
+}
+
+function hasStoredCommentArrayValue(value: unknown): boolean {
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value !== 'string') return false;
+
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === '[]') return false;
+
+  try {
+    const parsed: unknown = JSON.parse(trimmed);
+    return Array.isArray(parsed) && parsed.length > 0;
+  } catch {
+    return trimmed.length > 0;
+  }
+}
+
+function hasNonEmptyAggregateValue(value: unknown): boolean {
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value !== 'string') return value != null;
+
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === '[]') return false;
+
+  return true;
+}
+
+function getCommentLogValue(ctx: RenderItemFormSidebarCtx): unknown {
+  const formValues = (ctx as { formValues?: Record<string, unknown> })
+    .formValues;
+  return formValues?.comment_log;
+}
+
+function parseAggregateComments(content: unknown): {
+  comments: CommentType[];
+  isMalformed: boolean;
+} {
+  const comments = parseComments(content);
+  return {
+    comments,
+    isMalformed: comments.length === 0 && hasNonEmptyAggregateValue(content),
+  };
 }
 
 export type SubscriptionErrorInfo = {
@@ -123,13 +154,9 @@ type UseCommentsSubscriptionParams = {
   filterParams: { modelId: string; recordId: string };
   subscriptionEnabled: boolean;
   onCommentRecordIdChange?: (id: string | null) => void;
-  /** Current user's ID for identifying their drafts */
   currentUserId: string;
-  /** Callback when a draft reply's parent comment was deleted */
   onOrphanedDraft?: () => void;
-  /** Called before sync updates are applied - use to save scroll position */
   onBeforeSync?: () => void;
-  /** Called after sync updates are applied - use to restore scroll position */
   onAfterSync?: () => void;
 };
 
@@ -141,6 +168,11 @@ export const SUBSCRIPTION_STATUS = {
 
 export type SubscriptionStatus =
   (typeof SUBSCRIPTION_STATUS)[keyof typeof SUBSCRIPTION_STATUS];
+
+export type CommentsStorageProblem = {
+  type: 'migration_required' | 'malformed_aggregate';
+  message: string;
+};
 
 export type UseCommentsSubscriptionReturn = {
   comments: CommentType[];
@@ -154,6 +186,7 @@ export type UseCommentsSubscriptionReturn = {
   status: SubscriptionStatus;
   retry: () => void;
   isAutoReconnecting: boolean;
+  storageProblem: CommentsStorageProblem | null;
 };
 
 export function useCommentsSubscription({
@@ -178,6 +211,8 @@ export function useCommentsSubscription({
     null,
   );
   const [isLoading, setIsLoading] = useState(true);
+  const [storageProblem, setStorageProblem] =
+    useState<CommentsStorageProblem | null>(null);
 
   const setCommentRecordId = useCallback(
     (id: string | null) => {
@@ -201,14 +236,12 @@ export function useCommentsSubscription({
     modelId: filterParams.modelId,
     recordId: filterParams.recordId,
   };
+  const commentLogValue = getCommentLogValue(ctx);
   const effectiveCommentsModelId =
     commentsModelId ?? findCommentsModel(ctx.itemTypes)?.id ?? null;
 
-  // Track when subscription data was received to detect stale data
   const dataReceivedAtRef = useRef<number>(0);
-  // Track when isSyncAllowed last became false (operation started)
   const syncBlockedAtRef = useRef<number>(0);
-  // Track previous isSyncAllowed value to detect transitions
   const prevIsSyncAllowedRef = useRef(isSyncAllowed);
 
   const { data, status, error } = useQuerySubscription<QueryResult>({
@@ -248,7 +281,6 @@ export function useCommentsSubscription({
         recordId: requestContext.recordId,
         subscriptionKey,
       });
-      // Clear any pending auto-reconnect timeout
       if (autoReconnectTimeoutRef.current) {
         clearTimeout(autoReconnectTimeoutRef.current);
         autoReconnectTimeoutRef.current = null;
@@ -262,7 +294,6 @@ export function useCommentsSubscription({
     subscriptionKey,
   ]);
 
-  // Auto-reconnect when connection is closed
   useEffect(() => {
     if (!isRealtimeSubscriptionEnabled) {
       setIsAutoReconnecting(false);
@@ -273,10 +304,8 @@ export function useCommentsSubscription({
       return;
     }
 
-    // Only auto-reconnect when status is 'closed' (connection lost)
     if (status === 'closed') {
       const errorCount = consecutiveErrorCount.current;
-      // Exponential backoff: 1s, 2s, 4s, 8s... max 30s
       const delayMs = Math.min(1000 * 2 ** errorCount, 30000);
 
       setIsAutoReconnecting(true);
@@ -310,16 +339,13 @@ export function useCommentsSubscription({
     status,
   ]);
 
-  // Track when isSyncAllowed transitions to false (operation started)
   useEffect(() => {
     if (!isSyncAllowed && prevIsSyncAllowedRef.current) {
-      // Sync just became blocked - record when this happened
       syncBlockedAtRef.current = Date.now();
     }
     prevIsSyncAllowedRef.current = isSyncAllowed;
   }, [isSyncAllowed]);
 
-  // Track when new subscription data arrives
   const prevDataRef = useRef(data);
   useEffect(() => {
     if (data && data !== prevDataRef.current) {
@@ -356,7 +382,7 @@ export function useCommentsSubscription({
       setIsAutoReconnecting(false);
 
       const errorCount = consecutiveErrorCount.current;
-      const delayMs = Math.min(1000 * 2 ** errorCount, 30000); // 1s, 2s, 4s... max 30s
+      const delayMs = Math.min(1000 * 2 ** errorCount, 30000);
       logDebug('Manual comments retry requested', {
         delayMs,
         errorCount,
@@ -386,25 +412,19 @@ export function useCommentsSubscription({
     requestContext.recordId,
   ]);
 
-  // Track when tab was hidden and refresh subscription when tab becomes visible after long inactivity
-  // This handles stale WebSocket connections in long-running tabs
   const hiddenAtRef = useRef<number>(0);
   useEffect(() => {
     if (!isRealtimeSubscriptionEnabled) return;
 
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        // Tab is being hidden - record the time
         hiddenAtRef.current = Date.now();
       } else {
-        // Tab is becoming visible
         const hiddenAt = hiddenAtRef.current;
         if (hiddenAt > 0) {
           const hiddenDuration = Date.now() - hiddenAt;
           hiddenAtRef.current = 0;
 
-          // If tab was hidden for longer than threshold, force subscription refresh
-          // This ensures we get fresh data after long periods of inactivity
           if (hiddenDuration > TIMING.VISIBILITY_REFRESH_THRESHOLD_MS) {
             logDebug(
               'Refreshing comments subscription after tab visibility change',
@@ -430,10 +450,6 @@ export function useCommentsSubscription({
     requestContext.recordId,
   ]);
 
-  // WARNING: Real-time API can be 5-10s delayed - don't overwrite optimistic updates
-  // Critical: We must check if subscription data was received AFTER our last operation started
-  // to prevent stale data from overwriting fresh local state (the "disappearing comment" bug)
-
   const isSubscriptionDataStale = useCallback(
     (dataReceivedAt: number, syncBlockedAt: number): boolean => {
       return (
@@ -445,17 +461,32 @@ export function useCommentsSubscription({
     [],
   );
 
-  const applyRealtimeSync = useCallback(
+  const applyAggregateSync = useCallback(
     (
       recordContent: unknown,
       userId: string,
       orphanedDraftCallback: (() => void) | undefined,
-    ) => {
+    ): boolean => {
+      const parsed = parseAggregateComments(recordContent);
+
+      if (parsed.isMalformed) {
+        logError('Failed to parse aggregate comments', undefined, {
+          modelId: requestContext.modelId,
+          recordId: requestContext.recordId,
+        });
+        setComments([]);
+        setStorageProblem({
+          type: 'malformed_aggregate',
+          message: 'Comments storage could not be read.',
+        });
+        return false;
+      }
+
+      setStorageProblem(null);
       setComments((prevComments) => {
         const drafts = extractDrafts(prevComments, userId);
-        const serverComments = parseComments(recordContent);
         const { comments: mergedComments, orphanedDrafts } = mergeWithDrafts(
-          serverComments,
+          parsed.comments,
           drafts,
         );
         if (orphanedDrafts.length > 0 && orphanedDraftCallback) {
@@ -463,9 +494,32 @@ export function useCommentsSubscription({
         }
         return mergedComments;
       });
+      return true;
     },
-    [],
+    [requestContext.modelId, requestContext.recordId],
   );
+
+  const applyNoAggregateFound = useCallback(() => {
+    setCommentRecordId(null);
+    onBeforeSync?.();
+
+    if (hasStoredCommentArrayValue(commentLogValue)) {
+      setComments([]);
+      setStorageProblem({
+        type: 'migration_required',
+        message: 'Comments are stored in an older format.',
+      });
+    } else {
+      setStorageProblem(null);
+      setComments((prevComments) =>
+        prevComments.length === 0 ? prevComments : [],
+      );
+    }
+
+    if (onAfterSync) {
+      requestAnimationFrame(onAfterSync);
+    }
+  }, [commentLogValue, onAfterSync, onBeforeSync, setCommentRecordId]);
 
   useEffect(() => {
     if (!isRealtimeSubscriptionEnabled) return;
@@ -475,14 +529,7 @@ export function useCommentsSubscription({
     if (!isSyncAllowed) return;
 
     if (!record) {
-      setCommentRecordId(null);
-      onBeforeSync?.();
-      setComments((prevComments) =>
-        prevComments.length === 0 ? prevComments : [],
-      );
-      if (onAfterSync) {
-        requestAnimationFrame(onAfterSync);
-      }
+      applyNoAggregateFound();
       return;
     }
 
@@ -500,12 +547,11 @@ export function useCommentsSubscription({
       return;
     }
 
-    // Reset the sync blocked timestamp now that we're applying fresh data
     syncBlockedAtRef.current = 0;
 
     setCommentRecordId(record.id);
     onBeforeSync?.();
-    applyRealtimeSync(record.content, currentUserId, onOrphanedDraft);
+    applyAggregateSync(record.content, currentUserId, onOrphanedDraft);
 
     if (onAfterSync) {
       requestAnimationFrame(onAfterSync);
@@ -521,12 +567,13 @@ export function useCommentsSubscription({
     onAfterSync,
     requestContext.modelId,
     requestContext.recordId,
-    applyRealtimeSync,
+    applyAggregateSync,
+    applyNoAggregateFound,
     isSubscriptionDataStale,
   ]);
 
   const [cmaFetchError, setCmaFetchError] = useState<Error | null>(null);
-  const [_cmaRetryKey, setCmaRetryKey] = useState(0);
+  const [cmaRetryKey, setCmaRetryKey] = useState(0);
   const cmaRetryCountRef = useRef(0);
 
   useEffect(() => {
@@ -536,6 +583,7 @@ export function useCommentsSubscription({
       setComments((prevComments) =>
         prevComments.length === 0 ? prevComments : [],
       );
+      setStorageProblem(null);
       setCmaFetchError(null);
       setIsLoading(false);
       return;
@@ -558,16 +606,7 @@ export function useCommentsSubscription({
         setCommentRecordId(firstRecord.id);
       }
       onBeforeSync?.();
-      applyRealtimeSync(firstRecord.content, currentUserId, onOrphanedDraft);
-      syncAfterFetch();
-    };
-
-    const applyNoRecordsFound = () => {
-      setCommentRecordId(null);
-      onBeforeSync?.();
-      setComments((prevComments) =>
-        prevComments.length === 0 ? prevComments : [],
-      );
+      applyAggregateSync(firstRecord.content, currentUserId, onOrphanedDraft);
       syncAfterFetch();
     };
 
@@ -587,7 +626,7 @@ export function useCommentsSubscription({
       if (records.length > 0) {
         applyRecordFound(records[0]);
       } else {
-        applyNoRecordsFound();
+        applyNoAggregateFound();
       }
 
       setIsLoading(false);
@@ -670,8 +709,6 @@ export function useCommentsSubscription({
         recordId: requestContext.recordId,
       });
 
-      // Note: DatoCMS client doesn't support AbortController, so we rely on
-      // isMounted checks to discard stale responses after timeout/unmount
       const timeoutPromise = new Promise<never>((_, reject) => {
         timeoutId = setTimeout(() => {
           if (isMounted) {
@@ -693,6 +730,7 @@ export function useCommentsSubscription({
               record_id: { eq: filterParams.recordId },
             },
           },
+          page: { limit: 1 },
         });
 
         const records = await Promise.race([fetchPromise, timeoutPromise]);
@@ -735,7 +773,9 @@ export function useCommentsSubscription({
     onAfterSync,
     requestContext.modelId,
     requestContext.recordId,
-    applyRealtimeSync,
+    applyAggregateSync,
+    applyNoAggregateFound,
+    cmaRetryKey,
   ]);
 
   const normalizedError = error ? normalizeError(error) : cmaFetchError;
@@ -759,5 +799,6 @@ export function useCommentsSubscription({
     status: status as SubscriptionStatus,
     retry,
     isAutoReconnecting,
+    storageProblem,
   };
 }

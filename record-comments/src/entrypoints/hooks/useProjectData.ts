@@ -16,6 +16,7 @@ import type { FieldInfo, ModelInfo } from './useMentions';
 
 type UseProjectDataOptions = {
   loadFields?: boolean;
+  fieldsRequestKey?: number;
 };
 
 type LoadError = {
@@ -27,8 +28,11 @@ type UseProjectDataReturn = {
   projectUsers: UserInfo[];
   projectModels: ModelInfo[];
   modelFields: FieldInfo[];
+  isLoadingFields: boolean;
+  fieldLoadError: LoadError | null;
   loadError: LoadError | null;
   retry: () => void;
+  retryFields: () => void;
   /** Users with type information for upvoter name resolution */
   typedUsers: TypedUserInfo[];
 };
@@ -37,7 +41,7 @@ export function useProjectData(
   ctx: RenderItemFormSidebarCtx,
   options: UseProjectDataOptions = {},
 ): UseProjectDataReturn {
-  const { loadFields = false } = options;
+  const { loadFields = false, fieldsRequestKey = 0 } = options;
 
   const projectModels = useMemo(() => {
     const itemTypes = getValidItemTypes(ctx.itemTypes);
@@ -57,22 +61,18 @@ export function useProjectData(
     () => ctx.site.attributes.locales.join(','),
     [ctx.site.attributes.locales],
   );
-  const formValuesStableKey = useMemo(
-    () => JSON.stringify(ctx.formValues ?? {}),
-    [ctx.formValues],
-  );
-
   const loadFieldsAsync = useCallback(async () => {
     return loadAllFields(ctx);
   }, [ctx]);
 
   const {
     data: modelFields,
+    isLoading: isLoadingFields,
     error: fieldError,
     retry: retryFields,
   } = useAsyncOperation(
     loadFieldsAsync,
-    [itemTypeId, formValuesStableKey, localesStableKey],
+    [itemTypeId, fieldsRequestKey, localesStableKey],
     {
       enabled: loadFields,
       operationName: 'load fields',
@@ -199,8 +199,11 @@ export function useProjectData(
     projectUsers: stableProjectUsers,
     projectModels,
     modelFields: stableModelFields,
+    isLoadingFields,
+    fieldLoadError: fieldError,
     loadError: currentLoadError,
     retry,
+    retryFields,
     typedUsers: stableTypedUsers,
   };
 }

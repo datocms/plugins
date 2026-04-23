@@ -22,24 +22,23 @@ export function useToolbarHandlers({
   handleAssetTrigger,
   handleRecordTrigger,
 }: UseToolbarHandlersParams): UseToolbarHandlersReturn {
-  // Insert complete slash commands to skip the command menu and go straight to type selection
   const handleUserToolbarClick = useCallback(() => {
     if (composerRef.current) {
-      composerRef.current.insertText('/user ');
+      composerRef.current.triggerMentionType('user');
       composerRef.current.focus();
     }
   }, [composerRef]);
 
   const handleFieldToolbarClick = useCallback(() => {
     if (composerRef.current) {
-      composerRef.current.insertText('/field ');
+      composerRef.current.triggerMentionType('field');
       composerRef.current.focus();
     }
   }, [composerRef]);
 
   const handleModelToolbarClick = useCallback(() => {
     if (canMentionModels && composerRef.current) {
-      composerRef.current.insertText('/model ');
+      composerRef.current.triggerMentionType('model');
       composerRef.current.focus();
     }
   }, [composerRef, canMentionModels]);

@@ -77,6 +77,10 @@ type TipTapComposerProps = {
   canMentionAssets?: boolean;
   canMentionModels?: boolean;
   canMentionFields?: boolean;
+  fieldMentionsLoading?: boolean;
+  fieldMentionsError?: string | null;
+  onFieldMentionIntent?: () => void;
+  onFieldMentionsRetry?: () => void;
   onAssetTrigger?: () => void;
   onRecordTrigger?: () => void;
   autoFocus?: boolean;
@@ -115,6 +119,10 @@ export const TipTapComposer = forwardRef<
       canMentionAssets = true,
       canMentionModels = true,
       canMentionFields = true,
+      fieldMentionsLoading = false,
+      fieldMentionsError = null,
+      onFieldMentionIntent,
+      onFieldMentionsRetry,
       onAssetTrigger,
       onRecordTrigger,
       autoFocus = false,
@@ -146,6 +154,7 @@ export const TipTapComposer = forwardRef<
     const onBlurRef = useRef(onBlur);
     const onAssetTriggerRef = useRef(onAssetTrigger);
     const onRecordTriggerRef = useRef(onRecordTrigger);
+    const onFieldMentionIntentRef = useRef(onFieldMentionIntent);
     const onSegmentsChangeRef = useRef(onSegmentsChange);
 
     useEffect(() => {
@@ -162,6 +171,7 @@ export const TipTapComposer = forwardRef<
       onBlurRef.current = onBlur;
       onAssetTriggerRef.current = onAssetTrigger;
       onRecordTriggerRef.current = onRecordTrigger;
+      onFieldMentionIntentRef.current = onFieldMentionIntent;
       onSegmentsChangeRef.current = onSegmentsChange;
     }, [
       onSubmit,
@@ -169,6 +179,7 @@ export const TipTapComposer = forwardRef<
       onBlur,
       onAssetTrigger,
       onRecordTrigger,
+      onFieldMentionIntent,
       onSegmentsChange,
     ]);
 
@@ -187,14 +198,10 @@ export const TipTapComposer = forwardRef<
       return SLASH_COMMANDS.filter((cmd) => {
         if (cmd.name === 'asset' && !canMentionAssets) return false;
         if (cmd.name === 'model' && !canMentionModels) return false;
-        if (
-          cmd.name === 'field' &&
-          (!canMentionFields || modelFields.length === 0)
-        )
-          return false;
+        if (cmd.name === 'field' && !canMentionFields) return false;
         return true;
       });
-    }, [canMentionAssets, canMentionModels, canMentionFields, modelFields]);
+    }, [canMentionAssets, canMentionModels, canMentionFields]);
 
     const isCommandAvailable = useCallback(
       (name: SlashCommandDefinition['name']) =>
@@ -342,6 +349,10 @@ export const TipTapComposer = forwardRef<
         }
 
         // For user, field, model - update editor text and transition to type_selection phase
+        if (command.name === 'field') {
+          onFieldMentionIntentRef.current?.();
+        }
+
         const newCommandText = `/${command.name} `;
         const rangeStart = currentCommand.range.from;
 
@@ -410,6 +421,10 @@ export const TipTapComposer = forwardRef<
         if (isExternalPickerCommand) {
           triggerExternalPicker(commandName, props.range, clearCommandOnPicker);
           return;
+        }
+
+        if (commandName === 'field') {
+          onFieldMentionIntentRef.current?.();
         }
 
         setActiveSlashCommand({
@@ -1128,6 +1143,10 @@ export const TipTapComposer = forwardRef<
         triggerMentionType: (type: 'user' | 'field' | 'model') => {
           if (!editor) return;
 
+          if (type === 'field') {
+            onFieldMentionIntentRef.current?.();
+          }
+
           // Focus editor and get current cursor position
           editor.chain().focus().run();
           const cursorPos = editor.state.selection.from;
@@ -1225,6 +1244,9 @@ export const TipTapComposer = forwardRef<
                 ctx={ctx}
                 position={dropdownPosition}
                 onPathChange={handleFieldPathChange}
+                isLoading={fieldMentionsLoading}
+                errorMessage={fieldMentionsError}
+                onRetry={onFieldMentionsRetry}
               />
             )}
 
