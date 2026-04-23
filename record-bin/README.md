@@ -124,6 +124,6 @@ On connect, the plugin reconciles a managed project-level webhook (creates if mi
 - `payload_api_version`: `3`
 - `nested_items_in_payload`: `true`
 
-## Changelog
-- 3.0.10: Readme and video update
-- 3.0.9 and prior: No changelog kept
+## Release history
+
+See [CHANGELOG.md](CHANGELOG.md).

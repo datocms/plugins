@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-record-bin",
   "homepage": "https://github.com/datocms/plugins/tree/master/record-bin#readme",
-  "version": "3.0.10",
+  "version": "3.0.11",
   "author": "DatoCMS <support@datocms.com>",
   "description": "A plugin to manage and create a backup of deleted records in DatoCMS",
   "keywords": [
