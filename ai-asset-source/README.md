@@ -1,6 +1,6 @@
 # AI Asset Source
 
-![example.jpg](public/example.jpg)
+![example.jpg](https://raw.githubusercontent.com/datocms/plugins/master/ai-asset-source/public/example.jpg)
 
 This plugin is an [asset source](https://www.datocms.com/docs/plugin-sdk/asset-sources) that lets you add AI-generated images from OpenAI and Google models directly into your DatoCMS Media Area.
 
@@ -24,7 +24,3 @@ Requires API access from OpenAI or Google. You'll need an API key, not just a mo
 - Generation requests are sent directly from the browser to the selected provider using the configured API key
 - This plugin only generates new assets from the asset source dropdown in the media area. Upload sidebar actions are not included.
 
-## Changelog
-
-- 0.2.7: Readme update and name change to "AI Asset Source" instead of "Image Generator asset source"
-- 0.2.6 and prior: No changelog kept
