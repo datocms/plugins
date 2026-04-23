@@ -1,5 +1,7 @@
 # Automatic Environment Backups
 
+![Automatic environment backups](https://raw.githubusercontent.com/datocms/plugins/master/automatic-environment-backups/docs/demo.jpeg)
+
 This plugin creates automatic, rotating backups of your DatoCMS primary environment by cloning them into sandbox environments within the same project.
 
 Because DatoCMS does not have a built-in job scheduler, the plugin has to create an external scheduled lambda (serverless) function to invoke the backup functionality on a recurring basis. It currently supports serverless functions from Vercel, Cloudflare, and Netlify.
@@ -35,5 +37,4 @@ The lambda serverless function is only used as a job scheduler, calling our API 
 
 ## Changelog
 
-- 0.6.7: Readme update
-- 0.6.6 and prior: No changelog kept
+See [CHANGELOG.md](CHANGELOG.md).
