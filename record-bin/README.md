@@ -1,68 +1,74 @@
 # 🗑 Record Bin
 
-Record Bin stores deleted records so they can be restored later.
+![example.png](public/example.png)
 
-The plugin now supports two runtimes:
+Record Bin will make a best-effort attempt to store a copy of deleted records in its own "Record Bin" model prior to deletion. These copies can then be restored to their original models later in case of an accidental deletion.
 
-1. `Lambda` runtime (webhook/API capable)
-2. `Lambda-less` runtime (dashboard delete capture only)
+It works similarly to the trash can / recycling bin on your computer filesystem.
 
-## Runtime modes
+The plugin isn't foolproof (see the "Important limitations and behavior" section below) but should catch the majority of record deletions.
 
-Runtime is selected with a single toggle in the plugin config screen:
+## Usage
 
-- Toggle off (`Also save records deleted from the API` disabled): `Lambda-less` mode.
-- Toggle on (`Also save records deleted from the API` enabled): `Lambda-full` mode.
+When you install the plugin, it is automatically configured and should catch deletion events in your models.
 
-If you are not sure what Lambda is, keep the toggle off.
+To test it, create a draft record in any model, enter some fake content, and then save it. Then delete that same record.
 
-If no explicit runtime has ever been saved yet, the plugin falls back to legacy auto-detection:
+Within a few seconds, you should see a new "Record Bin" model appear in the left sidebar, and a deleted copy of that record should appear within it.
 
-- Lambda URL present -> `Lambda-full`
-- No Lambda URL -> `Lambda-less`
+Note that the deleted record will not look the same as it originally did, because the plugin stores it as a machine-readable JSON copy. But once you restore it to the original model, it should look the same again.
 
-## Capability matrix
+### How the basic mode works
 
-| Capability | Lambda runtime | Lambda-less runtime |
-|---|---|---|
-| Capture dashboard deletions | ✅ | ✅ |
-| Capture API deletions | ✅ | ❌ |
-| Restore from Record Bin | ✅ | ✅ |
+The plugin uses [Event Hooks](https://www.datocms.com/docs/plugin-sdk/event-hooks) from the DatoCMS Plugins SDK to intercept record deletion events (specifically, `onBeforeItemsDestroy`). Right before the record is deleted, it makes a JSON copy and saves it to its own Record Bin model.
 
-## Setup
+Upon restore, it uses that saved JSON to re-create the record in the original model.
 
-### Option 1: Lambda-less (default)
+## (Optional) Advanced usage: Also save records deleted from the API
 
-1. Open the plugin config screen.
-2. Keep `Also save records deleted from the API` disabled.
-3. Save plugin settings.
+Normally, per above, the plugin will catch record deletions done from within the CMS itself. That is where the plugin runs and the lifecycle event hooks occur. This should be fine for most projects.
 
-In this mode, deleted records are captured through `onBeforeItemsDestroy`.
+However, the normal mode will NOT catch record deletions done via the Content Management API, outside of the CMS.
 
-### Option 2: Lambda-full (API deletion capture)
+If you have developers, scripts, or integrations that may accidentally delete records via the API, you may wish to consider enabling this advanced mode in order to catch those deletions as well.
 
-1. Open the plugin config screen.
-2. Enable `Also save records deleted from the API`.
-3. Lambda setup fields appear. Click `Deploy lambda` and choose one option:
-   - Vercel
-   - Netlify
-   - Cloudflare
-4. Paste your deployed URL into `Lambda URL`.
-   - You can paste either `https://your-app.netlify.app` or just `your-app.netlify.app`; the plugin will prepend `https://` when needed.
-5. Click `Connect`.
-6. Confirm status shows `Connected (ping successful)`.
+This mode takes a bit more setup, but is safer if you ever manipulate your project via API.
 
-When connected, the plugin creates or updates a project webhook named `🗑️ Record Bin` pointing to your lambda root URL.
+### How advanced (lambda) mode works
+
+This advanced "lambda" mode will auto-configure some "on record delete" webhooks, coupled to external serverless functions on Vercel/Netlify/Cloudflare, in order to also catch these programmatic deletions from the API.
+
+A lambda, also known as a serverless function, is just a simple script that can execute some API calls in response to our "on record delete" webhook. We need to host it on an external provider because DatoCMS doesn't host user-generated lambdas.
+
+### Setup for the advanced mode (only)
+
+(Again: You do not need this UNLESS you use the Content Management API to delete records, and also wish to protect against accidental deletions there.)
+
+1. First, make sure you have an CMA API token with admin permissions. On older DatoCMS projects this was automatically created as a "Full Access Token", but you'll have to manually make one in newer projects.
+2. Open the plugin config screen.
+3. Expand the "Advanced settings" accordion.
+4. Enable the `Also save records deleted from the API` toggle.
+5. A Lambda setup section will then appear above the Advanced settings.
+6. Click `Deploy lambda` and choose one option (Vercel, Netlify, or Cloudflare). This will clone our [lambda webhook functions](https://github.com/marcelofinamorvieira/record-bin-lambda-function) (written by DatoCMS employee Marcelo Finamor) into the provider of your choice.
+7. Follow the setup instructions in that provider, including providing your CMA API token when requested.
+8. Once deployment is complete, find the deployed URL and and copy it to your clipboard.
+9. Go back to the plugin settings and paste that URL into the `Lambda URL` field.
+10. Click `Connect` to test the configuration.
+11. Confirm status shows `Connected (ping successful)`.
+
+When connected, the plugin creates or updates a project webhook named `🗑️ Record Bin` pointing to your lambda function.
 The current user role must be allowed to manage webhooks for connect/disconnect operations.
 
 ## Important limitations and behavior
 
 - In Lambda-less mode, API-triggered deletions are not captured. Only dashboard-triggered deletions go to the bin.
-- Lambda-less capture is fail-open: if backup capture fails, deletion still proceeds.
+- Lambda-less capture is NOT failsafe: Even if the backup fails, deletion WILL STILL OCCUR.
 - Existing webhook-origin `record_body` payloads are still restorable.
 - New Lambda-less payloads are stored in a webhook-compatible envelope (`event_type: to_be_restored`) so records stay restorable after runtime switches.
 
-## Lambda health handshake contract (Lambda runtime)
+## For developers only: Additional technical details
+
+### Lambda health handshake contract (Lambda runtime)
 
 The plugin sends this request payload to `POST /api/datocms/plugin-health`:
 
@@ -103,7 +109,7 @@ Expected successful response (`HTTP 200`):
 
 Any non-200 status, invalid JSON, timeout, network failure, or contract mismatch is treated as a connectivity error.
 
-## Record Bin webhook contract (Lambda runtime)
+### Record Bin webhook contract (Lambda runtime)
 
 On connect, the plugin reconciles a managed project-level webhook (creates if missing, updates if existing):
 
@@ -117,3 +123,7 @@ On connect, the plugin reconciles a managed project-level webhook (creates if mi
 - `enabled`: `true`
 - `payload_api_version`: `3`
 - `nested_items_in_payload`: `true`
+
+## Changelog
+- 3.0.10: Readme and video update
+- 3.0.9 and prior: No changelog kept
