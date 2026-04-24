@@ -8,7 +8,7 @@ import {
   SwitchField,
   TextField,
 } from 'datocms-react-ui';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import type { ActionMeta, GroupBase, MultiValue } from 'react-select';
 
 type PropTypes = {
@@ -21,10 +21,11 @@ type ModelOptionType = {
 };
 
 export type PluginParametersType = {
-  selectedModels: ModelOptionType[];
-  autoSaveInterval: number;
-  showNotification: boolean;
-  parametersHaveBeenSet: boolean;
+  selectedModels?: ModelOptionType[];
+  autoSaveInterval?: number;
+  showNotification?: boolean;
+  startTimerAfterEditingStops?: boolean;
+  parametersHaveBeenSet?: boolean;
 };
 
 function ConfigScreen({ ctx }: PropTypes) {
@@ -35,13 +36,15 @@ function ConfigScreen({ ctx }: PropTypes) {
     pluginParameters.selectedModels || [],
   );
   const [autoSaveInterval, setAutoSaveInterval] = useState(
-    pluginParameters.autoSaveInterval.toString(),
+    (pluginParameters.autoSaveInterval || 5).toString(),
   );
   const [showNotification, setShowNotification] = useState(
-    pluginParameters.showNotification,
+    pluginParameters.showNotification || false,
   );
+  const [startTimerAfterEditingStops, setStartTimerAfterEditingStops] =
+    useState(pluginParameters.startTimerAfterEditingStops || false);
   const [hasAValidationError, setHasAValidationError] = useState(false);
-  const [formIsSubmited, setFormIsSubmited] = useState(true);
+  const [isFormDirty, setIsFormDirty] = useState(false);
 
   const allModels: ModelOptionType[] = [];
 
@@ -59,6 +62,7 @@ function ConfigScreen({ ctx }: PropTypes) {
     newValue: MultiValue<ModelOptionType>,
     actionMeta: ActionMeta<ModelOptionType>,
   ) => {
+    setIsFormDirty(true);
     setSelectedModels((oldSelectedModels: ModelOptionType[]) => {
       let newSelectedModels = [...oldSelectedModels];
       switch (actionMeta.action) {
@@ -79,12 +83,18 @@ function ConfigScreen({ ctx }: PropTypes) {
 
   const intervalChangeHandler = (newValue: string) => {
     setAutoSaveInterval(newValue);
+    setIsFormDirty(true);
+    setHasAValidationError(false);
   };
 
-  const showNotificationHandler = () => {
-    setShowNotification(
-      (previousShowNotification) => !previousShowNotification,
-    );
+  const showNotificationHandler = (newValue: boolean) => {
+    setShowNotification(newValue);
+    setIsFormDirty(true);
+  };
+
+  const startTimerAfterEditingStopsHandler = (newValue: boolean) => {
+    setStartTimerAfterEditingStops(newValue);
+    setIsFormDirty(true);
   };
 
   const submitHandler = async () => {
@@ -96,23 +106,16 @@ function ConfigScreen({ ctx }: PropTypes) {
       selectedModels,
       autoSaveInterval: +autoSaveInterval,
       showNotification,
+      startTimerAfterEditingStops,
       parametersHaveBeenSet: true,
     });
-    setFormIsSubmited(true);
+    setIsFormDirty(false);
     await ctx.notice('Settings saved');
   };
 
   const errorMessage = hasAValidationError
     ? 'The interval must be a number greater than one'
     : null;
-
-  useEffect(() => {
-    setHasAValidationError(false);
-  }, []);
-
-  useEffect(() => {
-    setFormIsSubmited(false);
-  }, []);
 
   return (
     <Canvas ctx={ctx}>
@@ -141,6 +144,13 @@ function ConfigScreen({ ctx }: PropTypes) {
             error={errorMessage}
           />
           <SwitchField
+            name="startTimerAfterEditingStops"
+            id="startTimerAfterEditingStops"
+            label="Only start timer after user stops modifying record (Debounce)"
+            value={startTimerAfterEditingStops}
+            onChange={startTimerAfterEditingStopsHandler}
+          />
+          <SwitchField
             name="displayNotification"
             id="displayNotification"
             label="Recieve a notification for each auto-save"
@@ -153,7 +163,7 @@ function ConfigScreen({ ctx }: PropTypes) {
             type="submit"
             fullWidth
             buttonType="primary"
-            disabled={formIsSubmited}
+            disabled={!isFormDirty}
           >
             Save
           </Button>

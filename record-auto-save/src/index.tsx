@@ -19,9 +19,10 @@ connect({
       return;
     }
     await ctx.updatePluginParameters({
-      modelsWithAutoSave: [],
+      selectedModels: [],
       autoSaveInterval: 5,
       showNotification: false,
+      startTimerAfterEditingStops: false,
       parametersHaveBeenSet: true,
     });
   },
@@ -37,7 +38,7 @@ connect({
     const pluginParameters = ctx.plugin.attributes
       .parameters as PluginParametersType;
     if (outletId === 'auto_save') {
-      const isActivatedOnThisModel = pluginParameters.selectedModels.find(
+      const isActivatedOnThisModel = pluginParameters.selectedModels?.find(
         (item) => item.value === ctx.itemType.attributes.api_key,
       );
       if (isActivatedOnThisModel) {
