@@ -24,12 +24,15 @@ const StarRatingEditor = ({ ctx }: PropTypes) => {
         char="★"
         color="gray"
         activeColor={starsColor}
+        color={ctx.colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.25)' : '#d9d9d9'}
+        char="★"
         size={32}
         isHalf={false}
         a11y
         classNames=""
         edit={!ctx.disabled}
         value={currentValue || 0}
+        a11y={true}
         onChange={handleChange}
       />
     </Canvas>
