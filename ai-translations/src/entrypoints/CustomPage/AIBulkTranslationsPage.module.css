@@ -6,7 +6,7 @@
   justify-content: flex-start;
   align-items: center;
   flex-direction: column;
-  background: var(--page-background, #f6f8fb);
+  background: var(--color--surface);
 }
 
 .container {
@@ -16,10 +16,10 @@
 
 .card {
   position: relative;
-  background: var(--surface-color, #ffffff);
+  background: var(--color--surface-muted);
   border-radius: 18px;
   padding: 26px 26px 24px;
-  border: 1px solid rgba(148, 163, 184, 0.15);
+  border: 1px solid var(--color--border);
   box-shadow: 0 12px 28px rgba(15, 23, 42, 0.07);
   display: flex;
   flex-direction: column;
@@ -33,7 +33,7 @@
   left: 26px;
   right: 26px;
   height: 1px;
-  background: rgba(148, 163, 184, 0.28);
+  background: var(--color--border);
 }
 
 .cardHeader {
@@ -46,14 +46,14 @@
   margin: 0;
   font-size: var(--font-size-xl);
   font-weight: 600;
-  color: var(--base-body-color);
+  color: var(--color--ink);
 }
 
 .cardCaption {
   margin: 0;
   font-size: var(--font-size-xs);
   line-height: 1.5;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 .section {
@@ -67,7 +67,7 @@
   letter-spacing: 0.08em;
   font-weight: 600;
   text-transform: uppercase;
-  color: rgba(71, 85, 105, 0.78);
+  color: var(--color--ink-subtle);
 }
 
 .localeRow {
@@ -83,7 +83,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--base-body-color);
+  color: var(--color--ink);
   font-size: 18px;
   font-weight: 600;
 }
@@ -99,9 +99,9 @@
   border-radius: 999px;
   font-size: 12px;
   font-weight: 500;
-  background: rgba(93, 90, 252, 0.12);
-  color: var(--accent-color, #5d5afc);
-  border: 1px solid rgba(93, 90, 252, 0.18);
+  background: var(--color--accent--surface);
+  color: var(--color--accent--ink);
+  border: 1px solid var(--color--accent--ink);
 }
 
 .actions {
@@ -112,24 +112,24 @@
 
 .helperText {
   font-size: 12px;
-  color: rgba(71, 85, 105, 0.82);
+  color: var(--color--ink-subtle);
   text-align: center;
 }
 
 .statusReady {
-  color: var(--accent-color, #5d5afc);
+  color: var(--color--accent--ink);
   font-weight: 600;
 }
 
 .statusPending {
-  color: #f97316;
+  color: var(--color--feedback-warning--ink);
   font-weight: 600;
 }
 
 .loadingOverlay {
   position: absolute;
   inset: 0;
-  background: rgba(246, 248, 251, 0.94);
+  background: var(--color--overlay--surface);
   border-radius: 18px;
   display: flex;
   flex-direction: column;
@@ -140,13 +140,13 @@
 
 .loadingText {
   font-size: 13px;
-  color: rgba(71, 85, 105, 0.8);
+  color: var(--color--ink-subtle);
 }
 
 .footerNote {
   margin-top: 22px;
   font-size: 12px;
-  color: rgba(71, 85, 105, 0.8);
+  color: var(--color--ink-subtle);
   text-align: center;
 }
 
