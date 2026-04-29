@@ -148,28 +148,30 @@
   outline: none;
   font-family: inherit;
   font-size: inherit;
+  background-color: var(--color-surface);
+  color: var(--color--ink);
 }
 
 .label {
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 .hint {
   font-size: var(--font-size-xs);
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 .fieldLabelTitle {
   font-size: var(--font-size-xl);
   font-weight: 600;
-  color: var(--base-body-color);
+  color: var(--color--ink);
   margin-top: 16px;
 }
 
 .fieldLabelHint {
   margin-top: -16px;
   font-size: var(--font-size-m);
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   margin-bottom: 16px;
 }
 
@@ -210,7 +212,7 @@
   display: inline-block;
   cursor: help;
   margin-left: 8px;
-  color: #faad14;
+  color: var(--color--feedback-warning--ink);
 }
 
 /* Standard tooltip that appears below the info icon */

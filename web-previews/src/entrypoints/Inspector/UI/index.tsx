@@ -119,7 +119,7 @@ const UI: React.FC = () => {
         'Connection to the website has been lost. You may have navigated away from the original site by clicking an external link. Please reload to reconnect.',
       );
     }
-  }, [contentLink.type, ctx.alert, contentLink.reason]);
+  }, [contentLink, ctx.alert]);
 
   // Handle frontend deletion while Inspector open
   useEffect(() => {

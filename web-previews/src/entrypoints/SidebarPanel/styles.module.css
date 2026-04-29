@@ -14,7 +14,7 @@
 }
 
 .previewLink__label {
-  color: var(--base-body-color);
+  color: var(--color--ink);
   padding: 0;
   margin: 0;
   font-weight: 500;
@@ -45,7 +45,7 @@
 
 .groupName {
   text-transform: uppercase;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   font-weight: bold;
   font-size: var(--font-size-s);
   margin-bottom: var(--spacing-s);

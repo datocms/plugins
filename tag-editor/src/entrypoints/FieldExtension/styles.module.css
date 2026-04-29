@@ -21,7 +21,13 @@
   height: 31px;
   margin: 0;
   width: 100%;
-  border: 1px solid #eee !important;
+  border: 1px solid var(--color--border) !important;
+  background: var(--color--surface);
+  color: var(--color--ink);
+}
+
+.tagInputField::placeholder {
+  color: var(--color--ink-placeholder);
 }
 
 .selected {
@@ -31,7 +37,7 @@
 
 /* Styles for selected tags */
 .tag {
-  background: var(--light-color);
+  background: var(--color--tinted--surface);
   padding: 5px 10px;
   margin: 4px 0;
   margin-right: 5px;
@@ -40,7 +46,7 @@
 }
 
 .remove {
-  color: #aaa;
+  color: var(--color--ink-subtle);
   margin-left: 5px;
   cursor: pointer;
   text-decoration: none;
@@ -55,11 +61,11 @@
 .suggestions ul {
   list-style-type: none;
   box-shadow: 0.05em 0.01em 0.5em rgba(0, 0, 0, 0.2);
-  background: white;
+  background: var(--color--raised--surface);
   width: 200px;
 }
 .suggestions li {
-  border-bottom: 1px solid #ddd;
+  border-bottom: 1px solid var(--color--border);
   padding: 5px 10px;
   margin: 0;
 }
@@ -70,6 +76,7 @@
 }
 
 .activeSuggestion {
-  background: #b7cfe0;
+  background: var(--color--accent--surface);
+  color: var(--color--accent--ink);
   cursor: pointer;
 }

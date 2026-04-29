@@ -8,12 +8,12 @@
   align-items: center;
   justify-content: center;
   padding: var(--spacing-xl);
-  background: var(--lighter-bg-color);
+  background: var(--color--surface-muted);
 }
 
 .container {
-  background: white;
-  border: 1px solid var(--border-color);
+  background: var(--color--surface);
+  border: 1px solid var(--color--border);
   border-radius: 8px;
   padding: var(--spacing-xl);
   max-width: 560px;
@@ -29,20 +29,20 @@
 
 .icon {
   font-size: 48px;
-  color: var(--warning-color);
+  color: var(--color--feedback-warning--ink);
 }
 
 .title {
   margin: 0 0 var(--spacing-xl) 0;
   font-size: var(--font-size-xxl);
   font-weight: 700;
-  color: var(--base-body-color);
+  color: var(--color--ink);
 }
 
 .paragraph {
   margin: 0 0 var(--spacing-l) 0;
   font-size: var(--font-size-l);
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   text-align: left;
 }
 
@@ -51,12 +51,12 @@
 }
 
 .goodNews {
-  color: var(--notice-color);
+  color: var(--color--feedback-success--ink);
   font-weight: 600;
 }
 
 .however {
-  color: var(--alert-color);
+  color: var(--color--danger--ink);
   font-weight: 600;
 }
 
@@ -66,5 +66,5 @@
 
 .strong {
   font-weight: 600;
-  color: var(--base-body-color);
+  color: var(--color--ink);
 }

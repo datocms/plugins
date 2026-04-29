@@ -4,7 +4,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: var(--light-bg-color);
+  background-color: var(--color--surface-muted);
   padding: 20px;
   overflow: hidden;
   min-height: 0;
@@ -44,7 +44,7 @@
   top: 0;
   left: 0;
   height: 4px;
-  background-color: var(--light-bg-color);
+  background-color: var(--color--surface-muted);
   width: 100%;
   overflow: hidden;
   z-index: 2;
@@ -53,7 +53,7 @@
 .progressBarValue {
   width: 100%;
   height: 100%;
-  background-color: var(--primary-color);
+  background-color: var(--color--primary--surface);
   animation: indeterminateAnimation 1s infinite linear;
   transform-origin: 0% 50%;
 }

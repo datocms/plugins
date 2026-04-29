@@ -1,17 +1,10 @@
 declare module 'penpal' {
-  export type FunctionPropertyNames<T> = {
-    [K in keyof T]: T[K] extends (...args: unknown[]) => unknown ? K : never;
-  }[keyof T];
-
-  export type AsyncMethodReturns<
-    T,
-    K extends keyof T = FunctionPropertyNames<T>,
-  > = {
-    [KK in K]: T[KK] extends (...args: unknown[]) => PromiseLike<unknown>
-      ? T[KK]
-      : T[KK] extends (...args: infer A) => infer R
-        ? (...args: A) => Promise<R>
-        : T[KK];
+  export type AsyncMethodReturns<T> = {
+    [K in keyof T]: T[K] extends (...args: infer A) => infer R
+      ? R extends PromiseLike<unknown>
+        ? T[K]
+        : (...args: A) => Promise<R>
+      : T[K];
   };
 
   export type CallSender = {
@@ -31,7 +24,7 @@ declare module 'penpal' {
   };
 
   export type Methods = {
-    [index: string]: (...args: unknown[]) => unknown;
+    [index: string]: (...args: never[]) => unknown;
   };
 
   type Options = {

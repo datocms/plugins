@@ -38,14 +38,14 @@
 .TranslationProgressModal__stats {
   margin: 4px 0 0 0 !important;
   font-size: 14px;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 .TranslationProgressModal__progress-bar {
   height: 8px;
   width: 100%;
-  background-color: var(--light-bg-color);
-  border: 1px solid var(--border-color);
+  background-color: var(--color--surface-muted);
+  border: 1px solid var(--color--border);
   border-radius: 999px;
   margin: 8px 0 16px 0;
   overflow: hidden;
@@ -53,7 +53,7 @@
 
 .TranslationProgressModal__progress-bar-fill {
   height: 100%;
-  background-color: var(--accent-color);
+  background-color: var(--color--primary--surface);
   box-shadow: inset 0 0 1px rgba(0, 0, 0, 0.1);
   transition: width 0.3s ease-in-out;
 }
@@ -78,9 +78,9 @@
   align-items: center;
   gap: 8px;
   font-size: var(--font-size-s);
-  color: var(--base-body-color);
+  color: var(--color--ink);
   text-align: left;
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--color--border);
 }
 
 .TranslationProgressModal__update-item:first-child {
@@ -96,19 +96,19 @@
 
 .TranslationProgressModal__update-item--completed
   .TranslationProgressModal__update-status {
-  color: var(--success-color);
+  color: var(--color--feedback-success--ink);
   font-weight: 700;
 }
 
 .TranslationProgressModal__update-item--error
   .TranslationProgressModal__update-status {
-  color: var(--alert-color);
+  color: var(--color--danger--ink);
   font-weight: 700;
 }
 
 .TranslationProgressModal__update-item--processing
   .TranslationProgressModal__update-status {
-  color: var(--accent-color);
+  color: var(--color--primary--surface);
 }
 
 .TranslationProgressModal__update-message {
@@ -118,7 +118,7 @@
 .TranslationProgressModal__initializing {
   padding: 20px;
   text-align: center;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 .TranslationProgressModal__spinner-container {
@@ -130,8 +130,8 @@
 
 .TranslationProgressModal__errors {
   padding: 12px;
-  background-color: var(--alert-light-bg-color);
-  color: var(--alert-color);
+  background-color: var(--color--feedback-fail--outline);
+  color: var(--color--danger--ink);
   border-radius: 4px;
   margin-bottom: 20px;
   font-size: 14px;
@@ -149,7 +149,7 @@
   width: 100%;
   gap: var(--spacing-m);
   padding-top: var(--spacing-m);
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--color--border);
 }
 /*
  * TranslationProgressModal.css

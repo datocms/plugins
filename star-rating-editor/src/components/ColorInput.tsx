@@ -1,6 +1,7 @@
 import { useCtx } from 'datocms-react-ui';
 import { BlockPicker } from 'react-color';
 import { defaultStarsColor } from '../utils/globalParams';
+import s from './ColorInput.module.css';
 
 type ColorInputProps = {
   value: string | undefined;
@@ -12,6 +13,7 @@ export default function ColorInput({ value, onChange }: ColorInputProps) {
   const { accentColor, primaryColor } = ctx.theme;
 
   return (
+    <div className={s.wrapper}>
     <BlockPicker
       color={value}
       colors={[
@@ -40,12 +42,26 @@ export default function ColorInput({ value, onChange }: ColorInputProps) {
       styles={{
         default: {
           card: {
-            border: '1px solid var(--border-color)',
+            background: 'var(--color--surface)',
+            border: '1px solid var(--color--border)',
             boxShadow: 'none',
+          },
+          body: {
+            background: 'var(--color--surface)',
+          },
+          input: {
+            background: 'var(--color--surface-muted)',
+            color: 'var(--color--ink)',
+            boxShadow: 'none',
+            border: '1px solid var(--color--border)',
+          },
+          label: {
+            color: 'var(--color--ink-subtle)',
           },
         },
       }}
       onChangeComplete={(color) => onChange(color.hex)}
     />
+    </div>
   );
 }
