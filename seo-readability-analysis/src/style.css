@@ -1,13 +1,13 @@
 .Plugin {
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color--border);
   overflow: hidden;
   border-radius: 4px;
-  background-color: var(--light-bg-color);
+  background-color: var(--color--surface-muted);
 }
 
 .Plugin__bar {
   display: flex;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   line-height: 1;
   align-items: flex-end;
   flex-wrap: wrap;
@@ -49,14 +49,14 @@
   all: inherit;
   margin-top: 5px;
   padding: 15px 15px 10px;
-  background-color: rgba(255, 255, 255, 0.8);
+  background-color: var(--color--surface-muted);
   border-radius: 4px 4px 0 0;
   border: 0;
   margin-left: 5px;
   box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.1) inset;
   display: block;
   text-decoration: none;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   white-space: nowrap;
 }
 
@@ -77,19 +77,19 @@
 
 .Plugin__bar__option.is-active {
   box-shadow: none;
-  color: var(--base-body-color);
-  background-color: white;
+  color: var(--color--ink);
+  background-color: var(--color--surface);
 }
 
 .Plugin__content {
-  background-color: white;
+  background-color: var(--color--surface);
   border-radius: 4px;
 }
 
 .Plugin__seo,
 .Plugin__readability {
   padding: 15px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--color--border);
 }
 
 .Plugin__seo:last-child,
@@ -109,7 +109,7 @@
 }
 
 .Plugin__form label {
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   margin-bottom: 4px;
 }
 
@@ -125,7 +125,7 @@
 }
 
 .Plugin__line-with-decoration a {
-  color: var(--base-body-color);
+  color: var(--color--ink);
 }
 
 .Plugin__line-with-decoration__decoration {
@@ -157,12 +157,12 @@
 
 .Plugin__result-group-title {
   all: unset;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   cursor: pointer;
 }
 
 .Plugin__result-group-title svg {
-  stroke: var(--light-body-color);
+  stroke: var(--color--ink-subtle);
 }
 
 .Plugin__result-item {
@@ -174,7 +174,7 @@
   margin-right: 4px;
   width: 12px;
   height: 12px;
-  stroke: #333333;
+  stroke: var(--color--ink);
   stroke-width: 6px;
   fill: none;
 }
@@ -184,7 +184,7 @@
 }
 
 .Plugin__button-wrapper {
-  border-top: 1px solid #f0f0f0;
+  border-top: 1px solid var(--color--border);
   padding-top: 12px;
   margin-top: 12px;
 }
@@ -194,7 +194,7 @@
 }
 
 .Plugin__marks {
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color--border);
   border-radius: 4px;
   margin-top: 15px;
   margin-bottom: 25px;
@@ -202,7 +202,7 @@
 
 .Plugin__mark {
   padding: 15px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--color--border);
 }
 
 .Plugin__mark:last-child {
@@ -215,7 +215,7 @@
 }
 
 .Plugin__mark.with-highlights .yoast-text-mark {
-  background: #fff9b7;
+  background: var(--color--feedback-warning--surface);
   padding: 0.1em 0.2em;
   border-radius: 3px;
 }
@@ -225,7 +225,7 @@
 }
 
 .Plugin__bar__status-error {
-  color: var(--alert-color);
+  color: var(--color--danger--ink);
 }
 
 .Plugin__add-new {
