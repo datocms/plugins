@@ -261,7 +261,7 @@ export default function GlossaryPairEditor({
               style={{
                 flex: 1,
                 minWidth: 0,
-                border: '1px solid var(--border-color, #e0e0e0)',
+                border: '1px solid var(--color--border)',
                 borderRadius: 4,
                 padding: '10px 12px',
               }}
