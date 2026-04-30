@@ -82,6 +82,19 @@ interface TranslationProgressModalParams {
   itemIds: string[];
 }
 
+type EnvironmentNavigationCtx = {
+  environment: string;
+  isEnvironmentPrimary: boolean;
+  plugin: { id: string };
+};
+
+function buildPluginSettingsPath(ctx: EnvironmentNavigationCtx): string {
+  const environmentPrefix = ctx.isEnvironmentPrimary
+    ? ''
+    : `/environments/${ctx.environment}`;
+  return `${environmentPrefix}/configuration/plugins/${ctx.plugin.id}/edit`;
+}
+
 /**
  * Type guard for TranslationProgressModalParams.
  * Validates that modal parameters contain all required fields.
@@ -324,7 +337,7 @@ connect({
         return render(
           <ErrorBoundary
             onNavigateToSettings={() =>
-              ctx.navigateTo(`/configuration/plugins/${ctx.plugin.id}/edit`)
+              ctx.navigateTo(buildPluginSettingsPath(ctx))
             }
           >
             <AIBulkTranslationsPage ctx={ctx} />
@@ -474,7 +487,7 @@ connect({
           <Button
             fullWidth
             onClick={() =>
-              ctx.navigateTo(`/configuration/plugins/${ctx.plugin.id}/edit`)
+              ctx.navigateTo(buildPluginSettingsPath(ctx))
             }
           >
             Open Settings
@@ -490,7 +503,7 @@ connect({
         return render(
           <ErrorBoundary
             onNavigateToSettings={() =>
-              ctx.navigateTo(`/configuration/plugins/${ctx.plugin.id}/edit`)
+              ctx.navigateTo(buildPluginSettingsPath(ctx))
             }
           >
             <DatoGPTTranslateSidebar ctx={ctx} />
@@ -763,7 +776,7 @@ connect({
 
     // If the plugin is not configured, navigate to its config screen
     if (actionId === 'not-configured') {
-      ctx.navigateTo(`/configuration/plugins/${ctx.plugin.id}/edit`);
+      ctx.navigateTo(buildPluginSettingsPath(ctx));
     }
   },
 

@@ -49,6 +49,8 @@ const modeSelectOptions = MODE_OPTIONS.map((opt) => ({
 
 type LegacyModeValues = ValidFieldParams & { mode: 'single' | 'multiple' };
 
+type SingleSelectValue<Option> = Option | readonly Option[] | null;
+
 type LegacyAspectRatioSectionProps = {
   legacyValues: LegacyModeValues;
   globalParams: ValidGlobalParams;
@@ -74,9 +76,9 @@ function LegacyAspectRatioSection({
   updateLegacyMode,
 }: LegacyAspectRatioSectionProps) {
   function handleAspectRatioChange(
-    option: { value: string; label: string } | null,
+    option: SingleSelectValue<{ value: string; label: string }>,
   ) {
-    if (!option || !('value' in option)) return;
+    if (!option || Array.isArray(option) || !('value' in option)) return;
     if (option.value === 'custom') {
       updateLegacyMode('aspectRatio', customAspectRatioValue || '');
     } else {
@@ -109,6 +111,7 @@ function LegacyAspectRatioSection({
             name="aspectRatio"
             label="Override default aspect ratio"
             selectInputProps={{
+              isMulti: false,
               options: aspectRatioOptions,
             }}
             value={selectedAspectRatio}
@@ -168,9 +171,9 @@ function LegacyWidthSection({
   updateLegacyMode,
 }: LegacyWidthSectionProps) {
   function handleWidthSelectChange(
-    option: { value: string | number; label: string } | null,
+    option: SingleSelectValue<{ value: string | number; label: string }>,
   ) {
-    if (!option || !('value' in option)) return;
+    if (!option || Array.isArray(option) || !('value' in option)) return;
     if (option.value === 'custom') {
       const fallback =
         typeof legacyValues.width === 'number'
@@ -235,6 +238,7 @@ function LegacyWidthSection({
             name="width"
             label="Override default width"
             selectInputProps={{
+              isMulti: false,
               options: widthOptions,
             }}
             value={selectedWidth}
@@ -631,7 +635,7 @@ export default function FieldConfigScreen({ ctx }: Props) {
     customWidthInput,
     setCustomWidthActive,
     setCustomWidthInput,
-  } = useLegacyWidthState(formValues, presetWidthValues);
+  } = useLegacyWidthState(legacyValues, presetWidthValues);
 
   const customWidthError = customWidthActive
     ? validateCustomWidth(customWidthInput)
@@ -658,6 +662,7 @@ export default function FieldConfigScreen({ ctx }: Props) {
             hint="Choose how this field handles assets"
             required
             selectInputProps={{
+              isMulti: false,
               options: modeSelectOptions,
             }}
             value={selectedMode}

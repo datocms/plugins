@@ -4,7 +4,8 @@ import type { Upload } from '../types';
 
 async function fetchUploadFromApi(
   uploadId: string,
-  accessToken: string | null,
+  accessToken: string | null | undefined,
+  environment: string,
 ): Promise<Upload> {
   const response = await fetch(
     `https://site-api.datocms.com/uploads/${uploadId}`,
@@ -14,6 +15,7 @@ async function fetchUploadFromApi(
         Accept: 'application/vnd.api+json',
         'Content-Type': 'application/vnd.api+json',
         'X-Api-Version': '3',
+        'X-Environment': environment,
       },
     },
   );
@@ -53,6 +55,7 @@ export function useUploadData(
         const data = await fetchUploadFromApi(
           uploadId as string,
           ctx.currentUserAccessToken,
+          ctx.environment,
         );
         if (!cancelled) {
           setUpload(data);
@@ -74,7 +77,7 @@ export function useUploadData(
     return () => {
       cancelled = true;
     };
-  }, [uploadId, ctx.currentUserAccessToken, skip]);
+  }, [uploadId, ctx.currentUserAccessToken, ctx.environment, skip]);
 
   return { upload, loading, error };
 }

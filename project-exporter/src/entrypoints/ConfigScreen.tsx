@@ -50,6 +50,7 @@ export default function ConfigScreen({ ctx }: Props) {
 
     const client = buildClient({
       apiToken: accessToken,
+      environment: ctx.environment,
     });
 
     client.itemTypes.list().then((models) => {
@@ -61,7 +62,7 @@ export default function ConfigScreen({ ctx }: Props) {
           }),
       );
     });
-  }, [ctx.currentUserAccessToken]);
+  }, [ctx.currentUserAccessToken, ctx.environment]);
 
   const handleRecordDownload = async (
     options: { modelIDs?: string[]; textQuery?: string } = {},
@@ -73,6 +74,7 @@ export default function ConfigScreen({ ctx }: Props) {
     const accessToken = ctx.currentUserAccessToken ?? '';
     await downloadAllRecords(
       accessToken,
+      ctx.environment,
       selectedFormat,
       options,
       (progress, msg) => {
@@ -93,6 +95,7 @@ export default function ConfigScreen({ ctx }: Props) {
 
     await downloadAllAssets(
       ctx.currentUserAccessToken as string,
+      ctx.environment,
       (progress, msg) => {
         setLoadingStatus(msg);
         setLoadingProgress(progress);

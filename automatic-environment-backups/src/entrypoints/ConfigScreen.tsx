@@ -371,6 +371,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           try {
             const client = buildClient({
               apiToken: ctx.currentUserAccessToken,
+              environment: ctx.environment,
             });
             const plugin = await client.plugins.find(pluginId);
             latestParameters = toPluginParameterRecord(plugin.parameters);
@@ -469,6 +470,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     try {
       const client = buildClient({
         apiToken: ctx.currentUserAccessToken,
+        environment: ctx.environment,
       });
       const environments = await client.environments.list();
       return environments
@@ -477,7 +479,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     } catch {
       return undefined;
     }
-  }, [ctx.currentUserAccessToken]);
+  }, [ctx.currentUserAccessToken, ctx.environment]);
 
   const refreshAvailableEnvironments = useCallback(async () => {
     const environmentIds = await fetchAvailableEnvironmentIds();
@@ -1186,7 +1188,10 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     event: MouseEvent<HTMLAnchorElement>,
   ) => {
     event.preventDefault();
-    await ctx.navigateTo('/project_settings/environments');
+    const environmentPrefix = ctx.isEnvironmentPrimary
+      ? ''
+      : `/environments/${ctx.environment}`;
+    await ctx.navigateTo(`${environmentPrefix}/project_settings/environments`);
   };
 
   const triggerBackupNowForCadence = async (scope: BackupCadence) => {

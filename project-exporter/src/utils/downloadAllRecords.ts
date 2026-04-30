@@ -13,12 +13,14 @@ type Options = {
 
 export default async function downloadAllRecords(
   apiToken: string,
+  environment: string,
   format: AvailableFormats,
   options: Options,
   onProgress?: (progress: number, msg: string) => void,
 ) {
   const client = buildClient({
     apiToken,
+    environment,
   });
 
   const records: Record<string, unknown>[] = [];
@@ -45,6 +47,7 @@ export default async function downloadAllRecords(
           Authorization: `Bearer ${apiToken}`,
           Accept: 'application/json',
           'X-Api-Version': '3',
+          'X-Environment': environment,
         },
       },
     );

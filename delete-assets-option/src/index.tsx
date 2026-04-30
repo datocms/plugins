@@ -29,7 +29,7 @@ connect({
       return true;
     }
 
-    const client = buildClient({ apiToken });
+    const client = buildClient({ apiToken, environment: ctx.environment });
 
     const itemsWithUploads = await Promise.all(
       items.map(async (deletedItem) => {

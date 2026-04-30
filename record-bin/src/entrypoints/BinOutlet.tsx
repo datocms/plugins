@@ -17,6 +17,18 @@ import {
 
 type DebugLogger = ReturnType<typeof createDebugLogger>;
 
+function buildRecordEditPath(
+  environment: string,
+  isEnvironmentPrimary: boolean,
+  modelId: string,
+  recordId: string,
+): string {
+  const environmentPrefix = isEnvironmentPrimary
+    ? ''
+    : `/environments/${environment}`;
+  return `${environmentPrefix}/editor/item_types/${modelId}/items/${recordId}`;
+}
+
 const parseLambdaRecordBody = async (
   rawRecordBody: unknown,
   debugLogger: DebugLogger,
@@ -44,6 +56,7 @@ const executeRestoreViaLambda = async ({
   noticeFn,
   navigateTo,
   environment,
+  isEnvironmentPrimary,
   setError,
 }: {
   deploymentURL: string;
@@ -54,6 +67,7 @@ const executeRestoreViaLambda = async ({
   noticeFn: (message: string) => void;
   navigateTo: (path: string) => void;
   environment: string;
+  isEnvironmentPrimary: boolean;
   setError: (error: errorObject) => void;
 }): Promise<boolean> => {
   const parsedBody = { ...parsedRecordBody, trashRecordID: trashRecordId };
@@ -116,10 +130,12 @@ const executeRestoreViaLambda = async ({
   });
   noticeFn('The record has been successfully restored!');
   navigateTo(
-    `/environments/${environment}/editor/item_types/` +
-      parsedResponse.restoredRecord.modelID +
-      '/items/' +
+    buildRecordEditPath(
+      environment,
+      isEnvironmentPrimary,
+      parsedResponse.restoredRecord.modelID,
       parsedResponse.restoredRecord.id,
+    ),
   );
   return true;
 };
@@ -133,6 +149,7 @@ const executeRestoreWithoutLambda = async ({
   alertFn,
   noticeFn,
   navigateTo,
+  isEnvironmentPrimary,
   setError,
 }: {
   trashRecordId: string;
@@ -143,6 +160,7 @@ const executeRestoreWithoutLambda = async ({
   alertFn: (message: string) => Promise<unknown>;
   noticeFn: (message: string) => void;
   navigateTo: (path: string) => void;
+  isEnvironmentPrimary: boolean;
   setError: (error: errorObject) => void;
 }): Promise<void> => {
   debugLogger.log('Sending restoration request through Lambda-less runtime');
@@ -180,10 +198,12 @@ const executeRestoreWithoutLambda = async ({
   });
   noticeFn('The record has been successfully restored!');
   navigateTo(
-    `/environments/${environment}/editor/item_types/` +
-      parsedResponse.restoredRecord.modelID +
-      '/items/' +
+    buildRecordEditPath(
+      environment,
+      isEnvironmentPrimary,
+      parsedResponse.restoredRecord.modelID,
       parsedResponse.restoredRecord.id,
+    ),
   );
 };
 
@@ -236,6 +256,7 @@ const runLambdaModeRestore = async ({
   noticeFn,
   navigateTo,
   environment,
+  isEnvironmentPrimary,
   setError,
 }: {
   parsedRecordBody: unknown;
@@ -246,6 +267,7 @@ const runLambdaModeRestore = async ({
   noticeFn: (message: string) => void;
   navigateTo: (path: string) => void;
   environment: string;
+  isEnvironmentPrimary: boolean;
   setError: (error: errorObject) => void;
 }): Promise<void> => {
   const deploymentURL = getDeploymentUrlFromParameters(pluginParameters);
@@ -281,6 +303,7 @@ const runLambdaModeRestore = async ({
     noticeFn,
     navigateTo,
     environment,
+    isEnvironmentPrimary,
     setError,
   });
 };
@@ -341,6 +364,7 @@ const BinOutlet = ({ ctx }: { ctx: RenderItemFormOutletCtx }) => {
           noticeFn,
           navigateTo,
           environment: ctx.environment,
+          isEnvironmentPrimary: ctx.isEnvironmentPrimary,
           setError,
         });
         return;
@@ -361,6 +385,7 @@ const BinOutlet = ({ ctx }: { ctx: RenderItemFormOutletCtx }) => {
         alertFn,
         noticeFn,
         navigateTo,
+        isEnvironmentPrimary: ctx.isEnvironmentPrimary,
         setError,
       });
     } catch (err) {

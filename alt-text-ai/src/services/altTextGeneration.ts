@@ -257,7 +257,10 @@ export async function runAltGenerationForField(
   }
 
   try {
-    const client = buildClient({ apiToken: ctx.currentUserAccessToken });
+    const client = buildClient({
+      apiToken: ctx.currentUserAccessToken,
+      environment: ctx.environment,
+    });
 
     if (isFileFieldValueArray(currentFieldValue)) {
       await generateGalleryAlts(currentFieldValue, apiKey, client, ctx, mode);

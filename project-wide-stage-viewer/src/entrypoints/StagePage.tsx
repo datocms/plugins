@@ -966,8 +966,11 @@ export default function StagePage({ ctx, menuItem }: Props) {
 
   const handleNavigate = useCallback(
     (itemTypeId: string, itemId: string) => {
+      const environmentPrefix = ctx.isEnvironmentPrimary
+        ? ''
+        : `/environments/${ctx.environment}`;
       void ctx.navigateTo(
-        `/editor/item_types/${itemTypeId}/items/${itemId}/edit`,
+        `${environmentPrefix}/editor/item_types/${itemTypeId}/items/${itemId}/edit`,
       );
     },
     [ctx],

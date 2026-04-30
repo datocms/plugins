@@ -8,7 +8,7 @@ import {
 import { useEffect, useMemo, useState } from 'react';
 import { ASPECT_RATIO_OPTIONS, DEFAULT_WIDTH } from '../../constants';
 import { useUploadData } from '../../hooks/useUploadData';
-import type { MediaLayoutItem, WidthOption } from '../../types';
+import type { MediaLayoutItem, Upload, WidthOption } from '../../types';
 import {
   formatDimensions,
   getEffectiveRatio,
@@ -52,15 +52,7 @@ type ResolvedCardData = {
 
 function resolveCardData(
   item: MediaLayoutItem,
-  upload: {
-    attributes: {
-      url?: string;
-      filename?: string;
-      format?: string;
-      width?: number;
-      height?: number;
-    };
-  } | null,
+  upload: Upload | null,
 ): ResolvedCardData {
   const url = item.url || upload?.attributes.url || '';
   const filename = item.filename || upload?.attributes.filename || '';

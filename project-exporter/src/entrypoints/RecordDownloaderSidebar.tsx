@@ -43,6 +43,7 @@ export default function RecordDownloaderSidebar({ ctx }: PropTypes) {
     try {
       const client = buildClient({
         apiToken: ctx.currentUserAccessToken,
+        environment: ctx.environment,
       });
 
       const itemTypes = await client.itemTypes.list();

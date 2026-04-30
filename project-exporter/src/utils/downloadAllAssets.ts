@@ -142,10 +142,12 @@ async function buildZipForChunk(
 
 export default async function downloadAllAssets(
   apiToken: string,
+  environment: string,
   onProgress?: (progress: number, msg: string) => void,
 ) {
   const client = buildClient({
     apiToken,
+    environment,
   });
 
   const uploads: UploadLike[] = [];

@@ -74,7 +74,12 @@ connect({
       });
 
       if (result === 'remove') {
-        ctx.navigateTo(`/admin/item_types/${itemType.id}#f${field.id}`);
+        const environmentPrefix = ctx.isEnvironmentPrimary
+          ? ''
+          : `/environments/${ctx.environment}`;
+        ctx.navigateTo(
+          `${environmentPrefix}/admin/item_types/${itemType.id}#f${field.id}`,
+        );
         await promptNextFieldRemoval(index + 1);
       }
     };

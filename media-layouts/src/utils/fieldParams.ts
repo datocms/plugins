@@ -9,6 +9,7 @@ import type {
   FieldParamsLayout,
   FieldParamsLegacy,
   LayoutConfig,
+  LayoutSlot,
   ValidFieldParams,
   ValidGlobalParams,
 } from '../types';
@@ -165,9 +166,10 @@ function normalizeLayoutSlot(
   slot: unknown,
   rows: number,
   columns: number,
-): unknown {
-  if (!slot || typeof slot !== 'object') return slot;
-  const raw = slot as Record<string, unknown>;
+  index: number,
+): LayoutSlot {
+  const raw =
+    slot && typeof slot === 'object' ? (slot as Record<string, unknown>) : {};
   const rowSpan =
     typeof raw.rowSpan === 'number' && raw.rowSpan > 0 ? raw.rowSpan : 1;
   const colSpan =
@@ -176,15 +178,27 @@ function normalizeLayoutSlot(
   const col = typeof raw.col === 'number' ? raw.col : 0;
   const autoSpan = typeof raw.autoSpan === 'boolean' ? raw.autoSpan : false;
   const width = isWidthValue(raw.width) ? raw.width : DEFAULT_WIDTH;
-  return {
-    ...raw,
+  const normalizedSlot: LayoutSlot = {
+    id: typeof raw.id === 'string' ? raw.id : `slot-${index + 1}`,
+    label: typeof raw.label === 'string' ? raw.label : `Slot ${index + 1}`,
+    aspectRatio:
+      typeof raw.aspectRatio === 'string'
+        ? raw.aspectRatio
+        : DEFAULT_ASPECT_RATIO,
     width,
     row,
     col,
     rowSpan: Math.min(rowSpan, Math.max(1, rows - row)),
     colSpan: Math.min(colSpan, Math.max(1, columns - col)),
     autoSpan,
+    required: typeof raw.required === 'boolean' ? raw.required : false,
   };
+
+  if (typeof raw.customAspectRatio === 'string') {
+    normalizedSlot.customAspectRatio = raw.customAspectRatio;
+  }
+
+  return normalizedSlot;
 }
 
 export function normalizeLayoutConfig(
@@ -210,7 +224,9 @@ export function normalizeLayoutConfig(
     typeof config.layoutWidth === 'number' ? config.layoutWidth : undefined;
 
   const slots = Array.isArray(config.slots)
-    ? config.slots.map((slot) => normalizeLayoutSlot(slot, rows, columns))
+    ? config.slots.map((slot, index) =>
+        normalizeLayoutSlot(slot, rows, columns, index),
+      )
     : [];
 
   return {

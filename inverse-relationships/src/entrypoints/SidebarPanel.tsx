@@ -156,6 +156,9 @@ async function fetchInverseRelationshipRows({
 }
 
 export default function SidebarPanel({ ctx }: Props) {
+  const environmentPrefix = ctx.isEnvironmentPrimary
+    ? ''
+    : `/environments/${ctx.environment}`;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
@@ -266,7 +269,7 @@ export default function SidebarPanel({ ctx }: Props) {
                   onClick={() => {
                     if (!model) return;
                     ctx.navigateTo(
-                      `/editor/item_types/${model.id}/items/${row.id}/edit`,
+                      `${environmentPrefix}/editor/item_types/${model.id}/items/${row.id}/edit`,
                     );
                   }}
                 >

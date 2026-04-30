@@ -19,6 +19,7 @@ export default function CustomModal({ ctx }: PropTypes) {
 
   const client = buildClient({
     apiToken: ctx.currentUserAccessToken as string,
+    environment: ctx.environment,
   });
 
   useEffect(() => {

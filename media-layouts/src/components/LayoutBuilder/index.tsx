@@ -1097,7 +1097,8 @@ function useSlotManagement({
   const handleUpdateSlot = useCallback(
     (slotId: string, updates: Partial<LayoutSlot>) => {
       const manualSpanChange =
-        Object.hasOwn(updates, 'rowSpan') || Object.hasOwn(updates, 'colSpan');
+        Object.prototype.hasOwnProperty.call(updates, 'rowSpan') ||
+        Object.prototype.hasOwnProperty.call(updates, 'colSpan');
 
       const newSlots = config.slots.map((slot) => {
         if (slot.id !== slotId) return slot;

@@ -244,8 +244,11 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
    * Navigate to mass duplication page
    */
   const handleNavigateToMassDuplication = useCallback(() => {
+    const environmentPrefix = ctx.isEnvironmentPrimary
+      ? ''
+      : `/environments/${ctx.environment}`;
     ctx.navigateTo(
-      `/configuration/p/${ctx.plugin.id}/pages/massLocaleDuplication`,
+      `${environmentPrefix}/configuration/p/${ctx.plugin.id}/pages/massLocaleDuplication`,
     );
   }, [ctx]);
 

@@ -14,6 +14,9 @@ type PropTypes = {
 
 export default function CalendarItem({ item, criteria }: PropTypes) {
   const ctx = useCtx();
+  const environmentPrefix = ctx.isEnvironmentPrimary
+    ? ''
+    : `/environments/${ctx.environment}`;
   const { setModelId } = useContext(HoverItemContext);
   const itemType = ctx.itemTypes[
     item.relationships.item_type.data.id
@@ -53,7 +56,7 @@ export default function CalendarItem({ item, criteria }: PropTypes) {
       className={s.item}
       onClick={() =>
         ctx.navigateTo(
-          `/editor/item_types/${itemType.id}/items/${item.id}/edit`,
+          `${environmentPrefix}/editor/item_types/${itemType.id}/items/${item.id}/edit`,
         )
       }
       style={{ '--color-rgb-components': color.join(', ') } as CSSProperties}

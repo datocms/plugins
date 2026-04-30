@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-delete-unused-assets",
   "homepage": "https://github.com/datocms/plugins/tree/master/delete-unused-assets#readme",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "author": "DatoCMS <support@datocms.com>",
   "description": "A plugin that allows you to delete all unused assets with the click of a button.",
   "keywords": [

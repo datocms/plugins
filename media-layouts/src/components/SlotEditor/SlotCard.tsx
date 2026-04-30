@@ -2,7 +2,12 @@ import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
 import { Spinner } from 'datocms-react-ui';
 import { ASPECT_RATIO_OPTIONS } from '../../constants';
 import { useUploadData } from '../../hooks/useUploadData';
-import type { LayoutSlot, SlotAssignment, WidthOption } from '../../types';
+import type {
+  LayoutSlot,
+  SlotAssignment,
+  Upload,
+  WidthOption,
+} from '../../types';
 import { formatDimensions, getEffectiveRatio } from '../../utils/aspectRatio';
 import {
   getFormatLabel,
@@ -134,15 +139,7 @@ type ResolvedAssetData = {
 
 function resolveAssetData(
   assignment: SlotAssignment,
-  upload: {
-    attributes: {
-      url?: string;
-      filename?: string;
-      width?: number;
-      height?: number;
-      format?: string;
-    };
-  } | null,
+  upload: Upload | null,
 ): ResolvedAssetData {
   const url = assignment.url || upload?.attributes.url || '';
   const filename = assignment.filename || upload?.attributes.filename || '';
@@ -292,15 +289,7 @@ function determineNeedsFetch(
 type FilledSlotReadyProps = {
   assignment: SlotAssignment;
   slot: LayoutSlot;
-  upload: {
-    attributes: {
-      url?: string;
-      filename?: string;
-      width?: number;
-      height?: number;
-      format?: string;
-    };
-  } | null;
+  upload: Upload | null;
   enableCssClass: boolean;
   enableLazyLoading: boolean;
   disabled?: boolean;

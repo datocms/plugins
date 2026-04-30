@@ -1,6 +1,6 @@
 import { Button, Section } from 'datocms-react-ui';
 import { useCallback, useMemo, useState } from 'react';
-import type { ProgressUpdate } from '../ProgressView';
+import type { ProgressUpdate } from '../ProgressView/ProgressView';
 import styles from './SummaryView.module.css';
 
 /**

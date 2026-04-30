@@ -44,6 +44,10 @@ type PropTypes = {
   ctx: RenderItemFormSidebarPanelCtx;
 };
 
+function getEnvironmentPrefix(ctx: RenderItemFormSidebarPanelCtx): string {
+  return ctx.isEnvironmentPrimary ? '' : `/environments/${ctx.environment}`;
+}
+
 export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
   // Retrieve plugin parameters, expecting API keys and model details
   const pluginParams = ctx.plugin.attributes.parameters as ctxParamsType;
@@ -175,7 +179,9 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
           <Button
             buttonType="muted"
             onClick={() =>
-              ctx.navigateTo(`/configuration/plugins/${ctx.plugin.id}/edit`)
+              ctx.navigateTo(
+                `${getEnvironmentPrefix(ctx)}/configuration/plugins/${ctx.plugin.id}/edit`,
+              )
             }
           >
             Configure credentials for your selected AI vendor in settings

@@ -6,6 +6,10 @@ type Props = {
 };
 
 export default function ConfigScreen({ ctx }: Props) {
+  const environmentPrefix = ctx.isEnvironmentPrimary
+    ? ''
+    : `/environments/${ctx.environment}`;
+
   return (
     <Canvas ctx={ctx}>
       <Button
@@ -14,7 +18,7 @@ export default function ConfigScreen({ ctx }: Props) {
         fullWidth
         onClick={() =>
           ctx.navigateTo(
-            `/configuration/p/${ctx.plugin.id}/pages/optimize-assets`,
+            `${environmentPrefix}/configuration/p/${ctx.plugin.id}/pages/optimize-assets`,
           )
         }
       >
