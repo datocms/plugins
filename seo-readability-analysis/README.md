@@ -14,6 +14,8 @@ Once the plugin is installed, please configure your Frontend metadata endpoint U
 
 This plugin is meant to be used on JSON fields, so please assign it to some JSON fields in in your project.
 
+You can either hook this plugin manually to your JSON fields, or have it auto-applied to every JSON field whose API identifier matches the value entered in the **Auto-apply to all JSON fields with the following API identifier** setting on the configuration screen.
+
 The plugin will store information inside the JSON field using this structure:
 
 ```json
@@ -36,7 +38,7 @@ In order to work, this plugin needs a CORS-ready endpoint API that is able to re
 The plugin performs a GET request to the URL specified in the settings, passing down the following query string parameters:
 
 ```
-<ENDPOINT_URL>?itemId=89274&itemTypeId=544589&itemTypeApiKey=blog_post&environmentId=main&locale=en
+<ENDPOINT_URL>?itemId=89274&itemTypeId=544589&itemTypeApiKey=blog_post&sandboxEnvironmentId=main&locale=en
 ```
 
 - `itemId` the ID of the DatoCMS record

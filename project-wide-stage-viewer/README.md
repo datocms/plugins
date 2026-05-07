@@ -54,13 +54,13 @@ Surface every record currently sitting in a DatoCMS workflow stage—across ever
 2. Install dependencies with:
 
    ```bash
-   pnpm install
+   npm install
    ```
 
 3. Build the plugin:
 
    ```bash
-   pnpm build
+   npm run build
    ```
 
    The compiled assets are generated in the `dist/` directory.
@@ -70,16 +70,16 @@ Surface every record currently sitting in a DatoCMS workflow stage—across ever
 ## Configuration
 
 1. Open the plugin configuration screen inside DatoCMS.
-2. Click **Add stage** and pick the workflow and stage you want to expose.
-3. (Optional) Provide a custom label and icon to define how the stage appears inside the editorial sidebar.
-4. Save the configuration. Each configured stage becomes a persistent entry in the content sidebar, pointing to the stage view page rendered by this plugin.
+2. Pick a workflow and a stage from the dropdowns.
+3. (Optional) Provide a custom label and a FontAwesome icon name to define how the stage appears in the content sidebar.
+4. Click **Add this**. The new stage is saved automatically and becomes a persistent entry in the main content sidebar, pointing to the stage view page rendered by this plugin.
 
-You can repeat the process to add as many workflow stages as you like—each is saved as a menu item inside the plugin parameters.
+You can repeat the process to add as many workflow stages as you like—each is saved as a menu item inside the plugin parameters. Configured items are listed near the bottom of the configuration screen and can be removed individually.
 
 ## Using the stage view
 
 1. Navigate to the stage via the entry created in the content sidebar.
-2. The header summarises the context: _“Records belonging to **Stage** in the **Workflow** workflow.”_
+2. The header summarises the context: _"Records belonging to **Stage** in the **Workflow** workflow."_
 3. Use the **Model** dropdown to limit results to a single model, or leave it blank to see every model.
 4. Use the **Search** field to filter records by title, record ID, or model name.
 5. Click any column header to sort ascending/descending.
@@ -92,9 +92,9 @@ If no matches are found, contextual empty states explain why (stage empty, filte
 
 | Command | Description |
 | --- | --- |
-| `pnpm install` | Install dependencies. |
-| `pnpm dev` | Start the Vite dev server (defaults to `http://localhost:5173`). Point your plugin instance to this URL for local development. |
-| `pnpm build` | Type-check and bundle the production assets into `dist/`. |
+| `npm install` | Install dependencies. |
+| `npm run dev` | Start the Vite dev server (defaults to `http://localhost:5173`). Point your plugin instance to this URL for local development. |
+| `npm run build` | Type-check and bundle the production assets into `dist/`. |
 
 When developing locally, configure the plugin in DatoCMS to load from your dev server by entering the dev URL in the plugin settings.
 
@@ -107,8 +107,8 @@ When developing locally, configure the plugin in DatoCMS to load from your dev s
 ## Contributing
 
 1. Fork the repository and create a feature branch.
-2. Run `pnpm dev` to work against a local build.
-3. Run `pnpm build` before opening a pull request to ensure the bundle compiles cleanly.
+2. Run `npm run dev` to work against a local build.
+3. Run `npm run build` before opening a pull request to ensure the bundle compiles cleanly.
 4. Explain the change, add screenshots when UI changes are involved, and include any relevant testing notes.
 
 ## License
