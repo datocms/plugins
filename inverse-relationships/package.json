@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-inverse-relationships",
   "homepage": "https://github.com/datocms/plugins/tree/master/inverse-relationships#readme",
-  "version": "0.1.9",
+  "version": "0.1.11",
   "description": "A simple plugin that displays inverse relationships on a record's page",
   "author": "DatoCMS <support@datocms.com>",
   "license": "ISC",
@@ -32,45 +32,47 @@
     "fieldTypes": [
       "json"
     ],
+    "permissions": [
+      "currentUserAccessToken"
+    ],
     "parameters": {
       "global": [
         {
-          "id": "datoCmsApiToken",
-          "label": "DatoCMS API Token",
-          "type": "string",
-          "required": true,
-          "hint": "The DatoCMS API read-only token to use to query inverse relationships, <a href=\"/admin/access_tokens\">get it here</a>"
-        }
-      ],
-      "instance": [
-        {
           "id": "itemTypeApiKey",
-          "label": "Model ID",
+          "label": "Model API key",
           "type": "string",
           "required": true,
-          "hint": "The model you want linked records to show up (ie. <code>post</code>)"
+          "hint": "API key of the model whose records should appear in the sidebar (ie. <code>post</code>)"
         },
         {
           "id": "fieldApiKey",
-          "label": "Field ID",
+          "label": "Link field API key",
           "type": "string",
           "required": true,
-          "hint": "The single-link field to use as foreign key (ie. <code>author</code>)"
+          "hint": "API key of the single-link or multiple-links field on that model that points back to the current record (ie. <code>author</code>)"
         },
         {
           "id": "orderBy",
           "label": "Order by",
           "type": "string",
-          "required": true,
-          "default": "_updated_at_DESC"
+          "required": false,
+          "default": "_updated_at_DESC",
+          "hint": "Optional sort expression supported by the CMA, e.g. <code>_updated_at_DESC</code>"
         },
         {
           "id": "limit",
           "label": "Number of results",
           "type": "integer",
-          "required": true,
-          "hint": "The maximum number of records to show",
+          "required": false,
+          "hint": "Maximum number of related records to show in the sidebar",
           "default": 10
+        },
+        {
+          "id": "datoCmsApiToken",
+          "label": "DatoCMS API token (optional)",
+          "type": "string",
+          "required": false,
+          "hint": "Read-only API token used to query inverse relationships. Leave empty to reuse the editor's current access token."
         }
       ]
     }
