@@ -92,24 +92,30 @@ connect({
       return true;
     }
 
+    // No id means we're creating a new record, so there's no previous slug to redirect from.
+    const recordId = createOrUpdateItemPayload.data.id;
+    if (!recordId) {
+      return true;
+    }
+
     const client = buildClient({
       apiToken: ctx.currentUserAccessToken as string,
       environment: ctx.environment,
     });
 
-    const recordBeforeUpdate = await client.items.find(
-      createOrUpdateItemPayload.data.id,
-    );
+    const recordBeforeUpdate = await client.items.find(recordId);
 
+    const attributes = createOrUpdateItemPayload.data.attributes as Record<
+      string,
+      unknown
+    >;
     const oldSlug = recordBeforeUpdate[updatedFieldKey];
-    const newSlug = (createOrUpdateItemPayload.data.attributes as object)[
-      updatedFieldKey
-    ];
+    const newSlug = attributes[updatedFieldKey];
 
     updateSlugRedirects(
       urlPrefix,
       oldSlug as string,
-      newSlug,
+      newSlug as string,
       recordBeforeUpdate.id,
       client,
     );
@@ -166,10 +172,12 @@ connect({
       publishItemPayload[0].id,
     );
 
+    const attributes = publishItemPayload[0].attributes as Record<
+      string,
+      unknown
+    >;
     const oldSlug = recordBeforeUpdate[updatedFieldKey];
-    const newSlug = (publishItemPayload[0].attributes as object)[
-      updatedFieldKey
-    ];
+    const newSlug = attributes[updatedFieldKey];
 
     updateSlugRedirects(
       urlPrefix,
