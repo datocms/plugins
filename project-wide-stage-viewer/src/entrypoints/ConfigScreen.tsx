@@ -13,6 +13,7 @@ import type { JSX } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { PluginParameters, StageMenuItem } from '../types';
 import { buildCmaClient } from '../utils/cma';
+import { menuItemPageId } from '../utils/pageId';
 import s from './styles.module.css';
 
 type Props = {
@@ -245,12 +246,14 @@ export default function ConfigScreen({ ctx }: Props) {
     setIsSaving(true);
     setActionError(null);
 
-    const id = `wf:${selectedWorkflow.id}__st:${selectedStage.id}`;
     const trimmedLabel = labelOverride.trim();
     const trimmedIcon = iconOverride.trim();
 
     const nextItem: StageMenuItem = {
-      id,
+      id: menuItemPageId({
+        workflowId: selectedWorkflow.id,
+        stageId: selectedStage.id,
+      } as StageMenuItem),
       workflowId: selectedWorkflow.id,
       workflowName: selectedWorkflow.name,
       stageId: selectedStage.id,
@@ -261,7 +264,15 @@ export default function ConfigScreen({ ctx }: Props) {
 
     const currentParams = (ctx.plugin.attributes.parameters ??
       {}) as Partial<PluginParameters>;
-    const filteredItems = menuItems.filter((item) => item.id !== id);
+    // Dedupe by the (workflowId, stageId) pair regardless of how older items'
+    // ids were spelled, so re-adding the same stage replaces it cleanly.
+    const filteredItems = menuItems.filter(
+      (item) =>
+        !(
+          item.workflowId === selectedWorkflow.id &&
+          item.stageId === selectedStage.id
+        ),
+    );
     const nextMenuItems = [...filteredItems, nextItem];
 
     try {
