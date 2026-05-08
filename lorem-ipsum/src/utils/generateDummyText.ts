@@ -43,7 +43,7 @@ function article(buttons: string[]) {
         t('ul', ...times(3).map(() => t('li', t('p', s(rand(1, 3)))))),
       generateBlockquote && t('h2', title()),
       generateBlockquote && t('p', s()),
-      generateBlockquote && t('blockquote', s(4)),
+      generateBlockquote && t('blockquote', t('p', s(4))),
     ].filter((x) => !!x) as Tag[];
   }
 
@@ -52,7 +52,7 @@ function article(buttons: string[]) {
     generateList &&
       t('ul', ...times(3).map(() => t('li', t('p', s(rand(1, 3)))))),
     generateList && t('p', s()),
-    generateBlockquote && t('blockquote', s(4)),
+    generateBlockquote && t('blockquote', t('p', s(4))),
     generateBlockquote && t('p', s()),
   ].filter((x) => !!x) as Tag[];
 }

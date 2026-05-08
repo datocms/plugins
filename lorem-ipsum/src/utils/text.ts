@@ -26,9 +26,17 @@ export function rand(min: number, max: number) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-// Creates a Tag object with provided children
-export function t(tag: string, ...children: Array<Tag | string>): Tag {
-  return { tag, children };
+// `sentences()` returns deeply nested arrays of strings/Tag objects (each
+// sentence is itself an array, with ' ' separators interspersed). Allowing
+// arbitrary nesting in `t()` and flattening at construction time keeps the
+// callers in `article()` ergonomic — `t('p', sentences(2, []))` works
+// without the caller having to spread the inner arrays.
+type TagChild = Tag | string | TagChildList;
+interface TagChildList extends ReadonlyArray<TagChild> {}
+
+export function t(tag: string, ...children: TagChild[]): Tag {
+  const flat = (children as unknown[]).flat(Infinity) as Array<Tag | string>;
+  return { tag, children: flat };
 }
 
 // Generates a short sentence that can serve as a title
@@ -81,7 +89,7 @@ export function sentences(count: number, buttons: string[]) {
 }
 
 // Converts a tree of Tags into HTML string
-export function toHtml(tree: Tag | Tag[] | string): string {
+export function toHtml(tree: Tag | Array<Tag | string> | string): string {
   if (typeof tree === 'string') {
     return tree;
   }
@@ -100,7 +108,7 @@ export function toHtml(tree: Tag | Tag[] | string): string {
 }
 
 // Converts a tree of Tags into Markdown string
-export function toMarkdown(tree: Tag | Tag[] | string): string {
+export function toMarkdown(tree: Tag | Array<Tag | string> | string): string {
   if (typeof tree === 'string') {
     return tree;
   }
@@ -171,6 +179,7 @@ export function url() {
 export function toStructuredText(tree: Tag): Node;
 export function toStructuredText(tree: Array<Tag | string>): Node[];
 export function toStructuredText(tree: string): Node;
+export function toStructuredText(tree: Tag | string): Node;
 
 /**
  * Recursively transforms a Tag-based tree into a DatoCMS-structured-text format.
@@ -186,7 +195,10 @@ export function toStructuredText(
   }
 
   if (Array.isArray(tree)) {
-    return tree.flatMap(toStructuredText);
+    // Wrap in an arrow so the call resolves the right overload — passing
+    // `toStructuredText` directly to flatMap confuses TS about which signature
+    // applies to a `string | Tag` element.
+    return tree.flatMap((node) => toStructuredText(node as Tag | string));
   }
 
   const childNodes = toStructuredText(tree.children);
