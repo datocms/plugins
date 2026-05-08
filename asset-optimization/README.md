@@ -100,3 +100,10 @@ If you encounter any issues or have questions about the plugin, please [open an 
 ## License
 
 MIT
+
+## Changelog
+
+- 0.7.9 - Hide the **Media Area** button on optimized rows during preview runs. In dry-run mode the asset hasn't been written back to the media library, so jumping into it would just show the original and reinforce the misconception that the optimization already ran. The button still appears for skipped/failed entries and for real (non-preview) optimization runs.
+- 0.7.8 - Two preview-mode fixes:
+  - Decimal megabyte thresholds (e.g. `0.1` MB) no longer break the asset listing. The plugin converts MB to bytes (multiplying by `1024 * 1024`) and the result was being passed to the CMA `size` filter as a float, which the API rejected with `INVALID_FILTER_FIELDS_PARAM` ("Could not coerce value `0.10485760` to IntType"). The threshold is now floored to a whole number of bytes before the request goes out.
+  - The "View Asset" button in the **Optimized Assets** panel after a preview run was opening the unmodified original (because preview runs never replace anything), making editors think the optimization didn't apply. The dry-run pipeline now keeps hold of the Imgix URL it generated for the preview, and the button switches to "View optimized preview" + opens that URL when the panel is showing dry-run results.
