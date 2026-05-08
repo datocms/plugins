@@ -47,6 +47,13 @@ const UILABELS_BY_COUNTRY: Record<string, UILabels> = {
     dateTime: 'Data e hora',
     timeZone: 'Fuso horário',
   },
+  es: {
+    suggested: 'Sugeridas',
+    browser: 'Tu navegador',
+    site: 'Este proyecto',
+    dateTime: 'Fecha y hora',
+    timeZone: 'Zona horaria',
+  },
   cs: {
     suggested: 'Doporučené',
     browser: 'Váš prohlížeč',

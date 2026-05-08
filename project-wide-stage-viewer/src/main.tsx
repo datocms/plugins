@@ -7,6 +7,7 @@ import {
 import 'datocms-react-ui/styles.css';
 import ConfigScreen from './entrypoints/ConfigScreen';
 import StagePage from './entrypoints/StagePage';
+import { menuItemPageId, PAGE_ID_PREFIX } from './utils/pageId';
 import type { PluginParameters, StageMenuItem } from './types';
 import { render } from './utils/render';
 
@@ -33,17 +34,22 @@ connect({
       label: item.label ?? `${item.stageName} (${item.workflowName})`,
       icon: (item.icon ?? defaultIcon) as ContentAreaSidebarItem['icon'],
       placement: ['after', 'menuItems'] as const,
-      pointsTo: { pageId: item.id },
+      // The id stored in older configs used colons (`wf:X__st:Y`), which the
+      // DatoCMS sidebar treated as URL params and ended up highlighting every
+      // item at once. Recompute a URL-safe id from the structural fields so
+      // existing menu items keep working without a manual re-add.
+      pointsTo: { pageId: menuItemPageId(item) },
     }));
   },
 
   renderPage(pageId: string, ctx: RenderPageCtx) {
-    if (!pageId.startsWith('wf:')) {
+    if (!pageId.startsWith(PAGE_ID_PREFIX)) {
       return null;
     }
 
     const menuItems = readMenuItems(ctx.plugin.attributes.parameters);
-    const menuItem = menuItems.find((item) => item.id === pageId) ?? null;
+    const menuItem =
+      menuItems.find((item) => menuItemPageId(item) === pageId) ?? null;
 
     return render(<StagePage ctx={ctx} menuItem={menuItem} />);
   },

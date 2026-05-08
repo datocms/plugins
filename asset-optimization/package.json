@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-asset-optimization",
   "homepage": "https://github.com/datocms/plugins/tree/master/asset-optimization#readme",
-  "version": "0.7.7",
+  "version": "0.7.9",
   "author": "DatoCMS <support@datocms.com>",
   "description": "A plugin that allows you to mass apply optimizations to your DatoCMS assets.",
   "keywords": [

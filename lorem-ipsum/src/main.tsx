@@ -1,5 +1,6 @@
 import {
   connect,
+  type DropdownAction,
   type ExecuteFieldDropdownActionCtx,
   type Field,
   type FieldDropdownActionsCtx,
@@ -9,13 +10,16 @@ import { render } from './utils/render';
 import 'datocms-react-ui/styles.css';
 import generateDummyText from './utils/generateDummyText';
 
-const loremIpsumDropdownAction = [
+// Returns a fresh, mutable array each time so the SDK's `(DropdownAction |
+// DropdownActionGroup)[]` return type stays satisfied — `as const` would mark
+// this as `readonly` and fail the type check.
+const loremIpsumDropdownAction = (): DropdownAction[] => [
   {
     id: 'loremIpsum',
     label: 'Generate dummy text',
     icon: 'font',
   },
-] as const;
+];
 
 // Checks if any auto-apply rule matches the given field, returning the action if so
 function checkAutoApplyRules(
@@ -36,7 +40,7 @@ function checkAutoApplyRules(
     try {
       const regex = new RegExp(rule.apiKeyRegexp);
       if (regex.test(field.attributes.api_key)) {
-        return loremIpsumDropdownAction;
+        return loremIpsumDropdownAction();
       }
     } catch (_e) {
       // If regex is invalid, skip this rule
@@ -74,7 +78,7 @@ connect({
     }
 
     if (hasLoremIpsumAddon(field)) {
-      return loremIpsumDropdownAction;
+      return loremIpsumDropdownAction();
     }
 
     return [];

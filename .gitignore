@@ -10,3 +10,6 @@ build
 AGENTS.local.md
 
 *.tsbuildinfo
+
+.env
+.env.*

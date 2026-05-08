@@ -65,11 +65,13 @@ function assetToOptimizedAsset(
   asset: Asset,
   originalSize: number,
   optimizedSize: number,
+  optimizedUrl?: string,
 ): OptimizedAsset {
   return {
     id: asset.id,
     path: asset.path,
     url: asset.url,
+    optimizedUrl,
     originalSize,
     optimizedSize,
   };
@@ -112,6 +114,7 @@ async function processAsset(
   status: 'optimized' | 'skipped' | 'failed';
   asset: Asset;
   optimizedSize?: number;
+  optimizedUrl?: string;
   error?: string;
 }> {
   try {
@@ -152,13 +155,17 @@ async function processAsset(
       return { status: 'skipped', asset };
     }
 
-    // If this is just a preview, don't actually replace the asset
+    // If this is just a preview, don't actually replace the asset. Return the
+    // Imgix URL so the UI can let the user inspect the predicted optimized
+    // version directly — without a real preview URL the "View Asset" button
+    // would only ever open the still-unmodified original.
     if (isPreview) {
       addSizeComparisonLog(asset.path, asset.size, optimizedImageBlob.size);
       return {
         status: 'optimized',
         asset,
         optimizedSize: optimizedImageBlob.size,
+        optimizedUrl,
       };
     }
 
@@ -232,11 +239,17 @@ async function fetchOptimizableAssets(
   const assets: Asset[] = [];
   let count = 0;
 
+  // The CMA `size` filter expects an integer (number of bytes); a fractional
+  // megabyte threshold like 0.1 MB → 104857.6 bytes makes the API reject the
+  // query with `INVALID_FILTER_FIELDS_PARAM` ("Could not coerce value 0.10485760
+  // to IntType"). Floor here so users can keep entering decimal MB values.
+  const sizeThresholdBytes = Math.floor(largeAssetThresholdBytes);
+
   for await (const upload of client.uploads.listPagedIterator({
     filter: {
       fields: {
         type: { eq: 'image' },
-        size: { gte: largeAssetThresholdBytes },
+        size: { gte: sizeThresholdBytes },
       },
     },
   })) {
@@ -302,7 +315,12 @@ async function processPageQueueTask({
 
     if (result.status === 'optimized' && result.optimizedSize) {
       acc.optimizedAssets.push(
-        assetToOptimizedAsset(asset, asset.size, result.optimizedSize),
+        assetToOptimizedAsset(
+          asset,
+          asset.size,
+          result.optimizedSize,
+          result.optimizedUrl,
+        ),
       );
       acc.optimizedSizeTotal += result.optimizedSize;
       acc.optimized++;
@@ -761,6 +779,7 @@ const OptimizeAssetsPage = ({ ctx }: Props) => {
                       : result.failedAssets
                 }
                 category={selectedCategory}
+                isPreview={isPreviewing}
                 onClose={() => setSelectedCategory(null)}
                 ctx={ctx}
               />

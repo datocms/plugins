@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-project-wide-stage-viewer",
   "homepage": "https://github.com/datocms/plugins/tree/master/project-wide-stage-viewer#readme",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "author": "DatoCMS <support@datocms.com>",
   "description": "A plugin that allows you to view all records (across multiple models) belonging to a workflow stage.",
   "keywords": [

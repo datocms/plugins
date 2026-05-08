@@ -30,6 +30,12 @@ export interface OptimizedAsset {
   id: string;
   path: string;
   url: string;
+  /**
+   * Imgix URL with the optimization parameters applied. Populated only on
+   * preview runs so the UI can offer a "view what this would look like" link
+   * without dereferencing the original (still-unmodified) asset URL.
+   */
+  optimizedUrl?: string;
   originalSize: number;
   optimizedSize: number;
 }

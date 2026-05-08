@@ -114,3 +114,7 @@ When developing locally, configure the plugin in DatoCMS to load from your dev s
 ## License
 
 Released under the [MIT License](LICENSE).
+
+## Changelog
+
+- 0.1.8 - Fixed every configured stage menu item appearing highlighted at once. The sidebar `pageId` was previously formatted as `wf:X__st:Y`, but the embedded colons collided with DatoCMS's URL-routing logic. The plugin now derives a URL-safe id (`pwsv-{workflowId}-{stageId}`) from the structural fields of each menu item, so existing configurations continue to work without a manual re-add.
