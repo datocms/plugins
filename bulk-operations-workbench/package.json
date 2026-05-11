@@ -1,0 +1,51 @@
+{
+  "name": "datocms-plugin-bulk-operations-workbench",
+  "homepage": "https://github.com/datocms/plugins/tree/master/bulk-operations-workbench#readme",
+  "version": "0.1.1",
+  "author": "DatoCMS <support@datocms.com>",
+  "description": "Bulk edit text-like records with preview and batched execution.",
+  "keywords": [
+    "datocms",
+    "datocms-plugin"
+  ],
+  "type": "module",
+  "datoCmsPlugin": {
+    "title": "Bulk Operations Workbench",
+    "entryPoint": "dist/index.html",
+    "permissions": [
+      "currentUserAccessToken"
+    ]
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@datocms/cma-client-browser": "^5.3.0",
+    "datocms-plugin-sdk": "^2.1.1",
+    "datocms-react-ui": "^2.1.4",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.2.0",
+    "globals": "^17.4.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1"
+  },
+  "packageManager": "npm@11.11.0",
+  "overrides": {
+    "datocms-react-ui": {
+      "react-intersection-observer": "^9.16.0",
+      "react": "$react",
+      "react-dom": "$react-dom"
+    }
+  }
+}
