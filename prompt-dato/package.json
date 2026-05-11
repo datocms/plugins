@@ -1,0 +1,63 @@
+{
+  "name": "datocms-plugin-prompt-dato",
+  "homepage": "https://github.com/datocms/plugins/tree/master/prompt-dato#readme",
+  "version": "0.1.1",
+  "description": "Chat sidebar for DatoCMS records",
+  "author": "DatoCMS <support@datocms.com>",
+  "license": "ISC",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "dist": "npm run build",
+    "preview": "vite preview",
+    "prepublishOnly": "npm run build",
+    "test": "echo 1"
+  },
+  "files": [
+    "docs",
+    "dist"
+  ],
+  "keywords": [
+    "datocms",
+    "datocms-plugin",
+    "sidebar"
+  ],
+  "datoCmsPlugin": {
+    "title": "Prompt Dato",
+    "previewImage": "docs/preview.png",
+    "coverImage": "docs/cover.png",
+    "entryPoint": "dist/index.html",
+    "pluginType": "sidebar"
+  },
+  "dependencies": {
+    "@google/genai": "^1.52.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "datocms-plugin-sdk": "^2.1.1",
+    "datocms-react-ui": "^2.1.4",
+    "openai": "^6.34.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.2.0",
+    "globals": "^17.4.0",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.1"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "overrides": {
+    "datocms-react-ui": {
+      "react-intersection-observer": "^9.16.0",
+      "react": "$react",
+      "react-dom": "$react-dom"
+    }
+  }
+}

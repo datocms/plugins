@@ -1,0 +1,71 @@
+.section {
+  margin-bottom: 28px;
+}
+
+.sectionTitle {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+
+.sectionHint {
+  color: var(--light-body-color, #6b7380);
+  font-size: 13px;
+  margin: 0 0 14px;
+}
+
+.connectionRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-color, #e3e0d8);
+  border-radius: 4px;
+  background: var(--light-bg-color, #fafaf7);
+  margin-bottom: 12px;
+}
+
+.statusDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex: 0 0 10px;
+}
+
+.statusDot.connected {
+  background: #4ade80;
+  box-shadow: 0 0 0 3px rgba(74, 222, 128, 0.18);
+}
+
+.statusDot.disconnected {
+  background: #d1d5da;
+}
+
+.statusText {
+  flex: 1;
+  font-size: 13.5px;
+}
+
+.statusText strong {
+  display: block;
+  font-weight: 600;
+  font-size: 13.5px;
+  margin-bottom: 1px;
+}
+
+.statusText small {
+  color: var(--light-body-color, #6b7380);
+  font-size: 12px;
+}
+
+.buttonRow {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.error {
+  color: #b3261e;
+  font-size: 12.5px;
+  margin-top: 8px;
+}
