@@ -37,12 +37,14 @@ If you hook it to a JSON field, it will save a JSON containing all the product's
     "edges": [
       {
         "node": {
-          "src": "https://cdn.shopify.com/s/files/1/1312/0893/products/001_39681e15-ce94-48ca-830f-980b11868856_200x200_crop_center.jpg?v=1491851133"
+          "src": "https://cdn.shopify.com/s/files/1/1312/0893/products/001_39681e15-ce94-48ca-830f-980b11868856.jpg?v=1491851133",
+          "previewSrc": "https://cdn.shopify.com/s/files/1/1312/0893/products/001_39681e15-ce94-48ca-830f-980b11868856_200x200.jpg?v=1491851133"
         }
       }
     ]
   },
-  "imageUrl": "https://cdn.shopify.com/s/files/1/1312/0893/products/001_39681e15-ce94-48ca-830f-980b11868856_200x200_crop_center.jpg?v=1491851133"
+  "imageUrl": "https://cdn.shopify.com/s/files/1/1312/0893/products/001_39681e15-ce94-48ca-830f-980b11868856.jpg?v=1491851133",
+  "previewImageUrl": "https://cdn.shopify.com/s/files/1/1312/0893/products/001_39681e15-ce94-48ca-830f-980b11868856_200x200.jpg?v=1491851133"
 }
 ```
 
@@ -52,3 +54,9 @@ To request a Storefront API access token follow [these instructions](https://www
 
 Remember to give products read permissions.
 ![Demo](https://raw.githubusercontent.com/datocms/plugins/master/shopify-product/docs/shopify-storefront-key.png)
+
+## Changelog
+
+### 1.0.9
+
+- New selections save full-size `imageUrl` plus `previewImageUrl` for the 200x200 preview. Existing JSON field values are not rewritten; reselect products or update stored JSON to refresh old `_200x200` `imageUrl` values.
