@@ -57,6 +57,6 @@ Remember to give products read permissions.
 
 ## Changelog
 
-### 1.0.9
+### 1.0.10
 
 - New selections save full-size `imageUrl` plus `previewImageUrl` for the 200x200 preview. Existing JSON field values are not rewritten; reselect products or update stored JSON to refresh old `_200x200` `imageUrl` values.
