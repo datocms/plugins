@@ -16,15 +16,15 @@ Once you select a date, time, and time zone, the plugin stores an object like th
 
 ```json5
 {
-  datetime_iso8601: "1996-12-19T16:39:57-08:00", // ISO8601 string
+  zonedDateTime: "1996-12-19T16:39:57-08:00[America/Los_Angeles]", // RFC 9557 / IXDTF string (Temporal-friendly)
+  dateTime: "1996-12-19T16:39:57-08:00", // ISO 8601 string with numeric offset
   zone: "America/Los_Angeles", // IANA TZ identifier
-  offset: "-08:00", // Offset from UTC, same as ISO8601
+  offset: "-08:00", // Offset from UTC, same as in the ISO 8601 string
   date: "1996-12-19", // ISO date
   time_24hr: "16:39:57", // 24-hour time
-  time_12hr: "04:39:57", // 12-hour time
-  am_pm: "pm", // AM/PM for 12-hour time
-  timestamp_epoch_seconds: "851042397", // Unix epoch timestamp
-  zoned_datetime_ixdtf: "1996-12-19T16:39:57-08:00[America/Los_Angeles]", // For future use with Temporal API; see RFC 9557
+  time_12hr: "04:39:57", // 12-hour time (no AM/PM suffix)
+  ampm: "pm", // AM/PM marker for 12-hour time
+  timestamp: "851042397", // Unix epoch timestamp (seconds), as a string
 }
 ```
 ## How to use
@@ -73,16 +73,17 @@ This information is available in several formats in the JSON output (see [JSON S
 
 ![](docs/localizations.png)
 
-The plugin supports localized datetime entry and time zone names in the following languages (same as in DatoCMS itself):
+The plugin supports localized datetime entry and time zone names in the following languages:
 
 - English (en)
 - Italian (it)
 - German (de)
 - French (fr)
-- Spanish (es)
 - Czech (cs)
 - Dutch (nl)
 - Portuguese (pt)
+
+If your editor's preferred locale is not in this list, the plugin falls back to English for its UI.
 
 ## Changelog
 

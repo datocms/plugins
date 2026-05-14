@@ -24,13 +24,14 @@ On the plugin's Settings screen:
    - **DeepL API Key**: Paste your DeepL API key.
    - **Use DeepL Free endpoint**: Enable this if your key ends with `:fx` (Free plan).
 6. **Prompt Template** (AI vendors only): Customize how translations are requested. Use `{fieldValue}`, `{fromLocale}`, `{toLocale}`, and `{recordContext}`.
-7. **Translatable Field Types**: Pick which field editor types (single_line, markdown, structured_text, etc.) can be translated.
+7. **Translatable Field Types**: Pick which field editor types (single_line, markdown, structured_text, etc.) can be translated. 
 8. **Translate Whole Record**: Enable the sidebar that translates every localized field in a record.
 9. **Translate Bulk Records**: Enable bulk translations from table view or via the dedicated page.
 10. **AI Bulk Translations Page**: Translate whole models at once.
+11. **Enable Debugging**: Optional toggle that prints detailed logs to the browser console while keeping API keys redacted.
 
 ### Key Restrictions and Security
-- Keys are stored in plugin settings and used client‑side. Do not share your workspace publicly.
+- Keys are stored in plugin settings and used client-side. Do not share your workspace publicly.
 - Prefer restricting keys:
   - OpenAI: regular secret key; rotate periodically.
   - Google: restrict by HTTP referrer and enable only the Generative Language API.
@@ -39,6 +40,7 @@ On the plugin's Settings screen:
 _**Models**_
 - OpenAI: the model list is fetched dynamically for your account; the plugin filters out embeddings, audio/whisper/tts, moderation, image, and realtime models.
 - Google: the model list is fetched dynamically from the Generative Language API.
+- Anthropic: the model list is fetched dynamically for your account.
 
 Save your changes. The plugin is now ready.
 
@@ -50,7 +52,7 @@ For each translatable field:
 
 1. Click on the field's dropdown menu in the DatoCMS record editor (on the top right of the field)
 2. Select "Translate to" -> Choose a target locale or "All locales."
-3. The plugin uses your OpenAI settings to generate a translation.
+3. The plugin uses your configured AI vendor settings to generate a translation.
 4. The field updates automatically.
 
 You can also pull content from a different locale by choosing "Translate from" to copy and translate that locale's content into your current locale.
@@ -80,7 +82,7 @@ Translate multiple records at once from any table view:
 
 The plugin includes a dedicated page for translating multiple models at once:
 
-1. Go to Settings → AI Bulk Translations (in the sidebar)
+1. Go to Settings → AI Bulk Translations (in the sidebar) — this entry only appears for users whose role can edit the schema.
 2. Select your source and target languages
 3. Choose one or more models to translate (block models are excluded)
 4. Click "Start Bulk Translation"
@@ -122,10 +124,13 @@ You can customize the translation prompt template in the plugin settings:
 - Use `{fromLocale}` and `{toLocale}` to specify languages
 - Use `{recordContext}` to include the automatically generated record context
 
-## Excluding Models or Roles
+## Excluding Models, Roles or Fields
 
-- **Models to Exclude**: You can specify model API keys that shouldn't be affected by translations.
-- **Roles to Exclude**: Certain roles can be restricted from using or seeing the plugin features.
+In the plugin's "Exclusion Rules" section you can suppress translation actions and the sidebar panel for specific:
+
+- **Models**: Choose models to exclude from translations
+- **Roles**: Choose roles to hide all plugins functions from
+- **Fields**: Choose individual fields that should be excluded, even when their model is included
 
 ## Troubleshooting
 
@@ -163,7 +168,7 @@ When translating from `fromLocale` → `toLocale`, the plugin picks a glossary I
 4. Default glossary ID (if set and applicable).
 5. Otherwise, no glossary is used.
 
-If DeepL returns a glossary mismatch (e.g., glossary languages don’t match the current pair) or a missing glossary, the plugin automatically retries the same request once without a glossary so your translation continues. A brief hint is surfaced in the UI logs.
+If DeepL returns a glossary mismatch (e.g., glossary languages don't match the current pair) or a missing glossary, the plugin automatically retries the same request once without a glossary so your translation continues. A brief hint is surfaced in the UI logs.
 
 ### Tips and Limitations
 
@@ -174,9 +179,9 @@ If DeepL returns a glossary mismatch (e.g., glossary languages don’t match the
 
 ### Quick Sanity Test
 
-1. Create a small EN→DE glossary with an obvious term (e.g., “CTA” → “Call‑to‑Action”).
+1. Create a small EN→DE glossary with an obvious term (e.g., "CTA" → "Call-to-Action").
 2. In Settings → DeepL, paste the glossary ID into either Default or the `EN->DE=...` mapping.
-3. Translate a field from EN to DE containing “CTA”. The resulting German text should include your glossary translation.
+3. Translate a field from EN to DE containing "CTA". The resulting German text should include your glossary translation.
 
 ## Migration Notes
 

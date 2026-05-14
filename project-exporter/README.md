@@ -72,13 +72,12 @@ This plugin is built with React and the DatoCMS Plugin SDK. To contribute or mod
 
 1.  Clone the repository:
     ```bash
-    git clone https://github.com/marcelofinamorvieira/datocms-plugin-project-exporter.git
+    git clone https://github.com/datocms/plugins.git
+    cd plugins/project-exporter
     ```
 2.  Install dependencies:
     ```bash
     npm install
-    # or
-    pnpm install
     ```
 3.  Start the development server:
     ```bash
