@@ -320,8 +320,12 @@ const ConfigScreen = ({ ctx }: PropTypes) => {
   };
 
   const getClient = useCallback(() => {
-    return createApiClient(ctx.currentUserAccessToken, ctx.environment);
-  }, [ctx.currentUserAccessToken, ctx.environment]);
+    return createApiClient(
+      ctx.currentUserAccessToken,
+      ctx.environment,
+      ctx.cmaBaseUrl,
+    );
+  }, [ctx.currentUserAccessToken, ctx.environment, ctx.cmaBaseUrl]);
 
   const scanSingleModel = useCallback(
     async (

@@ -20,12 +20,13 @@ describe('createApiClient', () => {
     const client = { items: {} };
     vi.mocked(buildClient).mockReturnValue(client as never);
 
-    const result = createApiClient('token', 'staging');
+    const result = createApiClient('token', 'staging', 'https://example.com');
 
     expect(result).toBe(client);
     expect(buildClient).toHaveBeenCalledWith({
       apiToken: 'token',
       environment: 'staging',
+      baseUrl: 'https://example.com',
     });
   });
 });

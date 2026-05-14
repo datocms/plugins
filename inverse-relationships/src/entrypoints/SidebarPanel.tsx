@@ -170,8 +170,14 @@ export default function SidebarPanel({ ctx }: Props) {
       buildClient({
         apiToken: params.datoCmsApiToken || ctx.currentUserAccessToken || '',
         environment: ctx.environment,
+        baseUrl: ctx.cmaBaseUrl,
       }),
-    [ctx.currentUserAccessToken, ctx.environment, params.datoCmsApiToken],
+    [
+      ctx.currentUserAccessToken,
+      ctx.environment,
+      ctx.cmaBaseUrl,
+      params.datoCmsApiToken,
+    ],
   );
 
   useEffect(() => {

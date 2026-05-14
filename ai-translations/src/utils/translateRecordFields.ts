@@ -123,6 +123,7 @@ type RunJobParams = {
   provider: TranslationProvider;
   accessToken: string;
   environment: string;
+  cmaBaseUrl?: string;
   recordContext: string;
   options: TranslateOptions;
   lastStreamAt: Map<string, number>;
@@ -157,6 +158,7 @@ async function runFieldLocaleJob(params: RunJobParams): Promise<void> {
     provider,
     accessToken,
     environment,
+    cmaBaseUrl,
     recordContext,
     options,
     lastStreamAt,
@@ -199,6 +201,7 @@ async function runFieldLocaleJob(params: RunJobParams): Promise<void> {
       accessToken,
       fieldId,
       environment,
+      cmaBaseUrl,
       streamCallbacks,
       recordContext,
       fieldApiKey,
@@ -276,6 +279,7 @@ async function translateFieldWithTimeout(
   accessToken: string,
   fieldId: string,
   environment: string,
+  cmaBaseUrl: string | undefined,
   streamCallbacks: Parameters<typeof translateFieldValue>[10],
   recordContext: string,
   fieldApiKey: string,
@@ -294,7 +298,10 @@ async function translateFieldWithTimeout(
     streamCallbacks,
     recordContext,
     undefined,
-    { fieldApiKey },
+    {
+      fieldApiKey,
+      ...(cmaBaseUrl ? { cmaBaseUrl } : {}),
+    },
   );
 
   const timeoutPromise = new Promise<never>((_, reject) => {
@@ -615,6 +622,7 @@ export async function translateRecordFields(
           provider,
           accessToken: ctx.currentUserAccessToken as string,
           environment: ctx.environment,
+          cmaBaseUrl: ctx.cmaBaseUrl,
           recordContext,
           options,
           lastStreamAt,

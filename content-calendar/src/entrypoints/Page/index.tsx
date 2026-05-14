@@ -86,8 +86,9 @@ export default function Page({ ctx }: PropTypes) {
     return buildClient({
       apiToken,
       environment: ctx.environment,
+      baseUrl: ctx.cmaBaseUrl,
     });
-  }, [ctx.currentUserAccessToken, ctx.environment]);
+  }, [ctx.currentUserAccessToken, ctx.environment, ctx.cmaBaseUrl]);
 
   const matrix = useMemo(
     () =>

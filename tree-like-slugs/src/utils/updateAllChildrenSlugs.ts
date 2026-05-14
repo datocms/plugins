@@ -71,6 +71,7 @@ async function updateChildrenRecursively(
 export default async function updateAllChildrenSlugs(
   apiToken: string,
   environment: string,
+  baseUrl: string | undefined,
   modelID: string,
   parentID: string,
   slugFieldKey: string,
@@ -79,6 +80,7 @@ export default async function updateAllChildrenSlugs(
   const client = buildClient({
     apiToken,
     environment,
+    baseUrl,
   });
 
   await updateChildrenRecursively(

@@ -71,6 +71,7 @@ export const captureDeletedItemsWithoutLambda = async (
   const client = buildClient({
     apiToken: ctx.currentUserAccessToken,
     environment: ctx.environment,
+    ...(ctx.cmaBaseUrl ? { baseUrl: ctx.cmaBaseUrl } : {}),
   });
 
   let recordBinModelId = '';

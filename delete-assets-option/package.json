@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-delete-assets-option",
   "homepage": "https://github.com/datocms/plugins/tree/master/delete-assets-option#readme",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "author": "DatoCMS <support@datocms.com>",
   "description": "Prompts the users to delete assets only referenced in the records they are deleting",
   "keywords": [
@@ -23,7 +23,7 @@
   },
   "dependencies": {
     "@datocms/cma-client-browser": "^5.3.0",
-    "datocms-plugin-sdk": "^2.1.1",
+    "datocms-plugin-sdk": "^2.1.5",
     "datocms-react-ui": "^2.1.4",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"

@@ -14,6 +14,7 @@ connect({
       const client = buildClient({
         apiToken: ctx.currentUserAccessToken as string,
         environment: ctx.environment,
+        baseUrl: ctx.cmaBaseUrl,
       });
 
       const redirectsModel = await client.itemTypes.create({
@@ -75,9 +76,11 @@ connect({
       return true;
     }
 
-    const updatedFields = Object.keys(
-      createOrUpdateItemPayload.data.attributes as object,
-    );
+    const attributes = createOrUpdateItemPayload.data.attributes as Record<
+      string,
+      unknown
+    >;
+    const updatedFields = Object.keys(attributes);
 
     let updatedFieldKey: string | undefined;
 
@@ -95,21 +98,23 @@ connect({
     const client = buildClient({
       apiToken: ctx.currentUserAccessToken as string,
       environment: ctx.environment,
+      baseUrl: ctx.cmaBaseUrl,
     });
 
-    const recordBeforeUpdate = await client.items.find(
-      createOrUpdateItemPayload.data.id,
-    );
+    const itemId = createOrUpdateItemPayload.data.id;
+    if (!itemId) {
+      return true;
+    }
+
+    const recordBeforeUpdate = await client.items.find(itemId);
 
     const oldSlug = recordBeforeUpdate[updatedFieldKey];
-    const newSlug = (createOrUpdateItemPayload.data.attributes as object)[
-      updatedFieldKey
-    ];
+    const newSlug = attributes[updatedFieldKey];
 
     updateSlugRedirects(
       urlPrefix,
       oldSlug as string,
-      newSlug,
+      newSlug as string,
       recordBeforeUpdate.id,
       client,
     );
@@ -140,9 +145,11 @@ connect({
       return true;
     }
 
-    const updatedFields = Object.keys(
-      publishItemPayload[0].attributes as object,
-    );
+    const publishedAttributes = publishItemPayload[0].attributes as Record<
+      string,
+      unknown
+    >;
+    const updatedFields = Object.keys(publishedAttributes);
 
     let updatedFieldKey: string | undefined;
 
@@ -160,6 +167,7 @@ connect({
     const client = buildClient({
       apiToken: ctx.currentUserAccessToken as string,
       environment: ctx.environment,
+      baseUrl: ctx.cmaBaseUrl,
     });
 
     const recordBeforeUpdate = await client.items.find(
@@ -167,9 +175,7 @@ connect({
     );
 
     const oldSlug = recordBeforeUpdate[updatedFieldKey];
-    const newSlug = (publishItemPayload[0].attributes as object)[
-      updatedFieldKey
-    ];
+    const newSlug = publishedAttributes[updatedFieldKey];
 
     updateSlugRedirects(
       urlPrefix,

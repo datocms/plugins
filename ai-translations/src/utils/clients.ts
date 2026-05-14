@@ -10,9 +10,14 @@ import { buildClient } from '@datocms/cma-client-browser';
  * @param environment - Dato environment slug.
  * @returns A configured CMA client instance.
  */
-export function buildDatoCMSClient(accessToken: string, environment: string) {
+export function buildDatoCMSClient(
+  accessToken: string,
+  environment: string,
+  baseUrl?: string,
+) {
   return buildClient({
     apiToken: accessToken,
     environment,
+    baseUrl,
   });
 }

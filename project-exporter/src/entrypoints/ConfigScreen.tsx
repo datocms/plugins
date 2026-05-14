@@ -51,6 +51,7 @@ export default function ConfigScreen({ ctx }: Props) {
     const client = buildClient({
       apiToken: accessToken,
       environment: ctx.environment,
+      baseUrl: ctx.cmaBaseUrl,
     });
 
     client.itemTypes.list().then((models) => {
@@ -62,7 +63,7 @@ export default function ConfigScreen({ ctx }: Props) {
           }),
       );
     });
-  }, [ctx.currentUserAccessToken, ctx.environment]);
+  }, [ctx.currentUserAccessToken, ctx.environment, ctx.cmaBaseUrl]);
 
   const handleRecordDownload = async (
     options: { modelIDs?: string[]; textQuery?: string } = {},
@@ -75,6 +76,7 @@ export default function ConfigScreen({ ctx }: Props) {
     await downloadAllRecords(
       accessToken,
       ctx.environment,
+      ctx.cmaBaseUrl,
       selectedFormat,
       options,
       (progress, msg) => {
@@ -96,6 +98,7 @@ export default function ConfigScreen({ ctx }: Props) {
     await downloadAllAssets(
       ctx.currentUserAccessToken as string,
       ctx.environment,
+      ctx.cmaBaseUrl,
       (progress, msg) => {
         setLoadingStatus(msg);
         setLoadingProgress(progress);

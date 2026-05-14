@@ -17,10 +17,11 @@ export interface PaginationOptions {
 export class ApiService {
   private client: Client;
 
-  constructor(apiToken: string, environment?: string) {
+  constructor(apiToken: string, environment?: string, baseUrl?: string) {
     this.client = buildClient({
       apiToken,
       environment,
+      baseUrl,
     });
   }
 

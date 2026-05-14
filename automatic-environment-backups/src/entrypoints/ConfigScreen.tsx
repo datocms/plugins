@@ -372,6 +372,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
             const client = buildClient({
               apiToken: ctx.currentUserAccessToken,
               environment: ctx.environment,
+              baseUrl: ctx.cmaBaseUrl,
             });
             const plugin = await client.plugins.find(pluginId);
             latestParameters = toPluginParameterRecord(plugin.parameters);
@@ -471,6 +472,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       const client = buildClient({
         apiToken: ctx.currentUserAccessToken,
         environment: ctx.environment,
+        baseUrl: ctx.cmaBaseUrl,
       });
       const environments = await client.environments.list();
       return environments
@@ -479,7 +481,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     } catch {
       return undefined;
     }
-  }, [ctx.currentUserAccessToken, ctx.environment]);
+  }, [ctx.currentUserAccessToken, ctx.environment, ctx.cmaBaseUrl]);
 
   const refreshAvailableEnvironments = useCallback(async () => {
     const environmentIds = await fetchAvailableEnvironmentIds();

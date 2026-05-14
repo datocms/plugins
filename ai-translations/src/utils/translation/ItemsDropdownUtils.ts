@@ -398,7 +398,11 @@ export async function translateAndUpdateRecords(
   toLocale: string,
   getFieldTypeDictionary: (itemTypeId: string) => Promise<FieldTypeDictionary>,
   pluginParams: ctxParamsType,
-  ctx: { alert: (msg: string) => void; environment: string },
+  ctx: {
+    alert: (msg: string) => void;
+    environment: string;
+    cmaBaseUrl?: string;
+  },
   accessToken: string,
   options: TranslateBatchOptions = {},
   schemaRepository?: SchemaRepository,
@@ -446,6 +450,7 @@ export async function translateAndUpdateRecords(
         checkCancellation: options.checkCancellation,
       },
       schemaRepository,
+      ctx.cmaBaseUrl,
     );
 
     if (Object.keys(translatedFields.payload).length > 0) {
@@ -649,6 +654,7 @@ export async function buildTranslatedUpdatePayload(
   environment: string,
   opts: { abortSignal?: AbortSignal; checkCancellation?: () => boolean } = {},
   schemaRepository?: SchemaRepository,
+  cmaBaseUrl?: string,
 ): Promise<BuildTranslatedUpdatePayloadResult> {
   const updatePayload: Record<string, Record<string, unknown>> = {};
   const warnings: string[] = [];
@@ -708,6 +714,7 @@ export async function buildTranslatedUpdatePayload(
         schemaRepository,
         {
           fieldApiKey: field,
+          ...(cmaBaseUrl ? { cmaBaseUrl } : {}),
         },
       );
 

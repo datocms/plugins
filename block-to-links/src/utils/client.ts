@@ -28,10 +28,15 @@ import type { CMAClient } from '../types';
  * const client = createClient(ctx.currentUserAccessToken);
  * const models = await client.itemTypes.list();
  */
-export function createClient(apiToken: string, environment: string): CMAClient {
+export function createClient(
+  apiToken: string,
+  environment: string,
+  baseUrl?: string,
+): CMAClient {
   return buildClient({
     apiToken,
     environment,
+    baseUrl,
     autoRetry: true,
     logLevel: (import.meta.env.DEV ? 'BODY' : 'NONE') as unknown as LogLevel,
   });

@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-automatic-environment-backups",
   "homepage": "https://github.com/datocms/plugins/tree/master/automatic-environment-backups#readme",
-  "version": "0.6.9",
+  "version": "0.6.10",
   "author": "DatoCMS <support@datocms.com>",
   "description": "A plugin that creates daily and weekly backups of your main environment on DatoCMS automatically.",
   "keywords": [
@@ -26,7 +26,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "date-fns": "^4.1.0",
-    "datocms-plugin-sdk": "^2.1.1",
+    "datocms-plugin-sdk": "^2.1.5",
     "datocms-react-ui": "^2.1.4",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",

@@ -72,6 +72,10 @@ interface TranslationProgressModalProps {
   parameters: TranslationProgressModalParams;
 }
 
+function getTranslationErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 /**
  * Modal component that displays translation progress and handles the translation process.
  * Shows a progress bar, status updates for each record being translated,
@@ -124,7 +128,11 @@ export default function TranslationProgressModal({
       setIsProcessing(true);
 
       try {
-        const client = buildDatoCMSClient(accessToken, ctx.environment);
+        const client = buildDatoCMSClient(
+          accessToken,
+          ctx.environment,
+          ctx.cmaBaseUrl,
+        );
         const records = await fetchRecordsWithPagination(client, itemIds);
         const provider = getProvider(pluginParams);
 
@@ -161,13 +169,11 @@ export default function TranslationProgressModal({
         if (isMounted) {
           setHasFatalError(true);
           setIsProcessing(false);
-          const msg =
-            error instanceof Error ? error.message : String(error);
           addProgressUpdate({
             recordIndex: -1,
             recordId: 'fatal',
             status: 'error',
-            message: `Translation failed: ${msg}`,
+            message: `Translation failed: ${getTranslationErrorMessage(error)}`,
           });
         }
       }

@@ -54,6 +54,7 @@ type RecordBinWebhookSyncBaseInput = {
   currentUserAccessToken: string | undefined;
   canManageWebhooks: boolean;
   environment: string;
+  cmaBaseUrl?: string;
 };
 
 export type EnsureRecordBinWebhookInput = RecordBinWebhookSyncBaseInput & {
@@ -89,6 +90,7 @@ const getWebhookClient = ({
   currentUserAccessToken,
   canManageWebhooks,
   environment,
+  cmaBaseUrl,
 }: RecordBinWebhookSyncBaseInput) => {
   if (!currentUserAccessToken) {
     throw new RecordBinWebhookSyncError({
@@ -109,6 +111,7 @@ const getWebhookClient = ({
   return buildClient({
     apiToken: currentUserAccessToken,
     environment,
+    ...(cmaBaseUrl ? { baseUrl: cmaBaseUrl } : {}),
   });
 };
 

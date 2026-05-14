@@ -84,6 +84,12 @@ interface StructuredTextTextLeaf {
   value: string;
 }
 
+function buildNestedTranslationOptions(cmaBaseUrl?: string) {
+  return cmaBaseUrl
+    ? { bypassFieldTypeAllowlist: true, cmaBaseUrl }
+    : { bypassFieldTypeAllowlist: true };
+}
+
 /**
  * Creates a deep clone of a JSON-like structured text value.
  *
@@ -388,6 +394,7 @@ export async function translateStructuredTextValue(
   streamCallbacks?: StreamCallbacks,
   recordContext = '',
   schemaRepository?: SchemaRepository,
+  cmaBaseUrl?: string,
 ): Promise<unknown> {
   // Create logger
   const logger = createLogger(pluginParams, 'StructuredTextTranslation');
@@ -526,9 +533,7 @@ export async function translateStructuredTextValue(
         streamCallbacks,
         recordContext,
         schemaRepository,
-        {
-          bypassFieldTypeAllowlist: true,
-        },
+        buildNestedTranslationOptions(cmaBaseUrl),
       )) as StructuredTextNode[];
 
       // Insert translated blocks back at their original positions

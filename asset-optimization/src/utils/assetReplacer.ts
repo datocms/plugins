@@ -8,50 +8,17 @@
  * @module assetReplacer
  */
 
-/**
- * Interface for the upload request response from DatoCMS
- */
-interface UploadRequestResponse {
-  data: {
-    id: string;
-    type: string;
-    attributes: {
-      url: string;
-      request_headers: Record<string, string>;
-    };
-  };
-}
+import {
+  ApiError,
+  buildClient,
+  type Client as CmaClient,
+  type RawApiTypes,
+} from '@datocms/cma-client-browser';
 
 /**
  * Interface for the asset update response from DatoCMS
  */
-interface AssetUpdateResponse {
-  data: {
-    id: string;
-    type: string;
-    attributes: Record<string, unknown>;
-  };
-}
-
-/**
- * Interface for the job result response from DatoCMS
- */
-interface JobResultResponse {
-  data: {
-    type: string;
-    id: string;
-    attributes?: {
-      status: number;
-      payload: {
-        data: {
-          type: string;
-          id: string;
-          attributes: Record<string, unknown>;
-        };
-      };
-    };
-  };
-}
+type AssetUpdateResponse = RawApiTypes.UploadUpdateJobSchema;
 
 /**
  * Interface for asset replacement task
@@ -70,87 +37,11 @@ interface AssetReplacementTask {
 interface AssetReplacerConfig {
   apiToken: string;
   environment: string;
+  baseUrl?: string;
   concurrency?: number; // Number of concurrent replacements
   initialRetryDelay?: number; // Initial retry delay in ms
   maxRetryDelay?: number; // Maximum retry delay in ms
   retryBackoffFactor?: number; // Multiplier for each retry
-}
-
-/**
- * Waits for a job to complete by polling the job result endpoint.
- *
- * @param {string} jobId - The ID of the job to check
- * @param {string} apiToken - DatoCMS API token
- * @param {string} environment - Environment for the DatoCMS API call
- * @param {number} [maxAttempts=60] - Maximum number of polling attempts
- * @param {number} [interval=2000] - Polling interval in milliseconds
- * @returns {Promise<JobResultResponse>} The final job result
- * @throws {Error} If the job fails or times out
- */
-async function waitForJobCompletion(
-  jobId: string,
-  apiToken: string,
-  environment: string,
-  maxAttempts = 60,
-  interval = 2000,
-): Promise<JobResultResponse> {
-  const baseUrl = 'https://site-api.datocms.com';
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${apiToken}`,
-    'Content-Type': 'application/json',
-    Accept: 'application/json',
-    'X-Api-Version': '3',
-    'X-Environment': environment,
-  };
-
-  const pollAttempt = async (attempt: number): Promise<JobResultResponse> => {
-    if (attempt > maxAttempts) {
-      throw new Error(`Job timed out after ${maxAttempts} attempts: ${jobId}`);
-    }
-
-    try {
-      console.log(
-        `Checking job status (attempt ${attempt}/${maxAttempts}): ${jobId}`,
-      );
-
-      const response = await fetch(`${baseUrl}/job-results/${jobId}`, {
-        method: 'GET',
-        headers,
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`API error: ${response.status} ${errorText}`);
-      }
-
-      const jobResult = (await response.json()) as JobResultResponse;
-
-      // Check if the job has completed
-      if (
-        jobResult.data.attributes &&
-        jobResult.data.attributes.status === 200
-      ) {
-        console.log(`Job completed successfully: ${jobId}`);
-        return jobResult;
-      }
-
-      // If we get here, the job is still processing
-      console.log(
-        `Job in progress (${attempt}/${maxAttempts}), waiting ${interval}ms...`,
-      );
-      await new Promise((resolve) => setTimeout(resolve, interval));
-    } catch (error) {
-      console.error(
-        `Error checking job status: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      // Wait before retrying
-      await new Promise((resolve) => setTimeout(resolve, interval));
-    }
-
-    return pollAttempt(attempt + 1);
-  };
-
-  return pollAttempt(1);
 }
 
 /**
@@ -189,10 +80,9 @@ type RetryConfig = {
 };
 
 const computeRateLimitDelay = (
-  response: Response,
+  retryAfterHeader: string | undefined,
   retryConfig: RetryConfig,
 ): number => {
-  const retryAfterHeader = response.headers.get('Retry-After');
   const retryAfterSeconds = retryAfterHeader
     ? Number.parseInt(retryAfterHeader, 10)
     : 0;
@@ -205,6 +95,41 @@ const computeRateLimitDelay = (
     retryConfig.maxRetryDelay,
     retryConfig.retryBackoffFactor,
   );
+};
+
+const createCmaClient = (
+  apiToken: string,
+  environment: string,
+  baseUrl?: string,
+): CmaClient =>
+  buildClient({
+    apiToken,
+    environment,
+    autoRetry: false,
+    ...(baseUrl ? { baseUrl } : {}),
+  });
+
+const isRateLimitError = (error: unknown): error is ApiError =>
+  error instanceof ApiError && error.response.status === 429;
+
+const getRetryAfterHeader = (error: ApiError): string | undefined =>
+  error.response.headers['retry-after'] ??
+  error.response.headers['x-ratelimit-reset'];
+
+const normalizeRequestHeaders = (
+  headers: Record<string, unknown>,
+): Record<string, string> => {
+  const result: Record<string, string> = {};
+
+  for (const [key, value] of Object.entries(headers)) {
+    if (typeof value === 'string') {
+      result[key] = value;
+    } else if (typeof value === 'number' || typeof value === 'boolean') {
+      result[key] = String(value);
+    }
+  }
+
+  return result;
 };
 
 const fetchAndUploadImageToS3 = async (
@@ -239,34 +164,6 @@ const fetchAndUploadImageToS3 = async (
   }
 };
 
-const resolveUpdateResponse = async (
-  updateResponse: Response,
-  apiToken: string,
-  environment: string,
-): Promise<AssetUpdateResponse> => {
-  const responseData = await updateResponse.json();
-
-  if (responseData.data?.type !== 'job') {
-    console.log('Asset replaced successfully:', responseData);
-    return responseData as AssetUpdateResponse;
-  }
-
-  const jobId = responseData.data.id;
-  console.log(
-    `Asset update initiated as job ${jobId}, waiting for completion...`,
-  );
-
-  const jobResult = await waitForJobCompletion(jobId, apiToken, environment);
-
-  if (jobResult.data.attributes?.status !== 200) {
-    throw new Error(
-      `Job completed with error status: ${jobResult.data.attributes?.status}`,
-    );
-  }
-
-  return jobResult.data.attributes.payload as AssetUpdateResponse;
-};
-
 /**
  * Replaces an existing asset in DatoCMS with a new image from a URL.
  * Includes retries for rate limiting (429) errors.
@@ -288,6 +185,7 @@ async function replaceAssetFromUrl(
   newImageUrl: string,
   apiToken: string,
   environment: string,
+  baseUrl?: string,
   filename?: string,
   retryCount = 0,
   initialRetryDelay = 1000,
@@ -317,6 +215,7 @@ async function replaceAssetFromUrl(
       newImageUrl,
       apiToken,
       environment,
+      baseUrl,
       filename,
       retryCount + increment,
       initialRetryDelay,
@@ -326,95 +225,38 @@ async function replaceAssetFromUrl(
   };
 
   try {
-    const baseUrl = 'https://site-api.datocms.com';
-    const headers: Record<string, string> = {
-      Authorization: `Bearer ${apiToken}`,
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-      'X-Api-Version': '3',
-      'X-Environment': environment,
-    };
+    const client = createCmaClient(apiToken, environment, baseUrl);
 
-    // Step 1: Create an upload request to get a pre-signed S3 URL
-    const uploadRequestResponse = await fetch(`${baseUrl}/upload-requests`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        data: {
-          type: 'upload_request',
-          attributes: { filename: filename || 'optimized-image.jpg' },
-        },
-      }),
+    const uploadRequest = await client.uploadRequest.create({
+      filename: filename || 'optimized-image.jpg',
     });
 
-    if (uploadRequestResponse.status === 429) {
-      const delayMs = computeRateLimitDelay(uploadRequestResponse, retryConfig);
-      console.log(`Rate limit exceeded. Retrying after ${delayMs}ms`);
-      await sleep(delayMs);
-      return retryCall();
-    }
+    await fetchAndUploadImageToS3(
+      newImageUrl,
+      uploadRequest.url,
+      normalizeRequestHeaders(uploadRequest.request_headers),
+    );
 
-    if (!uploadRequestResponse.ok) {
-      const errorText = await uploadRequestResponse.text();
-      throw new Error(
-        `Failed to create upload request: ${uploadRequestResponse.status} ${errorText}`,
-      );
-    }
-
-    const uploadRequestData: UploadRequestResponse =
-      await uploadRequestResponse.json();
-
-    const {
-      id: uploadPath,
-      attributes: { url: s3Url, request_headers: s3Headers },
-    } = uploadRequestData.data;
-
-    // Step 2: Fetch the image from newImageUrl and upload to S3
-    await fetchAndUploadImageToS3(newImageUrl, s3Url, s3Headers);
-
-    // Step 3: Update the asset metadata to link it with the new file
-    const updateResponse = await fetch(`${baseUrl}/uploads/${assetId}`, {
-      method: 'PUT',
-      headers,
-      body: JSON.stringify({
-        data: {
-          id: assetId,
-          type: 'upload',
-          attributes: { path: uploadPath },
+    const updateResponse = await client.uploads.rawUpdate(assetId, {
+      data: {
+        id: assetId,
+        type: 'upload',
+        attributes: {
+          path: uploadRequest.id,
         },
-      }),
+      },
     });
 
-    if (updateResponse.status === 429) {
-      const delayMs = computeRateLimitDelay(updateResponse, retryConfig);
-      console.log(
-        `Rate limit exceeded during asset update. Retrying after ${delayMs}ms`,
-      );
-      await sleep(delayMs);
-      return retryCall();
-    }
-
-    if (!updateResponse.ok) {
-      const errorText = await updateResponse.text();
-      throw new Error(
-        `Failed to update asset metadata: ${updateResponse.status} ${errorText}`,
-      );
-    }
-
-    // Step 4: Resolve whether we got a direct response or a job
-    return resolveUpdateResponse(updateResponse, apiToken, environment);
+    console.log('Asset replaced successfully:', updateResponse);
+    return updateResponse;
   } catch (error) {
-    const isApiError =
-      error instanceof Error && error.message.includes('API error');
-    if (isApiError && retryCount < 5) {
-      const delayMs = calculateBackoff(
-        retryCount,
-        initialRetryDelay,
-        maxRetryDelay,
-        retryBackoffFactor,
+    if (isRateLimitError(error) && retryCount < 5) {
+      const delayMs = computeRateLimitDelay(
+        getRetryAfterHeader(error),
+        retryConfig,
       );
       console.error(
-        `Error replacing asset: ${(error as Error).message}. Retrying in ${delayMs}ms...`,
+        `Rate limit exceeded while replacing asset. Retrying in ${delayMs}ms...`,
       );
       await sleep(delayMs);
       return retryCall();
@@ -482,6 +324,7 @@ class AssetReplacer {
         task.newImageUrl,
         this.config.apiToken,
         this.config.environment,
+        this.config.baseUrl,
         task.filename,
         task.retryCount,
         this.config.initialRetryDelay,

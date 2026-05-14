@@ -12,6 +12,145 @@ import GlossaryPairEditor from './GlossaryPairEditor';
 import {useDeepLGlossaries} from './useDeepLGlossaries';
 
 type SelectOption = { label: string; value: string };
+type ApiKeyTestStatus = 'success' | 'error';
+
+interface ApiKeyTestResult {
+  status: ApiKeyTestStatus;
+  message: string;
+}
+
+interface DeepLTestResponse {
+  body: Record<string, unknown> | null;
+  parseFailed: boolean;
+  status: number;
+  ok: boolean;
+}
+
+function getDeepLTestBaseUrl(useFreeEndpoint: boolean): string {
+  return useFreeEndpoint
+    ? 'https://api-free.deepl.com'
+    : 'https://api.deepl.com';
+}
+
+function parseResponseBody(json: unknown): Record<string, unknown> | null {
+  return json && typeof json === 'object'
+    ? (json as Record<string, unknown>)
+    : null;
+}
+
+async function requestDeepLTest(
+  apiKey: string,
+  useFreeEndpoint: boolean,
+): Promise<DeepLTestResponse> {
+  const deeplApiUrl = `${getDeepLTestBaseUrl(useFreeEndpoint)}/v2/translate`;
+  const url = `https://cors-proxy.datocms.com/?url=${encodeURIComponent(deeplApiUrl)}`;
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      Authorization: `DeepL-Auth-Key ${apiKey}`,
+    },
+    body: JSON.stringify({ text: ['Hello world'], target_lang: 'DE' }),
+  });
+
+  try {
+    return {
+      body: parseResponseBody(await res.json()),
+      parseFailed: false,
+      status: res.status,
+      ok: res.ok,
+    };
+  } catch {
+    return {
+      body: null,
+      parseFailed: true,
+      status: res.status,
+      ok: res.ok,
+    };
+  }
+}
+
+function getDeepLErrorMessage(
+  body: Record<string, unknown> | null,
+): string | undefined {
+  if (!body || typeof body.message !== 'string') return undefined;
+
+  const errorMessage = body.message.toLowerCase();
+
+  if (errorMessage.includes('wrong endpoint')) {
+    return 'Your API key requires the DeepL Free endpoint. Enable "Use DeepL Free endpoint (api-free.deepl.com)" below, then try again.';
+  }
+
+  if (errorMessage.includes('forbidden')) {
+    return 'The DeepL API key is invalid. Please check that you entered the correct key.';
+  }
+
+  return `DeepL error: ${body.message}`;
+}
+
+function getTranslationSample(
+  body: Record<string, unknown> | null,
+): string | null {
+  const translations = body?.translations;
+  if (
+    !Array.isArray(translations) ||
+    translations.length === 0 ||
+    typeof (translations[0] as Record<string, unknown>)?.text !== 'string'
+  ) {
+    return null;
+  }
+
+  return (translations[0] as Record<string, unknown>).text as string;
+}
+
+function getSuccessMessage(sample: string): string {
+  if (!sample) return 'API Key OK. DeepL responded (empty body).';
+
+  return `API Key OK. DeepL responded: ${sample.slice(0, RESPONSE_PREVIEW_MAX_LENGTH)}${sample.length > RESPONSE_PREVIEW_MAX_LENGTH ? '…' : ''}`;
+}
+
+function validateDeepLTestResponse(
+  response: DeepLTestResponse,
+): ApiKeyTestResult {
+  if (response.parseFailed) {
+    return {
+      status: 'error',
+      message: `DeepL returned a non-JSON response (HTTP ${response.status}).`,
+    };
+  }
+
+  const deepLErrorMessage = getDeepLErrorMessage(response.body);
+  if (deepLErrorMessage) return { status: 'error', message: deepLErrorMessage };
+
+  if (!response.ok) {
+    return {
+      status: 'error',
+      message:
+        `DeepL returned an error (HTTP ${response.status}). Verify your API key and endpoint settings.`,
+    };
+  }
+
+  const sample = getTranslationSample(response.body);
+  if (sample === null) {
+    return {
+      status: 'error',
+      message:
+        'DeepL returned an unexpected response. The API key or endpoint may be misconfigured.',
+    };
+  }
+
+  return { status: 'success', message: getSuccessMessage(sample) };
+}
+
+async function testDeepLApiKey(
+  apiKey: string,
+  useFreeEndpoint: boolean,
+): Promise<ApiKeyTestResult> {
+  return validateDeepLTestResponse(
+    await requestDeepLTest(apiKey, useFreeEndpoint),
+  );
+}
 
 export interface DeepLConfigProps {
   deeplApiKey: string;
@@ -129,101 +268,9 @@ export default function DeepLConfig({
     setTestApiKeyStatus('idle');
     setIsTestingApiKey(true);
     try {
-      const baseUrl = deeplUseFree
-        ? 'https://api-free.deepl.com'
-        : 'https://api.deepl.com';
-      const deeplApiUrl = `${baseUrl}/v2/translate`;
-      const url = `https://cors-proxy.datocms.com/?url=${encodeURIComponent(deeplApiUrl)}`;
-
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          Authorization: `DeepL-Auth-Key ${deeplApiKey}`,
-        },
-        body: JSON.stringify({ text: ['Hello world'], target_lang: 'DE' }),
-      });
-
-      let json: unknown;
-      try {
-        json = await res.json();
-      } catch {
-        setTestApiKeyStatus('error');
-        setTestApiKeyMessage(
-          `DeepL returned a non-JSON response (HTTP ${res.status}).`,
-        );
-        return;
-      }
-
-      const body =
-        json && typeof json === 'object'
-          ? (json as Record<string, unknown>)
-          : null;
-
-      // --- Step 1: Classify any DeepL-reported error message ---
-      // Match on stable substrings rather than full strings, so DeepL rewording
-      // (e.g. changing the docs URL) doesn't silently regress to the generic
-      // handler. Both "wrong endpoint" and "forbidden" are the load-bearing
-      // semantic phrases in DeepL's auth errors.
-
-      if (body && typeof body.message === 'string') {
-        const errorMessage = body.message.toLowerCase();
-
-        if (errorMessage.includes('wrong endpoint')) {
-          setTestApiKeyStatus('error');
-          setTestApiKeyMessage(
-            'Your API key requires the DeepL Free endpoint. Enable "Use DeepL Free endpoint (api-free.deepl.com)" below, then try again.',
-          );
-          return;
-        }
-
-        if (errorMessage.includes('forbidden')) {
-          setTestApiKeyStatus('error');
-          setTestApiKeyMessage(
-            'The DeepL API key is invalid. Please check that you entered the correct key.',
-          );
-          return;
-        }
-
-        setTestApiKeyStatus('error');
-        setTestApiKeyMessage(`DeepL error: ${body.message}`);
-        return;
-      }
-
-      if (!res.ok) {
-        setTestApiKeyStatus('error');
-        setTestApiKeyMessage(
-          `DeepL returned an error (HTTP ${res.status}). Verify your API key and endpoint settings.`,
-        );
-        return;
-      }
-
-      // --- Step 3: Positively validate the expected success shape ---
-
-      const translations = body?.translations;
-      if (
-        !Array.isArray(translations) ||
-        translations.length === 0 ||
-        typeof (translations[0] as Record<string, unknown>)?.text !== 'string'
-      ) {
-        setTestApiKeyStatus('error');
-        setTestApiKeyMessage(
-          'DeepL returned an unexpected response. The API key or endpoint may be misconfigured.',
-        );
-        return;
-      }
-
-      const sample = (translations[0] as Record<string, unknown>)
-        .text as string;
-      if (sample) {
-        setTestApiKeyStatus('success');
-        setTestApiKeyMessage(
-          `API Key OK. DeepL responded: ${sample.slice(0, RESPONSE_PREVIEW_MAX_LENGTH)}${sample.length > RESPONSE_PREVIEW_MAX_LENGTH ? '…' : ''}`,
-        );
-      } else {
-        setTestApiKeyStatus('success');
-        setTestApiKeyMessage('API Key OK. DeepL responded (empty body).');
-      }
+      const result = await testDeepLApiKey(deeplApiKey, deeplUseFree);
+      setTestApiKeyStatus(result.status);
+      setTestApiKeyMessage(result.message);
     } catch (err) {
       setTestApiKeyStatus('error');
       setTestApiKeyMessage(

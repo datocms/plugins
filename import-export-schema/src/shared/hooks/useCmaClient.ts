@@ -4,8 +4,11 @@ import { useMemo } from 'react';
 import { createCmaClient } from '@/utils/createCmaClient';
 
 type AuthCtx =
-  | Pick<RenderPageCtx, 'currentUserAccessToken' | 'environment'>
-  | Pick<RenderConfigScreenCtx, 'currentUserAccessToken' | 'environment'>;
+  | Pick<RenderPageCtx, 'currentUserAccessToken' | 'environment' | 'cmaBaseUrl'>
+  | Pick<
+      RenderConfigScreenCtx,
+      'currentUserAccessToken' | 'environment' | 'cmaBaseUrl'
+    >;
 
 type UseCmaClientOptions = {
   overrides?: Partial<ClientConfigOptions>;
@@ -21,6 +24,6 @@ export function useCmaClient(
 ): Client {
   return useMemo(
     () => createCmaClient(ctx, overrides),
-    [ctx.currentUserAccessToken, ctx.environment, overrides, ctx],
+    [ctx.currentUserAccessToken, ctx.environment, ctx.cmaBaseUrl, overrides],
   );
 }

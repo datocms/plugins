@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { COMMENT_FIELDS, COMMENTS_MODEL_API_KEY } from '@/constants';
 import { createApiClient } from '@/utils/cmaClient';
 import {
@@ -28,6 +28,10 @@ function createFieldList(apiKeys: string[]) {
 }
 
 describe('ensureCommentsModelExists', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it('returns null when no CMA token is available', async () => {
     const result = await ensureCommentsModelExists({
       currentUserAccessToken: null,
@@ -53,10 +57,15 @@ describe('ensureCommentsModelExists', () => {
     const result = await ensureCommentsModelExists({
       currentUserAccessToken: 'token',
       environment: 'sandbox-env',
+      cmaBaseUrl: 'https://example.com',
     } as never);
 
     expect(result).toBe('comments-model');
-    expect(createApiClient).toHaveBeenCalledWith('token', 'sandbox-env');
+    expect(createApiClient).toHaveBeenCalledWith(
+      'token',
+      'sandbox-env',
+      'https://example.com',
+    );
   });
 });
 

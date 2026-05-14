@@ -34,15 +34,20 @@ async function fetchUploadDefaultMetadata(
   uploadId: string,
   apiToken: string,
   environment: string,
+  cmaBaseUrl: string | undefined,
   logger: ReturnType<typeof createLogger>,
 ): Promise<UploadDefaultFieldMetadata | undefined> {
-  const cacheKey = `${environment}:${uploadId}`;
+  const cacheKey = `${cmaBaseUrl ?? ''}:${environment}:${uploadId}`;
   const cached = uploadDefaultMetadataCache.get(cacheKey);
   if (cached) return cached;
 
   const fetchPromise = (async () => {
     try {
-      const client = buildClient({ apiToken, environment });
+      const client = buildClient({
+        apiToken,
+        environment,
+        baseUrl: cmaBaseUrl,
+      });
       const upload = await client.uploads.find(uploadId);
       const metadata = (upload as { default_field_metadata?: unknown })
         .default_field_metadata;
@@ -92,6 +97,7 @@ export async function translateFileFieldValue(
   environment?: string,
   _streamCallbacks?: StreamCallbacks,
   recordContext = '',
+  cmaBaseUrl?: string,
 ): Promise<unknown> {
   // Create logger for this module
   const logger = createLogger(pluginParams, 'FileFieldTranslation');
@@ -124,6 +130,7 @@ export async function translateFileFieldValue(
           environment,
           _streamCallbacks,
           recordContext,
+          cmaBaseUrl,
         );
       }),
     );
@@ -143,6 +150,7 @@ export async function translateFileFieldValue(
     environment,
     _streamCallbacks,
     recordContext,
+    cmaBaseUrl,
   );
 }
 
@@ -188,12 +196,14 @@ async function enrichFromUploadDefaults(
   fromLocale: string,
   apiToken: string,
   environment: string,
+  cmaBaseUrl: string | undefined,
   logger: ReturnType<typeof createLogger>,
 ): Promise<{ altSource: string | undefined; titleSource: string | undefined }> {
   const defaultMetadata = await fetchUploadDefaultMetadata(
     uploadId,
     apiToken,
     environment,
+    cmaBaseUrl,
     logger,
   );
   if (!defaultMetadata) return { altSource, titleSource };
@@ -387,6 +397,7 @@ async function resolveAltAndTitle(
   fromLocale: string,
   apiToken: string | undefined,
   environment: string | undefined,
+  cmaBaseUrl: string | undefined,
   logger: ReturnType<typeof createLogger>,
 ): Promise<{ altSource: string | undefined; titleSource: string | undefined }> {
   let altSource = pickNonEmpty(
@@ -407,6 +418,7 @@ async function resolveAltAndTitle(
       fromLocale,
       apiToken,
       environment,
+      cmaBaseUrl,
       logger,
     );
     altSource = enriched.altSource;
@@ -426,6 +438,7 @@ async function translateSingleFileMetadata(
   environment?: string,
   _streamCallbacks?: StreamCallbacks,
   recordContext = '',
+  cmaBaseUrl?: string,
 ): Promise<unknown> {
   const logger = createLogger(
     pluginParams,
@@ -451,6 +464,7 @@ async function translateSingleFileMetadata(
     fromLocale,
     apiToken,
     environment,
+    cmaBaseUrl,
     logger,
   );
 

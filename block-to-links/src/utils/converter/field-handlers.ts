@@ -51,6 +51,8 @@ export interface FieldConversionContext {
   recordsToPublish?: Set<string>;
 }
 
+type FieldUpdatePayload = Parameters<CMAClient['fields']['update']>[1];
+
 // =============================================================================
 // Main Field Conversion
 // =============================================================================
@@ -242,7 +244,9 @@ async function handleStructuredTextFieldConversion(
     phase1Validators.structured_text_blocks = currentBlocksValidator;
   }
 
-  await client.fields.update(mcField.id, { validators: phase1Validators });
+  await client.fields.update(mcField.id, {
+    validators: phase1Validators,
+  } as FieldUpdatePayload);
 
   // PHASE 2: Migrate DAST data
   await migrateStructuredTextData(ctx, !fullyReplace);
@@ -260,7 +264,7 @@ async function handleStructuredTextFieldConversion(
         item_types: updatedBlockItemTypes,
       },
     },
-  });
+  } as FieldUpdatePayload);
 }
 
 // =============================================================================

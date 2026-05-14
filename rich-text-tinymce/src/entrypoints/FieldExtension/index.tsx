@@ -1,6 +1,6 @@
 import { buildClient } from '@datocms/cma-client-browser';
 import { Editor as ReactEditor } from '@tinymce/tinymce-react';
-import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
+import type { RenderFieldExtensionCtx, Upload } from 'datocms-plugin-sdk';
 import { Canvas } from 'datocms-react-ui';
 import get from 'lodash/get';
 import { useEffect, useRef, useState } from 'react';
@@ -8,7 +8,9 @@ import type { Editor } from 'tinymce';
 import tinymce from 'tinymce/tinymce';
 import imgixThumbUrl from '../../utils/imgixThumbUrl';
 
-(window as Window & { tinymce: typeof tinymce }).tinymce = tinymce;
+(
+  window as unknown as Window & { tinymce: typeof tinymce }
+).tinymce = tinymce;
 
 import 'tinymce/icons/default';
 import 'tinymce/themes/silver';
@@ -45,25 +47,35 @@ type Props = {
   ctx: RenderFieldExtensionCtx;
 };
 
-type UploadFile = RenderFieldExtensionCtx['selectUpload'] extends (
-  opts: unknown,
-) => Promise<infer T>
-  ? NonNullable<T>[number]
-  : never;
+type UploadFile = Upload & {
+  default_field_metadata?: Record<
+    string,
+    { alt?: string | null; title?: string | null }
+  >;
+  attributes?: {
+    default_field_metadata?: Record<
+      string,
+      { alt?: string | null; title?: string | null }
+    >;
+  };
+};
 
 function buildImgTagForFile(
   file: UploadFile,
   locale: string,
   ctx: RenderFieldExtensionCtx,
 ) {
-  const metadata = file.attributes.default_field_metadata[locale];
+  const metadata =
+    (file.default_field_metadata ?? file.attributes?.default_field_metadata)?.[
+      locale
+    ];
   let text = '<img ';
 
-  if (metadata.alt) {
+  if (metadata?.alt) {
     text += `alt="${metadata.alt}" `;
   }
 
-  if (metadata.title) {
+  if (metadata?.title) {
     text += `title="${metadata.title}" `;
   }
 
@@ -80,7 +92,11 @@ async function uploadBlobToClient(
   if (!apiToken) {
     throw new Error('No access token available');
   }
-  const client = buildClient({ apiToken, environment: ctx.environment });
+  const client = buildClient({
+    apiToken,
+    environment: ctx.environment,
+    baseUrl: ctx.cmaBaseUrl,
+  });
   const upload = await client.uploads.createFromFileOrBlob({
     fileOrBlob: blobInfo.blob(),
     filename: blobInfo.filename(),

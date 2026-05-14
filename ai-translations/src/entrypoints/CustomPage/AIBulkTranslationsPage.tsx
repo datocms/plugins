@@ -50,6 +50,7 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
         const client = buildDatoCMSClient(
           ctx.currentUserAccessToken,
           ctx.environment,
+          ctx.cmaBaseUrl,
         );
 
         const itemTypes = await client.itemTypes.list();
@@ -150,6 +151,7 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
       const client = buildDatoCMSClient(
         ctx.currentUserAccessToken as string,
         ctx.environment,
+        ctx.cmaBaseUrl,
       );
       const allRecordIds: string[] = [];
 

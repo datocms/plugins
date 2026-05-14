@@ -12,13 +12,9 @@ export function buildCmaClient(ctx: ClientCtx): Client {
   const environmentId =
     typeof envSource === 'string' ? envSource : (envSource?.id ?? null);
 
-  const config: Parameters<typeof buildClient>[0] = {
+  return buildClient({
     apiToken: ctx.currentUserAccessToken ?? null,
-  };
-
-  if (environmentId) {
-    config.environment = environmentId;
-  }
-
-  return buildClient(config);
+    baseUrl: ctx.cmaBaseUrl,
+    ...(environmentId ? { environment: environmentId } : {}),
+  });
 }

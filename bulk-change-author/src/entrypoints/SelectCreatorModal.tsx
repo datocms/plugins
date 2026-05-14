@@ -141,8 +141,9 @@ type FetchUserOptionsResult = {
 async function fetchUserOptions(
   accessToken: string,
   environment: string,
+  baseUrl?: string,
 ): Promise<FetchUserOptionsResult> {
-  const client = makeClient(accessToken, environment);
+  const client = makeClient(accessToken, environment, baseUrl);
   const [collaboratorsResult, ssoUsersResult, siteResult] =
     await Promise.allSettled([
       client.users.list(),
@@ -175,7 +176,7 @@ export default function SelectCreatorModal({ ctx }: Props) {
 
     async function applyFetchedUsers(accessToken: string) {
       const { nextOptionGroups, allOptions, firstRejectionReason } =
-        await fetchUserOptions(accessToken, ctx.environment);
+        await fetchUserOptions(accessToken, ctx.environment, ctx.cmaBaseUrl);
 
       if (cancelled) {
         return;
@@ -238,6 +239,7 @@ export default function SelectCreatorModal({ ctx }: Props) {
   }, [
     ctx.currentUserAccessToken,
     ctx.environment,
+    ctx.cmaBaseUrl,
     params.preselectedUserId,
     params.preselectedUserType,
   ]);

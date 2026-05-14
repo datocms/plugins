@@ -2,7 +2,7 @@
   "name": "datocms-plugin-tinymce-rich-text",
   "homepage": "https://github.com/datocms/plugins/tree/master/rich-text-tinymce#readme",
   "description": "Custom TinyMCE HTML editor",
-  "version": "2.0.6",
+  "version": "2.0.7",
   "author": "DatoCMS <support@datocms.com>",
   "license": "ISC",
   "keywords": [
@@ -24,7 +24,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@types/tinymce": "^5.5.0",
-    "datocms-plugin-sdk": "^2.1.1",
+    "datocms-plugin-sdk": "^2.1.5",
     "datocms-react-ui": "^2.1.4",
     "lodash": "^4.17.23",
     "qs": "^6.15.0",

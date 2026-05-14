@@ -81,6 +81,7 @@ connect({
     const { ok, fail } = await bulkChangeCreator({
       apiToken: ctx.currentUserAccessToken,
       environment: ctx.environment,
+      baseUrl: ctx.cmaBaseUrl,
       itemIds: items.map((item) => item.id),
       userId: modalResult.userId,
       userType: modalResult.userType,

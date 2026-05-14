@@ -6,8 +6,11 @@ import {
 import type { RenderConfigScreenCtx, RenderPageCtx } from 'datocms-plugin-sdk';
 
 type CtxWithAuth =
-  | Pick<RenderPageCtx, 'currentUserAccessToken' | 'environment'>
-  | Pick<RenderConfigScreenCtx, 'currentUserAccessToken' | 'environment'>;
+  | Pick<RenderPageCtx, 'currentUserAccessToken' | 'environment' | 'cmaBaseUrl'>
+  | Pick<
+      RenderConfigScreenCtx,
+      'currentUserAccessToken' | 'environment' | 'cmaBaseUrl'
+    >;
 
 /** Create a CMA client configured for the current plugin session. */
 export function createCmaClient(
@@ -22,6 +25,7 @@ export function createCmaClient(
   return buildClient({
     apiToken,
     environment: ctx.environment,
+    baseUrl: ctx.cmaBaseUrl,
     // Sensible defaults for plugin usage
     autoRetry: true,
     requestTimeout: 60000,

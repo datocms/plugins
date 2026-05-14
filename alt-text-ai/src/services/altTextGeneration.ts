@@ -260,6 +260,7 @@ export async function runAltGenerationForField(
     const client = buildClient({
       apiToken: ctx.currentUserAccessToken,
       environment: ctx.environment,
+      baseUrl: ctx.cmaBaseUrl,
     });
 
     if (isFileFieldValueArray(currentFieldValue)) {

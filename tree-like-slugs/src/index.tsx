@@ -100,6 +100,7 @@ connect({
     const client = buildClient({
       apiToken: ctx.currentUserAccessToken,
       environment: ctx.environment,
+      baseUrl: ctx.cmaBaseUrl,
     });
 
     try {
@@ -114,6 +115,7 @@ connect({
       await updateAllChildrenSlugs(
         ctx.currentUserAccessToken,
         ctx.environment,
+        ctx.cmaBaseUrl,
         modelId,
         recordId,
         updatedFieldKey,

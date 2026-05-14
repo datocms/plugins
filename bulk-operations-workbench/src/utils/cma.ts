@@ -7,5 +7,6 @@ export function buildCmaClient(ctx: ClientCtx): Client {
   return buildClient({
     apiToken: ctx.currentUserAccessToken ?? null,
     environment: ctx.environment,
+    baseUrl: ctx.cmaBaseUrl,
   });
 }

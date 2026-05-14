@@ -50,10 +50,11 @@ export class LocaleDuplicationService {
   private recordsToPublish: Array<{ type: 'item'; id: string }> = [];
   private totalRecordsProcessed = 0;
 
-  constructor(apiToken: string, environment?: string) {
+  constructor(apiToken: string, environment?: string, baseUrl?: string) {
     this.client = buildClient({
       apiToken,
       environment,
+      baseUrl,
     });
   }
 

@@ -14,8 +14,9 @@ async function checkUploadExistsInEnv(
   apiToken: string,
   envId: string,
   uploadId: string,
+  baseUrl: string,
 ): Promise<EnvUploadLookupResult> {
-  const client = buildClient({ apiToken, environment: envId });
+  const client = buildClient({ apiToken, environment: envId, baseUrl });
   try {
     const upload = await client.uploads.find(uploadId);
     return { found: !!upload, envId };
@@ -35,8 +36,9 @@ async function deleteUploadFromEnv(
   apiToken: string,
   envId: string,
   uploadId: string,
+  baseUrl: string,
 ): Promise<EnvDeletionResult> {
-  const client = buildClient({ apiToken, environment: envId });
+  const client = buildClient({ apiToken, environment: envId, baseUrl });
   try {
     await client.uploads.destroy(uploadId);
     return { success: true, envId };
@@ -134,8 +136,9 @@ export const AssetDeletionSidebar = ({
     return buildClient({
       apiToken: currentUserAccessToken,
       logLevel: LogLevel.BASIC,
+      baseUrl: ctx.cmaBaseUrl,
     });
-  }, [currentUserAccessToken]);
+  }, [currentUserAccessToken, ctx.cmaBaseUrl]);
 
   useEffect(() => {
     if (!client) return;
@@ -159,7 +162,12 @@ export const AssetDeletionSidebar = ({
 
       const lookupResults = await Promise.allSettled(
         allOtherEnvsInProject.map((env) =>
-          checkUploadExistsInEnv(currentUserAccessToken, env.id, uploadId),
+          checkUploadExistsInEnv(
+            currentUserAccessToken,
+            env.id,
+            uploadId,
+            ctx.cmaBaseUrl,
+          ),
         ),
       );
 
@@ -197,7 +205,13 @@ export const AssetDeletionSidebar = ({
       setEnvsWithUpload(matchingEnvs.sort(sortByEnvUpdateTime));
       setLoadingMessage(null);
     })();
-  }, [allOtherEnvsInProject, currentUserAccessToken, uploadId, ctx.alert]);
+  }, [
+    allOtherEnvsInProject,
+    currentUserAccessToken,
+    uploadId,
+    ctx.alert,
+    ctx.cmaBaseUrl,
+  ]);
 
   // TODO permissions
   // Exit early if missing permissions
@@ -283,7 +297,12 @@ export const AssetDeletionSidebar = ({
 
     const deletionResults = await Promise.allSettled(
       envsWithUpload.map((env) =>
-        deleteUploadFromEnv(currentUserAccessToken, env.id, uploadId),
+        deleteUploadFromEnv(
+          currentUserAccessToken,
+          env.id,
+          uploadId,
+          ctx.cmaBaseUrl,
+        ),
       ),
     );
 

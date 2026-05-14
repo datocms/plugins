@@ -87,8 +87,8 @@ const CommentsBar = ({ ctx }: Props) => {
   ]);
 
   const client = useMemo(
-    () => createApiClient(cmaToken, ctx.environment),
-    [cmaToken, ctx.environment],
+    () => createApiClient(cmaToken, ctx.environment, ctx.cmaBaseUrl),
+    [cmaToken, ctx.environment, ctx.cmaBaseUrl],
   );
   const [fieldMentionsRequestKey, setFieldMentionsRequestKey] = useState(0);
   const {

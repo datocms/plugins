@@ -172,6 +172,7 @@ const executeRestoreWithoutLambda = async ({
     parsedResponse = await restoreRecordWithoutLambda({
       currentUserAccessToken,
       currentEnvironment: environment,
+      cmaBaseUrl: ctx.cmaBaseUrl,
       recordBody: parsedRecordBody,
       trashRecordID: trashRecordId,
     });

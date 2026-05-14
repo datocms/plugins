@@ -168,6 +168,7 @@ interface ConcurrencyResult<T> {
 interface TranslateFieldValueOptions {
   bypassFieldTypeAllowlist?: boolean;
   fieldApiKey?: string;
+  cmaBaseUrl?: string;
 }
 
 /**
@@ -381,6 +382,7 @@ export async function translateFieldValue(
         streamCallbacks,
         recordContext,
         schemaRepository,
+        options.cmaBaseUrl,
       );
       break;
     case 'rich_text':
@@ -398,6 +400,7 @@ export async function translateFieldValue(
         streamCallbacks,
         recordContext,
         schemaRepository,
+        options.cmaBaseUrl,
       );
       break;
     case 'file':
@@ -412,6 +415,7 @@ export async function translateFieldValue(
         environment,
         streamCallbacks,
         recordContext,
+        options.cmaBaseUrl,
       );
       break;
     default:
@@ -507,6 +511,7 @@ export async function fetchBlockFields(
   environment: string,
   blockModelId: string,
   schemaRepository?: SchemaRepository,
+  cmaBaseUrl?: string,
 ): Promise<Record<string, BlockFieldMeta>> {
   // If SchemaRepository is provided, use it for cached lookups
   if (schemaRepository) {
@@ -515,12 +520,17 @@ export async function fetchBlockFields(
 
   // Fall back to manual cache for backwards compatibility
   // Check if we already have a pending or completed request for this block model
-  const cached = blockFieldsCache.get(blockModelId);
+  const cacheKey = `${cmaBaseUrl ?? ''}:${environment}:${blockModelId}`;
+  const cached = blockFieldsCache.get(cacheKey);
   if (cached) return cached;
 
   // Create the fetch Promise and cache it immediately to prevent race conditions
   const fetchPromise = (async () => {
-    const client = buildClient({ apiToken, environment });
+    const client = buildClient({
+      apiToken,
+      environment,
+      baseUrl: cmaBaseUrl,
+    });
     const fields = await client.fields.list(blockModelId);
     return fields.reduce(
       (acc, field) => {
@@ -537,13 +547,13 @@ export async function fetchBlockFields(
   })();
 
   // Store the Promise in cache before awaiting, so concurrent requests share it
-  addToBlockFieldsCache(blockModelId, fetchPromise);
+  addToBlockFieldsCache(cacheKey, fetchPromise);
 
   try {
     return await fetchPromise;
   } catch (error) {
     // On error, remove from cache so subsequent requests can retry
-    blockFieldsCache.delete(blockModelId);
+    blockFieldsCache.delete(cacheKey);
     throw error;
   }
 }
@@ -560,6 +570,7 @@ interface BlockFieldProcessingContext {
   provider: TranslationProvider;
   apiToken: string;
   environment: string;
+  cmaBaseUrl?: string;
   streamCallbacks?: StreamCallbacks;
   recordContext: string;
   logger: Logger;
@@ -646,6 +657,7 @@ async function translateFramelessSingleBlockValue(
     ctx.environment,
     blockModelId,
     ctx.schemaRepository,
+    ctx.cmaBaseUrl,
   );
 
   const cleanedValue = deepCloneValue(fieldValue) as Record<string, unknown>;
@@ -762,7 +774,7 @@ async function translateBlockFieldValue(
     ctx.streamCallbacks,
     ctx.recordContext,
     ctx.schemaRepository,
-    { fieldApiKey: field },
+    { fieldApiKey: field, cmaBaseUrl: ctx.cmaBaseUrl },
   );
 }
 
@@ -885,6 +897,7 @@ async function translateBlockValue(
   streamCallbacks?: StreamCallbacks,
   recordContext = '',
   schemaRepository?: SchemaRepository,
+  cmaBaseUrl?: string,
 ) {
   const logger = createLogger(pluginParams, 'translateBlockValue');
   logger.info('Translating block value');
@@ -905,6 +918,7 @@ async function translateBlockValue(
     provider,
     apiToken,
     environment,
+    cmaBaseUrl,
     streamCallbacks,
     recordContext,
     logger,
@@ -942,6 +956,7 @@ async function translateBlockValue(
       environment,
       nestedModelId,
       schemaRepository,
+      cmaBaseUrl,
     );
     for (const [nestedKey, nestedMeta] of Object.entries(nestedFieldTypes)) {
       if (!(nestedKey in merged)) {
@@ -967,6 +982,7 @@ async function translateBlockValue(
       environment,
       blockModelId,
       schemaRepository,
+      cmaBaseUrl,
     );
 
     const sourceObject = block.attributes
@@ -1046,6 +1062,7 @@ export async function translateFieldValueDirect(
   streamCallbacks?: StreamCallbacks,
   recordContext = '',
   schemaRepository?: SchemaRepository,
+  cmaBaseUrl?: string,
 ): Promise<unknown> {
   const provider = getProvider(pluginParams);
   const fieldTypePrompt = prepareFieldTypePrompt(fieldType);
@@ -1064,6 +1081,7 @@ export async function translateFieldValueDirect(
     streamCallbacks,
     recordContext,
     schemaRepository,
+    cmaBaseUrl ? { cmaBaseUrl } : {},
   );
 }
 
@@ -1153,6 +1171,7 @@ async function TranslateField(
       undefined,
       {
         fieldApiKey,
+        cmaBaseUrl: ctx.cmaBaseUrl,
       },
     );
 

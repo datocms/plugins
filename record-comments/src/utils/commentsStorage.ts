@@ -113,7 +113,11 @@ export async function ensureCommentsModelExistsWithClient(
 export async function ensureCommentsModelExists(
   ctx: OnBootCtx,
 ): Promise<string | null> {
-  const client = createApiClient(ctx.currentUserAccessToken, ctx.environment);
+  const client = createApiClient(
+    ctx.currentUserAccessToken,
+    ctx.environment,
+    ctx.cmaBaseUrl,
+  );
   if (!client) return null;
 
   return ensureCommentsModelExistsWithClient(client);

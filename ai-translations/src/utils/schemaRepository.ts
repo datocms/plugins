@@ -48,7 +48,7 @@ export type FieldTypeDictionary = Record<string, FieldTypeDictionaryEntry>;
  *
  * @example
  * ```typescript
- * const client = buildClient({ apiToken, environment });
+ * const client = buildClient({ apiToken, environment, baseUrl });
  * const schemaRepo = createSchemaRepository(client);
  *
  * // Use throughout bulk operations

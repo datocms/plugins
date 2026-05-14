@@ -8,6 +8,7 @@ export type BulkResult = {
 type Params = {
   apiToken: string;
   environment?: string;
+  baseUrl?: string;
   itemIds: string[];
   userId: string;
   userType: 'user' | 'sso_user' | 'account' | 'organization';
@@ -17,12 +18,13 @@ type Params = {
 export async function bulkChangeCreator({
   apiToken,
   environment,
+  baseUrl,
   itemIds,
   userId,
   userType,
   concurrency = 6,
 }: Params): Promise<BulkResult> {
-  const client = makeClient(apiToken, environment);
+  const client = makeClient(apiToken, environment, baseUrl);
   const successes: string[] = [];
   const failures: Array<{ id: string; error: unknown }> = [];
 

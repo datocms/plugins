@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-block-to-links",
   "homepage": "https://github.com/datocms/plugins/tree/master/block-to-links#readme",
-  "version": "0.3.8",
+  "version": "0.3.9",
   "author": "DatoCMS <support@datocms.com>",
   "description": "A plugin that allows you to convert blocks to links",
   "keywords": [
@@ -30,7 +30,7 @@
   },
   "dependencies": {
     "@datocms/cma-client-browser": "^5.3.0",
-    "datocms-plugin-sdk": "^2.1.1",
+    "datocms-plugin-sdk": "^2.1.5",
     "datocms-react-ui": "^2.1.4",
     "datocms-structured-text-utils": "^5.1.7",
     "react": "^19.2.4",

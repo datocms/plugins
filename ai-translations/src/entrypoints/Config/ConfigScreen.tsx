@@ -846,11 +846,12 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     const client = buildClient({
       apiToken: ctx.currentUserAccessToken as string,
       environment: ctx.environment,
+      baseUrl: ctx.cmaBaseUrl,
     });
     client.roles.list().then((roles) => {
       setRoles(roles.map((role) => ({ id: role.id, name: role.name })));
     });
-  }, [ctx.currentUserAccessToken, ctx.environment]);
+  }, [ctx.currentUserAccessToken, ctx.environment, ctx.cmaBaseUrl]);
 
   const isSaveButtonDisabled =
     isVendorCredentialsMissing(

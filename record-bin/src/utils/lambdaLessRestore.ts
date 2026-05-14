@@ -84,6 +84,7 @@ export const isLambdaLessRestoreError = (
 export type RestoreRecordWithoutLambdaInput = {
   currentUserAccessToken: string | undefined;
   currentEnvironment: string;
+  cmaBaseUrl?: string;
   recordBody: unknown;
   trashRecordID: string;
 };
@@ -98,6 +99,7 @@ export type RestoreRecordWithoutLambdaResult = {
 export const restoreRecordWithoutLambda = async ({
   currentUserAccessToken,
   currentEnvironment,
+  cmaBaseUrl,
   recordBody,
   trashRecordID,
 }: RestoreRecordWithoutLambdaInput): Promise<RestoreRecordWithoutLambdaResult> => {
@@ -114,6 +116,7 @@ export const restoreRecordWithoutLambda = async ({
   const client = buildClient({
     apiToken: currentUserAccessToken,
     environment: currentEnvironment,
+    ...(cmaBaseUrl ? { baseUrl: cmaBaseUrl } : {}),
   });
 
   let restoredRecordResponse:

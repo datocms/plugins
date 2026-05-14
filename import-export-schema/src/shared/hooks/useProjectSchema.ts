@@ -5,8 +5,11 @@ import { ProjectSchema } from '@/utils/ProjectSchema';
 import { useCmaClient } from './useCmaClient';
 
 type AuthCtx =
-  | Pick<RenderPageCtx, 'currentUserAccessToken' | 'environment'>
-  | Pick<RenderConfigScreenCtx, 'currentUserAccessToken' | 'environment'>;
+  | Pick<RenderPageCtx, 'currentUserAccessToken' | 'environment' | 'cmaBaseUrl'>
+  | Pick<
+      RenderConfigScreenCtx,
+      'currentUserAccessToken' | 'environment' | 'cmaBaseUrl'
+    >;
 
 type UseProjectSchemaOptions = {
   clientOverrides?: Partial<ClientConfigOptions>;

@@ -396,6 +396,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           currentUserAccessToken: ctx.currentUserAccessToken,
           canManageWebhooks,
           environment: ctx.environment,
+          cmaBaseUrl: ctx.cmaBaseUrl,
         });
         debugLogger.log(
           'Managed Record Bin webhooks synchronized in Lambda-less mode',
@@ -691,6 +692,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         currentUserAccessToken: ctx.currentUserAccessToken,
         canManageWebhooks,
         environment: ctx.environment,
+        cmaBaseUrl: ctx.cmaBaseUrl,
         lambdaBaseUrl: verificationResult.normalizedBaseUrl,
       });
       debugLogger.log('Record Bin webhook synchronized on connect', {
@@ -750,6 +752,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
             currentUserAccessToken: ctx.currentUserAccessToken,
             canManageWebhooks,
             environment: ctx.environment,
+            cmaBaseUrl: ctx.cmaBaseUrl,
             lambdaBaseUrl: previousActiveDeploymentUrl,
           });
           debugLogger.warn(
@@ -804,6 +807,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         currentUserAccessToken: ctx.currentUserAccessToken,
         canManageWebhooks,
         environment: ctx.environment,
+        cmaBaseUrl: ctx.cmaBaseUrl,
       });
       webhookWasRemoved = webhookRemovalResult.action === 'deleted';
       debugLogger.log('Record Bin webhook synchronized on disconnect', {

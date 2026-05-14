@@ -3,7 +3,7 @@
   "description": "A DatoCMS plugin that adds a field that allows you to select an asset together with a layout configuration",
   "homepage": "https://github.com/datocms/plugins/media-layouts",
   "private": false,
-  "version": "0.1.8",
+  "version": "0.1.9",
   "author": "Marcelo Finamor Vieira <marcelofinamorvieira@gmail.com>",
   "type": "module",
   "keywords": [
@@ -14,7 +14,9 @@
     "coverImage": "docs/cover-1200x800.png",
     "previewImage": "docs/preview.mp4",
     "entryPoint": "dist/index.html",
-    "permissions": []
+    "permissions": [
+      "currentUserAccessToken"
+    ]
   },
   "files": [
     "dist",
@@ -27,7 +29,8 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "datocms-plugin-sdk": "^2.1.1",
+    "@datocms/cma-client-browser": "^5.3.0",
+    "datocms-plugin-sdk": "^2.1.5",
     "datocms-react-ui": "^2.1.4",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"

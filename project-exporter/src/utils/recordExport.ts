@@ -1,4 +1,7 @@
-import type { Client as CmaClient } from '@datocms/cma-client-browser';
+import {
+  buildClient,
+  type Client as CmaClient,
+} from '@datocms/cma-client-browser';
 import {
   ASSET_EXPORT_VERSION,
   ASSET_MANIFEST_FILENAME,
@@ -1401,21 +1404,11 @@ export async function fetchProjectConfigurationExport(args: {
 
 export async function fetchSiteManifestInfo(
   apiToken: string,
+  baseUrl?: string,
 ): Promise<SiteManifestInfo> {
   try {
-    const response = await fetch('https://site-api.datocms.com/site', {
-      headers: {
-        Authorization: `Bearer ${apiToken}`,
-        Accept: 'application/json',
-        'X-Api-Version': '3',
-      },
-    });
-
-    if (!response.ok) {
-      return emptySiteManifestInfo();
-    }
-
-    const payload = (await response.json()) as { data?: unknown };
+    const client = buildClient({ apiToken, baseUrl });
+    const payload = await client.site.rawFind();
     return extractSiteManifestInfoFromSitePayload(asJsonObject(payload.data));
   } catch (_error) {
     return emptySiteManifestInfo();

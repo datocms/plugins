@@ -1,3 +1,4 @@
+import { buildClient } from '@datocms/cma-client-browser';
 import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
 import { useEffect, useState } from 'react';
 import type { Upload } from '../types';
@@ -6,26 +7,16 @@ async function fetchUploadFromApi(
   uploadId: string,
   accessToken: string | null | undefined,
   environment: string,
+  baseUrl: string | undefined,
 ): Promise<Upload> {
-  const response = await fetch(
-    `https://site-api.datocms.com/uploads/${uploadId}`,
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        Accept: 'application/vnd.api+json',
-        'Content-Type': 'application/vnd.api+json',
-        'X-Api-Version': '3',
-        'X-Environment': environment,
-      },
-    },
-  );
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch upload');
+  if (!accessToken) {
+    throw new Error('Missing current user access token');
   }
 
-  const json = await response.json();
-  return json.data as Upload;
+  const client = buildClient({ apiToken: accessToken, environment, baseUrl });
+  const upload = await client.uploads.rawFind(uploadId);
+
+  return upload.data as Upload;
 }
 
 export function useUploadData(
@@ -56,6 +47,7 @@ export function useUploadData(
           uploadId as string,
           ctx.currentUserAccessToken,
           ctx.environment,
+          ctx.cmaBaseUrl,
         );
         if (!cancelled) {
           setUpload(data);
@@ -77,7 +69,13 @@ export function useUploadData(
     return () => {
       cancelled = true;
     };
-  }, [uploadId, ctx.currentUserAccessToken, ctx.environment, skip]);
+  }, [
+    uploadId,
+    ctx.currentUserAccessToken,
+    ctx.environment,
+    ctx.cmaBaseUrl,
+    skip,
+  ]);
 
   return { upload, loading, error };
 }

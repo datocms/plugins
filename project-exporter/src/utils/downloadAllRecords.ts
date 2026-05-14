@@ -14,6 +14,7 @@ type Options = {
 export default async function downloadAllRecords(
   apiToken: string,
   environment: string,
+  baseUrl: string | undefined,
   format: AvailableFormats,
   options: Options,
   onProgress?: (progress: number, msg: string) => void,
@@ -21,6 +22,7 @@ export default async function downloadAllRecords(
   const client = buildClient({
     apiToken,
     environment,
+    baseUrl,
   });
 
   const records: Record<string, unknown>[] = [];
@@ -33,29 +35,13 @@ export default async function downloadAllRecords(
 
   let totalCount = 0;
   try {
-    const queryParams = new URLSearchParams({
-      'page[limit]': '1',
+    const response = await client.items.rawList({
+      nested: false,
+      page: { limit: 1 },
       meta: 'true',
-      ...(options.modelIDs && { 'filter[type]': options.modelIDs.join(',') }),
-      ...(options.textQuery && { 'filter[query]': options.textQuery }),
+      filter,
     });
-
-    const response = await fetch(
-      `https://site-api.datocms.com/items?${queryParams.toString()}`,
-      {
-        headers: {
-          Authorization: `Bearer ${apiToken}`,
-          Accept: 'application/json',
-          'X-Api-Version': '3',
-          'X-Environment': environment,
-        },
-      },
-    );
-
-    const responseData = await response.json();
-    if (responseData.meta?.total_count) {
-      totalCount = responseData.meta.total_count;
-    }
+    totalCount = response.meta.total_count;
   } catch (e) {
     console.error('Error fetching total count:', e);
   }

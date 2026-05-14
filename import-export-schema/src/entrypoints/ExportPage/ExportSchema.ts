@@ -8,7 +8,7 @@ import type { SchemaTypes } from '@datocms/cma-client';
 import get from 'lodash-es/get';
 import { findLinkedItemTypeIds } from '@/utils/datocms/schema';
 import { isDefined } from '@/utils/isDefined';
-import type { ExportDoc } from '@/utils/types';
+import type { ExportDoc, ExportDocV2 } from '@/utils/types';
 
 /**
  * Normalizes an export document into easy-to-query maps, helping both import and graph builders.
@@ -107,7 +107,7 @@ export class ExportSchema {
     return this.rootItemTypes[0];
   }
 
-  private resolveV2Root(exportDoc: ExportDoc): SchemaTypes.ItemType {
+  private resolveV2Root(exportDoc: ExportDocV2): SchemaTypes.ItemType {
     const explicitRootId = exportDoc.rootItemTypeId;
     if (explicitRootId) {
       const resolved = this.getItemTypeById(String(explicitRootId));

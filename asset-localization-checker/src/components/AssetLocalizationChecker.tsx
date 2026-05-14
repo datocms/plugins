@@ -59,8 +59,9 @@ export const AssetLocalizationChecker = ({
     return buildClient({
       apiToken: currentUserAccessToken,
       ...(environment ? { environment } : {}),
+      baseUrl: ctx.cmaBaseUrl,
     });
-  }, [currentUserAccessToken, environment]);
+  }, [currentUserAccessToken, environment, ctx.cmaBaseUrl]);
 
   // Variables and calculations
   const imageField = getMaybeLocalizedValue(

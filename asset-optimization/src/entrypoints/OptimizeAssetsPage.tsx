@@ -108,6 +108,7 @@ async function processAsset(
   isPreview: boolean,
   apiToken?: string,
   environment?: string,
+  baseUrl?: string,
 ): Promise<{
   status: 'optimized' | 'skipped' | 'failed';
   asset: Asset;
@@ -181,6 +182,7 @@ async function processAsset(
       optimizedUrl,
       apiToken,
       environment || 'master',
+      baseUrl,
       asset.basename,
     );
 
@@ -266,6 +268,7 @@ async function processPageQueueTask({
   isPreview,
   apiToken,
   environment,
+  baseUrl,
   acc,
   shouldDelay,
 }: {
@@ -280,6 +283,7 @@ async function processPageQueueTask({
   isPreview: boolean;
   apiToken: string | null | undefined;
   environment: string;
+  baseUrl: string;
   acc: PageOptimizationAccumulator;
   shouldDelay: boolean;
 }): Promise<void> {
@@ -296,6 +300,7 @@ async function processPageQueueTask({
       isPreview,
       apiToken || undefined,
       environment,
+      baseUrl,
     );
 
     const assetRef = assetToProcessedAsset(asset);
@@ -490,6 +495,7 @@ const OptimizeAssetsPage = ({ ctx }: Props) => {
           isPreview,
           apiToken,
           environment: ctx.environment,
+          baseUrl: ctx.cmaBaseUrl,
           acc,
           shouldDelay: activeCount > 1,
         }).then(() => {
@@ -537,6 +543,7 @@ const OptimizeAssetsPage = ({ ctx }: Props) => {
       const client = buildClient({
         apiToken: ctx.currentUserAccessToken ?? '',
         environment: ctx.environment,
+        baseUrl: ctx.cmaBaseUrl,
       });
 
       addLog('Fetching assets from DatoCMS for preview...');
@@ -647,6 +654,7 @@ const OptimizeAssetsPage = ({ ctx }: Props) => {
       const client = buildClient({
         apiToken: ctx.currentUserAccessToken ?? '',
         environment: ctx.environment,
+        baseUrl: ctx.cmaBaseUrl,
       });
 
       addLog('Fetching assets from DatoCMS...');

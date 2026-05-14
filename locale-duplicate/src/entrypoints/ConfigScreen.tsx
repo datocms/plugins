@@ -55,6 +55,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         const client = buildClient({
           apiToken: ctx.currentUserAccessToken || '',
           environment: ctx.environment,
+          baseUrl: ctx.cmaBaseUrl,
         });
 
         // Fetch all models (excluding modular blocks)
@@ -95,6 +96,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         const client = buildClient({
           apiToken: ctx.currentUserAccessToken || '',
           environment: ctx.environment,
+          baseUrl: ctx.cmaBaseUrl,
         });
 
         // Fetch fields for the selected model

@@ -307,6 +307,7 @@ async function duplicateLocaleContent(
   const client = buildClient({
     apiToken: ctx.currentUserAccessToken ?? '',
     environment: ctx.environment,
+    baseUrl: ctx.cmaBaseUrl,
   });
 
   try {
@@ -450,6 +451,7 @@ export default function SettingsAreaSidebar({ ctx }: { ctx: RenderPageCtx }) {
         const client = buildClient({
           apiToken: ctx.currentUserAccessToken ?? '',
           environment: ctx.environment,
+          baseUrl: ctx.cmaBaseUrl,
         });
 
         const models = await client.itemTypes.list();

@@ -20,7 +20,12 @@ export interface GlossaryPairRow {
   glossaryId: string;
 }
 
+interface EditableGlossaryPairRow extends GlossaryPairRow {
+  rowId: string;
+}
+
 type SelectOption = { label: string; value: string };
+let nextGlossaryRowId = 0;
 
 // ── Serialization helpers ──────────────────────────────────────────────
 
@@ -51,6 +56,15 @@ function serializeRows(rows: GlossaryPairRow[]): string {
     .filter((r) => r.source && r.target && r.glossaryId)
     .map((r) => `${r.source}->${r.target}=${r.glossaryId}`)
     .join('\n');
+}
+
+function createEditableRow(row: GlossaryPairRow): EditableGlossaryPairRow {
+  nextGlossaryRowId += 1;
+  return { ...row, rowId: `glossary-row-${nextGlossaryRowId}` };
+}
+
+function parseEditableRows(raw: string): EditableGlossaryPairRow[] {
+  return parseRows(raw).map(createEditableRow);
 }
 
 // ── Props ──────────────────────────────────────────────────────────────
@@ -85,20 +99,22 @@ export default function GlossaryPairEditor({
   fetchError,
   openConfirm,
 }: GlossaryPairEditorProps) {
-  const [rows, setRows] = useState<GlossaryPairRow[]>(() => parseRows(value));
+  const [rows, setRows] = useState<EditableGlossaryPairRow[]>(() =>
+    parseEditableRows(value),
+  );
 
   // Re-parse rows when the external value changes (e.g. reset / load)
   const externalValue = useRef(value);
   useEffect(() => {
     if (value !== externalValue.current) {
       externalValue.current = value;
-      setRows(parseRows(value));
+      setRows(parseEditableRows(value));
     }
   }, [value]);
 
   // Propagate row changes upstream
   const commitRows = useCallback(
-    (nextRows: GlossaryPairRow[]) => {
+    (nextRows: EditableGlossaryPairRow[]) => {
       setRows(nextRows);
       const serialized = serializeRows(nextRows);
       externalValue.current = serialized;
@@ -189,7 +205,10 @@ export default function GlossaryPairEditor({
   };
 
   const addRow = () => {
-    commitRows([...rows, { source: '', target: '', glossaryId: '' }]);
+    commitRows([
+      ...rows,
+      createEditableRow({ source: '', target: '', glossaryId: '' }),
+    ]);
   };
 
   // ── Render ─────────────────────────────────────────────────────────
@@ -249,7 +268,7 @@ export default function GlossaryPairEditor({
 
         return (
           <div
-            key={`glossary-row-${i}`}
+            key={row.rowId}
             style={{
               display: 'flex',
               gap: 8,
