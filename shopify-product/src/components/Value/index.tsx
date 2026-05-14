@@ -61,7 +61,9 @@ export default function Value({ value, onReset }: ValueProps) {
         <div className={s.product}>
           <div
             className={s.product__image}
-            style={{ backgroundImage: `url(${product.imageUrl})` }}
+            style={{
+              backgroundImage: `url(${product.previewImageUrl || product.imageUrl})`,
+            }}
           />
           <div className={s.product__info}>
             <div className={s.product__title}>

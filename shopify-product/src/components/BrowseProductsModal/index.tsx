@@ -94,7 +94,9 @@ export default function BrowseProductsModal({ ctx }: { ctx: RenderModalCtx }) {
                 >
                   <div
                     className={s.product__image}
-                    style={{ backgroundImage: `url(${product.imageUrl})` }}
+                    style={{
+                      backgroundImage: `url(${product.previewImageUrl || product.imageUrl})`,
+                    }}
                   />
                   <div className={s.product__content}>
                     <div className={s.product__title}>{product.title}</div>

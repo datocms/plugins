@@ -8,18 +8,18 @@ export type Product = {
   productType: string;
   onlineStoreUrl: string;
   imageUrl: string;
+  previewImageUrl: string;
   priceRange: {
     maxVariantPrice: PriceTypes;
     minVariantPrice: PriceTypes;
   };
   images: {
-    edges: [
-      {
-        node: {
-          src: string;
-        };
-      },
-    ];
+    edges: Array<{
+      node: {
+        src: string;
+        previewSrc: string;
+      };
+    }>;
   };
 };
 
@@ -53,15 +53,16 @@ const productFragment = `
   images(first: 1) {
     edges {
       node {
-        src: transformedSrc(maxWidth: 200, maxHeight: 200)
+        src
+        previewSrc: transformedSrc(maxWidth: 200, maxHeight: 200)
       }
     }
   }
 `;
 
-type RawProductNode = Omit<Product, 'imageUrl'> & {
+type RawProductNode = Omit<Product, 'imageUrl' | 'previewImageUrl'> & {
   images: {
-    edges: Array<{ node: { src: string } }>;
+    edges: Array<{ node: { src: string; previewSrc: string } }>;
   };
 };
 
@@ -77,6 +78,10 @@ const normalizeProduct = (product: RawProductNode): Product => {
   return {
     ...product,
     imageUrl: product.images.edges[0]?.node.src || '',
+    previewImageUrl:
+      product.images.edges[0]?.node.previewSrc ||
+      product.images.edges[0]?.node.src ||
+      '',
   };
 };
 
