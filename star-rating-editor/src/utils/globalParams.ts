@@ -11,12 +11,22 @@ export type LegacyGlobalParams = Record<string, never>;
 
 export type EmptyParams = Record<string, never>;
 
-export type GlobalParams = ValidGlobalParams | LegacyGlobalParams | EmptyParams;
+export type GlobalParams =
+  | ValidGlobalParams
+  | LegacyGlobalParams
+  | EmptyParams
+  | Record<string, unknown>
+  | null
+  | undefined;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 export function isValidGlobalParams(
-  params: GlobalParams,
+  params: unknown,
 ): params is ValidGlobalParams {
-  return params && 'paramsVersion' in params && params.paramsVersion === '2';
+  return isRecord(params) && params.paramsVersion === '2';
 }
 
 export function normalizeGlobalParams(params: GlobalParams): ValidGlobalParams {

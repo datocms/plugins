@@ -19,13 +19,13 @@ type PropTypes = {
   ctx: RenderManualFieldExtensionConfigScreenCtx;
 };
 
-export function validateMaxRating(
-  value: string | number | null,
-): string | undefined {
+export function validateMaxRating(value: string | number): string | undefined {
+  const parsedValue = Number.parseInt(String(value), 10);
+
   if (
-    Number.isNaN(parseInt(value, 10)) ||
-    parseInt(value, 10) < 2 ||
-    parseInt(value, 10) > 10
+    Number.isNaN(parsedValue) ||
+    parsedValue < 2 ||
+    parsedValue > 10
   ) {
     return 'Rating must be a number between 2 and 10!';
   }

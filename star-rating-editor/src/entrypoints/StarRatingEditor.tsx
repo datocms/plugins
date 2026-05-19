@@ -21,9 +21,13 @@ const StarRatingEditor = ({ ctx }: PropTypes) => {
     <Canvas ctx={ctx}>
       <ReactStars
         count={maxRating}
+        char="★"
+        color="gray"
         activeColor={starsColor}
         size={32}
         isHalf={false}
+        a11y
+        classNames=""
         edit={!ctx.disabled}
         value={currentValue || 0}
         onChange={handleChange}
