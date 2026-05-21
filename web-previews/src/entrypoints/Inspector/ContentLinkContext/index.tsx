@@ -62,6 +62,8 @@ type Props = {
 const editUrlRegExp =
   /^(?<base_url>.+?)(?:\/environments\/(?<environment>[^/]+))?\/editor\/item_types\/(?<item_type_id>[^/]+)\/items\/(?<item_id>[^/]+)\/edit#fieldPath=(?<field_path>.+)$/;
 
+const PING_TIMEOUT_MS = 25_000;
+
 export function ContentLinkContextProvider({ children, frontend }: Props) {
   const ctx = useCtx<RenderInspectorCtx>();
 
@@ -169,7 +171,7 @@ export function ContentLinkContextProvider({ children, frontend }: Props) {
       }
 
       const timeSinceLastPing = Date.now() - lastPingTimeRef.current;
-      if (timeSinceLastPing >= 5000) {
+      if (timeSinceLastPing >= PING_TIMEOUT_MS) {
         setIsPingActive(false);
       }
     }, 1000);
@@ -201,7 +203,7 @@ export function ContentLinkContextProvider({ children, frontend }: Props) {
         scrollToNearestTarget: true,
       });
     }
-  }, [highlightedItemId, connection.methods.flashItem, connection.type]);
+  }, [highlightedItemId, connection]);
 
   useEffect(() => {
     const itemId = ctx.highlightedItemId;

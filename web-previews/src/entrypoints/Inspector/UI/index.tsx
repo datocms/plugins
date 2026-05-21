@@ -2,7 +2,7 @@ import cuid from 'cuid';
 import type { RenderInspectorCtx } from 'datocms-plugin-sdk';
 import { useCtx } from 'datocms-react-ui';
 import type React from 'react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BrowserWrapper } from '../../../components/Browser/BrowserWrapper';
 import { IframeContainer } from '../../../components/Browser/IframeContainer';
 import { Toolbar } from '../../../components/Browser/Toolbar';
@@ -25,6 +25,7 @@ import { EditModeToggle } from './EditModeToggle';
 
 const UI: React.FC = () => {
   const ctx = useCtx<RenderInspectorCtx>();
+  const reportedErrorReasonRef = useRef<string | null>(null);
 
   const params = normalizeParameters(
     ctx.plugin.attributes.parameters as Parameters,
@@ -103,23 +104,36 @@ const UI: React.FC = () => {
     );
   };
 
+  const contentLinkErrorReason =
+    contentLink.type === 'error' ? contentLink.reason : undefined;
+
   useEffect(() => {
-    if (contentLink.type !== 'error') {
+    if (!contentLinkErrorReason) {
+      reportedErrorReasonRef.current = null;
       return;
     }
 
-    if (contentLink.reason === 'failed-connection') {
+    if (reportedErrorReasonRef.current === contentLinkErrorReason) {
+      return;
+    }
+
+    reportedErrorReasonRef.current = contentLinkErrorReason;
+
+    if (contentLinkErrorReason === 'failed-connection') {
       ctx.alert(
         'Could not establish communication with the website. Please make sure that DatoCMS Content Link is properly installed on your website.',
       );
     }
 
-    if (contentLink.reason === 'no-ping') {
-      ctx.alert(
-        'Connection to the website has been lost. You may have navigated away from the original site by clicking an external link. Please reload to reconnect.',
+    if (contentLinkErrorReason === 'no-ping') {
+      // Based on editor feedback, transient preview stalls should not interrupt
+      // normal users. Keep the heartbeat as a developer diagnostic, but avoid a
+      // visible alert because brief script hangs can recover on their own.
+      console.log(
+        '[Web Previews] Preview heartbeat stopped. The iframe may have navigated away, stalled, or temporarily stopped responding.',
       );
     }
-  }, [contentLink.type, ctx.alert, contentLink.reason]);
+  }, [contentLinkErrorReason, ctx.alert]);
 
   // Handle frontend deletion while Inspector open
   useEffect(() => {

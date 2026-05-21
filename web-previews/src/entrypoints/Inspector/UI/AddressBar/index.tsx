@@ -44,9 +44,15 @@ function AddressBar({
   frontends,
   onFrontendChange,
 }: AddressBarProps) {
-  const visualEditingOrigin = new URL(
-    frontend.visualEditing?.enableDraftModeUrl,
-  ).origin;
+  const enableDraftModeUrl = frontend.visualEditing?.enableDraftModeUrl;
+
+  if (!enableDraftModeUrl) {
+    throw new Error(
+      `Frontend "${frontend.name}" is missing visualEditing configuration.`,
+    );
+  }
+
+  const visualEditingOrigin = new URL(enableDraftModeUrl).origin;
 
   const { contentLink, iframeState } = useContentLink();
 

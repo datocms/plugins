@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 
 type Promisify<T> = T extends Promise<unknown> ? T : Promise<T>;
+type MethodCallback = (...args: never[]) => unknown;
 
 function isPromise(x: unknown): x is Promise<unknown> {
   return x !== null && typeof x === 'object' && 'then' in x && 'catch' in x;
 }
 
-const useMethodProxy = <Method extends (...args: unknown[]) => unknown>(
+const useMethodProxy = <Method extends MethodCallback>(
   method: Method,
   depsList: Array<unknown>,
 ) => {
@@ -28,7 +29,7 @@ const useMethodProxy = <Method extends (...args: unknown[]) => unknown>(
 
   return useCallback(
     (...args: Parameters<Method>): Promisify<ReturnType<Method>> => {
-      const result: ReturnType<Method> = methodRef.current(...args);
+      const result = methodRef.current(...args) as ReturnType<Method>;
 
       if (isPromise(result)) {
         // our dato api throws object errors (not Error instances) attaching some
@@ -40,7 +41,7 @@ const useMethodProxy = <Method extends (...args: unknown[]) => unknown>(
           }
 
           throw e;
-        });
+        }) as Promisify<ReturnType<Method>>;
       }
 
       return Promise.resolve(result) as Promisify<ReturnType<Method>>;
