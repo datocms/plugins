@@ -166,7 +166,7 @@ describe('ItemsDropdownUtils', () => {
         it: null,
       });
       expect(result.warnings).toContain(
-        'Field "slug" was skipped: Translated slug is empty after normalization.',
+        'Field "slug" was skipped: Plugin error: Translated slug is empty after normalization.',
       );
     });
 

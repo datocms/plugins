@@ -295,7 +295,7 @@ describe('translateArray.ts', () => {
 
         await expect(
           translateArray(mockProvider, mockPluginParams, ['Hello'], 'en', 'de'),
-        ).rejects.toThrow('Model did not return a JSON array');
+        ).rejects.toThrow('Translation provider error');
       });
     });
 

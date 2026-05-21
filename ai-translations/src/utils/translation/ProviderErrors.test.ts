@@ -60,11 +60,11 @@ describe('ProviderErrors.ts', () => {
         expect(result.code).toBe('auth');
       });
 
-      it('should provide OpenAI-specific hint for auth error', () => {
+      it('should provide provider-specific hint for auth error', () => {
         const error = { status: 401 };
         const result = normalizeProviderError(error, 'openai');
 
-        expect(result.hint).toContain('OpenAI');
+        expect(result.hint).toContain('provider API key');
       });
 
       it('should provide Google-specific hint for auth error', () => {
@@ -81,6 +81,7 @@ describe('ProviderErrors.ts', () => {
         const result = normalizeProviderError(error, 'openai');
 
         expect(result.code).toBe('rate_limit');
+        expect(result.source).toBe('provider');
         expect(result.message).toContain('Rate limit');
       });
 
@@ -106,6 +107,79 @@ describe('ProviderErrors.ts', () => {
           const result = normalizeProviderError(error, vendor);
           expect(result.hint).toBeDefined();
         }
+      });
+    });
+
+    describe('DatoCMS errors', () => {
+      it('should label DatoCMS rate limits separately from provider rate limits', () => {
+        const error = {
+          request: {
+            url: 'https://site-api.datocms.com/items/123',
+            method: 'PUT',
+            headers: {},
+          },
+          response: {
+            status: 429,
+            statusText: 'Too Many Requests',
+            headers: {},
+            body: { data: [] },
+          },
+        };
+        const result = normalizeProviderError(error, 'openai');
+
+        expect(result.source).toBe('datocms');
+        expect(result.code).toBe('rate_limit');
+        expect(formatErrorForUser(result)).toContain('DatoCMS error');
+      });
+
+      it('should preserve structured DatoCMS error codes', () => {
+        const error = {
+          request: {
+            url: 'https://site-api.datocms.com/items/123',
+            method: 'PUT',
+            headers: {},
+          },
+          response: {
+            status: 422,
+            statusText: 'Unprocessable Entity',
+            headers: {},
+            body: {
+              data: [
+                {
+                  id: 'err',
+                  type: 'api_error',
+                  attributes: {
+                    code: 'ITEM_LOCKED',
+                    details: {},
+                    doc_url: 'https://www.datocms.com',
+                  },
+                },
+              ],
+            },
+          },
+        };
+        const result = normalizeProviderError(error, 'openai');
+
+        expect(result.source).toBe('datocms');
+        expect(formatErrorForUser(result)).toContain('DatoCMS error');
+        expect(formatErrorForUser(result)).toContain('record is locked');
+      });
+
+      it('should label DatoCMS request timeouts', () => {
+        const error = {
+          request: {
+            url: 'https://site-api.datocms.com/items/123',
+            method: 'GET',
+            headers: {},
+          },
+          message:
+            'GET https://site-api.datocms.com/items/123: Timeout error',
+        };
+        const result = normalizeProviderError(error, 'openai');
+
+        expect(result.source).toBe('datocms');
+        expect(result.code).toBe('network');
+        expect(formatErrorForUser(result)).toContain('DatoCMS error');
       });
     });
 
@@ -143,7 +217,7 @@ describe('ProviderErrors.ts', () => {
         const error = new Error('Quota exceeded');
 
         const openai = normalizeProviderError(error, 'openai');
-        expect(openai.hint).toContain('OpenAI');
+        expect(openai.hint).toContain('selected provider');
 
         const google = normalizeProviderError(error, 'google');
         expect(google.hint).toContain('Google');
@@ -309,22 +383,30 @@ describe('ProviderErrors.ts', () => {
 
   describe('formatErrorForUser', () => {
     it('should return message only when no hint', () => {
-      const error = { code: 'unknown' as const, message: 'Error occurred' };
-      expect(formatErrorForUser(error)).toBe('Error occurred');
+      const error = {
+        code: 'unknown' as const,
+        source: 'plugin' as const,
+        message: 'Error occurred',
+      };
+      expect(formatErrorForUser(error)).toBe('Plugin error: Error occurred');
     });
 
     it('should combine message and hint', () => {
       const error = {
         code: 'auth' as const,
+        source: 'provider' as const,
         message: 'Auth failed',
         hint: 'Check your API key',
       };
-      expect(formatErrorForUser(error)).toBe('Auth failed Check your API key');
+      expect(formatErrorForUser(error)).toBe(
+        'Translation provider error: Auth failed Check your API key',
+      );
     });
 
     it('should format rate limit error with hint', () => {
       const error = {
         code: 'rate_limit' as const,
+        source: 'provider' as const,
         message: 'Rate limit reached. Please wait and try again.',
         hint: 'Reduce concurrency or switch models.',
       };
@@ -373,7 +455,7 @@ describe('ProviderErrors.ts', () => {
       try {
         handleTranslationError({ status: 401 }, 'openai', mockLogger);
       } catch (e) {
-        expect((e as Error).message).toContain('OpenAI');
+        expect((e as Error).message).toContain('provider API key');
       }
     });
 

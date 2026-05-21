@@ -8,7 +8,10 @@
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import { resolveGlossaryId } from './DeepLGlossary';
 import { isFormalitySupported, mapDatoToDeepL } from './DeepLMap';
-import { normalizeProviderError } from './ProviderErrors';
+import {
+  formatErrorForUser,
+  normalizeProviderError,
+} from './ProviderErrors';
 import type { TranslationProvider } from './types';
 
 /**
@@ -306,6 +309,6 @@ export async function translateArray(
   } catch (error) {
     const norm = normalizeProviderError(error, provider.vendor);
     // ERR-002: Preserve original error context in the cause chain
-    throw new Error(norm.message, { cause: error });
+    throw new Error(formatErrorForUser(norm), { cause: error });
   }
 }

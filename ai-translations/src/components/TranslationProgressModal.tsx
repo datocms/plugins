@@ -44,6 +44,10 @@ import { getLocaleName } from '../utils/localeUtils';
 import { createSchemaRepository } from '../utils/schemaRepository';
 // no direct types from OpenAI or buildClient needed here
 import {
+  formatErrorForUser,
+  normalizeProviderError,
+} from '../utils/translation/ProviderErrors';
+import {
   buildFieldTypeDictionaryWithRepo,
   fetchRecordsWithPagination,
   type ProgressUpdate,
@@ -72,8 +76,11 @@ interface TranslationProgressModalProps {
   parameters: TranslationProgressModalParams;
 }
 
-function getTranslationErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+function getTranslationErrorMessage(
+  error: unknown,
+  vendor: ctxParamsType['vendor'],
+): string {
+  return formatErrorForUser(normalizeProviderError(error, vendor ?? 'openai'));
 }
 
 /**
@@ -173,7 +180,10 @@ export default function TranslationProgressModal({
             recordIndex: -1,
             recordId: 'fatal',
             status: 'error',
-            message: `Translation failed: ${getTranslationErrorMessage(error)}`,
+            message: `Translation failed: ${getTranslationErrorMessage(
+              error,
+              pluginParams.vendor,
+            )}`,
           });
         }
       }

@@ -7,7 +7,10 @@ import {
   buildFieldTypeDictionaryFromRepo,
   type SchemaRepository,
 } from '../schemaRepository';
-import { normalizeProviderError } from './ProviderErrors';
+import {
+  formatErrorForUser,
+  normalizeProviderError,
+} from './ProviderErrors';
 import {
   type FieldTypeDictionary,
   type FieldValidators,
@@ -359,13 +362,13 @@ function getFriendlyDatoErrorMessage(
     if (Array.isArray(candidates)) {
       const codes = candidates.map(extractErrorCode);
       if (codes.includes('ITEM_LOCKED')) {
-        return `Cannot save translations for record ${recordId}: the record is locked because it is being edited. Please ensure no one (including you in another tab) is editing the record in DatoCMS, then try again.`;
+        return `DatoCMS error: Cannot save translations for record ${recordId}: the record is locked because it is being edited. Please ensure no one (including you in another tab) is editing the record in DatoCMS, then try again.`;
       }
     }
 
     const msg = extractErrorMessage(error);
     if (msg?.includes('ITEM_LOCKED')) {
-      return `Cannot save translations for record ${recordId}: the record is locked because it is being edited. Please ensure no one is editing the record, then try again.`;
+      return `DatoCMS error: Cannot save translations for record ${recordId}: the record is locked because it is being edited. Please ensure no one is editing the record, then try again.`;
     }
   } catch {
     // Ignore parsing errors; fall through to null
@@ -564,6 +567,8 @@ export async function translateAndUpdateRecords(
       );
     } catch (error) {
       const friendlyMessage = getFriendlyDatoErrorMessage(error, record.id);
+      const norm = normalizeProviderError(error, provider.vendor);
+      const formattedMessage = formatErrorForUser(norm);
       const rawMessage = error instanceof Error ? error.message : String(error);
       console.error(`Error translating record ${record.id}:`, rawMessage);
       updateProgress({
@@ -572,7 +577,7 @@ export async function translateAndUpdateRecords(
         status: 'error',
         message:
           friendlyMessage ??
-          `Failed "${recordLabel}" (#${record.id}): ${rawMessage}`,
+          `Failed "${recordLabel}" (#${record.id}): ${formattedMessage}`,
       });
       return 'continue';
     }
@@ -725,10 +730,14 @@ export async function buildTranslatedUpdatePayload(
       translatedFieldCount += 1;
     } catch (error) {
       const norm = normalizeProviderError(error, provider.vendor);
+      const formattedMessage = formatErrorForUser(norm);
       console.error(
-        `Error translating field ${field} for record ${record.id}: ${norm.message}`,
+        `Error translating field ${field} for record ${record.id}: ${formattedMessage}`,
       );
-      warnings.push(`Field "${field}" was skipped: ${norm.message}.`);
+      const suffix = formattedMessage.endsWith('.') ? '' : '.';
+      warnings.push(
+        `Field "${field}" was skipped: ${formattedMessage}${suffix}`,
+      );
     }
   }
 

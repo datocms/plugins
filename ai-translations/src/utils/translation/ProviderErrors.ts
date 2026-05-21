@@ -1,15 +1,40 @@
 import type { Logger } from '../logging/Logger';
-import { hasStatusCode, isProviderError, type VendorId } from './types';
+import {
+  hasStatusCode,
+  isProviderConfigurationError,
+  isProviderError,
+  type VendorId,
+} from './types';
 
 /**
- * Canonical error shape used across providers to surface actionable messages
- * and hints to the UI.
+ * Source buckets used in user-facing error messages.
+ */
+export type ErrorSource = 'provider' | 'datocms' | 'plugin';
+
+/**
+ * Canonical error shape used across translation flows to surface actionable
+ * messages, hints, and the origin of the failure to the UI.
  */
 export type NormalizedProviderError = {
-  code: 'auth' | 'quota' | 'rate_limit' | 'model' | 'network' | 'unknown';
+  code:
+    | 'auth'
+    | 'quota'
+    | 'rate_limit'
+    | 'model'
+    | 'network'
+    | 'datocms'
+    | 'plugin'
+    | 'unknown';
+  source: ErrorSource;
   message: string;
   hint?: string;
 };
+
+const SOURCE_LABEL_ENTRIES: Array<[ErrorSource, string]> = [
+  ['provider', 'Translation provider error'],
+  ['datocms', 'DatoCMS error'],
+  ['plugin', 'Plugin error'],
+];
 
 /**
  * Case-insensitive substring check helper.
@@ -21,6 +46,35 @@ export type NormalizedProviderError = {
 const includes = (s: unknown, ...needles: string[]) =>
   typeof s === 'string' &&
   needles.some((n) => s.toLowerCase().includes(n.toLowerCase()));
+
+/**
+ * Removes one of our own source prefixes from a formatted message, if present.
+ */
+function stripSourcePrefix(message: string): {
+  source?: ErrorSource;
+  message: string;
+} {
+  const trimmed = message.trim();
+  for (const [source, label] of SOURCE_LABEL_ENTRIES) {
+    const prefix = `${label}:`;
+    if (trimmed.startsWith(prefix)) {
+      return {
+        source,
+        message: trimmed.slice(prefix.length).trim(),
+      };
+    }
+  }
+  return { message: trimmed };
+}
+
+/**
+ * Returns true when a message already starts with one of our source prefixes.
+ */
+function hasSourcePrefix(message: string): boolean {
+  return SOURCE_LABEL_ENTRIES.some(([, label]) =>
+    message.trim().startsWith(`${label}:`),
+  );
+}
 
 /**
  * Returns the value if it is a number or string, otherwise undefined.
@@ -93,6 +147,166 @@ function extractMessage(err: unknown): string {
 }
 
 /**
+ * Safely walks an object path and returns a nested plain object.
+ */
+function getNestedObject(
+  obj: Record<string, unknown>,
+  path: string[],
+): Record<string, unknown> | undefined {
+  let current: unknown = obj;
+  for (const key of path) {
+    if (current === null || typeof current !== 'object') return undefined;
+    current = (current as Record<string, unknown>)[key];
+  }
+  if (current === null || typeof current !== 'object') return undefined;
+  return current as Record<string, unknown>;
+}
+
+/**
+ * Extracts structured DatoCMS API error entries from CMA client errors.
+ */
+function extractDatoCMSErrorEntries(err: unknown): unknown[] {
+  if (err === null || typeof err !== 'object') return [];
+
+  const obj = err as Record<string, unknown>;
+  const responseBody = getNestedObject(obj, ['response', 'body']);
+  const data = responseBody?.data;
+
+  if (!Array.isArray(data)) return [];
+
+  return data.filter((entry) => {
+    if (entry === null || typeof entry !== 'object') return false;
+    const entryObj = entry as Record<string, unknown>;
+    return entryObj.type === 'api_error';
+  });
+}
+
+/**
+ * Extracts a DatoCMS API error code from one structured error entry.
+ */
+function extractDatoCMSErrorCode(entry: unknown): string | null {
+  if (entry === null || typeof entry !== 'object') return null;
+  const entryObj = entry as Record<string, unknown>;
+  const attributes = entryObj.attributes;
+  if (attributes === null || typeof attributes !== 'object') return null;
+  const code = (attributes as Record<string, unknown>).code;
+  return typeof code === 'string' ? code : null;
+}
+
+/**
+ * Returns true when an error has the DatoCMS CMA client error shape.
+ */
+function isDatoCMSClientError(err: unknown): boolean {
+  if (err === null || typeof err !== 'object') return false;
+
+  const obj = err as Record<string, unknown>;
+  const request = getNestedObject(obj, ['request']);
+  const response = getNestedObject(obj, ['response']);
+  const requestUrl = request?.url;
+
+  return (
+    !!request &&
+    (!!response ||
+      extractDatoCMSErrorEntries(err).length > 0 ||
+      typeof requestUrl === 'string')
+  );
+}
+
+/**
+ * Builds a compact code suffix for structured DatoCMS API errors.
+ */
+function formatDatoCMSCodeSuffix(codes: string[]): string {
+  if (codes.length === 0) return '';
+  return ` (${codes.join(', ')})`;
+}
+
+/**
+ * Normalizes DatoCMS CMA client errors before generic provider matching.
+ */
+function normalizeDatoCMSError(
+  err: unknown,
+  rawMessage: string,
+): NormalizedProviderError | null {
+  if (!isDatoCMSClientError(err)) return null;
+
+  const obj = err as Record<string, unknown>;
+  const response = getNestedObject(obj, ['response']);
+  const status = typeof response?.status === 'number' ? response.status : null;
+  const statusText =
+    typeof response?.statusText === 'string' ? response.statusText : '';
+  const entries = extractDatoCMSErrorEntries(err);
+  const codes = entries
+    .map(extractDatoCMSErrorCode)
+    .filter((code): code is string => code !== null);
+  const codeSuffix = formatDatoCMSCodeSuffix(codes);
+
+  if (codes.includes('ITEM_LOCKED')) {
+    return {
+      source: 'datocms',
+      code: 'datocms',
+      message:
+        'Cannot save translations because the record is locked for editing.',
+      hint:
+        'Close other tabs editing the record, wait for the lock to clear, then try again.',
+    };
+  }
+
+  if (status === 401 || status === 403) {
+    return {
+      source: 'datocms',
+      code: 'auth',
+      message: `DatoCMS authorization failed${codeSuffix}.`,
+      hint: 'Check the current user token permissions for this project.',
+    };
+  }
+
+  if (status === 404) {
+    return {
+      source: 'datocms',
+      code: 'datocms',
+      message: `DatoCMS could not find the requested record or schema${codeSuffix}.`,
+      hint: 'Refresh the page and try again.',
+    };
+  }
+
+  if (status === 422) {
+    return {
+      source: 'datocms',
+      code: 'datocms',
+      message: `DatoCMS rejected the record update${codeSuffix}.`,
+      hint: 'Check field validations, required locales, and record locks.',
+    };
+  }
+
+  if (status === 429) {
+    return {
+      source: 'datocms',
+      code: 'rate_limit',
+      message:
+        'DatoCMS rate limit reached while reading or saving records. Please wait and try again.',
+    };
+  }
+
+  if (includes(rawMessage, 'timeout')) {
+    return {
+      source: 'datocms',
+      code: 'network',
+      message:
+        'DatoCMS request timed out while reading or saving records. Please wait and try again.',
+    };
+  }
+
+  const statusPart =
+    status === null ? '' : ` (${status}${statusText ? ` ${statusText}` : ''})`;
+
+  return {
+    source: 'datocms',
+    code: 'datocms',
+    message: `DatoCMS request failed${statusPart}${codeSuffix}.`,
+  };
+}
+
+/**
  * Safely extracts nested error properties for OpenAI-specific checks.
  *
  * @param err - The error object.
@@ -130,7 +344,7 @@ function getQuotaHint(
   vendor: 'openai' | 'google' | 'anthropic' | 'deepl',
 ): string {
   if (vendor === 'openai')
-    return 'Check OpenAI usage and billing; switch to a smaller model if needed.';
+    return 'Check selected provider usage and billing; switch to a smaller model if needed.';
   if (vendor === 'google')
     return 'Verify Google project quotas and billing for Generative Language API.';
   if (vendor === 'anthropic')
@@ -200,28 +414,47 @@ function isDeepLWrongEndpointError(
 }
 
 /**
- * Normalizes provider-specific errors to a compact, user-friendly shape, with
- * special handling for common authentication, quota, rate-limit and model
- * errors. Includes targeted hints where we can determine a likely fix.
- *
- * @param err - Raw error thrown from a provider client or fetch call.
- * @param vendor - Provider id for vendor-specific mappings.
- * @returns A normalized error with `code`, `message`, and optional `hint`.
+ * Normalizes errors that already contain one of our own source prefixes.
  */
-export function normalizeProviderError(
-  err: unknown,
-  vendor: 'openai' | 'google' | 'anthropic' | 'deepl',
-): NormalizedProviderError {
-  const status = extractStatus(err);
-  const rawMessage = extractMessage(err);
-  const errorDetails = extractErrorDetails(err);
-  const message = rawMessage;
+function normalizePrefixedError(
+  source: ErrorSource | undefined,
+  message: string,
+): NormalizedProviderError | null {
+  if (source === 'datocms') {
+    return {
+      source: 'datocms',
+      code: 'datocms',
+      message,
+    };
+  }
 
+  if (source === 'plugin') {
+    return {
+      source: 'plugin',
+      code: 'plugin',
+      message,
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Normalizes known provider-side error patterns.
+ */
+function normalizeKnownProviderError(
+  vendor: 'openai' | 'google' | 'anthropic' | 'deepl',
+  status: number | string | undefined,
+  message: string,
+  errorDetails: { code?: string; param?: string },
+): NormalizedProviderError | null {
   if (isOpenAIStreamVerificationError(vendor, status, message, errorDetails)) {
     return {
+      source: 'provider',
       code: 'auth',
       message,
-      hint: 'Verify your organization in OpenAI or choose a different model.',
+      hint:
+        'Verify your organization with the provider or choose a different model.',
     };
   }
 
@@ -238,23 +471,36 @@ export function normalizeProviderError(
 
   if (isAuthError) {
     return {
+      source: 'provider',
       code: 'auth',
-      message: 'Authentication failed for the selected AI vendor.',
+      message: 'Authentication failed for the selected translation provider.',
       hint:
         vendor === 'openai'
-          ? 'Check OpenAI API key and organization access in settings.'
+          ? 'Check the provider API key and organization access in settings.'
           : 'Check Google API key and that Generative Language API is enabled.',
     };
   }
 
   if (status === 429 || includes(message, 'rate limit', 'too many requests')) {
     return {
+      source: 'provider',
       code: 'rate_limit',
       message: 'Rate limit reached. Please wait and try again.',
       hint: getRateLimitHint(vendor),
     };
   }
 
+  return normalizeProviderQuotaModelNetworkError(vendor, status, message);
+}
+
+/**
+ * Normalizes quota, model, network, and endpoint provider errors.
+ */
+function normalizeProviderQuotaModelNetworkError(
+  vendor: 'openai' | 'google' | 'anthropic' | 'deepl',
+  status: number | string | undefined,
+  message: string,
+): NormalizedProviderError | null {
   const isQuotaError = includes(
     message,
     'insufficient_quota',
@@ -264,8 +510,9 @@ export function normalizeProviderError(
   );
   if (isQuotaError) {
     return {
+      source: 'provider',
       code: 'quota',
-      message: 'Quota exceeded for the selected AI vendor.',
+      message: 'Quota exceeded for the selected translation provider.',
       hint: getQuotaHint(vendor),
     };
   }
@@ -281,6 +528,7 @@ export function normalizeProviderError(
     );
   if (isModelError) {
     return {
+      source: 'provider',
       code: 'model',
       message: 'The selected model is unavailable or not accessible.',
       hint: getModelHint(vendor),
@@ -298,22 +546,77 @@ export function normalizeProviderError(
   );
   if (isNetworkError) {
     return {
+      source: 'provider',
       code: 'network',
-      message: rawMessage,
+      message,
       hint: 'This often indicates CORS/proxy issues or connectivity problems.',
     };
   }
 
   if (isDeepLWrongEndpointError(vendor, status, message)) {
     return {
+      source: 'provider',
       code: 'auth',
       message:
         'DeepL: wrong endpoint for your API key. If your key ends with :fx, enable "Use DeepL Free endpoint (api-free.deepl.com)" in Settings. Otherwise, disable it to use api.deepl.com.',
-      hint: 'Match the endpoint to your plan: Free (:fx) → api-free.deepl.com; Pro → api.deepl.com.',
+      hint:
+        'Match the endpoint to your plan: Free (:fx) → api-free.deepl.com; Pro → api.deepl.com.',
     };
   }
 
+  if (includes(message, 'did not return a json array')) {
+    return {
+      source: 'provider',
+      code: 'model',
+      message: 'The translation provider returned an unexpected response.',
+      hint: 'Please try again. If it continues, choose a different model.',
+    };
+  }
+
+  return null;
+}
+
+/**
+ * Normalizes provider-specific errors to a compact, user-friendly shape, with
+ * special handling for common authentication, quota, rate-limit and model
+ * errors. Includes targeted hints where we can determine a likely fix.
+ *
+ * @param err - Raw error thrown from a provider client or fetch call.
+ * @param vendor - Provider id for vendor-specific mappings.
+ * @returns A normalized error with `code`, `message`, and optional `hint`.
+ */
+export function normalizeProviderError(
+  err: unknown,
+  vendor: 'openai' | 'google' | 'anthropic' | 'deepl',
+): NormalizedProviderError {
+  const status = extractStatus(err);
+  const rawMessage = extractMessage(err);
+  const datoCMSError = normalizeDatoCMSError(err, rawMessage);
+  if (datoCMSError) return datoCMSError;
+
+  const stripped = stripSourcePrefix(rawMessage);
+  const errorDetails = extractErrorDetails(err);
+  const message = stripped.message;
+
+  const prefixedError = normalizePrefixedError(stripped.source, message);
+  if (prefixedError) return prefixedError;
+
+  const knownProviderError = normalizeKnownProviderError(
+    vendor,
+    status,
+    message,
+    errorDetails,
+  );
+  if (knownProviderError) return knownProviderError;
+
+  const source: ErrorSource =
+    stripped.source ||
+    (isProviderError(err) || isProviderConfigurationError(err)
+      ? 'provider'
+      : 'plugin');
+
   return {
+    source,
     code: 'unknown',
     message,
   };
@@ -327,10 +630,14 @@ export function normalizeProviderError(
  * @returns A formatted string suitable for display in alerts/notices.
  */
 export function formatErrorForUser(error: NormalizedProviderError): string {
-  if (error.hint) {
-    return `${error.message} ${error.hint}`;
-  }
-  return error.message;
+  const body = error.hint ? `${error.message} ${error.hint}` : error.message;
+  if (hasSourcePrefix(body)) return body;
+
+  const sourceLabel = SOURCE_LABEL_ENTRIES.find(
+    ([source]) => source === error.source,
+  )?.[1];
+
+  return sourceLabel ? `${sourceLabel}: ${body}` : body;
 }
 
 /**
@@ -353,6 +660,7 @@ export function handleTranslationError(
   logger.error(context, {
     message: normalized.message,
     code: normalized.code,
+    source: normalized.source,
     hint: normalized.hint,
   });
   // Include hint in thrown error for consistent user-facing messages
@@ -398,6 +706,7 @@ export function handleUIError(
     logger.error('UI Error', {
       message: normalized.message,
       code: normalized.code,
+      source: normalized.source,
       hint: normalized.hint,
     });
   }
