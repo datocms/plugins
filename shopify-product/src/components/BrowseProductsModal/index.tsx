@@ -5,7 +5,7 @@ import type { RenderModalCtx } from 'datocms-plugin-sdk';
 import { Button, Canvas, Spinner, TextInput } from 'datocms-react-ui';
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { parseAndNormalizeConfig } from '../../types';
+import { getShopifyClientConfig, parseAndNormalizeConfig } from '../../types';
 import ShopifyClient, { type Product } from '../../utils/ShopifyClient';
 import useStore, { type State } from '../../utils/useStore';
 import s from './styles.module.css';
@@ -39,8 +39,8 @@ export default function BrowseProductsModal({ ctx }: { ctx: RenderModalCtx }) {
 
   const [sku, setSku] = useState<string>('');
 
-  const { storefrontAccessToken, shopifyDomain } = parseAndNormalizeConfig(
-    ctx.plugin.attributes.parameters,
+  const { storefrontAccessToken, shopifyDomain } = getShopifyClientConfig(
+    parseAndNormalizeConfig(ctx.plugin.attributes.parameters),
   );
 
   const client = useMemo(() => {

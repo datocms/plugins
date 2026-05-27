@@ -8,7 +8,7 @@ import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
 import { useCtx } from 'datocms-react-ui';
 import { useEffect, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { parseAndNormalizeConfig } from '../../types';
+import { getShopifyClientConfig, parseAndNormalizeConfig } from '../../types';
 import ShopifyClient from '../../utils/ShopifyClient';
 import useStore, { type State } from '../../utils/useStore';
 import Price from '../Price';
@@ -22,8 +22,8 @@ export type ValueProps = {
 export default function Value({ value, onReset }: ValueProps) {
   const ctx = useCtx<RenderFieldExtensionCtx>();
 
-  const { storefrontAccessToken, shopifyDomain } = parseAndNormalizeConfig(
-    ctx.plugin.attributes.parameters,
+  const { storefrontAccessToken, shopifyDomain } = getShopifyClientConfig(
+    parseAndNormalizeConfig(ctx.plugin.attributes.parameters),
   );
 
   const client = useMemo(

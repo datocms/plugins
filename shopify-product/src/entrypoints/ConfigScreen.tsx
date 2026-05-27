@@ -1,7 +1,18 @@
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
-import { Button, Canvas, FieldGroup, Form, TextField } from 'datocms-react-ui';
+import {
+  Button,
+  Canvas,
+  FieldGroup,
+  Form,
+  SwitchField,
+  TextField,
+} from 'datocms-react-ui';
 import { Field, Form as FormHandler } from 'react-final-form';
-import { parseAndNormalizeConfig, type ValidConfig } from '../types';
+import {
+  getShopifyClientConfig,
+  parseAndNormalizeConfig,
+  type ValidConfig,
+} from '../types';
 import ShopifyClient from '../utils/ShopifyClient';
 import s from './styles.module.css';
 
@@ -10,20 +21,22 @@ type Props = {
 };
 
 export default function ConfigScreen({ ctx }: Props) {
+  const initialValues = parseAndNormalizeConfig(
+    ctx.plugin.attributes.parameters,
+  );
+
   return (
     <Canvas ctx={ctx}>
       <FormHandler<ValidConfig>
-        initialValues={parseAndNormalizeConfig(
-          ctx.plugin.attributes.parameters,
-        )}
+        initialValues={initialValues}
         validate={(values: ValidConfig) => {
           const errors: Record<string, string> = {};
 
-          if (!values.shopifyDomain) {
+          if (!values.useDemoStore && !values.shopifyDomain) {
             errors.shopifyDomain = 'This field is required!';
           }
 
-          if (!values.storefrontAccessToken) {
+          if (!values.useDemoStore && !values.storefrontAccessToken) {
             errors.storefrontAccessToken = 'This field is required!';
           }
 
@@ -31,7 +44,7 @@ export default function ConfigScreen({ ctx }: Props) {
         }}
         onSubmit={async (values: ValidConfig) => {
           try {
-            const client = new ShopifyClient(values);
+            const client = new ShopifyClient(getShopifyClientConfig(values));
             await client.productsMatching('foo');
           } catch (e) {
             console.log('test', e);
@@ -46,57 +59,80 @@ export default function ConfigScreen({ ctx }: Props) {
           ctx.notice('Settings updated successfully!');
         }}
       >
-        {({ handleSubmit, submitting, dirty, submitErrors }) => (
+        {({
+          handleSubmit,
+          submitting,
+          dirty,
+          submitErrors,
+          values = initialValues,
+        }) => (
           <Form onSubmit={handleSubmit}>
             {submitErrors?.tupleFailing && (
               <div className={s.error}>{submitErrors.tupleFailing}</div>
             )}
             <FieldGroup>
-              <Field name="shopifyDomain">
-                {({ input, meta: { error } }) => (
-                  <TextField
-                    id="shopifyDomain"
-                    label="Shop ID"
-                    hint={
-                      <>
-                        If your shop is <code>foo-bar.myshopify.com</code>, then
-                        insert <code>foo-bar</code>
-                      </>
-                    }
-                    placeholder="my-shop"
-                    required
-                    error={error}
-                    {...input}
+              <Field name="useDemoStore">
+                {({ input }) => (
+                  <SwitchField
+                    id="useDemoStore"
+                    name={input.name}
+                    label="Use demo store"
+                    hint="Use mock products from the DatoCMS demo Shopify store."
+                    value={Boolean(input.value)}
+                    onChange={input.onChange}
                   />
                 )}
               </Field>
-              <Field name="storefrontAccessToken">
-                {({ input, meta: { error } }) => (
-                  <TextField
-                    id="storefrontAccessToken"
-                    label="Storefront access token"
-                    hint={
-                      <>
-                        You can get a Storefront access token by creating a
-                        private app. Take a look at{' '}
-                        <a
-                          href="https://help.shopify.com/en/api/custom-storefronts/storefront-api/getting-started#authentication"
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          Shopify documentation
-                        </a>{' '}
-                        for more info
-                      </>
-                    }
-                    textInputProps={{ monospaced: true }}
-                    placeholder="XXXYYY"
-                    required
-                    error={error}
-                    {...input}
-                  />
-                )}
-              </Field>
+              {!values.useDemoStore && (
+                <>
+                  <Field name="shopifyDomain">
+                    {({ input, meta: { error } }) => (
+                      <TextField
+                        id="shopifyDomain"
+                        label="Shop ID"
+                        hint={
+                          <>
+                            If your shop is{' '}
+                            <code>foo-bar.myshopify.com</code>, then insert{' '}
+                            <code>foo-bar</code>
+                          </>
+                        }
+                        placeholder="my-shop"
+                        required
+                        error={error}
+                        {...input}
+                      />
+                    )}
+                  </Field>
+                  <Field name="storefrontAccessToken">
+                    {({ input, meta: { error } }) => (
+                      <TextField
+                        id="storefrontAccessToken"
+                        label="Storefront access token"
+                        hint={
+                          <>
+                            You can get a Storefront access token by creating a
+                            private app. Take a look at{' '}
+                            <a
+                              href="https://help.shopify.com/en/api/custom-storefronts/storefront-api/getting-started#authentication"
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              Shopify documentation
+                            </a>{' '}
+                            for more info
+                          </>
+                        }
+                        textInputProps={{ monospaced: true }}
+                        placeholder="XXXYYY"
+                        required
+                        error={error}
+                        {...input}
+                      />
+                    )}
+                  </Field>
+                </>
+              )}
               <Field name="autoApplyToFieldsWithApiKey">
                 {({ input, meta: { error } }) => (
                   <TextField
