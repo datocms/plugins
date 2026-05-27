@@ -71,18 +71,6 @@ export default function ConfigScreen({ ctx }: Props) {
               <div className={s.error}>{submitErrors.tupleFailing}</div>
             )}
             <FieldGroup>
-              <Field name="useDemoStore">
-                {({ input }) => (
-                  <SwitchField
-                    id="useDemoStore"
-                    name={input.name}
-                    label="Use demo store"
-                    hint="Use mock products from the DatoCMS demo Shopify store."
-                    value={Boolean(input.value)}
-                    onChange={input.onChange}
-                  />
-                )}
-              </Field>
               {!values.useDemoStore && (
                 <>
                   <Field name="shopifyDomain">
@@ -143,6 +131,18 @@ export default function ConfigScreen({ ctx }: Props) {
                     error={error}
                     textInputProps={{ monospaced: true }}
                     {...input}
+                  />
+                )}
+              </Field>
+              <Field name="useDemoStore">
+                {({ input }) => (
+                  <SwitchField
+                    id="useDemoStore"
+                    name={input.name}
+                    label="Use demo store"
+                    hint="Use mock products from the DatoCMS demo Shopify store."
+                    value={Boolean(input.value)}
+                    onChange={input.onChange}
                   />
                 )}
               </Field>
