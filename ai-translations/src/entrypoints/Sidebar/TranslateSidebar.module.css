@@ -1,0 +1,111 @@
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-l);
+  padding-bottom: var(--spacing-m);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+}
+
+.subsectionHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: var(--spacing-s);
+}
+
+.subsectionLabel {
+  font-size: var(--font-size-s);
+  font-weight: var(--font-weight-bold);
+  color: var(--base-body-color);
+}
+
+.subsectionHint {
+  font-size: var(--font-size-s);
+  color: var(--light-body-color);
+  line-height: 1.4;
+}
+
+.configurePrompt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-m);
+  justify-content: center;
+  align-items: center;
+  padding: var(--spacing-m) 0;
+}
+
+.progress {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  padding: 0 var(--spacing-m);
+  box-sizing: border-box;
+}
+
+.bubbleList {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.bubbleButton {
+  background: none;
+  border: none;
+  padding: 0;
+  width: 100%;
+  cursor: pointer;
+  text-align: left;
+}
+
+.successBanner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--spacing-m);
+  padding: var(--spacing-m) var(--spacing-l);
+  border-radius: 12px;
+  margin-bottom: 8px;
+  font-family:
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
+  font-size: var(--font-size-m);
+  line-height: 1.4;
+  letter-spacing: 0.01em;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  font-weight: 600;
+  text-align: center;
+}
+
+.timerTrack {
+  width: 100%;
+  height: 6px;
+  background-color: #e6e6e6;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.timerFill {
+  width: 100%;
+  height: 100%;
+  transform-origin: left;
+}
+
+.timerActions {
+  display: flex;
+  justify-content: center;
+  margin-top: var(--spacing-s);
+}
+
+.cancelButton {
+  margin-top: var(--spacing-m);
+}

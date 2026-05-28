@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  formatLocaleLabel,
   formatLocaleWithCode,
   getLocaleName,
   localeSelect,
@@ -130,6 +131,31 @@ describe('localeUtils.ts', () => {
     it('should handle unknown locales with fallback', () => {
       const formatted = formatLocaleWithCode('unknown-locale');
       expect(formatted).toContain('[unknown-locale]');
+    });
+  });
+
+  describe('formatLocaleLabel', () => {
+    it('returns the English language name for a bare language tag', () => {
+      expect(formatLocaleLabel('en')).toBe('English');
+      expect(formatLocaleLabel('es')).toBe('Spanish');
+      expect(formatLocaleLabel('fr')).toBe('French');
+    });
+
+    it('appends the English region name for language-region tags', () => {
+      expect(formatLocaleLabel('es-ES')).toBe('Spanish (Spain)');
+      expect(formatLocaleLabel('pt-BR')).toBe('Portuguese (Brazil)');
+      expect(formatLocaleLabel('en-US')).toBe('English (United States)');
+    });
+
+    it('uppercases lowercase region subtags before resolving', () => {
+      // BCP 47 region subtags are case-insensitive but `Intl.DisplayNames`
+      // resolves uppercase canonically (`Region` of `es` returns nothing).
+      expect(formatLocaleLabel('pt-br')).toBe('Portuguese (Brazil)');
+    });
+
+    it('falls back to the input for unknown or malformed tags', () => {
+      expect(formatLocaleLabel('xyz-unknown')).toBe('xyz-unknown');
+      expect(formatLocaleLabel('')).toBe('');
     });
   });
 });

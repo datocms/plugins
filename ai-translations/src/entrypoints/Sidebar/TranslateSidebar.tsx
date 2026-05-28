@@ -1,77 +1,108 @@
+/**
+ * TranslateSidebar.tsx
+ * --------------------
+ * Sidebar panel for translating the fields of *the record currently open in
+ * the form*. The configuration UI mirrors the bulk page and the records-
+ * action picker modal: same chip-style locale selects, same per-model field
+ * picker, same "All other locales" option. The actual translation runs in
+ * form context (via `translateRecordFields`, which writes through
+ * `ctx.setFieldValue`) so changes show up in the form immediately and the
+ * user can review them before saving.
+ *
+ * In-progress feedback stays as inline chat bubbles instead of the bulk
+ * progress modal because single-record translation streams per field and
+ * the user benefits from the granular, click-to-scroll-to-field UX.
+ */
 import type { RenderItemFormSidebarPanelCtx } from 'datocms-plugin-sdk';
 import { Button, Canvas, SelectField } from 'datocms-react-ui';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MdCelebration } from 'react-icons/md';
-import { localeSelect } from '../../utils/localeUtils';
+import {
+  type ChipOption,
+  renderChipOption,
+} from '../../components/BulkTranslations/chipOption';
+import { ModelFieldPicker } from '../../components/BulkTranslations/ModelFieldPicker';
+import { formatLocaleLabel } from '../../utils/localeUtils';
 import { translateRecordFields } from '../../utils/translateRecordFields';
+import {
+  ALL_LOCALES_VALUE,
+  defaultFieldSelection,
+  filterTranslatableFields,
+  resolveTargetLocales,
+  type SdkField,
+  sortFieldsByLayoutOrder,
+  type TranslatableField,
+} from '../../utils/translation/BulkTranslationHelpers';
 import { handleUIError } from '../../utils/translation/ProviderErrors';
 import { isProviderConfigured } from '../../utils/translation/ProviderFactory';
 import type { ctxParamsType } from '../Config/ConfigScreen';
 import { ChatBubble } from './Components/ChatbubbleTranslate';
+import s from './TranslateSidebar.module.css';
 
-/**
- * DatoGPTTranslateSidebar.tsx
- *
- * This file renders a sidebar panel in the DatoCMS UI that allows users to translate
- * all fields of a record from a source locale into one or more target locales.
- *
- * Features:
- * - Lets the user pick a "From" locale (source) and multiple "To" locales (targets).
- * - On clicking "Translate all fields", all translatable fields in the record are translated.
- * - Displays a loading spinner while the translation is in progress.
- *   Each bubble represents a field-locale translation. When translation starts for a field-locale,
- *   a bubble appears. When that translation completes, the bubble updates to a completed state.
- *
- * State variables:
- * - selectedLocale: The source locale for translation (default: the first locale in internalLocales).
- * - selectedLocales: The target locales to translate into (all locales except the source by default).
- * - isLoading: Boolean indicating if the translation is currently in progress.
- * - isCancelling: Boolean indicating if the user has requested to cancel the translation.
- * - translationBubbles: An array of objects representing the translation bubbles on the UI.
- *   Each bubble has { fieldLabel: string, locale: string, status: 'pending'|'done' }.
- *
- * Steps:
- * 1. User picks locales.
- * 2. Click "Translate all fields".
- * 3. The translateRecordFields utility function translates each field-locale pair and
- *    calls our onStart and onComplete callbacks for each translation.
- * 4. onStart callback adds a bubble with status 'pending', onComplete updates it to 'done'.
- * 5. Once all translations finish, isLoading is set to false and user gets a success message.
- */
+type SingleValue<T> = T | null;
+type MultiValue<T> = readonly T[];
+
+type LocaleOption = ChipOption;
+type ModelOption = ChipOption & { code: string };
 
 type PropTypes = {
   ctx: RenderItemFormSidebarPanelCtx;
+};
+
+const ALL_LOCALES_OPTION: LocaleOption = {
+  label: 'All other locales',
+  value: ALL_LOCALES_VALUE,
 };
 
 function getEnvironmentPrefix(ctx: RenderItemFormSidebarPanelCtx): string {
   return ctx.isEnvironmentPrimary ? '' : `/environments/${ctx.environment}`;
 }
 
-export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
-  // Retrieve plugin parameters, expecting API keys and model details
+/** Auto-dismiss timer for the success banner, in milliseconds. */
+const SUCCESS_TIMER_DURATION_MS = 7500;
+
+export default function TranslateSidebar({ ctx }: PropTypes) {
   const pluginParams = ctx.plugin.attributes.parameters as ctxParamsType;
+  const internalLocales = ctx.formValues.internalLocales as Array<string>;
 
-  // The first locale in internalLocales is considered the source/base locale
-  const [selectedLocale, setSelectedLocale] = useState<string>(
-    (ctx.formValues.internalLocales as Array<string>)[0],
+  // Build the model option for this record's item type so `ModelFieldPicker`
+  // gets the same `{ label, code }` shape it renders on the bulk page.
+  const model: ModelOption = useMemo(() => {
+    const itemType = ctx.itemType;
+    return {
+      label: itemType.attributes.name ?? 'Record',
+      value: itemType.id,
+      code: itemType.attributes.api_key ?? itemType.id,
+    };
+  }, [ctx.itemType]);
+
+  const locales = useMemo<LocaleOption[]>(
+    () =>
+      internalLocales.map((locale) => ({
+        label: formatLocaleLabel(locale),
+        value: locale,
+        code: locale,
+      })),
+    [internalLocales],
   );
 
-  // By default, all other locales are target locales
-  const [selectedLocales, setSelectedLocales] = useState<Array<string>>(
-    (ctx.formValues.internalLocales as Array<string>).filter(
-      (locale) => locale !== selectedLocale,
-    ),
+  const [sourceLocale, setSourceLocale] = useState<LocaleOption | null>(
+    locales[0] ?? null,
   );
+  const [targetLocaleOptions, setTargetLocaleOptions] = useState<LocaleOption[]>(
+    locales.slice(1),
+  );
+  const [translatableFields, setTranslatableFields] = useState<
+    TranslatableField[]
+  >([]);
+  const [selectedFieldApiKeys, setSelectedFieldApiKeys] = useState<string[]>(
+    [],
+  );
+  const [isLoadingFields, setIsLoadingFields] = useState(true);
 
-  // isLoading tracks if translation is in progress
   const [isLoading, setIsLoading] = useState<boolean>(false);
-
-  // Tracks if user has requested to cancel the translation
   const [isCancelling, setIsCancelling] = useState<boolean>(false);
-
-  // translationBubbles stores the chat-like bubble info.
-  // Each bubble: { fieldLabel: string, locale: string, status: 'pending'|'done'|'error' }
   const [translationBubbles, setTranslationBubbles] = useState<
     {
       id: string;
@@ -85,20 +116,137 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
       errorMessage?: string;
     }[]
   >([]);
-
-  // New state variables for timer functionality
   const [showTimer, setShowTimer] = useState<boolean>(false);
   const [progress, setProgress] = useState<number>(100);
-  const TIMER_DURATION = 7500; // 7.5 seconds in milliseconds
 
-  // Reference to the AbortController for cancelling API requests (using ref to avoid state updates on unmount)
   const abortControllerRef = useRef<AbortController | null>(null);
-
-  // Prevent duplicate success notices across effect and completion handler
   const successShownRef = useRef(false);
 
-  // Stable callback — wrapped in useCallback so it can be safely listed as a
-  // useEffect dependency without triggering infinite re-renders.
+  // Load and filter the translatable fields for this record's model so the
+  // user can opt fields in or out before kicking off the translation.
+  useEffect(() => {
+    let cancelled = false;
+    async function loadFields() {
+      try {
+        const raw = (await ctx.loadItemTypeFields(model.value)) as SdkField[];
+        if (cancelled) return;
+        const ordered = sortFieldsByLayoutOrder(raw);
+        const translatable = filterTranslatableFields(ordered, {
+          translationFields: pluginParams.translationFields ?? [],
+          apiKeysToBeExcludedFromThisPlugin:
+            pluginParams.apiKeysToBeExcludedFromThisPlugin ?? [],
+        });
+        setTranslatableFields(translatable);
+        setSelectedFieldApiKeys(defaultFieldSelection(translatable));
+      } catch (error) {
+        if (cancelled) return;
+        console.error('Error loading fields for sidebar:', error);
+        ctx.alert(
+          `Error loading fields: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      } finally {
+        if (!cancelled) setIsLoadingFields(false);
+      }
+    }
+    void loadFields();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    ctx,
+    model.value,
+    pluginParams.translationFields,
+    pluginParams.apiKeysToBeExcludedFromThisPlugin,
+  ]);
+
+  // Mirrors the bulk page's mutex: picking "All" replaces specific picks and
+  // vice versa, so the chips stay clean.
+  const handleTargetLocalesChange = (
+    newValue: SingleValue<LocaleOption> | MultiValue<LocaleOption>,
+  ) => {
+    const next: LocaleOption[] = Array.isArray(newValue)
+      ? [...newValue]
+      : newValue
+        ? [newValue]
+        : [];
+    const hadAll = targetLocaleOptions.some(
+      (o) => o.value === ALL_LOCALES_VALUE,
+    );
+    const hasAll = next.some((o) => o.value === ALL_LOCALES_VALUE);
+
+    if (!hadAll && hasAll) {
+      setTargetLocaleOptions([ALL_LOCALES_OPTION]);
+      return;
+    }
+    if (hadAll && hasAll && next.length > 1) {
+      setTargetLocaleOptions(next.filter((o) => o.value !== ALL_LOCALES_VALUE));
+      return;
+    }
+    setTargetLocaleOptions(next);
+  };
+
+  const handleSourceLocaleChange = (
+    newValue: SingleValue<LocaleOption> | MultiValue<LocaleOption>,
+  ) => {
+    if (newValue && !Array.isArray(newValue)) {
+      const next = newValue as LocaleOption;
+      setSourceLocale(next);
+      // Drop the new source from the target picker if it was selected.
+      setTargetLocaleOptions((prev) =>
+        prev.filter((o) => o.value !== next.value),
+      );
+    }
+  };
+
+  const toggleField = (fieldApiKey: string) => {
+    setSelectedFieldApiKeys((prev) =>
+      prev.includes(fieldApiKey)
+        ? prev.filter((k) => k !== fieldApiKey)
+        : [...prev, fieldApiKey],
+    );
+  };
+
+  const selectAllFields = () => {
+    setSelectedFieldApiKeys(translatableFields.map((f) => f.apiKey));
+  };
+
+  const clearAllFields = () => {
+    setSelectedFieldApiKeys([]);
+  };
+
+  const sourceLocaleValue = sourceLocale?.value ?? null;
+  const allLocaleValues = useMemo(
+    () => locales.map((l) => l.value),
+    [locales],
+  );
+  const concreteTargetLocales = useMemo(
+    () =>
+      sourceLocaleValue
+        ? resolveTargetLocales(
+            targetLocaleOptions.map((o) => o.value),
+            allLocaleValues,
+            sourceLocaleValue,
+          )
+        : [],
+    [sourceLocaleValue, targetLocaleOptions, allLocaleValues],
+  );
+
+  const isReady =
+    !!sourceLocaleValue &&
+    concreteTargetLocales.length > 0 &&
+    selectedFieldApiKeys.length > 0;
+
+  const targetOptions = useMemo<LocaleOption[]>(
+    () => [
+      ALL_LOCALES_OPTION,
+      ...locales.filter((l) => l.value !== sourceLocaleValue),
+    ],
+    [locales, sourceLocaleValue],
+  );
+
+  /** Auto-dismiss banner driver. */
   const showSuccessNoticeOnce = useCallback(() => {
     if (successShownRef.current) return;
     successShownRef.current = true;
@@ -109,34 +257,29 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
     setProgress(100);
   }, [ctx]);
 
-  // Timer effect
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     if (showTimer) {
       const startTime = Date.now();
-      const updateProgress = () => {
+      const tick = () => {
         const elapsed = Date.now() - startTime;
-        const remaining = Math.max(0, TIMER_DURATION - elapsed);
-        const newProgress = (remaining / TIMER_DURATION) * 100;
-
+        const remaining = Math.max(0, SUCCESS_TIMER_DURATION_MS - elapsed);
+        const newProgress = (remaining / SUCCESS_TIMER_DURATION_MS) * 100;
         if (newProgress > 0) {
           setProgress(newProgress);
-          timer = setTimeout(updateProgress, 16); // ~60fps
+          timer = setTimeout(tick, 16);
         } else {
           setShowTimer(false);
           setIsLoading(false);
         }
       };
-      timer = setTimeout(updateProgress, 16);
+      timer = setTimeout(tick, 16);
     }
     return () => {
       if (timer) clearTimeout(timer);
     };
   }, [showTimer]);
 
-  // Removed global long-running banner; rely on per-bubble hint instead
-
-  // Show success as soon as all bubbles report done (no errors), without waiting for the worker to settle
   useEffect(() => {
     if (!isLoading || isCancelling || showTimer) return;
     if (translationBubbles.length === 0) return;
@@ -147,12 +290,11 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
     if (allFinished) {
       const t = setTimeout(() => {
         if (hasErrors) {
-          // Don't show success if there were errors - just end loading state
           setIsLoading(false);
         } else {
           showSuccessNoticeOnce();
         }
-      }, 100); // allow final bubble animation to commit
+      }, 100);
       return () => clearTimeout(t);
     }
   }, [
@@ -163,19 +305,10 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
     showSuccessNoticeOnce,
   ]);
 
-  // If not configured, prompt user to fix configuration
   if (!isProviderConfigured(pluginParams)) {
     return (
       <Canvas ctx={ctx}>
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '1rem',
-            justifyContent: 'center',
-            alignItems: 'center',
-          }}
-        >
+        <div className={s.configurePrompt}>
           <Button
             buttonType="muted"
             onClick={() =>
@@ -191,19 +324,16 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
     );
   }
 
-  /**
-   * handleTranslateAllFields
-   *
-   * Called when "Translate all fields" is clicked.
-   * Sets the loading state and calls translateRecordFields with callbacks.
-   */
   async function handleTranslateAllFields() {
+    if (!sourceLocaleValue) return;
+    if (concreteTargetLocales.length === 0) return;
+    if (selectedFieldApiKeys.length === 0) return;
+
     setIsLoading(true);
     setTranslationBubbles([]);
     setIsCancelling(false);
     successShownRef.current = false;
 
-    // Create a new AbortController for this translation session
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
@@ -211,8 +341,8 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
       await translateRecordFields(
         ctx,
         pluginParams,
-        selectedLocales,
-        selectedLocale,
+        concreteTargetLocales,
+        sourceLocaleValue,
         {
           onStart: (fieldLabel, locale, fieldPath, baseFieldPath) => {
             setTranslationBubbles((prev) => {
@@ -231,13 +361,7 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
               ];
             });
           },
-          onStream: (
-            _fieldLabel,
-            _locale,
-            fieldPath,
-            _baseFieldPath,
-            content,
-          ) => {
+          onStream: (_fl, _loc, fieldPath, _bfp, content) => {
             setTranslationBubbles((prev) =>
               prev.map((bubble) =>
                 bubble.id === fieldPath
@@ -246,7 +370,7 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
               ),
             );
           },
-          onComplete: (_fieldLabel, _locale, fieldPath) => {
+          onComplete: (_fl, _loc, fieldPath) => {
             setTranslationBubbles((prev) =>
               prev.map((bubble) =>
                 bubble.id === fieldPath
@@ -255,13 +379,7 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
               ),
             );
           },
-          onError: (
-            fieldLabel,
-            locale,
-            fieldPath,
-            _baseFieldPath,
-            errorMessage,
-          ) => {
+          onError: (fieldLabel, locale, fieldPath, _bfp, errorMessage) => {
             setTranslationBubbles((prev) =>
               prev.map((bubble) =>
                 bubble.id === fieldPath
@@ -280,6 +398,7 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
           },
           checkCancellation: () => isCancelling,
           abortSignal: controller.signal,
+          allowedFieldApiKeys: new Set(selectedFieldApiKeys),
         },
       );
 
@@ -288,7 +407,6 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
         setIsCancelling(false);
         setIsLoading(false);
       }
-      // Success/error handling is done via useEffect when all bubbles are finished
     } catch (error) {
       handleUIError(error, pluginParams.vendor, ctx);
       setIsLoading(false);
@@ -298,136 +416,91 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
     }
   }
 
-  /**
-   * handleCancelTranslation
-   *
-   * Called when "Cancel" is clicked during translation.
-   * Sets the cancellation flag and shows a notification.
-   * Aborts the current API request if one is in progress.
-   */
   function handleCancelTranslation() {
     setIsCancelling(true);
     ctx.notice('Translation cancellation requested. Please wait...');
-
-    // Abort the API request
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-    }
+    abortControllerRef.current?.abort();
   }
 
   return (
     <Canvas ctx={ctx}>
       <AnimatePresence mode="wait">
         {!isLoading ? (
-          // When not loading, show the configuration form
           <motion.div
             key="form"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.3 }}
-            style={{
-              marginBottom: '1rem',
-              display: 'flex',
-              flexDirection: 'column',
-            }}
+            className={s.form}
           >
-            <div
-              style={{
-                display: 'flex',
-                gap: '1rem',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              <h3 style={{ marginRight: '-12px' }}>From</h3>
+            <div className={s.section}>
               <SelectField
-                name="fromLocale"
-                id="fromLocale"
-                label=""
-                value={[
-                  {
-                    label: `${
-                      localeSelect(selectedLocale)?.name
-                    } [${selectedLocale}]`,
-                    value: selectedLocale,
-                  },
-                ]}
+                name="sourceLocale"
+                id="sourceLocale"
+                label="Source language"
+                hint="Translate from"
+                value={sourceLocale}
                 selectInputProps={{
-                  isMulti: false,
-                  options: (
-                    ctx.formValues.internalLocales as Array<string>
-                  ).map((locale) => ({
-                    label: `${localeSelect(locale)?.name} [${locale}]`,
-                    value: locale,
-                  })),
+                  options: locales,
+                  formatOptionLabel: renderChipOption,
                 }}
-                onChange={(newValue) => {
-                  const newSourceLocale = newValue?.value || selectedLocale;
-                  setSelectedLocale(newSourceLocale);
-                  setSelectedLocales(
-                    (ctx.formValues.internalLocales as Array<string>).filter(
-                      (locale) => locale !== newSourceLocale,
-                    ),
-                  );
-                }}
-              />
-              <h3>To</h3>
-            </div>
-            <div style={{ marginBottom: '1rem' }}>
-              <SelectField
-                name="toLocales"
-                id="toLocales"
-                label=""
-                value={selectedLocales.map((locale) => ({
-                  label: `${localeSelect(locale)?.name} [${locale}]`,
-                  value: locale,
-                }))}
-                selectInputProps={{
-                  isMulti: true,
-                  options: (ctx.formValues.internalLocales as Array<string>)
-                    .filter((locale) => locale !== selectedLocale)
-                    .map((locale) => ({
-                      label: `${localeSelect(locale)?.name} [${locale}]`,
-                      value: locale,
-                    })),
-                }}
-                onChange={(newValue) => {
-                  setSelectedLocales(
-                    newValue?.map((locale) => locale.value) || [],
-                  );
-                }}
+                onChange={handleSourceLocaleChange}
               />
             </div>
 
-            <Button fullWidth onClick={handleTranslateAllFields}>
-              Translate all fields
+            <div className={s.section}>
+              <SelectField
+                name="targetLocales"
+                id="targetLocales"
+                label="Target languages"
+                hint="Pick one or more, or “All other locales”"
+                value={targetLocaleOptions}
+                selectInputProps={{
+                  isMulti: true,
+                  options: targetOptions,
+                  formatOptionLabel: renderChipOption,
+                }}
+                onChange={handleTargetLocalesChange}
+              />
+            </div>
+
+            <div className={s.section}>
+              <div className={s.subsectionHeader}>
+                <div className={s.subsectionLabel}>Fields to translate</div>
+                <div className={s.subsectionHint}>
+                  Defaults to every translatable field on this record. Untick
+                  anything you want to leave alone.
+                </div>
+              </div>
+              <ModelFieldPicker
+                model={model}
+                fields={isLoadingFields ? undefined : translatableFields}
+                isLoading={isLoadingFields}
+                selectedApiKeys={selectedFieldApiKeys}
+                onToggle={toggleField}
+                onSelectAll={selectAllFields}
+                onClearAll={clearAllFields}
+                hideModelHeader
+              />
+            </div>
+
+            <Button fullWidth disabled={!isReady} onClick={handleTranslateAllFields}>
+              {selectedFieldApiKeys.length === translatableFields.length
+                ? `Translate all fields to ${concreteTargetLocales.length} locale${concreteTargetLocales.length === 1 ? '' : 's'}`
+                : `Translate ${selectedFieldApiKeys.length} field${selectedFieldApiKeys.length === 1 ? '' : 's'} to ${concreteTargetLocales.length} locale${concreteTargetLocales.length === 1 ? '' : 's'}`}
             </Button>
           </motion.div>
         ) : (
-          // When loading, show spinner and translation bubbles
           <motion.div
             key="loading"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.3 }}
-            style={{
-              display: 'flex',
-              flexDirection: 'column',
-              width: '100%',
-              padding: '0 16px',
-              boxSizing: 'border-box',
-            }}
+            className={s.progress}
           >
-            {/* Global banner removed per request; per-bubble hint handles feedback */}
-            <div
-              style={{
-                width: '100%',
-                display: 'flex',
-                flexDirection: 'column',
-              }}
-            >
+            <div className={s.bubbleList}>
               {translationBubbles.map((bubble, index) => (
                 <button
                   key={bubble.id}
@@ -435,17 +508,10 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
                     ctx.scrollToField(bubble.baseFieldPath, bubble.locale);
                   }}
                   aria-label={`Go to field: ${bubble.fieldLabel} (${bubble.locale}) - ${bubble.status === 'done' ? 'completed' : 'in progress'}`}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    padding: 0,
-                    width: '100%',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                  }}
+                  className={s.bubbleButton}
                   type="button"
                 >
-                  <ChatBubble index={index} bubble={bubble} />
+                  <ChatBubble index={index} bubble={bubble} theme={ctx.theme} />
                 </button>
               ))}
               {showTimer && (
@@ -453,83 +519,42 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
+                    className={s.successBanner}
                     style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '12px',
                       backgroundColor: ctx.theme.semiTransparentAccentColor,
                       color: ctx.theme.accentColor,
-                      padding: '16px 24px',
-                      borderRadius: '12px',
-                      marginBottom: '8px',
-                      fontFamily:
-                        '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif',
-                      fontSize: '16px',
-                      lineHeight: '1.4',
-                      letterSpacing: '0.01em',
-                      boxShadow: 'var(--shadow--raised)',
-                      fontWeight: 600,
-                      border: '1px solid var(--color--primary-soft--border)',
-                      textAlign: 'center',
+                      border: `1px solid ${ctx.theme.semiTransparentAccentColor}`,
                     }}
                   >
                     <motion.div
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}
                       transition={{ delay: 0.2 }}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        textAlign: 'center',
-                        color: 'var(--color--ink-primary)',
-                      }}
+                      style={{ color: ctx.theme.accentColor }}
                     >
                       <MdCelebration size={20} />
                     </motion.div>
-                    Translations were applied to the form. Review them and click
-                    Save.
+                    Translations were applied to the form. Review them and
+                    click Save.
                     <motion.div
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}
                       transition={{ delay: 0.2 }}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        color: 'var(--color--ink-primary)',
-                      }}
+                      style={{ color: ctx.theme.accentColor }}
                     >
                       <MdCelebration size={20} />
                     </motion.div>
                   </motion.div>
-                  <div
-                    style={{
-                      width: '100%',
-                      height: '6px',
-                      backgroundColor: 'var(--color--progress--track)',
-                      borderRadius: '8px',
-                      overflow: 'hidden',
-                    }}
-                  >
+                  <div className={s.timerTrack}>
                     <motion.div
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        backgroundColor: 'var(--color--progress--fill)',
-                        transformOrigin: 'left',
-                      }}
+                      className={s.timerFill}
+                      style={{ backgroundColor: ctx.theme.accentColor }}
                       initial={{ scaleX: 1 }}
                       animate={{ scaleX: progress / 100 }}
                       transition={{ duration: 0.1 }}
                     />
                   </div>
-                  <div
-                    style={{
-                      display: 'flex',
-                      justifyContent: 'center',
-                      marginTop: '8px',
-                    }}
-                  >
+                  <div className={s.timerActions}>
                     <Button
                       buttonSize="xs"
                       fullWidth
@@ -551,7 +576,7 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
                   buttonType="muted"
                   onClick={handleCancelTranslation}
                   disabled={isCancelling}
-                  style={{ marginTop: '16px' }}
+                  className={s.cancelButton}
                 >
                   {isCancelling ? 'Cancelling...' : 'Cancel'}
                 </Button>

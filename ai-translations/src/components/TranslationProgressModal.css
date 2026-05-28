@@ -35,6 +35,11 @@
   margin-bottom: 2px !important;
 }
 
+.TranslationProgressModal__progress-label {
+  color: var(--light-body-color);
+  font-weight: 500;
+}
+
 .TranslationProgressModal__stats {
   margin: 4px 0 0 0 !important;
   font-size: 14px;

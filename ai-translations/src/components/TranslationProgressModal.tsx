@@ -40,7 +40,7 @@ function ProgressListItem({
 
 import type { ctxParamsType } from '../entrypoints/Config/ConfigScreen';
 import { buildDatoCMSClient } from '../utils/clients';
-import { getLocaleName } from '../utils/localeUtils';
+import { formatLocaleWithCode } from '../utils/localeUtils';
 import { createSchemaRepository } from '../utils/schemaRepository';
 // no direct types from OpenAI or buildClient needed here
 import {
@@ -65,10 +65,31 @@ import './TranslationProgressModal.css';
 interface TranslationProgressModalParams {
   totalRecords: number;
   fromLocale: string;
-  toLocale: string;
+  /**
+   * Target locale keys (one or more). Each record is translated into every
+   * target locale and saved in a single CMA call.
+   */
+  toLocales: string[];
   accessToken: string;
   pluginParams: ctxParamsType;
   itemIds: string[];
+  /**
+   * Optional per-model field allowlist (keyed by item_type id). When present,
+   * only the listed field api_keys are translated for matching records.
+   */
+  selectedFieldsByModel?: Record<string, string[]>;
+}
+
+/**
+ * Joins a target-locale list for display in the modal header. Each locale
+ * is rendered via `formatLocaleWithCode` so the wording is consistent with
+ * the dropdowns, alerts, and per-record progress messages.
+ */
+function describeTargetLocales(toLocales: string[]): string {
+  const labels = toLocales.map(formatLocaleWithCode);
+  if (labels.length <= 1) return labels[0] ?? '';
+  if (labels.length === 2) return `${labels[0]} and ${labels[1]}`;
+  return `${labels.slice(0, -1).join(', ')}, and ${labels[labels.length - 1]}`;
 }
 
 interface TranslationProgressModalProps {
@@ -95,10 +116,11 @@ export default function TranslationProgressModal({
   const {
     totalRecords,
     fromLocale,
-    toLocale,
+    toLocales,
     accessToken,
     pluginParams,
     itemIds,
+    selectedFieldsByModel,
   } = parameters;
   const [progress, setProgress] = useState<ProgressUpdate[]>([]);
   const [isCompleted, setIsCompleted] = useState(false);
@@ -160,7 +182,7 @@ export default function TranslationProgressModal({
           client,
           provider,
           fromLocale,
-          toLocale,
+          toLocales,
           getFieldTypeDictionary,
           pluginParams,
           ctx,
@@ -169,6 +191,7 @@ export default function TranslationProgressModal({
             onProgress: addProgressUpdate,
             checkCancellation: () => isCancelled,
             abortSignal: controller.signal,
+            selectedFieldsByModel,
           },
           schemaRepository,
         );
@@ -204,7 +227,7 @@ export default function TranslationProgressModal({
     isCancelled,
     itemIds,
     pluginParams,
-    toLocale,
+    toLocales,
   ]);
 
   // Translation handled by shared translateAndUpdateRecords utility
@@ -268,8 +291,8 @@ export default function TranslationProgressModal({
         <div className="TranslationProgressModal__intro">
           <div className="TranslationProgressModal__languages">
             <p>
-              Translating from <strong>{getLocaleName(fromLocale)}</strong> to{' '}
-              <strong>{getLocaleName(toLocale)}</strong>
+              Translating from <strong>{formatLocaleWithCode(fromLocale)}</strong>{' '}
+              to <strong>{describeTargetLocales(toLocales)}</strong>
             </p>
             <p className="TranslationProgressModal__progress-text">
               Progress: {completedCount} of {totalRecords} records processed (
