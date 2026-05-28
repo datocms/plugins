@@ -5,7 +5,7 @@ import { AiOutlineOpenAI } from 'react-icons/ai';
 import { BsCheckCircleFill, BsXCircleFill } from 'react-icons/bs';
 import styles from '../../../styles.module.css';
 import { PENDING_HINT_THRESHOLD_SECONDS } from '../../../utils/constants';
-import { localeSelect } from '../../../utils/localeUtils';
+import { formatLocaleLabel } from '../../../utils/localeUtils';
 
 /**
  * ChatbubbleTranslate.tsx
@@ -205,7 +205,7 @@ export function ChatBubble({ bubble, theme }: Props) {
           <div className={styles.bubbleContent}>
             <span className={styles.bubbleText}>
               “<strong>{bubble.fieldLabel}</strong>” to{' '}
-              <strong>{localeSelect(bubble.locale)?.name}</strong> [
+              <strong>{formatLocaleLabel(bubble.locale)}</strong> [
               <code>{bubble.locale}</code>]
             </span>
           </div>

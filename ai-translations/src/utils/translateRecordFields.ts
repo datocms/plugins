@@ -86,6 +86,12 @@ type TranslateOptions = {
   ) => void;
   checkCancellation?: () => boolean;
   abortSignal?: AbortSignal;
+  /**
+   * Optional allowlist of field api_keys for the current record's model. When
+   * provided, fields whose api_key is not in the set are skipped. Mirrors the
+   * `selectedFieldsByModel` allowlist used by the bulk-translation flow.
+   */
+  allowedFieldApiKeys?: ReadonlySet<string>;
 };
 
 /**
@@ -680,6 +686,14 @@ export async function translateRecordFields(
       fieldApiKey,
     );
     if (!isFieldLocalized || !shouldTranslate) return null;
+    // If the caller passed a per-record allowlist (sidebar's field picker),
+    // gate on it; an undefined allowlist preserves legacy behaviour.
+    if (
+      options.allowedFieldApiKeys &&
+      !options.allowedFieldApiKeys.has(fieldApiKey)
+    ) {
+      return null;
+    }
 
     const fieldInfo = findFieldValueAndPathImpl(
       field,

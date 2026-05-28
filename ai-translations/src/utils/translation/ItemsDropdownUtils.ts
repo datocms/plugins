@@ -7,6 +7,8 @@ import {
   buildFieldTypeDictionaryFromRepo,
   type SchemaRepository,
 } from '../schemaRepository';
+import { formatLocaleWithCode } from '../localeUtils';
+import { isFieldIncludedInSelection } from './BulkTranslationHelpers';
 import {
   formatErrorForUser,
   normalizeProviderError,
@@ -26,6 +28,13 @@ import {
   shouldProcessField,
 } from './TranslationCore';
 import type { TranslationProvider } from './types';
+
+/**
+ * Optional per-model allowlist of field api_keys that the user explicitly
+ * selected for translation. When provided, only listed fields are translated;
+ * when `undefined`, every translatable field is processed (legacy behaviour).
+ */
+export type SelectedFieldsByModel = Record<string, string[]>;
 
 /**
  * Defines a DatoCMS record structure with common fields
@@ -261,13 +270,22 @@ export type TranslateBatchOptions = {
   /** Returns true if user has requested cancellation. Matches CancellationOptions convention. */
   checkCancellation?: () => boolean;
   abortSignal?: AbortSignal;
+  /**
+   * Optional per-model allowlist of field api_keys. When set, fields whose
+   * api_key is not listed for the record's model are skipped (their target
+   * locale falls back to the standard locale-sync rules below). When omitted,
+   * every translatable field on each record is processed.
+   */
+  selectedFieldsByModel?: SelectedFieldsByModel;
 };
 
 /**
- * Result of building a translated update payload for a record.
+ * Result of building a translated update payload for a record. Each top-level
+ * key is a field's `api_key`; each value is the field's locale-keyed value map
+ * (e.g. `{ en: 'Hello', fr: 'Bonjour' }`).
  */
 export interface BuildTranslatedUpdatePayloadResult {
-  payload: Record<string, unknown>;
+  payload: Record<string, Record<string, unknown>>;
   translatedFieldCount: number;
   warnings: string[];
 }
@@ -381,11 +399,15 @@ function getFriendlyDatoErrorMessage(
  * Translates and updates a list of records using CMA, reporting progress
  * via callbacks and supporting cancellation.
  *
+ * Each record is processed atomically: every target locale is translated
+ * first, then a single `client.items.update` call writes them all at once.
+ * This minimises CMA round-trips and avoids partial writes mid-record.
+ *
  * @param records - Records to translate.
  * @param client - CMA client.
  * @param provider - TranslationProvider for field translation.
  * @param fromLocale - Source locale key.
- * @param toLocale - Target locale key.
+ * @param toLocales - Target locale keys (one or more).
  * @param getFieldTypeDictionary - Async getter that returns a FieldTypeDictionary per item type.
  * @param pluginParams - Plugin configuration parameters.
  * @param ctx - Minimal context for alerts and environment.
@@ -398,7 +420,7 @@ export async function translateAndUpdateRecords(
   client: ReturnType<typeof buildClient>,
   provider: TranslationProvider,
   fromLocale: string,
-  toLocale: string,
+  toLocales: string[],
   getFieldTypeDictionary: (itemTypeId: string) => Promise<FieldTypeDictionary>,
   pluginParams: ctxParamsType,
   ctx: {
@@ -419,54 +441,96 @@ export async function translateAndUpdateRecords(
   };
 
   /**
-   * Translates all fields for a record and saves the result via the CMA client.
-   * Returns the translation result object.
-   * Extracted to reduce complexity in processRecord.
+   * Merges a per-locale field payload into the running accumulator. Each
+   * locale's payload only writes its own locale key, so the merge is a
+   * shallow object spread per field — no cross-locale conflicts.
+   */
+  function mergeLocalePayloadInto(
+    target: Record<string, Record<string, unknown>>,
+    source: Record<string, Record<string, unknown>>,
+  ): void {
+    for (const [field, fieldValue] of Object.entries(source)) {
+      target[field] = { ...(target[field] ?? {}), ...fieldValue };
+    }
+  }
+
+  /**
+   * Translates all fields of a record into every target locale, emitting a
+   * progress update for each locale ("Translating X to en…", "Translating X
+   * to es…"). Once every locale has been processed it writes the merged
+   * payload back with a single CMA update so each record is touched at
+   * most once.
    */
   async function translateAndSaveRecord(
     record: DatoCMSRecordFromAPI,
     recordIndex: number,
     recordLabel: string,
   ): Promise<BuildTranslatedUpdatePayloadResult> {
-    updateProgress({
-      recordIndex,
-      recordId: record.id,
-      status: 'processing',
-      message: `Translating "${recordLabel}" (#${record.id}) fields…`,
-    });
-
     const fieldTypeDictionary = await getFieldTypeDictionary(
       record.item_type.id,
     );
 
-    const translatedFields = await buildTranslatedUpdatePayload(
-      record,
-      fromLocale,
-      toLocale,
-      fieldTypeDictionary,
-      provider,
-      pluginParams,
-      accessToken,
-      ctx.environment,
-      {
-        abortSignal: options.abortSignal,
-        checkCancellation: options.checkCancellation,
-      },
-      schemaRepository,
-      ctx.cmaBaseUrl,
+    const mergedPayload: Record<string, Record<string, unknown>> = {};
+    const aggregatedWarnings: string[] = [];
+    let totalTranslatedFields = 0;
+
+    /**
+     * Translates the record into one target locale and merges the result.
+     * Extracted so the per-locale `.reduce` chain stays lint-clean.
+     */
+    async function translateForLocale(toLocale: string): Promise<void> {
+      updateProgress({
+        recordIndex,
+        recordId: record.id,
+        status: 'processing',
+        message: `Translating "${recordLabel}" (#${record.id}) to ${formatLocaleWithCode(toLocale)}…`,
+      });
+
+      const localeResult = await buildTranslatedUpdatePayload(
+        record,
+        fromLocale,
+        toLocale,
+        fieldTypeDictionary,
+        provider,
+        pluginParams,
+        accessToken,
+        ctx.environment,
+        {
+          abortSignal: options.abortSignal,
+          checkCancellation: options.checkCancellation,
+          selectedFieldsByModel: options.selectedFieldsByModel,
+        },
+        schemaRepository,
+        ctx.cmaBaseUrl,
+      );
+
+      mergeLocalePayloadInto(mergedPayload, localeResult.payload);
+      aggregatedWarnings.push(...localeResult.warnings);
+      totalTranslatedFields += localeResult.translatedFieldCount;
+    }
+
+    // Sequential per-locale to keep within provider rate-limit budgets and
+    // surface progress in the order the user picked.
+    await toLocales.reduce(
+      (chain, toLocale) => chain.then(() => translateForLocale(toLocale)),
+      Promise.resolve(),
     );
 
-    if (Object.keys(translatedFields.payload).length > 0) {
+    if (Object.keys(mergedPayload).length > 0) {
       updateProgress({
         recordIndex,
         recordId: record.id,
         status: 'processing',
         message: `Saving "${recordLabel}" (#${record.id})…`,
       });
-      await client.items.update(record.id, { ...translatedFields.payload });
+      await client.items.update(record.id, mergedPayload);
     }
 
-    return translatedFields;
+    return {
+      payload: mergedPayload,
+      translatedFieldCount: totalTranslatedFields,
+      warnings: aggregatedWarnings,
+    };
   }
 
   /**
@@ -541,7 +605,7 @@ export async function translateAndUpdateRecords(
 
     try {
       if (!hasKeyDeep(record as Record<string, unknown>, fromLocale)) {
-        const errorMsg = `Record "${recordLabel}" (#${record.id}) does not have the source locale '${fromLocale}'`;
+        const errorMsg = `Record "${recordLabel}" (#${record.id}) does not have the source locale ${formatLocaleWithCode(fromLocale)}`;
         console.error(`Record ${record.id} ${errorMsg}`);
         ctx.alert(`Error: Record ID ${record.id} ${errorMsg}`);
         updateProgress({
@@ -628,10 +692,29 @@ export function stripBlockIds(value: unknown): unknown {
 }
 
 /**
- * Builds an update payload with translated values for an API-fetched record.
+ * Editor types whose values contain DatoCMS blocks. When copying source-locale
+ * blocks into a new locale as a locale-sync fallback we strip block ids so the
+ * CMA creates fresh block instances per locale.
+ */
+const BLOCK_EDITOR_TYPES = new Set([
+  'rich_text',
+  'structured_text',
+  'framed_single_block',
+  'frameless_single_block',
+]);
+
+/**
+ * Builds an update payload that translates a record from `fromLocale` into a
+ * single `toLocale`. Caller-side orchestration is responsible for looping
+ * across multiple target locales and merging the per-locale payloads so a
+ * single `client.items.update(recordId, mergedPayload)` runs per record.
  *
- * Context: table/bulk actions using CMA records (client.items.*). Returns a
- * payload suitable for `client.items.update(recordId, payload)`.
+ * After translation, every localized field that lacks the target locale gets
+ * a locale-sync fallback (null for optional, source value for required,
+ * source blocks with stripped ids for required block fields) so the CMA
+ * accepts the update.
+ *
+ * Context: table/bulk actions using CMA records (client.items.*).
  *
  * See also: `translateRecordFields` in `src/utils/translateRecordFields.ts`,
  * which runs in the item form context and writes via `ctx.setFieldValue(...)`.
@@ -644,7 +727,7 @@ export function stripBlockIds(value: unknown): unknown {
  * @param pluginParams - Plugin configuration parameters.
  * @param accessToken - Current user API token for DatoCMS.
  * @param environment - Dato environment slug.
- * @param opts - Optional AbortSignal and cancellation function.
+ * @param opts - Optional AbortSignal, cancellation, field allowlist.
  * @param schemaRepository - Optional SchemaRepository for cached schema lookups.
  * @returns Partial payload for client.items.update.
  */
@@ -657,7 +740,11 @@ export async function buildTranslatedUpdatePayload(
   pluginParams: ctxParamsType,
   accessToken: string,
   environment: string,
-  opts: { abortSignal?: AbortSignal; checkCancellation?: () => boolean } = {},
+  opts: {
+    abortSignal?: AbortSignal;
+    checkCancellation?: () => boolean;
+    selectedFieldsByModel?: SelectedFieldsByModel;
+  } = {},
   schemaRepository?: SchemaRepository,
   cmaBaseUrl?: string,
 ): Promise<BuildTranslatedUpdatePayloadResult> {
@@ -678,13 +765,15 @@ export async function buildTranslatedUpdatePayload(
         fromLocale,
         fieldTypeDictionary,
         pluginParams,
+        opts.selectedFieldsByModel,
       )
     );
   });
 
   /**
-   * Translates a single field and accumulates the result into updatePayload.
-   * Extracted to avoid await-in-loop lint errors.
+   * Translates one field and writes the result onto `updatePayload[field]`,
+   * preserving any pre-existing locale entries from the original record.
+   * Per-field failures surface as warnings; the rest of the record continues.
    */
   async function translateField(field: string): Promise<void> {
     const sourceValue = getExactSourceValue(
@@ -732,11 +821,11 @@ export async function buildTranslatedUpdatePayload(
       const norm = normalizeProviderError(error, provider.vendor);
       const formattedMessage = formatErrorForUser(norm);
       console.error(
-        `Error translating field ${field} for record ${record.id}: ${formattedMessage}`,
+        `Error translating field ${field} → ${toLocale} for record ${record.id}: ${formattedMessage}`,
       );
       const suffix = formattedMessage.endsWith('.') ? '' : '.';
       warnings.push(
-        `Field "${field}" was skipped: ${formattedMessage}${suffix}`,
+        `Field "${field}" to ${formatLocaleWithCode(toLocale)} was skipped: ${formattedMessage}${suffix}`,
       );
     }
   }
@@ -747,19 +836,11 @@ export async function buildTranslatedUpdatePayload(
     Promise.resolve(),
   );
 
-  // Ensure ALL localized fields have the target locale in the payload.
-  // DatoCMS requires every localized field to include a value for a new locale
-  // (the Locale Sync Rule). Fields that weren't translated still need the
-  // target locale key — use null for optional fields, source value for required.
-  // For required block fields, copy source blocks with IDs stripped so DatoCMS
-  // creates fresh block instances for the new locale.
-  const blockEditorTypes = new Set([
-    'rich_text',
-    'structured_text',
-    'framed_single_block',
-    'frameless_single_block',
-  ]);
-
+  // Locale-sync rule: every localized field must carry a value for the
+  // target locale. For fields we didn't translate, fill the gap from the
+  // source value (or null for optional non-required fields). For required
+  // block fields, copy source blocks with their ids stripped so the CMA
+  // creates fresh block instances.
   for (const [field, meta] of Object.entries(fieldTypeDictionary)) {
     if (!meta.isLocalized) continue;
     if (updatePayload[field]) continue;
@@ -769,9 +850,8 @@ export async function buildTranslatedUpdatePayload(
     if (existingTargetKey !== undefined) continue;
 
     const sourceValue = getExactSourceValue(fieldData, fromLocale);
-    const isRequired =
-      isFieldRequired(meta.validators) && sourceValue != null;
-    const isBlockField = blockEditorTypes.has(meta.editor);
+    const isRequired = isFieldRequired(meta.validators) && sourceValue != null;
+    const isBlockField = BLOCK_EDITOR_TYPES.has(meta.editor);
 
     let fallbackValue: unknown = null;
     if (isRequired && isBlockField) {
@@ -809,6 +889,7 @@ export function shouldTranslateField(
   fromLocale: string,
   fieldTypeDictionary: FieldTypeDictionary,
   pluginParams: ctxParamsType,
+  selectedFieldsByModel?: SelectedFieldsByModel,
 ): boolean {
   // Skip system fields that shouldn't be translated
   if (
@@ -822,6 +903,20 @@ export function shouldTranslateField(
   const fieldMeta = fieldTypeDictionary[field];
   if (
     !shouldProcessField(fieldMeta.editor, fieldMeta.id, pluginParams, field)
+  ) {
+    return false;
+  }
+
+  // When the caller (e.g., the bulk page) passes an explicit per-model
+  // allowlist, gate the field on it. The helper returns true for an
+  // undefined map, preserving legacy behavior for callers that don't
+  // care about field-level filtering.
+  if (
+    !isFieldIncludedInSelection(
+      record.item_type.id,
+      field,
+      selectedFieldsByModel,
+    )
   ) {
     return false;
   }

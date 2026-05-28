@@ -10,7 +10,7 @@
 }
 
 .container {
-  width: min(560px, 100%);
+  width: min(620px, 100%);
   position: relative;
 }
 
@@ -23,7 +23,7 @@
   box-shadow: 0 12px 28px rgba(15, 23, 42, 0.07);
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: var(--spacing-l);
 }
 
 .card::before {
@@ -51,7 +51,7 @@
 
 .cardCaption {
   margin: 0;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-s);
   line-height: 1.5;
   color: var(--light-body-color);
 }
@@ -62,19 +62,11 @@
   gap: var(--spacing-s);
 }
 
-.sectionLabel {
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  font-weight: 600;
-  text-transform: uppercase;
-  color: rgba(71, 85, 105, 0.78);
-}
-
 .localeRow {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 40px minmax(0, 1fr);
   gap: var(--spacing-m);
-  align-items: center;
+  align-items: start;
 }
 
 .localeArrow {
@@ -86,44 +78,24 @@
   color: var(--base-body-color);
   font-size: 18px;
   font-weight: 600;
-}
-
-.selectionChips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.chip {
-  padding: 6px 14px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 500;
-  background: rgba(93, 90, 252, 0.12);
-  color: var(--accent-color, #5d5afc);
-  border: 1px solid rgba(93, 90, 252, 0.18);
+  margin-top: 28px; /* aligns with select inputs after the label */
 }
 
 .actions {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--spacing-s);
 }
 
 .helperText {
-  font-size: 12px;
-  color: rgba(71, 85, 105, 0.82);
+  font-size: var(--font-size-s);
+  color: var(--light-body-color);
   text-align: center;
 }
 
 .statusReady {
   color: var(--accent-color, #5d5afc);
-  font-weight: 600;
-}
-
-.statusPending {
-  color: #f97316;
-  font-weight: 600;
+  font-weight: var(--font-weight-bold);
 }
 
 .loadingOverlay {
@@ -135,19 +107,46 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: var(--spacing-m);
+  z-index: 1;
 }
 
 .loadingText {
-  font-size: 13px;
-  color: rgba(71, 85, 105, 0.8);
+  font-size: var(--font-size-s);
+  color: var(--light-body-color);
 }
 
 .footerNote {
-  margin-top: 22px;
-  font-size: 12px;
-  color: rgba(71, 85, 105, 0.8);
+  margin-top: var(--spacing-l);
+  font-size: var(--font-size-s);
+  color: var(--light-body-color);
   text-align: center;
+}
+
+/* --- Fields-to-translate section ---------------------------------------- */
+
+.subsectionHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: var(--spacing-s);
+}
+
+.subsectionLabel {
+  font-size: var(--font-size-s);
+  font-weight: var(--font-weight-bold);
+  color: var(--base-body-color);
+}
+
+.subsectionHint {
+  font-size: var(--font-size-s);
+  color: var(--light-body-color);
+}
+
+.modelFieldList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-m);
 }
 
 @media (max-width: 720px) {

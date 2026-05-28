@@ -1,0 +1,15 @@
+.chipOption {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chipOptionCode {
+  font-family: var(--monospaced-font-family);
+  font-size: var(--font-size-xs);
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(15, 23, 42, 0.06);
+  color: var(--base-body-color);
+  line-height: 1.3;
+}

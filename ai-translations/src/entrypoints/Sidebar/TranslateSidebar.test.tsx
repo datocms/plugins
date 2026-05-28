@@ -3,11 +3,12 @@ import type { RenderItemFormSidebarPanelCtx } from 'datocms-plugin-sdk';
 import type React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ctxParamsType } from '../Config/ConfigScreen';
-import DatoGPTTranslateSidebar from './DatoGPTTranslateSidebar';
+import TranslateSidebar from './TranslateSidebar';
 
 /**
  * Wraps a partial test context object into the full SDK type.
- * Necessary because tests provide only the properties actually used by the component.
+ * Necessary because tests provide only the properties actually used by the
+ * component.
  */
 function asCtx(
   partial: Record<string, unknown>,
@@ -38,7 +39,7 @@ vi.mock('./Components/ChatbubbleTranslate', () => ({
 
 import { translateRecordFields } from '../../utils/translateRecordFields';
 
-describe('DatoGPTTranslateSidebar', () => {
+describe('TranslateSidebar', () => {
   const pluginParams: ctxParamsType = {
     apiKey: 'test-key',
     gptModel: 'gpt-4',
@@ -52,13 +53,43 @@ describe('DatoGPTTranslateSidebar', () => {
     enableDebugging: false,
   };
 
+  // Two localized single-line fields so the field picker has something to
+  // populate and the Translate button enables itself.
+  const stubFields = [
+    {
+      id: 'field-title',
+      attributes: {
+        api_key: 'title',
+        label: 'Title',
+        localized: true,
+        position: 1,
+        appearance: { editor: 'single_line' },
+      },
+    },
+    {
+      id: 'field-summary',
+      attributes: {
+        api_key: 'summary',
+        label: 'Summary',
+        localized: true,
+        position: 2,
+        appearance: { editor: 'single_line' },
+      },
+    },
+  ];
+
   const baseCtx = {
     plugin: { id: 'plugin-1', attributes: { parameters: pluginParams } },
+    itemType: {
+      id: 'model-1',
+      attributes: { name: 'Article', api_key: 'article' },
+    },
     formValues: { internalLocales: ['en', 'it'] },
     notice: vi.fn(),
     alert: vi.fn(),
     navigateTo: vi.fn(),
     scrollToField: vi.fn(),
+    loadItemTypeFields: vi.fn().mockResolvedValue(stubFields),
     theme: {
       semiTransparentAccentColor: 'rgba(0, 0, 0, 0.1)',
       accentColor: '#6b46ff',
@@ -67,6 +98,7 @@ describe('DatoGPTTranslateSidebar', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    baseCtx.loadItemTypeFields.mockResolvedValue(stubFields);
   });
 
   it('navigates using the base field path and locale from a progress bubble', async () => {
@@ -76,9 +108,14 @@ describe('DatoGPTTranslateSidebar', () => {
       },
     );
 
-    render(<DatoGPTTranslateSidebar ctx={asCtx(baseCtx)} />);
+    render(<TranslateSidebar ctx={asCtx(baseCtx)} />);
 
-    fireEvent.click(screen.getByText('Translate all fields'));
+    // Wait for the field picker to populate (Translate button enables once
+    // fields load and at least one is selected).
+    const translateButton = await screen.findByRole('button', {
+      name: /^Translate all fields to/,
+    });
+    fireEvent.click(translateButton);
 
     const bubbleButton = await screen.findByRole('button', {
       name: /Go to field: Title \(it\)/i,
@@ -96,9 +133,12 @@ describe('DatoGPTTranslateSidebar', () => {
       },
     );
 
-    render(<DatoGPTTranslateSidebar ctx={asCtx(baseCtx)} />);
+    render(<TranslateSidebar ctx={asCtx(baseCtx)} />);
 
-    fireEvent.click(screen.getByText('Translate all fields'));
+    const translateButton = await screen.findByRole('button', {
+      name: /^Translate all fields to/,
+    });
+    fireEvent.click(translateButton);
 
     await waitFor(() => {
       expect(baseCtx.notice).toHaveBeenCalledWith(

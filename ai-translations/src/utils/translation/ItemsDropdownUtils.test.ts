@@ -80,6 +80,59 @@ describe('ItemsDropdownUtils', () => {
         }),
       ).toBe(false);
     });
+
+    it('respects an explicit per-model field allowlist', () => {
+      // Selected: only 'title' for this model — slug should be skipped.
+      const selectedFieldsByModel = { 'item-type-1': ['title'] };
+
+      expect(
+        shouldTranslateField(
+          'title',
+          record,
+          'en',
+          fieldTypeDictionary,
+          pluginParams,
+          selectedFieldsByModel,
+        ),
+      ).toBe(true);
+
+      expect(
+        shouldTranslateField(
+          'slug',
+          record,
+          'en',
+          fieldTypeDictionary,
+          pluginParams,
+          selectedFieldsByModel,
+        ),
+      ).toBe(false);
+    });
+
+    it('skips every field when the record model has no selection entry', () => {
+      const selectedFieldsByModel = { 'some-other-model': ['title'] };
+      expect(
+        shouldTranslateField(
+          'title',
+          record,
+          'en',
+          fieldTypeDictionary,
+          pluginParams,
+          selectedFieldsByModel,
+        ),
+      ).toBe(false);
+    });
+
+    it('keeps legacy behavior when no allowlist is passed', () => {
+      expect(
+        shouldTranslateField(
+          'title',
+          record,
+          'en',
+          fieldTypeDictionary,
+          pluginParams,
+        ),
+      ).toBe(true);
+    });
   });
 
   describe('buildTranslatedUpdatePayload', () => {
@@ -166,7 +219,7 @@ describe('ItemsDropdownUtils', () => {
         it: null,
       });
       expect(result.warnings).toContain(
-        'Field "slug" was skipped: Plugin error: Translated slug is empty after normalization.',
+        'Field "slug" to Italian [it] was skipped: Plugin error: Translated slug is empty after normalization.',
       );
     });
 
@@ -271,6 +324,43 @@ describe('ItemsDropdownUtils', () => {
             },
           },
         ],
+      });
+    });
+
+    it('only translates fields in the per-model allowlist; locale-sync still fills others', async () => {
+      vi.mocked(translateFieldValue).mockResolvedValue('Ciao');
+
+      const result = await buildTranslatedUpdatePayload(
+        record,
+        'en',
+        'it',
+        fieldTypeDictionary,
+        provider,
+        pluginParams,
+        'access-token',
+        'main',
+        { selectedFieldsByModel: { 'item-type-1': ['title'] } },
+      );
+
+      // The translator should have been called exactly once — for `title`.
+      expect(translateFieldValue).toHaveBeenCalledTimes(1);
+
+      // title was selected and translated.
+      expect(result.payload.title).toEqual({
+        en: 'Hello',
+        de: 'Hallo',
+        it: 'Ciao',
+      });
+      // slug and body were NOT selected → locale-sync fallback (null, since they're optional).
+      expect(result.payload.slug).toEqual({
+        en: 'hello-world',
+        de: 'hallo-welt',
+        it: null,
+      });
+      expect(result.payload.body).toEqual({
+        en: [{ type: 'paragraph', children: [{ text: 'Body text' }] }],
+        de: [{ type: 'paragraph', children: [{ text: 'Vorhanden' }] }],
+        it: null,
       });
     });
 
