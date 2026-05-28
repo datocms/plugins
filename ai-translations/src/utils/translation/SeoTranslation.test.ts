@@ -435,5 +435,111 @@ describe('SeoTranslation', () => {
         expect(result.twitterCard).toBe('summary_large_image');
       });
     });
+
+    describe('input immutability', () => {
+      it('does not mutate the input SEO object', async () => {
+        vi.mocked(translateArray).mockResolvedValue([
+          'Titre FR',
+          'Description FR',
+        ]);
+
+        const seoObject: SeoObject = {
+          title: 'Title EN',
+          description: 'Description EN',
+        };
+
+        await translateSeoFieldValue(
+          seoObject,
+          mockPluginParams,
+          'fr',
+          'en',
+          mockProvider,
+          '',
+        );
+
+        expect(seoObject.title).toBe('Title EN');
+        expect(seoObject.description).toBe('Description EN');
+      });
+
+      it('returns a new object distinct from the input', async () => {
+        vi.mocked(translateArray).mockResolvedValue(['Titre FR', 'Desc FR']);
+
+        const seoObject: SeoObject = {
+          title: 'Title EN',
+          description: 'Description EN',
+        };
+
+        const result = await translateSeoFieldValue(
+          seoObject,
+          mockPluginParams,
+          'fr',
+          'en',
+          mockProvider,
+          '',
+        );
+
+        expect(result).not.toBe(seoObject);
+      });
+
+      it('supports sequential translation from the same source (all-locales flow)', async () => {
+        // Simulates main.tsx's translateTo-allLocales loop: source is captured
+        // once and re-read each iteration. If the SEO translator mutates the
+        // input, iteration 2 would translate already-translated text.
+        vi.mocked(translateArray)
+          .mockResolvedValueOnce(['Titre FR', 'Description FR'])
+          .mockResolvedValueOnce(['Título ES', 'Descripción ES']);
+
+        const localizedField: Record<string, SeoObject> = {
+          en: { title: 'Title EN', description: 'Description EN' },
+          fr: { title: '', description: '' },
+          es: { title: '', description: '' },
+        };
+
+        const sourceLocale = 'en';
+
+        const frResult = await translateSeoFieldValue(
+          localizedField[sourceLocale],
+          mockPluginParams,
+          'fr',
+          sourceLocale,
+          mockProvider,
+          '',
+        );
+        localizedField.fr = frResult;
+
+        const esResult = await translateSeoFieldValue(
+          localizedField[sourceLocale],
+          mockPluginParams,
+          'es',
+          sourceLocale,
+          mockProvider,
+          '',
+        );
+        localizedField.es = esResult;
+
+        // The second translation should have received the original English
+        // source, not the French translation produced by the first call.
+        expect(vi.mocked(translateArray).mock.calls[1][2]).toEqual([
+          'Title EN',
+          'Description EN',
+        ]);
+
+        // The original source locale must be unchanged.
+        expect(localizedField.en).toEqual({
+          title: 'Title EN',
+          description: 'Description EN',
+        });
+
+        // And each target locale should hold its own distinct translation.
+        expect(localizedField.fr).toEqual({
+          title: 'Titre FR',
+          description: 'Description FR',
+        });
+        expect(localizedField.es).toEqual({
+          title: 'Título ES',
+          description: 'Descripción ES',
+        });
+      });
+    });
   });
 });

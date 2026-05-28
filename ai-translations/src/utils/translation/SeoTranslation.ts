@@ -72,13 +72,18 @@ export async function translateSeoFieldValue(
     return { title: '', description: '' };
   }
 
-  const seoObject = fieldValue;
-  const seoObjectToTranslate = {
-    title: seoObject.title || '',
-    description: seoObject.description || '',
-  };
+  // Translate against a separate snapshot, never the input reference. The
+  // input object can be the source-locale value in a localized field (e.g.
+  // formValues.seo.en) which the "Translate to all locales" loop re-reads
+  // on every iteration — mutating it would corrupt subsequent iterations
+  // and the source locale itself.
+  const sourceTitle = fieldValue.title || '';
+  const sourceDescription = fieldValue.description || '';
 
-  logger.info('SEO object to translate', seoObjectToTranslate);
+  logger.info('SEO object to translate', {
+    title: sourceTitle,
+    description: sourceDescription,
+  });
 
   try {
     // Extract language names for better prompt clarity
@@ -89,7 +94,10 @@ export async function translateSeoFieldValue(
 
     // Base prompt with replaceable placeholders
     const prompt = (pluginParams.prompt || '')
-      .replace('{fieldValue}', JSON.stringify(seoObjectToTranslate))
+      .replace(
+        '{fieldValue}',
+        JSON.stringify({ title: sourceTitle, description: sourceDescription }),
+      )
       .replace('{fromLocale}', fromLocaleName)
       .replace('{toLocale}', toLocaleName)
       .replace(
@@ -107,43 +115,37 @@ export async function translateSeoFieldValue(
     const [titleT, descT] = await translateArray(
       provider,
       pluginParams,
-      [seoObjectToTranslate.title, seoObjectToTranslate.description],
+      [sourceTitle, sourceDescription],
       fromLocale,
       toLocale,
       { isHTML: false, recordContext },
     );
-    const returnedSeoObject: SeoObject = { title: titleT, description: descT };
 
-    // Update the original seoObject
-    // Enforce character limits for SEO content
-    if (
-      returnedSeoObject.title &&
-      returnedSeoObject.title.length > SEO_TITLE_MAX_LENGTH
-    ) {
+    // Build a fresh result preserving any non-translated properties (e.g.
+    // `image`, `twitterCard`) without mutating the caller's object.
+    const result: SeoObject = { ...fieldValue };
+
+    let translatedTitle = titleT || sourceTitle;
+    if (translatedTitle.length > SEO_TITLE_MAX_LENGTH) {
       logger.info(
-        `SEO title exceeds ${SEO_TITLE_MAX_LENGTH} character limit (${returnedSeoObject.title.length}). Truncating...`,
+        `SEO title exceeds ${SEO_TITLE_MAX_LENGTH} character limit (${translatedTitle.length}). Truncating...`,
       );
-      returnedSeoObject.title = `${returnedSeoObject.title.substring(0, SEO_TITLE_MAX_LENGTH - ELLIPSIS_OFFSET)}...`;
+      translatedTitle = `${translatedTitle.substring(0, SEO_TITLE_MAX_LENGTH - ELLIPSIS_OFFSET)}...`;
     }
 
-    if (
-      returnedSeoObject.description &&
-      returnedSeoObject.description.length > SEO_DESCRIPTION_MAX_LENGTH
-    ) {
+    let translatedDescription = descT || sourceDescription;
+    if (translatedDescription.length > SEO_DESCRIPTION_MAX_LENGTH) {
       logger.info(
-        `SEO description exceeds ${SEO_DESCRIPTION_MAX_LENGTH} character limit (${returnedSeoObject.description.length}). Truncating...`,
+        `SEO description exceeds ${SEO_DESCRIPTION_MAX_LENGTH} character limit (${translatedDescription.length}). Truncating...`,
       );
-      returnedSeoObject.description = `${returnedSeoObject.description.substring(0, SEO_DESCRIPTION_MAX_LENGTH - ELLIPSIS_OFFSET)}...`;
+      translatedDescription = `${translatedDescription.substring(0, SEO_DESCRIPTION_MAX_LENGTH - ELLIPSIS_OFFSET)}...`;
     }
 
-    seoObject.title =
-      (returnedSeoObject.title as string) || (seoObject.title as string);
-    seoObject.description =
-      (returnedSeoObject.description as string) ||
-      (seoObject.description as string);
+    result.title = translatedTitle;
+    result.description = translatedDescription;
 
     logger.info('SEO translation completed successfully');
-    return seoObject;
+    return result;
   } catch (error) {
     // DRY-001: Use centralized error handler
     handleTranslationError(
