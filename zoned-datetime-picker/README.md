@@ -87,6 +87,7 @@ If your editor's preferred locale is not in this list, the plugin falls back to 
 
 ## Changelog
 
+- 0.1.7 - Fix for Dark Mode crash. (True dark mode support coming later)
 - 0.1.6 - Moved plugin to official DatoCMS plugins repository. This was just an organizational change and does not add any features or fixes.
 - 0.1.5 - Minor package updates and readme clarifications
 - 0.1.4 - Minor bug fixes

@@ -26,6 +26,9 @@ export function createMuiThemeFromDato(
   darkColor: string,
 ) {
   return createTheme({
+    cssVariables: {
+      nativeColor: true // Required for proper Dark Mode support using OKLCH color https://mui.com/material-ui/customization/css-theme-variables/native-color/
+    },
     palette: {
       primary: { main: primaryColor },
       secondary: { main: accentColor, light: lightColor, dark: darkColor },
