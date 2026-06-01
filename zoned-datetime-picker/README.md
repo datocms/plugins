@@ -82,11 +82,13 @@ The plugin supports localized datetime entry and time zone names in the followin
 - Czech (cs)
 - Dutch (nl)
 - Portuguese (pt)
+- Spanish (es)
 
 If your editor's preferred locale is not in this list, the plugin falls back to English for its UI.
 
 ## Changelog
 
+- 0.1.8 - Added missing Spanish localization. Upgraded to MUI 9 and other library updates. Also fixes timezone initialization on the first date pick, an on-mount write that could mark the form dirty or overwrite unparseable values, and some minor cleanup & refactoring throughout. Special thanks to [fitzage](https://github.com/fitzage)!
 - 0.1.7 - Fix for Dark Mode crash. (True dark mode support coming later)
 - 0.1.6 - Moved plugin to official DatoCMS plugins repository. This was just an organizational change and does not add any features or fixes.
 - 0.1.5 - Minor package updates and readme clarifications
@@ -100,4 +102,4 @@ This plugin was made with:
 - [MUI-X](https://mui.com/x/react-date-pickers/date-time-picker/) React UI components
 - [Luxon](https://moment.github.io/luxon/#/) DateTime library
 - [IANA Time Zone Database](https://www.iana.org/time-zones)
-- [OpenAI Codex](https://openai.com/codex/)
+- [OpenAI Codex](https://openai.com/codex/) and [Claudde Code](https://claude.com/product/claude-code)
