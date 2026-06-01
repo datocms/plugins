@@ -18,7 +18,6 @@ import {
 import {
   buildDatoOutput,
   parseDatoValue,
-  parseIxdtf,
   type ZonedValue,
 } from '../utils/datetime';
 import { toFlagEmoji } from '../utils/flags';
@@ -53,7 +52,7 @@ export const ZonedDateTimePicker = ({
     setFieldValue,
     ui: { locale: userPreferredLocale },
     site: {
-      attributes: { timezone: userPreferredTimeZone },
+      attributes: { timezone: siteTimeZone },
     },
     theme: { primaryColor, accentColor, lightColor, darkColor },
     setHeight,
@@ -63,23 +62,9 @@ export const ZonedDateTimePicker = ({
 
   // Parse current field value into internal state on mount.
   const [zonedDateTime, setZonedDateTime] = useState<ZonedValue>(() => {
-    const rawField = ctx.formValues[fieldPath];
-    if (rawField == null) return { dateTime: null, timeZone: null };
-    if (typeof rawField === 'string') {
-      // Three legacy shapes in ascending rarity:
-      // 1. JSON-encoded object  '{"zonedDateTime":"...","zone":"..."}' → parse then parseDatoValue
-      // 2. JSON-encoded IXDTF string '"2025-...+01:00[Europe/Rome]"'  → parse → parseIxdtf
-      // 3. Plain IXDTF string   '2025-...+01:00[Europe/Rome]'         → parseIxdtf directly
-      try {
-        const parsed = JSON.parse(rawField);
-        return typeof parsed === 'string'
-          ? parseIxdtf(parsed)
-          : parseDatoValue(parsed);
-      } catch {
-        return parseIxdtf(rawField);
-      }
-    }
-    return parseDatoValue(rawField);
+    const rawField = ctx.formValues[fieldPath] as unknown as string;
+    const parsedField = JSON.parse(rawField);
+    return parseDatoValue(parsedField); // Supports legacy formats too
   });
 
   // Build JSON payload when local state changes
@@ -120,8 +105,8 @@ export const ZonedDateTimePicker = ({
   const labels = getUiLabels(userPreferredLocale);
   const suggestedLabel = labels.suggested;
   const suggestedTimeZones = useMemo(
-    () => ['UTC', userPreferredTimeZone, browserTimeZone],
-    [userPreferredTimeZone, browserTimeZone],
+    () => ['UTC', siteTimeZone, browserTimeZone],
+    [siteTimeZone, browserTimeZone],
   );
 
   // Pre-load TZ -> country code map from IANA zone.tab
@@ -136,7 +121,7 @@ export const ZonedDateTimePicker = ({
         suggestedTimeZones,
         suggestedLabel,
         browserTimeZone,
-        siteTimeZone: userPreferredTimeZone,
+        siteTimeZone: siteTimeZone,
         locale: userPreferredLocale,
         zoneToCountry,
         toFlagEmoji,
@@ -148,7 +133,7 @@ export const ZonedDateTimePicker = ({
       suggestedTimeZones,
       suggestedLabel,
       browserTimeZone,
-      userPreferredTimeZone,
+      siteTimeZone,
       userPreferredLocale,
       zoneToCountry,
       labels.browser,
@@ -162,7 +147,7 @@ export const ZonedDateTimePicker = ({
       renderZoneOptionFactory({
         labels,
         browserTimeZone,
-        siteTimeZone: userPreferredTimeZone,
+        siteTimeZone: siteTimeZone,
         zoneToCountry,
         now,
         locale: userPreferredLocale,
@@ -170,7 +155,7 @@ export const ZonedDateTimePicker = ({
     [
       labels,
       browserTimeZone,
-      userPreferredTimeZone,
+      siteTimeZone,
       zoneToCountry,
       now,
       userPreferredLocale,
@@ -186,15 +171,11 @@ export const ZonedDateTimePicker = ({
   }, [zonedDateTime?.dateTime, zonedDateTime?.timeZone]);
 
   // When the user edits the date/time, keep local wall time (no offset).
-  // If no timezone was set yet, auto-initialize to the site/browser preference so
-  // the displayed timezone and the state are always in sync on first pick.
   const handleDateChange = (newVal: DateTime | null) => {
     userHasEdited.current = true;
     setZonedDateTime((prev) => ({
       ...prev,
-      dateTime: newVal ? newVal.toFormat("yyyy-LL-dd'T'HH:mm:ss") : null,
-      timeZone:
-        prev.timeZone ?? (newVal ? (userPreferredTimeZone ?? browserTimeZone) : null),
+      dateTime: newVal ? newVal.toFormat("yyyy-LL-dd'T'HH:mm:ss") : null
     }));
   };
 
@@ -203,9 +184,6 @@ export const ZonedDateTimePicker = ({
     userHasEdited.current = true;
     setZonedDateTime((prev) => ({ ...prev, timeZone: newValue }));
   };
-
-  // The time zone dropdown should be disabled until a datetime is picked
-  const isTimeZonePickerDisabled = disabled || !zonedDateTime?.dateTime?.length;
 
   return (
     <Canvas ctx={ctx}>
@@ -251,13 +229,14 @@ export const ZonedDateTimePicker = ({
               options={options}
               groupBy={(opt) => opt.group}
               getOptionLabel={(opt) => opt.label}
+
+              // Prefer TZ from saved data, then site TZ, then first option in dropdown (UTC)
               value={
-                isTimeZonePickerDisabled
-                  ? undefined
-                  : (options.find(
-                      (o) => o.tz === (zonedDateTime.timeZone ?? ''),
-                    ) ?? options[0])
+                options.find(
+                  (o) => (zonedDateTime.timeZone && zonedDateTime.timeZone == o.tz) || (siteTimeZone == o.tz),
+              ) ?? options[0]
               }
+
               disableClearable={true}
               isOptionEqualToValue={(opt, val) => opt.tz === val.tz}
               filterOptions={filterZoneOptionsMUI}
@@ -291,7 +270,6 @@ export const ZonedDateTimePicker = ({
               renderInput={(params) => (
                 <TextField {...params} size="small" label={labels.timeZone} />
               )}
-              disabled={isTimeZonePickerDisabled}
               fullWidth
             />
           </Stack>

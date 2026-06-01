@@ -3,7 +3,7 @@
   "description": "Zoned DateTime Picker is a DatoCMS plugin that stores datetime timestamps with time zone information. Outputs a JSON with ISO8601 and IXDTF strings, the IANA time zone string, UTC offset, and more.",
   "homepage": "https://github.com/datocms/plugins/tree/master/zoned-datetime-picker",
   "private": false,
-  "version": "0.1.7",
+  "version": "0.2.0",
   "author": "DatoCMS <support@datocms.com>",
   "type": "module",
   "keywords": [
@@ -37,21 +37,20 @@
   "dependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
-    "@mui/material": "^7.3.9",
-    "@mui/system": "^7.0.0",
-    "@mui/x-date-pickers": "^8.0.0",
-    "datocms-plugin-sdk": "^2.1.1",
-    "datocms-react-ui": "^2.1.4",
+    "@mui/material": "^9.0.1",
+    "@mui/x-date-pickers": "^9.3.0",
+    "datocms-plugin-sdk": "^2.1.5",
+    "datocms-react-ui": "^2.1.5",
     "luxon": "^3.7.2",
-    "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
   },
   "devDependencies": {
     "@types/luxon": "^3.7.1",
-    "@types/react": "^19.2.14",
+    "@types/react": "^19.2.16",
     "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^5.2.0",
-    "typescript": "^5.9.3",
+    "@vitejs/plugin-react": "^6.0.2",
+    "typescript": "^6.0.3",
     "vite": "^8.0.16"
   }
 }
