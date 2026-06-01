@@ -6,7 +6,7 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
 import { Canvas } from 'datocms-react-ui';
 import { DateTime } from 'luxon';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { parseZones } from '../i18n/parseZones';
 import { getUiLabels } from '../i18n/uiLabels';
 import { createMuiThemeFromDato } from '../ui/theme';
@@ -18,6 +18,7 @@ import {
 import {
   buildDatoOutput,
   parseDatoValue,
+  parseIxdtf,
   type ZonedValue,
 } from '../utils/datetime';
 import { toFlagEmoji } from '../utils/flags';
@@ -62,9 +63,23 @@ export const ZonedDateTimePicker = ({
 
   // Parse current field value into internal state on mount.
   const [zonedDateTime, setZonedDateTime] = useState<ZonedValue>(() => {
-    const rawField = ctx.formValues[fieldPath] as unknown as string;
-    const parsedField = JSON.parse(rawField);
-    return parseDatoValue(parsedField);
+    const rawField = ctx.formValues[fieldPath];
+    if (rawField == null) return { dateTime: null, timeZone: null };
+    if (typeof rawField === 'string') {
+      // Three legacy shapes in ascending rarity:
+      // 1. JSON-encoded object  '{"zonedDateTime":"...","zone":"..."}' → parse then parseDatoValue
+      // 2. JSON-encoded IXDTF string '"2025-...+01:00[Europe/Rome]"'  → parse → parseIxdtf
+      // 3. Plain IXDTF string   '2025-...+01:00[Europe/Rome]'         → parseIxdtf directly
+      try {
+        const parsed = JSON.parse(rawField);
+        return typeof parsed === 'string'
+          ? parseIxdtf(parsed)
+          : parseDatoValue(parsed);
+      } catch {
+        return parseIxdtf(rawField);
+      }
+    }
+    return parseDatoValue(rawField);
   });
 
   // Build JSON payload when local state changes
@@ -73,9 +88,15 @@ export const ZonedDateTimePicker = ({
     [zonedDateTime],
   );
 
-  // Persist JSON payload to DatoCMS when it changes
+  // Track whether the user has made a change so we never write back on initial
+  // mount — this prevents marking the form dirty and guards against accidentally
+  // erasing a value we couldn't parse.
+  const userHasEdited = useRef(false);
+
+  // Persist JSON payload to DatoCMS only after the user has interacted.
   useEffect(() => {
-    setFieldValue(fieldPath, datoPayload);
+    if (!userHasEdited.current) return;
+    setFieldValue(fieldPath, datoPayload).catch(console.error);
   }, [datoPayload, setFieldValue, fieldPath]);
 
   // Map DatoCMS theme colors into an MUI theme
@@ -164,16 +185,22 @@ export const ZonedDateTimePicker = ({
     return parsed.isValid ? parsed : null;
   }, [zonedDateTime?.dateTime, zonedDateTime?.timeZone]);
 
-  // When the user edits the date/time, keep local wall time (no offset)
+  // When the user edits the date/time, keep local wall time (no offset).
+  // If no timezone was set yet, auto-initialize to the site/browser preference so
+  // the displayed timezone and the state are always in sync on first pick.
   const handleDateChange = (newVal: DateTime | null) => {
+    userHasEdited.current = true;
     setZonedDateTime((prev) => ({
       ...prev,
       dateTime: newVal ? newVal.toFormat("yyyy-LL-dd'T'HH:mm:ss") : null,
+      timeZone:
+        prev.timeZone ?? (newVal ? (userPreferredTimeZone ?? browserTimeZone) : null),
     }));
   };
 
   // When the user picks a zone, update it and re-derive offset on save
   const handleTzChange = (_: unknown, newValue: string | null) => {
+    userHasEdited.current = true;
     setZonedDateTime((prev) => ({ ...prev, timeZone: newValue }));
   };
 
@@ -194,6 +221,13 @@ export const ZonedDateTimePicker = ({
               onChange={handleDateChange}
               disabled={disabled}
               timezone={zonedDateTime.timeZone ?? 'system'} // Sync with selected timezone if possible
+              onOpen={() => {
+                // Same iframe-resize pattern as the timezone Autocomplete:
+                // stop auto-resizer and manually set enough height for the calendar.
+                stopAutoResizer();
+                setHeight(520);
+              }}
+              onClose={() => startAutoResizer()}
               slotProps={{
                 textField: {
                   id: 'zdt-picker',
@@ -202,6 +236,9 @@ export const ZonedDateTimePicker = ({
                 },
                 desktopPaper: {
                   sx: { marginBottom: 2 },
+                },
+                popper: {
+                  disablePortal: true, // Render inline so it stays within the iframe
                 },
               }}
               viewRenderers={CLOCK_VIEW_RENDERERS}
