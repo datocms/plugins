@@ -1,8 +1,8 @@
-import { connect } from 'datocms-plugin-sdk';
+import {connect} from 'datocms-plugin-sdk';
 import 'datocms-react-ui/styles.css';
-import { DebugModal } from './components/DebugModal';
-import { ZonedDateTimePicker } from './components/ZonedDateTimePicker';
-import { render } from './utils/render';
+import {DebugModal} from './components/DebugModal';
+import {ZonedDateTimePicker} from './components/ZonedDateTimePicker';
+import {render} from './utils/render';
 
 connect({
   /* Main component */
@@ -23,33 +23,27 @@ connect({
   },
 
   // Then we tell it how to render it
-  renderFieldExtension(fieldExtensionId, ctx) {
-    if (fieldExtensionId === 'zonedDateTimePicker') {
-      return render(<ZonedDateTimePicker ctx={ctx} />); // <-- Main component is here!
-    }
+  renderFieldExtension(_, ctx) {
+    return render(<ZonedDateTimePicker ctx={ctx} />); // <-- Main component is here!
   },
 
   /* Debug utils */
 
   // We'll register a field context menu dropdown (to show a debugging modal)
-  fieldDropdownActions(field) {
-    if (field.attributes?.appearance?.field_extension === 'zonedDateTime') {
+  fieldDropdownActions(_) {
       return [
         {
           id: 'showDebug',
           label: 'Show JSON value',
           icon: 'code',
-        },
-      ];
-    } else {
-      return [];
-    }
+        }
+        ]
   },
 
   // Tell the plugin SDK what to run when that dropdown item is clicked on
   async executeFieldDropdownAction(actionId, ctx) {
     if (actionId === 'showDebug') {
-      ctx.openModal({
+      await ctx.openModal({
         id: 'debugModal',
         title: `${ctx.fieldPath}`,
         width: 'xl',

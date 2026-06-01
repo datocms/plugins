@@ -6,7 +6,7 @@ import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
 import { Canvas } from 'datocms-react-ui';
 import { DateTime } from 'luxon';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { parseZones } from '../i18n/parseZones';
 import { getUiLabels } from '../i18n/uiLabels';
 import { createMuiThemeFromDato } from '../ui/theme';
@@ -17,7 +17,7 @@ import {
 } from '../ui/timeZoneAutocomplete';
 import {
   buildDatoOutput,
-  parseDatoValue,
+  parseStoredFieldValue,
   type ZonedValue,
 } from '../utils/datetime';
 import { toFlagEmoji } from '../utils/flags';
@@ -25,9 +25,63 @@ import { getSupportedTimeZones } from '../utils/timezones';
 import { buildZoneOptions, type ZoneOption } from '../utils/zoneOptions';
 
 /**
- * ZonedDateTime field editor
+ * Read-only fallback shown when the stored field value cannot be parsed. This
+ * should never happen — it signals corrupt data — so it surfaces the raw value
+ * for support and alerts the user rather than silently discarding it.
+ */
+const FieldParseError = ({
+  ctx,
+  raw,
+}: {
+  ctx: RenderFieldExtensionCtx;
+  raw: unknown;
+}) => {
+  const labels = getUiLabels(ctx.ui.locale);
+  const serialized =
+    typeof raw === 'string' ? raw : JSON.stringify(raw, null, 2);
+
+  // Mount-only: this view never re-parses, so the alert fires exactly once.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional one-shot
+  useEffect(() => {
+    ctx.startAutoResizer();
+    ctx.alert(labels.parseError).catch(console.error);
+  }, []);
+
+  return (
+    <Canvas ctx={ctx}>
+      <p>{labels.parseError}</p>
+      <pre>
+        <code>{serialized}</code>
+      </pre>
+    </Canvas>
+  );
+};
+
+/**
+ * ZonedDateTime field editor entry point.
  *
- * Persists a JSON payload that includes timestamps and zone information.
+ * Parses the stored value once on mount and routes to either the editor or,
+ * when the value is unreadable, a read-only error view that preserves the data
+ * instead of overwriting it with an empty payload.
+ */
+export const ZonedDateTimePicker = ({
+  ctx,
+}: {
+  ctx: RenderFieldExtensionCtx;
+}) => {
+  const [parseResult] = useState(() =>
+    parseStoredFieldValue(ctx.formValues[ctx.fieldPath]),
+  );
+
+  if (!parseResult.ok) {
+    return <FieldParseError ctx={ctx} raw={parseResult.raw} />;
+  }
+
+  return <ZonedDateTimeEditor ctx={ctx} initialValue={parseResult.value} />;
+};
+
+/**
+ * The interactive editor, mounted only once the stored value parses cleanly.
  *
  * How it works
  * - State keeps the local wall-clock date-time (no offset) and the IANA zone.
@@ -40,11 +94,12 @@ import { buildZoneOptions, type ZoneOption } from '../utils/zoneOptions';
  *   (flag, UTC offset, localized long name) and a theme override for selected
  *   and hover states.
  */
-
-export const ZonedDateTimePicker = ({
+const ZonedDateTimeEditor = ({
   ctx,
+  initialValue,
 }: {
   ctx: RenderFieldExtensionCtx;
+  initialValue: ZonedValue;
 }) => {
   const {
     fieldPath,
@@ -60,29 +115,19 @@ export const ZonedDateTimePicker = ({
     stopAutoResizer,
   } = ctx;
 
-  // Parse current field value into internal state on mount.
-  const [zonedDateTime, setZonedDateTime] = useState<ZonedValue>(() => {
-    const rawField = ctx.formValues[fieldPath] as unknown as string;
-    const parsedField = JSON.parse(rawField);
-    return parseDatoValue(parsedField); // Supports legacy formats too
-  });
+  const [zonedDateTime, setZonedDateTime] = useState<ZonedValue>(initialValue);
 
-  // Build JSON payload when local state changes
-  const datoPayload = useMemo(
-    () => JSON.stringify(buildDatoOutput(zonedDateTime), null, 2),
-    [zonedDateTime],
-  );
-
-  // Track whether the user has made a change so we never write back on initial
-  // mount — this prevents marking the form dirty and guards against accidentally
-  // erasing a value we couldn't parse.
-  const userHasEdited = useRef(false);
-
-  // Persist JSON payload to DatoCMS only after the user has interacted.
-  useEffect(() => {
-    if (!userHasEdited.current) return;
-    setFieldValue(fieldPath, datoPayload).catch(console.error);
-  }, [datoPayload, setFieldValue, fieldPath]);
+  // Update local state and persist the JSON payload to DatoCMS in one step.
+  // Writing only from the user-driven handlers (never on mount) keeps the form
+  // from being marked dirty and avoids re-serializing — and overwriting — a
+  // stored value we couldn't fully parse.
+  const commit = (next: ZonedValue) => {
+    setZonedDateTime(next);
+    setFieldValue(
+      fieldPath,
+      JSON.stringify(buildDatoOutput(next), null, 2),
+    ).catch(console.error);
+  };
 
   // Map DatoCMS theme colors into an MUI theme
   const muiTheme = useMemo(
@@ -172,20 +217,18 @@ export const ZonedDateTimePicker = ({
 
   // When the user edits the date/time, keep local wall time (no offset).
   const handleDateChange = (newVal: DateTime | null) => {
-    userHasEdited.current = true;
-    setZonedDateTime((prev) => ({
-      ...prev,
-      dateTime: newVal ? newVal.toFormat("yyyy-LL-dd'T'HH:mm:ss") : null
-    }));
+    commit({
+      ...zonedDateTime,
+      dateTime: newVal ? newVal.toFormat("yyyy-LL-dd'T'HH:mm:ss") : null,
+    });
   };
 
   // When the user picks a zone, update it and re-derive offset on save
   const handleTzChange = (_: unknown, newValue: string | null) => {
-    userHasEdited.current = true;
-    setZonedDateTime((prev) => ({ ...prev, timeZone: newValue }));
+    commit({ ...zonedDateTime, timeZone: newValue });
   };
 
-  return (
+    return (
     <Canvas ctx={ctx}>
       <ThemeProvider theme={muiTheme}>
         <LocalizationProvider
@@ -232,9 +275,9 @@ export const ZonedDateTimePicker = ({
 
               // Prefer TZ from saved data, then site TZ, then first option in dropdown (UTC)
               value={
-                options.find(
-                  (o) => (zonedDateTime.timeZone && zonedDateTime.timeZone == o.tz) || (siteTimeZone == o.tz),
-              ) ?? options[0]
+                options.find((o) => o.tz === zonedDateTime.timeZone) ??
+                options.find((o) => o.tz === siteTimeZone) ??
+                options[0]
               }
 
               disableClearable={true}

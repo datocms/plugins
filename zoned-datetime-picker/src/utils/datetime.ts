@@ -67,6 +67,11 @@ export function utcOffsetStringForZone(timeZone: string, at: Date): string {
  */
 export type ZonedValue = { dateTime?: string | null; timeZone?: string | null };
 
+/**
+ * Structured JSON payload persisted to the Dato field. Carries the canonical
+ * IXDTF string alongside pre-derived representations (ISO-with-offset, date and
+ * time parts, epoch) so downstream consumers never have to re-parse it.
+ */
 export type DatoZonedOutput = {
   zonedDateTime: string; // IXDTF e.g. 2025-09-08T15:30:00+02:00[Europe/Rome]
   dateTime: string; // ISO8601 with numeric offset
@@ -124,20 +129,6 @@ export function parseIxdtf(input: string): ZonedValue {
   return { dateTime, timeZone };
 }
 
-/**
- * Parse any stored Dato value (legacy IXDTF string or current JSON object)
- * back into `{ dateTime, timeZone }`.
- *
- * Accepts several legacy shapes and prefers explicit fields.
- *
- * @param input - Unknown value from the field
- * @returns `{ dateTime, timeZone }` with `null` fields if parsing fails
- * @example
- * ```ts
- * parseDatoValue({ zone: 'Europe/Rome', dateTime: '2025-01-01T10:00:00+01:00' });
- * // { dateTime: '2025-01-01T10:00:00', timeZone: 'Europe/Rome' }
- * ```
- */
 function extractStringField(
   record: Record<string, unknown>,
   key: string,
@@ -146,6 +137,13 @@ function extractStringField(
   return typeof value === 'string' ? value : null;
 }
 
+/**
+ * Current/primary shape: explicit `zone` + `dateTime` (ISO, offset optional).
+ * Any trailing offset is stripped so only the wall-clock portion is retained.
+ *
+ * @param record - The field's parsed JSON object
+ * @returns `{ dateTime, timeZone }`, or `null` if `zone` or `dateTime` is absent
+ */
 function parseFromExplicitFields(
   record: Record<string, unknown>,
 ): ZonedValue | null {
@@ -158,6 +156,13 @@ function parseFromExplicitFields(
   return { dateTime: m ? ensureSeconds(m[1]) : null, timeZone: zone };
 }
 
+/**
+ * Legacy shape: separate `date` + `time_24hr` (or the older `time`) plus `zone`,
+ * joined into a single wall-clock `dateTime` string.
+ *
+ * @param record - The field's parsed JSON object
+ * @returns `{ dateTime, timeZone }`, or `null` if any required field is missing
+ */
 function parseFromSeparateDateTimeFields(
   record: Record<string, unknown>,
 ): ZonedValue | null {
@@ -172,6 +177,13 @@ function parseFromSeparateDateTimeFields(
   return { dateTime: ensureSeconds(`${date}T${resolvedTime}`), timeZone: zone };
 }
 
+/**
+ * Legacy shape: a single IXDTF string under `zonedDateTime`. Delegates to
+ * {@link parseIxdtf}.
+ *
+ * @param record - The field's parsed JSON object
+ * @returns Parsed `{ dateTime, timeZone }`, or `null` if the field is absent
+ */
 function parseFromEmbeddedIxdtf(
   record: Record<string, unknown>,
 ): ZonedValue | null {
@@ -179,6 +191,22 @@ function parseFromEmbeddedIxdtf(
   return ixdtf ? parseIxdtf(ixdtf) : null;
 }
 
+/**
+ * Parse a stored Dato field value into `{ dateTime, timeZone }`.
+ *
+ * Only objects are handled — the field persists a JSON object, so any non-object
+ * input yields `{ null, null }`. Each known shape is tried in priority order:
+ * explicit `zone`/`dateTime` fields, then separate `date`/`time_24hr` (legacy
+ * `time`) fields, then an embedded IXDTF string in `zonedDateTime`.
+ *
+ * @param input - Parsed JSON value from the field (unknown shape)
+ * @returns `{ dateTime, timeZone }`, with `null` fields when nothing matches
+ * @example
+ * ```ts
+ * parseDatoValue({ zone: 'Europe/Rome', dateTime: '2025-01-01T10:00:00+01:00' });
+ * // { dateTime: '2025-01-01T10:00:00', timeZone: 'Europe/Rome' }
+ * ```
+ */
 export function parseDatoValue(input: unknown): ZonedValue {
   if (!input || typeof input !== 'object') {
     return { dateTime: null, timeZone: null };
@@ -191,6 +219,68 @@ export function parseDatoValue(input: unknown): ZonedValue {
     parseFromSeparateDateTimeFields(record) ??
     parseFromEmbeddedIxdtf(record) ?? { dateTime: null, timeZone: null }
   );
+}
+
+/**
+ * Outcome of reading a raw stored field value: either a usable
+ * {@link ZonedValue} (including the legitimately-empty `{ null, null }`), or a
+ * fatal failure carrying the original `raw` value so the caller can display it.
+ */
+export type StoredFieldResult =
+  | { ok: true; value: ZonedValue }
+  | { ok: false; raw: unknown };
+
+/**
+ * Read a raw DatoCMS field value into a {@link ZonedValue}, distinguishing a
+ * legitimately-empty field from genuinely unreadable content.
+ *
+ * The field persists a JSON object string, so an unset field, `null`, `''`, or
+ * `{}` are all normal "no value" states and resolve to empty fields. Anything
+ * else that cannot be mapped to a value — non-JSON text, a JSON primitive, or a
+ * non-empty object of unrecognized shape — fails with `{ ok: false }` so the
+ * caller can surface it instead of silently discarding the stored data.
+ *
+ * @param raw - The value from `ctx.formValues[fieldPath]`
+ * @returns `{ ok: true, value }` on success, or `{ ok: false, raw }` on failure
+ * @example
+ * ```ts
+ * parseStoredFieldValue('{"zone":"Europe/Rome","dateTime":"2025-01-01T10:00:00+01:00"}');
+ * // { ok: true, value: { dateTime: '2025-01-01T10:00:00', timeZone: 'Europe/Rome' } }
+ * parseStoredFieldValue('not json{');
+ * // { ok: false, raw: 'not json{' }
+ * ```
+ */
+export function parseStoredFieldValue(raw: unknown): StoredFieldResult {
+  const empty: ZonedValue = { dateTime: null, timeZone: null };
+
+  // Unset or blank field → normal empty editor.
+  if (raw == null || (typeof raw === 'string' && raw.trim() === '')) {
+    return { ok: true, value: empty };
+  }
+
+  // The field stores a JSON string; tolerate an already-parsed object too.
+  let parsed: unknown = raw;
+  if (typeof raw === 'string') {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return { ok: false, raw };
+    }
+  }
+
+  // `null` and `{}` are the canonical "no value" payloads.
+  if (parsed === null) return { ok: true, value: empty };
+  if (typeof parsed !== 'object') return { ok: false, raw };
+  if (Object.keys(parsed as Record<string, unknown>).length === 0) {
+    return { ok: true, value: empty };
+  }
+
+  // Non-empty object: accept only if a date or zone can be recovered.
+  const value = parseDatoValue(parsed);
+  if (value.dateTime == null && value.timeZone == null) {
+    return { ok: false, raw };
+  }
+  return { ok: true, value };
 }
 
 /**
@@ -216,7 +306,7 @@ export function parseDatoValue(input: unknown): ZonedValue {
  * //   time_24hr: '10:00:00',
  * //   time_12hr: '10:00:00',
  * //   ampm: 'am',
- * //   timestamp: '1735725600'
+ * //   timestamp: '1735722000'
  * // }
  * ```
  */

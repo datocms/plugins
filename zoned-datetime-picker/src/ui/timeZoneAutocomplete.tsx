@@ -66,7 +66,7 @@ function renderZoneOptionItem(
       {globe}
       {flag}
       {prefix}
-      <Box marginX={1}>
+      <Box sx={{ marginX: 1 }}>
         <strong>{opt.tz}</strong>
       </Box>
       <Box
