@@ -1,84 +1,77 @@
 .Plugin {
-  border: 1px solid var(--color--border);
   overflow: hidden;
+  border: 1px solid var(--color--border);
   border-radius: 4px;
-  background-color: var(--color--surface-muted);
 }
 
 .Plugin__bar {
   display: flex;
-  color: var(--color--ink-subtle);
-  line-height: 1;
   align-items: flex-end;
-  flex-wrap: wrap;
-  padding-right: 5px;
-}
-@media (min-width: 700px) {
-  .Plugin__bar {
-    flex-wrap: nowrap;
-  }
+  padding: 0 5px;
+  line-height: 1;
+  color: var(--color--ink-subtle);
+  background: var(--color--surface-raised);
+  border-bottom: 1px solid var(--color--border);
 }
 
 .Plugin__bar__options {
   display: flex;
-  justify-content: center;
-  align-items: flex-end;
-  flex-wrap: nowrap;
+  position: relative;
+  white-space: nowrap;
   overflow-x: auto;
-  -ms-overflow-style: none;
+  flex: 1;
+  -webkit-overflow-scrolling: touch;
+  -ms-overflow-style: -ms-autohiding-scrollbar;
   scrollbar-width: none;
-  width: 100%;
 }
 
 .Plugin__bar__options::-webkit-scrollbar {
   display: none;
 }
-@media (min-width: 700px) {
-  .Plugin__bar__options {
-    width: auto;
-  }
-}
 
 .Plugin__bar__status {
   align-self: center;
-  margin-left: 20px;
-  margin-top: 5px;
+  padding: 5px;
+  text-wrap: nowrap;
 }
 
 .Plugin__bar__option {
-  all: inherit;
-  margin-top: 5px;
-  padding: 15px 15px 10px;
-  background-color: var(--color--surface-muted);
-  border-radius: 4px 4px 0 0;
-  border: 0;
-  margin-left: 5px;
-  box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.1) inset;
-  display: block;
-  text-decoration: none;
-  color: var(--color--ink-subtle);
+  position: relative;
+  z-index: 2;
+  align-items: center;
+  width: auto;
+  padding: 13px 4px 11px;
+  margin-right: 10px;
+  color: var(--color--ink);
   white-space: nowrap;
-}
+  text-decoration: none;
+  border-bottom: 4px solid transparent;
+  background: none;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  cursor: pointer;
+  font: inherit;
 
-.Plugin__bar__actions {
-  text-align: center;
-  align-self: center;
-  order: -1;
-  flex-basis: 100%;
-  margin: 5px auto 0;
-}
-@media (min-width: 700px) {
-  .Plugin__bar__actions {
-    order: initial;
-    flex: 1;
-    text-align: right;
+  &:hover,
+  &:focus {
+    border-bottom-color: var(--color--surface-muted);
   }
 }
 
+.Plugin__bar__actions {
+  align-self: center;
+  padding: 5px;
+  text-wrap: nowrap;
+}
+
 .Plugin__bar__option.is-active {
-  box-shadow: none;
-  color: var(--color--ink);
-  background-color: var(--color--surface);
+  border-bottom-color: var(--color--selected--border);
+
+  &:hover,
+  &:focus {
+    border-bottom-color: var(--color--selected--border);
+  }
 }
 
 .Plugin__content {

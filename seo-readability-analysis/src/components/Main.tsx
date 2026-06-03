@@ -376,20 +376,20 @@ const Main = ({ ctx }: PropTypes) => {
         </div>
         <div className="Plugin__bar__status">
           {workerError ? (
-            <p className="Plugin__bar__status-error">
+            <span className="Plugin__bar__status-error">
               Error loading web worker! More info on console
-            </p>
+            </span>
           ) : !isWorkerReady ? (
-            <p>Loading web worker...</p>
+            <span>Loading web worker...</span>
           ) : pageFetchingInProgress ? (
-            <p>Extracting content...</p>
+            <span>Extracting content...</span>
           ) : analysisInProgress ? (
-            <p>Analyzing content...</p>
+            <span>Analyzing content...</span>
           ) : (
             (pageError || analysisError) && (
-              <p className="Plugin__bar__status-error">
+              <span className="Plugin__bar__status-error">
                 Error running analysis! More info on console
-              </p>
+              </span>
             )
           )}
         </div>

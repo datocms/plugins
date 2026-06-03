@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-seo-readability-analysis",
   "homepage": "https://github.com/datocms/plugins/tree/master/seo-readability-analysis#readme",
-  "version": "2.2.0-alpha.3",
+  "version": "2.2.1",
   "description": "Run SEO/Readability analysis using YoastSEO.js on your frontend everytime you make a change to the content of a record",
   "author": "DatoCMS <support@datocms.com>",
   "license": "GPLv3",
@@ -28,8 +28,8 @@
   },
   "dependencies": {
     "@types/lodash-es": "^4.17.12",
-    "datocms-plugin-sdk": "2.2.0-alpha.1",
-    "datocms-react-ui": "2.2.0-alpha.1",
+    "datocms-plugin-sdk": "2.2.1",
+    "datocms-react-ui": "2.2.1",
     "final-form": "^5.0.0",
     "lodash-es": "^4.17.23",
     "react": "^19.2.4",
@@ -68,7 +68,7 @@
     }
   },
   "engines": {
-    "node": ">=20"
+    "node": "^20.0.0 || >=22.0.0"
   },
   "type": "module"
 }
