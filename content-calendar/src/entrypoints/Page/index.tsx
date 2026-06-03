@@ -17,13 +17,10 @@ import {
   Dropdown,
   DropdownMenu,
   DropdownOption,
-  SidebarLeftArrowIcon,
-  SidebarPanel,
-  SidebarRightArrowIcon,
   Toolbar,
-  ToolbarButton,
   ToolbarStack,
   ToolbarTitle,
+  VerticalSplit,
 } from 'datocms-react-ui';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActiveModelsPanel } from '../../components/ActiveModelsPanel';
@@ -57,7 +54,7 @@ export default function Page({ ctx }: PropTypes) {
     `contentCalendarPlugin.${ctx.site.id}.${ctx.environment}.criteria`,
   );
 
-  const [isSidebarOpen, setSidebarOpen] = useState(true);
+  const [isSidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [items, setItems] = useState<SchemaTypes.Item[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const weekStartsOn = weekStartLocale(ctx.ui.locale);
@@ -72,10 +69,6 @@ export default function Page({ ctx }: PropTypes) {
 
   const handleCurr = useCallback(() => {
     setMonth(startOfMonth(new Date()));
-  }, []);
-
-  const handleToggleSidebar = useCallback(() => {
-    setSidebarOpen((x) => !x);
   }, []);
 
   const client = useMemo(() => {
@@ -143,87 +136,85 @@ export default function Page({ ctx }: PropTypes) {
         value={{ modelId: hoverModelId, setModelId: setHoverModelId }}
       >
         <div className={s.layout}>
-          {isSidebarOpen && (
-            <div className={s.layoutSidebar}>
-              <Toolbar>
-                <ToolbarStack />
-                <ToolbarButton onClick={handleToggleSidebar}>
-                  <SidebarLeftArrowIcon />
-                </ToolbarButton>
+          <VerticalSplit
+            primaryPane="right"
+            size={300}
+            minSize={220}
+            isSecondaryCollapsed={isSidebarCollapsed}
+            onSecondaryToggle={setSidebarCollapsed}
+          >
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%', borderRight: '1px solid var(--color--border)' }}>
+              <Toolbar style={{ height: '54px' }}>
+                <ToolbarStack stackSize="l">
+                  <ToolbarTitle>Models</ToolbarTitle>
+                </ToolbarStack>
               </Toolbar>
-              <SidebarPanel title="Models" startOpen noPadding>
-                <ActiveModelsPanel
-                  activeModels={activeModels}
-                  onChange={(newActiveModels) => {
-                    setActiveModels(newActiveModels);
-                  }}
-                />
-              </SidebarPanel>
-            </div>
-          )}
-          <div className={s.layoutMain}>
-            <Toolbar>
-              {!isSidebarOpen && (
-                <ToolbarButton onClick={handleToggleSidebar}>
-                  <SidebarRightArrowIcon />
-                </ToolbarButton>
-              )}
-              <ToolbarStack stackSize="l">
-                <ToolbarTitle>{format(month, 'LLLL yyyy')}</ToolbarTitle>
-                <div style={{ flex: '1' }} />
-                <Dropdown
-                  renderTrigger={({ open, onClick }) => (
-                    <button
-                      type="button"
-                      onClick={onClick}
-                      className={s.filter}
-                    >
-                      Show records by:{' '}
-                      <strong>{criteriaLabel[criteria]}</strong>{' '}
-                      {open ? <CaretUpIcon /> : <CaretDownIcon />}
-                    </button>
-                  )}
-                >
-                  <DropdownMenu>
-                    {allCriteria.map((c) => (
-                      <DropdownOption
-                        active={criteria === c}
-                        key={c}
-                        onClick={() => {
-                          setCriteria(c);
-                        }}
-                      >
-                        {criteriaLabel[c]}
-                      </DropdownOption>
-                    ))}
-                  </DropdownMenu>
-                </Dropdown>
-                <ButtonGroup>
-                  <ButtonGroupButton onClick={handlePrev}>
-                    Prev month
-                  </ButtonGroupButton>
-                  <ButtonGroupButton
-                    onClick={handleCurr}
-                    selected={isThisMonth(month)}
-                  >
-                    Today
-                  </ButtonGroupButton>
-                  <ButtonGroupButton onClick={handleNext}>
-                    Next month
-                  </ButtonGroupButton>
-                </ButtonGroup>
-              </ToolbarStack>
-            </Toolbar>
-            <div className={s.layoutCal}>
-              <CalendarGrid
-                month={month}
-                criteria={criteria}
-                isLoading={isLoading}
-                items={items}
-                matrix={matrix}
+              <ActiveModelsPanel
+                activeModels={activeModels}
+                onChange={(newActiveModels) => {
+                  setActiveModels(newActiveModels);
+                }}
               />
             </div>
-          </div>
+            <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+              <Toolbar style={{ height: '54px' }}>
+                <ToolbarStack stackSize="l">
+                  <ToolbarTitle>{format(month, 'LLLL yyyy')}</ToolbarTitle>
+                  <div style={{ flex: '1' }} />
+                  <Dropdown
+                    renderTrigger={({ open, onClick }) => (
+                      <button
+                        type="button"
+                        onClick={onClick}
+                        className={s.filter}
+                      >
+                        Show records by:{' '}
+                        <strong>{criteriaLabel[criteria]}</strong>{' '}
+                        {open ? <CaretUpIcon /> : <CaretDownIcon />}
+                      </button>
+                    )}
+                  >
+                    <DropdownMenu>
+                      {allCriteria.map((c) => (
+                        <DropdownOption
+                          active={criteria === c}
+                          key={c}
+                          onClick={() => {
+                            setCriteria(c);
+                          }}
+                        >
+                          {criteriaLabel[c]}
+                        </DropdownOption>
+                      ))}
+                    </DropdownMenu>
+                  </Dropdown>
+                  <ButtonGroup>
+                    <ButtonGroupButton onClick={handlePrev}>
+                      Prev month
+                    </ButtonGroupButton>
+                    <ButtonGroupButton
+                      onClick={handleCurr}
+                      selected={isThisMonth(month)}
+                    >
+                      Today
+                    </ButtonGroupButton>
+                    <ButtonGroupButton onClick={handleNext}>
+                      Next month
+                    </ButtonGroupButton>
+                  </ButtonGroup>
+                </ToolbarStack>
+              </Toolbar>
+              <div className={s.layoutCal}>
+                <CalendarGrid
+                  month={month}
+                  criteria={criteria}
+                  isLoading={isLoading}
+                  items={items}
+                  matrix={matrix}
+                />
+              </div>
+            </div>
+          </VerticalSplit>
         </div>
       </HoverItemContext.Provider>
     </Canvas>
