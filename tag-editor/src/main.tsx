@@ -1,13 +1,13 @@
 import { connect } from 'datocms-plugin-sdk';
 import FieldExtension from './entrypoints/FieldExtension';
-import { isValidParams, normalizeParams } from './types';
+import { type Config, isValidParams, normalizeParams } from './types';
 import { render } from './utils/render';
 import 'datocms-react-ui/styles.css';
 import ConfigScreen from './entrypoints/ConfigScreen';
 
 connect({
   async onBoot(ctx) {
-    if (isValidParams(ctx.plugin.attributes.parameters)) {
+    if (isValidParams(ctx.plugin.attributes.parameters as Config)) {
       return;
     }
 
@@ -36,7 +36,7 @@ connect({
     ).some((x) => !!x);
 
     ctx.updatePluginParameters(
-      normalizeParams(ctx.plugin.attributes.parameters),
+      normalizeParams(ctx.plugin.attributes.parameters as Config),
     );
 
     if (someUpgraded) {
@@ -54,7 +54,7 @@ connect({
     ];
   },
   overrideFieldExtensions(field, { plugin }) {
-    const parameters = normalizeParams(plugin.attributes.parameters);
+    const parameters = normalizeParams(plugin.attributes.parameters as Config);
 
     const foundRule = parameters.autoApplyRules.find(
       (rule) =>

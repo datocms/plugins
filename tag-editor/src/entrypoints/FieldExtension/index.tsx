@@ -69,14 +69,14 @@ export default function FieldExtension({ ctx }: Props) {
     tags = undefined;
   }
 
-  const handleAddition = (inputValue: TagValue) => {
+  const handleAddition = (inputValue: Tag) => {
     if (!tags) {
       return;
     }
 
     ctx.setFieldValue(
       ctx.fieldPath,
-      serialize([...tags, inputValue], fieldType),
+      serialize([...tags, inputValue as TagValue], fieldType),
     );
   };
 
@@ -90,7 +90,7 @@ export default function FieldExtension({ ctx }: Props) {
   };
 
   const handleDrag = (
-    inputValue: TagValue,
+    inputValue: Tag,
     currPos: number,
     newPos: number,
   ) => {
@@ -100,7 +100,7 @@ export default function FieldExtension({ ctx }: Props) {
 
     const newValue = [...tags];
     newValue.splice(currPos, 1);
-    newValue.splice(newPos, 0, inputValue);
+    newValue.splice(newPos, 0, inputValue as TagValue);
 
     ctx.setFieldValue(ctx.fieldPath, serialize(newValue, fieldType));
   };

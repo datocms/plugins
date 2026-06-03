@@ -14,7 +14,7 @@ import arrayMutators from 'final-form-arrays';
 import type { FieldRenderProps, FormRenderProps } from 'react-final-form';
 import { Field, Form as FormHandler } from 'react-final-form';
 import { FieldArray } from 'react-final-form-arrays';
-import type { GroupBase } from 'react-select';
+type GroupBase<Option> = { readonly options: readonly Option[] };
 import type { AutoApplyRule, Config } from '../../types';
 import s from './styles.module.css';
 
