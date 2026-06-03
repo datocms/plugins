@@ -32,7 +32,7 @@
 }
 
 .toggler input[type="checkbox"] {
-  accent-color: var(--color--accent--surface);
+  accent-color: var(--color--primary--surface-secondary);
 }
 
 .color {
@@ -50,6 +50,6 @@
 }
 
 .modelActive {
-  background: var(--color--tinted--surface);
+  background: var(--color--primary-soft--surface);
   font-weight: bold;
 }

@@ -24,7 +24,7 @@
 }
 
 .error {
-  border-color: var(--color--feedback-fail--border);
+  border-color: var(--color--danger-soft--border);
 }
 
 .iconName {

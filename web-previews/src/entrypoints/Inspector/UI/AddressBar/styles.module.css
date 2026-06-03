@@ -18,16 +18,16 @@
 }
 
 .root.error {
-  border-color: var(--color--feedback-fail--border);
+  border-color: var(--color--danger-soft--border);
 }
 
 .root.error:hover {
-  border-color: var(--color--feedback-fail--border);
+  border-color: var(--color--danger-soft--border);
 }
 
 .root.error:focus-within {
-  border-color: var(--color--feedback-fail--border);
-  box-shadow: 0 0 0 3px var(--color--feedback-fail--outline);
+  border-color: var(--color--danger-soft--border);
+  box-shadow: 0 0 0 3px var(--color--danger-soft--outline);
 }
 
 .controls {
@@ -50,7 +50,7 @@
 }
 
 .refreshButton:hover {
-  background: var(--color--tinted--surface);
+  background: var(--color--primary-soft--surface);
   color: var(--color--ink);
 }
 

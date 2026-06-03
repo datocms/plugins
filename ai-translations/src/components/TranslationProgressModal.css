@@ -96,7 +96,7 @@
 
 .TranslationProgressModal__update-item--completed
   .TranslationProgressModal__update-status {
-  color: var(--color--feedback-success--ink);
+  color: var(--color--success-soft--ink);
   font-weight: 700;
 }
 
@@ -130,7 +130,7 @@
 
 .TranslationProgressModal__errors {
   padding: 12px;
-  background-color: var(--color--feedback-fail--outline);
+  background-color: var(--color--danger-soft--outline);
   color: var(--color--danger--ink);
   border-radius: 4px;
   margin-bottom: 20px;

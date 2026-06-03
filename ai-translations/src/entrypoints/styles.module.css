@@ -212,7 +212,7 @@
   display: inline-block;
   cursor: help;
   margin-left: 8px;
-  color: var(--color--feedback-warning--ink);
+  color: var(--color--warning-soft--ink);
 }
 
 /* Standard tooltip that appears below the info icon */

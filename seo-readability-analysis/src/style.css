@@ -215,7 +215,7 @@
 }
 
 .Plugin__mark.with-highlights .yoast-text-mark {
-  background: var(--color--feedback-warning--surface);
+  background: var(--color--warning-soft--surface);
   padding: 0.1em 0.2em;
   border-radius: 3px;
 }

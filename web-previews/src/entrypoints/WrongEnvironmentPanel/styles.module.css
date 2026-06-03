@@ -29,7 +29,7 @@
 
 .icon {
   font-size: 48px;
-  color: var(--color--feedback-warning--ink);
+  color: var(--color--warning-soft--ink);
 }
 
 .title {
@@ -51,7 +51,7 @@
 }
 
 .goodNews {
-  color: var(--color--feedback-success--ink);
+  color: var(--color--success-soft--ink);
   font-weight: 600;
 }
 

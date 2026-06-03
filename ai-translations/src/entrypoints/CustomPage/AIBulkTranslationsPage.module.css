@@ -99,9 +99,9 @@
   border-radius: 999px;
   font-size: 12px;
   font-weight: 500;
-  background: var(--color--accent--surface);
-  color: var(--color--accent--ink);
-  border: 1px solid var(--color--accent--ink);
+  background: var(--color--primary--surface-secondary);
+  color: var(--color--primary--ink);
+  border: 1px solid var(--color--primary--ink);
 }
 
 .actions {
@@ -117,12 +117,12 @@
 }
 
 .statusReady {
-  color: var(--color--accent--ink);
+  color: var(--color--primary--ink);
   font-weight: 600;
 }
 
 .statusPending {
-  color: var(--color--feedback-warning--ink);
+  color: var(--color--warning-soft--ink);
   font-weight: 600;
 }
 
