@@ -56,7 +56,8 @@ export default function ColorInput({ value, onChange }: ColorInputProps) {
             border: '1px solid var(--color--border)',
           },
           label: {
-            color: 'var(--color--ink-subtle)',
+            color: 'white',
+            textShadow: '1px 1px 4px black',
           },
         },
       }}
