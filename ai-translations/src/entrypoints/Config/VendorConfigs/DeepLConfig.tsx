@@ -3,7 +3,7 @@
  * Configuration component for DeepL vendor settings.
  */
 
-import {Button, Section, SelectField, SwitchField, TextField} from 'datocms-react-ui';
+import {Button, FieldGroup, Section, SelectField, SwitchField, TextField} from 'datocms-react-ui';
 import {useMemo, useState} from 'react';
 import type {ApiTypes} from '@datocms/cma-client-browser';
 import {RESPONSE_PREVIEW_MAX_LENGTH} from '../../../utils/constants';
@@ -285,8 +285,7 @@ export default function DeepLConfig({
 
   return (
     <>
-      {/* DeepL API Key */}
-      <div className={s.fieldSpacing}>
+      <FieldGroup>
         <TextField
           required
           name="deeplApiKey"
@@ -297,7 +296,7 @@ export default function DeepLConfig({
           placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx:fx"
           error={testApiKeyStatus === 'error' ? testApiKeyMessage : undefined}
         />
-        <div className={`${s.switchField} ${s.buttonRow}`}>
+        <div className={s.buttonRow}>
           <Button
             buttonType="muted"
             disabled={isTestingApiKey}
@@ -307,14 +306,10 @@ export default function DeepLConfig({
           </Button>
         </div>
         {testApiKeyStatus === 'success' && testApiKeyMessage && (
-          <div className={s.inlineStatus} style={{ color: '#237804' }}>
+          <div className={s.inlineStatus} style={{ color: 'var(--color--ink-success)' }}>
             {testApiKeyMessage}
           </div>
         )}
-      </div>
-
-      {/* DeepL Endpoint toggle + Formality */}
-      <div className={s.switchField}>
         <SwitchField
           name="deeplUseFree"
           id="deeplUseFree"
@@ -327,16 +322,10 @@ export default function DeepLConfig({
           value={deeplUseFree}
           onChange={(val) => setDeeplUseFree(val)}
         />
-      </div>
-
-      <div className={s.fieldSpacing}>
-        <label className={s.label} htmlFor="deeplFormality">
-          Formality
-        </label>
         <SelectField
           name="deeplFormality"
           id="deeplFormality"
-          label=""
+          label="Formality"
           value={{ label: deeplFormality, value: deeplFormality }}
           selectInputProps={{
             options: [
@@ -354,100 +343,90 @@ export default function DeepLConfig({
             }
           }}
         />
-      </div>
+      </FieldGroup>
 
-      <Section title="Tag Settings"  collapsible={{isOpen: showTags, onToggle: () => setShowTags((v) => !v)}}>
-        {/* Preserve formatting */}
-        <div className={s.switchField}>
-          <SwitchField
+      <div className={s.sectionSpacing}>
+        <Section title="Tag Settings" collapsible={{isOpen: showTags, onToggle: () => setShowTags((v) => !v)}}>
+          <FieldGroup>
+            <SwitchField
               name="deeplPreserveFormatting"
               id="deeplPreserveFormatting"
               label="Preserve formatting"
               value={deeplPreserveFormatting}
               onChange={setDeeplPreserveFormatting}
-          />
-        </div>
-
-        {/* Advanced tags */}
-        <div className={s.fieldSpacing}>
-          <TextField
+            />
+            <TextField
               name="deeplIgnoreTags"
               id="deeplIgnoreTags"
               label="Ignore tags (CSV)"
               value={deeplIgnoreTags}
               onChange={setDeeplIgnoreTags}
-          />
-        </div>
-        <div className={s.fieldSpacing}>
-          <TextField
+            />
+            <TextField
               name="deeplNonSplittingTags"
               id="deeplNonSplittingTags"
               label="Non-splitting tags (CSV)"
               value={deeplNonSplittingTags}
               onChange={setDeeplNonSplittingTags}
-          />
-        </div>
-        <div className={s.fieldSpacing}>
-          <TextField
+            />
+            <TextField
               name="deeplSplittingTags"
               id="deeplSplittingTags"
               label="Splitting tags (CSV)"
               value={deeplSplittingTags}
               onChange={setDeeplSplittingTags}
-          />
-        </div>
-      </Section>
+            />
+          </FieldGroup>
+        </Section>
+      </div>
 
-
-      <Section title="Glossary Settings"  collapsible={{isOpen: showGlossary, onToggle: () => setShowGlossary((v) => !v)}}>
-        {/* Glossary settings */}
-        <div className={s.fieldSpacing}>
-          <SelectField
-            name="deeplGlossaryId"
-            id="deeplGlossaryId"
-            label="Default glossary"
-            hint="Applied to all translations unless overridden by a language pair mapping below"
-            placeholder={
-              fetchStatus === 'loading'
-                ? 'Loading glossaries...'
-                : 'None (no default glossary)'
-            }
-            value={defaultGlossaryValue}
-            error={defaultGlossaryError}
-            selectInputProps={{
-              options: glossaryOptions,
-              isClearable: true,
-              isLoading: fetchStatus === 'loading',
-            }}
-            onChange={(nv) => {
-              if (!Array.isArray(nv)) {
-                const sel = nv as SelectOption | null;
-                setDeeplGlossaryId(sel?.value ?? '');
+      <div className={s.sectionSpacing}>
+        <Section title="Glossary Settings" collapsible={{isOpen: showGlossary, onToggle: () => setShowGlossary((v) => !v)}}>
+          <FieldGroup>
+            <SelectField
+              name="deeplGlossaryId"
+              id="deeplGlossaryId"
+              label="Default glossary"
+              hint="Applied to all translations unless overridden by a language pair mapping below"
+              placeholder={
+                fetchStatus === 'loading'
+                  ? 'Loading glossaries...'
+                  : 'None (no default glossary)'
               }
-            }}
-          />
-          {fetchStatus === 'error' && fetchError && (
-            <div
-              className={s.inlineStatus}
-              style={{ color: '#cf1322', marginTop: 4 }}
-            >
-              {fetchError}
-            </div>
-          )}
-        </div>
-
-        <div className={s.fieldSpacing}>
-          <GlossaryPairEditor
-            value={deeplGlossaryPairs}
-            onChange={setDeeplGlossaryPairs}
-            siteLocales={siteLocales}
-            glossaries={glossaries}
-            fetchStatus={fetchStatus}
-            fetchError={fetchError}
-            openConfirm={openConfirm}
-          />
-        </div>
-      </Section>
+              value={defaultGlossaryValue}
+              error={defaultGlossaryError}
+              selectInputProps={{
+                options: glossaryOptions,
+                isClearable: true,
+                isLoading: fetchStatus === 'loading',
+              }}
+              onChange={(nv) => {
+                if (!Array.isArray(nv)) {
+                  const sel = nv as SelectOption | null;
+                  setDeeplGlossaryId(sel?.value ?? '');
+                }
+              }}
+            />
+            {fetchStatus === 'error' && fetchError && (
+              <div
+                className={s.inlineStatus}
+                style={{ color: 'var(--color--ink-danger)' }}
+              >
+                {fetchError}
+              </div>
+            )}
+            <GlossaryPairEditor
+              value={deeplGlossaryPairs}
+              onChange={setDeeplGlossaryPairs}
+              siteLocales={siteLocales}
+              glossaries={glossaries}
+              fetchStatus={fetchStatus}
+              fetchError={fetchError}
+              openConfirm={openConfirm}
+            />
+          </FieldGroup>
+        </Section>
+      </div>
     </>
   );
 }

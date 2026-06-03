@@ -3,8 +3,7 @@
  * Configuration component for Anthropic Claude vendor settings.
  */
 
-import { TextField } from 'datocms-react-ui';
-import s from '../../styles.module.css';
+import { FieldGroup, TextField } from 'datocms-react-ui';
 import ModelSelectField from './ModelSelectField';
 
 export interface AnthropicConfigProps {
@@ -23,30 +22,24 @@ export default function AnthropicConfig({
   listOfAnthropicModels,
 }: AnthropicConfigProps) {
   return (
-    <>
-      {/* Anthropic API Key */}
-      <div className={s.fieldSpacing}>
-        <TextField
-          required
-          name="anthropicApiKey"
-          id="anthropicApiKey"
-          label="Anthropic API Key"
-          value={anthropicApiKey}
-          onChange={(v) => setAnthropicApiKey(v)}
-          placeholder="sk-ant-..."
-        />
-      </div>
-
-      {/* Claude Model - DRY-003: Using shared component */}
+    <FieldGroup>
+      <TextField
+        required
+        name="anthropicApiKey"
+        id="anthropicApiKey"
+        label="Anthropic API Key"
+        value={anthropicApiKey}
+        onChange={(v) => setAnthropicApiKey(v)}
+        placeholder="sk-ant-..."
+      />
       <ModelSelectField
         id="anthropicModel"
         label="Claude Model"
+        hint="Recommended: claude-haiku-4-5-latest"
         value={anthropicModel}
         onChange={setAnthropicModel}
         models={listOfAnthropicModels}
-        useStyledWrapper={false}
       />
-      <p className={s.hint}>Recommended: claude-haiku-4-5-latest</p>
-    </>
+    </FieldGroup>
   );
 }

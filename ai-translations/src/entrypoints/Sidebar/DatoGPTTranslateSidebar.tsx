@@ -445,7 +445,7 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
                   }}
                   type="button"
                 >
-                  <ChatBubble index={index} bubble={bubble} theme={ctx.theme} />
+                  <ChatBubble index={index} bubble={bubble} />
                 </button>
               ))}
               {showTimer && (
@@ -468,9 +468,9 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
                       fontSize: '16px',
                       lineHeight: '1.4',
                       letterSpacing: '0.01em',
-                      boxShadow: '0 2px 4px rgba(0, 0, 0, 0.1)',
+                      boxShadow: 'var(--shadow--raised)',
                       fontWeight: 600,
-                      border: `1px solid ${ctx.theme.semiTransparentAccentColor}`,
+                      border: '1px solid var(--color--primary-soft--border)',
                       textAlign: 'center',
                     }}
                   >
@@ -482,7 +482,7 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
                         display: 'flex',
                         alignItems: 'center',
                         textAlign: 'center',
-                        color: ctx.theme.accentColor,
+                        color: 'var(--color--ink-primary)',
                       }}
                     >
                       <MdCelebration size={20} />
@@ -496,7 +496,7 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
                       style={{
                         display: 'flex',
                         alignItems: 'center',
-                        color: ctx.theme.accentColor,
+                        color: 'var(--color--ink-primary)',
                       }}
                     >
                       <MdCelebration size={20} />
@@ -506,7 +506,7 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
                     style={{
                       width: '100%',
                       height: '6px',
-                      backgroundColor: '#e6e6e6',
+                      backgroundColor: 'var(--color--progress--track)',
                       borderRadius: '8px',
                       overflow: 'hidden',
                     }}
@@ -515,7 +515,7 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
                       style={{
                         width: '100%',
                         height: '100%',
-                        backgroundColor: ctx.theme.accentColor,
+                        backgroundColor: 'var(--color--progress--fill)',
                         transformOrigin: 'left',
                       }}
                       initial={{ scaleX: 1 }}

@@ -59,10 +59,10 @@ export default class ErrorBoundary extends Component<
 
       return (
         <div style={{ padding: '16px', textAlign: 'center' }}>
-          <h3 style={{ marginBottom: '8px', color: '#dc3545' }}>
+          <h3 style={{ marginBottom: '8px', color: 'var(--color--ink-danger)' }}>
             Something went wrong
           </h3>
-          <p style={{ marginBottom: '16px', color: '#6c757d' }}>
+          <p style={{ marginBottom: '16px', color: 'var(--color--ink-muted)' }}>
             An error occurred while rendering this component.
           </p>
           {this.state.error && (
@@ -70,7 +70,7 @@ export default class ErrorBoundary extends Component<
               style={{
                 marginBottom: '16px',
                 textAlign: 'left',
-                background: '#f8f9fa',
+                background: 'var(--color--surface-muted)',
                 padding: '8px',
                 borderRadius: '4px',
               }}

@@ -234,7 +234,7 @@ export default function GlossaryPairEditor({
       {fetchStatus === 'error' && fetchError && (
         <div
           className={s.inlineStatus}
-          style={{ color: '#cf1322', marginBottom: 8 }}
+          style={{ color: 'var(--color--ink-danger)', marginBottom: 8 }}
         >
           {fetchError}
         </div>

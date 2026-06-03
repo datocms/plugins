@@ -152,6 +152,15 @@
   color: var(--color--ink);
 }
 
+.textarea:hover {
+  border-color: var(--color--border-hover);
+}
+
+.textarea:focus {
+  border-color: var(--color--focus--border);
+  box-shadow: 0 0 0 4px var(--color--focus--outline);
+}
+
 .label {
   color: var(--color--ink-subtle);
 }
@@ -180,6 +189,10 @@
   margin-bottom: 16px;
 }
 
+.sectionSpacing {
+  margin-top: var(--spacing-l);
+}
+
 .buttonRow {
   display: flex;
   align-items: center;
@@ -187,7 +200,7 @@
 }
 
 .exclusionRules {
-  border-left: 2px solid #e6f7ff;
+  border-left: 2px solid var(--color--border);
   padding-left: 16px;
   margin-left: 4px;
 }

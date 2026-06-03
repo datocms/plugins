@@ -23,8 +23,25 @@
   min-height: auto;
 }
 
+.bubbleContainer.error .bubble {
+  background-color: var(--color--danger-soft--surface);
+  color: var(--color--danger-soft--ink);
+  border-color: var(--color--danger-soft--border);
+}
+
+.bubbleStatusIcon {
+  color: var(--color--ink-primary);
+}
+
+.bubbleContainer.error .bubbleStatusIcon {
+  color: var(--color--ink-danger);
+}
+
 /* Main Bubble */
 .bubble {
+  background-color: var(--color--primary-soft--surface);
+  color: var(--color--primary-soft--ink);
+  border: 1px solid var(--color--primary-soft--border);
   position: relative;
   display: flex;
   align-items: center;
@@ -37,7 +54,7 @@
   font-size: 14px;
   line-height: 1.4;
   letter-spacing: 0.01em;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  box-shadow: var(--shadow--raised);
   cursor: pointer;
   width: 100%;
   box-sizing: border-box;
@@ -65,17 +82,18 @@
 }
 
 .pendingHint {
+  color: var(--color--ink-subtle);
   padding: 10px 14px;
   border-radius: 10px;
   font-size: 12px;
   width: 100%;
   position: relative;
   box-sizing: border-box;
-  background-color: rgba(114, 0, 196, 0.04) !important;
-  border: 1px solid rgba(114, 0, 196, 0.14) !important;
+  background-color: var(--color--primary-soft--surface) !important;
+  border: 1px solid var(--color--primary-soft--border) !important;
   margin-top: 0; /* flush with bubble above */
   margin-bottom: 12px; /* spacing from next bubble */
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  box-shadow: var(--shadow--ambient);
   /* Bubble-level pulse: more noticeable fade, no scale on text */
   animation: ai-pendingPulse 2.8s ease-in-out infinite;
   will-change: opacity, transform;
@@ -122,7 +140,7 @@
   top: -8px; /* Position it to connect with the bubble above */
   width: 2px;
   height: 24px; /* Fixed height to reach the streaming bubble */
-  background-color: rgba(0, 0, 0, 0.1);
+  background-color: var(--color--border);
   opacity: 0.5;
 }
 
@@ -146,8 +164,8 @@
   height: calc(1.5em * 2 + 16px);
   overflow: hidden;
   box-sizing: border-box;
-  background-color: rgba(114, 0, 196, 0.03) !important;
-  border: 1px solid rgba(114, 0, 196, 0.06) !important;
+  background-color: var(--color--primary-soft--surface) !important;
+  border: 1px solid var(--color--border) !important;
   transition: height 0.2s ease-out;
   margin-top: -6px;
 }
@@ -164,7 +182,7 @@
   transform: translateY(-50%);
   width: 3px;
   height: 40px; /* Increased height for better spacing */
-  background: rgba(114, 0, 196, 0.1);
+  background: var(--color--primary-soft--border);
   border-radius: 2px;
   opacity: 0;
   animation: fadeIn 0.2s ease-out 0.1s forwards;
@@ -179,8 +197,8 @@
   transform: translateY(-32px) rotate(45deg); /* Position relative to center */
   width: 6px;
   height: 6px;
-  border-left: 2px solid rgba(114, 0, 196, 0.1);
-  border-top: 2px solid rgba(114, 0, 196, 0.1);
+  border-left: 2px solid var(--color--primary-soft--border);
+  border-top: 2px solid var(--color--primary-soft--border);
   opacity: 0;
   animation: fadeIn 0.2s ease-out 0.2s forwards;
 }
@@ -194,8 +212,8 @@
   transform: translateY(26px) rotate(45deg); /* Position relative to center */
   width: 6px;
   height: 6px;
-  border-right: 2px solid rgba(114, 0, 196, 0.1);
-  border-bottom: 2px solid rgba(114, 0, 196, 0.1);
+  border-right: 2px solid var(--color--primary-soft--border);
+  border-bottom: 2px solid var(--color--primary-soft--border);
   opacity: 0;
   animation: fadeIn 0.2s ease-out 0.2s forwards;
   pointer-events: none;
@@ -256,7 +274,7 @@
   pointer-events: none;
   opacity: 1;
   transition: opacity 0.2s ease-out;
-  background: linear-gradient(transparent, rgba(114, 0, 196, 0.03)) !important;
+  background: linear-gradient(transparent, var(--color--primary-soft--surface)) !important;
 }
 
 .streamingBubble:hover .fadeGradient {

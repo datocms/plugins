@@ -15,8 +15,7 @@
  * If significant shared behavior emerges, consider extracting a generic component.
  */
 
-import { TextField } from 'datocms-react-ui';
-import s from '../../styles.module.css';
+import { FieldGroup, TextField } from 'datocms-react-ui';
 import ModelSelectField from './ModelSelectField';
 
 export interface OpenAIConfigProps {
@@ -35,29 +34,24 @@ export default function OpenAIConfig({
   listOfModels,
 }: OpenAIConfigProps) {
   return (
-    <>
-      {/* OpenAI API Key */}
-      <div className={s.fieldSpacing}>
-        <TextField
-          required
-          name="openAIAPIKey"
-          id="openAIAPIKey"
-          label="OpenAI API Key"
-          value={apiKey}
-          onChange={(newValue) => setApiKey(newValue)}
-          placeholder="sk-..."
-        />
-      </div>
-
-      {/* GPT Model select - DRY-003: Using shared component */}
+    <FieldGroup>
+      <TextField
+        required
+        name="openAIAPIKey"
+        id="openAIAPIKey"
+        label="OpenAI API Key"
+        value={apiKey}
+        onChange={(newValue) => setApiKey(newValue)}
+        placeholder="sk-..."
+      />
       <ModelSelectField
         id="gptModel"
         label="GPT Model"
+        hint="Recommended: gpt-5.4-mini"
         value={gptModel}
         onChange={setGptModel}
         models={listOfModels}
       />
-      <p className={s.hint}>Recommended: gpt-5.4-mini</p>
-    </>
+    </FieldGroup>
   );
 }

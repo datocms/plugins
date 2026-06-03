@@ -15,6 +15,7 @@ import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import {
   Button,
   Canvas,
+  FieldGroup,
   Section,
   SelectField,
   Spinner,
@@ -879,8 +880,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     <Canvas ctx={ctx}>
       <div>
         {/* Vendor selection */}
-        <div className={s.fieldSpacing}>
-          <SelectField
+        <SelectField
             name="vendor"
             id="vendor"
             label="AI Vendor"
@@ -898,8 +898,8 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
               if (newVendor) setVendor(newVendor);
             }}
           />
-        </div>
 
+        <div className={s.sectionSpacing}>
         <Section title={`Vendor-specific settings for ${getVendorLabel(vendor)}`}>
         {vendor === 'openai' ? (
           <OpenAIConfig
@@ -950,7 +950,9 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           />
         )}
       </Section>
+      </div>
 
+      <div className={s.sectionSpacing}>
       <Section title="General translation settings">
         {/* Prompt input is not applicable to DeepL; hide for that vendor */}
         {vendor !== 'deepl' && (
@@ -972,13 +974,13 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
                 </div>
               </label>
               <ReactTextareaAutosize
-                  required
-                  className={s.textarea}
-                  placeholder="Enter your prompt here"
-                  value={prompt}
-                  onChange={(e) => setPrompt(e.target.value)}
-                  id="translation-prompt"
-                  aria-labelledby="translation-prompt"
+                required
+                className={s.textarea}
+                placeholder="Enter your prompt here"
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                id="translation-prompt"
+                aria-labelledby="translation-prompt"
               />
             </div>
         )}
@@ -1007,8 +1009,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
               setTranslationFields(selectedFields);
             }}
         />
-        {/* A switch field to allow translation of the entire record from the sidebar */}
-        <div className={s.switchField}>
+        <FieldGroup>
           <div style={{ display: 'flex', alignItems: 'center' }}>
             <SwitchField
                 name="translateWholeRecord"
@@ -1017,33 +1018,20 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
                 value={translateWholeRecord}
                 onChange={(newValue) => setTranslateWholeRecord(newValue)}
             />
-            {/* Tooltip container with image for sidebar translation */}
             <div className={s.tooltipContainer}>
-              <span
-                  role="img"
-                  aria-label="Information about sidebar translation"
-              >
-                ⓘ
-              </span>
+              <span role="img" aria-label="Information about sidebar translation">ⓘ</span>
               <div className={`${s.tooltipText} ${s.imageTooltip}`}>
                 <img
                     src="/public/assets/sidebar-translation-example.png"
                     alt="Screenshot showing the sidebar translation feature with locale selection and translate button"
                     style={{ width: '100%', maxWidth: '420px' }}
                 />
-                <div style={{ marginTop: '10px', fontWeight: 'bold' }}>
-                  Sidebar Translation
-                </div>
-                <div style={{ fontSize: '12px' }}>
-                  Translate an entire record from the sidebar panel
-                </div>
+                <div style={{ marginTop: '10px', fontWeight: 'bold' }}>Sidebar Translation</div>
+                <div style={{ fontSize: '12px' }}>Translate an entire record from the sidebar panel</div>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* A switch field to allow bulk records translation */}
-        <div className={s.switchField}>
           <div style={{ display: 'flex', alignItems: 'center' }}>
             <SwitchField
                 name="translateBulkRecords"
@@ -1052,30 +1040,20 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
                 value={translateBulkRecords}
                 onChange={(newValue) => setTranslateBulkRecords(newValue)}
             />
-            {/* Tooltip container with image for bulk translation */}
             <div className={s.tooltipContainer}>
-              <span role="img" aria-label="Information about bulk translation">
-                ⓘ
-              </span>
+              <span role="img" aria-label="Information about bulk translation">ⓘ</span>
               <div className={`${s.tooltipText} ${s.imageTooltip}`}>
                 <img
                     src="/public/assets/bulk-translation-example.png"
                     alt="Screenshot showing bulk translation of multiple records in tabular view"
                     style={{ width: '100%', maxWidth: '420px' }}
                 />
-                <div style={{ marginTop: '10px', fontWeight: 'bold' }}>
-                  Bulk Translation
-                </div>
-                <div style={{ fontSize: '12px' }}>
-                  Translate multiple records at once in the tabular view
-                </div>
+                <div style={{ marginTop: '10px', fontWeight: 'bold' }}>Bulk Translation</div>
+                <div style={{ fontSize: '12px' }}>Translate multiple records at once in the tabular view</div>
               </div>
             </div>
           </div>
-        </div>
 
-        {/* A switch field to enable debug logging */}
-        <div className={s.switchField}>
           <div style={{ display: 'flex', alignItems: 'center' }}>
             <SwitchField
                 name="enableDebugging"
@@ -1084,18 +1062,14 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
                 value={enableDebugging}
                 onChange={(newValue) => setEnableDebugging(newValue)}
             />
-            {/* Tooltip container styled like the translation prompt tooltip */}
             <div className={s.tooltipContainer}>
               ⓘ
               <div className={s.tooltipText}>
-                When enabled, detailed logs of translation requests and
-                responses will be displayed in the browser console. This helps
-                with troubleshooting and understanding how the plugin processes
-                content.
+                When enabled, detailed logs of translation requests and responses will be displayed in the browser console. This helps with troubleshooting and understanding how the plugin processes content.
               </div>
             </div>
           </div>
-        </div>
+        </FieldGroup>
 
         {/* Exclusion rules section */}
         <ExclusionRulesSection
@@ -1113,6 +1087,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
             listOfFields={listOfFields}
         />
       </Section>
+      </div>
 
 
       {/* A button to save the configuration updates. It is disabled if nothing changed or if saving is in progress. */}

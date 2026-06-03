@@ -3,7 +3,7 @@
  * Configuration component for exclusion rules settings.
  */
 
-import { SelectField, SwitchField } from 'datocms-react-ui';
+import { FieldGroup, SelectField, SwitchField } from 'datocms-react-ui';
 import s from '../styles.module.css';
 
 export interface AvailableModel {
@@ -54,7 +54,7 @@ export default function ExclusionRulesSection({
 }: ExclusionRulesSectionProps) {
   return (
     <>
-      <div className={s.switchField} style={{ position: 'relative' }}>
+      <div style={{ position: 'relative' }}>
         <SwitchField
           name="showExclusionRules"
           id="showExclusionRules"
@@ -76,7 +76,7 @@ export default function ExclusionRulesSection({
 
       {showExclusionRules && (
         <div className={s.exclusionRules}>
-          <div style={{ marginTop: '16px' }}>
+          <FieldGroup>
             <SelectField
               name="modelsToBeExcludedFromTranslation"
               id="modelsToBeExcludedFromTranslation"
@@ -102,9 +102,6 @@ export default function ExclusionRulesSection({
                 setModelsToBeExcluded(selectedModels);
               }}
             />
-          </div>
-
-          <div style={{ marginTop: '16px' }}>
             <SelectField
               name="rolesToBeExcludedFromTranslation"
               id="rolesToBeExcludedFromTranslation"
@@ -128,9 +125,6 @@ export default function ExclusionRulesSection({
                 setRolesToBeExcluded(selectedRoles);
               }}
             />
-          </div>
-
-          <div style={{ marginTop: '16px' }}>
             <SelectField
               name="apiKeysToBeExcludedFromTranslation"
               id="apiKeysToBeExcludedFromTranslation"
@@ -155,7 +149,7 @@ export default function ExclusionRulesSection({
                 setApiKeysToBeExcluded(selectedApiKeys);
               }}
             />
-          </div>
+          </FieldGroup>
         </div>
       )}
     </>

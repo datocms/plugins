@@ -3,8 +3,7 @@
  * Configuration component for Google Gemini vendor settings.
  */
 
-import { TextField } from 'datocms-react-ui';
-import s from '../../styles.module.css';
+import { FieldGroup, TextField } from 'datocms-react-ui';
 import ModelSelectField from './ModelSelectField';
 
 export interface GeminiConfigProps {
@@ -23,29 +22,24 @@ export default function GeminiConfig({
   listOfGeminiModels,
 }: GeminiConfigProps) {
   return (
-    <>
-      {/* Google API Key */}
-      <div className={s.fieldSpacing}>
-        <TextField
-          required
-          name="googleApiKey"
-          id="googleApiKey"
-          label="Google API Key"
-          value={googleApiKey}
-          onChange={(newValue) => setGoogleApiKey(newValue)}
-          placeholder="AIza..."
-        />
-      </div>
-
-      {/* Gemini Model select - DRY-003: Using shared component */}
+    <FieldGroup>
+      <TextField
+        required
+        name="googleApiKey"
+        id="googleApiKey"
+        label="Google API Key"
+        value={googleApiKey}
+        onChange={(newValue) => setGoogleApiKey(newValue)}
+        placeholder="AIza..."
+      />
       <ModelSelectField
         id="geminiModel"
         label="Gemini Model"
+        hint="Recommended: gemini-2.5-flash"
         value={geminiModel}
         onChange={setGeminiModel}
         models={listOfGeminiModels}
       />
-      <p className={s.hint}>Recommended: gemini-2.5-flash</p>
-    </>
+    </FieldGroup>
   );
 }
