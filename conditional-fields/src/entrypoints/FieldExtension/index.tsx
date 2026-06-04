@@ -2,6 +2,8 @@ import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
 import get from 'lodash-es/get';
 import { useCallback, useEffect, useMemo } from 'react';
 import {
+  isBooleanTriggerParameters,
+  isScalarTriggerParameters,
   isValidParameters,
   type ValidManualExtensionParameters,
 } from '../../types';
@@ -11,8 +13,14 @@ type Props = {
   ctx: RenderFieldExtensionCtx;
 };
 
-function checkedToShow(invert: boolean, value: boolean | null) {
-  return invert ? !value : !!value;
+function shouldShow(params: ValidManualExtensionParameters, value: unknown): boolean {
+  if (isScalarTriggerParameters(params)) {
+    return params.showWhenValues.includes(String(value ?? ''));
+  }
+  if (isBooleanTriggerParameters(params)) {
+    return params.invert ? !value : !!value;
+  }
+  return false;
 }
 
 type ToggleFieldArgs = {
@@ -45,8 +53,8 @@ function toggleSingleField({
 }
 
 function FieldExtensionWithValidParams({ ctx }: Props) {
-  const { invert, targetFieldsApiKey } =
-    ctx.parameters as ValidManualExtensionParameters;
+  const params = ctx.parameters as ValidManualExtensionParameters;
+  const { targetFieldsApiKey } = params;
 
   const sourceField = ctx.field;
 
@@ -97,11 +105,11 @@ function FieldExtensionWithValidParams({ ctx }: Props) {
     [ctx, sourceField.attributes.localized, targetFields],
   );
 
-  const currentValue = get(ctx.formValues, ctx.fieldPath) as boolean | null;
+  const currentValue = get(ctx.formValues, ctx.fieldPath);
 
   useEffect(() => {
-    toggleFields(checkedToShow(invert, currentValue));
-  }, [currentValue, toggleFields, invert]);
+    toggleFields(shouldShow(params, currentValue));
+  }, [currentValue, toggleFields, params]);
 
   return null;
 }

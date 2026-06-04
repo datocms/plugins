@@ -1,24 +1,28 @@
 # DatoCMS Conditional fields plugin
 
-A simple plugin that shows or hides one or more target fields in the record editor based on the value of a boolean (checkbox) field.
-
-You can pick multiple fields to be controlled by the same boolean, and you can optionally invert the behavior so that fields are hidden when the checkbox is checked.
+A simple plugin that shows or hides one or more target fields in the record editor based on the value of a **boolean** or **string** field.
 
 ## How it works
 
-The plugin registers a manual field addon called **Conditional fields** that can be attached to any **boolean** field. When the boolean's value changes, the addon calls `ctx.toggleField` to show/hide the configured target fields. Localized source/target fields are handled correctly: if the boolean is localized the toggle is per-locale, otherwise all locales of the target are toggled together.
+The plugin registers a manual field addon called **Conditional fields** that can be attached to a boolean or string field. When the field's value changes, the addon calls `ctx.toggleField` to show/hide the configured target fields. Localized source/target fields are handled correctly: if the trigger field is localized the toggle is per-locale, otherwise all locales of the target are toggled together.
 
-## How to set it up
+## Boolean trigger
 
-1. In your project, edit the model that contains the boolean field you want to use as the trigger.
-2. Open the boolean field's settings and go to the **Presentation** tab.
-3. Under **Field add-ons**, add the **Conditional fields** add-on provided by this plugin.
-4. In the add-on configuration:
-   - **Fields to be hidden/shown** — pick one or more fields from the same model that should be controlled by the boolean.
-   - **Invert visibility?** — when off, target fields are visible while the boolean is checked; when on, target fields are hidden while the boolean is checked.
-5. Save the field. The configured fields will now show/hide live as editors toggle the boolean inside the record editor.
+Attach the addon to a **boolean** (checkbox) field. The configuration options are:
+
+- **Fields to be hidden/shown** — pick one or more fields from the same model that should be controlled by the checkbox.
+- **Invert visibility?** — when off, target fields are visible while the checkbox is checked; when on, target fields are hidden while the checkbox is checked.
+
+## String trigger
+
+Attach the addon to a **string** field — most useful when the field is configured as a select (dropdown) with predefined options. The configuration options are:
+
+- **Fields to be hidden/shown** — pick one or more fields from the same model that should be controlled by this field.
+- **Show when value is** — a comma-separated list of values that make the target fields visible. Any other value (including blank) hides them.
+
+For example, if your string field has options `cat`, `dog`, and `fish`, and you want to show a `breed` field only for `cat` and `dog`, you would enter `cat, dog`.
 
 ## Notes
 
-- The add-on only works on **boolean** fields. Target fields can be of any type, as long as they live on the same model as the boolean.
-
+- Target fields can be of any type, as long as they live on the same model as the trigger field.
+- Multiple addons can be stacked on different trigger fields to compose more complex visibility logic.

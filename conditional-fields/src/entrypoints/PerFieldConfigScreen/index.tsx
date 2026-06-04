@@ -1,8 +1,10 @@
 import type { RenderManualFieldExtensionConfigScreenCtx } from 'datocms-plugin-sdk';
-import { Canvas, Form, SelectField, SwitchField } from 'datocms-react-ui';
+import { Canvas, CreatableSelectField, Form, SelectField } from 'datocms-react-ui';
 import { useCallback, useState } from 'react';
 import {
   isValidParameters,
+  type BooleanTriggerParameters,
+  type ScalarTriggerParameters,
   type ValidManualExtensionParameters,
 } from '../../types';
 import { isDefined } from '../../utils/isDefined';
@@ -12,13 +14,21 @@ type PropTypes = {
   ctx: RenderManualFieldExtensionConfigScreenCtx;
 };
 
+function defaultParams(isBooleanField: boolean): ValidManualExtensionParameters {
+  return isBooleanField
+    ? { targetFieldsApiKey: [], invert: false }
+    : { targetFieldsApiKey: [], showWhenValues: [] };
+}
+
 export function PerFieldConfigScreen({ ctx }: PropTypes) {
-  const [formValues, setFormValues] = useState<
-    Partial<ValidManualExtensionParameters>
-  >(
+  const isBooleanField = ctx.pendingField.attributes.field_type === 'boolean';
+
+  const [formValues, setFormValues] = useState<Partial<ValidManualExtensionParameters>>(
     isValidParameters(ctx.parameters)
       ? ctx.parameters
-      : normalizeParams(ctx.parameters),
+      : isBooleanField
+        ? normalizeParams(ctx.parameters)
+        : defaultParams(false),
   );
 
   const update = useCallback(
@@ -30,7 +40,7 @@ export function PerFieldConfigScreen({ ctx }: PropTypes) {
     [formValues, ctx],
   );
 
-  const options = Object.values(ctx.fields)
+  const fieldOptions = Object.values(ctx.fields)
     .filter(isDefined)
     .filter(
       (field) =>
@@ -45,16 +55,57 @@ export function PerFieldConfigScreen({ ctx }: PropTypes) {
   return (
     <Canvas ctx={ctx}>
       <Form>
+        {isBooleanField ? (
+          <SelectField
+            id="invert"
+            name="invert"
+            label="When this field is"
+            selectInputProps={{
+              options: [
+                { label: 'checked', value: 'false' },
+                { label: 'unchecked', value: 'true' },
+              ],
+            }}
+            value={
+              (formValues as Partial<BooleanTriggerParameters>).invert
+                ? { label: 'unchecked', value: 'true' }
+                : { label: 'checked', value: 'false' }
+            }
+            onChange={(option) => {
+              const single = Array.isArray(option) ? option[0] : option;
+              update('invert', single?.value === 'true');
+            }}
+          />
+        ) : (
+          <CreatableSelectField
+            id="showWhenValues"
+            name="showWhenValues"
+            label="When the value of this field is one of"
+            hint="Type a value and press Enter to add it"
+            selectInputProps={{ isMulti: true }}
+            value={
+              ((formValues as Partial<ScalarTriggerParameters>).showWhenValues || []).map(
+                (v) => ({ label: v, value: v }),
+              )
+            }
+            onChange={(selected) => {
+              update(
+                'showWhenValues',
+                selected ? selected.filter(isDefined).map((o) => o.value) : [],
+              );
+            }}
+          />
+        )}
         <SelectField
           id="targetFieldsApiKey"
           name="targetFieldsApiKey"
-          label="Fields to be hidden/shown"
+          label="Then show these fields"
           required
-          selectInputProps={{ isMulti: true, options }}
+          selectInputProps={{ isMulti: true, options: fieldOptions }}
           value={
             formValues.targetFieldsApiKey
               ? formValues.targetFieldsApiKey.map((apiKey) =>
-                  options.find((o) => o.value === apiKey),
+                  fieldOptions.find((o) => o.value === apiKey),
                 )
               : []
           }
@@ -64,14 +115,6 @@ export function PerFieldConfigScreen({ ctx }: PropTypes) {
               selectedOptions.filter(isDefined).map((o) => o.value),
             );
           }}
-        />
-        <SwitchField
-          id="invert"
-          name="invert"
-          label="Invert visibility?"
-          hint="When this field is checked, hide target fields"
-          value={formValues.invert || false}
-          onChange={update.bind(null, 'invert')}
         />
       </Form>
     </Canvas>

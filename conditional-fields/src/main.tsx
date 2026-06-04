@@ -71,7 +71,7 @@ connect({
         id: 'conditionalFields',
         name: 'Conditional fields',
         type: 'addon',
-        fieldTypes: ['boolean'],
+        fieldTypes: ['boolean', 'string'],
         configurable: true,
         initialHeight: 0,
       },
