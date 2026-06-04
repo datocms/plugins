@@ -2,6 +2,9 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  background: var(--color--primary-soft--surface);
+  color: var(--color--primary-soft--ink);
+  padding: 0 6px;
 }
 
 .chipOptionCode {
@@ -9,7 +12,7 @@
   font-size: var(--font-size-xs);
   padding: 1px 6px;
   border-radius: 3px;
-  background: rgba(15, 23, 42, 0.06);
-  color: var(--base-body-color);
+  background: var(--color--primary--surface);
+  color: var(--color--primary--ink);
   line-height: 1.3;
 }

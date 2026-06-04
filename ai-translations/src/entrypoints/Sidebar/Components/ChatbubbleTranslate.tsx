@@ -25,7 +25,6 @@ import { formatLocaleLabel } from '../../../utils/localeUtils';
  *     fieldPath: string;    // The path to the field in the CMS for potential navigation or identification.
  *     errorMessage?: string; // Optional error message when status is 'error'.
  *   }
- * - theme: 'light'|'dark';  // Current theme provided by DatoCMS context for styling.
  * - index: number;          // Index of this bubble in the list for potential staggered animations.
  */
 

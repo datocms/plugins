@@ -11,17 +11,18 @@
  * Flow:
  *   1. User picks source locale, target locales, and which fields to
  *      translate per model.
- *   2. Clicks "Translate N records" → we open a native confirm.
- *   3. On confirm, the picker modal opens the existing translation progress
- *      modal as a nested call and awaits it.
- *   4. The picker modal resolves with `{ completed, canceled }` so the
- *      items-dropdown handler can surface a final notice.
+ *   2. Clicks "Translate N records" → the modal resolves with the chosen
+ *      config and closes.
+ *   3. The items-dropdown handler (a non-modal context) runs the confirm +
+ *      progress modal. Opening those from inside this modal would nest a
+ *      modal inside a modal, which DatoCMS renders *behind* the current modal
+ *      and leaves hanging forever on "Working…".
  */
 import type { RenderModalCtx } from 'datocms-plugin-sdk';
-import { Button, Canvas, SelectField, Spinner } from 'datocms-react-ui';
+import { Button, Canvas, SelectField } from 'datocms-react-ui';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ctxParamsType } from '../entrypoints/Config/ConfigScreen';
-import { formatLocaleLabel, formatLocaleWithCode } from '../utils/localeUtils';
+import { formatLocaleLabel } from '../utils/localeUtils';
 import {
   ALL_LOCALES_VALUE,
   defaultFieldSelection,
@@ -50,8 +51,18 @@ type LocaleOption = ChipOption;
  * inner progress modal so callers can pattern-match on the same fields.
  */
 export interface AITranslationsPickerModalResult {
-  completed?: boolean;
-  canceled?: boolean;
+  /**
+   * Present when the user confirmed a run. The top-level items-dropdown
+   * handler (a non-modal context) uses it to open the confirm + progress
+   * modal. Those calls must not happen here: opening a modal/confirm from
+   * inside this modal nests modal-on-modal, which DatoCMS renders behind the
+   * current modal and never resolves.
+   */
+  config?: {
+    fromLocale: string;
+    toLocales: string[];
+    selectedFieldsByModel: Record<string, string[]>;
+  };
   /** True when the user dismissed the picker before starting anything. */
   dismissedBeforeStart?: boolean;
 }
@@ -78,7 +89,7 @@ const ALL_LOCALES_OPTION: LocaleOption = {
 };
 
 export default function AITranslationsPickerModal({ ctx, parameters }: Props) {
-  const { itemIds, models, pluginParams, accessToken } = parameters;
+  const { itemIds, models, pluginParams } = parameters;
 
   const locales = useMemo<LocaleOption[]>(
     () =>
@@ -105,7 +116,6 @@ export default function AITranslationsPickerModal({ ctx, parameters }: Props) {
   const [loadingFieldsForModel, setLoadingFieldsForModel] = useState<
     Set<string>
   >(new Set());
-  const [isBusy, setIsBusy] = useState(false);
 
   /**
    * Fetches and stores the translatable fields for one model, defaulting
@@ -260,11 +270,11 @@ export default function AITranslationsPickerModal({ ctx, parameters }: Props) {
   };
 
   /**
-   * Confirm, then open the progress modal nested inside this picker modal,
-   * then resolve the picker modal with the outcome so the items-dropdown
-   * caller can show a final notice.
+   * Resolve the picker with the chosen config and close. The confirm +
+   * progress modal run in the items-dropdown handler's (non-modal) context;
+   * see {@link AITranslationsPickerModalResult} for why they can't run here.
    */
-  const handleStart = async () => {
+  const handleStart = () => {
     if (!isReady || !sourceLocale) return;
     if (!isProviderConfigured(pluginParams)) {
       ctx.alert(
@@ -273,55 +283,13 @@ export default function AITranslationsPickerModal({ ctx, parameters }: Props) {
       return;
     }
 
-    setIsBusy(true);
-    try {
-      const targetsSummary = targetLocales.map(formatLocaleWithCode).join(', ');
-      const confirmResponse = await ctx.openConfirm({
-        title: 'Start translation?',
-        content: `This will translate ${itemIds.length} record(s) from ${formatLocaleWithCode(sourceLocale.value)} to ${targetLocales.length} locale(s): ${targetsSummary}.`,
-        choices: [
-          {
-            label: `Translate ${itemIds.length} record(s)`,
-            value: 'go',
-            intent: 'positive',
-          },
-        ],
-        cancel: { label: 'Cancel', value: 'cancel' },
-      });
-
-      if (confirmResponse !== 'go') {
-        setIsBusy(false);
-        return;
-      }
-
-      const progressResult = (await ctx.openModal({
-        id: 'translationProgressModal',
-        title: 'Translation Progress',
-        width: 'l',
-        parameters: {
-          totalRecords: itemIds.length,
-          fromLocale: sourceLocale.value,
-          toLocales: targetLocales,
-          accessToken,
-          pluginParams,
-          itemIds,
-          selectedFieldsByModel,
-        },
-      })) as { completed?: boolean; canceled?: boolean } | undefined;
-
-      ctx.resolve({
-        completed: !!progressResult?.completed,
-        canceled: !!progressResult?.canceled,
-      } satisfies AITranslationsPickerModalResult);
-    } catch (error) {
-      console.error('Picker modal flow failed:', error);
-      ctx.alert(
-        `Bulk translation failed: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-      ctx.resolve({} satisfies AITranslationsPickerModalResult);
-    }
+    ctx.resolve({
+      config: {
+        fromLocale: sourceLocale.value,
+        toLocales: targetLocales,
+        selectedFieldsByModel,
+      },
+    } satisfies AITranslationsPickerModalResult);
   };
 
   const handleCancel = () => {
@@ -413,7 +381,6 @@ export default function AITranslationsPickerModal({ ctx, parameters }: Props) {
             buttonType="muted"
             buttonSize="s"
             onClick={handleCancel}
-            disabled={isBusy}
           >
             Cancel
           </Button>
@@ -422,15 +389,9 @@ export default function AITranslationsPickerModal({ ctx, parameters }: Props) {
             buttonType="primary"
             buttonSize="s"
             onClick={handleStart}
-            disabled={!isReady || isBusy}
+            disabled={!isReady}
           >
-            {isBusy ? (
-              <>
-                <Spinner size={14} /> Working…
-              </>
-            ) : (
-              `Translate ${itemIds.length} record${itemIds.length === 1 ? '' : 's'}`
-            )}
+            {`Translate ${itemIds.length} record${itemIds.length === 1 ? '' : 's'}`}
           </Button>
         </div>
       </div>

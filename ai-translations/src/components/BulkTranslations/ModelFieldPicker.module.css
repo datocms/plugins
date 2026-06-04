@@ -65,7 +65,7 @@
   border: none;
   padding: 0;
   font-size: var(--font-size-s);
-  color: var(--accent-color, #5d5afc);
+  color: var(--color--primary--surface);
   cursor: pointer;
   font-family: inherit;
   transition: opacity 0.2s var(--material-ease);
@@ -76,7 +76,6 @@
 }
 
 .linkButton:disabled {
-  color: var(--light-body-color);
   cursor: not-allowed;
 }
 

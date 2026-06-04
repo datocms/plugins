@@ -364,7 +364,7 @@ connect({
     return [
       {
         id: 'aiTranslationsPicker',
-        label: 'AI Translations…',
+        label: 'AI Translate these records',
         icon: 'language',
       },
     ];
@@ -380,6 +380,7 @@ connect({
       ctx.alert('No user access token found');
       return;
     }
+    const accessToken = ctx.currentUserAccessToken;
 
     // Resolve the set of models present in the selection. Each item's
     // `item_type` reference resolves through the SDK's `ctx.itemTypes`
@@ -412,11 +413,12 @@ connect({
     const pluginParams = getPluginParams(ctx);
 
     try {
+      const itemIds = items.map((item) => item.id);
       const pickerParams: AITranslationsPickerModalParams = {
-        itemIds: items.map((item) => item.id),
+        itemIds,
         models,
         pluginParams,
-        accessToken: ctx.currentUserAccessToken,
+        accessToken,
       };
 
       const result = (await ctx.openModal({
@@ -426,15 +428,53 @@ connect({
         parameters: pickerParams as unknown as Record<string, unknown>,
       })) as AITranslationsPickerModalResult | undefined;
 
-      if (!result) return;
-      if (result.dismissedBeforeStart) return;
+      // The picker resolves with `config` only when the user clicked
+      // "Translate"; anything else (dismissed/cancelled) bails out here.
+      if (!result?.config) return;
 
-      if (result.completed) {
-        await ctx.notice(
-          `Successfully translated ${items.length} record(s).`,
-        );
-      } else if (result.canceled) {
+      const { fromLocale, toLocales, selectedFieldsByModel } = result.config;
+
+      // Confirm + progress modal run here, in the dropdown handler's
+      // non-modal context — NOT inside the picker modal. Opening a
+      // modal/confirm from inside a modal nests modal-on-modal, which DatoCMS
+      // renders behind the current modal and leaves hanging on "Working…".
+      const targetsSummary = toLocales.map(formatLocaleWithCode).join(', ');
+      const confirmResponse = await ctx.openConfirm({
+        title: 'Start translation?',
+        content: `This will translate ${itemIds.length} record(s) from ${formatLocaleWithCode(fromLocale)} to ${toLocales.length} locale(s): ${targetsSummary}.`,
+        choices: [
+          {
+            label: `Translate ${itemIds.length} record(s)`,
+            value: 'go',
+            intent: 'positive',
+          },
+        ],
+        cancel: { label: 'Cancel', value: 'cancel' },
+      });
+
+      if (confirmResponse !== 'go') return;
+
+      const progressParams: TranslationProgressModalParams = {
+        totalRecords: itemIds.length,
+        fromLocale,
+        toLocales,
+        accessToken,
+        pluginParams,
+        itemIds,
+        selectedFieldsByModel,
+      };
+
+      const progressResult = (await ctx.openModal({
+        id: 'translationProgressModal',
+        title: 'Translation Progress',
+        width: 'l',
+        parameters: progressParams as unknown as Record<string, unknown>,
+      })) as { completed?: boolean; canceled?: boolean } | undefined;
+
+      if (progressResult?.canceled) {
         await ctx.notice('Bulk translation was canceled');
+      } else if (progressResult?.completed) {
+        await ctx.notice(`Successfully translated ${items.length} record(s).`);
       } else {
         await ctx.alert('The translation finished with errors.');
       }

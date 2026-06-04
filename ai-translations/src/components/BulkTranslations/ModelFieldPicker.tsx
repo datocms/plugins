@@ -59,9 +59,6 @@ export function ModelFieldPicker({
     () => new Set(selectedApiKeys),
     [selectedApiKeys],
   );
-  const allSelected =
-    !!fields && fields.length > 0 && fields.every((f) => selectedSet.has(f.apiKey));
-  const noneSelected = selectedApiKeys.length === 0;
 
   const actionsRow =
     fields && fields.length > 0 ? (
@@ -70,7 +67,6 @@ export function ModelFieldPicker({
           type="button"
           className={s.linkButton}
           onClick={onSelectAll}
-          disabled={allSelected}
         >
           Select all
         </button>
@@ -81,7 +77,6 @@ export function ModelFieldPicker({
           type="button"
           className={s.linkButton}
           onClick={onClearAll}
-          disabled={noneSelected}
         >
           Clear
         </button>
