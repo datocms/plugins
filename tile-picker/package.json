@@ -3,7 +3,7 @@
   "description": "Replace plain dropdowns with a visual tile grid — pick from color swatches, image thumbnails, or any mix of both.",
   "homepage": "https://github.com/datocms/plugins/tree/master/tile-picker#readme",
   "private": false,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": "Stefano Verna <s.verna@datocms.com>",
   "type": "module",
   "keywords": [

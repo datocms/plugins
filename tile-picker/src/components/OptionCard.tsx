@@ -22,7 +22,7 @@ function OptionSwatch({type, source}: {type: string; source: string}): JSX.Eleme
 		return <span className={s['option-swatch']} style={{backgroundColor: source}} />;
 	}
 	if (type === 'image' && source) {
-		return <img className={s['option-swatch-img']} src={source} alt="" />;
+		return <img className={s['option-swatch-img']} src={source} alt="" loading="lazy" />;
 	}
 	return <span className={`${s['option-swatch']} ${s['option-swatch--empty']}`} />;
 }
