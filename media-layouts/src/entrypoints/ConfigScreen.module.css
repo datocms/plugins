@@ -15,17 +15,17 @@
 .presetsTitle {
   font-size: 14px;
   font-weight: 600;
-  color: var(--base-body-color);
+  color: var(--color--ink);
 }
 
 .presetsHint {
   font-size: 12px;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 .presetsEmpty {
   font-size: 12px;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 .presetsList {
@@ -50,15 +50,15 @@
 .removePresetButton {
   padding: 6px 10px;
   font-size: 12px;
-  color: var(--alert-color);
-  background: white;
-  border: 1px solid var(--alert-color);
+  color: var(--color--ink-danger);
+  background: var(--color--surface);
+  border: 1px solid var(--color--danger-soft--border);
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.15s ease;
 }
 
 .removePresetButton:hover {
-  background: var(--alert-color);
-  color: white;
+  background: var(--color--danger--surface);
+  color: var(--color--primary--ink);
 }

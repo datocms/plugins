@@ -23,14 +23,14 @@
   font-weight: 600;
   letter-spacing: 0.6px;
   text-transform: uppercase;
-  color: var(--base-body-color);
+  color: var(--color--ink);
 }
 
 .headerCount {
   font-size: 11px;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   padding: 2px 8px;
   border-radius: 999px;
-  border: 1px solid var(--border-color);
-  background: var(--light-bg-color);
+  border: 1px solid var(--color--border);
+  background: var(--color--surface-muted);
 }

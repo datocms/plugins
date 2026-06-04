@@ -20,7 +20,7 @@
 
 .tr {
   position: relative;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--color--border);
 }
 
 .tr:last-child .td {
@@ -31,7 +31,7 @@
 .td {
   margin: 0;
   padding: 0;
-  border-right: 1px solid var(--border-color);
+  border-right: 1px solid var(--color--border);
   /* In this example we use an absolutely position resizer so this is required. */
   position: relative;
 }
@@ -104,13 +104,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(var(--light-body-color-rgb-components), 0.1);
+  background: var(--color--surface-muted);
   cursor: pointer;
   transition: background 0.2s var(--material-ease);
 }
 
 .handle:hover {
-  background: rgba(var(--light-body-color-rgb-components), 0.2);
+  background: var(--color--surface-hover);
 }
 
 .actions {

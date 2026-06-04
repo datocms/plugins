@@ -32,7 +32,7 @@
   padding: 3px;
   padding-bottom: 0;
   border-radius: 3px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color--border);
   overflow: hidden;
   cursor: pointer;
   background-color: transparent;
@@ -41,7 +41,7 @@
 }
 
 .product:hover {
-  border-color: var(--accent-color);
+  border-color: var(--color--selected--border);
 }
 
 .product__image {
@@ -50,7 +50,7 @@
   background-size: contain;
   background-position: center center;
   background-repeat: no-repeat;
-  background-color: var(--light-bg-color);
+  background-color: var(--color--surface-muted);
 }
 
 .product__title {
@@ -71,16 +71,16 @@
 .product__code {
   font-size: 13px;
   margin-top: 2px;
-  color: #999;
+  color: var(--color--ink-muted);
 }
 
 .empty {
   text-align: center;
   font-size: var(--font-size-xl);
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   height: 200px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--light-bg-color);
+  background: var(--color--surface-muted);
 }

@@ -20,8 +20,8 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  border-bottom: 1px solid var(--border-color);
-  color: var(--light-body-color);
+  border-bottom: 1px solid var(--color--border);
+  color: var(--color--ink-subtle);
   margin-bottom: var(--spacing-m);
   text-transform: uppercase;
   font-weight: bold;
@@ -30,5 +30,5 @@
 
 .groupChildren {
   padding-left: var(--spacing-m);
-  border-left: 3px solid var(--border-color);
+  border-left: 3px solid var(--color--border);
 }

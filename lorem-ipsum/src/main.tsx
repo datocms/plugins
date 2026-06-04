@@ -1,5 +1,6 @@
 import {
   connect,
+  type DropdownAction,
   type ExecuteFieldDropdownActionCtx,
   type Field,
   type FieldDropdownActionsCtx,
@@ -15,7 +16,7 @@ const loremIpsumDropdownAction = [
     label: 'Generate dummy text',
     icon: 'font',
   },
-] as const;
+] satisfies DropdownAction[];
 
 // Checks if any auto-apply rule matches the given field, returning the action if so
 function checkAutoApplyRules(

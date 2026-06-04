@@ -1,5 +1,5 @@
 .value {
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color--border);
   text-align: center;
   padding: 20px;
   opacity: 1;
@@ -23,7 +23,7 @@
   background-position: center center;
   border-radius: 4px;
   background-repeat: no-repeat;
-  background-color: var(--light-bg-color);
+  background-color: var(--color--surface-muted);
   padding: 2px;
 }
 .product__image:before {
@@ -39,7 +39,7 @@
 
 .product__title {
   margin-bottom: 3px;
-  color: var(--accent-color);
+  color: var(--color--ink-link);
 }
 
 .product__title a {
@@ -60,7 +60,7 @@
 }
 
 .product__description {
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   font-size: 0.9em;
   margin-bottom: 5px;
   overflow: hidden;
@@ -71,7 +71,7 @@
 
 .product__code {
   font-size: 0.9em;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   margin-bottom: 10px;
 }
 

@@ -310,9 +310,9 @@ const runLambdaModeRestore = async ({
 };
 
 const RESTORATION_ERROR_BOX_STYLE = {
-  border: '1px solid rgba(var(--alert-color-rgb-components), 0.5)',
+  border: '1px solid var(--color--danger-soft--border)',
   borderRadius: '6px',
-  background: 'rgba(var(--alert-color-rgb-components), 0.08)',
+  background: 'var(--color--danger-soft--surface)',
   padding: 'var(--spacing-m)',
   marginBottom: 'var(--spacing-m)',
 };

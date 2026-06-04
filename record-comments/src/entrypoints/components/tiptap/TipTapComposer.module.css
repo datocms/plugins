@@ -7,7 +7,7 @@
   font-family: inherit;
   font-size: var(--font-size-s, 13px);
   line-height: 1.5;
-  color: var(--base-body-color, #34363a);
+  color: var(--color--ink);
   background-color: transparent;
   border: none;
   border-radius: 8px 8px 0 0;
@@ -34,7 +34,7 @@
 /* Placeholder styling */
 .editor :global(.ProseMirror p.is-editor-empty:first-child::before) {
   content: attr(data-placeholder);
-  color: var(--light-body-color, #848484);
+  color: var(--color--ink-subtle);
   pointer-events: none;
   height: 0;
   float: left;

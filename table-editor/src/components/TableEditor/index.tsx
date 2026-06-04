@@ -320,29 +320,31 @@ export default function TableEditor({
     <div>
       <div {...getTableProps()} className={s.table}>
         <div className={s.thead} ref={theadRef} style={{ overflowX: 'hidden' }}>
-          {headerGroups.map((headerGroup) => (
-            <div
-              key={headerGroup.id}
-              {...headerGroup.getHeaderGroupProps()}
-              className={s.tr}
-            >
-              {headerGroup.headers.map((column) => (
-                <div
-                  key={column.id}
-                  {...column.getHeaderProps()}
-                  className={s.th}
-                >
-                  {column.render('Header')}
-                  <div
-                    {...column.getResizerProps()}
-                    className={classNames(s.resizer, {
-                      [s.isResizing]: column.isResizing,
-                    })}
-                  />
-                </div>
-              ))}
-            </div>
-          ))}
+          {headerGroups.map((headerGroup) => {
+            const { key, ...headerGroupProps } =
+              headerGroup.getHeaderGroupProps();
+
+            return (
+              <div key={key} {...headerGroupProps} className={s.tr}>
+                {headerGroup.headers.map((column) => {
+                  const { key: columnKey, ...headerProps } =
+                    column.getHeaderProps();
+
+                  return (
+                    <div key={columnKey} {...headerProps} className={s.th}>
+                      {column.render('Header')}
+                      <div
+                        {...column.getResizerProps()}
+                        className={classNames(s.resizer, {
+                          [s.isResizing]: column.isResizing,
+                        })}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
         </div>
 
         <div
@@ -352,8 +354,9 @@ export default function TableEditor({
         >
           {rows.map((row, i) => {
             prepareRow(row);
+            const { key, ...rowProps } = row.getRowProps();
             return (
-              <div key={row.id} {...row.getRowProps()} className={s.tr}>
+              <div key={key} {...rowProps} className={s.tr}>
                 <div className={s.dropdownWrapper}>
                   <Dropdown
                     renderTrigger={({ onClick }) => (
@@ -395,12 +398,10 @@ export default function TableEditor({
                   </Dropdown>
                 </div>
                 {row.cells.map((cell) => {
+                  const { key: cellKey, ...cellProps } = cell.getCellProps();
+
                   return (
-                    <div
-                      key={cell.column.id}
-                      {...cell.getCellProps()}
-                      className={s.td}
-                    >
+                    <div key={cellKey} {...cellProps} className={s.td}>
                       {cell.render('Cell')}
                     </div>
                   );

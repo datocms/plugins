@@ -73,15 +73,15 @@ export function sentence(
 }
 
 // Generates multiple sentences separated by spaces
-export function sentences(count: number, buttons: string[]) {
-  return intersperse(
-    times(count).map(() => sentence(rand(4, 10), buttons)),
-    ' ',
-  );
+export function sentences(count: number, buttons: string[]): Array<Tag | string> {
+  return times(count).flatMap((index) => {
+    const content = sentence(rand(4, 10), buttons);
+    return index === 0 ? content : [' ', ...content];
+  });
 }
 
 // Converts a tree of Tags into HTML string
-export function toHtml(tree: Tag | Tag[] | string): string {
+export function toHtml(tree: Tag | Array<Tag | string> | string): string {
   if (typeof tree === 'string') {
     return tree;
   }
@@ -100,7 +100,7 @@ export function toHtml(tree: Tag | Tag[] | string): string {
 }
 
 // Converts a tree of Tags into Markdown string
-export function toMarkdown(tree: Tag | Tag[] | string): string {
+export function toMarkdown(tree: Tag | Array<Tag | string> | string): string {
   if (typeof tree === 'string') {
     return tree;
   }
@@ -169,6 +169,7 @@ export function url() {
 
 // Overloads to handle creation of structured text data from different Tag inputs
 export function toStructuredText(tree: Tag): Node;
+export function toStructuredText(tree: Tag | string): Node;
 export function toStructuredText(tree: Array<Tag | string>): Node[];
 export function toStructuredText(tree: string): Node;
 
@@ -186,7 +187,7 @@ export function toStructuredText(
   }
 
   if (Array.isArray(tree)) {
-    return tree.flatMap(toStructuredText);
+    return tree.flatMap((child) => toStructuredText(child));
   }
 
   const childNodes = toStructuredText(tree.children);

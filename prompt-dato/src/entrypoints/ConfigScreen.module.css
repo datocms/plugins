@@ -9,7 +9,7 @@
 }
 
 .sectionHint {
-  color: var(--light-body-color, #6b7380);
+  color: var(--color--ink-subtle);
   font-size: 13px;
   margin: 0 0 14px;
 }
@@ -19,9 +19,9 @@
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
-  border: 1px solid var(--border-color, #e3e0d8);
+  border: 1px solid var(--color--border);
   border-radius: 4px;
-  background: var(--light-bg-color, #fafaf7);
+  background: var(--color--surface-muted);
   margin-bottom: 12px;
 }
 
@@ -54,7 +54,7 @@
 }
 
 .statusText small {
-  color: var(--light-body-color, #6b7380);
+  color: var(--color--ink-subtle);
   font-size: 12px;
 }
 

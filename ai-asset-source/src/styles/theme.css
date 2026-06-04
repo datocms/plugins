@@ -1,16 +1,16 @@
 .image-generator-theme {
-  --ig-bg: var(--lighter-bg-color, #f6f6f6);
-  --ig-surface: #ffffff;
-  --ig-surface-muted: var(--lighter-bg-color, #f6f6f6);
-  --ig-text: var(--base-body-color, #1f2937);
-  --ig-text-muted: var(--light-body-color, #6b7280);
-  --ig-border: var(--border-color, #d1d5db);
-  --ig-border-strong: var(--darker-border-color, #9ca3af);
-  --ig-accent: var(--accent-color, #2563eb);
-  --ig-accent-contrast: #ffffff;
-  --ig-focus: rgba(var(--accent-color-rgb-components), 0.18);
-  --ig-danger: var(--alert-color, #c0392b);
-  --ig-danger-soft: rgba(var(--alert-color-rgb-components), 0.08);
+  --ig-bg: var(--color--surface-muted);
+  --ig-surface: var(--color--surface);
+  --ig-surface-muted: var(--color--surface-muted);
+  --ig-text: var(--color--ink);
+  --ig-text-muted: var(--color--ink-subtle);
+  --ig-border: var(--color--border);
+  --ig-border-strong: var(--color--border-hover);
+  --ig-accent: var(--color--ink-link);
+  --ig-accent-contrast: var(--color--primary--ink);
+  --ig-focus: var(--color--focus--outline);
+  --ig-danger: var(--color--ink-danger);
+  --ig-danger-soft: var(--color--danger-soft--surface);
   --ig-radius: 8px;
   color: var(--ig-text);
 }

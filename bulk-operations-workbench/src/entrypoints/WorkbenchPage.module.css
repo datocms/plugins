@@ -15,7 +15,7 @@
 .stepper {
   display: flex;
   gap: var(--spacing-xs, 4px);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--color--border);
   padding-bottom: 2px;
   overflow-x: auto;
 }
@@ -32,19 +32,22 @@
   border-bottom: 2px solid transparent;
   cursor: pointer;
   text-align: left;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   font-size: 0.9rem;
-  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease,
+    background 0.15s ease;
 }
 
 .stepTab:hover:not(:disabled) {
-  background: var(--light-bg-color);
-  color: var(--base-body-color);
+  background: var(--color--surface-muted);
+  color: var(--color--ink);
 }
 
 .stepTabActive {
-  color: var(--base-body-color);
-  border-bottom-color: var(--accent-color);
+  color: var(--color--ink);
+  border-bottom-color: var(--color--selected--border);
   font-weight: 600;
 }
 
@@ -60,24 +63,24 @@
   width: 24px;
   height: 24px;
   border-radius: 999px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color--border);
   background: var(--base-background-color);
   font-size: 0.8rem;
   font-weight: 600;
   flex-shrink: 0;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 .stepTabActive .stepIndex {
-  background: var(--accent-color);
-  border-color: var(--accent-color);
+  background: var(--color--primary--surface);
+  border-color: var(--color--selected--border);
   color: #fff;
 }
 
 .stepTabDone .stepIndex {
-  background: var(--light-bg-color);
-  border-color: var(--border-color);
-  color: var(--base-body-color);
+  background: var(--color--surface-muted);
+  border-color: var(--color--border);
+  color: var(--color--ink);
 }
 
 .stepIcon {
@@ -85,11 +88,11 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 .stepTabActive .stepIcon {
-  color: var(--accent-color);
+  color: var(--color--ink-link);
 }
 
 .stepTabLocked .stepIcon {
@@ -152,13 +155,13 @@
 .fieldLabel {
   font-size: 1.125rem;
   font-weight: 600;
-  color: var(--base-body-color);
+  color: var(--color--ink);
 }
 
 .fieldHint {
   margin-top: 8px;
   font-size: 1rem;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   line-height: 1.45;
 }
 
@@ -169,7 +172,7 @@
 }
 
 .inlineSection {
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color--border);
   padding: var(--spacing-m);
   background: var(--base-background-color);
   display: flex;
@@ -218,7 +221,7 @@
 }
 
 .summaryText {
-  color: var(--base-body-color);
+  color: var(--color--ink);
 }
 
 .summaryText strong {
@@ -227,17 +230,20 @@
 
 .mutedText {
   margin: 0;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 .errorText {
   margin: var(--spacing-s) 0 0;
-  color: var(--alert-color);
+  color: var(--color--ink-danger);
 }
 
 .conditionRow {
   display: grid;
-  grid-template-columns: minmax(220px, 2fr) minmax(160px, 1fr) minmax(220px, 2fr) auto;
+  grid-template-columns: minmax(220px, 2fr) minmax(160px, 1fr) minmax(
+      220px,
+      2fr
+    ) auto;
   gap: var(--spacing-s);
   align-items: end;
 }
@@ -265,11 +271,11 @@
   margin: 0;
   font-size: 1.125rem;
   font-weight: 600;
-  color: var(--base-body-color);
+  color: var(--color--ink);
 }
 
 .tableCard {
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color--border);
   background: var(--base-background-color);
 }
 
@@ -286,7 +292,7 @@
 .table th,
 .table td {
   padding: 10px 12px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--color--border);
   text-align: left;
   vertical-align: top;
 }
@@ -294,12 +300,12 @@
 .table thead th {
   position: sticky;
   top: 0;
-  background: var(--light-bg-color);
+  background: var(--color--surface-muted);
   z-index: 1;
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 .table tbody tr:hover {
@@ -309,16 +315,16 @@
 .statusChip {
   display: inline-flex;
   align-items: center;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color--border);
   padding: 2px 8px;
   border-radius: 6px;
   font-size: 0.8rem;
-  color: var(--base-body-color);
+  color: var(--color--ink);
   background: var(--base-background-color);
 }
 
 .mono {
-  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
   font-size: 0.85rem;
 }
 
@@ -333,18 +339,18 @@
   flex-wrap: wrap;
   justify-content: space-between;
   gap: var(--spacing-s);
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 .progressTrack {
   height: 8px;
-  background: var(--light-bg-color);
-  border: 1px solid var(--border-color);
+  background: var(--color--surface-muted);
+  border: 1px solid var(--color--border);
 }
 
 .progressFill {
   height: 100%;
-  background: var(--accent-color);
+  background: var(--color--primary--surface);
   transition: width 0.15s ease;
 }
 
@@ -362,13 +368,13 @@
   justify-content: space-between;
   gap: var(--spacing-m);
   padding: var(--spacing-s) var(--spacing-m);
-  border-top: 1px solid var(--border-color);
-  background: var(--light-bg-color);
+  border-top: 1px solid var(--color--border);
+  background: var(--color--surface-muted);
 }
 
 .paginationText {
   font-size: 0.875rem;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 .resultsRow {
@@ -382,7 +388,7 @@
 }
 
 .resultsRow:focus-visible {
-  box-shadow: inset 0 0 0 2px var(--accent-color);
+  box-shadow: inset 0 0 0 2px var(--color--focus--outline);
 }
 
 .matchingList {
@@ -399,14 +405,14 @@
 }
 
 .matchingKey {
-  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
   font-size: 0.8rem;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   flex-shrink: 0;
 }
 
 .matchingValue {
-  color: var(--base-body-color);
+  color: var(--color--ink);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -416,13 +422,13 @@
 .matchHighlight {
   font-weight: 700;
   font-size: 1.05em;
-  color: var(--base-body-color);
+  color: var(--color--ink);
 }
 
 .bannerError {
   border: 1px solid rgba(185, 28, 28, 0.3);
   background: rgba(248, 113, 113, 0.08);
-  color: var(--alert-color);
+  color: var(--color--ink-danger);
   padding: var(--spacing-m);
 }
 

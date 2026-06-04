@@ -27,7 +27,7 @@
 }
 
 .intro {
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   line-height: 1.6;
   margin: 0 0 2rem 0;
   font-size: 1rem;
@@ -44,7 +44,7 @@
   );
   border: 1px solid var(--color-success-border);
   border-radius: 10px;
-  color: var(--base-body-color);
+  color: var(--color--ink);
   line-height: 1.5;
   font-size: 0.95rem;
   margin-bottom: 2rem;
@@ -55,7 +55,7 @@
   width: 22px;
   height: 22px;
   background: var(--color-success);
-  color: white;
+  color: var(--color--primary--ink);
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -75,7 +75,7 @@
   );
   border: 1px solid var(--color-warning-border);
   border-radius: 10px;
-  color: var(--base-body-color);
+  color: var(--color--ink);
   line-height: 1.5;
   font-size: 0.95rem;
   margin-bottom: 2rem;
@@ -86,7 +86,7 @@
   width: 22px;
   height: 22px;
   background: var(--color-warning-icon);
-  color: white;
+  color: var(--color--primary--ink);
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -123,14 +123,14 @@
 .sectionTitle {
   font-size: 1.15rem;
   font-weight: 600;
-  color: var(--base-body-color);
+  color: var(--color--ink);
   margin: 0 0 0.75rem 0;
   padding-bottom: 0.5rem;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--color--border);
 }
 
 .description {
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   line-height: 1.6;
   margin: 0 0 1rem 0;
 }
@@ -140,11 +140,11 @@
     "SF Mono", "Monaco", "Inconsolata", "Fira Mono", "Droid Sans Mono",
     "Source Code Pro", monospace;
   font-size: 0.875em;
-  background: var(--light-bg-color);
+  background: var(--color--surface-muted);
   padding: 0.2em 0.5em;
   border-radius: 4px;
-  color: var(--alert-color);
-  border: 1px solid var(--border-color);
+  color: var(--color--ink-danger);
+  border: 1px solid var(--color--border);
 }
 
 /* Migration Section Styles */
@@ -158,14 +158,14 @@
 .migrationModels {
   margin-top: 1.5rem;
   padding: 1rem;
-  background: var(--light-bg-color);
+  background: var(--color--surface-muted);
   border-radius: 8px;
 }
 
 .migrationSubtitle {
   font-size: 0.95rem;
   font-weight: 600;
-  color: var(--base-body-color);
+  color: var(--color--ink);
   margin: 0 0 0.75rem 0;
 }
 
@@ -180,7 +180,7 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.5rem 0;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--color--border);
 }
 
 .modelItem:last-child {
@@ -189,12 +189,12 @@
 
 .modelName {
   font-weight: 500;
-  color: var(--base-body-color);
+  color: var(--color--ink);
 }
 
 .modelApiKey {
   font-size: 0.85rem;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   font-family: "SF Mono", "Monaco", "Inconsolata", "Fira Mono", monospace;
 }
 
@@ -203,7 +203,7 @@
 .progressContainer {
   margin-top: 1.5rem;
   padding: 1rem;
-  background: var(--light-bg-color);
+  background: var(--color--surface-muted);
   border-radius: 8px;
 }
 
@@ -211,13 +211,13 @@
   display: flex;
   justify-content: space-between;
   font-size: 0.9rem;
-  color: var(--base-body-color);
+  color: var(--color--ink);
   margin-bottom: 0.75rem;
 }
 
 .progressBar {
   height: 8px;
-  background: var(--border-color);
+  background: var(--color--border);
   border-radius: 4px;
   overflow: hidden;
 }
@@ -226,8 +226,8 @@
   height: 100%;
   background: linear-gradient(
     135deg,
-    var(--accent-color) 0%,
-    var(--primary-color) 100%
+    var(--color--primary--surface) 0%,
+    var(--color--primary--surface) 100%
   );
   border-radius: 4px;
   transition: width 0.3s ease;
@@ -238,7 +238,7 @@
 .resultsContainer {
   margin-top: 1.5rem;
   padding: 1rem;
-  background: var(--light-bg-color);
+  background: var(--color--surface-muted);
   border-radius: 8px;
 }
 
@@ -252,22 +252,22 @@
 .resultItem {
   text-align: center;
   padding: 1rem;
-  background: white;
+  background: var(--color--surface);
   border-radius: 8px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color--border);
 }
 
 .resultNumber {
   display: block;
   font-size: 1.75rem;
   font-weight: 700;
-  color: var(--base-body-color);
+  color: var(--color--ink);
 }
 
 .resultLabel {
   display: block;
   font-size: 0.8rem;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   margin-top: 0.25rem;
 }
 
@@ -309,7 +309,7 @@
   );
   border: 1px solid var(--color-error-border);
   border-radius: 10px;
-  color: var(--base-body-color);
+  color: var(--color--ink);
   line-height: 1.5;
   font-size: 0.95rem;
   margin-top: 1rem;
@@ -320,7 +320,7 @@
   width: 22px;
   height: 22px;
   background: var(--color-error);
-  color: white;
+  color: var(--color--primary--ink);
   border-radius: 50%;
   display: flex;
   align-items: center;
@@ -342,7 +342,7 @@
   );
   border: 1px solid var(--color-error-border);
   border-radius: 10px;
-  color: var(--base-body-color);
+  color: var(--color--ink);
   line-height: 1.5;
   font-size: 0.95rem;
   margin: 1rem 0;
@@ -358,7 +358,7 @@
 .cleanupSection {
   margin-top: 2rem;
   padding-top: 1.5rem;
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--color--border);
 }
 
 .confirmDialog {
@@ -385,9 +385,9 @@
 .scanProgressContainer {
   margin-top: 1.5rem;
   padding: 1.25rem;
-  background: var(--light-bg-color);
+  background: var(--color--surface-muted);
   border-radius: 10px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color--border);
 }
 
 .scanProgressHeader {
@@ -400,12 +400,12 @@
 .scanPhaseLabel {
   font-size: 0.95rem;
   font-weight: 500;
-  color: var(--base-body-color);
+  color: var(--color--ink);
 }
 
 .scanProgressCount {
   font-size: 0.9rem;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   font-family: "SF Mono", "Monaco", "Inconsolata", "Fira Mono", monospace;
 }
 
@@ -415,7 +415,7 @@
   align-items: center;
   margin-top: 0.75rem;
   font-size: 0.875rem;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 .scanCurrentModel {
@@ -426,14 +426,14 @@
 }
 
 .scanCurrentModel strong {
-  color: var(--base-body-color);
+  color: var(--color--ink);
 }
 
 .scanFoundCounter {
   flex-shrink: 0;
   padding: 0.25rem 0.625rem;
-  background: var(--accent-color);
-  color: var(--light-color);
+  background: var(--color--primary--surface);
+  color: var(--color--primary--ink);
   border-radius: 999px;
   font-size: 0.8rem;
   font-weight: 500;

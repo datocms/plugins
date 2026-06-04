@@ -7,9 +7,7 @@
  * DatoCMS Design System Reference:
  * - Base font: 15px
  * - Spacing unit: 12px
- * - Text: #34363a (primary), #848484 (secondary)
- * - Border: #f0f0f0
- * - Background: #f5f5f5 (light)
+ * - Text, border, and surface colors inherit from the host theme
  * - Error: #ff5e49
  * - Success: #46d700
  * - Warning: #ffd700
@@ -86,67 +84,26 @@
    * =========================================== */
 
   /* Text colors */
-  --text-primary: #34363a;
-  --text-secondary: #848484;
-  --text-muted: #a0a0a0;
-  --text-inverse: #ffffff;
-  --text-heading: #1d1c1d;
+  --text-primary: var(--color--ink);
+  --text-secondary: var(--color--ink-subtle);
+  --text-muted: var(--color--ink-muted);
+  --text-inverse: var(--color--primary--ink);
+  --text-heading: var(--color--ink);
 
   /* Background colors */
-  --bg-primary: #ffffff;
-  --bg-secondary: #f5f5f5;
-  --bg-tertiary: #fafafa;
+  --bg-primary: var(--color--surface);
+  --bg-secondary: var(--color--surface-muted);
+  --bg-tertiary: var(--color--surface-muted);
 
   /* Border colors */
-  --border-light: #f0f0f0;
-  --border-default: #e0e0e0;
-  --border-strong: #d0d0d0;
+  --border-light: var(--color--border);
+  --border-default: var(--color--border);
+  --border-strong: var(--color--border-hover);
 
   /* Action colors (for buttons, links) */
-  --action-bg: #f5f5f5;
-  --action-bg-hover: #e8e8e8;
-  --action-text: #34363a;
-
-  /* ===========================================
-   * LEGACY VARIABLE ALIASES
-   * ============================================================================
-   * These map old names to semantic tokens for backwards compatibility.
-   *
-   * NAMING CONVENTION HISTORY:
-   * Early versions used names like --base-body-color, --light-body-color
-   * which were unclear about their purpose. The new semantic names
-   * (--text-primary, --text-secondary, etc.) are preferred for new code.
-   *
-   * WHY BOTH EXIST:
-   * - Existing CSS uses legacy names extensively
-   * - Renaming all usages would be high-churn with no functional benefit
-   * - Aliases ensure values stay in sync automatically
-   *
-   * FOR NEW CODE: Use semantic names (--text-primary, --bg-secondary, etc.)
-   * FOR EXISTING CODE: Legacy names work fine via aliases
-   * ============================================================================ */
-
-  /* Border aliases */
-  --border-color: var(--border-default);
-  --darker-border-color: var(--border-strong);
-
-  /* Background aliases */
-  --lighter-bg-color: var(--bg-tertiary);
-  --light-bg-color: var(--bg-secondary);
-  --base-body-bg-color: var(--bg-primary);
-
-  /* Text color aliases */
-  --base-body-color: var(--text-primary);
-  --light-body-color: var(--text-secondary);
-
-  /* Accent color (DatoCMS blue) - both names kept for historical reasons */
-  --accent-color: #1264a3;
-  --accent-color-hover: #0f5892;
-  --accent-color-active: #0d4c7d;
-  --primary-color: var(--accent-color);
-
-  /* Alert/error color */
-  --alert-color: #ff5e49;
+  --action-bg: var(--color--surface-muted);
+  --action-bg-hover: var(--color--surface-hover);
+  --action-text: var(--color--ink);
 
   /* ===========================================
    * MENTION TYPE COLORS
@@ -155,55 +112,79 @@
 
   /* User mentions (purple) */
   --mention-user: #7c3aed;
-  --mention-user-bg: #f3e8ff;
-  --mention-user-hover: #e9d5ff;
-  --mention-user-dark: #6d28d9;
+  --mention-user-bg: color-mix(
+    in srgb,
+    var(--mention-user) 12%,
+    var(--color--surface)
+  );
+  --mention-user-hover: color-mix(
+    in srgb,
+    var(--mention-user) 18%,
+    var(--color--surface)
+  );
+  --mention-user-dark: var(--mention-user);
 
   /* Field mentions (blue) */
-  --mention-field: #1264a3;
-  --mention-field-bg: #e8f5fa;
-  --mention-field-hover: #cce8f4;
-  --mention-field-dark: #0b4c8c;
-
-  /* ===========================================
-   * ACCENT COLOR ALPHA VARIANTS
-   * Semi-transparent versions of the accent color for overlays and focus states
-   * Base accent color: #1264a3 (DatoCMS blue)
-   * =========================================== */
-
-  --accent-color-a10: rgba(18, 100, 163, 0.1);
-  --accent-color-a20: rgba(18, 100, 163, 0.2);
-  --accent-color-a30: rgba(18, 100, 163, 0.3);
+  --mention-field: var(--color--ink-link);
+  --mention-field-bg: var(--color--primary-soft--surface);
+  --mention-field-hover: var(--color--primary-soft--surface-hover);
+  --mention-field-dark: var(--color--primary-soft--ink);
 
   /* Accent color tints for interactive states (higher contrast than alpha variants) */
-  --accent-color-tint-light: #f0f7ff;
-  --accent-color-tint-medium: #e5f0fa;
 
   /* Asset mentions (cyan) */
   --mention-asset: #0891b2;
-  --mention-asset-bg: #ecfeff;
-  --mention-asset-hover: #cffafe;
-  --mention-asset-dark: #0e7490;
-  --mention-asset-border: #b8e6f0;
-  --mention-asset-border-hover: #7dd3e1;
+  --mention-asset-bg: color-mix(
+    in srgb,
+    var(--mention-asset) 12%,
+    var(--color--surface)
+  );
+  --mention-asset-hover: color-mix(
+    in srgb,
+    var(--mention-asset) 18%,
+    var(--color--surface)
+  );
+  --mention-asset-dark: var(--mention-asset);
+  --mention-asset-border: color-mix(
+    in srgb,
+    var(--mention-asset) 28%,
+    var(--color--border)
+  );
+  --mention-asset-border-hover: color-mix(
+    in srgb,
+    var(--mention-asset) 45%,
+    var(--color--border-hover)
+  );
 
   /* Record mentions (green) */
   --mention-record: #059669;
-  --mention-record-bg: #ecfdf5;
-  --mention-record-hover: #d1fae5;
-  --mention-record-dark: #047857;
-  --mention-record-border: #a7f3d0;
-  --mention-record-border-hover: #6ee7b7;
+  --mention-record-bg: var(--color--success-soft--surface);
+  --mention-record-hover: color-mix(
+    in srgb,
+    var(--color--success-soft--surface) 75%,
+    var(--color--success-soft--ink)
+  );
+  --mention-record-dark: var(--color--success-soft--ink);
+  --mention-record-border: var(--color--success-soft--border);
+  --mention-record-border-hover: var(--color--success-soft--outline);
 
   /* Model mentions (orange/amber) */
   --mention-model: #d97706;
-  --mention-model-bg: #fffbeb;
-  --mention-model-hover: #fef3c7;
-  --mention-model-dark: #b45309;
+  --mention-model-bg: var(--color--warning-soft--surface);
+  --mention-model-hover: color-mix(
+    in srgb,
+    var(--color--warning-soft--surface) 75%,
+    var(--color--warning-soft--ink)
+  );
+  --mention-model-dark: var(--color--warning-soft--ink);
 
   /* Block mentions (indigo) */
   --mention-block: #6366f1;
-  --mention-block-bg: rgba(99, 102, 241, 0.1);
+  --mention-block-bg: color-mix(
+    in srgb,
+    var(--mention-block) 12%,
+    var(--color--surface)
+  );
 
   /* ===========================================
    * SHADOWS
@@ -257,36 +238,36 @@
    * SUCCESS STATE COLORS
    * =========================================== */
 
-  --color-success: #22c55e;
-  --color-success-light: #16a34a;
-  --color-success-bg: #f0fdf4;
-  --color-success-bg-gradient-start: #f0fdf4;
-  --color-success-bg-gradient-end: #dcfce7;
-  --color-success-border: #86efac;
+  --color-success: var(--color--ink-success);
+  --color-success-light: var(--color--success-soft--ink);
+  --color-success-bg: var(--color--success-soft--surface);
+  --color-success-bg-gradient-start: var(--color--success-soft--surface);
+  --color-success-bg-gradient-end: var(--color--success-soft--surface);
+  --color-success-border: var(--color--success-soft--border);
 
   /* ===========================================
    * WARNING STATE COLORS
    * =========================================== */
 
-  --color-warning: #92400e;
-  --color-warning-icon: #f59e0b;
-  --color-warning-bg: #fef3c7;
-  --color-warning-bg-gradient-start: #fffbeb;
-  --color-warning-bg-gradient-end: #fef3c7;
-  --color-warning-border: #fcd34d;
+  --color-warning: var(--color--warning-soft--ink);
+  --color-warning-icon: var(--color--ink-warning);
+  --color-warning-bg: var(--color--warning-soft--surface);
+  --color-warning-bg-gradient-start: var(--color--warning-soft--surface);
+  --color-warning-bg-gradient-end: var(--color--warning-soft--surface);
+  --color-warning-border: var(--color--warning-soft--border);
 
   /* ===========================================
    * ERROR STATE COLORS
    * =========================================== */
 
-  --color-error: #dc2626;
-  --color-error-text: #7f1d1d;
-  --color-error-heading: #dc2626;
-  --color-error-bg: #fef2f2;
-  --color-error-bg-gradient-start: #fef2f2;
-  --color-error-bg-gradient-end: #fee2e2;
-  --color-error-border: #fca5a5;
-  --color-error-border-light: #fecaca;
+  --color-error: var(--color--ink-danger);
+  --color-error-text: var(--color--danger-soft--ink);
+  --color-error-heading: var(--color--ink-danger);
+  --color-error-bg: var(--color--danger-soft--surface);
+  --color-error-bg-gradient-start: var(--color--danger-soft--surface);
+  --color-error-bg-gradient-end: var(--color--danger-soft--surface);
+  --color-error-border: var(--color--danger-soft--border);
+  --color-error-border-light: var(--color--danger-soft--border);
 
   /* ===========================================
    * STATUS INDICATOR COLORS
@@ -294,13 +275,13 @@
    * =========================================== */
 
   /* Neutral status (saving, connecting, retrying) - subtle gray */
-  --status-neutral-bg: rgba(0, 0, 0, 0.05);
+  --status-neutral-bg: var(--color--surface-muted);
   --status-neutral-text: var(--text-secondary);
 
   /* Error status - uses alert color with subtle background */
-  --status-error-bg: rgba(255, 94, 73, 0.1);
-  --status-error-bg-hover: rgba(255, 94, 73, 0.15);
-  --status-error-text: var(--alert-color);
+  --status-error-bg: var(--color--danger-soft--surface);
+  --status-error-bg-hover: var(--color--danger-soft--outline);
+  --status-error-text: var(--color--ink-danger);
 
   /* ===========================================
    * INPUT TOKENS
@@ -308,7 +289,7 @@
    * =========================================== */
 
   --input-border: var(--border-default);
-  --input-border-focus: #1264a3;
+  --input-border-focus: var(--color--focus--border);
   --input-bg: var(--bg-primary);
   --input-padding-x: var(--space-2);
   --input-padding-y: var(--space-1);

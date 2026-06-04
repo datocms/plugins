@@ -16,7 +16,7 @@
 
 .instructions {
   margin: 0 0 var(--spacing-m);
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   font-size: 0.9rem;
 }
 
@@ -33,20 +33,20 @@
 }
 
 .loadingLabel {
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 .error {
-  color: var(--alert-color);
+  color: var(--color--ink-danger);
 }
 
 .notice {
-  color: var(--placeholder-body-color);
+  color: var(--color--ink-placeholder);
   margin: 0;
 }
 
 .empty {
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   margin: 0;
 }
 
@@ -65,8 +65,8 @@
   justify-content: space-between;
   gap: var(--spacing-m);
   padding: var(--spacing-s) var(--spacing-m);
-  background: var(--lighter-bg-color);
-  border: 1px solid var(--border-color);
+  background: var(--color--surface-muted);
+  border: 1px solid var(--color--border);
 }
 
 .menuItemDetails {
@@ -80,7 +80,7 @@
 }
 
 .menuItemMeta {
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   font-size: 0.85rem;
 }
 
@@ -95,5 +95,5 @@
   align-items: center;
   justify-content: center;
   width: 1.5em;
-  color: var(--accent-color);
+  color: var(--color--ink-link);
 }

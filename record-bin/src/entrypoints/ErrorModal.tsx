@@ -77,7 +77,7 @@ const ErrorModal = ({ ctx }: PropTypes) => {
         style={{
           marginTop: 'var(--spacing-s)',
           marginBottom: 'var(--spacing-s)',
-          border: '1px solid var(--border-color)',
+          border: '1px solid var(--color--border)',
           borderRadius: '6px',
           background: '#f8f9fb',
         }}

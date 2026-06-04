@@ -15,7 +15,7 @@
 .explanationBox {
   margin-bottom: var(--spacing-l);
   padding: var(--spacing-m);
-  background-color: var(--light-bg-color, #f5f5f5);
+  background-color: var(--color--surface-muted);
   border-radius: var(--border-radius);
   font-size: var(--font-size-s);
 }
@@ -48,7 +48,7 @@
 .warningList {
   margin: 0;
   padding-left: var(--spacing-l);
-  color: var(--base-body-color);
+  color: var(--color--ink);
 }
 
 .warningList li {
@@ -74,7 +74,7 @@
   margin-top: var(--spacing-l);
   margin-bottom: var(--spacing-l);
   padding: var(--spacing-m);
-  background-color: var(--lighter-bg-color, #fafafa);
+  background-color: var(--color--surface-muted);
   border-radius: var(--border-radius);
 }
 
@@ -87,7 +87,7 @@
 .modelSelectionDescription {
   margin: 0 0 var(--spacing-m) 0;
   font-size: var(--font-size-s);
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 /* Switch fields section */

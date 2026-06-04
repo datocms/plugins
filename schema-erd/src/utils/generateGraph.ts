@@ -119,9 +119,10 @@ function addFieldEdges(
   validators: string[],
 ): boolean {
   let hasLinks = false;
+  const fieldValidators = field.attributes.validators as Record<string, unknown>;
 
   for (const validatorCode of validators) {
-    const validatorEntry = field.attributes.validators[validatorCode];
+    const validatorEntry = fieldValidators[validatorCode];
     const linkedIds = extractLinkedItemTypeIds(validatorEntry);
 
     for (const itemTypeId of linkedIds) {

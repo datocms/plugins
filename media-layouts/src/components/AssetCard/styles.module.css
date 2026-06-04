@@ -3,16 +3,16 @@
   align-items: center;
   gap: 12px;
   padding: 10px 12px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color--border);
   border-radius: 6px;
-  background: white;
+  background: var(--color--surface);
   transition:
     box-shadow 0.2s ease,
     border-color 0.2s ease;
 }
 
 .card:hover {
-  border-color: var(--accent-color);
+  border-color: var(--color--selected--border);
   box-shadow: 0 6px 14px rgba(0, 0, 0, 0.06);
 }
 
@@ -22,8 +22,8 @@
   height: 44px;
   border-radius: 6px;
   overflow: hidden;
-  background: var(--light-bg-color);
-  border: 1px solid var(--border-color);
+  background: var(--color--surface-muted);
+  border: 1px solid var(--color--border);
 }
 
 .thumbnail img {
@@ -40,7 +40,7 @@
   justify-content: center;
   font-size: 9px;
   font-weight: 500;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   text-transform: uppercase;
 }
 
@@ -55,7 +55,7 @@
 .filename {
   font-size: 13px;
   font-weight: 500;
-  color: var(--base-body-color);
+  color: var(--color--ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -63,7 +63,7 @@
 
 .dimensions {
   font-size: 11px;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 .controls {
@@ -73,8 +73,8 @@
   flex-shrink: 0;
   padding: 4px;
   border-radius: 6px;
-  background: var(--lighter-bg-color);
-  border: 1px solid var(--border-color);
+  background: var(--color--surface-muted);
+  border: 1px solid var(--color--border);
 }
 
 .actionStack {
@@ -96,8 +96,8 @@
   padding: 5px 9px;
   font-size: 11px;
   font-weight: 500;
-  color: var(--base-body-color);
-  background: white;
+  color: var(--color--ink);
+  background: var(--color--surface);
   border: 1px solid transparent;
   border-radius: 4px;
   cursor: pointer;
@@ -107,8 +107,8 @@
 }
 
 .controlButton:hover:not(:disabled) {
-  border-color: var(--accent-color);
-  background: var(--light-bg-color);
+  border-color: var(--color--selected--border);
+  background: var(--color--surface-muted);
 }
 
 .controlButton:disabled {
@@ -120,9 +120,9 @@
   width: 74px;
   padding: 5px 6px;
   font-size: 11px;
-  color: var(--base-body-color);
-  background: white;
-  border: 1px solid var(--border-color);
+  color: var(--color--ink);
+  background: var(--color--surface);
+  border: 1px solid var(--color--border);
   border-radius: 4px;
 }
 
@@ -137,9 +137,9 @@
   width: 74px;
   padding: 5px 6px;
   font-size: 11px;
-  color: var(--base-body-color);
-  background: white;
-  border: 1px solid var(--border-color);
+  color: var(--color--ink);
+  background: var(--color--surface);
+  border: 1px solid var(--color--border);
   border-radius: 4px;
 }
 
@@ -151,18 +151,18 @@
 }
 
 .inputError {
-  border-color: var(--alert-color);
+  border-color: var(--color--danger-soft--border);
 }
 
 .errorText {
   font-size: 10px;
-  color: var(--alert-color);
+  color: var(--color--ink-danger);
   line-height: 1.2;
 }
 
 .customAspectRatioInput:focus {
   outline: none;
-  border-color: var(--accent-color);
+  border-color: var(--color--selected--border);
 }
 
 .customAspectRatioInput:disabled {
@@ -172,7 +172,7 @@
 
 .customWidthInput:focus {
   outline: none;
-  border-color: var(--accent-color);
+  border-color: var(--color--selected--border);
 }
 
 .customWidthInput:disabled {
@@ -184,9 +184,9 @@
   width: 128px;
   padding: 6px 8px;
   font-size: 11px;
-  color: var(--base-body-color);
-  background: var(--light-bg-color);
-  border: 1px solid var(--border-color);
+  color: var(--color--ink);
+  background: var(--color--surface-muted);
+  border: 1px solid var(--color--border);
   border-radius: 6px;
   transition:
     border-color 0.15s ease,
@@ -195,18 +195,18 @@
 }
 
 .cssClassInput::placeholder {
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 .cssClassInput:hover:not(:disabled) {
-  border-color: var(--accent-color);
+  border-color: var(--color--selected--border);
 }
 
 .cssClassInput:focus {
   outline: none;
-  background: white;
-  border-color: var(--accent-color);
-  box-shadow: 0 0 0 2px rgba(var(--accent-color-rgb, 59, 130, 246), 0.12);
+  background: var(--color--surface);
+  border-color: var(--color--selected--border);
+  box-shadow: 0 0 0 2px var(--color--focus--outline);
 }
 
 .cssClassInput:disabled {
@@ -221,9 +221,9 @@
   gap: 6px;
   padding: 2px 8px 2px 4px;
   font-size: 11px;
-  color: var(--base-body-color);
-  background: var(--light-bg-color);
-  border: 1px solid var(--border-color);
+  color: var(--color--ink);
+  background: var(--color--surface-muted);
+  border: 1px solid var(--color--border);
   border-radius: 999px;
   cursor: pointer;
   transition:
@@ -233,7 +233,7 @@
 }
 
 .lazyToggle:hover {
-  border-color: var(--accent-color);
+  border-color: var(--color--selected--border);
 }
 
 .lazyToggle input {
@@ -248,8 +248,8 @@
   width: 24px;
   height: 14px;
   border-radius: 999px;
-  background: white;
-  border: 1px solid var(--border-color);
+  background: var(--color--surface);
+  border: 1px solid var(--color--border);
   position: relative;
   transition:
     border-color 0.15s ease,
@@ -264,7 +264,7 @@
   width: 10px;
   height: 10px;
   border-radius: 50%;
-  background: var(--light-body-color);
+  background: var(--color--ink-subtle);
   transform: translateY(-50%);
   transition:
     transform 0.15s ease,
@@ -272,17 +272,17 @@
 }
 
 .lazyToggle input:checked + .toggleTrack {
-  background: rgba(var(--accent-color-rgb, 59, 130, 246), 0.16);
-  border-color: var(--accent-color);
+  background: var(--color--primary-soft--surface);
+  border-color: var(--color--selected--border);
 }
 
 .lazyToggle input:checked + .toggleTrack::after {
   transform: translate(10px, -50%);
-  background: var(--accent-color);
+  background: var(--color--primary--surface);
 }
 
 .lazyToggle input:focus-visible + .toggleTrack {
-  box-shadow: 0 0 0 2px rgba(var(--accent-color-rgb, 59, 130, 246), 0.2);
+  box-shadow: 0 0 0 2px var(--color--focus--outline);
 }
 
 .toggleLabel {
@@ -296,7 +296,7 @@
 }
 
 .toggleDisabled:hover {
-  border-color: var(--border-color);
+  border-color: var(--color--border);
 }
 
 .menuButton {
@@ -305,18 +305,18 @@
   justify-content: center;
   width: 28px;
   height: 28px;
-  background: white;
+  background: var(--color--surface);
   border: 1px solid transparent;
   border-radius: 4px;
   cursor: pointer;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   transition: all 0.15s ease;
 }
 
 .menuButton:hover {
-  background: var(--light-bg-color);
-  border-color: var(--accent-color);
-  color: var(--base-body-color);
+  background: var(--color--surface-muted);
+  border-color: var(--color--selected--border);
+  color: var(--color--ink);
 }
 
 .menuButton:disabled {
@@ -337,21 +337,21 @@
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  color: var(--alert-color);
+  color: var(--color--ink-danger);
   font-size: 12px;
 }
 
 .removeButton {
   padding: 4px 8px;
   font-size: 11px;
-  color: var(--alert-color);
+  color: var(--color--ink-danger);
   background: transparent;
-  border: 1px solid var(--alert-color);
+  border: 1px solid var(--color--danger-soft--border);
   border-radius: 4px;
   cursor: pointer;
 }
 
 .removeButton:hover {
-  background: var(--alert-color);
-  color: white;
+  background: var(--color--danger--surface);
+  color: var(--color--primary--ink);
 }

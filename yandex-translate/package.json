@@ -1,6 +1,6 @@
 {
   "name": "datocms-plugin-yandex-translate",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "author": "DatoCMS <support@datocms.com>",
   "homepage": "https://github.com/datocms/plugins/tree/master/yandex-translate#readme",
   "description": "Makes it easier to automatically translate your content into secondary languages",
@@ -34,15 +34,16 @@
     "@types/lodash-es": "^4.17.12",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "datocms-plugin-sdk": "^2.1.1",
-    "datocms-react-ui": "2.1.4",
+    "datocms-plugin-sdk": "2.2.1",
+    "datocms-react-ui": "2.2.1",
     "final-form": "^5.0.0",
     "final-form-arrays": "^4.0.0",
     "lodash-es": "^4.17.23",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-final-form": "^7.0.0",
-    "react-final-form-arrays": "^4.0.0"
+    "react-final-form-arrays": "^4.0.0",
+    "react-select": "5.10.2"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^5.2.0",

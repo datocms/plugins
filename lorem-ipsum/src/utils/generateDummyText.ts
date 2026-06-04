@@ -36,24 +36,24 @@ function article(buttons: string[]) {
     return [
       t('h1', title()),
       t('h2', title()),
-      times(rand(1, 2)).map(() => t('p', s())),
+      ...times(rand(1, 2)).map(() => t('p', ...s())),
       generateList && t('h2', title()),
-      generateList && t('p', s()),
+      generateList && t('p', ...s()),
       generateList &&
-        t('ul', ...times(3).map(() => t('li', t('p', s(rand(1, 3)))))),
+        t('ul', ...times(3).map(() => t('li', t('p', ...s(rand(1, 3)))))),
       generateBlockquote && t('h2', title()),
-      generateBlockquote && t('p', s()),
-      generateBlockquote && t('blockquote', s(4)),
+      generateBlockquote && t('p', ...s()),
+      generateBlockquote && t('blockquote', ...s(4)),
     ].filter((x) => !!x) as Tag[];
   }
 
   return [
-    times(rand(1, 2)).map(() => t('p', s())),
+    ...times(rand(1, 2)).map(() => t('p', ...s())),
     generateList &&
-      t('ul', ...times(3).map(() => t('li', t('p', s(rand(1, 3)))))),
-    generateList && t('p', s()),
-    generateBlockquote && t('blockquote', s(4)),
-    generateBlockquote && t('p', s()),
+      t('ul', ...times(3).map(() => t('li', t('p', ...s(rand(1, 3)))))),
+    generateList && t('p', ...s()),
+    generateBlockquote && t('blockquote', ...s(4)),
+    generateBlockquote && t('p', ...s()),
   ].filter((x) => !!x) as Tag[];
 }
 
