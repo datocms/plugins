@@ -958,6 +958,33 @@ button.chip:focus-visible {
   background: rgba(217, 48, 37, 0.06);
 }
 
+.id-collision {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  margin-top: 10px;
+  border: 1px solid rgba(217, 48, 37, 0.22);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.id-collision--resolved {
+  border-color: var(--border-color);
+}
+
+.id-collision__body {
+  display: grid;
+  gap: 4px;
+}
+
+.id-collision__title {
+  font-weight: 600;
+}
+
+.id-collision__text {
+  color: var(--light-body-color);
+}
+
 .conflict--has-conflict:first-child {
   border-top: 1px solid rgba(217, 48, 37, 0.22);
 }

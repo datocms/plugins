@@ -97,9 +97,7 @@ type ImportContext = {
   mappings: ImportMappings;
 };
 
-/**
- * Pre-generate project-side IDs for every entity that will be created during import.
- */
+/** Prepare project-side IDs for every entity that will be created during import. */
 function prepareMappings(importDoc: ImportDoc): ImportMappings {
   const itemTypeIds = new Map<string, string>();
   const fieldIds = new Map<string, string>();
@@ -107,14 +105,27 @@ function prepareMappings(importDoc: ImportDoc): ImportMappings {
   const pluginIds = new Map<string, string>();
 
   for (const toCreate of importDoc.itemTypes.entitiesToCreate) {
-    itemTypeIds.set(toCreate.entity.id, generateId());
+    itemTypeIds.set(
+      toCreate.entity.id,
+      importDoc.idsToReplace.itemTypes[toCreate.entity.id]
+        ? generateId()
+        : toCreate.entity.id,
+    );
 
     for (const field of toCreate.fields) {
-      fieldIds.set(field.id, generateId());
+      fieldIds.set(
+        field.id,
+        importDoc.idsToReplace.fields[field.id] ? generateId() : field.id,
+      );
     }
 
     for (const fieldset of toCreate.fieldsets) {
-      fieldsetIds.set(fieldset.id, generateId());
+      fieldsetIds.set(
+        fieldset.id,
+        importDoc.idsToReplace.fieldsets[fieldset.id]
+          ? generateId()
+          : fieldset.id,
+      );
     }
   }
 
@@ -125,7 +136,10 @@ function prepareMappings(importDoc: ImportDoc): ImportMappings {
   }
 
   for (const plugin of importDoc.plugins.entitiesToCreate) {
-    pluginIds.set(plugin.id, generateId());
+    pluginIds.set(
+      plugin.id,
+      importDoc.idsToReplace.plugins[plugin.id] ? generateId() : plugin.id,
+    );
   }
 
   for (const [exportId, projectId] of Object.entries(
@@ -219,6 +233,11 @@ async function createSinglePlugin(
     debugLog('Created plugin', created);
   } catch (error) {
     console.error('Failed to create plugin', data, error);
+    throw new Error(
+      `Plugin "${
+        plugin.attributes.name || plugin.attributes.package_name || plugin.id
+      }" could not be created. The preserved ID might no longer be available. Refresh the import and try again.`,
+    );
   }
 }
 
@@ -256,7 +275,7 @@ async function createPluginsPhase(context: ImportContext) {
  */
 async function createItemTypesPhase(
   context: ImportContext,
-): Promise<Array<SchemaTypes.ItemType | undefined>> {
+): Promise<SchemaTypes.ItemType[]> {
   const {
     client,
     tracker,
@@ -300,7 +319,11 @@ async function createItemTypesPhase(
             return created;
           } catch (error) {
             console.error('Failed to create item type', data, error);
-            return undefined;
+            throw new Error(
+              `${t.entity.attributes.modular_block ? 'Block' : 'Model'} "${
+                t.rename?.name || t.entity.attributes.name
+              }" could not be created. The preserved ID might no longer be available. Refresh the import and try again.`,
+            );
           }
         },
         toCreate,
@@ -356,6 +379,11 @@ async function createFieldsetsAndFieldsPhase(context: ImportContext) {
                 debugLog('Created fieldset', created);
               } catch (error) {
                 console.error('Failed to create fieldset', data, error);
+                throw new Error(
+                  `Fieldset "${
+                    fs.attributes.title || fs.id
+                  }" could not be created. The preserved ID might no longer be available. Refresh the import and try again.`,
+                );
               }
             },
             fieldset,
@@ -416,7 +444,7 @@ async function createFieldsetsAndFieldsPhase(context: ImportContext) {
  */
 async function finalizeItemTypesPhase(
   context: ImportContext,
-  createdItemTypes: Array<SchemaTypes.ItemType | undefined>,
+  createdItemTypes: SchemaTypes.ItemType[],
 ) {
   const {
     client,
@@ -796,5 +824,10 @@ async function importField(
     debugLog('Created field', createdField);
   } catch (error) {
     console.error('Failed to create field', data, error);
+    throw new Error(
+      `Field "${
+        field.attributes.label || field.attributes.api_key || field.id
+      }" could not be created. The preserved ID might no longer be available. Refresh the import and try again.`,
+    );
   }
 }

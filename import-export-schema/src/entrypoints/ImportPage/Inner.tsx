@@ -41,8 +41,13 @@ type Props = {
 export function Inner({ exportSchema, schema, ctx: _ctx }: Props) {
   const { fitBounds, fitView, setNodes, setEdges } = useReactFlow();
   const { skippedItemTypeIds } = useSkippedItemsAndPluginIds();
+  const skippedItemTypeIdsKey = useMemo(
+    () => JSON.stringify(skippedItemTypeIds),
+    [skippedItemTypeIds],
+  );
 
   const [graph, setGraph] = useState<Graph | undefined>();
+  const [graphError, setGraphError] = useState<Error | undefined>();
   const [forceRenderGraph, setForceRenderGraph] = useState(false);
   const [pendingZoomEntity, setPendingZoomEntity] = useState<
     SchemaTypes.ItemType | SchemaTypes.Plugin | null | undefined
@@ -50,12 +55,24 @@ export function Inner({ exportSchema, schema, ctx: _ctx }: Props) {
 
   // Rebuild the graph when the export document or skip lists change.
   useEffect(() => {
+    const itemTypeIdsToSkip = JSON.parse(skippedItemTypeIdsKey) as string[];
+
     async function run() {
-      setGraph(await buildGraphFromExportDoc(exportSchema, skippedItemTypeIds));
+      try {
+        setGraphError(undefined);
+        setGraph(
+          await buildGraphFromExportDoc(exportSchema, itemTypeIdsToSkip),
+        );
+      } catch (error) {
+        setGraph(undefined);
+        setGraphError(
+          error instanceof Error ? error : new Error('Unknown error'),
+        );
+      }
     }
 
     run();
-  }, [exportSchema, skippedItemTypeIds]);
+  }, [exportSchema, skippedItemTypeIdsKey]);
 
   const [selectedEntity, setSelectedEntity] = useState<
     undefined | SchemaTypes.ItemType | SchemaTypes.Plugin
@@ -214,7 +231,31 @@ export function Inner({ exportSchema, schema, ctx: _ctx }: Props) {
                   Close
                 </Button>
               </div>
-              {graph && showGraph && (
+              {graphError && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: '0 24px',
+                    textAlign: 'center',
+                  }}
+                >
+                  <div>
+                    <div style={{ fontWeight: 600 }}>
+                      Could not load import graph
+                    </div>
+                    <div
+                      style={{ color: 'var(--light-body-color)', marginTop: 8 }}
+                    >
+                      Please check the uploaded export file and try again.
+                    </div>
+                  </div>
+                </div>
+              )}
+              {!graphError && graph && showGraph && (
                 <ReactFlow
                   fitView={true}
                   nodes={graph.nodes}
@@ -232,7 +273,7 @@ export function Inner({ exportSchema, schema, ctx: _ctx }: Props) {
                   <Background />
                 </ReactFlow>
               )}
-              {graph && !showGraph && (
+              {!graphError && graph && !showGraph && (
                 <div
                   style={{
                     position: 'absolute',

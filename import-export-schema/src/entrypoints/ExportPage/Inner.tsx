@@ -63,10 +63,14 @@ export default function Inner({
 }: Props) {
   const ctx = useCtx<RenderPageCtx>();
   const { fitBounds, fitView } = useReactFlow();
+  const initialItemTypeIds = useMemo(
+    () => initialItemTypes.map((itemType) => itemType.id),
+    [initialItemTypes],
+  );
 
   // Track the current selection while ensuring initial models stay checked.
   const [selectedItemTypeIds, setSelectedItemTypeIds] = useState<string[]>(
-    initialItemTypes.map((it) => it.id),
+    initialItemTypeIds,
   );
   const [selectedPluginIds, setSelectedPluginIds] = useState<string[]>([]);
   const [selectingDependencies, setSelectingDependencies] = useState(false);
@@ -119,13 +123,13 @@ export default function Inner({
 
   // Keep selection in sync if the parent changes the initial set of item types
   useEffect(() => {
-    const mustHave = new Set(initialItemTypes.map((it) => it.id));
+    const mustHave = new Set(initialItemTypeIds);
     setSelectedItemTypeIds((prev) => {
       const next = new Set(prev);
       for (const id of mustHave) next.add(id);
       return Array.from(next);
     });
-  }, [initialItemTypes.map]);
+  }, [initialItemTypeIds]);
 
   const graphTooLarge = !!graph && graph.nodes.length > GRAPH_NODE_THRESHOLD;
   useEffect(() => {
@@ -193,7 +197,7 @@ export default function Inner({
     (_, node) => {
       if (node.type === 'itemType') {
         setFocusedEntity(node.data.itemType);
-        if (initialItemTypes.some((it) => `itemType--${it.id}` === node.id)) {
+        if (initialItemTypeIds.some((id) => `itemType--${id}` === node.id)) {
           return;
         }
 
@@ -213,7 +217,7 @@ export default function Inner({
         );
       }
     },
-    [initialItemTypes.some],
+    [initialItemTypeIds],
   );
 
   const handleSelectAllDependencies = useCallback(async () => {
