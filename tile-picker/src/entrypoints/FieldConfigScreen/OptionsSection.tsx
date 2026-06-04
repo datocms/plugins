@@ -35,16 +35,18 @@ export default function OptionsSection(): JSX.Element {
 				<>
 					{fields.length === 0
 						? <div className={s['empty-state']}>No custom options configured</div>
-						: fields.map((name, index) => (
-							<OptionCard
-								key={name}
-								fieldName={name}
-								index={index}
-								isOpen={openOptions.has(index)}
-								onToggle={() => toggleOption(index)}
-								onRemove={() => removeOption(fields.remove, index)}
-							/>
-						))
+						: <div className={s['nested-options']}>
+							{fields.map((name, index) => (
+								<OptionCard
+									key={name}
+									fieldName={name}
+									index={index}
+									isOpen={openOptions.has(index)}
+									onToggle={() => toggleOption(index)}
+									onRemove={() => removeOption(fields.remove, index)}
+								/>
+							))}
+						</div>
 					}
 					<Button
 						type="button"
