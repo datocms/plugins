@@ -1,4 +1,3 @@
-import {EMPTY_LENGTH} from './constants';
 
 const EN_NO_VALUE_MATCH = 'It appears that the current value of this field ("::value") does not match any of the available options.';
 const EN_PLEASE_SELECT_OPTION = 'Please select another option below.';
@@ -24,7 +23,7 @@ const lang = (
 ): string => {
 	const tokenKeys = Object.keys(tokens);
 
-	if (tokenKeys.length === EMPTY_LENGTH) {
+	if (tokenKeys.length === 0) {
 		return template;
 	}
 

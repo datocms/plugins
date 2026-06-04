@@ -1,18 +1,3 @@
-.code-editor {
-	font-size: 14px;
-}
-
-.code-editor-wrapper {
-	max-height: 300px;
-	overflow: auto;
-	border-color: var(--color--border);
-	border-style: solid;
-	border-width: 1px;
-	box-sizing: border-box;
-	transition: all 100ms ease 0s;
-	width: 100%;
-	margin-top: var(--spacing-s);
-}
 
 .space-top {
 	margin-top: var(--spacing-m);
@@ -57,8 +42,8 @@
 
 .color-preview {
 	border-radius: 3px;
-	height: var(--spacing-xl);
 	width: 100%;
+	aspect-ratio: 4 / 3;
 }
 
 .image-preview-container {
@@ -103,10 +88,6 @@
 	box-shadow: 0 0 0 3px var(--color--focus--outline);
 }
 
-.presets-config-form {
-	margin-top: var(--spacing-l);
-}
-
 .notice {
 	background: var(--color--warning-soft--surface);
 	color: var(--color--warning-soft--ink);
@@ -131,4 +112,122 @@
 .scroll-container {
 	overflow-x: scroll;
 	white-space: nowrap;
+}
+
+
+.option-swatch {
+	display: inline-block;
+	width: 65px;
+	height: 45px;
+	border-radius: 3px;
+	box-shadow: var(--shadow--raised);
+	flex-shrink: 0;
+}
+
+.option-swatch--empty {
+	background-color: var(--color--surface);
+	background-image:
+		linear-gradient(45deg, var(--color--border) 25%, transparent 25%),
+		linear-gradient(-45deg, var(--color--border) 25%, transparent 25%),
+		linear-gradient(45deg, transparent 75%, var(--color--border) 75%),
+		linear-gradient(-45deg, transparent 75%, var(--color--border) 75%);
+	background-size: 8px 8px;
+	background-position: 0 0, 0 4px, 4px -4px, -4px 0px;
+}
+
+.option-swatch-img {
+	width: 65px;
+	height: 45px;
+	border-radius: 3px;
+	object-fit: cover;
+	box-shadow: var(--shadow--raised);
+	flex-shrink: 0;
+}
+
+.option-remove {
+	display: flex;
+	justify-content: flex-end;
+	margin-top: var(--spacing-s);
+}
+
+.card {
+	border: 1px solid var(--color--border);
+	border-radius: 5px;
+}
+
+.card--error {
+	border-color: var(--color--danger-soft--border);
+}
+
+.card-header {
+	display: flex;
+	align-items: center;
+	gap: var(--spacing-s);
+	padding: var(--spacing-m);
+	cursor: pointer;
+	text-align: left;
+}
+
+.card-header:hover {
+	background: var(--color--surface-muted);
+}
+
+.card-chevron {
+	color: var(--color--ink-light);
+	flex-shrink: 0;
+}
+
+.card-body {
+	padding: var(--spacing-m);
+	border-top: 1px solid var(--color--border);
+}
+
+.option-grid {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: var(--spacing-m);
+	align-items: start;
+}
+
+.presentation-grid {
+	display: grid;
+	grid-template-columns: 1fr 1fr;
+	gap: var(--spacing-m);
+}
+
+.preset-header {
+	display: flex;
+	align-items: center;
+	gap: var(--spacing-s);
+	flex: 1;
+}
+
+.preset-title {
+	flex: 1;
+	font-weight: 500;
+}
+
+.option-title {
+	display: flex;
+	align-items: center;
+	gap: var(--spacing-m);
+	flex: 1;
+}
+
+.option-title-name {
+	flex: 1;
+}
+
+
+.empty-state {
+	color: var(--color--ink-muted);
+	font-size: var(--font-size-s);
+	margin-bottom: var(--spacing-m);
+}
+
+.nested-options {
+	display: flex;
+	flex-direction: column;
+	gap: var(--spacing-s);
+	margin-bottom: var(--spacing-m);
 }

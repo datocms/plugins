@@ -1,7 +1,0 @@
-const EMPTY_LENGTH = 0;
-const JSON_INDENT_SIZE = 2;
-
-export {
-	EMPTY_LENGTH,
-	JSON_INDENT_SIZE,
-};

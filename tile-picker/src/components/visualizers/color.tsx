@@ -1,8 +1,8 @@
-import type {VisualizerProps} from './types';
+import type {ColorOption} from '../../lib/types';
 import s from '../../lib/styles.module.css';
 
-const Color = ({display}: VisualizerProps): JSX.Element => (
-	<div className={s['color-preview']} style={{backgroundColor: display}}/>
+const Color = ({color}: Pick<ColorOption, 'color'>): JSX.Element => (
+	<div className={s['color-preview']} style={{backgroundColor: color}} />
 );
 
 export default Color;
