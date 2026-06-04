@@ -5,8 +5,8 @@ svg {
 :root {
   --overlay-gradient: linear-gradient(
     180deg,
-    rgba(250, 252, 255, 0.96),
-    rgba(245, 247, 255, 0.96)
+    color-mix(in srgb, var(--color--surface), var(--color--surface-muted) 8%),
+    var(--color--surface-muted)
   );
 }
 
@@ -41,7 +41,7 @@ body {
     height: calc(100% - 40px);
     box-sizing: border-box;
     border-radius: 20px;
-    border: 4px dashed var(--accent-color);
+    border: 4px dashed var(--color--focus--border);
   }
 }
 
@@ -62,7 +62,12 @@ body {
   overflow: hidden;
   cursor: pointer;
   border: 1px solid rgb(var(--color-components));
-  background: color-mix(in srgb, rgb(var(--color-components)), white 94%);
+  color: var(--color--ink);
+  background: color-mix(
+    in srgb,
+    rgb(var(--color-components)),
+    var(--color--surface) 94%
+  );
 }
 
 .app-node__body {
@@ -79,6 +84,19 @@ body {
 
 .react-flow__handle-top {
   top: -10px;
+}
+
+.react-flow {
+  background: var(--color--surface);
+}
+
+.react-flow__edge-path {
+  stroke: var(--color--border-hover);
+}
+
+.react-flow__handle {
+  background: var(--color--border-hover);
+  border-color: var(--color--surface);
 }
 
 .app-node__type {
@@ -139,18 +157,11 @@ body {
 }
 
 .tooltip {
-  background: white;
+  background: var(--color--tooltip--surface);
+  color: var(--color--tooltip--ink);
   padding: 20px;
   border-radius: 10px;
-  /* http://smoothshadows.com/#djEsMSw2LDAuMTIsNzgsMCwwLCMwMzA3MTIsI2YzZjRmNiwjZmZmZmZmLDI%3D */
-  box-shadow:
-    0px 0px 2px rgba(3, 7, 18, 0.02),
-    0px 0px 9px rgba(3, 7, 18, 0.04),
-    0px 0px 20px rgba(3, 7, 18, 0.06),
-    0px 0px 35px rgba(3, 7, 18, 0.08),
-    0px 0px 54px rgba(3, 7, 18, 0.1),
-    0px 0px 78px rgba(3, 7, 18, 0.12);
-
+  box-shadow: var(--shadow--floating);
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -206,11 +217,11 @@ body {
 }
 
 .field__type {
-  color: #666;
+  color: var(--color--ink-subtle);
 }
 
 code {
-  color: #666;
+  color: var(--color--code--ink);
 }
 
 .fieldEdge {
@@ -230,7 +241,7 @@ code {
     width: 10px;
     height: 10px;
     border-radius: 100px;
-    background: #999;
+    background: var(--color--ink-muted);
   }
   .fieldEdge__tooltip {
     display: none;
@@ -238,13 +249,15 @@ code {
     bottom: 100%;
     left: 50%;
     transform: translateX(-50%);
-    background: rgba(255, 255, 255, 0.5);
+    background: var(--color--tooltip--surface);
+    color: var(--color--tooltip--ink);
+    box-shadow: var(--shadow--floating);
     backdrop-filter: blur(2px);
     padding: 10px;
   }
   &:hover {
     &::before {
-      background: #555;
+      background: var(--color--ink-subtle);
     }
     .fieldEdge__tooltip {
       display: block;
@@ -355,9 +368,9 @@ code {
 /* Non-card, non-link items styled as simple rows */
 .list--plain > li:not(.connection-card):not(.list-item--link) {
   padding: 8px 10px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color--border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--color--surface);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -373,7 +386,7 @@ code {
 }
 
 .list--plain > li:not(.connection-card):not(.list-item--link):hover {
-  background: rgba(0, 0, 0, 0.02);
+  background: var(--color--surface-hover);
 }
 
 /* Linked items: move row chrome to the anchor for full-click area */
@@ -393,9 +406,9 @@ code {
   flex: 1 1 auto;
   min-width: 0;
   padding: 8px 10px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color--border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--color--surface);
   color: inherit;
   text-decoration: none;
   box-sizing: border-box;
@@ -409,7 +422,7 @@ code {
 }
 
 :where(.list--plain) .list-item--link > a:hover {
-  background: rgba(0, 0, 0, 0.02);
+  background: var(--color--surface-hover);
 }
 
 /* Slim variant for compact summaries */
@@ -423,8 +436,8 @@ code {
 }
 
 .list--plain code {
-  background: #f6f7f9;
-  border: 1px solid var(--border-color);
+  background: var(--color--code--surface);
+  border: 1px solid var(--color--border);
   border-radius: 4px;
   padding: 1px 6px;
 }
@@ -444,7 +457,7 @@ code {
   content: "–";
   position: absolute;
   left: 0;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 /* Summary toolbar meta and chips */
@@ -460,24 +473,24 @@ code {
   align-items: center;
   gap: 6px;
   padding: 3px 10px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color--border);
   border-radius: 999px;
-  background: #fff;
+  background: var(--color--surface);
   font-size: 12px;
-  color: var(--base-body-color);
+  color: var(--color--ink);
 }
 
 .chip--muted {
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 /* Make button-based chips look like pills, not default grey buttons */
 button.chip {
   appearance: none;
-  background: #fff;
-  border: 1px solid var(--border-color);
+  background: var(--color--surface);
+  border: 1px solid var(--color--border);
   border-radius: 999px;
-  color: var(--base-body-color);
+  color: var(--color--ink);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -489,37 +502,37 @@ button.chip {
 }
 
 button.chip:hover {
-  background: rgba(0, 0, 0, 0.02);
+  background: var(--color--surface-hover);
 }
 
 /* Active/pressed state for toggle chips */
 button.chip.is-active,
 button.chip[aria-pressed="true"] {
-  background: var(--accent-color);
-  color: #fff;
-  border-color: var(--accent-color);
+  background: var(--color--primary--surface);
+  color: var(--color--primary--ink);
+  border-color: var(--color--primary--border);
 }
 
 /* Softer variant still works on buttons */
 button.chip.chip--soft {
-  background: rgba(59, 130, 246, 0.06);
-  border-color: rgba(59, 130, 246, 0.25);
-  color: color-mix(in srgb, #3b82f6, black 35%);
+  background: var(--color--primary-soft--surface);
+  border-color: var(--color--primary-soft--border);
+  color: var(--color--primary-soft--ink);
 }
 
 button.chip.chip--muted {
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 /* Accessibility focus ring */
 button.chip:focus-visible {
-  outline: 2px solid var(--accent-color);
+  outline: 2px solid var(--color--focus--border);
   outline-offset: 2px;
 }
 
 /* Connections UI */
 .summary {
-  background: linear-gradient(180deg, #fafcff, #f5f7ff);
+  background: var(--color--surface-muted);
 }
 
 .summary__section {
@@ -548,9 +561,9 @@ button.chip:focus-visible {
 }
 
 .surface {
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color--border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--color--surface);
   padding: 12px;
 }
 
@@ -571,8 +584,8 @@ button.chip:focus-visible {
 
 .summary__nav__item {
   appearance: none;
-  border: 1px solid var(--border-color);
-  background: #fff;
+  border: 1px solid var(--color--border);
+  background: var(--color--surface);
   border-radius: 8px;
   padding: 8px 10px;
   width: 100%;
@@ -585,8 +598,9 @@ button.chip:focus-visible {
 }
 
 .summary__nav__item.is-active {
-  border-color: var(--accent-color);
-  background: color-mix(in srgb, var(--accent-color), white 94%);
+  border-color: var(--color--selected--border);
+  background: var(--color--selected--surface);
+  color: var(--color--selected--ink);
 }
 
 .summary__nav__label {
@@ -629,7 +643,7 @@ button.chip:focus-visible {
 }
 
 .box__meta {
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 .collapsible__toggle {
@@ -638,7 +652,7 @@ button.chip:focus-visible {
   align-items: center;
   gap: 8px;
   width: 100%;
-  background: transparent; /* keep surface white */
+  background: transparent; /* keep inherited surface */
   border: 0;
   padding: 8px 10px;
   border-radius: 6px;
@@ -663,9 +677,9 @@ button.chip:focus-visible {
 }
 
 .chip--soft {
-  background: color-mix(in srgb, var(--accent-color, #4f46e5), white 92%);
-  border-color: color-mix(in srgb, var(--accent-color, #4f46e5), white 70%);
-  color: var(--accent-color, #4f46e5);
+  background: var(--color--primary-soft--surface);
+  border-color: var(--color--primary-soft--border);
+  color: var(--color--primary-soft--ink);
 }
 
 .connections {
@@ -678,7 +692,7 @@ button.chip:focus-visible {
   grid-template-columns: minmax(260px, 420px) 1fr auto;
   align-items: end;
   gap: 10px;
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--color--border);
   padding-bottom: 8px;
 }
 
@@ -695,7 +709,7 @@ button.chip:focus-visible {
 
 .connections__count {
   font-size: 12px;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 .button-group {
@@ -708,9 +722,9 @@ button.chip:focus-visible {
 }
 
 .connection-card__container {
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color--border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--color--surface);
   overflow: hidden;
   transition:
     box-shadow 160ms ease,
@@ -733,25 +747,25 @@ button.chip:focus-visible {
 }
 
 .connection-card__toggle:hover {
-  background: rgba(0, 0, 0, 0.02);
+  background: var(--color--surface-hover);
 }
 
 .connection-card__toggle:focus-visible {
   outline: none;
-  box-shadow: inset 0 0 0 2px var(--accent-color, #4f46e5);
+  box-shadow: inset 0 0 0 2px var(--color--focus--border);
   border-radius: 6px;
 }
 
 .connection-card__toggle[aria-expanded="true"] {
-  background: rgba(0, 0, 0, 0.02);
-  border-bottom: 1px solid var(--border-color);
+  background: var(--color--surface-hover);
+  border-bottom: 1px solid var(--color--border);
 }
 
 .caret {
   display: inline-block;
   width: 14px;
   text-align: center;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 .connection-card__title {
@@ -759,7 +773,7 @@ button.chip:focus-visible {
 }
 
 .connection-card__apikey {
-  color: #666;
+  color: var(--color--ink-subtle);
   font-weight: 400;
 }
 
@@ -773,8 +787,8 @@ button.chip:focus-visible {
   /* Align content with the start of the title column: 12 (container padding) + 20 (caret) + 8 (gap) */
   padding: var(--spacing-l, 16px) var(--spacing-l, 16px) var(--spacing-l, 16px)
     calc(12px + 20px + 8px);
-  border-top: 1px solid var(--border-color);
-  background: #fafafa;
+  border-top: 1px solid var(--color--border);
+  background: var(--color--surface-muted);
 }
 
 /* Improve readability of lists within card body */
@@ -783,8 +797,8 @@ button.chip:focus-visible {
 }
 
 .connection-card__body code {
-  background: #f6f7f9;
-  border: 1px solid var(--border-color);
+  background: var(--color--code--surface);
+  border: 1px solid var(--color--border);
   border-radius: 4px;
   padding: 1px 6px;
 }
@@ -792,8 +806,8 @@ button.chip:focus-visible {
 /* Subtle elevation when open/hover */
 .connection-card__container.is-open,
 .connection-card__container:hover {
-  border-color: color-mix(in srgb, var(--accent-color, #4f46e5), white 60%);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+  border-color: var(--color--selected--border);
+  box-shadow: var(--shadow--raised);
 }
 
 /* Export page: prevent outer content scrolling; only inner panes scroll */
@@ -813,7 +827,7 @@ button.chip:focus-visible {
 }
 
 .page__actions {
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--color--border);
   padding: var(--spacing-l);
   display: grid;
   gap: var(--spacing-s);
@@ -841,8 +855,9 @@ button.chip:focus-visible {
 }
 
 .blank-slate__body {
-  border: 1px solid var(--border-color);
-  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  border: 1px solid var(--color--border);
+  background: var(--color--surface);
+  box-shadow: var(--shadow--raised);
   border-radius: 4px;
   width: 750px;
   padding: var(--spacing-xxl);
@@ -860,7 +875,7 @@ button.chip:focus-visible {
 
 .blank-slate__body__outside {
   text-align: center;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 /* Export selection panel */
@@ -909,9 +924,9 @@ button.chip:focus-visible {
 
 .import__details,
 .export__details {
-  border-left: 1px solid var(--border-color);
+  border-left: 1px solid var(--color--border);
   box-sizing: border-box;
-  background: #fff;
+  background: var(--color--surface);
   /* Slightly tighter padding for redesigned conflicts UI */
 }
 
@@ -934,28 +949,28 @@ button.chip:focus-visible {
 }
 
 .conflict {
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--color--border);
 
   &.conflict--selected {
-    border-top: 4px solid var(--border-color);
-    border-bottom: 4px solid var(--border-color);
+    border-top: 4px solid var(--color--border);
+    border-bottom: 4px solid var(--color--border);
   }
 
   &:first-child {
-    border-top: 1px solid var(--border-color);
+    border-top: 1px solid var(--color--border);
   }
 }
 
 .conflict--has-conflict {
-  border: 1px solid rgba(217, 48, 37, 0.22);
+  border: 1px solid var(--color--danger-soft--border);
   border-radius: 8px;
-  background: rgba(217, 48, 37, 0.04);
+  background: var(--color--danger-soft--surface);
 }
 
 .conflict--has-conflict.conflict--selected {
-  border-top: 1px solid rgba(217, 48, 37, 0.22);
-  border-bottom: 1px solid rgba(217, 48, 37, 0.22);
-  background: rgba(217, 48, 37, 0.06);
+  border-top: 1px solid var(--color--danger-soft--border);
+  border-bottom: 1px solid var(--color--danger-soft--border);
+  background: var(--color--danger-soft--surface);
 }
 
 .id-collision {
@@ -963,13 +978,13 @@ button.chip:focus-visible {
   gap: 8px;
   padding: 10px;
   margin-top: 10px;
-  border: 1px solid rgba(217, 48, 37, 0.22);
+  border: 1px solid var(--color--danger-soft--border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--color--surface);
 }
 
 .id-collision--resolved {
-  border-color: var(--border-color);
+  border-color: var(--color--border);
 }
 
 .id-collision__body {
@@ -982,11 +997,11 @@ button.chip:focus-visible {
 }
 
 .id-collision__text {
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 .conflict--has-conflict:first-child {
-  border-top: 1px solid rgba(217, 48, 37, 0.22);
+  border-top: 1px solid var(--color--danger-soft--border);
 }
 
 .conflict__title {
@@ -1000,12 +1015,12 @@ button.chip:focus-visible {
   display: flex;
   gap: 10px;
   align-items: center;
-  color: var(--base-body-color);
+  color: var(--color--ink);
   padding: 10px 12px;
 }
 
 .conflict--has-conflict .conflict__title {
-  color: color-mix(in srgb, var(--base-body-color), #6d1f16 35%);
+  color: var(--color--danger-soft--ink);
 }
 
 .conflict__title__text {
@@ -1025,8 +1040,8 @@ button.chip:focus-visible {
   border-radius: 999px;
   font-size: 11px;
   font-weight: 600;
-  color: #a0312a;
-  background-color: rgba(217, 48, 37, 0.12);
+  color: var(--color--danger-soft--ink);
+  background-color: var(--color--danger-soft--surface);
 }
 
 .conflict__badge svg {
@@ -1041,7 +1056,7 @@ button.chip:focus-visible {
 .schema-overview__summary {
   margin-top: 10px;
   font-size: 12px;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1058,7 +1073,7 @@ button.chip:focus-visible {
 }
 
 .schema-overview__title__meta {
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   font-size: 12px;
 }
 
@@ -1072,13 +1087,13 @@ button.chip:focus-visible {
 }
 
 .schema-overview__status--selected {
-  color: #0f5132;
-  background-color: rgba(25, 135, 84, 0.18);
+  color: var(--color--success-soft--ink);
+  background-color: var(--color--success-soft--surface);
 }
 
 .schema-overview__status--unselected {
-  color: #4f4f4f;
-  background-color: rgba(79, 79, 79, 0.12);
+  color: var(--color--ink-subtle);
+  background-color: var(--color--surface-muted);
 }
 
 .schema-overview__category {
@@ -1087,7 +1102,7 @@ button.chip:focus-visible {
 }
 
 .schema-overview__category--selected {
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--color--border);
   padding-bottom: 16px;
   margin-bottom: 24px;
 }
@@ -1096,15 +1111,15 @@ button.chip:focus-visible {
   font-weight: 700;
   font-size: var(--font-size-m);
   padding: 0 var(--spacing-l);
-  color: var(--base-body-color);
+  color: var(--color--ink);
   margin-bottom: 6px;
 }
 
 .schema-overview__item {
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color--border);
   border-radius: 10px;
   margin: 6px var(--spacing-l);
-  background: #fff;
+  background: var(--color--surface);
   transition:
     border-color 0.2s ease,
     background-color 0.2s ease;
@@ -1132,36 +1147,36 @@ button.chip:focus-visible {
 }
 
 .schema-overview__item--selected {
-  background: rgba(25, 135, 84, 0.08);
-  border-color: rgba(25, 135, 84, 0.35);
+  background: var(--color--success-soft--surface);
+  border-color: var(--color--success-soft--border);
 }
 
 .schema-overview__item--unselected {
-  background: #fff;
+  background: var(--color--surface);
 }
 
 .schema-overview__item--unselected .conflict__title {
-  color: var(--base-body-color);
+  color: var(--color--ink);
 }
 
 .export__details .schema-overview__item {
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color--border);
 }
 
 .export__details .schema-overview__item.schema-overview__item--selected {
-  border-color: rgba(25, 135, 84, 0.35);
+  border-color: var(--color--success-soft--border);
 }
 
 .export__details .schema-overview__item.schema-overview__item--unselected {
-  border-color: var(--border-color);
+  border-color: var(--color--border);
 }
 
 /* Pretty export overlay styles */
 .export-overlay__card {
-  background: #fff;
-  border: 1px solid var(--border-color);
+  background: var(--color--surface-raised);
+  border: 1px solid var(--color--border);
   border-radius: 14px;
-  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.12);
+  box-shadow: var(--shadow--floating);
   padding: 28px 30px;
   width: 720px;
   max-width: 92vw;
@@ -1187,15 +1202,14 @@ button.chip:focus-visible {
 }
 
 .export-overlay__subtitle {
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   margin-bottom: 18px;
   font-size: 14px;
 }
 
 .export-overlay__bar {
   height: 14px;
-  /* Lighter track to increase contrast with the fill */
-  background: color-mix(in srgb, var(--accent-color, #4f46e5), white 96%);
+  background: var(--color--progress--track);
   border-radius: 999px;
   overflow: hidden;
   position: relative;
@@ -1205,8 +1219,7 @@ button.chip:focus-visible {
 .export-overlay__bar__fill {
   position: relative;
   height: 100%;
-  /* Solid base using project accent color */
-  background-color: var(--accent-color, #4f46e5);
+  background-color: var(--color--progress--fill);
   transition: width 180ms ease;
   overflow: hidden;
 }
@@ -1254,13 +1267,13 @@ button.chip:focus-visible {
   display: flex;
   justify-content: space-between;
   font-size: 13px;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 .export-overlay__steps {
   margin-top: 12px;
   font-size: 13px;
-  color: var(--base-body-color);
+  color: var(--color--ink);
 }
 
 .export-overlay__step {
@@ -1276,14 +1289,14 @@ button.chip:focus-visible {
   width: 6px;
   height: 6px;
   border-radius: 999px;
-  background: #3b82f6;
+  background: var(--color--progress--fill);
 }
 
 /* Tiny helper note shown when progress stalls due to rate-limiting */
 .rate-limit-notice {
   margin-top: 8px;
   font-size: 12px;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   text-align: center;
 }
 
@@ -1297,7 +1310,7 @@ button.chip:focus-visible {
 
 .conflicts-manager__actions__reassurance {
   text-align: center;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   font-size: var(--font-size-s);
   line-height: 1;
   margin: 0;
@@ -1315,7 +1328,7 @@ button.chip:focus-visible {
   font-weight: 700;
   font-size: var(--font-size-m);
   padding: 8px var(--spacing-l);
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 .no-text-wrap {
@@ -1353,19 +1366,13 @@ form {
   display: flex;
   align-items: stretch;
   overflow: hidden;
-  border: 3px solid white;
-  /* http://smoothshadows.com/#djEsMSw2LDAuMTIsNzgsMCwwLCMwMzA3MTIsI2YzZjRmNiwjZmZmZmZmLDI%3D */
-  box-shadow:
-    0px 0px 2px rgba(3, 7, 18, 0.02),
-    0px 0px 9px rgba(3, 7, 18, 0.04),
-    0px 0px 20px rgba(3, 7, 18, 0.06),
-    0px 0px 35px rgba(3, 7, 18, 0.08),
-    0px 0px 54px rgba(3, 7, 18, 0.1),
-    0px 0px 78px rgba(3, 7, 18, 0.12);
+  border: 3px solid var(--color--surface);
+  background: var(--color--progress--track);
+  box-shadow: var(--shadow--raised);
 }
 
 .progress__meter__track {
-  background: var(--accent-color);
+  background: var(--color--progress--fill);
   transition: width 0.2s 0.2s ease-in-out;
 }
 
@@ -1377,7 +1384,7 @@ form {
 
 .config {
   a {
-    color: var(--accent-color);
+    color: var(--color--ink-link);
   }
   ul {
     padding: 0 0 0 20px;

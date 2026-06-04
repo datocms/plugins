@@ -38,7 +38,7 @@ export function GraphCanvas({
       edgeTypes={edgeTypes}
       proOptions={{ hideAttribution: true }}
     >
-      <Background />
+      <Background color="var(--color--border)" />
     </ReactFlow>
   );
 }

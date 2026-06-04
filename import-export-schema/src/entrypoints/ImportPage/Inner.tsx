@@ -248,7 +248,10 @@ export function Inner({ exportSchema, schema, ctx: _ctx }: Props) {
                       Could not load import graph
                     </div>
                     <div
-                      style={{ color: 'var(--light-body-color)', marginTop: 8 }}
+                      style={{
+                        color: 'var(--color--ink-subtle)',
+                        marginTop: 8,
+                      }}
                     >
                       Please check the uploaded export file and try again.
                     </div>
@@ -270,7 +273,7 @@ export function Inner({ exportSchema, schema, ctx: _ctx }: Props) {
                   onClick={() => setSelectedEntity(undefined)}
                   onNodeClick={onNodeClick}
                 >
-                  <Background />
+                  <Background color="var(--color--border)" />
                 </ReactFlow>
               )}
               {!graphError && graph && !showGraph && (

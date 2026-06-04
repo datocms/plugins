@@ -474,7 +474,7 @@ export default function ConflictsManager({
             gap: '8px',
             marginTop: '10px',
             fontSize: '12px',
-            color: 'var(--light-body-color)',
+            color: 'var(--color--ink-subtle)',
             cursor: 'pointer',
           }}
         >
