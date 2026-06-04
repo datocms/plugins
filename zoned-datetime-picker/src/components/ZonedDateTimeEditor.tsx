@@ -49,7 +49,9 @@ export const ZonedDateTimeEditor = ({
     site: {
       attributes: { timezone: siteTimeZone },
     },
-    theme: { primaryColor, accentColor, lightColor, darkColor },
+    theme,
+    cssDesignTokens,
+    colorScheme,
     setHeight,
     startAutoResizer,
     stopAutoResizer,
@@ -69,11 +71,12 @@ export const ZonedDateTimeEditor = ({
     ).catch(console.error);
   };
 
-  // Map DatoCMS theme colors into an MUI theme
+  // Mirror the host's semantic color tokens and active color scheme into an MUI
+  // theme so the picker tracks DatoCMS dark/light mode. These ctx slices are
+  // stable between host updates, so the theme only rebuilds on a real change.
   const muiTheme = useMemo(
-    () =>
-      createMuiThemeFromDato(primaryColor, accentColor, lightColor, darkColor),
-    [primaryColor, accentColor, lightColor, darkColor],
+    () => createMuiThemeFromDato({ colorScheme, tokens: cssDesignTokens, theme }),
+    [colorScheme, cssDesignTokens, theme],
   );
 
   // Parse time zone dropdown data from raw data file

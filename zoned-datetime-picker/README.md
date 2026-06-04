@@ -88,6 +88,7 @@ If your editor's preferred locale is not in this list, the plugin falls back to 
 
 ## Changelog
 
+- 2.3.0 - Full dark mode support: the picker now follows the DatoCMS light/dark theme by mapping the new semantic color tokens into the MUI palette, and the editor no longer flashes white while the iframe loads. Also upgrades `datocms-plugin-sdk` and `datocms-react-ui` to 2.2.x.
 - 0.1.8 - Added missing Spanish localization. Upgraded to MUI 9 and other library updates. Also fixes timezone initialization on the first date pick, an on-mount write that could mark the form dirty or overwrite unparseable values, and some minor cleanup & refactoring throughout. Special thanks to [fitzage](https://github.com/fitzage)!
 - 0.1.7 - Fix for Dark Mode crash. (True dark mode support coming later)
 - 0.1.6 - Moved plugin to official DatoCMS plugins repository. This was just an organizational change and does not add any features or fixes.
@@ -102,4 +103,4 @@ This plugin was made with:
 - [MUI-X](https://mui.com/x/react-date-pickers/date-time-picker/) React UI components
 - [Luxon](https://moment.github.io/luxon/#/) DateTime library
 - [IANA Time Zone Database](https://www.iana.org/time-zones)
-- [OpenAI Codex](https://openai.com/codex/) and [Claudde Code](https://claude.com/product/claude-code)
+- [OpenAI Codex](https://openai.com/codex/) and [Claude Code](https://claude.com/product/claude-code)

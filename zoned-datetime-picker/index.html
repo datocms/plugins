@@ -5,6 +5,25 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>DatoCMS Plugin</title>
+  <style>
+    /*
+     * Prevent a white flash on first paint. The SDK only resolves and applies
+     * the host's color scheme after its async handshake; until then the browser
+     * would paint the iframe's default canvas white. `color-scheme: light dark`
+     * makes that initial canvas follow the viewer's OS preference (which matches
+     * the host in the common case), and a transparent root composites over the
+     * host's themed field for the rest. The SDK later sets `color-scheme` as an
+     * inline style on <html>, overriding this initial guess.
+     */
+    :root {
+      color-scheme: light dark;
+    }
+
+    html,
+    body {
+      background-color: transparent;
+    }
+  </style>
 </head>
 
 <body>
