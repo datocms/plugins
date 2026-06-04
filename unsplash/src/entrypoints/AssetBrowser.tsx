@@ -198,16 +198,10 @@ const AssetBrowser = () => {
   }, [page, performRequest]);
 
   useEffect(() => {
-    async function run() {
-      setPhotos(await performRequest(1));
-    }
-
-    run();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [performRequest]);
-
-  useEffect(() => {
-    handleSearch();
+    const timer = setTimeout(() => {
+      handleSearch();
+    }, 400);
+    return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [handleSearch]);
 
@@ -291,7 +285,6 @@ const AssetBrowser = () => {
               {colsData.map((group) => (
                 <div
                   className={s.masonryCol}
-                  key={group.map((photo) => photo.id).join('-') || 'empty'}
                 >
                   {group.map((photo) => (
                     <Cell
