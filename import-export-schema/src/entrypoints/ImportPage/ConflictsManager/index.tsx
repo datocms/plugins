@@ -6,10 +6,23 @@ import { useCallback, useContext, useId, useMemo, useState } from 'react';
 import { useFormState } from 'react-final-form';
 import type { ExportSchema } from '@/entrypoints/ExportPage/ExportSchema';
 import { getTextWithoutRepresentativeEmojiAndPadding } from '@/utils/emojiAgnosticSorter';
+import { isDefined } from '@/utils/isDefined';
 import type { ProjectSchema } from '@/utils/ProjectSchema';
+import { idCollisionFieldPrefix } from '../ResolutionsForm';
 import { ConflictsContext } from './ConflictsContext';
 import { ItemTypeConflict } from './ItemTypeConflict';
 import { PluginConflict } from './PluginConflict';
+import type {
+  FieldIdCollision,
+  FieldsetIdCollision,
+  IdCollisionEntityType,
+  ItemTypeIdCollision,
+  FieldLegacyIdIssue,
+  FieldsetLegacyIdIssue,
+  ItemTypeLegacyIdIssue,
+  PluginLegacyIdIssue,
+  PluginIdCollision,
+} from './buildConflicts';
 
 // Collator keeps alphabetical/numeric ordering stable regardless of locale accents.
 const localeAwareCollator = new Intl.Collator(undefined, {
@@ -34,12 +47,38 @@ type Props = {
 type ItemTypeEntry = {
   exportItemType: SchemaTypes.ItemType;
   projectItemType?: SchemaTypes.ItemType;
+  idCollision?: ItemTypeIdCollision;
+  legacyIdIssue?: ItemTypeLegacyIdIssue;
+  fieldIdCollisions: FieldIdCollision[];
+  fieldLegacyIdIssues: FieldLegacyIdIssue[];
+  fieldsetIdCollisions: FieldsetIdCollision[];
+  fieldsetLegacyIdIssues: FieldsetLegacyIdIssue[];
 };
 
 type PluginEntry = {
   exportPlugin: SchemaTypes.Plugin;
   projectPlugin?: SchemaTypes.Plugin;
+  idCollision?: PluginIdCollision;
+  legacyIdIssue?: PluginLegacyIdIssue;
 };
+
+function itemTypeEntryHasConflict(entry: ItemTypeEntry) {
+  return Boolean(
+    entry.projectItemType ||
+      entry.idCollision ||
+      entry.legacyIdIssue ||
+      entry.fieldIdCollisions.length > 0 ||
+      entry.fieldLegacyIdIssues.length > 0 ||
+      entry.fieldsetIdCollisions.length > 0 ||
+      entry.fieldsetLegacyIdIssues.length > 0,
+  );
+}
+
+function pluginEntryHasConflict(entry: PluginEntry) {
+  return Boolean(
+    entry.projectPlugin || entry.idCollision || entry.legacyIdIssue,
+  );
+}
 
 function sortItemTypesByUnresolvedThenName(
   items: ItemTypeEntry[],
@@ -51,8 +90,8 @@ function sortItemTypesByUnresolvedThenName(
     if (aUnresolved !== bUnresolved) {
       return aUnresolved ? -1 : 1;
     }
-    const aHasConflict = Boolean(a.projectItemType);
-    const bHasConflict = Boolean(b.projectItemType);
+    const aHasConflict = itemTypeEntryHasConflict(a);
+    const bHasConflict = itemTypeEntryHasConflict(b);
     if (aHasConflict !== bHasConflict) {
       return aHasConflict ? -1 : 1;
     }
@@ -76,8 +115,8 @@ function sortPluginsByUnresolvedThenName(
     if (aUnresolved !== bUnresolved) {
       return aUnresolved ? -1 : 1;
     }
-    const aHasConflict = Boolean(a.projectPlugin);
-    const bHasConflict = Boolean(b.projectPlugin);
+    const aHasConflict = pluginEntryHasConflict(a);
+    const bHasConflict = pluginEntryHasConflict(b);
     if (aHasConflict !== bHasConflict) {
       return aHasConflict ? -1 : 1;
     }
@@ -125,14 +164,76 @@ export default function ConflictsManager({
     errors: Record<string, unknown>;
   };
 
+  const isIdCollisionUnresolved = useCallback(
+    (entityType: IdCollisionEntityType, id: string) => {
+      const fieldPrefix = idCollisionFieldPrefix(entityType, id);
+      const strategy = get(formValues, [fieldPrefix, 'strategy']);
+      const hasErrors = Boolean(get(formErrors, [fieldPrefix]));
+
+      return strategy !== 'generateReplacement' || hasErrors;
+    },
+    [formValues, formErrors],
+  );
+
+  const hasUnresolvedItemTypeIdCollision = useCallback(
+    (entry: ItemTypeEntry) => {
+      const fieldPrefix = `itemType-${entry.exportItemType.id}`;
+      const strategy = get(formValues, [fieldPrefix, 'strategy']);
+      if (strategy === 'reuseExisting') {
+        return false;
+      }
+
+      if (
+        entry.idCollision &&
+        isIdCollisionUnresolved('itemType', entry.idCollision.exportId)
+      ) {
+        return true;
+      }
+
+      if (
+        entry.legacyIdIssue &&
+        isIdCollisionUnresolved('itemType', entry.legacyIdIssue.exportId)
+      ) {
+        return true;
+      }
+
+      for (const collision of entry.fieldIdCollisions) {
+        if (isIdCollisionUnresolved('field', collision.exportId)) {
+          return true;
+        }
+      }
+
+      for (const issue of entry.fieldLegacyIdIssues) {
+        if (isIdCollisionUnresolved('field', issue.exportId)) {
+          return true;
+        }
+      }
+
+      for (const collision of entry.fieldsetIdCollisions) {
+        if (isIdCollisionUnresolved('fieldset', collision.exportId)) {
+          return true;
+        }
+      }
+
+      for (const issue of entry.fieldsetLegacyIdIssues) {
+        if (isIdCollisionUnresolved('fieldset', issue.exportId)) {
+          return true;
+        }
+      }
+
+      return false;
+    },
+    [formValues, isIdCollisionUnresolved],
+  );
+
   // Returns true while an item-type conflict still needs user input.
   const isItemTypeConflictUnresolved = useCallback(
-    (
-      exportItemType: SchemaTypes.ItemType,
-      projectItemType?: SchemaTypes.ItemType,
-    ) => {
+    (entry: ItemTypeEntry) => {
+      const { exportItemType, projectItemType } = entry;
+      const idCollisionUnresolved = hasUnresolvedItemTypeIdCollision(entry);
+
       if (!projectItemType) {
-        return false;
+        return idCollisionUnresolved;
       }
 
       const fieldPrefix = `itemType-${exportItemType.id}`;
@@ -150,23 +251,51 @@ export default function ConflictsManager({
       if (strategy === 'rename') {
         const name = get(formValues, [fieldPrefix, 'name']);
         const apiKey = get(formValues, [fieldPrefix, 'apiKey']);
-        return !(name && apiKey);
+        return !(name && apiKey) || idCollisionUnresolved;
       }
 
       if (strategy === 'reuseExisting') {
-        return false;
+        return idCollisionUnresolved;
       }
 
       return true;
     },
-    [formValues, formErrors],
+    [formValues, formErrors, hasUnresolvedItemTypeIdCollision],
   );
 
-  // Plugins require no extra inputs beyond strategy selection.
-  const isPluginConflictUnresolved = useCallback(
-    (exportPlugin: SchemaTypes.Plugin, projectPlugin?: SchemaTypes.Plugin) => {
-      if (!projectPlugin) {
+  const hasUnresolvedPluginIdCollision = useCallback(
+    (entry: PluginEntry) => {
+      const fieldPrefix = `plugin-${entry.exportPlugin.id}`;
+      const strategy = get(formValues, [fieldPrefix, 'strategy']);
+      if (
+        strategy === 'reuseExisting' ||
+        strategy === 'skip' ||
+        (!entry.idCollision && !entry.legacyIdIssue)
+      ) {
         return false;
+      }
+
+      if (
+        entry.idCollision &&
+        isIdCollisionUnresolved('plugin', entry.idCollision.exportId)
+      ) {
+        return true;
+      }
+
+      return entry.legacyIdIssue
+        ? isIdCollisionUnresolved('plugin', entry.legacyIdIssue.exportId)
+        : false;
+    },
+    [formValues, isIdCollisionUnresolved],
+  );
+
+  const isPluginConflictUnresolved = useCallback(
+    (entry: PluginEntry) => {
+      const { exportPlugin, projectPlugin } = entry;
+      const idCollisionUnresolved = hasUnresolvedPluginIdCollision(entry);
+
+      if (!projectPlugin) {
+        return idCollisionUnresolved;
       }
 
       const fieldPrefix = `plugin-${exportPlugin.id}`;
@@ -181,9 +310,9 @@ export default function ConflictsManager({
         return true;
       }
 
-      return false;
+      return idCollisionUnresolved;
     },
-    [formValues, formErrors],
+    [formValues, formErrors, hasUnresolvedPluginIdCollision],
   );
 
   const itemTypesByCategory = useMemo(() => {
@@ -197,11 +326,35 @@ export default function ConflictsManager({
     }
 
     const entries: ItemTypeEntry[] = exportSchema.itemTypes.map(
-      (exportItemType) => ({
-        exportItemType,
-        projectItemType:
-          conflicts.itemTypes[String(exportItemType.id)] ?? undefined,
-      }),
+      (exportItemType) => {
+        const fields = exportSchema.getItemTypeFields(exportItemType);
+        const fieldsets = exportSchema.getItemTypeFieldsets(exportItemType);
+
+        return {
+          exportItemType,
+          projectItemType:
+            conflicts.itemTypes[String(exportItemType.id)] ?? undefined,
+          idCollision:
+            conflicts.ids.itemTypes[String(exportItemType.id)] ?? undefined,
+          legacyIdIssue:
+            conflicts.legacyIds.itemTypes[String(exportItemType.id)] ??
+            undefined,
+          fieldIdCollisions: fields
+            .map((field) => conflicts.ids.fields[String(field.id)])
+            .filter(isDefined),
+          fieldLegacyIdIssues: fields
+            .map((field) => conflicts.legacyIds.fields[String(field.id)])
+            .filter(isDefined),
+          fieldsetIdCollisions: fieldsets
+            .map((fieldset) => conflicts.ids.fieldsets[String(fieldset.id)])
+            .filter(isDefined),
+          fieldsetLegacyIdIssues: fieldsets
+            .map(
+              (fieldset) => conflicts.legacyIds.fieldsets[String(fieldset.id)],
+            )
+            .filter(isDefined),
+        };
+      },
     );
 
     const grouped = entries.reduce<
@@ -219,7 +372,7 @@ export default function ConflictsManager({
     );
 
     const isItemTypeEntryUnresolved = (entry: ItemTypeEntry) =>
-      isItemTypeConflictUnresolved(entry.exportItemType, entry.projectItemType);
+      isItemTypeConflictUnresolved(entry);
 
     return {
       blocks: sortItemTypesByUnresolvedThenName(
@@ -242,34 +395,28 @@ export default function ConflictsManager({
     const entries: PluginEntry[] = exportSchema.plugins.map((exportPlugin) => ({
       exportPlugin,
       projectPlugin: conflicts.plugins[String(exportPlugin.id)] ?? undefined,
+      idCollision: conflicts.ids.plugins[String(exportPlugin.id)] ?? undefined,
+      legacyIdIssue:
+        conflicts.legacyIds.plugins[String(exportPlugin.id)] ?? undefined,
     }));
 
     const isPluginEntryUnresolved = (entry: PluginEntry) =>
-      isPluginConflictUnresolved(entry.exportPlugin, entry.projectPlugin);
+      isPluginConflictUnresolved(entry);
 
     return sortPluginsByUnresolvedThenName(entries, isPluginEntryUnresolved);
   }, [conflicts, exportSchema, isPluginConflictUnresolved]);
 
   // Toggle in place filters the list down to unresolved conflicts when requested.
-  const visibleModels = itemTypesByCategory.models.filter(
-    ({ exportItemType, projectItemType }) =>
-      showOnlyConflicts
-        ? isItemTypeConflictUnresolved(exportItemType, projectItemType)
-        : true,
+  const visibleModels = itemTypesByCategory.models.filter((entry) =>
+    showOnlyConflicts ? isItemTypeConflictUnresolved(entry) : true,
   );
 
-  const visibleBlocks = itemTypesByCategory.blocks.filter(
-    ({ exportItemType, projectItemType }) =>
-      showOnlyConflicts
-        ? isItemTypeConflictUnresolved(exportItemType, projectItemType)
-        : true,
+  const visibleBlocks = itemTypesByCategory.blocks.filter((entry) =>
+    showOnlyConflicts ? isItemTypeConflictUnresolved(entry) : true,
   );
 
-  const visiblePlugins = pluginEntries.filter(
-    ({ exportPlugin, projectPlugin }) =>
-      showOnlyConflicts
-        ? isPluginConflictUnresolved(exportPlugin, projectPlugin)
-        : true,
+  const visiblePlugins = pluginEntries.filter((entry) =>
+    showOnlyConflicts ? isPluginConflictUnresolved(entry) : true,
   );
 
   if (!conflicts) {
@@ -278,29 +425,24 @@ export default function ConflictsManager({
 
   // Always count every conflict to show accurate totals even when filtered.
   const itemTypeConflictCount =
-    itemTypesByCategory.blocks.filter(({ projectItemType }) => projectItemType)
-      .length +
-    itemTypesByCategory.models.filter(({ projectItemType }) => projectItemType)
-      .length;
+    itemTypesByCategory.blocks.filter(itemTypeEntryHasConflict).length +
+    itemTypesByCategory.models.filter(itemTypeEntryHasConflict).length;
   const pluginConflictCount = pluginEntries.filter(
-    ({ projectPlugin }) => projectPlugin,
+    pluginEntryHasConflict,
   ).length;
 
   const hasConflicts = itemTypeConflictCount > 0 || pluginConflictCount > 0;
 
-  const unresolvedModelConflicts = itemTypesByCategory.models.some(
-    ({ exportItemType, projectItemType }) =>
-      isItemTypeConflictUnresolved(exportItemType, projectItemType),
+  const unresolvedModelConflicts = itemTypesByCategory.models.some((entry) =>
+    isItemTypeConflictUnresolved(entry),
   );
 
-  const unresolvedBlockConflicts = itemTypesByCategory.blocks.some(
-    ({ exportItemType, projectItemType }) =>
-      isItemTypeConflictUnresolved(exportItemType, projectItemType),
+  const unresolvedBlockConflicts = itemTypesByCategory.blocks.some((entry) =>
+    isItemTypeConflictUnresolved(entry),
   );
 
-  const unresolvedPluginConflicts = pluginEntries.some(
-    ({ exportPlugin, projectPlugin }) =>
-      isPluginConflictUnresolved(exportPlugin, projectPlugin),
+  const unresolvedPluginConflicts = pluginEntries.some((entry) =>
+    isPluginConflictUnresolved(entry),
   );
 
   const hasUnresolvedConflicts =
@@ -379,15 +521,22 @@ export default function ConflictsManager({
                     Models ({visibleModels.length})
                   </div>
                   <div className="conflicts-manager__group__content">
-                    {visibleModels.map(
-                      ({ exportItemType, projectItemType }) => (
-                        <ItemTypeConflict
-                          key={exportItemType.id}
-                          exportItemType={exportItemType}
-                          projectItemType={projectItemType}
-                        />
-                      ),
-                    )}
+                    {visibleModels.map((entry) => (
+                      <ItemTypeConflict
+                        key={entry.exportItemType.id}
+                        exportItemType={entry.exportItemType}
+                        projectItemType={entry.projectItemType}
+                        idCollision={entry.idCollision}
+                        legacyIdIssue={entry.legacyIdIssue}
+                        fieldIdCollisions={entry.fieldIdCollisions}
+                        fieldLegacyIdIssues={entry.fieldLegacyIdIssues}
+                        fieldsetIdCollisions={entry.fieldsetIdCollisions}
+                        fieldsetLegacyIdIssues={entry.fieldsetLegacyIdIssues}
+                        hasUnresolvedIdCollision={hasUnresolvedItemTypeIdCollision(
+                          entry,
+                        )}
+                      />
+                    ))}
                   </div>
                 </div>
               );
@@ -400,15 +549,22 @@ export default function ConflictsManager({
                     Block models ({visibleBlocks.length})
                   </div>
                   <div className="conflicts-manager__group__content">
-                    {visibleBlocks.map(
-                      ({ exportItemType, projectItemType }) => (
-                        <ItemTypeConflict
-                          key={exportItemType.id}
-                          exportItemType={exportItemType}
-                          projectItemType={projectItemType}
-                        />
-                      ),
-                    )}
+                    {visibleBlocks.map((entry) => (
+                      <ItemTypeConflict
+                        key={entry.exportItemType.id}
+                        exportItemType={entry.exportItemType}
+                        projectItemType={entry.projectItemType}
+                        idCollision={entry.idCollision}
+                        legacyIdIssue={entry.legacyIdIssue}
+                        fieldIdCollisions={entry.fieldIdCollisions}
+                        fieldLegacyIdIssues={entry.fieldLegacyIdIssues}
+                        fieldsetIdCollisions={entry.fieldsetIdCollisions}
+                        fieldsetLegacyIdIssues={entry.fieldsetLegacyIdIssues}
+                        hasUnresolvedIdCollision={hasUnresolvedItemTypeIdCollision(
+                          entry,
+                        )}
+                      />
+                    ))}
                   </div>
                 </div>
               );
@@ -421,11 +577,16 @@ export default function ConflictsManager({
                     Plugins ({visiblePlugins.length})
                   </div>
                   <div className="conflicts-manager__group__content">
-                    {visiblePlugins.map(({ exportPlugin, projectPlugin }) => (
+                    {visiblePlugins.map((entry) => (
                       <PluginConflict
-                        key={exportPlugin.id}
-                        exportPlugin={exportPlugin}
-                        projectPlugin={projectPlugin}
+                        key={entry.exportPlugin.id}
+                        exportPlugin={entry.exportPlugin}
+                        projectPlugin={entry.projectPlugin}
+                        idCollision={entry.idCollision}
+                        legacyIdIssue={entry.legacyIdIssue}
+                        hasUnresolvedIdCollision={hasUnresolvedPluginIdCollision(
+                          entry,
+                        )}
                       />
                     ))}
                   </div>

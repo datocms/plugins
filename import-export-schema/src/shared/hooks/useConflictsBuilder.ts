@@ -30,6 +30,7 @@ export function useConflictsBuilder({
         setConflicts(undefined);
         return;
       }
+      let failed = false;
       try {
         task.start({ done: 0, total: 1, label: 'Preparing import…' });
         const result = await buildConflicts(
@@ -43,8 +44,13 @@ export function useConflictsBuilder({
         );
         if (cancelled) return;
         setConflicts(result);
+      } catch (error) {
+        failed = true;
+        if (cancelled) return;
+        task.fail(error);
+        setConflicts(undefined);
       } finally {
-        if (!cancelled) {
+        if (!cancelled && !failed) {
           task.complete({ label: 'Conflicts ready' });
           task.reset();
         }

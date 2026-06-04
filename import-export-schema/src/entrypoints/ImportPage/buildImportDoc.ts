@@ -4,11 +4,15 @@ import {
   findLinkedPluginIds,
 } from '@/utils/datocms/schema';
 import type { ExportSchema } from '../ExportPage/ExportSchema';
-import type { Conflicts } from './ConflictsManager/buildConflicts';
+import type {
+  Conflicts,
+  IdCollisionEntityType,
+} from './ConflictsManager/buildConflicts';
 import type {
   ItemTypeConflictResolutionRename,
   Resolutions,
 } from './ResolutionsForm';
+import { idCollisionResolutionKey } from './ResolutionsForm';
 
 type QueueItem = SchemaTypes.ItemType | SchemaTypes.Plugin;
 
@@ -26,7 +30,48 @@ export type ImportDoc = {
     entitiesToCreate: SchemaTypes.Plugin[];
     idsToReuse: Record<string, string>;
   };
+  idsToReplace: {
+    itemTypes: Record<string, true>;
+    fields: Record<string, true>;
+    fieldsets: Record<string, true>;
+    plugins: Record<string, true>;
+  };
 };
+
+function shouldGenerateReplacementId(
+  resolutions: Resolutions,
+  entityType: IdCollisionEntityType,
+  id: string,
+) {
+  return (
+    resolutions.idCollisions[idCollisionResolutionKey(entityType, id)]
+      ?.strategy === 'generateReplacement'
+  );
+}
+
+function applyItemTypeIdReplacements(
+  itemType: SchemaTypes.ItemType,
+  fields: SchemaTypes.Field[],
+  fieldsets: SchemaTypes.Fieldset[],
+  resolutions: Resolutions,
+  result: ImportDoc,
+) {
+  if (shouldGenerateReplacementId(resolutions, 'itemType', itemType.id)) {
+    result.idsToReplace.itemTypes[itemType.id] = true;
+  }
+
+  for (const field of fields) {
+    if (shouldGenerateReplacementId(resolutions, 'field', field.id)) {
+      result.idsToReplace.fields[field.id] = true;
+    }
+  }
+
+  for (const fieldset of fieldsets) {
+    if (shouldGenerateReplacementId(resolutions, 'fieldset', fieldset.id)) {
+      result.idsToReplace.fieldsets[fieldset.id] = true;
+    }
+  }
+}
 
 /**
  * Resolve linked item types from the export schema, returning only those that exist in the export.
@@ -95,6 +140,14 @@ function processItemType(
   const fields = exportSchema.getItemTypeFields(itemType);
   const fieldsets = exportSchema.getItemTypeFieldsets(itemType);
 
+  applyItemTypeIdReplacements(
+    itemType,
+    fields,
+    fieldsets,
+    resolutions,
+    result,
+  );
+
   result.itemTypes.entitiesToCreate.push({
     entity: itemType,
     fields,
@@ -127,6 +180,10 @@ function processPlugin(
   }
 
   if (!resolution) {
+    if (shouldGenerateReplacementId(resolutions, 'plugin', plugin.id)) {
+      result.idsToReplace.plugins[plugin.id] = true;
+    }
+
     result.plugins.entitiesToCreate.push(plugin);
   }
 }
@@ -147,6 +204,12 @@ export async function buildImportDoc(
     plugins: {
       entitiesToCreate: [],
       idsToReuse: {},
+    },
+    idsToReplace: {
+      itemTypes: {},
+      fields: {},
+      fieldsets: {},
+      plugins: {},
     },
   };
 

@@ -5,6 +5,10 @@ import { type ReactNode, useContext, useMemo } from 'react';
 import { Form as FormHandler, useFormState } from 'react-final-form';
 import type { ProjectSchema } from '@/utils/ProjectSchema';
 import { ConflictsContext } from './ConflictsManager/ConflictsContext';
+import type {
+  Conflicts,
+  IdCollisionEntityType,
+} from './ConflictsManager/buildConflicts';
 
 export type ItemTypeConflictResolutionRename = {
   strategy: 'rename';
@@ -20,9 +24,14 @@ export type PluginConflictResolution = {
   strategy: 'reuseExisting' | 'skip';
 };
 
+export type IdCollisionResolution = {
+  strategy: 'generateReplacement';
+};
+
 export type Resolutions = {
   itemTypes: Partial<Record<string, ItemTypeConflictResolution>>;
   plugins: Partial<Record<string, PluginConflictResolution>>;
+  idCollisions: Partial<Record<string, IdCollisionResolution>>;
 };
 
 type ItemTypeValues = {
@@ -31,14 +40,45 @@ type ItemTypeValues = {
   name?: string;
 };
 type PluginValues = { strategy: 'reuseExisting' | 'skip' | null };
+type IdCollisionValues = { strategy: 'generateReplacement' | null };
 
-type FormValues = Record<string, ItemTypeValues | PluginValues>;
+type FormValues = Record<
+  string,
+  ItemTypeValues | PluginValues | IdCollisionValues
+>;
 
 type Props = {
   children: ReactNode;
   schema: ProjectSchema;
   onSubmit: (values: Resolutions) => void;
 };
+
+export function idCollisionResolutionKey(
+  entityType: IdCollisionEntityType,
+  id: string,
+) {
+  return `${entityType}-${id}`;
+}
+
+export function idCollisionFieldPrefix(
+  entityType: IdCollisionEntityType,
+  id: string,
+) {
+  return `idCollision-${idCollisionResolutionKey(entityType, id)}`;
+}
+
+function getIdCollisionCount(conflicts: Conflicts) {
+  return (
+    Object.keys(conflicts.ids.itemTypes).length +
+    Object.keys(conflicts.ids.fields).length +
+    Object.keys(conflicts.ids.fieldsets).length +
+    Object.keys(conflicts.ids.plugins).length +
+    Object.keys(conflicts.legacyIds.itemTypes).length +
+    Object.keys(conflicts.legacyIds.fields).length +
+    Object.keys(conflicts.legacyIds.fieldsets).length +
+    Object.keys(conflicts.legacyIds.plugins).length
+  );
+}
 
 // Mirrors the platform validation rules plus common reserved identifiers.
 function isValidApiKey(apiKey: string) {
@@ -78,6 +118,100 @@ function validatePluginFields(
     const fieldPrefix = `plugin-${pluginId}`;
     if (!get(values, [fieldPrefix, 'strategy'])) {
       set(errors, [fieldPrefix, 'strategy'], 'Required!');
+    }
+  }
+}
+
+function validateIdCollisionField(
+  values: FormValues,
+  errors: Record<string, string>,
+  entityType: IdCollisionEntityType,
+  id: string,
+) {
+  const fieldPrefix = idCollisionFieldPrefix(entityType, id);
+  const strategy = get(values, [fieldPrefix, 'strategy']);
+
+  if (strategy !== 'generateReplacement') {
+    set(errors, [fieldPrefix, 'strategy'], 'Required!');
+  }
+}
+
+function validateIdCollisionFields(
+  conflicts: Conflicts,
+  values: FormValues,
+  errors: Record<string, string>,
+) {
+  for (const itemTypeId of Object.keys(conflicts.ids.itemTypes)) {
+    const itemTypeStrategy = get(values, [
+      `itemType-${itemTypeId}`,
+      'strategy',
+    ]);
+    if (itemTypeStrategy !== 'reuseExisting') {
+      validateIdCollisionField(values, errors, 'itemType', itemTypeId);
+    }
+  }
+
+  for (const itemTypeId of Object.keys(conflicts.legacyIds.itemTypes)) {
+    const itemTypeStrategy = get(values, [
+      `itemType-${itemTypeId}`,
+      'strategy',
+    ]);
+    if (itemTypeStrategy !== 'reuseExisting') {
+      validateIdCollisionField(values, errors, 'itemType', itemTypeId);
+    }
+  }
+
+  for (const field of Object.values(conflicts.ids.fields)) {
+    const parentStrategy = get(values, [
+      `itemType-${field.exportParentItemType.id}`,
+      'strategy',
+    ]);
+    if (parentStrategy !== 'reuseExisting') {
+      validateIdCollisionField(values, errors, 'field', field.exportId);
+    }
+  }
+
+  for (const field of Object.values(conflicts.legacyIds.fields)) {
+    const parentStrategy = get(values, [
+      `itemType-${field.exportParentItemType.id}`,
+      'strategy',
+    ]);
+    if (parentStrategy !== 'reuseExisting') {
+      validateIdCollisionField(values, errors, 'field', field.exportId);
+    }
+  }
+
+  for (const fieldset of Object.values(conflicts.ids.fieldsets)) {
+    const parentStrategy = get(values, [
+      `itemType-${fieldset.exportParentItemType.id}`,
+      'strategy',
+    ]);
+    if (parentStrategy !== 'reuseExisting') {
+      validateIdCollisionField(values, errors, 'fieldset', fieldset.exportId);
+    }
+  }
+
+  for (const fieldset of Object.values(conflicts.legacyIds.fieldsets)) {
+    const parentStrategy = get(values, [
+      `itemType-${fieldset.exportParentItemType.id}`,
+      'strategy',
+    ]);
+    if (parentStrategy !== 'reuseExisting') {
+      validateIdCollisionField(values, errors, 'fieldset', fieldset.exportId);
+    }
+  }
+
+  for (const pluginId of Object.keys(conflicts.ids.plugins)) {
+    const pluginStrategy = get(values, [`plugin-${pluginId}`, 'strategy']);
+    if (pluginStrategy !== 'reuseExisting' && pluginStrategy !== 'skip') {
+      validateIdCollisionField(values, errors, 'plugin', pluginId);
+    }
+  }
+
+  for (const pluginId of Object.keys(conflicts.legacyIds.plugins)) {
+    const pluginStrategy = get(values, [`plugin-${pluginId}`, 'strategy']);
+    if (pluginStrategy !== 'reuseExisting' && pluginStrategy !== 'skip') {
+      validateIdCollisionField(values, errors, 'plugin', pluginId);
     }
   }
 }
@@ -175,6 +309,34 @@ export default function ResolutionsForm({ schema, children, onSubmit }: Props) {
                 ],
               ),
             ),
+            ...Object.fromEntries(
+              [
+                ...Object.keys(conflicts.ids.itemTypes).map((id) =>
+                  idCollisionFieldPrefix('itemType', id),
+                ),
+                ...Object.keys(conflicts.ids.fields).map((id) =>
+                  idCollisionFieldPrefix('field', id),
+                ),
+                ...Object.keys(conflicts.ids.fieldsets).map((id) =>
+                  idCollisionFieldPrefix('fieldset', id),
+                ),
+                ...Object.keys(conflicts.ids.plugins).map((id) =>
+                  idCollisionFieldPrefix('plugin', id),
+                ),
+                ...Object.keys(conflicts.legacyIds.itemTypes).map((id) =>
+                  idCollisionFieldPrefix('itemType', id),
+                ),
+                ...Object.keys(conflicts.legacyIds.fields).map((id) =>
+                  idCollisionFieldPrefix('field', id),
+                ),
+                ...Object.keys(conflicts.legacyIds.fieldsets).map((id) =>
+                  idCollisionFieldPrefix('fieldset', id),
+                ),
+                ...Object.keys(conflicts.legacyIds.plugins).map((id) =>
+                  idCollisionFieldPrefix('plugin', id),
+                ),
+              ].map((fieldPrefix) => [fieldPrefix, { strategy: null }]),
+            ),
           }
         : {},
     [conflicts],
@@ -213,13 +375,58 @@ export default function ResolutionsForm({ schema, children, onSubmit }: Props) {
     return itemTypes;
   }
 
+  function resolveIdCollisions(values: FormValues): Resolutions['idCollisions'] {
+    const idCollisions: Resolutions['idCollisions'] = {};
+    if (!conflicts) return idCollisions;
+
+    const entries: Array<[IdCollisionEntityType, string]> = [
+      ...Object.keys(conflicts.ids.itemTypes).map(
+        (id): [IdCollisionEntityType, string] => ['itemType', id],
+      ),
+      ...Object.keys(conflicts.ids.fields).map(
+        (id): [IdCollisionEntityType, string] => ['field', id],
+      ),
+      ...Object.keys(conflicts.ids.fieldsets).map(
+        (id): [IdCollisionEntityType, string] => ['fieldset', id],
+      ),
+      ...Object.keys(conflicts.ids.plugins).map(
+        (id): [IdCollisionEntityType, string] => ['plugin', id],
+      ),
+      ...Object.keys(conflicts.legacyIds.itemTypes).map(
+        (id): [IdCollisionEntityType, string] => ['itemType', id],
+      ),
+      ...Object.keys(conflicts.legacyIds.fields).map(
+        (id): [IdCollisionEntityType, string] => ['field', id],
+      ),
+      ...Object.keys(conflicts.legacyIds.fieldsets).map(
+        (id): [IdCollisionEntityType, string] => ['fieldset', id],
+      ),
+      ...Object.keys(conflicts.legacyIds.plugins).map(
+        (id): [IdCollisionEntityType, string] => ['plugin', id],
+      ),
+    ];
+
+    for (const [entityType, id] of entries) {
+      const fieldPrefix = idCollisionFieldPrefix(entityType, id);
+      const result = get(values, fieldPrefix) as IdCollisionValues | undefined;
+      if (result?.strategy === 'generateReplacement') {
+        idCollisions[idCollisionResolutionKey(entityType, id)] = {
+          strategy: 'generateReplacement',
+        };
+      }
+    }
+
+    return idCollisions;
+  }
+
   async function handleSubmit(values: FormValues) {
     if (!conflicts) {
-      return { itemTypes: {}, plugins: {} };
+      return { itemTypes: {}, plugins: {}, idCollisions: {} };
     }
     const resolutions: Resolutions = {
       plugins: resolvePlugins(values),
       itemTypes: resolveItemTypes(values),
+      idCollisions: resolveIdCollisions(values),
     };
     await onSubmit(resolutions);
   }
@@ -240,14 +447,20 @@ export default function ResolutionsForm({ schema, children, onSubmit }: Props) {
 
         const pluginIds = Object.keys(conflicts.plugins);
         const itemTypeIds = Object.keys(conflicts.itemTypes);
+        const idCollisionCount = getIdCollisionCount(conflicts);
 
         // No conflicts at all → nothing to validate; return synchronously.
-        if (pluginIds.length === 0 && itemTypeIds.length === 0) {
+        if (
+          pluginIds.length === 0 &&
+          itemTypeIds.length === 0 &&
+          idCollisionCount === 0
+        ) {
           return {};
         }
 
         // Synchronous required checks for strategies across plugins/item types.
         validatePluginFields(values, pluginIds, errors);
+        validateIdCollisionFields(conflicts, values, errors);
 
         const hasRename = validateItemTypeFieldsSync(
           values,
@@ -315,31 +528,55 @@ export function useResolutionStatusForPlugin(pluginId: string) {
   };
 }
 
+export function useResolutionStatusForIdCollision(
+  entityType: IdCollisionEntityType,
+  id: string,
+) {
+  const state = useFormState<FormValues>();
+  const fieldPrefix = idCollisionFieldPrefix(entityType, id);
+  const errors = get(state.errors, [fieldPrefix]);
+  const values = get(state.values, [fieldPrefix]) as
+    | IdCollisionValues
+    | undefined;
+
+  if (!values) {
+    return undefined;
+  }
+
+  return {
+    invalid: Boolean(errors),
+    values,
+  };
+}
+
 /**
  * Derive which entities are being reused so the graph/list views can hide them.
  */
 export function useSkippedItemsAndPluginIds() {
   const conflicts = useContext(ConflictsContext);
-  const formState = useFormState<FormValues>();
+  const formState = useFormState<FormValues>({
+    subscription: { values: true },
+  });
+  const formValues = formState.values;
 
   const skippedItemTypeIds = useMemo(
     () =>
       Object.keys(conflicts.itemTypes).filter(
         (itemTypeId) =>
-          get(formState.values, [`itemType-${itemTypeId}`, 'strategy']) ===
+          get(formValues, [`itemType-${itemTypeId}`, 'strategy']) ===
           'reuseExisting',
       ),
-    [formState, conflicts],
+    [formValues, conflicts],
   );
 
   const skippedPluginIds = useMemo(
     () =>
       Object.keys(conflicts.plugins).filter(
         (pluginId) =>
-          get(formState.values, [`plugin-${pluginId}`, 'strategy']) ===
+          get(formValues, [`plugin-${pluginId}`, 'strategy']) ===
           'reuseExisting',
       ),
-    [formState, conflicts],
+    [formValues, conflicts],
   );
 
   return { skippedItemTypeIds, skippedPluginIds };
