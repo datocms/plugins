@@ -3,20 +3,21 @@ import {
   type FieldAppearanceChange,
   type RenderManualFieldExtensionConfigScreenCtx,
 } from 'datocms-plugin-sdk';
-import 'datocms-react-ui/styles.css';
 import { FieldExtension } from './entrypoints/FieldExtension';
 import { PerFieldConfigScreen } from './entrypoints/PerFieldConfigScreen';
 import {
+  GlobalParameters,
   isValidGlobalParameters,
   isValidParameters,
   type ValidGlobalParameters,
 } from './types';
 import normalizeParams from './utils/normalizeParams';
 import { render } from './utils/render';
+import "datocms-react-ui/styles.css";
 
 connect({
   async onBoot(ctx) {
-    if (isValidGlobalParameters(ctx.plugin.attributes.parameters)) {
+    if (isValidGlobalParameters(ctx.plugin.attributes.parameters as GlobalParameters)) {
       return;
     }
 

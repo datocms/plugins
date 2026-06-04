@@ -24,7 +24,7 @@ export type ValidGlobalParameters = {
 export type GlobalParameters = ValidGlobalParameters | EmptyParameters;
 
 export function isValidParameters(
-  params: ManualExtensionParameters,
+  params: Record<string, unknown>,
 ): params is ValidManualExtensionParameters {
   return (
     params &&

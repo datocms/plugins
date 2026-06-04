@@ -1,14 +1,13 @@
-import type {
-  LegacyManualExtensionParameters,
-  ValidManualExtensionParameters,
-} from '../types';
+import type { ValidManualExtensionParameters } from '../types';
 
 export default function normalizeParams(
-  params: LegacyManualExtensionParameters,
+  params: Record<string, unknown>,
 ): ValidManualExtensionParameters {
   return {
     targetFieldsApiKey:
-      'slaveFields' in params ? params.slaveFields.trim().split(/\s*,\s*/) : [],
-    invert: 'invert' in params ? params.invert : false,
+      'slaveFields' in params && typeof params.slaveFields === 'string'
+        ? params.slaveFields.trim().split(/\s*,\s*/)
+        : [],
+    invert: 'invert' in params && typeof params.invert === 'boolean' ? params.invert : false,
   };
 }
