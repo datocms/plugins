@@ -1,0 +1,47 @@
+{
+  "name": "datocms-plugin-tile-picker",
+  "description": "Replace plain dropdowns with a visual tile grid — pick from color swatches, image thumbnails, or any mix of both.",
+  "homepage": "https://github.com/datocms/plugins/tree/master/tile-picker#readme",
+  "private": false,
+  "version": "0.1.0",
+  "author": "Stefano Verna <s.verna@datocms.com>",
+  "type": "module",
+  "keywords": [
+    "datocms-plugin"
+  ],
+  "datoCmsPlugin": {
+    "title": "Tile Picker",
+    "coverImage": "docs/cover-1200x800.png",
+    "previewImage": "docs/preview.mp4",
+    "entryPoint": "dist/index.html",
+    "permissions": []
+  },
+  "files": [
+    "dist",
+    "docs"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@uiw/react-textarea-code-editor": "^3.0.0",
+    "datocms-plugin-sdk": "*",
+    "datocms-react-ui": "*",
+    "lodash-es": "^4.17.21",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "remeda": "^2.0.0"
+  },
+  "devDependencies": {
+    "@types/lodash-es": "^4.17.6",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "globals": "^15.9.0",
+    "typescript": "^5.5.3",
+    "vite": "^5.4.1"
+  }
+}

@@ -1,0 +1,134 @@
+.code-editor {
+	font-size: 14px;
+}
+
+.code-editor-wrapper {
+	max-height: 300px;
+	overflow: auto;
+	border-color: var(--color--border);
+	border-style: solid;
+	border-width: 1px;
+	box-sizing: border-box;
+	transition: all 100ms ease 0s;
+	width: 100%;
+	margin-top: var(--spacing-s);
+}
+
+.space-top {
+	margin-top: var(--spacing-m);
+}
+
+.fieldset {
+	border: 0;
+	box-sizing: border-box;
+	display: grid;
+	grid-gap: var(--spacing-s);
+	/* 7.4589rem is a magic number that ensures the right hand edge of the grid
+	lines up nicely with the form/field container set up by DatoCMS */
+	grid-template-columns: repeat(auto-fit, minmax(0, 7.4589rem));
+	padding: 0;
+}
+
+.label {
+	padding: 0;
+}
+
+.radio {
+	height: 1px;
+	left: -10000px;
+	overflow: hidden;
+	position: absolute;
+	top: auto;
+	width: 1px;
+}
+
+.mark {
+	border-color: var(--color--border);
+	border-radius: 5px;
+	border-style: solid;
+	border-width: 1px;
+	color: var(--color--ink);
+	cursor: pointer;
+	font-size: var(--font-size-xs);
+	padding: var(--spacing-s);
+	text-align: center;
+	transition: all .15s cubic-bezier(.55, 0, .1, 1);
+}
+
+.color-preview {
+	border-radius: 3px;
+	height: var(--spacing-xl);
+	width: 100%;
+}
+
+.image-preview-container {
+	background: var(--color--surface-muted);
+	border-radius: 3px;
+	padding-top: 75%;
+	position: relative;
+}
+
+.image-preview {
+	bottom: 0;
+	height: calc(100% - var(--spacing-m) * 2);
+	left: 0;
+	margin: var(--spacing-m);
+	object-fit: contain;
+	object-position: center;
+	position: absolute;
+	right: 0;
+	top: 0;
+	width: calc(100% - var(--spacing-m) * 2);
+}
+
+.name {
+	display: block;
+	line-height: 1;
+	margin-bottom: 0;
+	margin-left: 0;
+	margin-right: 0;
+	margin-top: var(--spacing-s);
+	overflow: hidden;
+	padding: 0;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.label input:checked ~ .mark {
+	border-color: var(--color--selected--border);
+}
+
+.label:hover .mark,
+.label:focus .mark {
+	box-shadow: 0 0 0 3px var(--color--focus--outline);
+}
+
+.presets-config-form {
+	margin-top: var(--spacing-l);
+}
+
+.notice {
+	background: var(--color--warning-soft--surface);
+	color: var(--color--warning-soft--ink);
+	padding: var(--spacing-m);
+	border-radius: 5px;
+	font-size: var(--font-size-xs);
+	margin-bottom: var(--spacing-m);
+	border-style: solid;
+	border-width: 1px;
+	border-color: var(--color--warning-soft--border);
+}
+
+.carousel-scroll-container {
+	overflow-x: scroll;
+	white-space: nowrap;
+	padding-bottom: 1rem;
+	/* 3px here ensures that the outline hover effect on cards
+	is not clipped off by the hidden overflow */
+	padding-top: 3px;
+}
+
+.scroll-container {
+	overflow-x: scroll;
+	white-space: nowrap;
+}
