@@ -38,8 +38,8 @@ function formatMetric(value: number): string {
 }
 
 function formatSummaryLabel(label: string, value: number): string {
-  if (label === 'special character') {
-    return value === 1 ? label : 'special characters';
+  if (label === 'special char') {
+    return value === 1 ? label : 'special chars';
   }
 
   if (label === 'sentence') {
@@ -148,12 +148,11 @@ export default function FieldExtension({ ctx }: Props) {
               <span className={s.summaryValue}>
                 {formatMetric(characterCount)}
               </span>{' '}
-              <span className={s.summaryLabel}>characters</span>
+              <span className={s.summaryLabel}>chars</span>
             </span>
             {isDetailedField && (
               <>
                 <span className={s.summaryMetric}>
-                  <span className={s.summaryDivider}>•</span>
                   <span className={s.summaryValue}>
                     {formatMetric(analysis.words)}
                   </span>{' '}
@@ -162,19 +161,17 @@ export default function FieldExtension({ ctx }: Props) {
                   </span>
                 </span>
                 <span className={s.summaryMetric}>
-                  <span className={s.summaryDivider}>•</span>
                   <span className={s.summaryValue}>
                     {formatMetric(analysis.specialCharacters)}
                   </span>{' '}
                   <span className={s.summaryLabel}>
                     {formatSummaryLabel(
-                      'special character',
+                      'special char',
                       analysis.specialCharacters,
                     )}
                   </span>
                 </span>
                 <span className={s.summaryMetric}>
-                  <span className={s.summaryDivider}>•</span>
                   <span className={s.summaryValue}>
                     {formatMetric(analysis.sentences)}
                   </span>{' '}
@@ -183,7 +180,6 @@ export default function FieldExtension({ ctx }: Props) {
                   </span>
                 </span>
                 <span className={s.summaryMetric}>
-                  <span className={s.summaryDivider}>•</span>
                   <span className={s.summaryValue}>
                     {formatMetric(analysis.paragraphs)}
                   </span>{' '}
@@ -196,7 +192,7 @@ export default function FieldExtension({ ctx }: Props) {
           </div>
 
           <Button
-            buttonSize="xs"
+            buttonSize="xxs"
             buttonType="muted"
             onClick={() => setDetailsOpen((open) => !open)}
             rightIcon={
