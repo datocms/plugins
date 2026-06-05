@@ -62,7 +62,7 @@ You can also pull content from a different locale by choosing "Translate from" t
 If enabled:
 
 1. Open a record that has multiple locales.
-2. The "DatoGPT Translate" panel appears in the sidebar.
+2. The "AI Translations" panel appears in the sidebar.
 3. Select source and target locales, then click "Translate Entire Record."
 4. All translatable fields get updated with AI translations.
 
@@ -72,9 +72,9 @@ Translate multiple records at once from any table view:
 
 1. In the Content area, navigate to any model's table view
 2. Select multiple records by checking the boxes on the left side
-3. Click the three dots dropdown in the bar at the bottom (to the right of the bar)
-4. Choose your source and target languages
-5. The translation modal will show progress as all selected records are translated
+3. Click the three dots dropdown in the bar at the bottom (to the right of the bar) and choose "AI Translate these records"
+4. In the picker, choose your source and target languages (the target defaults to "All other locales") and, optionally, narrow which fields are translated per model
+5. Review the confirmation summary, then watch the progress modal as all selected records are translated
 
 ![Bulk Translations Table View](https://raw.githubusercontent.com/marcelofinamorvieira/datocms-plugin-ai-translations/refs/heads/master/public/assets/bulk-translation-example.png)
 
@@ -83,10 +83,12 @@ Translate multiple records at once from any table view:
 The plugin includes a dedicated page for translating multiple models at once:
 
 1. Go to Settings → AI Bulk Translations (in the sidebar) — this entry only appears for users whose role can edit the schema.
-2. Select your source and target languages
-3. Choose one or more models to translate (block models are excluded)
-4. Click "Start Bulk Translation"
+2. Select your source and target languages (the target defaults to "All other locales")
+3. Choose one or more models to translate (block models are excluded); each model appears as a card where you can refine which fields are translated
+4. Click "Start Bulk Translation" and review the confirmation summary of locales, models, and fields
 5. The modal will display progress as all records from the selected models are translated
+
+If anything required is missing (for example a model with no fields selected, or no target locale), the page lists exactly what's left before the Start button enables.
 
 ![AI Bulk Translations Page](https://github.com/user-attachments/assets/eefd5f25-efc7-4f3b-bf49-ff05d623b35c)
 
@@ -201,3 +203,7 @@ If DeepL returns a glossary mismatch (e.g., glossary languages don't match the c
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## Changelog
+
+See the [full changelog](https://github.com/datocms/plugins/blob/master/ai-translations/CHANGELOG.md) for the release history.

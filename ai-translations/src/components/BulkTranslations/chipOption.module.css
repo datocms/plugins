@@ -1,10 +1,11 @@
 .chipOption {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  padding: 1px 6px;
+  border-radius: 3px;
   background: var(--color--primary-soft--surface);
   color: var(--color--primary-soft--ink);
-  padding: 0 6px;
 }
 
 .chipOptionCode {
@@ -15,4 +16,20 @@
   background: var(--color--primary--surface);
   color: var(--color--primary--ink);
   line-height: 1.3;
+}
+
+/*
+ * react-select only themes the multi-select chip (`multiValue`) with a
+ * primary-soft surface + padding; the single-select value (`singleValue`) is
+ * left flat, so the source-locale pill rendered there looked smaller than the
+ * target-locale chips. Give the single value the same chip treatment so both
+ * match. Targets the stable class names exposed by
+ * `classNamePrefix={CHIP_SELECT_CLASS_PREFIX}` (see chipOption.tsx); these
+ * are react-select globals, hence `:global`.
+ */
+:global(.aitChipSelect__single-value) {
+  overflow: visible;
+  padding: 3px;
+  border-radius: 2px;
+  background-color: var(--color--primary-soft--surface);
 }

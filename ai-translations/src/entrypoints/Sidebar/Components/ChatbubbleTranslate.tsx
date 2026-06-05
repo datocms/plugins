@@ -15,7 +15,7 @@ import { formatLocaleLabel } from '../../../utils/localeUtils';
  * The component uses Framer Motion for animations:
  * - When status is 'pending', the bubble displays a spinning OpenAI icon to indicate ongoing translation.
  * - When the status changes to 'done', the bubble transitions smoothly, stops spinning, and displays a checkmark.
- * - When the status is 'error', the bubble shows a red error icon and error styling.
+ * - When the status is 'error', the bubble shows an error icon and error styling.
  *
  * Props:
  * - bubble: {

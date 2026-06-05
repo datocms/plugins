@@ -9,7 +9,7 @@
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  font-family: var(--font-family);
+  font-family: var(--base-font-family);
   background: transparent;
   border: 0;
   border-radius: 0;
@@ -30,19 +30,41 @@
   font-size: var(--font-size-s);
 }
 
+/* From / To rows: a fixed-width label aligns the locale chips into a column */
+.TranslationProgressModal__lang-row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-m);
+  margin-bottom: var(--spacing-s);
+}
+
+.TranslationProgressModal__lang-label {
+  flex: 0 0 auto;
+  min-width: 36px;
+  font-size: var(--font-size-s);
+  color: var(--color--ink-subtle);
+}
+
+.TranslationProgressModal__lang-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-s);
+}
+
 .TranslationProgressModal__progress-text {
-  font-weight: 600;
+  font-weight: var(--font-weight-bold);
+  margin-top: var(--spacing-m) !important;
   margin-bottom: 2px !important;
 }
 
 .TranslationProgressModal__progress-label {
-  color: var(--light-body-color);
-  font-weight: 500;
+  color: var(--color--ink-subtle);
+  font-weight: var(--font-weight-bold);
 }
 
 .TranslationProgressModal__stats {
   margin: 4px 0 0 0 !important;
-  font-size: 14px;
+  font-size: var(--font-size-s);
   color: var(--color--ink-subtle);
 }
 
@@ -101,14 +123,14 @@
 
 .TranslationProgressModal__update-item--completed
   .TranslationProgressModal__update-status {
-  color: var(--color--success-soft--ink);
-  font-weight: 700;
+  color: var(--color--ink-success);
+  font-weight: var(--font-weight-bold);
 }
 
 .TranslationProgressModal__update-item--error
   .TranslationProgressModal__update-status {
-  color: var(--color--danger--ink);
-  font-weight: 700;
+  color: var(--color--ink-danger);
+  font-weight: var(--font-weight-bold);
 }
 
 .TranslationProgressModal__update-item--processing
@@ -135,11 +157,12 @@
 
 .TranslationProgressModal__errors {
   padding: 12px;
-  background-color: var(--color--danger-soft--outline);
-  color: var(--color--danger--ink);
+  background-color: var(--color--danger-soft--surface);
+  color: var(--color--danger-soft--ink);
+  border: 1px solid var(--color--danger-soft--border);
   border-radius: 4px;
   margin-bottom: 20px;
-  font-size: 14px;
+  font-size: var(--font-size-s);
   width: 100%;
   text-align: left;
 }

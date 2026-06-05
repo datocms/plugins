@@ -36,10 +36,12 @@ import {
 import { isProviderConfigured } from '../utils/translation/ProviderFactory';
 import s from './AITranslationsPickerModal.module.css';
 import {
+  CHIP_SELECT_CLASS_PREFIX,
   type ChipOption,
   renderChipOption,
 } from './BulkTranslations/chipOption';
 import { ModelFieldPicker } from './BulkTranslations/ModelFieldPicker';
+import type { ConfirmModelSummary } from './TranslationConfirmModal';
 
 type SingleValue<T> = T | null;
 type MultiValue<T> = readonly T[];
@@ -62,6 +64,8 @@ export interface AITranslationsPickerModalResult {
     fromLocale: string;
     toLocales: string[];
     selectedFieldsByModel: Record<string, string[]>;
+    /** Per-model field breakdown for the confirm modal's review section. */
+    models: ConfirmModelSummary[];
   };
   /** True when the user dismissed the picker before starting anything. */
   dismissedBeforeStart?: boolean;
@@ -104,8 +108,9 @@ export default function AITranslationsPickerModal({ ctx, parameters }: Props) {
   const [sourceLocale, setSourceLocale] = useState<LocaleOption | null>(
     locales[0] ?? null,
   );
+  // Default to "All other locales" so the common case takes zero clicks.
   const [targetLocaleOptions, setTargetLocaleOptions] = useState<LocaleOption[]>(
-    [],
+    [ALL_LOCALES_OPTION],
   );
   const [fieldsByModel, setFieldsByModel] = useState<
     Record<string, TranslatableField[]>
@@ -247,26 +252,8 @@ export default function AITranslationsPickerModal({ ctx, parameters }: Props) {
     }
   };
 
-  const toggleField = (modelId: string, fieldApiKey: string) => {
-    setSelectedFieldsByModel((prev) => {
-      const current = prev[modelId] ?? [];
-      const isSelected = current.includes(fieldApiKey);
-      const next = isSelected
-        ? current.filter((k) => k !== fieldApiKey)
-        : [...current, fieldApiKey];
-      return { ...prev, [modelId]: next };
-    });
-  };
-
-  const selectAllFields = (modelId: string) => {
-    setSelectedFieldsByModel((prev) => ({
-      ...prev,
-      [modelId]: (fieldsByModel[modelId] ?? []).map((f) => f.apiKey),
-    }));
-  };
-
-  const clearAllFields = (modelId: string) => {
-    setSelectedFieldsByModel((prev) => ({ ...prev, [modelId]: [] }));
+  const setModelFields = (modelId: string, apiKeys: string[]) => {
+    setSelectedFieldsByModel((prev) => ({ ...prev, [modelId]: apiKeys }));
   };
 
   /**
@@ -283,11 +270,25 @@ export default function AITranslationsPickerModal({ ctx, parameters }: Props) {
       return;
     }
 
+    // Build the per-model field breakdown here, where the field metadata is
+    // already loaded, so the confirm modal can show exactly what will run.
+    const modelSummaries: ConfirmModelSummary[] = models.map((model) => {
+      const selectedKeys = new Set(selectedFieldsByModel[model.value] ?? []);
+      return {
+        label: model.label,
+        code: model.code,
+        fields: (fieldsByModel[model.value] ?? [])
+          .filter((field) => selectedKeys.has(field.apiKey))
+          .map((field) => ({ label: field.label, apiKey: field.apiKey })),
+      };
+    });
+
     ctx.resolve({
       config: {
         fromLocale: sourceLocale.value,
         toLocales: targetLocales,
         selectedFieldsByModel,
+        models: modelSummaries,
       },
     } satisfies AITranslationsPickerModalResult);
   };
@@ -321,6 +322,7 @@ export default function AITranslationsPickerModal({ ctx, parameters }: Props) {
                 selectInputProps={{
                   options: locales,
                   formatOptionLabel: renderChipOption,
+                  classNamePrefix: CHIP_SELECT_CLASS_PREFIX,
                 }}
                 onChange={handleSourceLocaleChange}
               />
@@ -339,6 +341,7 @@ export default function AITranslationsPickerModal({ ctx, parameters }: Props) {
                   isMulti: true,
                   options: targetOptions,
                   formatOptionLabel: renderChipOption,
+                  classNamePrefix: CHIP_SELECT_CLASS_PREFIX,
                 }}
                 onChange={handleTargetLocalesChange}
               />
@@ -351,8 +354,8 @@ export default function AITranslationsPickerModal({ ctx, parameters }: Props) {
           <div className={s.subsectionHeader}>
             <div className={s.subsectionLabel}>Fields to translate</div>
             <div className={s.subsectionHint}>
-              Defaults to every translatable field. Untick anything you want
-              to leave alone.
+              Defaults to every translatable field. Remove any you want to
+              leave alone, per model.
             </div>
           </div>
           <div className={s.modelFieldList}>
@@ -363,13 +366,7 @@ export default function AITranslationsPickerModal({ ctx, parameters }: Props) {
                 fields={fieldsByModel[model.value]}
                 isLoading={loadingFieldsForModel.has(model.value)}
                 selectedApiKeys={selectedFieldsByModel[model.value] ?? []}
-                onToggle={(apiKey) => toggleField(model.value, apiKey)}
-                onSelectAll={() => selectAllFields(model.value)}
-                onClearAll={() => clearAllFields(model.value)}
-                // Records-action dropdowns are registered per model in
-                // DatoCMS, so the selection is always single-model in this
-                // surface — drop the redundant model header.
-                hideModelHeader={models.length === 1}
+                onChange={(apiKeys) => setModelFields(model.value, apiKeys)}
               />
             ))}
           </div>

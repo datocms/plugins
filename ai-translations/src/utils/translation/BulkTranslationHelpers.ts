@@ -199,11 +199,54 @@ export function isFieldIncludedInSelection(
 }
 
 /**
- * Combined readiness check for the Start button on the bulk page.
+ * Structured readiness for the Start button: which required inputs are still
+ * missing, so the UI can tell the user *why* it can't proceed instead of just
+ * disabling the button. `isReady` is true only when nothing is missing.
+ */
+export interface TranslationReadiness {
+  isReady: boolean;
+  missingSourceLocale: boolean;
+  missingTargetLocales: boolean;
+  missingModels: boolean;
+  /** Ids of selected models that have zero fields selected. */
+  modelsMissingFields: string[];
+}
+
+/**
+ * Computes {@link TranslationReadiness} from the current form selection.
  *
- * Returns true only when every required input is set: a source locale, at
- * least one resolved target locale, at least one selected model, and at
- * least one selected field for *every* selected model.
+ * @param args - Current source locale, resolved target locales, selected
+ *   model ids, and the per-model selected field map.
+ */
+export function getTranslationReadiness(args: {
+  sourceLocale: string | null;
+  targetLocales: string[];
+  selectedModelIds: string[];
+  selectedFieldsByModel: Record<string, string[]>;
+}): TranslationReadiness {
+  const missingSourceLocale = !args.sourceLocale;
+  const missingTargetLocales = args.targetLocales.length === 0;
+  const missingModels = args.selectedModelIds.length === 0;
+  const modelsMissingFields = args.selectedModelIds.filter(
+    (id) => !hasAnyFieldSelectedForModel(id, args.selectedFieldsByModel),
+  );
+
+  return {
+    isReady:
+      !missingSourceLocale &&
+      !missingTargetLocales &&
+      !missingModels &&
+      modelsMissingFields.length === 0,
+    missingSourceLocale,
+    missingTargetLocales,
+    missingModels,
+    modelsMissingFields,
+  };
+}
+
+/**
+ * Boolean convenience wrapper over {@link getTranslationReadiness} for callers
+ * (sidebar, records-action picker) that only need a yes/no gate.
  */
 export function isReadyToTranslate(args: {
   sourceLocale: string | null;
@@ -211,12 +254,7 @@ export function isReadyToTranslate(args: {
   selectedModelIds: string[];
   selectedFieldsByModel: Record<string, string[]>;
 }): boolean {
-  if (!args.sourceLocale) return false;
-  if (args.targetLocales.length === 0) return false;
-  if (args.selectedModelIds.length === 0) return false;
-  return args.selectedModelIds.every((id) =>
-    hasAnyFieldSelectedForModel(id, args.selectedFieldsByModel),
-  );
+  return getTranslationReadiness(args).isReady;
 }
 
 /**

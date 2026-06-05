@@ -22,18 +22,20 @@ import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import { Button, Canvas, SelectField, Spinner } from 'datocms-react-ui';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  CHIP_SELECT_CLASS_PREFIX,
   type ChipOption,
   renderChipOption,
 } from '../../components/BulkTranslations/chipOption';
 import { ModelFieldPicker } from '../../components/BulkTranslations/ModelFieldPicker';
+import type { TranslationConfirmModalParams } from '../../components/TranslationConfirmModal';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import { buildDatoCMSClient } from '../../utils/clients';
-import { formatLocaleLabel, formatLocaleWithCode } from '../../utils/localeUtils';
+import { formatLocaleLabel } from '../../utils/localeUtils';
 import {
   ALL_LOCALES_VALUE,
   defaultFieldSelection,
   filterTranslatableFields,
-  isReadyToTranslate,
+  getTranslationReadiness,
   pruneFieldSelection,
   resolveTargetLocales,
   type SdkField,
@@ -76,8 +78,10 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
   const [selectedModels, setSelectedModels] = useState<ModelOption[]>([]);
   const [locales, setLocales] = useState<LocaleOption[]>([]);
   const [sourceLocale, setSourceLocale] = useState<LocaleOption | null>(null);
+  // Default to "All other locales" so the common case (translate into every
+  // other locale) takes zero clicks; the user can narrow it if they want.
   const [targetLocaleOptions, setTargetLocaleOptions] = useState<LocaleOption[]>(
-    [],
+    [ALL_LOCALES_OPTION],
   );
   const [fieldsByModel, setFieldsByModel] = useState<
     Record<string, TranslatableField[]>
@@ -242,9 +246,9 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
     [selectedModels],
   );
 
-  const isReady = useMemo(
+  const readiness = useMemo(
     () =>
-      isReadyToTranslate({
+      getTranslationReadiness({
         sourceLocale: sourceLocale?.value ?? null,
         targetLocales,
         selectedModelIds,
@@ -252,6 +256,7 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
       }),
     [sourceLocale, targetLocales, selectedModelIds, selectedFieldsByModel],
   );
+  const isReady = readiness.isReady;
 
   /**
    * Multi-select onChange for the target locales. Enforces a soft mutex:
@@ -302,26 +307,19 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
     }
   };
 
-  const toggleField = (modelId: string, fieldApiKey: string) => {
-    setSelectedFieldsByModel((prev) => {
-      const current = prev[modelId] ?? [];
-      const isSelected = current.includes(fieldApiKey);
-      const next = isSelected
-        ? current.filter((k) => k !== fieldApiKey)
-        : [...current, fieldApiKey];
-      return { ...prev, [modelId]: next };
-    });
+  const setModelFields = (modelId: string, apiKeys: string[]) => {
+    setSelectedFieldsByModel((prev) => ({ ...prev, [modelId]: apiKeys }));
   };
 
-  const selectAllFields = (modelId: string) => {
-    setSelectedFieldsByModel((prev) => ({
-      ...prev,
-      [modelId]: (fieldsByModel[modelId] ?? []).map((f) => f.apiKey),
-    }));
+  /** Drop a model from the selection (the prune effect cleans up its caches). */
+  const removeModel = (modelId: string) => {
+    setSelectedModels((prev) => prev.filter((m) => m.value !== modelId));
   };
 
-  const clearAllFields = (modelId: string) => {
-    setSelectedFieldsByModel((prev) => ({ ...prev, [modelId]: [] }));
+  /** A selected model whose fields loaded but contains nothing translatable. */
+  const hasNoTranslatableFields = (modelId: string) => {
+    const loaded = fieldsByModel[modelId];
+    return loaded !== undefined && loaded.length === 0;
   };
 
   const startTranslation = async () => {
@@ -366,23 +364,32 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
         return;
       }
 
-      // Confirm before the destructive operation. Same wording shape used
-      // by the record-action dropdown so the surfaces stay consistent.
-      const targetsSummary = targetLocales.map(formatLocaleWithCode).join(', ');
-      const confirmResponse = await ctx.openConfirm({
+      // Confirm before the destructive operation via the styled confirm
+      // modal, passing the full models → selected-fields breakdown so the
+      // user can review exactly what will be translated.
+      const confirmParams: TranslationConfirmModalParams = {
+        recordCount: allRecordIds.length,
+        fromLocale: sourceLocale.value,
+        toLocales: targetLocales,
+        models: selectedModels.map((model) => {
+          const selectedKeys = new Set(selectedFieldsByModel[model.value] ?? []);
+          return {
+            label: model.label,
+            code: model.code,
+            fields: (fieldsByModel[model.value] ?? [])
+              .filter((field) => selectedKeys.has(field.apiKey))
+              .map((field) => ({ label: field.label, apiKey: field.apiKey })),
+          };
+        }),
+      };
+      const confirmed = await ctx.openModal({
+        id: 'translationConfirmModal',
         title: 'Start bulk translation?',
-        content: `This will translate ${allRecordIds.length} record(s) from ${formatLocaleWithCode(sourceLocale.value)} to ${targetLocales.length} locale(s): ${targetsSummary}.`,
-        choices: [
-          {
-            label: `Translate ${allRecordIds.length} record(s)`,
-            value: 'go',
-            intent: 'positive',
-          },
-        ],
-        cancel: { label: 'Cancel', value: 'cancel' },
+        width: 'm',
+        parameters: confirmParams as unknown as Record<string, unknown>,
       });
 
-      if (confirmResponse !== 'go') return;
+      if (confirmed !== true) return;
 
       // Single modal handles the whole job: each record is translated into
       // every target locale and saved in one CMA write per record.
@@ -470,6 +477,7 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
                     selectInputProps={{
                       options: locales,
                       formatOptionLabel: renderChipOption,
+                      classNamePrefix: CHIP_SELECT_CLASS_PREFIX,
                     }}
                     onChange={handleSourceLocaleChange}
                   />
@@ -488,6 +496,7 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
                       isMulti: true,
                       options: targetOptions,
                       formatOptionLabel: renderChipOption,
+                      classNamePrefix: CHIP_SELECT_CLASS_PREFIX,
                     }}
                     onChange={handleTargetLocalesChange}
                   />
@@ -507,6 +516,7 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
                   isMulti: true,
                   options: models,
                   formatOptionLabel: renderChipOption,
+                  classNamePrefix: CHIP_SELECT_CLASS_PREFIX,
                 }}
                 onChange={handleModelChange}
               />
@@ -518,8 +528,8 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
                 <div className={s.subsectionHeader}>
                   <div className={s.subsectionLabel}>Fields to translate</div>
                   <div className={s.subsectionHint}>
-                    Defaults to every translatable field. Untick anything you
-                    want to leave alone.
+                    Defaults to every translatable field. Remove any you want
+                    to leave alone, per model.
                   </div>
                 </div>
                 <div className={s.modelFieldList}>
@@ -530,9 +540,14 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
                       fields={fieldsByModel[model.value]}
                       isLoading={loadingFieldsForModel.has(model.value)}
                       selectedApiKeys={selectedFieldsByModel[model.value] ?? []}
-                      onToggle={(apiKey) => toggleField(model.value, apiKey)}
-                      onSelectAll={() => selectAllFields(model.value)}
-                      onClearAll={() => clearAllFields(model.value)}
+                      onChange={(apiKeys) => setModelFields(model.value, apiKeys)}
+                      onRemove={() => removeModel(model.value)}
+                      validationMessage={
+                        readiness.modelsMissingFields.includes(model.value) &&
+                        !hasNoTranslatableFields(model.value)
+                          ? 'Select at least one field to translate this model.'
+                          : undefined
+                      }
                     />
                   ))}
                 </div>
@@ -551,6 +566,36 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
                   ? 'Collecting records…'
                   : 'Start bulk translation'}
               </Button>
+              {!isReady && !isStartingTranslation && (
+                <div className={s.blockers}>
+                  <div className={s.blockersTitle}>
+                    Before you can translate:
+                  </div>
+                  <ul className={s.blockerList}>
+                    {readiness.missingSourceLocale && (
+                      <li>Pick a source language.</li>
+                    )}
+                    {readiness.missingTargetLocales && (
+                      <li>Pick at least one target language.</li>
+                    )}
+                    {readiness.missingModels && (
+                      <li>Pick at least one model to translate.</li>
+                    )}
+                    {readiness.modelsMissingFields.map((id) => {
+                      const label =
+                        selectedModels.find((m) => m.value === id)?.label ??
+                        'A selected model';
+                      return (
+                        <li key={id}>
+                          {hasNoTranslatableFields(id)
+                            ? `${label} has no translatable fields — remove it.`
+                            : `${label}: select at least one field.`}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              )}
               {isReady && !isStartingTranslation && (
                 <div className={`${s.helperText} ${s.statusReady}`}>
                   Ready to translate to {targetLocales.length} locale

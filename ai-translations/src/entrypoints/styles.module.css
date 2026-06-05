@@ -59,12 +59,12 @@
 }
 
 .tooltipConfig {
-  background-color: #e6f7ff;
-  border: 1px solid #91d5ff;
+  background-color: var(--color--primary-soft--surface);
+  border: 1px solid var(--color--border);
   border-radius: 4px;
   padding: 8px 12px;
-  font-size: 14px;
-  color: #1890ff;
+  font-size: var(--font-size-s);
+  color: var(--color--primary-soft--ink);
   display: inline-block;
   cursor: pointer;
   transition: transform 0.2s ease;
@@ -101,7 +101,7 @@
   width: 100%;
   height: 4px;
   border-radius: 4px;
-  background: rgba(0, 0, 0, 0.08);
+  background: var(--color--surface-muted);
   overflow: hidden;
 }
 
@@ -142,13 +142,13 @@
 
 .textarea {
   width: 96%;
-  border: 1px solid #d0cece5d;
+  border: 1px solid var(--color--border);
   padding: 12px;
   resize: none;
   outline: none;
   font-family: inherit;
   font-size: inherit;
-  background-color: var(--color-surface);
+  background-color: var(--color--surface);
   color: var(--color--ink);
 }
 
@@ -232,8 +232,8 @@
 .tooltipText {
   visibility: hidden;
   width: 250px;
-  background-color: rgba(0, 0, 0, 0.85);
-  color: #fff;
+  background-color: var(--color--tooltip--surface);
+  color: var(--color--tooltip--ink);
   text-align: center;
   border-radius: 6px;
   padding: 12px;
@@ -258,7 +258,7 @@
   max-width: 100%;
   height: auto;
   margin: 0 auto;
-  border: 1px solid #fff;
+  border: 1px solid var(--color--tooltip--ink-subtle);
   border-radius: 4px;
 }
 
@@ -289,7 +289,7 @@
   margin-left: -8px;
   border-width: 8px;
   border-style: solid;
-  border-color: transparent transparent rgba(0, 0, 0, 0.85) transparent;
+  border-color: transparent transparent var(--color--tooltip--surface) transparent;
 }
 
 /* Adjust arrow position for left/right anchored tooltips */

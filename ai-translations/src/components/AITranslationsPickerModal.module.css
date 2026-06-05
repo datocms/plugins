@@ -8,7 +8,7 @@
 .intro {
   margin: 0;
   font-size: var(--font-size-m);
-  color: var(--base-body-color);
+  color: var(--color--ink);
 }
 
 .section {
@@ -30,7 +30,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--base-body-color);
+  color: var(--color--ink);
   font-size: 18px;
   font-weight: var(--font-weight-bold);
   margin-top: 28px;
@@ -46,27 +46,25 @@
 .subsectionLabel {
   font-size: var(--font-size-s);
   font-weight: var(--font-weight-bold);
-  color: var(--base-body-color);
+  color: var(--color--ink);
 }
 
 .subsectionHint {
   font-size: var(--font-size-s);
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 .modelFieldList {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-m);
-  max-height: 360px;
-  overflow-y: auto;
 }
 
 .footer {
   display: flex;
   justify-content: flex-end;
   gap: var(--spacing-s);
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--color--border);
   padding-top: var(--spacing-m);
 }
 

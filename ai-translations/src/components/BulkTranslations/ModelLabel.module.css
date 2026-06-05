@@ -1,0 +1,21 @@
+.modelLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  font-size: var(--font-size-s);
+  font-weight: var(--font-weight-bold);
+  color: var(--color--ink);
+}
+
+/* Outlined neutral badge so it reads on both plain and muted surfaces. */
+.modelCode {
+  font-family: var(--monospaced-font-family);
+  font-size: var(--font-size-xs);
+  font-weight: normal;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--color--surface);
+  border: 1px solid var(--color--border);
+  color: var(--color--ink-subtle);
+  line-height: 1.3;
+}

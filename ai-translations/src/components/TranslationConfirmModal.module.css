@@ -1,0 +1,107 @@
+/*
+ * TranslationConfirmModal.module.css
+ * Compact, native-looking confirm: a lead line, a bordered summary card with
+ * From/To locale chips, and a right-aligned action footer. Semantic --color--*
+ * tokens only, so it tracks light/dark theme.
+ */
+
+.modal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-l);
+  padding: var(--spacing-l);
+}
+
+.lead {
+  margin: 0;
+  font-size: var(--font-size-m);
+  line-height: 1.5;
+  color: var(--color--ink);
+}
+
+.summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  padding: var(--spacing-m);
+  background: var(--color--surface-muted);
+  border: 1px solid var(--color--border);
+  border-radius: 5px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-m);
+}
+
+.label {
+  flex: 0 0 auto;
+  min-width: 36px;
+  font-size: var(--font-size-s);
+  color: var(--color--ink-subtle);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-s);
+}
+
+.modelsSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+}
+
+.sectionLabel {
+  font-size: var(--font-size-s);
+  font-weight: var(--font-weight-bold);
+  color: var(--color--ink-subtle);
+}
+
+.modelList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+}
+
+/* One card per model so models read as distinct groups. */
+.modelItem {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  padding: var(--spacing-m);
+  background: var(--color--surface-muted);
+  border: 1px solid var(--color--border);
+  border-radius: 5px;
+}
+
+/* Full-width row so the model chip hugs the left edge. */
+.modelName {
+  display: flex;
+}
+
+/* Field chips (rendered via renderChipOption) wrap under the model. The
+   renderer owns the chip styling; this only lays them out. */
+.fieldChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-s);
+}
+
+.noFields {
+  font-size: var(--font-size-xs);
+  color: var(--color--ink-warning);
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-s);
+  border-top: 1px solid var(--color--border);
+  padding-top: var(--spacing-m);
+}

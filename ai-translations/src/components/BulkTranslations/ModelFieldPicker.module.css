@@ -1,148 +1,27 @@
-.modelPanel {
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  padding: var(--spacing-m) var(--spacing-l);
-  background: var(--lighter-bg-color, #fafbfc);
-}
-
-/* Bare variant: no panel chrome, no model title. Used when only one model
-   can ever be in play (single-record sidebar, records-action picker modal).
-   Lets the field list sit flush against its parent's form rhythm and saves
-   the vertical space the model header would otherwise consume. */
-.bareFieldPicker {
+/* Dead-end state for a model with no translatable fields. */
+.noFields {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-s);
 }
 
-.bareActions {
-  display: flex;
-  justify-content: flex-end;
-  margin-bottom: var(--spacing-s);
-  padding-bottom: var(--spacing-s);
-  border-bottom: 1px solid var(--border-color);
-}
-
-.modelPanelHeader {
+.noFieldsNotice {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--spacing-m);
-  padding-bottom: var(--spacing-s);
-  border-bottom: 1px solid var(--border-color);
-  margin-bottom: var(--spacing-s);
-}
-
-.modelPanelTitle {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: var(--font-size-m);
-  font-weight: var(--font-weight-bold);
-  color: var(--base-body-color);
-}
-
-.modelPanelCode {
-  font-family: var(--monospaced-font-family);
-  font-size: var(--font-size-xs);
-  font-weight: 500;
-  padding: 1px 6px;
-  border-radius: 3px;
-  background: rgba(15, 23, 42, 0.06);
-  color: var(--base-body-color);
-  line-height: 1.3;
-}
-
-.modelPanelActions {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-s);
+  padding: var(--spacing-m);
+  border-radius: 5px;
+  background: var(--color--warning-soft--surface);
+  color: var(--color--warning-soft--ink);
+  border: 1px solid var(--color--warning-soft--border);
   font-size: var(--font-size-s);
 }
 
-.linkButton {
-  background: none;
-  border: none;
-  padding: 0;
-  font-size: var(--font-size-s);
-  color: var(--color--primary--surface);
-  cursor: pointer;
-  font-family: inherit;
-  transition: opacity 0.2s var(--material-ease);
+.noFieldsIcon {
+  flex: 0 0 auto;
 }
 
-.linkButton:hover:not(:disabled) {
-  opacity: 0.8;
-}
-
-.linkButton:disabled {
-  cursor: not-allowed;
-}
-
-.linkSeparator {
-  color: var(--light-body-color);
-}
-
-.modelPanelLoading {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-s);
-  font-size: var(--font-size-s);
-  color: var(--light-body-color);
-  padding: var(--spacing-s) 0;
-}
-
-.modelPanelEmpty {
-  font-size: var(--font-size-s);
-  color: var(--light-body-color);
-  padding: var(--spacing-s) 0;
-  line-height: 1.5;
-}
-
-.fieldList {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.fieldRow {
-  padding: 4px 0;
-}
-
-.fieldLabel {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-s);
-  cursor: pointer;
-  font-size: var(--font-size-m);
-  color: var(--base-body-color);
+.noFieldsBody {
+  flex: 1;
   line-height: 1.4;
-}
-
-.fieldCheckbox {
-  margin: 0;
-  cursor: pointer;
-  accent-color: var(--accent-color, #5d5afc);
-  flex-shrink: 0;
-}
-
-.fieldName {
-  font-weight: 500;
-}
-
-.fieldApiKey {
-  font-family: var(--monospaced-font-family);
-  font-size: var(--font-size-s);
-  color: var(--light-body-color);
-}
-
-.fieldApiKey::before {
-  content: "(";
-}
-
-.fieldApiKey::after {
-  content: ")";
 }

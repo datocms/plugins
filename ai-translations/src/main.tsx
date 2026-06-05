@@ -32,6 +32,10 @@ import AITranslationsPickerModal, {
   type AITranslationsPickerModalResult,
 } from './components/AITranslationsPickerModal';
 import ErrorBoundary from './components/ErrorBoundary';
+import TranslationConfirmModal, {
+  type TranslationConfirmModalParams,
+  isTranslationConfirmModalParams,
+} from './components/TranslationConfirmModal';
 import TranslationProgressModal from './components/TranslationProgressModal';
 import ConfigScreen, {
   type ctxParamsType,
@@ -432,27 +436,31 @@ connect({
       // "Translate"; anything else (dismissed/cancelled) bails out here.
       if (!result?.config) return;
 
-      const { fromLocale, toLocales, selectedFieldsByModel } = result.config;
+      const {
+        fromLocale,
+        toLocales,
+        selectedFieldsByModel,
+        models: modelsBreakdown,
+      } = result.config;
 
-      // Confirm + progress modal run here, in the dropdown handler's
-      // non-modal context — NOT inside the picker modal. Opening a
-      // modal/confirm from inside a modal nests modal-on-modal, which DatoCMS
-      // renders behind the current modal and leaves hanging on "Working…".
-      const targetsSummary = toLocales.map(formatLocaleWithCode).join(', ');
-      const confirmResponse = await ctx.openConfirm({
+      // Styled confirm modal (record count + locale chips + per-model field
+      // breakdown) instead of the native text-only openConfirm. Opened here in
+      // the dropdown handler's non-modal context — NOT inside the picker modal,
+      // which would nest modal-on-modal and hang behind the current modal.
+      const confirmParams: TranslationConfirmModalParams = {
+        recordCount: itemIds.length,
+        fromLocale,
+        toLocales,
+        models: modelsBreakdown,
+      };
+      const confirmed = await ctx.openModal({
+        id: 'translationConfirmModal',
         title: 'Start translation?',
-        content: `This will translate ${itemIds.length} record(s) from ${formatLocaleWithCode(fromLocale)} to ${toLocales.length} locale(s): ${targetsSummary}.`,
-        choices: [
-          {
-            label: `Translate ${itemIds.length} record(s)`,
-            value: 'go',
-            intent: 'positive',
-          },
-        ],
-        cancel: { label: 'Cancel', value: 'cancel' },
+        width: 'm',
+        parameters: confirmParams as unknown as Record<string, unknown>,
       });
 
-      if (confirmResponse !== 'go') return;
+      if (confirmed !== true) return;
 
       const progressParams: TranslationProgressModalParams = {
         totalRecords: itemIds.length,
@@ -844,6 +852,19 @@ connect({
                 ctx.parameters as unknown as AITranslationsPickerModalParams
               }
             />
+          </ErrorBoundary>,
+        );
+      case 'translationConfirmModal':
+        if (!isTranslationConfirmModalParams(ctx.parameters)) {
+          return render(
+            <Canvas ctx={ctx}>
+              <p>Invalid modal parameters</p>
+            </Canvas>,
+          );
+        }
+        return render(
+          <ErrorBoundary>
+            <TranslationConfirmModal ctx={ctx} parameters={ctx.parameters} />
           </ErrorBoundary>,
         );
       default:

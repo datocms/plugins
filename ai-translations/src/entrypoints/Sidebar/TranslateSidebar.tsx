@@ -19,6 +19,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MdCelebration } from 'react-icons/md';
 import {
+  CHIP_SELECT_CLASS_PREFIX,
   type ChipOption,
   renderChipOption,
 } from '../../components/BulkTranslations/chipOption';
@@ -90,8 +91,9 @@ export default function TranslateSidebar({ ctx }: PropTypes) {
   const [sourceLocale, setSourceLocale] = useState<LocaleOption | null>(
     locales[0] ?? null,
   );
+  // Default to "All other locales" so the common case takes zero clicks.
   const [targetLocaleOptions, setTargetLocaleOptions] = useState<LocaleOption[]>(
-    locales.slice(1),
+    [ALL_LOCALES_OPTION],
   );
   const [translatableFields, setTranslatableFields] = useState<
     TranslatableField[]
@@ -198,22 +200,6 @@ export default function TranslateSidebar({ ctx }: PropTypes) {
         prev.filter((o) => o.value !== next.value),
       );
     }
-  };
-
-  const toggleField = (fieldApiKey: string) => {
-    setSelectedFieldApiKeys((prev) =>
-      prev.includes(fieldApiKey)
-        ? prev.filter((k) => k !== fieldApiKey)
-        : [...prev, fieldApiKey],
-    );
-  };
-
-  const selectAllFields = () => {
-    setSelectedFieldApiKeys(translatableFields.map((f) => f.apiKey));
-  };
-
-  const clearAllFields = () => {
-    setSelectedFieldApiKeys([]);
   };
 
   const sourceLocaleValue = sourceLocale?.value ?? null;
@@ -444,6 +430,7 @@ export default function TranslateSidebar({ ctx }: PropTypes) {
                 selectInputProps={{
                   options: locales,
                   formatOptionLabel: renderChipOption,
+                  classNamePrefix: CHIP_SELECT_CLASS_PREFIX,
                 }}
                 onChange={handleSourceLocaleChange}
               />
@@ -460,6 +447,7 @@ export default function TranslateSidebar({ ctx }: PropTypes) {
                   isMulti: true,
                   options: targetOptions,
                   formatOptionLabel: renderChipOption,
+                  classNamePrefix: CHIP_SELECT_CLASS_PREFIX,
                 }}
                 onChange={handleTargetLocalesChange}
               />
@@ -469,8 +457,8 @@ export default function TranslateSidebar({ ctx }: PropTypes) {
               <div className={s.subsectionHeader}>
                 <div className={s.subsectionLabel}>Fields to translate</div>
                 <div className={s.subsectionHint}>
-                  Defaults to every translatable field on this record. Untick
-                  anything you want to leave alone.
+                  Defaults to every translatable field on this record. Remove
+                  any you want to leave alone.
                 </div>
               </div>
               <ModelFieldPicker
@@ -478,10 +466,7 @@ export default function TranslateSidebar({ ctx }: PropTypes) {
                 fields={isLoadingFields ? undefined : translatableFields}
                 isLoading={isLoadingFields}
                 selectedApiKeys={selectedFieldApiKeys}
-                onToggle={toggleField}
-                onSelectAll={selectAllFields}
-                onClearAll={clearAllFields}
-                hideModelHeader
+                onChange={setSelectedFieldApiKeys}
               />
             </div>
 
@@ -521,16 +506,16 @@ export default function TranslateSidebar({ ctx }: PropTypes) {
                     animate={{ opacity: 1, y: 0 }}
                     className={s.successBanner}
                     style={{
-                      backgroundColor: ctx.theme.semiTransparentAccentColor,
-                      color: ctx.theme.accentColor,
-                      border: `1px solid ${ctx.theme.semiTransparentAccentColor}`,
+                      backgroundColor: 'var(--color--primary-soft--surface)',
+                      color: 'var(--color--primary-soft--ink)',
+                      border: '1px solid var(--color--primary-soft--surface)',
                     }}
                   >
                     <motion.div
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}
                       transition={{ delay: 0.2 }}
-                      style={{ color: ctx.theme.accentColor }}
+                      style={{ color: 'var(--color--primary-soft--ink)' }}
                     >
                       <MdCelebration size={20} />
                     </motion.div>
@@ -540,7 +525,7 @@ export default function TranslateSidebar({ ctx }: PropTypes) {
                       initial={{ scale: 0 }}
                       animate={{ scale: 1 }}
                       transition={{ delay: 0.2 }}
-                      style={{ color: ctx.theme.accentColor }}
+                      style={{ color: 'var(--color--primary-soft--ink)' }}
                     >
                       <MdCelebration size={20} />
                     </motion.div>
@@ -548,7 +533,7 @@ export default function TranslateSidebar({ ctx }: PropTypes) {
                   <div className={s.timerTrack}>
                     <motion.div
                       className={s.timerFill}
-                      style={{ backgroundColor: ctx.theme.accentColor }}
+                      style={{ backgroundColor: 'var(--color--primary--surface)' }}
                       initial={{ scaleX: 1 }}
                       animate={{ scaleX: progress / 100 }}
                       transition={{ duration: 0.1 }}

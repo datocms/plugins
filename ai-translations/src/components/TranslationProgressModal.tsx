@@ -40,8 +40,8 @@ function ProgressListItem({
 
 import type { ctxParamsType } from '../entrypoints/Config/ConfigScreen';
 import { buildDatoCMSClient } from '../utils/clients';
-import { formatLocaleWithCode } from '../utils/localeUtils';
 import { createSchemaRepository } from '../utils/schemaRepository';
+import { LocaleChip } from './BulkTranslations/LocaleChip';
 // no direct types from OpenAI or buildClient needed here
 import {
   formatErrorForUser,
@@ -78,18 +78,6 @@ interface TranslationProgressModalParams {
    * only the listed field api_keys are translated for matching records.
    */
   selectedFieldsByModel?: Record<string, string[]>;
-}
-
-/**
- * Joins a target-locale list for display in the modal header. Each locale
- * is rendered via `formatLocaleWithCode` so the wording is consistent with
- * the dropdowns, alerts, and per-record progress messages.
- */
-function describeTargetLocales(toLocales: string[]): string {
-  const labels = toLocales.map(formatLocaleWithCode);
-  if (labels.length <= 1) return labels[0] ?? '';
-  if (labels.length === 2) return `${labels[0]} and ${labels[1]}`;
-  return `${labels.slice(0, -1).join(', ')}, and ${labels[labels.length - 1]}`;
 }
 
 interface TranslationProgressModalProps {
@@ -290,10 +278,18 @@ export default function TranslationProgressModal({
       <div className="TranslationProgressModal">
         <div className="TranslationProgressModal__intro">
           <div className="TranslationProgressModal__languages">
-            <p>
-              Translating from <strong>{formatLocaleWithCode(fromLocale)}</strong>{' '}
-              to <strong>{describeTargetLocales(toLocales)}</strong>
-            </p>
+            <div className="TranslationProgressModal__lang-row">
+              <span className="TranslationProgressModal__lang-label">From</span>
+              <LocaleChip locale={fromLocale} />
+            </div>
+            <div className="TranslationProgressModal__lang-row">
+              <span className="TranslationProgressModal__lang-label">To</span>
+              <div className="TranslationProgressModal__lang-chips">
+                {toLocales.map((loc) => (
+                  <LocaleChip key={loc} locale={loc} />
+                ))}
+              </div>
+            </div>
             <p className="TranslationProgressModal__progress-text">
               Progress: {completedCount} of {totalRecords} records processed (
               {percentComplete}%)

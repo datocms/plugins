@@ -119,13 +119,37 @@
 }
 
 .statusReady {
-  color: var(--color--primary--ink);
-  font-weight: 600;
+  color: var(--color--ink-success);
+  font-weight: var(--font-weight-bold);
 }
 
 .statusPending {
+  color: var(--color--ink-warning);
+  font-weight: var(--font-weight-bold);
+}
+
+/* "What's left" checklist shown under a disabled Start button. */
+.blockers {
+  padding: var(--spacing-m);
+  border-radius: 5px;
+  background: var(--color--warning-soft--surface);
   color: var(--color--warning-soft--ink);
-  font-weight: 600;
+  text-align: left;
+}
+
+.blockersTitle {
+  font-size: var(--font-size-s);
+  font-weight: var(--font-weight-bold);
+  margin-bottom: var(--spacing-s);
+}
+
+.blockerList {
+  margin: 0;
+  padding-left: var(--spacing-l);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--font-size-s);
 }
 
 .loadingOverlay {
@@ -165,12 +189,12 @@
 .subsectionLabel {
   font-size: var(--font-size-s);
   font-weight: var(--font-weight-bold);
-  color: var(--base-body-color);
+  color: var(--color--ink);
 }
 
 .subsectionHint {
   font-size: var(--font-size-s);
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 .modelFieldList {
