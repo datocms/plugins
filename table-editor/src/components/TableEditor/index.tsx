@@ -322,13 +322,11 @@ export default function TableEditor({
         <div className={s.thead} ref={theadRef} style={{ overflowX: 'hidden' }}>
           {headerGroups.map((headerGroup) => (
             <div
-              key={headerGroup.id}
               {...headerGroup.getHeaderGroupProps()}
               className={s.tr}
             >
               {headerGroup.headers.map((column) => (
                 <div
-                  key={column.id}
                   {...column.getHeaderProps()}
                   className={s.th}
                 >
@@ -353,7 +351,7 @@ export default function TableEditor({
           {rows.map((row, i) => {
             prepareRow(row);
             return (
-              <div key={row.id} {...row.getRowProps()} className={s.tr}>
+              <div {...row.getRowProps()} className={s.tr}>
                 <div className={s.dropdownWrapper}>
                   <Dropdown
                     renderTrigger={({ onClick }) => (
@@ -397,7 +395,6 @@ export default function TableEditor({
                 {row.cells.map((cell) => {
                   return (
                     <div
-                      key={cell.column.id}
                       {...cell.getCellProps()}
                       className={s.td}
                     >

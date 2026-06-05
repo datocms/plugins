@@ -5,7 +5,7 @@
   box-sizing: border-box;
   padding: 12px;
   font-weight: bold;
-  background: rgba(var(--light-body-color-rgb-components), 0.1);
+  background: var(--color--surface-muted);
   transition: background 0.2s var(--material-ease);
   user-select: none;
   display: flex;
@@ -18,12 +18,12 @@
 }
 
 .button:hover {
-  background: rgba(var(--light-body-color-rgb-components), 0.2);
+  background: var(--color--surface-hover);
 }
 
 .button svg {
   margin-left: 10px;
-  color: rgba(var(--light-body-color-rgb-components), 0.8);
+  color: var(--color--ink-subtle);
   opacity: 0;
   transition: opacity 0.2s var(--material-ease);
 }
