@@ -119,7 +119,7 @@
 }
 
 .assetListItem:hover {
-  background-color: var(--color--primary-soft--surface);
+  background-color: var(--color--surface-hover);
 }
 
 .assetItemContent {

@@ -1247,7 +1247,8 @@
 }
 
 .mentionOptionSelected .mentionLocaleBadge {
-  background-color: var(--color--primary--surface);
+  color: var(--color--selected--ink);
+  background-color: var(--color--selected--surface-hover);
   opacity: 0.9;
 }
 

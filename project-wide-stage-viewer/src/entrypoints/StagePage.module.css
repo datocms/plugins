@@ -116,7 +116,7 @@
 }
 
 .clearButton:hover {
-  background: var(--color--primary-soft--surface);
+  background: var(--color--surface-hover);
 }
 
 .loading {
@@ -166,7 +166,7 @@
 }
 
 .table tbody tr:hover {
-  background: var(--color--primary-soft--surface);
+  background: var(--color--surface-hover);
 }
 
 .paginationBar {
@@ -205,8 +205,8 @@
 }
 
 .pageButton:hover {
-  background: var(--color--primary-soft--surface);
-  border-color: var(--color--focus--border);
+  background: var(--color--surface-hover);
+  border-color: var(--color--border-hover);
 }
 
 .pageButton:disabled {

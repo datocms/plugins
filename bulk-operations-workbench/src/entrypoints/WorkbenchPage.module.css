@@ -44,7 +44,7 @@
 
 .stepTabActive {
   color: var(--color--ink);
-  border-bottom-color: var(--color--focus--border);
+  border-bottom-color: var(--color--selected--border);
   font-weight: 600;
 }
 
@@ -69,9 +69,9 @@
 }
 
 .stepTabActive .stepIndex {
-  background: var(--color--primary--surface);
-  border-color: var(--color--focus--border);
-  color: var(--color--primary--ink);
+  background: var(--color--selected--surface);
+  border-color: var(--color--selected--border);
+  color: var(--color--selected--ink);
 }
 
 .stepTabDone .stepIndex {
@@ -344,7 +344,7 @@
 
 .progressFill {
   height: 100%;
-  background: var(--color--primary--surface);
+  background: var(--color--progress--fill);
   transition: width 0.15s ease;
 }
 
@@ -378,7 +378,7 @@
 
 .resultsRow:hover,
 .resultsRow:focus-visible {
-  background: var(--color--primary-soft--surface);
+  background: var(--color--surface-hover);
 }
 
 .resultsRow:focus-visible {

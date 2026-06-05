@@ -508,9 +508,9 @@ button.chip:hover {
 /* Active/pressed state for toggle chips */
 button.chip.is-active,
 button.chip[aria-pressed="true"] {
-  background: var(--color--primary--surface);
-  color: var(--color--primary--ink);
-  border-color: var(--color--primary--border);
+  background: var(--color--selected--surface);
+  color: var(--color--selected--ink);
+  border-color: var(--color--selected--border);
 }
 
 /* Softer variant still works on buttons */
@@ -952,8 +952,8 @@ button.chip:focus-visible {
   border-bottom: 1px solid var(--color--border);
 
   &.conflict--selected {
-    border-top: 4px solid var(--color--border);
-    border-bottom: 4px solid var(--color--border);
+    border-top: 4px solid var(--color--selected--border);
+    border-bottom: 4px solid var(--color--selected--border);
   }
 
   &:first-child {
@@ -1087,8 +1087,8 @@ button.chip:focus-visible {
 }
 
 .schema-overview__status--selected {
-  color: var(--color--success-soft--ink);
-  background-color: var(--color--success-soft--surface);
+  color: var(--color--selected--ink);
+  background-color: var(--color--selected--surface);
 }
 
 .schema-overview__status--unselected {
@@ -1102,7 +1102,7 @@ button.chip:focus-visible {
 }
 
 .schema-overview__category--selected {
-  border-bottom: 1px solid var(--color--border);
+  border-bottom: 1px solid var(--color--selected--border);
   padding-bottom: 16px;
   margin-bottom: 24px;
 }
@@ -1147,8 +1147,12 @@ button.chip:focus-visible {
 }
 
 .schema-overview__item--selected {
-  background: var(--color--success-soft--surface);
-  border-color: var(--color--success-soft--border);
+  background: var(--color--selected--surface);
+  border-color: var(--color--selected--border);
+}
+
+.schema-overview__item--selected:not(.conflict--has-conflict) .conflict__title {
+  color: var(--color--selected--ink);
 }
 
 .schema-overview__item--unselected {
@@ -1164,7 +1168,7 @@ button.chip:focus-visible {
 }
 
 .export__details .schema-overview__item.schema-overview__item--selected {
-  border-color: var(--color--success-soft--border);
+  border-color: var(--color--selected--border);
 }
 
 .export__details .schema-overview__item.schema-overview__item--unselected {

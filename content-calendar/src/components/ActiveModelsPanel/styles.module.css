@@ -28,11 +28,11 @@
 }
 
 .togglerActive {
-  color: var(--color--ink);
+  color: var(--color--selected--ink);
 }
 
 .toggler input[type="checkbox"] {
-  accent-color: var(--color--primary--surface-secondary);
+  accent-color: var(--color--selected--border);
 }
 
 .color {
@@ -41,7 +41,7 @@
   border-radius: 100%;
   background-color: rgba(var(--color-rgb-components), 0.5);
   outline: 1px solid var(--color--border);
-  border: 2px solid white;
+  border: 2px solid var(--color--surface);
 }
 
 .model:hover .color,
@@ -50,6 +50,7 @@
 }
 
 .modelActive {
-  background: var(--color--primary-soft--surface);
+  background: var(--color--selected--surface);
+  color: var(--color--selected--ink);
   font-weight: bold;
 }

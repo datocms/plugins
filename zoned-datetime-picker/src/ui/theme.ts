@@ -21,11 +21,12 @@ export type DatoThemeInput = {
 /**
  * Autocomplete option styling, shared across both theme branches.
  *
- * Non-cosmetic rationale: ensure selected and hover states match the project's
- * brand colors with high contrast inside the constrained iframe, and remove the
- * default focus fill which clashes with our selected-state background. Colors
- * are pulled from the palette so they follow whichever values the active branch
- * resolved (token-driven in dark mode, legacy in pre-token hosts).
+ * Non-cosmetic rationale: ensure selected and hover states use the host's
+ * semantic interaction tokens with high contrast inside the constrained iframe,
+ * and remove the default focus fill which clashes with our selected-state
+ * background. Colors are pulled from the palette so they follow whichever
+ * values the active branch resolved (token-driven in dark mode, legacy in
+ * pre-token hosts).
  */
 const autocompleteOverrides: Components<MuiTheme> = {
   MuiAutocomplete: {
@@ -114,15 +115,15 @@ export function createMuiThemeFromDato({
     palette: {
       mode: colorScheme,
       primary: {
-        main: token('--color--primary--surface', theme.primaryColor),
-        contrastText: token('--color--primary--ink', '#fff'),
-        light: token('--color--primary-soft--surface', theme.lightColor),
-        dark: token('--color--primary--surface-secondary', theme.darkColor),
+        main: token('--color--selected--surface', theme.primaryColor),
+        contrastText: token('--color--selected--ink', '#fff'),
+        light: token('--color--selected--surface-hover', theme.lightColor),
+        dark: token('--color--selected--border', theme.darkColor),
       },
       secondary: {
         // Option hover background/text; selected state uses `primary` above.
         main: token('--color--ink-link', theme.accentColor),
-        light: token('--color--primary-soft--surface', theme.lightColor),
+        light: token('--color--surface-hover', theme.lightColor),
         dark: token('--color--ink', theme.darkColor),
         contrastText: token('--color--ink', '#fff'),
       },
@@ -136,7 +137,7 @@ export function createMuiThemeFromDato({
         // Popovers/menus (the picker popup, the zone listbox) are raised
         // surfaces; fall back to the flat surface, then white.
         paper:
-          tokens['--color--raised--surface'] ||
+          tokens['--color--surface-raised'] ||
           tokens['--color--surface'] ||
           '#fff',
       },

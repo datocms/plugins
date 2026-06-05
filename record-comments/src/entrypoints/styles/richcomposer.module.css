@@ -51,9 +51,14 @@
 }
 
 /* Visual feedback when backspace will delete the chip */
-.mentionChipWrapper:focus-within,
-.mentionChipWrapper.selected {
+.mentionChipWrapper:focus-within {
   outline: 2px solid var(--color--focus--outline);
+  outline-offset: 1px;
+  border-radius: var(--radius-sm);
+}
+
+.mentionChipWrapper.selected {
+  outline: 2px solid var(--color--selected--border);
   outline-offset: 1px;
   border-radius: var(--radius-sm);
 }

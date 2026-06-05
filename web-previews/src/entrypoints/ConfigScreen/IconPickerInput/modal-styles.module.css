@@ -44,14 +44,14 @@
 }
 
 .iconButton:hover {
-  background: var(--color--primary--surface);
+  background: var(--color--surface-hover);
   transform: translateY(-1px);
   box-shadow: var(--shadow--raised);
 }
 
 .iconButton:hover .icon,
 .iconButton:hover .iconLabel {
-  color: var(--color--primary--ink);
+  color: var(--color--ink);
 }
 
 .iconButton:active {

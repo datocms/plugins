@@ -59,12 +59,12 @@
 }
 
 .tooltipConfig {
-  background-color: var(--color--primary-soft--surface);
-  border: 1px solid var(--color--primary-soft--border);
+  background-color: var(--color--surface-muted);
+  border: 1px solid var(--color--border);
   border-radius: 4px;
   padding: 8px 12px;
   font-size: 14px;
-  color: var(--color--primary-soft--ink);
+  color: var(--color--ink);
   display: inline-block;
   cursor: pointer;
   transition: transform 0.2s ease;

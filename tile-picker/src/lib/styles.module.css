@@ -81,6 +81,8 @@
 
 .label input:checked ~ .mark {
 	border-color: var(--color--selected--border);
+	background: var(--color--selected--surface);
+	color: var(--color--selected--ink);
 }
 
 .label:hover .mark,

@@ -44,7 +44,7 @@
 .TranslationProgressModal__progress-bar {
   height: 8px;
   width: 100%;
-  background-color: var(--color--surface-muted);
+  background-color: var(--color--progress--track);
   border: 1px solid var(--color--border);
   border-radius: 999px;
   margin: 8px 0 16px 0;
@@ -53,8 +53,7 @@
 
 .TranslationProgressModal__progress-bar-fill {
   height: 100%;
-  background-color: var(--color--ink-primary);
-  box-shadow: inset 0 0 0 1px var(--color--primary--border);
+  background-color: var(--color--progress--fill);
   transition: width 0.3s ease-in-out;
 }
 

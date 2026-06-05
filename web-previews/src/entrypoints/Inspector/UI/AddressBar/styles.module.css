@@ -50,7 +50,7 @@
 }
 
 .refreshButton:hover {
-  background: var(--color--primary-soft--surface);
+  background: var(--color--surface-hover);
   color: var(--color--ink);
 }
 

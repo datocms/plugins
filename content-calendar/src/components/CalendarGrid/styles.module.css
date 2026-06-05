@@ -49,6 +49,6 @@
 }
 
 .calendarDayCell--isToday .calendarDayCellHeaderDay {
-  background: var(--color--primary--surface);
-  color: var(--color--primary--ink);
+  background: var(--color--selected--surface);
+  color: var(--color--selected--ink);
 }

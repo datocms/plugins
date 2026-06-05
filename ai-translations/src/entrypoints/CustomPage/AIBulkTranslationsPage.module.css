@@ -99,9 +99,9 @@
   border-radius: 999px;
   font-size: 12px;
   font-weight: 500;
-  background: var(--color--primary--surface-secondary);
-  color: var(--color--primary--ink);
-  border: 1px solid var(--color--primary--ink);
+  background: var(--color--selected--surface);
+  color: var(--color--selected--ink);
+  border: 1px solid var(--color--selected--border);
 }
 
 .actions {
@@ -117,7 +117,7 @@
 }
 
 .statusReady {
-  color: var(--color--ink-primary);
+  color: var(--color--success-soft--ink);
   font-weight: 600;
 }
 
