@@ -37,6 +37,7 @@ Run from `ai-translations/`:
 - There are three main flows: field-level translation, whole-record translation, and bulk translation. Changes that affect one flow often also need review in the shared translation utilities.
 - Prompt placeholders and locale handling are shared behavior; treat them as cross-cutting concerns, not one-off UI details.
 - If you touch provider errors, batching, locale mapping, or translation routing, review the corresponding tests before finishing.
+- Cancellation flags — and anything the long-running translation loop reads through `checkCancellation` — must live in a `useRef`, not `useState`. The loop closes over its start-time snapshot, so a state value is read stale and the run never stops cooperatively (the user clicks Cancel but records keep translating). Keep a parallel `useState` only when the UI must re-render off the flag (e.g. a "Cancelling…" button label), and write both.
 
 ## Testing Guidelines
 - Use `npm run build` as the baseline validation step.

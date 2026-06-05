@@ -123,6 +123,11 @@ export default function TranslateSidebar({ ctx }: PropTypes) {
 
   const abortControllerRef = useRef<AbortController | null>(null);
   const successShownRef = useRef(false);
+  // Mirror of `isCancelling` for reads inside the running translation loop. The
+  // state drives the button label (render); the ref is what the loop's
+  // `checkCancellation` callback and the post-await branch read, since a state
+  // value would be captured stale in the in-flight async closure.
+  const isCancellingRef = useRef(false);
 
   // Load and filter the translatable fields for this record's model so the
   // user can opt fields in or out before kicking off the translation.
@@ -318,6 +323,7 @@ export default function TranslateSidebar({ ctx }: PropTypes) {
     setIsLoading(true);
     setTranslationBubbles([]);
     setIsCancelling(false);
+    isCancellingRef.current = false;
     successShownRef.current = false;
 
     const controller = new AbortController();
@@ -382,13 +388,13 @@ export default function TranslateSidebar({ ctx }: PropTypes) {
               `Failed to translate "${fieldLabel}" to ${locale}: ${errorMessage}`,
             );
           },
-          checkCancellation: () => isCancelling,
+          checkCancellation: () => isCancellingRef.current,
           abortSignal: controller.signal,
           allowedFieldApiKeys: new Set(selectedFieldApiKeys),
         },
       );
 
-      if (isCancelling) {
+      if (isCancellingRef.current) {
         ctx.notice('Translation cancelled');
         setIsCancelling(false);
         setIsLoading(false);
@@ -404,6 +410,7 @@ export default function TranslateSidebar({ ctx }: PropTypes) {
 
   function handleCancelTranslation() {
     setIsCancelling(true);
+    isCancellingRef.current = true;
     ctx.notice('Translation cancellation requested. Please wait...');
     abortControllerRef.current?.abort();
   }

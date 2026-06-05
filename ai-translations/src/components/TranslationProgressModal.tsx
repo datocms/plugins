@@ -112,7 +112,10 @@ export default function TranslationProgressModal({
   } = parameters;
   const [progress, setProgress] = useState<ProgressUpdate[]>([]);
   const [isCompleted, setIsCompleted] = useState(false);
-  const [isCancelled, setIsCancelled] = useState(false);
+  // Cancellation is read from inside a long-running async loop, so it must be a
+  // ref: a state value would be captured stale in the once-only effect closure
+  // (the `checkCancellation` callback would forever read its mount-time `false`).
+  const isCancelledRef = useRef(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [hasFatalError, setHasFatalError] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -124,6 +127,10 @@ export default function TranslationProgressModal({
   // Stable callback to add a progress update — wrapped in useCallback so it
   // can be safely listed as a useEffect dependency without causing re-runs.
   const addProgressUpdate = useCallback((update: ProgressUpdate) => {
+    // Drop updates that arrive after a cancel: the modal has already resolved
+    // and the loop is unwinding, so committing more state is wasted (and would
+    // warn about setting state on an unmounting component).
+    if (isCancelledRef.current) return;
     setProgress((prev) => {
       // Filter out previous updates for the same record and create a new array
       const filteredUpdates = prev.filter(
@@ -177,12 +184,21 @@ export default function TranslationProgressModal({
           accessToken,
           {
             onProgress: addProgressUpdate,
-            checkCancellation: () => isCancelled,
+            checkCancellation: () => isCancelledRef.current,
             abortSignal: controller.signal,
             selectedFieldsByModel,
           },
           schemaRepository,
         );
+
+        // Clear the processing flag on the happy path too. The completion
+        // effect below only fires when every record reports back; if fewer
+        // records come back than requested (e.g. some were deleted between
+        // selection and fetch) that effect never runs, and without this the
+        // Close button would stay disabled forever.
+        if (isMounted) {
+          setIsProcessing(false);
+        }
       } catch (error) {
         if (isMounted) {
           setHasFatalError(true);
@@ -212,7 +228,6 @@ export default function TranslationProgressModal({
     addProgressUpdate,
     ctx,
     fromLocale,
-    isCancelled,
     itemIds,
     pluginParams,
     toLocales,
@@ -242,7 +257,7 @@ export default function TranslationProgressModal({
 
   // Make sure to set completed state when all records are processed
   useEffect(() => {
-    if (completedCount === totalRecords && totalRecords > 0) {
+    if (completedCount >= totalRecords && totalRecords > 0) {
       setIsCompleted(true);
       setIsProcessing(false);
     }
@@ -267,7 +282,7 @@ export default function TranslationProgressModal({
   };
 
   const handleCancel = () => {
-    setIsCancelled(true);
+    isCancelledRef.current = true;
     // Abort in-flight requests to stop streaming immediately
     abortRef.current?.abort();
     ctx.resolve({ completed: false, canceled: true });
