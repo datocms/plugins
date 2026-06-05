@@ -45,10 +45,12 @@ function escapeHtml(unsafe: string) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
+    .replace(/'/g, '&apos;');
 }
 
-function buildItemTypeNode(itemType: ItemType) {
+function buildItemTypeNode(itemType: ItemType, colorScheme: 'light' | 'dark') {
+  const metadataColor = colorScheme === 'dark' ? 'grey70' : 'grey50';
+
   return new Node(`it-${itemType.id}`, {
     label: `<
       <table border="0" align="center" cellspacing="0.5" cellpadding="0">
@@ -56,11 +58,11 @@ function buildItemTypeNode(itemType: ItemType) {
           <td align="center" valign="bottom">
             <b><font point-size="11">${escapeHtml(
               itemType.attributes.name,
-            )}</font></b>     <font color="grey50">${
+            )}</font></b>     <font color="${metadataColor}">${
               itemType.attributes.modular_block ? 'Block model' : 'Model'
             }</font>
             <br/>
-            <font color="grey50" face="Courier">${escapeHtml(
+            <font color="${metadataColor}" face="Courier">${escapeHtml(
               itemType.attributes.api_key,
             )}</font>
           </td>
@@ -71,7 +73,9 @@ function buildItemTypeNode(itemType: ItemType) {
   });
 }
 
-function buildFieldNode(field: Field) {
+function buildFieldNode(field: Field, colorScheme: 'light' | 'dark') {
+  const metadataColor = colorScheme === 'dark' ? 'grey70' : 'grey50';
+
   return new Node(`f-${field.id}`, {
     label: `<
       <table border="0">
@@ -79,16 +83,16 @@ function buildFieldNode(field: Field) {
           <td align="text">
             <b>${escapeHtml(field.attributes.label)}</b>
             <br/>
-            <font color="grey50">${fieldTypes[field.attributes.field_type]}</font>
+            <font color="${metadataColor}">${fieldTypes[field.attributes.field_type]}</font>
             <br/>
-            <font color="grey50" face="Courier">${escapeHtml(
+            <font color="${metadataColor}" face="Courier">${escapeHtml(
               field.attributes.api_key,
             )}</font>
           </td>
         </tr>
       </table>
     >`.replace(/\s+/, ' '),
-    color: '#429e9e',
+    color: colorScheme === 'dark' ? 'lightskyblue' : 'steelblue',
     shape: 'record',
     fixedsize: true,
     width: 2,
@@ -121,7 +125,9 @@ function addFieldEdges(
   let hasLinks = false;
 
   for (const validatorCode of validators) {
-    const validatorEntry = field.attributes.validators[validatorCode];
+    const validatorEntry = (field.attributes.validators as Record<string, unknown>)[
+      validatorCode
+    ];
     const linkedIds = extractLinkedItemTypeIds(validatorEntry);
 
     for (const itemTypeId of linkedIds) {
@@ -143,8 +149,9 @@ function addFieldNodeToSubgraph(
   subgraph: Subgraph,
   field: Field,
   itemTypeId: string,
+  colorScheme: 'light' | 'dark',
 ) {
-  const fieldNode = buildFieldNode(field);
+  const fieldNode = buildFieldNode(field, colorScheme);
   subgraph.addNode(fieldNode);
 
   const parentEdge = new Edge([
@@ -158,18 +165,19 @@ function addItemTypeSubgraph(
   graph: Digraph,
   itemType: ItemType,
   fields: Partial<Record<string, Field>>,
+  colorScheme: 'light' | 'dark',
 ) {
   const subgraph = new Subgraph(`cluster-${itemType.id}`, {
     style: 'filled',
-    color: '#f5fbfc',
+    color: colorScheme === 'dark' ? 'gray20' : 'aliceblue',
   });
 
   subgraph.attributes.node.apply({
-    fillcolor: 'white',
+    fillcolor: colorScheme === 'dark' ? 'gray12' : 'gray98',
     style: 'filled',
   });
 
-  const itemTypeNode = buildItemTypeNode(itemType);
+  const itemTypeNode = buildItemTypeNode(itemType, colorScheme);
   subgraph.addNode(itemTypeNode);
 
   const itemTypeFields = itemType.relationships.fields.data
@@ -184,19 +192,20 @@ function addItemTypeSubgraph(
 
     const hasLinks = addFieldEdges(graph, field, validators);
     if (hasLinks) {
-      addFieldNodeToSubgraph(graph, subgraph, field, itemType.id);
+      addFieldNodeToSubgraph(graph, subgraph, field, itemType.id, colorScheme);
     }
   }
 
   graph.addSubgraph(subgraph);
 }
 
-function buildGraphDefaults(graph: Digraph) {
+function buildGraphDefaults(graph: Digraph, colorScheme: 'light' | 'dark') {
   graph.attributes.node.apply({
     fontsize: 10,
     fontname: 'Arial',
     margin: 0.07,
     penwidth: 1.0,
+    fontcolor: colorScheme === 'dark' ? 'grey90' : 'grey10',
   });
 
   graph.attributes.edge.apply({
@@ -205,16 +214,19 @@ function buildGraphDefaults(graph: Digraph) {
     labelangle: 32,
     labeldistance: 1.8,
     arrowtail: 'none',
-    color: 'grey60',
+    color: colorScheme === 'dark' ? 'grey70' : 'grey60',
+    fontcolor: colorScheme === 'dark' ? 'grey80' : 'grey40',
   });
 }
 
 export function generateGraph({
   itemTypes,
   fields,
+  colorScheme,
 }: {
   itemTypes: Partial<Record<string, ItemType>>;
   fields: Partial<Record<string, Field>>;
+  colorScheme: 'light' | 'dark';
 }) {
   const graph = new Digraph('schema', false, {
     fontname: 'Arial',
@@ -226,10 +238,10 @@ export function generateGraph({
     compound: true,
   });
 
-  buildGraphDefaults(graph);
+  buildGraphDefaults(graph, colorScheme);
 
   for (const itemType of allEntities(itemTypes)) {
-    addItemTypeSubgraph(graph, itemType, fields);
+    addItemTypeSubgraph(graph, itemType, fields, colorScheme);
   }
 
   return toDot(graph);

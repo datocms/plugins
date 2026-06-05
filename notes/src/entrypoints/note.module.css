@@ -13,19 +13,19 @@
 .notes__item__timestamp {
   font-size: 13px;
   margin-top: 9px;
-  color: rgba(85, 85, 85, 0.6);
+  color: color-mix(in srgb, var(--color--ink) 60%, transparent);
 }
 
 .notes__item {
   padding: 15px;
   padding-bottom: 0;
   margin-bottom: 40px;
-  background: #fde464;
+  background: var(--color--highlight--surface);
   position: relative;
 }
 
 .notes__item:focus-within {
-  box-shadow: 0 18px 7px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 18px 7px color-mix(in srgb, var(--color--ink) 20%, transparent);
 }
 
 .notes__item textarea {
@@ -52,7 +52,7 @@
   right: 15px;
   border-width: 8px;
   border-style: solid;
-  border-color: #fde464;
+  border-color: var(--color--highlight--surface);
 }
 
 .notes__item::before {
@@ -62,7 +62,7 @@
   right: 0;
   border-width: 15px 15px 0 0;
   border-style: solid;
-  border-color: #f8d003 transparent;
+  border-color: color-mix(in srgb, var(--color--highlight--surface) 85%, var(--color--ink) 15%) transparent;
 }
 
 .note__button {

@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-prompt-dato",
   "homepage": "https://github.com/datocms/plugins/tree/master/prompt-dato#readme",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Chat sidebar for DatoCMS records",
   "author": "DatoCMS <support@datocms.com>",
   "license": "ISC",
@@ -33,8 +33,8 @@
   "dependencies": {
     "@google/genai": "^1.52.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "datocms-plugin-sdk": "^2.1.1",
-    "datocms-react-ui": "^2.1.4",
+    "datocms-plugin-sdk": "^2.2.2",
+    "datocms-react-ui": "^2.2.4",
     "openai": "^6.34.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",

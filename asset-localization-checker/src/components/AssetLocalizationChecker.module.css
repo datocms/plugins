@@ -1,7 +1,7 @@
 :root {
-  --color-grey: #999;
-  --color-light-grey: #eee;
-  --color-red: #f44;
+  --color-grey: var(--color--ink-subtle);
+  --color-light-grey: var(--color--surface-muted);
+  --color-red: var(--color--danger-soft--ink);
 }
 
 .localeTable {

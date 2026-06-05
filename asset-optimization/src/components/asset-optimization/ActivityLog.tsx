@@ -67,7 +67,7 @@ const ActivityLog = ({ log }: ActivityLogProps): ReactElement | null => {
                   <span className={s.originalSize}>
                     {formatFileSize(entry.originalSize)}
                   </span>
-                  <span className={s.sizeArrow}>&#8594;</span>
+                  <span className={s.sizeArrow}>→</span>
                   <span className={s.optimizedSize}>
                     {formatFileSize(entry.optimizedSize)}
                   </span>

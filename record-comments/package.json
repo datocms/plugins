@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-record-comments",
   "homepage": "https://github.com/datocms/plugins/tree/master/record-comments#readme",
-  "version": "1.1.21",
+  "version": "1.1.22",
   "author": "DatoCMS <support@datocms.com>",
   "description": "A plugin that allows you and your project collaborators to leave comments under a record",
   "keywords": [
@@ -43,8 +43,8 @@
     "@tiptap/react": "^3.22.0",
     "@tiptap/starter-kit": "^3.22.0",
     "@tiptap/suggestion": "^3.22.0",
-    "datocms-plugin-sdk": "^2.1.5",
-    "datocms-react-ui": "^2.1.4",
+    "datocms-plugin-sdk": "^2.2.2",
+    "datocms-react-ui": "^2.2.4",
     "javascript-time-ago": "^2.6.4",
     "md5": "^2.3.0",
     "react": "^19.2.4",

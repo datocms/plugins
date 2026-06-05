@@ -13,7 +13,6 @@ import {
 import arrayMutators from 'final-form-arrays';
 import { Field, Form as FormHandler } from 'react-final-form';
 import { FieldArray } from 'react-final-form-arrays';
-import type { GroupBase } from 'react-select';
 import type { Config } from '../../types';
 import s from './styles.module.css';
 
@@ -24,6 +23,11 @@ type Props = {
 
 // Basic option interface for the field types
 type Option = { label: string; value: string };
+
+type SelectGroup<OptionType> = {
+  readonly label?: string;
+  readonly options: readonly OptionType[];
+};
 
 // List of valid field types the plugin can handle
 const fieldTypes: Option[] = [
@@ -103,7 +107,7 @@ export default function ConfigScreen({ ctx }: Props) {
                             {/* SelectField to pick which field types the rule should match */}
                             <Field name={`${name}.fieldTypes`}>
                               {({ input, meta: { error } }) => (
-                                <SelectField<Option, true, GroupBase<Option>>
+                                <SelectField<Option, true, SelectGroup<Option>>
                                   {...input}
                                   id="fieldTypes"
                                   label="Field types"

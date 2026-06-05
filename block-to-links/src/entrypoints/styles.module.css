@@ -21,24 +21,24 @@
   font-size: 1.75rem;
   font-weight: 700;
   margin: 0 0 var(--spacing-s) 0;
-  color: var(--base-body-color);
+  color: var(--color--ink);
 }
 
 .description {
   font-size: 1.1rem;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   margin: 0 auto;
   max-width: 600px;
   line-height: 1.5;
 }
 
 .card {
-  background: white;
-  border: 1px solid var(--border-color);
+  background: var(--color--surface);
+  border: 1px solid var(--color--border);
   border-radius: var(--border-radius-m);
   padding: var(--spacing-l);
   margin-bottom: var(--spacing-l);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+  box-shadow: 0 2px 4px color-mix(in srgb, var(--color--ink) 2%, transparent);
 }
 
 .loading {
@@ -48,18 +48,18 @@
   justify-content: center;
   padding: var(--spacing-xl);
   gap: var(--spacing-m);
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 .loadingText {
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   font-size: 1rem;
   margin-top: var(--spacing-s);
   text-align: center;
 }
 
 .percentageText {
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   font-size: 0.9rem;
   font-family: var(--font-family-mono);
   margin-top: -8px; /* Pull closer to the text above */
@@ -68,9 +68,9 @@
 .empty {
   text-align: center;
   padding: var(--spacing-xl);
-  background: var(--light-bg-color);
+  background: var(--color--surface-muted);
   border-radius: var(--border-radius-m);
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 /* Analysis Section */
@@ -79,7 +79,7 @@
   font-weight: 600;
   margin: 0 0 var(--spacing-l) 0;
   padding-bottom: var(--spacing-m);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--color--border);
 }
 
 .analysisGrid {
@@ -90,7 +90,7 @@
 }
 
 .analysisItem {
-  background: var(--light-bg-color);
+  background: var(--color--surface-muted);
   padding: var(--spacing-m);
   border-radius: var(--border-radius-m);
   display: flex;
@@ -104,7 +104,7 @@
   font-size: 0.75rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   margin: 0 0 var(--spacing-m) 0;
   display: flex;
   align-items: center;
@@ -126,13 +126,13 @@
 
 .statLabel {
   font-size: 0.9rem;
-  color: var(--base-body-color);
+  color: var(--color--ink);
   flex-shrink: 0;
 }
 
 .statValueMain {
   font-weight: 600;
-  color: var(--base-body-color);
+  color: var(--color--ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -143,8 +143,8 @@
 .statValueCode {
   font-family: var(--font-family-mono);
   font-size: 0.85rem;
-  color: var(--base-body-color);
-  background: rgba(0, 0, 0, 0.05);
+  color: var(--color--ink);
+  background: color-mix(in srgb, var(--color--ink) 5%, transparent);
   padding: 2px 6px;
   border-radius: 4px;
   white-space: nowrap;
@@ -158,7 +158,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   opacity: 0.8;
   transform: translateY(-1px);
 }
@@ -170,10 +170,10 @@
 }
 
 .emptyFieldsNote {
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   font-style: italic;
   padding: var(--spacing-m);
-  background: var(--light-bg-color);
+  background: var(--color--surface-muted);
   border-radius: var(--border-radius-m);
   text-align: center;
   margin: 0;
@@ -183,18 +183,18 @@
   list-style: none;
   padding: 0;
   margin: 0;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color--border);
   border-radius: var(--border-radius-m);
   overflow: hidden;
 }
 
 .fieldList li {
   padding: var(--spacing-s) var(--spacing-m);
-  border-bottom: 1px solid var(--border-color);
+  border-bottom: 1px solid var(--color--border);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: white;
+  background: var(--color--surface);
   transition: background 0.1s ease;
 }
 
@@ -203,7 +203,7 @@
 }
 
 .fieldList li:hover {
-  background: var(--light-bg-color);
+  background: var(--color--surface-muted);
 }
 
 /* Use higher specificity to override .fieldList li padding */
@@ -224,7 +224,7 @@
 }
 
 .fieldListLink:hover {
-  background: #f0f4ff;
+  background: var(--color--primary-soft--surface);
 }
 
 .fieldInfo {
@@ -235,17 +235,17 @@
 
 .fieldInfo strong {
   font-size: 0.95rem;
-  color: var(--base-body-color);
+  color: var(--color--ink);
 }
 
 /* Hover state for field label - defined after base .fieldInfo strong */
 .fieldListLink:hover .fieldInfo strong {
-  color: var(--accent-color);
+  color: var(--color--ink-link);
 }
 
 .fieldApiKey {
   font-size: 0.8rem;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   display: flex;
   align-items: center;
   gap: 4px;
@@ -261,8 +261,8 @@
 .fieldType {
   font-size: 0.75rem;
   text-transform: uppercase;
-  color: var(--light-body-color);
-  background: var(--light-bg-color);
+  color: var(--color--ink-subtle);
+  background: var(--color--surface-muted);
   padding: 2px 6px;
   border-radius: 4px;
   font-weight: 500;
@@ -272,8 +272,8 @@
   display: inline-flex;
   align-items: center;
   padding: 2px 8px;
-  background: var(--accent-color);
-  color: white;
+  background: var(--color--primary--surface);
+  color: var(--color--primary--ink);
   border-radius: 100px;
   font-size: 0.7rem;
   font-weight: 600;
@@ -284,7 +284,7 @@
 .conversionOptions {
   margin-top: var(--spacing-l);
   padding: var(--spacing-m);
-  background: var(--light-bg-color);
+  background: var(--color--surface-muted);
   border-radius: var(--border-radius-m);
   display: flex;
   flex-direction: column;
@@ -303,12 +303,12 @@
   align-items: center;
   justify-content: center;
   cursor: help;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   pointer-events: auto;
 }
 
 .tooltipContainer:hover {
-  color: var(--accent-color);
+  color: var(--color--ink-link);
 }
 
 .tooltip {
@@ -316,8 +316,8 @@
   bottom: 100%;
   left: 50%;
   transform: translateX(-50%);
-  background: var(--base-body-color);
-  color: white;
+  background: var(--color--ink);
+  color: var(--color--primary--ink);
   padding: var(--spacing-s);
   border-radius: 4px;
   font-size: 0.8rem;
@@ -334,7 +334,7 @@
   margin-bottom: 8px;
   text-align: center;
   line-height: 1.4;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 6px color-mix(in srgb, var(--color--ink) 10%, transparent);
   font-weight: normal;
 }
 
@@ -346,7 +346,7 @@
   margin-left: -5px;
   border-width: 5px;
   border-style: solid;
-  border-color: var(--base-body-color) transparent transparent transparent;
+  border-color: var(--color--ink) transparent transparent transparent;
 }
 
 .tooltipContainer:hover .tooltip {
@@ -360,7 +360,7 @@
   gap: var(--spacing-m);
   margin-top: var(--spacing-xl);
   padding-top: var(--spacing-l);
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--color--border);
 }
 
 /* Converting State */
@@ -377,16 +377,16 @@
 .progressBar {
   width: 100%;
   height: 8px;
-  background: var(--light-bg-color);
+  background: var(--color--surface-muted);
   border-radius: 4px;
   overflow: hidden;
   margin-bottom: var(--spacing-s);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);
+  box-shadow: inset 0 1px 2px color-mix(in srgb, var(--color--ink) 5%, transparent);
 }
 
 .progressFill {
   height: 100%;
-  background: var(--accent-color);
+  background: var(--color--primary--surface);
   border-radius: 4px;
   transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -395,13 +395,13 @@
   display: flex;
   justify-content: space-between;
   font-size: 0.8rem;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   margin-bottom: var(--spacing-xs);
 }
 
 .currentStep {
   font-weight: 600;
-  color: var(--base-body-color);
+  color: var(--color--ink);
   margin-bottom: var(--spacing-xs);
 }
 
@@ -418,7 +418,7 @@
   width: 64px;
   height: 64px;
   border-radius: 50%;
-  background: #e6f7e6;
+  background: var(--color--success-soft--surface);
   color: var(--positive-color);
   margin-bottom: var(--spacing-m);
 }
@@ -431,7 +431,7 @@
 .successTitle {
   font-size: 1.75rem;
   margin: 0 0 var(--spacing-xl) 0;
-  color: var(--base-body-color);
+  color: var(--color--ink);
   font-weight: 700;
 }
 
@@ -439,7 +439,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: var(--light-bg-color);
+  background: var(--color--surface-muted);
   padding: var(--spacing-l) var(--spacing-xl);
   border-radius: var(--border-radius-l);
   margin-bottom: var(--spacing-xl);
@@ -448,7 +448,7 @@
 .statDivider {
   width: 1px;
   height: 40px;
-  background: var(--border-color);
+  background: var(--color--border);
   margin: 0 var(--spacing-xl);
 }
 
@@ -461,14 +461,14 @@
 .statValue {
   font-size: 2rem;
   font-weight: 700;
-  color: var(--base-body-color);
+  color: var(--color--ink);
   line-height: 1;
   margin-bottom: var(--spacing-xs);
 }
 
 .statLabel {
   font-size: 0.75rem;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   font-weight: 600;
@@ -479,9 +479,9 @@
 }
 
 .successDetails code {
-  background: var(--light-bg-color);
+  background: var(--color--surface-muted);
   padding: 2px 6px;
   border-radius: 4px;
   font-family: var(--font-family-mono);
-  color: var(--base-body-color);
+  color: var(--color--ink);
 }

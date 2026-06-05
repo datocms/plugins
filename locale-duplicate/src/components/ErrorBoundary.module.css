@@ -9,11 +9,11 @@
 }
 
 .errorTitle {
-  color: var(--alert-color);
+  color: var(--color--danger-soft--ink);
   margin-bottom: var(--spacing-m);
 }
 
 .errorMessage {
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   margin-bottom: var(--spacing-l);
 }

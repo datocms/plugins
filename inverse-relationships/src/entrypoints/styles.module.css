@@ -9,13 +9,13 @@
 }
 
 .error {
-  color: #b42318;
+  color: var(--color--danger-soft--ink);
   margin: 0;
 }
 
 .empty {
   margin: 0;
-  color: #667085;
+  color: var(--color--ink-subtle);
   font-size: 13px;
 }
 

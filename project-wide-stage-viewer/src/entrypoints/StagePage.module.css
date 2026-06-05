@@ -3,7 +3,7 @@
   flex-direction: column;
   gap: var(--spacing-l);
   padding: var(--spacing-l) var(--spacing-xl);
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color--border);
   border-radius: 0;
   background: var(--base-background-color);
 }
@@ -25,11 +25,11 @@
   margin: 0;
   font-size: 1.15rem;
   font-weight: 600;
-  color: var(--base-body-color);
+  color: var(--color--ink);
 }
 
 .summaryText strong {
-  color: var(--accent-color);
+  color: var(--color--ink-link);
 }
 
 .filtersGroup {
@@ -51,22 +51,22 @@
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 .select {
   height: 36px;
   padding: 0 var(--spacing-m);
   border-radius: 6px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color--border);
   background: var(--base-background-color);
-  color: var(--base-body-color);
+  color: var(--color--ink);
 }
 
 .select:focus {
   outline: none;
-  border-color: var(--accent-color);
-  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.15);
+  border-color: var(--color--focus--border);
+  box-shadow: 0 0 0 2px var(--color--primary-soft--surface);
 }
 
 .searchWrapper {
@@ -80,19 +80,19 @@
   height: 36px;
   padding: 0 calc(var(--spacing-l)) 0 var(--spacing-m);
   border-radius: 6px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color--border);
   background: var(--base-background-color);
-  color: var(--base-body-color);
+  color: var(--color--ink);
 }
 
 .searchInput::placeholder {
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 .searchInput:focus {
   outline: none;
-  border-color: var(--accent-color);
-  box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.15);
+  border-color: var(--color--focus--border);
+  box-shadow: 0 0 0 2px var(--color--primary-soft--surface);
 }
 
 .clearButton {
@@ -107,7 +107,7 @@
   border-radius: 50%;
   font-size: 1rem;
   line-height: 1;
-  color: var(--accent-color);
+  color: var(--color--ink-link);
   background: none;
   border: none;
   cursor: pointer;
@@ -116,7 +116,7 @@
 }
 
 .clearButton:hover {
-  background: rgba(79, 70, 229, 0.12);
+  background: var(--color--primary-soft--surface);
 }
 
 .loading {
@@ -126,7 +126,7 @@
 
 .tableWrapper {
   border-radius: 8px;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color--border);
   overflow: hidden;
 }
 
@@ -138,35 +138,35 @@
 
 .table thead th {
   padding: var(--spacing-m) var(--spacing-l);
-  background: var(--light-bg-color);
+  background: var(--color--surface-muted);
   font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--light-body-color);
-  border-bottom: 1px solid var(--border-color);
+  color: var(--color--ink-subtle);
+  border-bottom: 1px solid var(--color--border);
   text-align: left;
 }
 
 .table tbody td {
   padding: calc(var(--spacing-m) * 0.9) var(--spacing-l);
-  border-bottom: 1px solid var(--border-color);
-  color: var(--base-body-color);
+  border-bottom: 1px solid var(--color--border);
+  color: var(--color--ink);
   vertical-align: middle;
   text-align: left;
 }
 
 .table thead th:not(:last-child),
 .table tbody td:not(:last-child) {
-  border-right: 1px solid var(--border-color);
+  border-right: 1px solid var(--color--border);
 }
 
 .table tbody tr:nth-child(even) {
-  background: rgba(15, 23, 42, 0.02);
+  background: color-mix(in srgb, var(--color--ink) 2%, transparent);
 }
 
 .table tbody tr:hover {
-  background: rgba(79, 70, 229, 0.08);
+  background: var(--color--primary-soft--surface);
 }
 
 .paginationBar {
@@ -176,12 +176,12 @@
   justify-content: space-between;
   gap: var(--spacing-m);
   padding: var(--spacing-m) var(--spacing-l);
-  border-top: 1px solid var(--border-color);
+  border-top: 1px solid var(--color--border);
 }
 
 .paginationInfo {
   font-size: 0.85rem;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 .paginationActions {
@@ -190,9 +190,9 @@
 }
 
 .pageButton {
-  border: 1px solid var(--border-color);
-  background: rgba(248, 250, 252, 0.8);
-  color: var(--base-body-color);
+  border: 1px solid var(--color--border);
+  background: color-mix(in srgb, var(--color--surface) 80%, transparent);
+  color: var(--color--ink);
   font-size: 0.85rem;
   font-weight: 600;
   padding: 6px var(--spacing-m);
@@ -205,15 +205,15 @@
 }
 
 .pageButton:hover {
-  background: rgba(79, 70, 229, 0.1);
-  border-color: rgba(79, 70, 229, 0.35);
+  background: var(--color--primary-soft--surface);
+  border-color: var(--color--focus--outline);
 }
 
 .pageButton:disabled {
   cursor: not-allowed;
   opacity: 0.55;
-  background: rgba(248, 250, 252, 0.5);
-  border-color: rgba(148, 163, 184, 0.3);
+  background: color-mix(in srgb, var(--color--surface) 50%, transparent);
+  border-color: color-mix(in srgb, var(--color--ink) 30%, transparent);
 }
 
 .sortButton {
@@ -229,7 +229,7 @@
 }
 
 .sortButton:focus-visible {
-  outline: 2px solid rgba(79, 70, 229, 0.4);
+  outline: 2px solid var(--color--focus--outline);
   outline-offset: 2px;
   border-radius: 6px;
 }
@@ -257,7 +257,7 @@
 }
 
 .bodyRow:focus-visible {
-  outline: 2px solid rgba(79, 70, 229, 0.4);
+  outline: 2px solid var(--color--focus--outline);
   outline-offset: -2px;
 }
 
@@ -276,7 +276,7 @@
     monospace
   );
   font-size: 0.95rem;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 .modelCell {
@@ -285,7 +285,7 @@
 
 .timestampCell {
   font-variant-numeric: tabular-nums;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 .empty {
@@ -293,9 +293,9 @@
   padding: calc(var(--spacing-xl) * 0.9);
   text-align: center;
   border-radius: 8px;
-  border: 1px dashed var(--border-color);
-  background: var(--light-bg-color);
-  color: var(--light-body-color);
+  border: 1px dashed var(--color--border);
+  background: var(--color--surface-muted);
+  color: var(--color--ink-subtle);
   font-weight: 500;
 }
 
@@ -303,8 +303,8 @@
   margin: 0;
   padding: var(--spacing-m);
   border-radius: 6px;
-  background: rgba(239, 68, 68, 0.12);
-  color: rgba(220, 38, 38, 0.9);
+  background: var(--color--danger-soft--surface);
+  color: var(--color--danger-soft--border);
   font-weight: 600;
 }
 

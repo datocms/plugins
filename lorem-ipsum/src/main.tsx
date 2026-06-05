@@ -1,6 +1,7 @@
 import {
   connect,
   type ExecuteFieldDropdownActionCtx,
+  type DropdownAction,
   type Field,
   type FieldDropdownActionsCtx,
 } from 'datocms-plugin-sdk';
@@ -9,13 +10,13 @@ import { render } from './utils/render';
 import 'datocms-react-ui/styles.css';
 import generateDummyText from './utils/generateDummyText';
 
-const loremIpsumDropdownAction = [
+const loremIpsumDropdownAction: DropdownAction[] = [
   {
     id: 'loremIpsum',
     label: 'Generate dummy text',
     icon: 'font',
   },
-] as const;
+];
 
 // Checks if any auto-apply rule matches the given field, returning the action if so
 function checkAutoApplyRules(

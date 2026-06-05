@@ -31,36 +31,36 @@
   transition: opacity 0.3s var(--material-ease);
   background-image: linear-gradient(
     180deg,
-    #00000057 0,
-    rgba(0, 0, 0, 0.338) 3.5%,
-    rgba(0, 0, 0, 0.324) 7%,
-    rgba(0, 0, 0, 0.306) 10.35%,
-    rgba(0, 0, 0, 0.285) 13.85%,
-    rgba(0, 0, 0, 0.262) 17.35%,
-    rgba(0, 0, 0, 0.237) 20.85%,
-    rgba(0, 0, 0, 0.213) 24.35%,
-    rgba(0, 0, 0, 0.188) 27.85%,
-    rgba(0, 0, 0, 0.165) 31.35%,
-    rgba(0, 0, 0, 0.144) 34.85%,
-    rgba(0, 0, 0, 0.126) 38.35%,
-    rgba(0, 0, 0, 0.112) 41.85%,
-    rgba(0, 0, 0, 0.103) 45.35%,
-    #0000001a 48.85%,
-    rgba(0, 0, 0, 0.103) 52.35%,
-    rgba(0, 0, 0, 0.112) 55.85%,
-    rgba(0, 0, 0, 0.126) 59.35%,
-    rgba(0, 0, 0, 0.144) 62.85%,
-    rgba(0, 0, 0, 0.165) 66.35%,
-    rgba(0, 0, 0, 0.188) 69.85%,
-    rgba(0, 0, 0, 0.213) 73.35%,
-    rgba(0, 0, 0, 0.237) 76.85%,
-    rgba(0, 0, 0, 0.262) 80.35%,
-    rgba(0, 0, 0, 0.285) 83.85%,
-    rgba(0, 0, 0, 0.306) 87.35%,
-    rgba(0, 0, 0, 0.324) 90.85%,
-    rgba(0, 0, 0, 0.338) 94.35%,
-    rgba(0, 0, 0, 0.347) 97.85%,
-    #00000059
+    color-mix(in srgb, var(--color--overlay--surface) 35%, transparent) 0,
+    color-mix(in srgb, var(--color--ink) 34%, transparent) 3.5%,
+    color-mix(in srgb, var(--color--ink) 32%, transparent) 7%,
+    color-mix(in srgb, var(--color--ink) 31%, transparent) 10.35%,
+    color-mix(in srgb, var(--color--ink) 28%, transparent) 13.85%,
+    color-mix(in srgb, var(--color--ink) 26%, transparent) 17.35%,
+    color-mix(in srgb, var(--color--ink) 24%, transparent) 20.85%,
+    color-mix(in srgb, var(--color--ink) 21%, transparent) 24.35%,
+    color-mix(in srgb, var(--color--ink) 19%, transparent) 27.85%,
+    color-mix(in srgb, var(--color--ink) 16%, transparent) 31.35%,
+    color-mix(in srgb, var(--color--ink) 14%, transparent) 34.85%,
+    color-mix(in srgb, var(--color--ink) 13%, transparent) 38.35%,
+    color-mix(in srgb, var(--color--ink) 11%, transparent) 41.85%,
+    color-mix(in srgb, var(--color--ink) 10%, transparent) 45.35%,
+    color-mix(in srgb, var(--color--overlay--surface) 10%, transparent) 48.85%,
+    color-mix(in srgb, var(--color--ink) 10%, transparent) 52.35%,
+    color-mix(in srgb, var(--color--ink) 11%, transparent) 55.85%,
+    color-mix(in srgb, var(--color--ink) 13%, transparent) 59.35%,
+    color-mix(in srgb, var(--color--ink) 14%, transparent) 62.85%,
+    color-mix(in srgb, var(--color--ink) 16%, transparent) 66.35%,
+    color-mix(in srgb, var(--color--ink) 19%, transparent) 69.85%,
+    color-mix(in srgb, var(--color--ink) 21%, transparent) 73.35%,
+    color-mix(in srgb, var(--color--ink) 24%, transparent) 76.85%,
+    color-mix(in srgb, var(--color--ink) 26%, transparent) 80.35%,
+    color-mix(in srgb, var(--color--ink) 28%, transparent) 83.85%,
+    color-mix(in srgb, var(--color--ink) 31%, transparent) 87.35%,
+    color-mix(in srgb, var(--color--ink) 32%, transparent) 90.85%,
+    color-mix(in srgb, var(--color--ink) 34%, transparent) 94.35%,
+    color-mix(in srgb, var(--color--ink) 35%, transparent) 97.85%,
+    color-mix(in srgb, var(--color--overlay--surface) 35%, transparent)
   );
 }
 
@@ -73,7 +73,7 @@
   bottom: 0;
   left: 0;
   right: 0;
-  color: #f0f0f0;
+  color: var(--color--tooltip--ink);
   font-size: var(--font-size-xs);
   padding: var(--spacing-m);
   display: flex;

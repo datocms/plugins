@@ -6,7 +6,7 @@
 
 .instructions {
   margin: 0 0 var(--spacing-m);
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 .actions {
@@ -15,5 +15,5 @@
 
 .notice {
   margin: var(--spacing-s) 0 0;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }

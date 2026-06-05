@@ -125,7 +125,7 @@ export default function OptionCard({fieldName, index, isOpen, onToggle, onRemove
 												id={sourceName}
 												name={sourceName}
 												label={isImage ? 'Image URL' : 'Color'}
-												placeholder={isImage ? 'https://example.com/icon.svg' : '#bada55'}
+												placeholder={isImage ? 'https://example.com/icon.svg' : 'green'}
 												value={input.value as string}
 												onChange={input.onChange}
 												error={meta.error as string | undefined}

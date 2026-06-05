@@ -1,6 +1,6 @@
 {
   "name": "datocms-plugin-lorem-ipsum",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "Fill your textual fields with dummy content",
   "keywords": [
     "datocms-plugin"
@@ -22,8 +22,8 @@
     "@fortawesome/react-fontawesome": "^3.3.0",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
-    "datocms-plugin-sdk": "^2.1.1",
-    "datocms-react-ui": "^2.1.4",
+    "datocms-plugin-sdk": "^2.2.2",
+    "datocms-react-ui": "^2.2.4",
     "datocms-structured-text-slate-utils": "^5.1.8",
     "final-form-arrays": "^4.0.0",
     "intersperse": "^1.0.0",

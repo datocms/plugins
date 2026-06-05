@@ -108,7 +108,7 @@ const AssetListItem = ({
                     {formatFileSize(displayAsset.originalSize ?? 0)}
                   </span>
                 </div>
-                <div className={s.sizeArrow}>&#8594;</div>
+                <div className={s.sizeArrow}>→</div>
                 <div className={s.sizeAfter}>
                   <span className={s.sizeLabel}>Optimized:</span>
                   <span className={s.sizeValue}>

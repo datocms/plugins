@@ -20,7 +20,7 @@
 
 .searchFilterLabel {
   margin-right: 10px;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 .search__input {
@@ -62,8 +62,8 @@
   display: inline-block;
   vertical-align: middle;
   margin-right: 10px;
-  border: 1px solid white;
-  outline: 1px solid var(--border-color);
+  border: 1px solid var(--color--border);
+  outline: 1px solid var(--color--border);
   overflow: hidden;
   position: relative;
 }
@@ -73,11 +73,11 @@
 }
 
 .colorSample.white {
-  background-color: white;
+  background-color: var(--color--surface);
 }
 
 .colorSample.black {
-  background-color: #111111;
+  background-color: var(--color--tooltip--surface);
 }
 
 .colorSample.yellow {
@@ -109,9 +109,9 @@
 }
 
 .colorSample.blue {
-  background-color: #0074d9;
+  background-color: var(--color--ink-link);
 }
 
 .colorSample.black_and_white {
-  background: linear-gradient(to left, #eee 0%, #111 100%);
+  background: linear-gradient(to left, var(--color--surface-muted) 0%, var(--color--tooltip--surface) 100%);
 }

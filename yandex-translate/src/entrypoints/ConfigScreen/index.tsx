@@ -13,11 +13,15 @@ import {
 import arrayMutators from 'final-form-arrays';
 import { Field, Form as FormHandler } from 'react-final-form';
 import { FieldArray } from 'react-final-form-arrays';
-import type { GroupBase } from 'react-select';
 import { normalizeParams, type ValidParameters } from '../../types';
 import s from './styles.module.css';
 
 type Option = { label: string; value: string };
+
+type SelectGroup<OptionType> = {
+  readonly label?: string;
+  readonly options: readonly OptionType[];
+};
 
 const fieldTypes: Option[] = [
   {
@@ -119,7 +123,7 @@ export default function ConfigScreen({ ctx }: Props) {
                           <div>
                             <Field name={`${name}.fieldTypes`}>
                               {({ input, meta: { error } }) => (
-                                <SelectField<Option, true, GroupBase<Option>>
+                                <SelectField<Option, true, SelectGroup<Option>>
                                   {...input}
                                   id="fieldTypes"
                                   label="Field types"

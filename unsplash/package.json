@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-unsplash-asset-source",
   "description": "Search free high-resolution photos on Unsplash, and insert them directly inside of your DatoCMS project",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "private": false,
   "keywords": [
     "datocms",
@@ -19,8 +19,8 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "blurhash": "^2.0.5",
-    "datocms-plugin-sdk": "^2.2.1",
-    "datocms-react-ui": "^2.2.1",
+    "datocms-plugin-sdk": "^2.2.2",
+    "datocms-react-ui": "^2.2.4",
     "react": "^19.2.4",
     "react-blurhash": "^0.3.0",
     "react-dom": "^19.2.4",

@@ -204,7 +204,7 @@ export default function ConfigScreen({ ctx }: Props) {
           style={{
             width: '100%',
             height: '1px',
-            backgroundColor: '#e0e0e0',
+            backgroundColor: 'var(--color--border)',
             margin: '20px 0',
           }}
         />

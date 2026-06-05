@@ -7,7 +7,7 @@ type Result =
 type ColorOption = {
 	name: string;
 	type: 'color';
-	/** CSS color value, e.g. `#bada55`. */
+	/** CSS color value, e.g. `green`. */
 	color: string;
 	/** The string stored in the DatoCMS field when selected. */
 	value: string;

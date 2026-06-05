@@ -735,7 +735,7 @@ export default function FieldConfigScreen({ ctx }: Props) {
 
         {errors.layoutConfig && (
           <div className={styles.fieldBlock}>
-            <div style={{ color: 'var(--alert-color)', fontSize: '12px' }}>
+            <div style={{ color: 'var(--color--danger-soft--ink)', fontSize: '12px' }}>
               {errors.layoutConfig}
             </div>
           </div>

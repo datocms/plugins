@@ -10,7 +10,7 @@ type MentionNodeViewProps = ReactNodeViewProps;
 
 function InvalidMentionFallback() {
   return (
-    <span style={{ color: '#888', fontStyle: 'italic', fontSize: 'inherit' }}>
+    <span style={{ color: 'var(--color--ink-subtle)', fontStyle: 'italic', fontSize: 'inherit' }}>
       [invalid mention]
     </span>
   );

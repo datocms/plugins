@@ -73,15 +73,15 @@ export function sentence(
 }
 
 // Generates multiple sentences separated by spaces
-export function sentences(count: number, buttons: string[]) {
-  return intersperse(
-    times(count).map(() => sentence(rand(4, 10), buttons)),
-    ' ',
-  );
+export function sentences(count: number, buttons: string[]): Array<Tag | string> {
+  return times(count).flatMap((_, index) => {
+    const parts = sentence(rand(4, 10), buttons);
+    return index === 0 ? parts : [' ', ...parts];
+  });
 }
 
 // Converts a tree of Tags into HTML string
-export function toHtml(tree: Tag | Tag[] | string): string {
+export function toHtml(tree: Tag | Array<Tag | string> | string): string {
   if (typeof tree === 'string') {
     return tree;
   }
@@ -100,7 +100,7 @@ export function toHtml(tree: Tag | Tag[] | string): string {
 }
 
 // Converts a tree of Tags into Markdown string
-export function toMarkdown(tree: Tag | Tag[] | string): string {
+export function toMarkdown(tree: Tag | Array<Tag | string> | string): string {
   if (typeof tree === 'string') {
     return tree;
   }
@@ -168,9 +168,8 @@ export function url() {
 }
 
 // Overloads to handle creation of structured text data from different Tag inputs
-export function toStructuredText(tree: Tag): Node;
+export function toStructuredText(tree: Tag | string): Node;
 export function toStructuredText(tree: Array<Tag | string>): Node[];
-export function toStructuredText(tree: string): Node;
 
 /**
  * Recursively transforms a Tag-based tree into a DatoCMS-structured-text format.
@@ -186,15 +185,19 @@ export function toStructuredText(
   }
 
   if (Array.isArray(tree)) {
-    return tree.flatMap(toStructuredText);
+    return tree.flatMap((child) => {
+      const converted = toStructuredText(child);
+      return Array.isArray(converted) ? converted : [converted];
+    });
   }
 
   const childNodes = toStructuredText(tree.children);
+  const childNodeArray = Array.isArray(childNodes) ? childNodes : [childNodes];
 
   if (tree.tag === 'p') {
     return {
       type: 'paragraph',
-      children: childNodes as Paragraph['children'],
+      children: childNodeArray as Paragraph['children'],
     };
   }
 
@@ -202,7 +205,7 @@ export function toStructuredText(
     return {
       type: 'list',
       style: 'bulleted',
-      children: childNodes as List['children'],
+      children: childNodeArray as List['children'],
     };
   }
 
@@ -210,7 +213,7 @@ export function toStructuredText(
     return {
       type: 'heading',
       level: 1,
-      children: childNodes as Heading['children'],
+      children: childNodeArray as Heading['children'],
     };
   }
 
@@ -218,14 +221,14 @@ export function toStructuredText(
     return {
       type: 'heading',
       level: 2,
-      children: childNodes as Heading['children'],
+      children: childNodeArray as Heading['children'],
     };
   }
 
   if (tree.tag === 'li') {
     return {
       type: 'listItem',
-      children: childNodes as ListItem['children'],
+      children: childNodeArray as ListItem['children'],
     };
   }
 
@@ -233,19 +236,20 @@ export function toStructuredText(
     return {
       type: 'link',
       url: '#',
-      children: childNodes as Link['children'],
+      children: childNodeArray as Link['children'],
     };
   }
 
   if (tree.tag === 'blockquote') {
     return {
       type: 'blockquote',
-      children: childNodes as Blockquote['children'],
+      children: childNodeArray as Blockquote['children'],
     };
   }
 
-  const firstChildNode = Array.isArray(childNodes) ? childNodes[0] : childNodes;
-  const isTextNode = (node: Node): node is Text => 'text' in node;
+  const firstChildNode = childNodeArray[0];
+  const isTextNode = (node: Node | undefined): node is Text =>
+    node !== undefined && 'text' in node;
 
   if (tree.tag === 'em' && isTextNode(firstChildNode)) {
     return { ...firstChildNode, emphasis: true };

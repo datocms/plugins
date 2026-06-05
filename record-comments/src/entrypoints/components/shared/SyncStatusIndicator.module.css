@@ -17,8 +17,8 @@
   padding: var(--space-2);
   margin-bottom: var(--space-2);
   border-radius: var(--radius-xl);
-  border: 1px solid var(--border-color);
-  background-color: var(--lighter-bg-color);
+  border: 1px solid var(--color--border);
+  background-color: var(--color--surface-muted);
   box-sizing: border-box;
 }
 
@@ -32,8 +32,8 @@
 
 /* Reconnecting banner overrides - use lighter styling */
 .banner[data-status="reconnecting"] {
-  background-color: var(--lighter-bg-color);
-  color: var(--light-body-color);
+  background-color: var(--color--surface-muted);
+  color: var(--color--ink-subtle);
 }
 
 .indicator[data-status="error"] {

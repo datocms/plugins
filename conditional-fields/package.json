@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-conditional-fields",
   "homepage": "https://github.com/datocms/plugins/tree/master/conditional-fields#readme",
-  "version": "0.1.14",
+  "version": "0.1.15",
   "author": "DatoCMS <support@datocms.com>",
   "license": "ISC",
   "description": "Show/hide fields when you toggle a checkbox boolean field",
@@ -32,7 +32,7 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "datocms-plugin-sdk": "^2.2.2",
-    "datocms-react-ui": "^2.2.2",
+    "datocms-react-ui": "^2.2.4",
     "lodash-es": "^4.17.23",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"

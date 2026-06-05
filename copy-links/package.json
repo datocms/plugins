@@ -3,7 +3,7 @@
   "description": "Copy linked references from one field to another",
   "homepage": "https://github.com/datocms/plugins/tree/master/copy-links",
   "private": false,
-  "version": "0.2.2",
+  "version": "0.2.3",
   "author": "DatoCMS <support@datocms.com>",
   "type": "module",
   "keywords": [
@@ -26,7 +26,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "datocms-plugin-sdk": "^2.1.1"
+    "datocms-plugin-sdk": "^2.2.2"
   },
   "devDependencies": {
     "typescript": "^5.9.3",

@@ -16,7 +16,7 @@
   font-size: var(--font-size-xl);
   font-weight: bold;
   margin-bottom: var(--spacing-l);
-  color: var(--accent-color, #6c5ce7);
+  color: var(--color--ink-link);
   text-align: center;
   position: relative;
   padding-bottom: var(--spacing-xs);
@@ -26,14 +26,14 @@
   display: block;
   width: 60px;
   height: 2px;
-  background-color: var(--accent-color, #6c5ce7);
+  background-color: var(--color--primary--surface);
   margin: 12px auto 0;
   border-radius: 2px;
 }
 
 /* Statistics section */
 .statsContainer {
-  background-color: var(--light-bg-color, #f5f5f5);
+  background-color: var(--color--surface-muted);
   border-radius: var(--border-radius);
   overflow: hidden;
   margin-bottom: var(--spacing-l);
@@ -45,7 +45,7 @@
   justify-content: space-between;
   align-items: center;
   padding: var(--spacing-m) var(--spacing-l);
-  border-bottom: 1px solid var(--border-color, #eee);
+  border-bottom: 1px solid var(--color--border);
   cursor: pointer;
   transition: background-color 0.2s ease;
   width: 100%;
@@ -56,20 +56,20 @@
 }
 
 .expandableButton:hover {
-  background-color: rgba(108, 92, 231, 0.03);
+  background-color: var(--color--primary-soft--surface);
 }
 
 .expandableButton:focus {
-  outline: 2px solid var(--accent-color);
+  outline: 2px solid var(--color--focus--outline);
   outline-offset: -2px;
 }
 
 .expandableButton.expanded {
-  background-color: rgba(108, 92, 231, 0.05);
+  background-color: var(--color--primary-soft--surface);
 }
 
 .expandableButton.errorButton.expanded {
-  background-color: rgba(239, 71, 111, 0.05);
+  background-color: var(--color--danger-soft--surface);
 }
 
 .buttonLeft {
@@ -88,7 +88,7 @@
 }
 
 .buttonLabel.error {
-  color: var(--alert-color);
+  color: var(--color--danger-soft--ink);
 }
 
 .buttonRight {
@@ -99,16 +99,16 @@
 .buttonValue {
   font-size: var(--font-size-m);
   font-weight: bold;
-  color: var(--accent-color);
+  color: var(--color--ink-link);
   margin-right: var(--spacing-s);
 }
 
 .buttonValue.error {
-  color: var(--alert-color);
+  color: var(--color--danger-soft--ink);
 }
 
 .buttonValue.muted {
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
   font-weight: normal;
 }
 
@@ -123,14 +123,14 @@
 /* Expanded content */
 .expandedContent {
   padding: var(--spacing-m) var(--spacing-l);
-  background-color: rgba(108, 92, 231, 0.05);
+  background-color: var(--color--primary-soft--surface);
   animation: slideDown 0.2s ease-out;
 }
 
 .subheading {
   font-size: var(--font-size-s);
   margin: 0 0 var(--spacing-s) 0;
-  color: var(--accent-color);
+  color: var(--color--ink-link);
 }
 
 .subheading.spaced {
@@ -148,7 +148,7 @@
   text-align: left;
   padding-bottom: var(--spacing-xs);
   font-weight: bold;
-  color: var(--light-body-color);
+  color: var(--color--ink-subtle);
 }
 
 .statsTable td {
@@ -165,19 +165,19 @@
 }
 
 .successRow {
-  color: var(--notice-color);
+  color: var(--color--success-soft--ink);
 }
 
 .errorRow {
-  color: var(--alert-color);
+  color: var(--color--danger-soft--ink);
 }
 
 .successText {
-  color: var(--notice-color);
+  color: var(--color--success-soft--ink);
 }
 
 .errorText {
-  color: var(--alert-color);
+  color: var(--color--danger-soft--ink);
 }
 
 /* Log styles */
@@ -185,10 +185,10 @@
 .fullLog {
   max-height: 300px;
   overflow-y: auto;
-  border: 1px solid var(--border-color);
+  border: 1px solid var(--color--border);
   border-radius: var(--border-radius);
   padding: var(--spacing-m);
-  background-color: var(--lighter-bg-color);
+  background-color: var(--color--surface-muted);
   font-family: var(--font-family-mono);
   font-size: var(--font-size-xs);
 }
@@ -215,19 +215,19 @@
 }
 
 .errorItem .errorIcon {
-  color: var(--alert-color);
+  color: var(--color--danger-soft--ink);
 }
 
 .logItem.success .logIcon {
-  color: var(--notice-color);
+  color: var(--color--success-soft--ink);
 }
 
 .logItem.error .logIcon {
-  color: var(--alert-color);
+  color: var(--color--danger-soft--ink);
 }
 
 .logItem.info .logIcon {
-  color: var(--primary-color);
+  color: var(--color--ink-primary);
 }
 
 .errorItem span:last-child,
@@ -236,7 +236,7 @@
 }
 
 .logItem.error .logMessage {
-  color: var(--alert-color);
+  color: var(--color--danger-soft--ink);
 }
 
 /* Overall summary */
@@ -247,11 +247,11 @@
 }
 
 .overallSummary.success {
-  background-color: rgba(0, 184, 156, 0.1);
+  background-color: var(--color--success-soft--surface);
 }
 
 .overallSummary.error {
-  background-color: rgba(239, 71, 111, 0.1);
+  background-color: var(--color--danger-soft--surface);
 }
 
 .overallTitle {
@@ -260,16 +260,16 @@
 }
 
 .overallTitle.success {
-  color: var(--notice-color);
+  color: var(--color--success-soft--ink);
 }
 
 .overallTitle.error {
-  color: var(--alert-color);
+  color: var(--color--danger-soft--ink);
 }
 
 .overallDescription {
   font-size: var(--font-size-m);
-  color: var(--base-body-color);
+  color: var(--color--ink);
 }
 
 /* Return button */

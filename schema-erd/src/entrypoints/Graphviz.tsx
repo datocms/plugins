@@ -109,13 +109,14 @@ export default function Graphviz({ ctx }: Props) {
       const generatedDot = await generateGraph({
         itemTypes: ctx.itemTypes,
         fields: ctx.fields,
+        colorScheme: ctx.colorScheme,
       });
 
       setDot(generatedDot);
     }
 
     buildGraph().catch(throwAsync);
-  }, [loadingState, ctx.itemTypes, ctx.fields, throwAsync]);
+  }, [loadingState, ctx.itemTypes, ctx.fields, ctx.colorScheme, throwAsync]);
 
   useEffect(() => {
     if (!dot) {
