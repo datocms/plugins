@@ -458,8 +458,8 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
                       alignItems: 'center',
                       justifyContent: 'center',
                       gap: '12px',
-                      backgroundColor: ctx.theme.semiTransparentAccentColor,
-                      color: ctx.theme.accentColor,
+                      backgroundColor: 'var(--color--success-soft--surface)',
+                      color: 'var(--color--success-soft--ink)',
                       padding: '16px 24px',
                       borderRadius: '12px',
                       marginBottom: '8px',
@@ -470,7 +470,7 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
                       letterSpacing: '0.01em',
                       boxShadow: 'var(--shadow--raised)',
                       fontWeight: 600,
-                      border: '1px solid var(--color--primary-soft--border)',
+                      border: '1px solid var(--color--success-soft--border)',
                       textAlign: 'center',
                     }}
                   >
@@ -482,7 +482,7 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
                         display: 'flex',
                         alignItems: 'center',
                         textAlign: 'center',
-                        color: 'var(--color--ink-primary)',
+                        color: 'currentColor',
                       }}
                     >
                       <MdCelebration size={20} />
@@ -496,7 +496,7 @@ export default function DatoGPTTranslateSidebar({ ctx }: PropTypes) {
                       style={{
                         display: 'flex',
                         alignItems: 'center',
-                        color: 'var(--color--ink-primary)',
+                        color: 'currentColor',
                       }}
                     >
                       <MdCelebration size={20} />

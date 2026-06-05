@@ -1,18 +1,6 @@
 .image-generator-theme {
-  --ig-bg: var(--color--surface-muted);
-  --ig-surface: var(--color--surface);
-  --ig-surface-muted: var(--color--surface-muted);
-  --ig-text: var(--color--ink);
-  --ig-text-muted: var(--color--ink-subtle);
-  --ig-border: var(--color--border);
-  --ig-border-strong: var(--color--border-hover);
-  --ig-accent: var(--color--ink-link);
-  --ig-accent-contrast: var(--color--primary--ink);
-  --ig-focus: var(--color--focus--outline);
-  --ig-danger: var(--color--danger-soft--ink);
-  --ig-danger-soft: var(--color--danger-soft--surface);
   --ig-radius: 8px;
-  color: var(--ig-text);
+  color: var(--color--ink);
 }
 
 .image-generator-theme * {

@@ -39,10 +39,10 @@
   padding: 1rem 1.25rem;
   background: linear-gradient(
     135deg,
-    var(--color-success-bg-gradient-start) 0%,
-    var(--color-success-bg-gradient-end) 100%
+    var(--color--success-soft--surface) 0%,
+    var(--color--success-soft--surface) 100%
   );
-  border: 1px solid var(--color-success-border);
+  border: 1px solid var(--color--success-soft--border);
   border-radius: 10px;
   color: var(--color--ink);
   line-height: 1.5;
@@ -54,7 +54,7 @@
   flex-shrink: 0;
   width: 22px;
   height: 22px;
-  background: var(--color-success);
+  background: var(--color--success-soft--ink);
   color: var(--color--primary--ink);
   border-radius: 50%;
   display: flex;
@@ -70,10 +70,10 @@
   padding: 1rem 1.25rem;
   background: linear-gradient(
     135deg,
-    var(--color-warning-bg-gradient-start) 0%,
-    var(--color-warning-bg-gradient-end) 100%
+    var(--color--warning-soft--surface) 0%,
+    var(--color--warning-soft--surface) 100%
   );
-  border: 1px solid var(--color-warning-border);
+  border: 1px solid var(--color--warning-soft--border);
   border-radius: 10px;
   color: var(--color--ink);
   line-height: 1.5;
@@ -85,7 +85,7 @@
   flex-shrink: 0;
   width: 22px;
   height: 22px;
-  background: var(--color-warning-icon);
+  background: var(--color--warning-soft--ink);
   color: var(--color--primary--ink);
   border-radius: 50%;
   display: flex;
@@ -274,22 +274,22 @@
 .errorList {
   margin-top: 1rem;
   padding: 1rem;
-  background: var(--color-error-bg);
-  border: 1px solid var(--color-error-border-light);
+  background: var(--color--danger-soft--surface);
+  border: 1px solid var(--color--danger-soft--border);
   border-radius: 8px;
   font-size: 0.9rem;
 }
 
 .errorList h4 {
   margin: 0 0 0.5rem 0;
-  color: var(--color-error-heading);
+  color: var(--color--danger-soft--ink);
   font-size: 0.9rem;
 }
 
 .errorList ul {
   margin: 0;
   padding-left: 1.25rem;
-  color: var(--color-error-text);
+  color: var(--color--danger-soft--ink);
 }
 
 .errorList li {
@@ -304,10 +304,10 @@
   padding: 1rem 1.25rem;
   background: linear-gradient(
     135deg,
-    var(--color-error-bg-gradient-start) 0%,
-    var(--color-error-bg-gradient-end) 100%
+    var(--color--danger-soft--surface) 0%,
+    var(--color--danger-soft--surface) 100%
   );
-  border: 1px solid var(--color-error-border);
+  border: 1px solid var(--color--danger-soft--border);
   border-radius: 10px;
   color: var(--color--ink);
   line-height: 1.5;
@@ -319,7 +319,7 @@
   flex-shrink: 0;
   width: 22px;
   height: 22px;
-  background: var(--color-error);
+  background: var(--color--danger-soft--ink);
   color: var(--color--primary--ink);
   border-radius: 50%;
   display: flex;
@@ -337,10 +337,10 @@
   padding: 1rem 1.25rem;
   background: linear-gradient(
     135deg,
-    var(--color-error-bg-gradient-start) 0%,
-    var(--color-error-bg-gradient-end) 100%
+    var(--color--danger-soft--surface) 0%,
+    var(--color--danger-soft--surface) 100%
   );
-  border: 1px solid var(--color-error-border);
+  border: 1px solid var(--color--danger-soft--border);
   border-radius: 10px;
   color: var(--color--ink);
   line-height: 1.5;
@@ -363,8 +363,8 @@
 
 .confirmDialog {
   padding: 1rem;
-  background: var(--color-error-bg);
-  border: 1px solid var(--color-error-border-light);
+  background: var(--color--danger-soft--surface);
+  border: 1px solid var(--color--danger-soft--border);
   border-radius: 8px;
   margin-top: 1rem;
 }
@@ -372,7 +372,7 @@
 .confirmDialog p {
   margin: 0 0 1rem 0;
   font-weight: 500;
-  color: var(--color-error-text);
+  color: var(--color--danger-soft--ink);
 }
 
 .confirmActions {

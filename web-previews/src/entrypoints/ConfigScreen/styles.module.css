@@ -37,7 +37,7 @@
 }
 
 .error {
-  color: var(--color--danger--ink);
+  color: var(--color--danger-soft--ink);
   margin-bottom: var(--spacing-m);
 }
 

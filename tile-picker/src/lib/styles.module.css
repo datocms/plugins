@@ -173,7 +173,7 @@
 }
 
 .card-chevron {
-	color: var(--color--ink-light);
+	color: var(--color--ink-subtle);
 	flex-shrink: 0;
 }
 

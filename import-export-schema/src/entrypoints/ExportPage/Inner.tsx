@@ -368,7 +368,11 @@ export default function Inner({
                   Could not load export graph
                 </div>
                 <div
-                  style={{ color: '#666', maxWidth: 540, textAlign: 'center' }}
+                  style={{
+                    color: 'var(--color--ink-subtle)',
+                    maxWidth: 540,
+                    textAlign: 'center',
+                  }}
                 >
                   {(() => {
                     const anyErr = error as unknown as {

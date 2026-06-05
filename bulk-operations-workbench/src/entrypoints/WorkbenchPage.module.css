@@ -303,7 +303,7 @@
 }
 
 .table tbody tr:hover {
-  background: color-mix(in srgb, var(--color--ink) 3%, transparent);
+  background: var(--color--surface-hover);
 }
 
 .statusChip {

@@ -60,5 +60,5 @@
 
 .removePresetButton:hover {
   background: var(--color--danger-soft--surface);
-  color: var(--color--primary--ink);
+  color: var(--color--danger-soft--ink);
 }

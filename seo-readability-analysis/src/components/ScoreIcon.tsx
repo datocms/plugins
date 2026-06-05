@@ -1,11 +1,10 @@
 import * as interpreters from 'yoastseo/build/scoring/interpreters';
 
-// https://github.com/Yoast/javascript/blob/develop/packages/style-guide/src/colors.json
 const scoreRatingColorMapping: Partial<Record<string, string>> = {
-  feedback: '#888',
-  bad: '#dc3232',
-  ok: '#ee7c1b',
-  good: '#7ad03a',
+  feedback: 'var(--color--ink-subtle)',
+  bad: 'var(--color--danger-soft--ink)',
+  ok: 'var(--color--warning-soft--ink)',
+  good: 'var(--color--success-soft--ink)',
 };
 
 type PropTypes = {

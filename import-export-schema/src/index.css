@@ -5,7 +5,7 @@ svg {
 :root {
   --overlay-gradient: linear-gradient(
     180deg,
-    color-mix(in srgb, var(--color--surface), var(--color--surface-muted) 8%),
+    var(--color--surface),
     var(--color--surface-muted)
   );
 }

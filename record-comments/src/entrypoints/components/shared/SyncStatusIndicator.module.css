@@ -26,8 +26,8 @@
 .indicator[data-status="saving"],
 .indicator[data-status="connecting"],
 .indicator[data-status="reconnecting"] {
-  background-color: var(--status-neutral-bg);
-  color: var(--status-neutral-text);
+  background-color: var(--color--surface-muted);
+  color: var(--color--ink-subtle);
 }
 
 /* Reconnecting banner overrides - use lighter styling */
@@ -37,13 +37,13 @@
 }
 
 .indicator[data-status="error"] {
-  background-color: var(--status-error-bg);
-  color: var(--status-error-text);
+  background-color: var(--color--danger-soft--surface);
+  color: var(--color--danger-soft--ink);
 }
 
 .indicator[data-status="disconnected"] {
-  background-color: var(--status-neutral-bg);
-  color: var(--status-neutral-text);
+  background-color: var(--color--surface-muted);
+  color: var(--color--ink-subtle);
 }
 
 .spinner {
@@ -96,5 +96,5 @@
 }
 
 .retryButton:hover {
-  background-color: var(--status-error-bg-hover);
+  background-color: var(--color--danger-soft--surface);
 }

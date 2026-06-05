@@ -1,39 +1,15 @@
 /* ===== Prompt Dato sidebar ===== */
 
 .sidebar {
-  --bg: var(--color--surface);
-  --panel: var(--color--surface);
-  --ink: var(--color--ink);
-  --ink-2: var(--color--ink);
-  --muted: var(--color--ink-subtle);
-  --muted-2: var(--color--ink-muted);
-  --line: var(--color--border);
-  --line-2: var(--color--border-hover);
-  --chip: var(--color--surface-muted);
-  --chip-hover: var(--color--surface-hover);
-  --action: var(--color--primary--surface);
-  --action-hover: var(--color--primary--surface-hover);
-  --action-ink: var(--color--primary-soft--ink);
-  --action-soft: var(--color--primary-soft--surface);
-  --action-line: var(--color--primary-soft--border);
-  --focus-ring: var(--color--focus--outline);
-  --success-ink: var(--color--success-soft--ink);
-  --success-soft: var(--color--success-soft--surface);
-  --assistant-bg: var(--color--surface-muted);
-  --user-bg: var(--color--primary--surface);
-  --user-ink: var(--color--primary--ink);
   --radius: 3px;
   --radius-sm: 2px;
   --radius-lg: 4px;
-  --shadow-sm: 0 1px 0 color-mix(in srgb, var(--color--ink) 4%, transparent);
-  --shadow-md: 0 1px 2px color-mix(in srgb, var(--color--ink) 6%, transparent),
-    0 4px 16px color-mix(in srgb, var(--color--ink) 6%, transparent);
   --gap: 16px;
   --fs-body: 13.5px;
   --lh-body: 1.55;
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
 
-  color: var(--ink);
+  color: var(--color--ink);
   font-family: inherit;
 }
 
@@ -43,7 +19,7 @@
   flex-direction: column;
   height: 100vh;
   min-height: 0;
-  background: var(--panel);
+  background: var(--color--surface);
   font-size: var(--fs-body);
   line-height: var(--lh-body);
   -webkit-font-smoothing: antialiased;
@@ -82,14 +58,14 @@
 }
 
 .unsavedRecordTitle {
-  color: var(--ink);
+  color: var(--color--ink);
   font-size: 15px;
   font-weight: 600;
   line-height: 1.4;
 }
 
 .unsavedRecordText {
-  color: var(--muted);
+  color: var(--color--ink-subtle);
   font-size: 13px;
   line-height: 1.5;
 }
@@ -100,7 +76,7 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
-  background: var(--panel);
+  background: var(--color--surface);
 }
 
 .historyHeader {
@@ -111,8 +87,8 @@
   justify-content: space-between;
   gap: 8px;
   padding: 8px 12px;
-  border-bottom: 1px solid var(--line);
-  background: var(--panel);
+  border-bottom: 1px solid var(--color--border);
+  background: var(--color--surface);
 }
 
 .historyHeading {
@@ -127,7 +103,7 @@
   flex: 0 0 auto;
   font-size: 13px;
   font-weight: 500;
-  color: var(--ink);
+  color: var(--color--ink);
 }
 
 .historySubtitle {
@@ -136,7 +112,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
-  color: var(--muted);
+  color: var(--color--ink-subtle);
 }
 
 .historyHeaderActions {
@@ -152,9 +128,9 @@
   height: 28px;
   padding: 0 9px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--action);
-  background: var(--action);
-  color: var(--bg);
+  border: 1px solid var(--color--primary--surface);
+  background: var(--color--primary--surface);
+  color: var(--color--primary--ink);
   font-size: 12.5px;
   font-weight: 500;
   white-space: nowrap;
@@ -168,13 +144,13 @@
 }
 
 .newChatButton:hover:not(:disabled) {
-  background: var(--action-hover);
-  border-color: var(--action-hover);
+  background: var(--color--primary--surface-hover);
+  border-color: var(--color--primary--surface-hover);
 }
 
 .newChatButton:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px var(--focus-ring);
+  box-shadow: 0 0 0 3px var(--color--focus--outline);
 }
 
 .newChatButton:disabled {
@@ -192,8 +168,8 @@
   height: 28px;
   padding: 0 9px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--line-2);
-  background: var(--panel);
+  border: 1px solid var(--color--border-hover);
+  background: var(--color--surface);
   color: var(--color--danger-soft--ink);
   font-size: 12.5px;
   font-weight: 500;
@@ -204,22 +180,13 @@
 }
 
 .clearChatsButton:hover:not(:disabled) {
-  background: color-mix(
-    in oklch,
-    var(--color--danger-soft--ink) 8%,
-    var(--panel)
-  );
-  border-color: color-mix(
-    in oklch,
-    var(--color--danger-soft--ink) 28%,
-    var(--line-2)
-  );
+  background: var(--color--danger-soft--surface);
+  border-color: var(--color--danger-soft--border);
 }
 
 .clearChatsButton:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px
-    color-mix(in oklch, var(--color--danger-soft--ink) 16%, transparent);
+  box-shadow: 0 0 0 3px var(--color--danger-soft--outline);
 }
 
 .clearChatsButton:disabled {
@@ -238,11 +205,11 @@
 .historyEmptyTitle {
   font-size: 13px;
   font-weight: 500;
-  color: var(--ink);
+  color: var(--color--ink);
 }
 
 .historyEmptyText {
-  color: var(--muted);
+  color: var(--color--ink-subtle);
   font-size: 12.5px;
   line-height: 1.45;
 }
@@ -252,19 +219,19 @@
   display: flex;
   flex-direction: column;
   margin: 12px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--color--border);
   border-radius: var(--radius);
-  background: var(--panel);
+  background: var(--color--surface);
   overflow: hidden auto;
   scrollbar-width: thin;
-  scrollbar-color: var(--line-2) transparent;
+  scrollbar-color: var(--color--border-hover) transparent;
 }
 
 .historyRow {
   display: flex;
   align-items: stretch;
-  border-bottom: 1px solid var(--line);
-  background: var(--panel);
+  border-bottom: 1px solid var(--color--border);
+  background: var(--color--surface);
   transition: background 0.15s var(--ease);
 }
 
@@ -273,7 +240,7 @@
 }
 
 .historyRow:hover {
-  background: var(--bg);
+  background: var(--color--surface);
 }
 
 .historyRowMain {
@@ -301,12 +268,12 @@
 .historyRowTitle {
   font-size: 12.5px;
   font-weight: 500;
-  color: var(--ink);
+  color: var(--color--ink);
 }
 
 .historyRowPreview {
   font-size: 11.5px;
-  color: var(--muted);
+  color: var(--color--ink-subtle);
 }
 
 .historyRowSide {
@@ -322,7 +289,7 @@
 
 .historyRowTime {
   font-size: 11px;
-  color: var(--muted-2);
+  color: var(--color--ink-muted);
   line-height: 1.2;
 }
 
@@ -332,7 +299,7 @@
   display: grid;
   place-items: center;
   border-radius: var(--radius-sm);
-  color: var(--muted);
+  color: var(--color--ink-subtle);
   opacity: 0.68;
   transition: background 0.15s var(--ease), color 0.15s var(--ease),
     opacity 0.15s var(--ease);
@@ -340,7 +307,7 @@
 
 .historyDelete:focus-visible {
   outline: none;
-  box-shadow: 0 0 0 3px var(--focus-ring);
+  box-shadow: 0 0 0 3px var(--color--focus--outline);
   opacity: 1;
 }
 
@@ -349,7 +316,7 @@
 }
 
 .historyDelete:hover:not(:disabled) {
-  background: var(--chip);
+  background: var(--color--surface-muted);
   color: var(--color--danger-soft--ink);
 }
 
@@ -370,17 +337,17 @@
   align-items: center;
   gap: 8px;
   padding: 8px 12px;
-  border-bottom: 1px solid var(--line);
-  background: var(--panel);
+  border-bottom: 1px solid var(--color--border);
+  background: var(--color--surface);
 }
 
 .chatBackBtn {
   height: 28px;
   padding: 0 8px 0 6px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--line);
-  background: var(--panel);
-  color: var(--ink-2);
+  border: 1px solid var(--color--border);
+  background: var(--color--surface);
+  color: var(--color--ink);
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -391,9 +358,9 @@
 }
 
 .chatBackBtn:hover:not(:disabled) {
-  background: var(--chip);
-  border-color: var(--line-2);
-  color: var(--ink);
+  background: var(--color--surface-muted);
+  border-color: var(--color--border-hover);
+  color: var(--color--ink);
 }
 
 .chatBackBtn:disabled {
@@ -414,7 +381,7 @@
   white-space: nowrap;
   font-size: 13px;
   font-weight: 500;
-  color: var(--ink);
+  color: var(--color--ink);
 }
 
 /* ===== Context pill bar (above composer) ===== */
@@ -423,8 +390,8 @@
   flex-direction: column;
   gap: 4px;
   padding: 8px 12px 6px;
-  background: var(--panel);
-  border-top: 1px solid var(--line);
+  background: var(--color--surface);
+  border-top: 1px solid var(--color--border);
 }
 
 .pillBarLabel {
@@ -436,14 +403,14 @@
   font-weight: 500;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: var(--muted);
+  color: var(--color--ink-subtle);
   cursor: help;
 }
 
 .pillBarLabel svg {
   width: 10px;
   height: 10px;
-  color: var(--action);
+  color: var(--color--ink-primary);
 }
 
 .pillBarRow {
@@ -462,9 +429,9 @@
   font-size: 11px;
   font-weight: 500;
   line-height: 1.3;
-  border: 1px solid var(--line-2);
-  background: var(--chip);
-  color: var(--ink-2);
+  border: 1px solid var(--color--border-hover);
+  background: var(--color--surface-muted);
+  color: var(--color--ink);
   max-width: 200px;
   min-width: 0;
   animation: scopeIn 0.18s var(--ease);
@@ -474,7 +441,7 @@
   width: 11px;
   height: 11px;
   flex: 0 0 11px;
-  color: var(--muted);
+  color: var(--color--ink-subtle);
 }
 
 .lockedPill {
@@ -482,13 +449,13 @@
 }
 
 .lockedPill svg {
-  color: var(--ink-2);
+  color: var(--color--ink);
 }
 
 .scopePill {
-  background: var(--action-soft);
-  border-color: var(--action-line);
-  color: var(--action-ink);
+  background: var(--color--primary-soft--surface);
+  border-color: var(--color--primary-soft--border);
+  color: var(--color--primary-soft--ink);
   padding-right: 4px;
 }
 
@@ -504,7 +471,7 @@
   border-radius: 3px;
   display: inline-grid;
   place-items: center;
-  color: var(--action-ink);
+  color: var(--color--primary-soft--ink);
   opacity: 0.7;
   background: transparent;
   border: 0;
@@ -514,7 +481,7 @@
 }
 
 .scopePill button:hover {
-  background: var(--focus-ring);
+  background: var(--color--primary-soft--surface-hover);
   opacity: 1;
 }
 
@@ -536,8 +503,8 @@
 }
 
 .toolBtnPressed {
-  background: var(--action-soft);
-  color: var(--action-ink);
+  background: var(--color--primary-soft--surface);
+  color: var(--color--primary-soft--ink);
 }
 
 /* ===== Messages list ===== */
@@ -550,7 +517,7 @@
   flex-direction: column;
   gap: var(--gap);
   scrollbar-width: thin;
-  scrollbar-color: var(--line-2) transparent;
+  scrollbar-color: var(--color--border-hover) transparent;
 }
 
 .messages::-webkit-scrollbar {
@@ -558,7 +525,7 @@
 }
 
 .messages::-webkit-scrollbar-thumb {
-  background: var(--line-2);
+  background: var(--color--border-hover);
   border-radius: 3px;
 }
 
@@ -609,7 +576,7 @@
 }
 
 .emptySub {
-  color: var(--muted);
+  color: var(--color--ink-subtle);
   font-size: 13px;
   line-height: 1.55;
 }
@@ -627,40 +594,40 @@
   align-items: flex-start;
   gap: 10px;
   padding: 10px 12px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--color--border);
   border-radius: var(--radius);
-  background: var(--panel);
+  background: var(--color--surface);
   text-align: left;
   font-size: 12.5px;
-  color: var(--ink-2);
+  color: var(--color--ink);
   line-height: 1.45;
   transition: border-color 0.15s var(--ease), background 0.15s var(--ease);
   cursor: pointer;
 }
 
 .suggestion:hover {
-  border-color: var(--action-line);
-  background: var(--action-soft);
+  border-color: var(--color--primary-soft--border);
+  background: var(--color--primary-soft--surface);
 }
 
 .suggestion:active {
-  background: var(--chip);
+  background: var(--color--surface-muted);
 }
 
 .suggestion .sIcon {
   width: 24px;
   height: 24px;
   border-radius: var(--radius-sm);
-  background: var(--chip);
+  background: var(--color--surface-muted);
   display: grid;
   place-items: center;
   flex: 0 0 24px;
-  color: var(--ink-2);
+  color: var(--color--ink);
 }
 
 .suggestion:hover .sIcon {
-  background: var(--panel);
-  color: var(--action-ink);
+  background: var(--color--surface);
+  color: var(--color--primary-soft--ink);
 }
 
 .suggestion svg {
@@ -671,7 +638,7 @@
 .suggestion b {
   display: block;
   font-weight: 500;
-  color: var(--ink);
+  color: var(--color--ink);
   margin-bottom: 1px;
   font-size: 13px;
 }
@@ -683,12 +650,12 @@
 }
 
 .suggestionSkeleton:hover {
-  border-color: var(--line);
-  background: var(--panel);
+  border-color: var(--color--border);
+  background: var(--color--surface);
 }
 
 .skelIcon {
-  background: var(--chip);
+  background: var(--color--surface-muted);
   animation: shimmer 1.4s var(--ease) infinite;
 }
 
@@ -704,7 +671,7 @@
   display: block;
   height: 9px;
   border-radius: 2px;
-  background: var(--chip);
+  background: var(--color--surface-muted);
   animation: shimmer 1.4s var(--ease) infinite;
 }
 
@@ -742,8 +709,8 @@
   height: 32px;
   padding: 0 14px;
   border-radius: var(--radius-sm);
-  background: var(--ink);
-  color: var(--bg);
+  background: var(--color--ink);
+  color: var(--color--surface);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
@@ -751,7 +718,7 @@
 }
 
 .primaryAction:hover {
-  background: var(--action-hover);
+  background: var(--color--primary--surface-hover);
 }
 
 /* ===== Messages ===== */
@@ -805,20 +772,20 @@
   padding: 10px 12px;
   font-size: var(--fs-body);
   line-height: var(--lh-body);
-  color: var(--ink);
+  color: var(--color--ink);
   word-wrap: break-word;
   white-space: pre-wrap;
 }
 
 .msgUser .bubble {
-  background: var(--user-bg);
-  color: var(--user-ink);
+  background: var(--color--primary--surface);
+  color: var(--color--primary--ink);
   align-self: flex-end;
   max-width: 88%;
 }
 
 .msgAssistant .bubble {
-  background: var(--assistant-bg);
+  background: var(--color--surface-muted);
   max-width: 95%;
 }
 
@@ -879,15 +846,17 @@
 
 .markdownBubble code {
   font-family: 'JetBrains Mono', monospace;
-  background: color-mix(in srgb, var(--color--ink) 6%, transparent);
+  background: var(--color--code--surface);
+  color: var(--color--code--ink);
   padding: 1px 5px;
   border-radius: var(--radius-sm);
   font-size: 12px;
 }
 
 .markdownBubble pre {
-  background: color-mix(in srgb, var(--color--ink) 4%, transparent);
-  border: 1px solid var(--line);
+  background: var(--color--code--surface);
+  color: var(--color--code--ink);
+  border: 1px solid var(--color--border);
   border-radius: var(--radius);
   padding: 8px 10px;
   overflow-x: auto;
@@ -903,20 +872,20 @@
 }
 
 .markdownBubble a {
-  color: var(--action-ink);
+  color: var(--color--primary-soft--ink);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
 .markdownBubble a:hover {
-  color: var(--action);
+  color: var(--color--ink-primary);
 }
 
 .markdownBubble blockquote {
   margin: 6px 0 10px;
   padding: 4px 12px;
-  border-left: 3px solid var(--line-2);
-  color: var(--ink-2);
+  border-left: 3px solid var(--color--border-hover);
+  color: var(--color--ink);
   font-style: italic;
 }
 
@@ -929,19 +898,19 @@
 
 .markdownBubble th,
 .markdownBubble td {
-  border: 1px solid var(--line);
+  border: 1px solid var(--color--border);
   padding: 4px 8px;
   text-align: left;
 }
 
 .markdownBubble th {
-  background: var(--chip);
+  background: var(--color--surface-muted);
   font-weight: 600;
 }
 
 .markdownBubble hr {
   border: 0;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--color--border);
   margin: 12px 0;
 }
 
@@ -954,10 +923,10 @@
   align-items: center;
   gap: 7px;
   padding: 10px 12px;
-  background: var(--assistant-bg);
+  background: var(--color--surface-muted);
   border-radius: var(--radius);
   font-size: 12.5px;
-  color: var(--muted);
+  color: var(--color--ink-subtle);
 }
 
 .activityPulse {
@@ -965,7 +934,7 @@
   height: 7px;
   flex: 0 0 7px;
   border-radius: 50%;
-  background: var(--action);
+  background: var(--color--primary--surface);
   opacity: 0.42;
   animation: activityBlink 1.8s var(--ease) infinite;
 }
@@ -973,14 +942,14 @@
 .processTrace {
   width: min(100%, 680px);
   font-size: 12px;
-  color: var(--ink-2);
+  color: var(--color--ink);
 }
 
 .processToggle {
   width: 100%;
-  border: 1px solid var(--line);
-  background: var(--panel);
-  color: var(--ink-2);
+  border: 1px solid var(--color--border);
+  background: var(--color--surface);
+  color: var(--color--ink);
   border-radius: var(--radius);
   padding: 7px 9px;
   display: grid;
@@ -992,24 +961,24 @@
 }
 
 .processToggleRunning {
-  border-color: var(--action-line);
-  background: var(--action-soft);
+  border-color: var(--color--primary-soft--border);
+  background: var(--color--primary-soft--surface);
 }
 
 .processToggle:hover {
-  background: var(--bg);
-  border-color: var(--line-2);
+  background: var(--color--surface);
+  border-color: var(--color--border-hover);
 }
 
 .processCaret {
-  color: var(--muted);
+  color: var(--color--ink-subtle);
   font-size: 11px;
   line-height: 1;
 }
 
 .processTitle {
   font-weight: 600;
-  color: var(--ink);
+  color: var(--color--ink);
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -1020,7 +989,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--muted);
+  color: var(--color--ink-subtle);
 }
 
 .processSummaryRunning {
@@ -1028,7 +997,7 @@
 }
 
 .processStatus {
-  color: var(--muted);
+  color: var(--color--ink-subtle);
   font-size: 11px;
 }
 
@@ -1037,9 +1006,9 @@
 }
 
 .processPanel {
-  border: 1px solid var(--line);
+  border: 1px solid var(--color--border);
   border-top: 0;
-  background: var(--panel);
+  background: var(--color--surface);
   border-radius: 0 0 var(--radius) var(--radius);
   padding: 8px;
   position: relative;
@@ -1053,9 +1022,9 @@
 }
 
 .processEntry {
-  border: 1px solid var(--line);
+  border: 1px solid var(--color--border);
   border-radius: var(--radius);
-  background: var(--panel);
+  background: var(--color--surface);
   padding: 8px;
 }
 
@@ -1075,15 +1044,15 @@
 
 .processEntryTitle {
   font-weight: 500;
-  color: var(--ink);
+  color: var(--color--ink);
   overflow-wrap: anywhere;
 }
 
 .processEntryCode {
   font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
-  color: var(--muted);
-  background: var(--chip);
+  color: var(--color--ink-subtle);
+  background: var(--color--surface-muted);
   border-radius: var(--radius-sm);
   padding: 1px 4px;
   width: fit-content;
@@ -1091,14 +1060,14 @@
 
 .processEntryMeta {
   flex: 0 0 auto;
-  color: var(--muted);
+  color: var(--color--ink-subtle);
   font-size: 11px;
   white-space: nowrap;
 }
 
 .processEntryText {
   margin-top: 7px;
-  color: var(--ink-2);
+  color: var(--color--ink);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -1114,7 +1083,7 @@
 .processDetails details,
 .processRaw,
 .processRawEvent {
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--color--border);
   padding-top: 6px;
 }
 
@@ -1122,7 +1091,7 @@
 .processRaw summary,
 .processRawEvent summary {
   cursor: pointer;
-  color: var(--ink-2);
+  color: var(--color--ink);
   font-weight: 500;
 }
 
@@ -1131,14 +1100,14 @@
   margin: 6px 0 0;
   max-height: 240px;
   overflow: auto;
-  border: 1px solid var(--line);
+  border: 1px solid var(--color--border);
   border-radius: var(--radius);
-  background: var(--bg);
+  background: var(--color--surface);
   padding: 8px;
   font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
   line-height: 1.45;
-  color: var(--ink-2);
+  color: var(--color--ink);
   white-space: pre-wrap;
 }
 
@@ -1147,7 +1116,7 @@
 }
 
 .processEmpty {
-  color: var(--muted);
+  color: var(--color--ink-subtle);
   padding: 6px 0;
 }
 
@@ -1160,7 +1129,7 @@
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background: var(--muted);
+  background: var(--color--ink-subtle);
   animation: dot 1.2s var(--ease) infinite;
 }
 
@@ -1259,8 +1228,8 @@
 
 /* ===== Action proposal (approval) bubble ===== */
 .proposal {
-  border: 1px solid var(--line-2);
-  background: var(--panel);
+  border: 1px solid var(--color--border-hover);
+  background: var(--color--surface);
   border-radius: var(--radius);
   font-size: var(--fs-body);
   line-height: 1.5;
@@ -1271,32 +1240,32 @@
 
 .proposalHead {
   padding: 10px 14px 9px;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--color--border);
   display: flex;
   align-items: center;
   gap: 8px;
   font-size: 12px;
-  color: var(--muted);
+  color: var(--color--ink-subtle);
   line-height: 1.2;
   flex-wrap: wrap;
 }
 
 .proposalLabel {
-  color: var(--ink-2);
+  color: var(--color--ink);
   font-weight: 500;
 }
 
 .proposalSep {
-  color: var(--line-2);
+  color: var(--color--border-hover);
 }
 
 .proposalMeta code {
   font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
-  background: var(--chip);
+  background: var(--color--surface-muted);
   padding: 1px 5px;
   border-radius: var(--radius-sm);
-  color: var(--ink-2);
+  color: var(--color--ink);
 }
 
 .proposalBody {
@@ -1305,7 +1274,7 @@
 
 .proposalTitle {
   font-weight: 600;
-  color: var(--ink);
+  color: var(--color--ink);
   font-size: 14px;
   margin-bottom: 4px;
   line-height: 1.4;
@@ -1313,16 +1282,15 @@
 }
 
 .proposalSub {
-  color: var(--muted);
+  color: var(--color--ink-subtle);
   font-size: 13px;
   line-height: 1.5;
 }
 
 
-
 .proposalDetails {
-  border-top: 1px solid var(--line);
-  background: var(--bg);
+  border-top: 1px solid var(--color--border);
+  background: var(--color--surface);
   padding: 10px 14px 12px;
   animation: fadeIn 0.2s var(--ease);
 }
@@ -1332,9 +1300,9 @@
   font-family: 'JetBrains Mono', monospace;
   font-size: 11.5px;
   line-height: 1.55;
-  color: var(--ink-2);
-  background: var(--panel);
-  border: 1px solid var(--line-2);
+  color: var(--color--ink);
+  background: var(--color--surface);
+  border: 1px solid var(--color--border-hover);
   border-radius: var(--radius-sm);
   padding: 10px 12px;
   max-height: 260px;
@@ -1352,27 +1320,27 @@
 }
 
 .jsonTokenKey {
-  color: var(--ink);
+  color: var(--color--ink);
 }
 
 .jsonTokenString {
-  color: var(--ink-2);
+  color: var(--color--ink);
 }
 
 .jsonTokenNumber,
 .jsonTokenLiteral {
-  color: var(--action);
+  color: var(--color--ink-primary);
 }
 
 .jsonTokenPunctuation {
-  color: var(--muted);
+  color: var(--color--ink-subtle);
 }
 
 .proposalActions {
   display: flex;
   gap: 6px;
   padding: 10px 12px;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--color--border);
   align-items: center;
 }
 
@@ -1385,9 +1353,9 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  border: 1px solid var(--line-2);
-  background: var(--panel);
-  color: var(--ink-2);
+  border: 1px solid var(--color--border-hover);
+  background: var(--color--surface);
+  color: var(--color--ink);
   cursor: pointer;
   transition: background 0.15s var(--ease), color 0.15s var(--ease),
     border-color 0.15s var(--ease), box-shadow 0.15s var(--ease),
@@ -1395,8 +1363,8 @@
 }
 
 .proposalBtn:hover:not(:disabled) {
-  background: var(--chip);
-  color: var(--ink);
+  background: var(--color--surface-muted);
+  color: var(--color--ink);
 }
 
 .proposalBtn:disabled {
@@ -1407,56 +1375,56 @@
 .proposalBtnDetails {
   background: transparent;
   border-color: transparent;
-  color: var(--ink-2);
+  color: var(--color--ink);
   padding: 0 10px;
   text-decoration: underline;
-  text-decoration-color: var(--line-2);
+  text-decoration-color: var(--color--border-hover);
   text-underline-offset: 3px;
 }
 
 .proposalBtnDetails:hover:not(:disabled) {
   background: transparent;
-  color: var(--ink);
-  text-decoration-color: var(--ink);
+  color: var(--color--ink);
+  text-decoration-color: var(--color--ink);
 }
 
 .proposalBtnDeny {
-  background: var(--panel);
+  background: var(--color--surface);
 }
 
 .proposalBtnApprove {
   margin-left: auto;
-  background: var(--action);
+  background: var(--color--primary--surface);
   color: var(--color--primary--ink);
-  border-color: var(--action);
+  border-color: var(--color--ink-primary);
   font-weight: 600;
 }
 
 .proposalBtnApprove:hover:not(:disabled) {
-  background: var(--action-hover);
-  border-color: var(--action-hover);
+  background: var(--color--primary--surface-hover);
+  border-color: var(--color--primary--surface-hover);
   color: var(--color--primary--ink);
 }
 
 .proposalBtnApprove:focus-visible {
-  box-shadow: 0 0 0 3px var(--focus-ring);
+  box-shadow: 0 0 0 3px var(--color--focus--outline);
   outline: none;
 }
 
 .proposalStatus {
   padding: 10px 14px;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--color--border);
   font-size: 12.5px;
 }
 
 .proposalStatusOk {
-  color: var(--success-ink);
-  background: var(--success-soft);
+  color: var(--color--success-soft--ink);
+  background: var(--color--success-soft--surface);
 }
 
 .proposalStatusNo {
-  color: var(--muted);
-  background: var(--bg);
+  color: var(--color--ink-subtle);
+  background: var(--color--surface);
 }
 
 .errorBubble {
@@ -1504,29 +1472,29 @@
 /* ===== Composer ===== */
 .composerWrap {
   padding: 6px 12px 12px;
-  background: var(--panel);
+  background: var(--color--surface);
   position: relative;
 }
 
 /* When there's no pill bar between messages and the composer, draw the
    separator on the composer instead of on the (missing) pill bar. */
 .messages + .composerWrap {
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--color--border);
   padding-top: 10px;
 }
 
 .composer {
-  border: 1px solid var(--line-2);
+  border: 1px solid var(--color--border-hover);
   border-radius: var(--radius);
-  background: var(--panel);
+  background: var(--color--surface);
   transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
   display: flex;
   flex-direction: column;
 }
 
 .composer:focus-within {
-  border-color: var(--action-line);
-  box-shadow: 0 0 0 3px var(--focus-ring);
+  border-color: var(--color--primary-soft--border);
+  box-shadow: 0 0 0 3px var(--color--focus--outline);
 }
 
 .composerTop {
@@ -1535,15 +1503,15 @@
   gap: 6px;
   padding: 6px 6px 0 10px;
   font-size: 11px;
-  color: var(--muted);
+  color: var(--color--ink-subtle);
 }
 
 .attached {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  background: var(--chip);
-  color: var(--ink-2);
+  background: var(--color--surface-muted);
+  color: var(--color--ink);
   padding: 3px 7px;
   border-radius: var(--radius-sm);
   font-family: 'JetBrains Mono', monospace;
@@ -1564,13 +1532,13 @@
   resize: none;
   font-size: 13.5px;
   line-height: 1.5;
-  color: var(--ink);
+  color: var(--color--ink);
   max-height: 160px;
   min-height: 22px;
 }
 
 .composer textarea::placeholder {
-  color: var(--muted-2);
+  color: var(--color--ink-muted);
 }
 
 .composer textarea:disabled {
@@ -1600,7 +1568,7 @@
   height: 26px;
   padding: 0 7px;
   border-radius: var(--radius-sm);
-  color: var(--muted);
+  color: var(--color--ink-subtle);
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -1609,8 +1577,8 @@
 }
 
 .toolBtn:hover {
-  background: var(--chip);
-  color: var(--ink);
+  background: var(--color--surface-muted);
+  color: var(--color--ink);
 }
 
 .toolBtn svg {
@@ -1622,8 +1590,8 @@
   width: 30px;
   height: 30px;
   border-radius: var(--radius-sm);
-  background: var(--ink);
-  color: var(--bg);
+  background: var(--color--ink);
+  color: var(--color--surface);
   display: grid;
   place-items: center;
   transition: background 0.15s var(--ease), opacity 0.15s var(--ease);
@@ -1640,7 +1608,7 @@
 }
 
 .sendBtn:not(:disabled):hover {
-  background: var(--action-hover);
+  background: var(--color--primary--surface-hover);
 }
 
 .sendBtn svg {
@@ -1697,9 +1665,9 @@
   height: 26px;
   padding: 0 8px;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--line);
-  background: var(--panel);
-  color: var(--muted);
+  border: 1px solid var(--color--border);
+  background: var(--color--surface);
+  color: var(--color--ink-subtle);
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -1711,9 +1679,9 @@
 }
 
 .autoApproveToggle:hover:not(:disabled) {
-  background: var(--chip);
-  color: var(--ink);
-  border-color: var(--line-2);
+  background: var(--color--surface-muted);
+  color: var(--color--ink);
+  border-color: var(--color--border-hover);
 }
 
 .autoApproveToggle:disabled {
@@ -1745,10 +1713,10 @@
   position: absolute;
   bottom: calc(100% + 6px);
   left: 10px;
-  background: var(--panel);
-  border: 1px solid var(--line-2);
+  background: var(--color--surface);
+  border: 1px solid var(--color--border-hover);
   border-radius: 10px;
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow--lifted);
   min-width: 260px;
   padding: 4px;
   display: none;
@@ -1763,7 +1731,7 @@
 .mhead {
   padding: 8px 10px 6px;
   font-size: 10.5px;
-  color: var(--muted);
+  color: var(--color--ink-subtle);
   font-weight: 500;
   letter-spacing: 0.03em;
   text-transform: uppercase;
@@ -1777,7 +1745,7 @@
   padding: 7px 10px;
   border-radius: 6px;
   font-size: 13px;
-  color: var(--ink);
+  color: var(--color--ink);
   background: transparent;
   border: 0;
   cursor: pointer;
@@ -1786,25 +1754,25 @@
 
 .mopt:hover,
 .mopt.active {
-  background: var(--action-soft);
-  color: var(--action-ink);
+  background: var(--color--primary-soft--surface);
+  color: var(--color--primary-soft--ink);
 }
 
 .micon {
   width: 22px;
   height: 22px;
   border-radius: 5px;
-  background: var(--chip);
+  background: var(--color--surface-muted);
   display: grid;
   place-items: center;
-  color: var(--ink-2);
+  color: var(--color--ink);
   flex: 0 0 22px;
 }
 
 .mopt:hover .micon,
 .mopt.active .micon {
-  background: var(--panel);
-  color: var(--action-ink);
+  background: var(--color--surface);
+  color: var(--color--primary-soft--ink);
 }
 
 .mopt svg {
@@ -1821,7 +1789,7 @@
 .mmain small {
   display: block;
   font-size: 11px;
-  color: var(--muted);
+  color: var(--color--ink-subtle);
   font-weight: 400;
   margin-top: 1px;
 }
@@ -1844,8 +1812,8 @@
 }
 
 .processToggleRunning {
-  border-color: var(--action-line);
-  background: var(--action-soft);
+  border-color: var(--color--primary-soft--border);
+  background: var(--color--primary-soft--surface);
 }
 
 .processToggle {
@@ -1863,7 +1831,7 @@
   left: 0;
   width: 38%;
   height: 1px;
-  background: var(--action);
+  background: var(--color--primary--surface);
   opacity: 0.32;
   animation: processPanelSweep 1.8s var(--ease) infinite;
 }
@@ -1874,7 +1842,7 @@
 
 .processEntry {
   border: 0;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--color--border);
   border-radius: 0;
   padding: 7px 2px;
   background: transparent;
@@ -1900,21 +1868,21 @@
   width: 14px;
   height: 14px;
   flex: 0 0 14px;
-  border: 1px solid var(--line-2);
+  border: 1px solid var(--color--border-hover);
   border-radius: var(--radius-sm);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--muted);
-  background: var(--panel);
+  color: var(--color--ink-subtle);
+  background: var(--color--surface);
   font-size: 9px;
   line-height: 1;
   font-weight: 600;
 }
 
 .processEntryCurrent .processStepIcon {
-  border-color: var(--action-line);
-  background: var(--action-soft);
+  border-color: var(--color--primary-soft--border);
+  background: var(--color--primary-soft--surface);
   color: transparent;
 }
 
@@ -1922,32 +1890,32 @@
   content: '';
   width: 7px;
   height: 7px;
-  border: 1.5px solid var(--action-line);
-  border-top-color: var(--action-ink);
+  border: 1.5px solid var(--color--primary-soft--border);
+  border-top-color: var(--color--primary-soft--ink);
   border-radius: 50%;
   animation: processStepSpin 0.9s linear infinite;
 }
 
 .processEntryDone .processStepIcon {
-  color: var(--success-ink);
+  color: var(--color--success-soft--ink);
   background: transparent;
-  border-color: color-mix(in oklch, var(--success-ink) 18%, var(--line));
+  border-color: var(--color--success-soft--border);
 }
 
 .processEntryError .processStepIcon {
-  color: var(--ink-2);
-  background: var(--chip);
-  border-color: var(--line-2);
+  color: var(--color--ink);
+  background: var(--color--surface-muted);
+  border-color: var(--color--border-hover);
 }
 
 .processEntryWaiting .processStepIcon {
-  color: var(--action-ink);
-  background: var(--action-soft);
-  border-color: var(--action-line);
+  color: var(--color--primary-soft--ink);
+  background: var(--color--primary-soft--surface);
+  border-color: var(--color--primary-soft--border);
 }
 
 .processEntryStopped .processStepIcon {
-  background: var(--chip);
+  background: var(--color--surface-muted);
 }
 
 .processDetails {
@@ -2002,22 +1970,22 @@
 
 .proposalToolLine {
   margin-bottom: 8px;
-  color: var(--muted);
+  color: var(--color--ink-subtle);
   font-size: 12px;
 }
 
 .proposalToolLine code {
   font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
-  background: var(--chip);
+  background: var(--color--surface-muted);
   padding: 1px 5px;
   border-radius: var(--radius-sm);
-  color: var(--ink-2);
+  color: var(--color--ink);
 }
 
 .processRaw {
   margin-top: 6px;
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--color--border);
   padding-top: 6px;
 }
 
@@ -2029,29 +1997,29 @@
 }
 
 .processDebugEntry {
-  border: 1px solid var(--line);
+  border: 1px solid var(--color--border);
   border-radius: var(--radius);
   padding: 7px;
-  background: var(--panel);
+  background: var(--color--surface);
 }
 
 .processDebugEntryHead {
   display: flex;
   justify-content: space-between;
   gap: 10px;
-  color: var(--ink-2);
+  color: var(--color--ink);
   font-size: 11.5px;
   margin-bottom: 4px;
 }
 
 .processRawEventNested {
-  border-top: 1px solid var(--line);
+  border-top: 1px solid var(--color--border);
   padding-top: 6px;
 }
 
 .processRawEventNested summary {
   cursor: pointer;
-  color: var(--ink-2);
+  color: var(--color--ink);
   font-weight: 500;
 }
 
@@ -2059,14 +2027,14 @@
   margin: 6px 0 0;
   max-height: 240px;
   overflow: auto;
-  border: 1px solid var(--line);
+  border: 1px solid var(--color--border);
   border-radius: var(--radius);
-  background: var(--bg);
+  background: var(--color--surface);
   padding: 8px;
   font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
   line-height: 1.45;
-  color: var(--ink-2);
+  color: var(--color--ink);
   white-space: pre-wrap;
 }
 

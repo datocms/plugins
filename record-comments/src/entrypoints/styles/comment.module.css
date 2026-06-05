@@ -15,7 +15,7 @@
 }
 
 .commentBody:hover {
-  background-color: var(--bg-secondary);
+  background-color: var(--color--surface-muted);
 }
 
 /* Reply styling - minimal, no indentation needed since collapsed */
@@ -102,7 +102,7 @@
 }
 
 .composerBox:focus-within {
-  background-color: var(--bg-primary);
+  background-color: var(--color--surface);
   border-color: var(--color--focus--border);
   box-shadow: 0 0 0 2px var(--color--focus--outline);
 }
@@ -168,13 +168,13 @@
 }
 
 .reactionActive {
-  color: var(--color--ink-link);
-  background-color: var(--color--primary-soft--surface);
-  border-color: var(--color--focus--outline);
+  color: var(--color--selected--ink);
+  background-color: var(--color--selected--surface);
+  border-color: var(--color--selected--border);
 }
 
 .reactionActive:hover {
-  background-color: var(--color--focus--outline);
+  background-color: var(--color--selected--surface-hover);
 }
 
 /* Reaction wrapper for tooltip positioning */
@@ -236,7 +236,7 @@
   width: 20px;
   height: 20px;
   border-radius: var(--radius-md);
-  border: 2px solid var(--base-body-bg-color);
+  border: 2px solid var(--color--surface);
   margin-right: -6px;
   object-fit: cover;
   box-shadow: 0 0 0 1px var(--color--border);
@@ -329,10 +329,10 @@
   align-items: center;
   gap: 2px;
   padding: 4px;
-  background-color: var(--action-bg-hover);
-  border: 1px solid var(--border-strong);
+  background-color: var(--color--surface-hover);
+  border: 1px solid var(--color--border-hover);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-subtle);
+  box-shadow: var(--shadow--raised);
   opacity: 0;
   visibility: hidden;
   /* Smooth transition with delay before collapsing */
@@ -348,10 +348,10 @@
   justify-content: center;
   width: 28px;
   height: 28px;
-  background-color: var(--action-bg-hover);
-  border: 1px solid var(--border-strong);
+  background-color: var(--color--surface-hover);
+  border: 1px solid var(--color--border-hover);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-subtle);
+  box-shadow: var(--shadow--raised);
   cursor: pointer;
   transition:
     background-color 0.15s ease,
@@ -359,17 +359,17 @@
 }
 
 .actionsTrigger svg {
-  color: var(--text-secondary);
+  color: var(--color--ink-subtle);
   transition: color 0.15s ease;
 }
 
 .actionsTrigger:hover {
-  background-color: var(--border-default);
+  background-color: var(--color--border);
   transform: scale(1.05);
 }
 
 .actionsTrigger:hover svg {
-  color: var(--text-primary);
+  color: var(--color--ink);
 }
 
 /* Hide trigger and show full actions on wrapper hover or focus-within */
@@ -399,7 +399,7 @@
   width: 28px;
   height: 28px;
   padding: 0;
-  color: var(--text-secondary);
+  color: var(--color--ink-subtle);
   background: transparent;
   border: none;
   border-radius: var(--radius-md);
@@ -407,8 +407,8 @@
 }
 
 .actionBtn:hover {
-  color: var(--text-primary);
-  background-color: var(--border-strong);
+  color: var(--color--ink);
+  background-color: var(--color--border-hover);
 }
 
 .actionBtnActive {
@@ -417,12 +417,12 @@
 
 .actionBtnActive:hover {
   color: var(--color--ink-link);
-  background-color: var(--border-strong);
+  background-color: var(--color--border-hover);
 }
 
 .actionBtnDanger:hover {
-  color: var(--color-danger);
-  background-color: var(--color-danger-bg);
+  color: var(--color--danger-soft--ink);
+  background-color: var(--color--danger-soft--surface);
 }
 
 /* Replies container */
@@ -498,10 +498,10 @@
   left: 0;
   right: 0;
   margin-top: 4px;
-  background-color: var(--bg-primary);
+  background-color: var(--color--surface);
   border: 1px solid var(--color--border);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-elevated);
+  box-shadow: var(--shadow--lifted);
   z-index: var(--z-dropdown);
   overflow: hidden;
   max-height: 200px;
@@ -536,9 +536,9 @@
   /* Scroll shadows to indicate more content */
   /* Top shadow when scrolled */
   background:
-    linear-gradient(to bottom, var(--bg-primary) 30%, transparent) center top,
+    linear-gradient(to bottom, var(--color--surface) 30%, transparent) center top,
     /* Bottom shadow when more content below */
-    linear-gradient(to top, var(--bg-primary) 30%, transparent) center bottom,
+    linear-gradient(to top, var(--color--surface) 30%, transparent) center bottom,
     /* Top shadow overlay */
     linear-gradient(to bottom, color-mix(in srgb, var(--color--ink) 6%, transparent), transparent) center top,
     /* Bottom shadow overlay */
@@ -563,12 +563,12 @@
 }
 
 .mentionList::-webkit-scrollbar-thumb {
-  background-color: color-mix(in srgb, var(--color--ink) 15%, transparent);
+  background-color: var(--color--scrollbar--fill);
   border-radius: 3px;
 }
 
 .mentionList::-webkit-scrollbar-thumb:hover {
-  background-color: color-mix(in srgb, var(--color--ink) 25%, transparent);
+  background-color: var(--color--scrollbar--fill);
 }
 
 .mentionOption {
@@ -587,16 +587,16 @@
 }
 
 .mentionOption:hover {
-  background-color: var(--bg-secondary);
+  background-color: var(--color--surface-muted);
 }
 
 .mentionOptionSelected {
-  background-color: var(--color--primary-soft--surface);
-  color: var(--color--ink-link);
+  background-color: var(--color--selected--surface);
+  color: var(--color--selected--ink);
 }
 
 .mentionOptionSelected:hover {
-  background-color: var(--color--focus--outline);
+  background-color: var(--color--selected--surface-hover);
 }
 
 .mentionFieldLabel {
@@ -611,7 +611,7 @@
 }
 
 .mentionOptionSelected .mentionFieldApiKey {
-  color: var(--color--ink-link);
+  color: var(--color--selected--ink);
   opacity: 0.8;
 }
 
@@ -652,8 +652,8 @@
   font-weight: 400;
   font-family: inherit;
   line-height: inherit;
-  color: var(--mention-field);
-  background-color: var(--mention-field-bg);
+  color: var(--color--ink-link);
+  background-color: var(--color--primary-soft--surface);
   border: none;
   border-radius: 3px;
   cursor: pointer;
@@ -662,13 +662,13 @@
 }
 
 .fieldMention:hover {
-  background-color: var(--mention-field-hover);
-  color: var(--mention-field-dark);
+  background-color: var(--color--primary-soft--surface-hover);
+  color: var(--color--ink-link);
 }
 
 .fieldMention:focus {
   outline: none;
-  background-color: var(--mention-field-hover);
+  background-color: var(--color--primary-soft--surface-hover);
 }
 
 .fieldMentionDisabled {
@@ -677,8 +677,8 @@
 }
 
 .fieldMentionDisabled:hover {
-  background-color: var(--mention-field-bg);
-  color: var(--mention-field);
+  background-color: var(--color--selected--surface);
+  color: var(--color--selected--ink);
 }
 
 .fieldMentionWrapper {
@@ -730,7 +730,7 @@
 }
 
 .mentionOptionSelected .mentionUserEmail {
-  color: var(--color--ink-link);
+  color: var(--color--selected--ink);
   opacity: 0.8;
 }
 
@@ -757,7 +757,7 @@
 .mentionModelBadge {
   font-size: 10px;
   font-weight: 600;
-  color: var(--mention-model);
+  color: var(--color--warning-soft--ink);
   background-color: var(--color--warning-soft--surface);
   padding: 2px 6px;
   border-radius: 3px;
@@ -767,7 +767,7 @@
 }
 
 .mentionOptionSelected .mentionModelBadge {
-  color: var(--mention-model-dark);
+  color: var(--color--warning-soft--ink);
   background-color: var(--color--warning-soft--surface);
 }
 
@@ -790,8 +790,8 @@
   font-weight: 500;
   font-family: inherit;
   line-height: inherit;
-  color: var(--mention-user);
-  background-color: var(--mention-user-bg);
+  color: var(--color--ink-primary);
+  background-color: var(--color--primary-soft--surface);
   border: none;
   border-radius: 3px;
   cursor: pointer;
@@ -800,13 +800,13 @@
 }
 
 .userMention:hover {
-  background-color: var(--mention-user-hover);
-  color: var(--mention-user-dark);
+  background-color: var(--color--primary-soft--surface-hover);
+  color: var(--color--primary-soft--ink);
 }
 
 .userMention:focus {
   outline: none;
-  background-color: var(--mention-user-hover);
+  background-color: var(--color--primary-soft--surface-hover);
 }
 
 .userMentionDisabled {
@@ -815,8 +815,8 @@
 }
 
 .userMentionDisabled:hover {
-  background-color: var(--mention-user-bg);
-  color: var(--mention-user);
+  background-color: var(--color--primary-soft--surface);
+  color: var(--color--ink-primary);
 }
 
 .userMentionTooltip {
@@ -853,8 +853,8 @@
   font-weight: 500;
   font-family: inherit;
   line-height: 1.2;
-  color: var(--mention-asset);
-  background-color: var(--mention-asset-bg);
+  color: var(--color--ink-link);
+  background-color: var(--color--primary-soft--surface);
   border: none;
   border-radius: 3px;
   cursor: pointer;
@@ -863,13 +863,13 @@
 }
 
 .assetMention:hover {
-  background-color: var(--mention-asset-hover);
-  color: var(--mention-asset-dark);
+  background-color: var(--color--primary-soft--surface-hover);
+  color: var(--color--ink-link);
 }
 
 .assetMention:focus {
   outline: none;
-  background-color: var(--mention-asset-hover);
+  background-color: var(--color--primary-soft--surface-hover);
 }
 
 .assetMentionThumb {
@@ -923,8 +923,8 @@
   padding: 0;
   border-radius: var(--radius-xl);
   overflow: hidden;
-  border: 1px solid var(--mention-asset-border);
-  background: var(--mention-asset-bg);
+  border: 1px solid var(--color--primary-soft--border);
+  background: var(--color--primary-soft--surface);
   cursor: pointer;
   font-family: inherit;
   transition:
@@ -933,13 +933,13 @@
 }
 
 .assetMentionBlock:hover {
-  border-color: var(--mention-asset-border-hover);
+  border-color: var(--color--focus--border);
   box-shadow: 0 2px 8px var(--color--primary-soft--surface);
 }
 
 .assetMentionBlock:focus {
   outline: none;
-  border-color: var(--mention-asset);
+  border-color: var(--color--ink-link);
   box-shadow: 0 0 0 2px var(--color--primary-soft--surface);
 }
 
@@ -955,9 +955,9 @@
   padding: var(--space-1) var(--space-2);
   font-size: 12px;
   font-weight: 500;
-  color: var(--mention-asset);
-  background: var(--mention-asset-bg);
-  border-top: 1px solid var(--mention-asset-border);
+  color: var(--color--ink-link);
+  background: var(--color--primary-soft--surface);
+  border-top: 1px solid var(--color--primary-soft--border);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -965,7 +965,7 @@
 }
 
 .assetMentionBlock:hover .assetMentionBlockName {
-  color: var(--mention-asset-dark);
+  color: var(--color--ink-link);
 }
 
 /* Skeleton loading state for asset thumbnails */
@@ -976,9 +976,9 @@
   height: 80px;
   background: linear-gradient(
     90deg,
-    var(--mention-asset-bg) 0%,
-    var(--mention-asset-border) 50%,
-    var(--mention-asset-bg) 100%
+    var(--color--primary-soft--surface) 0%,
+    var(--color--primary-soft--border) 50%,
+    var(--color--primary-soft--surface) 100%
   );
   background-size: 200% 100%;
   animation: assetSkeletonShimmer 1.5s ease-in-out infinite;
@@ -1026,8 +1026,8 @@
   font-size: inherit;
   font-weight: 500;
   line-height: 1.4;
-  color: var(--mention-record);
-  background-color: var(--mention-record-bg);
+  color: var(--color--success-soft--ink);
+  background-color: var(--color--success-soft--surface);
   border: none;
   border-radius: 4px;
   cursor: pointer;
@@ -1036,13 +1036,13 @@
 }
 
 .recordMention:hover {
-  background-color: var(--mention-record-hover);
-  color: var(--mention-record-dark);
+  background-color: var(--color--success-soft--surface);
+  color: var(--color--success-soft--ink);
 }
 
 .recordMention:focus {
   outline: none;
-  background-color: var(--mention-record-hover);
+  background-color: var(--color--success-soft--surface);
 }
 
 .recordMentionIcon {
@@ -1122,8 +1122,8 @@
   font-weight: 500;
   font-family: inherit;
   line-height: 1.4;
-  color: var(--mention-model);
-  background-color: var(--mention-model-bg);
+  color: var(--color--warning-soft--ink);
+  background-color: var(--color--warning-soft--surface);
   border: none;
   border-radius: 3px;
   cursor: pointer;
@@ -1132,13 +1132,13 @@
 }
 
 .modelMention:hover {
-  background-color: var(--mention-model-hover);
-  color: var(--mention-model-dark);
+  background-color: var(--color--warning-soft--surface);
+  color: var(--color--warning-soft--ink);
 }
 
 .modelMention:focus {
   outline: none;
-  background-color: var(--mention-model-hover);
+  background-color: var(--color--warning-soft--surface);
 }
 
 .modelMentionIcon {
@@ -1222,7 +1222,7 @@
 
 .mentionBackButton:hover {
   color: var(--color--ink);
-  background-color: var(--bg-secondary);
+  background-color: var(--color--surface-muted);
 }
 
 .mentionBackButton:focus-visible {
@@ -1238,7 +1238,7 @@
   padding: 2px 6px;
   font-size: 10px;
   font-weight: 700;
-  color: var(--text-inverse);
+  color: var(--color--primary--ink);
   background-color: var(--color--primary--surface);
   border-radius: 3px;
   text-transform: uppercase;
@@ -1260,7 +1260,7 @@
 }
 
 .mentionOptionSelected .mentionLocaleIndicator {
-  color: var(--color--ink-link);
+  color: var(--color--selected--ink);
   opacity: 1;
 }
 
@@ -1282,7 +1282,7 @@
   padding: 1px 4px;
   font-size: 9px;
   font-weight: 700;
-  color: var(--mention-field);
+  color: var(--color--ink-link);
   background-color: var(--color--primary-soft--surface);
   border-radius: var(--radius-sm);
   text-transform: uppercase;
@@ -1297,15 +1297,16 @@
 
 .mentionOptionEntireField {
   border-bottom: 1px solid var(--color--border);
-  background-color: var(--bg-tertiary);
+  background-color: var(--color--surface-muted);
 }
 
 .mentionOptionEntireField:hover {
-  background-color: var(--border-light);
+  background-color: var(--color--border);
 }
 
 .mentionOptionEntireField.mentionOptionSelected {
-  background-color: var(--color--primary-soft--surface);
+  background-color: var(--color--selected--surface);
+  color: var(--color--selected--ink);
 }
 
 .mentionBlockCount {
@@ -1315,7 +1316,7 @@
 }
 
 .mentionOptionSelected .mentionBlockCount {
-  color: var(--color--ink-link);
+  color: var(--color--selected--ink);
   opacity: 0.8;
 }
 
@@ -1325,8 +1326,8 @@
   padding: 2px 6px;
   font-size: 10px;
   font-weight: 600;
-  color: var(--mention-block);
-  background-color: var(--mention-block-bg);
+  color: var(--color--selected--ink);
+  background-color: var(--color--selected--surface);
   border-radius: 3px;
   max-width: 100px;
   overflow: hidden;
@@ -1335,8 +1336,8 @@
 }
 
 .mentionOptionSelected .mentionBlockBadge {
-  color: var(--mention-block);
-  background-color: var(--color--primary-soft--surface);
+  color: var(--color--selected--ink);
+  background-color: var(--color--selected--surface-hover);
 }
 
 .mentionBlockIndicator {
@@ -1351,7 +1352,7 @@
 }
 
 .mentionOptionSelected .mentionBlockIndicator {
-  color: var(--color--ink-link);
+  color: var(--color--selected--ink);
   opacity: 0.8;
 }
 
@@ -1363,8 +1364,8 @@
   padding: var(--space-2) var(--space-3);
   font-size: var(--font-size-s);
   color: var(--color--ink-subtle);
-  background-color: var(--color-error-bg);
-  border: 1px solid var(--color-error-border);
+  background-color: var(--color--danger-soft--surface);
+  border: 1px solid var(--color--danger-soft--border);
   border-radius: var(--radius-md);
   text-align: center;
 }
@@ -1395,14 +1396,14 @@
   font-size: 12px;
   font-weight: 600;
   color: var(--color--ink-subtle);
-  background-color: var(--bg-tertiary);
+  background-color: var(--color--surface-muted);
   border-radius: var(--radius-sm);
   flex-shrink: 0;
 }
 
 .mentionOptionSelected .slashCommandIcon {
-  background-color: var(--color--focus--outline);
-  color: var(--color--ink-link);
+  background-color: var(--color--selected--surface);
+  color: var(--color--selected--ink);
 }
 
 .slashCommandContent {
@@ -1421,7 +1422,7 @@
 }
 
 .mentionOptionSelected .slashCommandName {
-  color: var(--color--ink-link);
+  color: var(--color--selected--ink);
 }
 
 .slashCommandDescription {
@@ -1431,6 +1432,6 @@
 }
 
 .mentionOptionSelected .slashCommandDescription {
-  color: var(--color--ink-link);
+  color: var(--color--selected--ink);
   opacity: 0.8;
 }

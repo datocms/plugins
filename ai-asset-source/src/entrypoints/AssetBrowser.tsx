@@ -574,7 +574,10 @@ const AssetBrowser = () => {
                   {getActiveRequestLabel(activeRequest.elapsedSeconds)}
                 </span>
                 <span className={s.requestStatusMeta}>
-                  Elapsed {formatDuration(activeRequest.elapsedSeconds)}
+                  <Spinner size={13} style={INLINE_SPINNER_STYLE} />
+                  <span>
+                    Elapsed {formatDuration(activeRequest.elapsedSeconds)}
+                  </span>
                 </span>
               </div>
               <button
@@ -585,7 +588,6 @@ const AssetBrowser = () => {
                 Cancel
               </button>
             </div>
-            <progress className={s.requestProgress} />
           </div>
         )}
 

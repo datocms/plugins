@@ -4,10 +4,10 @@
   isolation: isolate;
   width: 100%;
   padding: 0;
-  border: 1px solid var(--ig-border);
+  border: 1px solid var(--color--border);
   border-radius: 8px;
   overflow: hidden;
-  background: var(--ig-surface);
+  background: var(--color--surface);
   cursor: pointer;
   transition:
     border-color 140ms ease,
@@ -20,9 +20,9 @@
 }
 
 .cellSelected {
-  border-color: var(--ig-accent);
-  background: color-mix(in srgb, var(--ig-accent) 8%, var(--ig-surface));
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ig-accent) 18%, transparent);
+  border-color: var(--color--selected--border);
+  background: var(--color--selected--surface);
+  box-shadow: 0 0 0 1px var(--color--selected--border);
 }
 
 .cellSelected::after {
@@ -30,14 +30,16 @@
   position: absolute;
   inset: 0;
   z-index: 1;
-  background: color-mix(in srgb, var(--ig-accent) 12%, transparent);
-  box-shadow: inset 0 0 0 1px
-    color-mix(in srgb, var(--ig-accent) 18%, transparent);
+  box-shadow: inset 0 0 0 1px var(--color--selected--border);
   pointer-events: none;
 }
 
 .cell:hover {
-  border-color: var(--ig-border-strong);
+  border-color: var(--color--border-hover);
+}
+
+.cellSelected:hover {
+  border-color: var(--color--selected--border);
 }
 
 .cellError {
@@ -45,7 +47,7 @@
 }
 
 .cell:focus-visible {
-  outline: 2px solid var(--ig-focus);
+  outline: 2px solid var(--color--focus--outline);
   outline-offset: -2px;
 }
 
@@ -59,15 +61,16 @@
   justify-content: center;
   width: 26px;
   height: 26px;
-  border: 1px solid color-mix(in srgb, var(--color--ink) 12%, transparent);
+  color: var(--color--ink-subtle);
+  border: 1px solid var(--color--border);
   border-radius: 6px;
   background: var(--color--surface);
-  box-shadow: 0 1px 2px color-mix(in srgb, var(--color--ink) 8%, transparent);
 }
 
 .selectionMarkSelected {
-  border-color: var(--ig-accent);
-  background: var(--color--surface);
+  color: var(--color--selected--ink);
+  border-color: var(--color--selected--border);
+  background: var(--color--selected--surface);
 }
 
 .selectionIcon {
@@ -75,7 +78,7 @@
   display: block;
   width: 12px;
   height: 12px;
-  border: 1.5px solid color-mix(in srgb, var(--color--ink) 22%, transparent);
+  border: 1.5px solid var(--color--border-hover);
   border-radius: 3px;
   background: var(--color--surface);
   transition:
@@ -84,15 +87,15 @@
 }
 
 .selectionMarkSelected .selectionIcon {
-  border-color: var(--ig-accent);
-  background: var(--ig-accent);
+  border-color: var(--color--selected--border);
+  background: var(--color--selected--ink);
 }
 
 .image {
   display: block;
   width: 100%;
   height: auto;
-  background: var(--ig-surface-muted);
+  background: var(--color--surface-muted);
   position: relative;
   z-index: 0;
 }
@@ -104,21 +107,21 @@
   gap: 8px;
   min-height: 220px;
   padding: 16px;
-  background: var(--ig-surface-muted);
+  background: var(--color--surface-muted);
 }
 
 .errorPosition {
   font-size: 13px;
-  color: var(--ig-text-muted);
+  color: var(--color--ink-subtle);
 }
 
 .errorTitle {
   font-weight: 600;
-  color: var(--ig-text);
+  color: var(--color--ink);
 }
 
 .errorMessage {
   font-size: 13px;
   line-height: 1.45;
-  color: var(--ig-text-muted);
+  color: var(--color--ink-subtle);
 }

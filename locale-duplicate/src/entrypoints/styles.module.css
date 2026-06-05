@@ -65,7 +65,7 @@
   padding: var(--spacing-s) var(--spacing-m);
   font-size: var(--font-size-s);
   animation: slideIn 0.2s ease-in-out;
-  border-bottom: 1px solid color-mix(in srgb, var(--color--ink) 5%, transparent);
+  border-bottom: 1px solid var(--color--border);
   display: flex;
   align-items: flex-start;
   color: var(--color--ink);
@@ -77,15 +77,15 @@
 }
 
 .updateItem.info {
-  color: var(--blue-color, var(--color--ink-link));
+  color: var(--color--ink-link);
 }
 
 .updateItem.success {
-  color: var(--green-color, var(--color--success-soft--ink));
+  color: var(--color--success-soft--ink);
 }
 
 .updateItem.error {
-  color: var(--red-color, var(--color--danger-soft--ink));
+  color: var(--color--danger-soft--ink);
 }
 
 .formContainer {
@@ -111,7 +111,7 @@
   border-radius: var(--border-radius-m);
   padding: var(--spacing-m);
   margin-bottom: var(--spacing-m);
-  box-shadow: var(--box-shadow-light);
+  box-shadow: var(--shadow--raised);
 }
 
 .summaryContainer {
@@ -141,7 +141,7 @@
   padding: var(--spacing-m);
   background-color: var(--color--surface);
   border-radius: var(--border-radius);
-  box-shadow: var(--box-shadow-light);
+  box-shadow: var(--shadow--raised);
   transition: transform 0.2s ease-in-out;
 }
 

@@ -23,7 +23,7 @@ const StarRatingEditor = ({ ctx }: PropTypes) => {
         count={maxRating}
         char="★"
         activeColor={starsColor}
-        color={ctx.colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.25)' : '#d9d9d9'}
+        color={ctx.cssDesignTokens['--color--ink-placeholder']}
         size={32}
         isHalf={false}
         a11y={true}

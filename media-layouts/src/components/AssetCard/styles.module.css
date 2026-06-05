@@ -13,7 +13,7 @@
 
 .card:hover {
   border-color: var(--color--focus--border);
-  box-shadow: 0 6px 14px color-mix(in srgb, var(--color--ink) 6%, transparent);
+  box-shadow: var(--shadow--raised);
 }
 
 .thumbnail {
@@ -272,13 +272,13 @@
 }
 
 .lazyToggle input:checked + .toggleTrack {
-  background: var(--color--focus--outline);
-  border-color: var(--color--focus--border);
+  background: var(--color--selected--surface);
+  border-color: var(--color--selected--border);
 }
 
 .lazyToggle input:checked + .toggleTrack::after {
   transform: translate(10px, -50%);
-  background: var(--color--primary--surface);
+  background: var(--color--selected--ink);
 }
 
 .lazyToggle input:focus-visible + .toggleTrack {
@@ -353,5 +353,5 @@
 
 .removeButton:hover {
   background: var(--color--danger-soft--surface);
-  color: var(--color--primary--ink);
+  color: var(--color--danger-soft--ink);
 }

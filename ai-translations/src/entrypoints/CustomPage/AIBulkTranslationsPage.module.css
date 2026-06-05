@@ -20,7 +20,7 @@
   border-radius: 18px;
   padding: 26px 26px 24px;
   border: 1px solid var(--color--border);
-  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.07);
+  box-shadow: var(--shadow--raised);
   display: flex;
   flex-direction: column;
   gap: 24px;
@@ -117,7 +117,7 @@
 }
 
 .statusReady {
-  color: var(--color--primary--ink);
+  color: var(--color--ink-primary);
   font-weight: 600;
 }
 

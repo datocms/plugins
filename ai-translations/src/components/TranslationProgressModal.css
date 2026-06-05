@@ -53,8 +53,8 @@
 
 .TranslationProgressModal__progress-bar-fill {
   height: 100%;
-  background-color: var(--color--primary--surface);
-  box-shadow: inset 0 0 1px rgba(0, 0, 0, 0.1);
+  background-color: var(--color--ink-primary);
+  box-shadow: inset 0 0 0 1px var(--color--primary--border);
   transition: width 0.3s ease-in-out;
 }
 
@@ -102,13 +102,13 @@
 
 .TranslationProgressModal__update-item--error
   .TranslationProgressModal__update-status {
-  color: var(--color--danger--ink);
+  color: var(--color--danger-soft--ink);
   font-weight: 700;
 }
 
 .TranslationProgressModal__update-item--processing
   .TranslationProgressModal__update-status {
-  color: var(--color--primary--surface);
+  color: var(--color--ink-primary);
 }
 
 .TranslationProgressModal__update-message {
@@ -130,8 +130,9 @@
 
 .TranslationProgressModal__errors {
   padding: 12px;
-  background-color: var(--color--danger-soft--outline);
-  color: var(--color--danger--ink);
+  background-color: var(--color--danger-soft--surface);
+  border: 1px solid var(--color--danger-soft--border);
+  color: var(--color--danger-soft--ink);
   border-radius: 4px;
   margin-bottom: 20px;
   font-size: 14px;

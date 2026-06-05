@@ -55,9 +55,9 @@
   padding: var(--space-2);
   margin-bottom: var(--space-3);
   font-size: var(--font-size-xs);
-  color: var(--color-warning);
-  background-color: var(--color-warning-bg);
-  border: 1px solid var(--color-warning-border);
+  color: var(--color--warning-soft--ink);
+  background-color: var(--color--warning-soft--surface);
+  border: 1px solid var(--color--warning-soft--border);
   border-radius: var(--radius-lg);
 }
 
@@ -108,7 +108,7 @@
 }
 
 .composerInputWrapper:focus-within {
-  background-color: var(--base-body-bg-color);
+  background-color: var(--color--surface);
   border-color: var(--color--focus--border);
   box-shadow: 0 0 0 2px var(--color--focus--outline);
 }
@@ -235,28 +235,28 @@
 
 /* Specific toolbar button colors on hover */
 .toolbarButtonUser:hover {
-  color: var(--mention-user);
-  background-color: var(--mention-user-bg);
+  color: var(--color--ink-primary);
+  background-color: var(--color--primary-soft--surface);
 }
 
 .toolbarButtonField:hover {
-  color: var(--mention-field);
-  background-color: var(--mention-field-bg);
+  color: var(--color--ink-link);
+  background-color: var(--color--primary-soft--surface);
 }
 
 .toolbarButtonRecord:hover {
-  color: var(--mention-record);
-  background-color: var(--mention-record-bg);
+  color: var(--color--success-soft--ink);
+  background-color: var(--color--success-soft--surface);
 }
 
 .toolbarButtonAsset:hover {
-  color: var(--mention-asset);
-  background-color: var(--mention-asset-bg);
+  color: var(--color--ink-link);
+  background-color: var(--color--primary-soft--surface);
 }
 
 .toolbarButtonModel:hover {
-  color: var(--mention-model);
-  background-color: var(--mention-model-bg);
+  color: var(--color--warning-soft--ink);
+  background-color: var(--color--warning-soft--surface);
 }
 
 /* Disabled toolbar button */
@@ -279,8 +279,8 @@
   padding: var(--radius-md) var(--space-1);
   font-size: var(--font-size-xxs);
   font-weight: 500;
-  color: var(--tooltip-text);
-  background-color: var(--tooltip-bg);
+  color: var(--color--tooltip--ink);
+  background-color: var(--color--tooltip--surface);
   border-radius: var(--radius-md);
   white-space: nowrap;
   opacity: 0;
@@ -298,7 +298,7 @@
   left: 50%;
   transform: translateX(-50%);
   border: var(--radius-md) solid transparent;
-  border-top-color: var(--tooltip-bg);
+  border-top-color: var(--color--tooltip--surface);
 }
 
 .toolbarButtonWrapper:hover .toolbarTooltip {
@@ -314,7 +314,7 @@
   width: 28px;
   height: 28px;
   padding: 0;
-  color: var(--text-inverse);
+  color: var(--color--primary--ink);
   background-color: var(--color--primary--surface);
   border: none;
   border-radius: var(--radius-md);
@@ -384,8 +384,8 @@
   padding: var(--space-3);
   margin-bottom: var(--space-3);
   color: var(--color--ink);
-  background-color: var(--color-warning-bg);
-  border: 1px solid var(--color-warning-border);
+  background-color: var(--color--warning-soft--surface);
+  border: 1px solid var(--color--warning-soft--border);
   border-radius: var(--radius-lg);
 }
 

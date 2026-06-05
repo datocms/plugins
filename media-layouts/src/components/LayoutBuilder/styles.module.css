@@ -162,7 +162,7 @@
   overflow: hidden;
   cursor: grab;
   transition: all 0.2s ease;
-  box-shadow: 0 1px 3px color-mix(in srgb, var(--color--ink) 8%, transparent);
+  box-shadow: var(--shadow--raised);
 }
 
 .slotItem:active {
@@ -170,26 +170,26 @@
 }
 
 .slotItem:hover {
-  box-shadow: 0 4px 12px color-mix(in srgb, var(--color--ink) 15%, transparent);
+  box-shadow: var(--shadow--lifted);
   transform: translateY(-1px);
 }
 
 .slotItem.isSelected {
   box-shadow:
-    0 0 0 2px var(--color--ink-link),
-    0 4px 12px color-mix(in srgb, var(--color--ink) 15%, transparent);
+    0 0 0 2px var(--color--selected--border),
+    var(--shadow--lifted);
 }
 
 .slotItem.isDragging {
   opacity: 0.5;
   transform: scale(0.98);
-  box-shadow: 0 1px 3px color-mix(in srgb, var(--color--ink) 8%, transparent);
+  box-shadow: var(--shadow--raised);
 }
 
 .slotItem.isDragOver {
   box-shadow:
-    0 0 0 2px var(--color--ink-link),
-    0 8px 24px color-mix(in srgb, var(--color--ink) 20%, transparent);
+    0 0 0 2px var(--color--focus--border),
+    var(--shadow--ambient);
   transform: scale(1.02);
 }
 
@@ -247,7 +247,7 @@
   max-height: 100%;
   border: 1px dashed var(--color--border);
   border-radius: 6px;
-  background: color-mix(in srgb, var(--color--ink) 2%, transparent);
+  background: var(--color--surface-muted);
 }
 
 .dragHandle {
@@ -305,7 +305,7 @@
   align-items: center;
   justify-content: center;
   gap: 8px;
-  background: color-mix(in srgb, var(--color--ink) 60%, transparent);
+  background: var(--color--overlay--surface);
   opacity: 0;
   transition: opacity 0.15s ease;
   pointer-events: none;
@@ -353,7 +353,7 @@
   background: var(--color--surface);
   border: 1px solid var(--color--border);
   border-radius: 8px;
-  box-shadow: 0 4px 12px color-mix(in srgb, var(--color--ink) 8%, transparent);
+  box-shadow: var(--shadow--lifted);
 }
 
 .editPanelHeader {
@@ -505,7 +505,7 @@
 
 .emptyHint {
   font-size: 12px;
-  color: var(--lighter-body-color);
+  color: var(--color--ink-subtle);
 }
 
 /* Empty cell */
@@ -518,18 +518,18 @@
   min-height: 80px;
   border: 2px dashed var(--color--border);
   border-radius: 6px;
-  background: color-mix(in srgb, var(--color--surface) 50%, transparent);
+  background: var(--color--surface-muted);
   transition: all 0.2s ease;
 }
 
 .emptyCell:hover {
   border-color: var(--color--focus--border);
-  background: color-mix(in srgb, var(--color--surface) 80%, transparent);
+  background: var(--color--surface-hover);
 }
 
 .emptyCell.isDragOver {
   border-color: var(--color--focus--border);
-  background: var(--color--focus--outline);
+  background: var(--color--selected--surface);
   transform: scale(1.02);
 }
 

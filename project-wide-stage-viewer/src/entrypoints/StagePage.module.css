@@ -66,7 +66,7 @@
 .select:focus {
   outline: none;
   border-color: var(--color--focus--border);
-  box-shadow: 0 0 0 2px var(--color--primary-soft--surface);
+  box-shadow: 0 0 0 2px var(--color--focus--outline);
 }
 
 .searchWrapper {
@@ -92,7 +92,7 @@
 .searchInput:focus {
   outline: none;
   border-color: var(--color--focus--border);
-  box-shadow: 0 0 0 2px var(--color--primary-soft--surface);
+  box-shadow: 0 0 0 2px var(--color--focus--outline);
 }
 
 .clearButton {
@@ -162,7 +162,7 @@
 }
 
 .table tbody tr:nth-child(even) {
-  background: color-mix(in srgb, var(--color--ink) 2%, transparent);
+  background: var(--color--surface-muted);
 }
 
 .table tbody tr:hover {
@@ -191,7 +191,7 @@
 
 .pageButton {
   border: 1px solid var(--color--border);
-  background: color-mix(in srgb, var(--color--surface) 80%, transparent);
+  background: var(--color--surface);
   color: var(--color--ink);
   font-size: 0.85rem;
   font-weight: 600;
@@ -206,14 +206,14 @@
 
 .pageButton:hover {
   background: var(--color--primary-soft--surface);
-  border-color: var(--color--focus--outline);
+  border-color: var(--color--focus--border);
 }
 
 .pageButton:disabled {
   cursor: not-allowed;
   opacity: 0.55;
-  background: color-mix(in srgb, var(--color--surface) 50%, transparent);
-  border-color: color-mix(in srgb, var(--color--ink) 30%, transparent);
+  background: var(--color--disabled--surface);
+  border-color: var(--color--border);
 }
 
 .sortButton {

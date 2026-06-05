@@ -21,7 +21,7 @@
 }
 
 .previewLink__pathname {
-  color: #999;
+  color: var(--color--ink-subtle);
   font-size: 12px;
   padding: 0;
   margin: 0;
