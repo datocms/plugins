@@ -90,12 +90,17 @@ export type NormalizedProviderError = {
   message: string;
 };
 
+export type ImageServiceOptions = {
+  signal?: AbortSignal;
+};
+
 export type ImageProviderAdapter = {
   provider: ProviderId;
   getCapabilities: (model: SupportedImageModel) => ProviderCapabilities;
   run: (
     apiKey: string,
     request: ImageOperationRequest,
+    options?: ImageServiceOptions,
   ) => Promise<NormalizedGenerationBatch>;
   normalizeError: (error: unknown) => NormalizedProviderError;
 };

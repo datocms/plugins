@@ -9,6 +9,7 @@ import {
 import type {
   ImageOperationRequest,
   ImageProviderAdapter,
+  ImageServiceOptions,
   NormalizedProviderError,
   SupportedImageModel,
 } from '../types';
@@ -18,12 +19,12 @@ export const googleAdapter: ImageProviderAdapter = {
   getCapabilities(model: SupportedImageModel) {
     return getCapabilities('google', model);
   },
-  async run(apiKey: string, request: ImageOperationRequest) {
+  async run(apiKey: string, request: ImageOperationRequest, options = {}) {
     const client = createGoogleGenerativeAI({ apiKey: apiKey.trim() });
     const createdAt = new Date().toISOString();
     const images = isGooglePredictImageModel(request.model)
-      ? await generatePredictImages(client, request, createdAt)
-      : await generateContentImages(client, request, createdAt);
+      ? await generatePredictImages(client, request, createdAt, options)
+      : await generateContentImages(client, request, createdAt, options);
 
     if (!images.length) {
       throw new Error('Google did not return image data for this request.');
@@ -81,11 +82,13 @@ async function generatePredictImages(
   client: GoogleClient,
   request: ImageOperationRequest,
   createdAt: string,
+  options: ImageServiceOptions,
 ): Promise<GeneratedImage[]> {
   const result = await generateImage({
     model: client.image(request.model),
     prompt: request.prompt,
     aspectRatio: request.aspectRatio,
+    abortSignal: options.signal,
   });
 
   return normalizeGeneratedImages(result.images, createdAt);
@@ -95,12 +98,14 @@ async function generateContentImages(
   client: GoogleClient,
   request: ImageOperationRequest,
   createdAt: string,
+  options: ImageServiceOptions,
 ): Promise<GeneratedImage[]> {
   const responseModalities: Array<'IMAGE'> = ['IMAGE'];
 
   const result = await generateText({
     model: client(request.model),
     prompt: request.prompt,
+    abortSignal: options.signal,
     providerOptions: {
       google: {
         responseModalities,

@@ -7,6 +7,7 @@ import {
 } from './catalog';
 import type {
   ImageOperationRequest,
+  ImageServiceOptions,
   ImageOutputFormat,
   ImageProviderAdapter,
   NormalizedGeneratedImage,
@@ -36,8 +37,9 @@ export function getProviderCapabilities(
 export async function generateImages(
   apiKey: string,
   request: ImageOperationRequest,
+  options?: ImageServiceOptions,
 ): Promise<NormalizedGenerationBatch> {
-  return getProviderAdapter(request.provider).run(apiKey, request);
+  return getProviderAdapter(request.provider).run(apiKey, request, options);
 }
 
 export function normalizeProviderError(
@@ -45,6 +47,18 @@ export function normalizeProviderError(
   error: unknown,
 ): string {
   return getProviderAdapter(provider).normalizeError(error).message;
+}
+
+export function isAbortError(error: unknown): boolean {
+  if (error instanceof DOMException && error.name === 'AbortError') {
+    return true;
+  }
+
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  return error.name === 'AbortError';
 }
 
 export function buildImportFilename(

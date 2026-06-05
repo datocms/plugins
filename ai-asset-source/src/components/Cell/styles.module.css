@@ -88,18 +88,6 @@
   background: var(--ig-accent);
 }
 
-.selectionMarkSelected .selectionIcon::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 4px;
-  height: 7px;
-  border-right: 2px solid var(--color--primary--ink);
-  border-bottom: 2px solid var(--color--primary--ink);
-  transform: translate(-50%, -62%) rotate(45deg);
-}
-
 .image {
   display: block;
   width: 100%;

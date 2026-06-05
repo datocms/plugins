@@ -21,7 +21,7 @@ export const openAiAdapter: ImageProviderAdapter = {
   getCapabilities(model: SupportedImageModel) {
     return getCapabilities('openai', model);
   },
-  async run(apiKey: string, request: ImageOperationRequest) {
+  async run(apiKey: string, request: ImageOperationRequest, options = {}) {
     const body = buildImageGenerationBody(request);
     const response = await fetch('https://api.openai.com/v1/images/generations', {
       method: 'POST',
@@ -29,6 +29,7 @@ export const openAiAdapter: ImageProviderAdapter = {
         Authorization: `Bearer ${apiKey.trim()}`,
         'Content-Type': 'application/json',
       },
+      signal: options.signal,
       body: JSON.stringify(body),
     });
     const payload = await readJsonResponse(response);

@@ -24,6 +24,7 @@ import {
   generateImages,
   getImageOutputFormat,
   getProviderCapabilities,
+  isAbortError,
   normalizeProviderError,
 } from '../utils/imageService';
 import {
@@ -32,7 +33,10 @@ import {
   supportsOutputControls,
   variationOptions,
 } from '../utils/imageService/catalog';
-import { createFailedGenerationBatch } from '../utils/imageService/shared';
+import {
+  createFailedGenerationBatch,
+  readProviderErrorDetails,
+} from '../utils/imageService/shared';
 import type {
   AspectRatio,
   GenerationStatus,
@@ -50,8 +54,15 @@ const MISSING_PROVIDER_KEY_MESSAGE =
 const MISSING_PROVIDER_MODEL_MESSAGE =
   'Select a model in plugin settings before generating images.';
 const MISSING_PROMPT_MESSAGE = 'Enter a prompt before generating images.';
+const REQUEST_TIMEOUT_MS = 180_000;
+const REQUEST_TIMEOUT_MESSAGE =
+  'The request timed out after 3 minutes. Try again with fewer images or a smaller size.';
+const REQUEST_CANCELLED_MESSAGE = 'Request cancelled.';
 const GENERATING_LABEL = 'Generating…';
-const GENERATING_IMAGES_LABEL = 'Generating images…';
+const SENDING_REQUEST_LABEL = 'Sending request…';
+const WAITING_FOR_IMAGES_LABEL = 'Waiting for images…';
+const STILL_WAITING_LABEL =
+  'Still waiting. Large requests can take a minute or two.';
 const INLINE_SPINNER_STYLE: CSSProperties = {
   marginLeft: 0,
   transform: 'none',
@@ -74,9 +85,25 @@ type BatchSelectionContext = RenderAssetSourceCtx & {
 
 type DefaultFieldMetadata = NonNullable<NewUpload['default_field_metadata']>;
 
+type UserFeedback = {
+  kind: 'error' | 'notice';
+  message: string;
+};
+
+type AbortReason = 'cancel' | 'timeout';
+
+type ActiveGenerationRequest = {
+  requestId: string;
+  startedAtMs: number;
+  elapsedSeconds: number;
+  timeoutMs: number;
+};
+
 const AssetBrowser = () => {
   const ctx = useCtx<RenderAssetSourceCtx>();
   const rootRef = useRef<HTMLDivElement | null>(null);
+  const activeControllerRef = useRef<AbortController | null>(null);
+  const abortReasonRef = useRef<AbortReason | null>(null);
   const parameters = useMemo(
     () =>
       normalizeConfigParameters(
@@ -101,7 +128,11 @@ const AssetBrowser = () => {
   const [requests, setRequests] = useState<NormalizedGenerationBatch[]>([]);
   const [selectedImageIds, setSelectedImageIds] = useState<string[]>([]);
   const [status, setStatus] = useState<GenerationStatus>('idle');
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [feedbackMessage, setFeedbackMessage] = useState<UserFeedback | null>(
+    null,
+  );
+  const [activeRequest, setActiveRequest] =
+    useState<ActiveGenerationRequest | null>(null);
 
   const capabilities = useMemo(
     () => getProviderCapabilities(provider, model),
@@ -145,6 +176,31 @@ const AssetBrowser = () => {
   useEffect(() => {
     ctx.updateHeight();
   }, [ctx]);
+
+  useEffect(() => {
+    if (!activeRequest) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      setActiveRequest((current) => {
+        if (!current) {
+          return current;
+        }
+
+        return {
+          ...current,
+          elapsedSeconds: Math.floor(
+            (Date.now() - current.startedAtMs) / 1000,
+          ),
+        };
+      });
+    }, 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [activeRequest?.requestId]);
 
   useEffect(() => {
     if (!capabilities.supportsVariationCount && variationCount !== 1) {
@@ -203,7 +259,7 @@ const AssetBrowser = () => {
   const handlePromptChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
       setPrompt(event.target.value);
-      setErrorMessage(null);
+      setFeedbackMessage(null);
     },
     [],
   );
@@ -240,6 +296,15 @@ const AssetBrowser = () => {
     );
   }, [ctx, selectedImages]);
 
+  const handleCancelRequest = useCallback(() => {
+    if (!activeControllerRef.current) {
+      return;
+    }
+
+    abortReasonRef.current = 'cancel';
+    activeControllerRef.current.abort();
+  }, []);
+
   const handleSubmit = useCallback(
     async (event?: FormEvent) => {
       event?.preventDefault();
@@ -251,21 +316,113 @@ const AssetBrowser = () => {
       );
 
       if (validationError) {
-        setErrorMessage(validationError);
+        setFeedbackMessage({
+          kind: 'error',
+          message: validationError,
+        });
         setStatus('error');
         return;
       }
 
+      const requestId = buildRequestId();
+      const startedAtMs = Date.now();
+      const startedAt = new Date(startedAtMs).toISOString();
+      const controller = new AbortController();
+      let timeoutId: number | undefined;
+
+      activeControllerRef.current = controller;
+      abortReasonRef.current = null;
       setStatus('submitted');
-      setErrorMessage(null);
+      setFeedbackMessage(null);
+      setActiveRequest({
+        requestId,
+        startedAtMs,
+        elapsedSeconds: 0,
+        timeoutMs: REQUEST_TIMEOUT_MS,
+      });
+
+      console.info('[asset-source] request started', {
+        requestId,
+        provider: normalizedRequest.provider,
+        model: normalizedRequest.model,
+        aspectRatio: normalizedRequest.aspectRatio,
+        variationCount: normalizedRequest.variationCount,
+        promptLength: normalizedRequest.prompt.length,
+        startedAt,
+      });
+
+      timeoutId = window.setTimeout(() => {
+        if (activeControllerRef.current !== controller) {
+          return;
+        }
+
+        abortReasonRef.current = 'timeout';
+        controller.abort();
+      }, REQUEST_TIMEOUT_MS);
 
       try {
-        const result = await generateImages(providerApiKey, normalizedRequest);
+        const result = await generateImages(providerApiKey, normalizedRequest, {
+          signal: controller.signal,
+        });
+        const durationMs = Date.now() - startedAtMs;
+
+        if (controller.signal.aborted) {
+          logAbortedRequest(requestId, durationMs, abortReasonRef.current);
+          return;
+        }
+
+        console.info('[asset-source] request completed', {
+          requestId,
+          durationMs,
+          imageCount: countGeneratedImages(result),
+        });
         setRequests((current) => [result, ...current].slice(0, MAX_REQUESTS));
         setStatus('completed');
       } catch (error) {
-        console.error('Image Generator plugin', error);
+        const durationMs = Date.now() - startedAtMs;
+
+        if (controller.signal.aborted || isAbortError(error)) {
+          const reason = getAbortReason(abortReasonRef.current);
+
+          logAbortedRequest(requestId, durationMs, reason);
+
+          if (reason === 'timeout') {
+            setRequests((current) =>
+              [
+                createFailedGenerationBatch(
+                  normalizedRequest,
+                  new Date().toISOString(),
+                  REQUEST_TIMEOUT_MESSAGE,
+                ),
+                ...current,
+              ].slice(0, MAX_REQUESTS),
+            );
+            setFeedbackMessage({
+              kind: 'error',
+              message: REQUEST_TIMEOUT_MESSAGE,
+            });
+            setStatus('error');
+            return;
+          }
+
+          setFeedbackMessage({
+            kind: 'notice',
+            message: REQUEST_CANCELLED_MESSAGE,
+          });
+          setStatus('idle');
+          return;
+        }
+
         const nextErrorMessage = normalizeProviderError(provider, error);
+        const details = readProviderErrorDetails(error);
+
+        console.error('[asset-source] request failed', {
+          requestId,
+          durationMs,
+          message: nextErrorMessage,
+          status: details.status,
+          error,
+        });
 
         setRequests((current) =>
           [
@@ -277,8 +434,22 @@ const AssetBrowser = () => {
             ...current,
           ].slice(0, MAX_REQUESTS),
         );
-        setErrorMessage(nextErrorMessage);
+        setFeedbackMessage({
+          kind: 'error',
+          message: nextErrorMessage,
+        });
         setStatus('error');
+      } finally {
+        if (typeof timeoutId === 'number') {
+          window.clearTimeout(timeoutId);
+        }
+
+        if (activeControllerRef.current === controller) {
+          activeControllerRef.current = null;
+        }
+
+        abortReasonRef.current = null;
+        setActiveRequest(null);
       }
     },
     [normalizedRequest, provider, providerApiKey],
@@ -395,34 +566,52 @@ const AssetBrowser = () => {
           </div>
         </form>
 
-        {errorMessage && (
-          <div className={s.errorMessage} role="alert">
-            {errorMessage}
+        {activeRequest && (
+          <div className={s.requestStatus} role="status" aria-live="polite">
+            <div className={s.requestStatusBody}>
+              <div className={s.requestStatusText}>
+                <span className={s.requestStatusTitle}>
+                  {getActiveRequestLabel(activeRequest.elapsedSeconds)}
+                </span>
+                <span className={s.requestStatusMeta}>
+                  Elapsed {formatDuration(activeRequest.elapsedSeconds)}
+                </span>
+              </div>
+              <button
+                type="button"
+                className={s.cancelButton}
+                onClick={handleCancelRequest}
+              >
+                Cancel
+              </button>
+            </div>
+            <progress className={s.requestProgress} />
+          </div>
+        )}
+
+        {feedbackMessage && (
+          <div
+            className={
+              feedbackMessage.kind === 'error'
+                ? s.errorMessage
+                : s.noticeMessage
+            }
+            role={feedbackMessage.kind === 'error' ? 'alert' : 'status'}
+          >
+            {feedbackMessage.message}
           </div>
         )}
       </div>
 
       <div className={s.results}>
-        {isSubmitting && hasRequests && (
-          <div className={s.loadingInline} role="status">
-            <Spinner size={18} style={INLINE_SPINNER_STYLE} />
-            <span>{GENERATING_IMAGES_LABEL}</span>
-          </div>
-        )}
-
-        {!hasRequests && isSubmitting ? (
-          <div className={s.loadingState} role="status">
-            <Spinner size={22} style={INLINE_SPINNER_STYLE} />
-            <span>{GENERATING_IMAGES_LABEL}</span>
-          </div>
-        ) : !hasRequests ? (
+        {!hasRequests && !isSubmitting ? (
           <div className={s.emptyState}>
             <span className={s.emptyStateTitle}>No images yet</span>
             <span className={s.emptyStateSubtitle}>
               Describe what you&apos;d like to see, then click Generate.
             </span>
           </div>
-        ) : (
+        ) : hasRequests ? (
           requests.map((request, index) => (
             <section className={s.resultGroup} key={request.id}>
               {index === 0 && totalSelectedCount > 0 && (
@@ -449,7 +638,7 @@ const AssetBrowser = () => {
               </div>
             </section>
           ))
-        )}
+        ) : null}
       </div>
     </div>
   );
@@ -483,6 +672,56 @@ function getSubmitValidationError(
   }
 
   return null;
+}
+
+function getActiveRequestLabel(elapsedSeconds: number): string {
+  if (elapsedSeconds <= 2) {
+    return SENDING_REQUEST_LABEL;
+  }
+
+  if (elapsedSeconds <= 29) {
+    return WAITING_FOR_IMAGES_LABEL;
+  }
+
+  return STILL_WAITING_LABEL;
+}
+
+function formatDuration(seconds: number): string {
+  const safeSeconds = Math.max(0, Math.floor(seconds));
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainingSeconds = safeSeconds % 60;
+
+  if (minutes === 0) {
+    return `${remainingSeconds}s`;
+  }
+
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+}
+
+function buildRequestId(): string {
+  return `request-${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2, 8)}`;
+}
+
+function countGeneratedImages(batch: NormalizedGenerationBatch): number {
+  return batch.images.filter((image) => image.kind === 'success').length;
+}
+
+function getAbortReason(reason: AbortReason | null): AbortReason {
+  return reason === 'timeout' ? 'timeout' : 'cancel';
+}
+
+function logAbortedRequest(
+  requestId: string,
+  durationMs: number,
+  reason: AbortReason | null,
+): void {
+  console.info('[asset-source] request aborted', {
+    requestId,
+    durationMs,
+    reason: reason || 'cancel',
+  });
 }
 
 function getSelectedImages(
