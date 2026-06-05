@@ -229,6 +229,7 @@ export function generateGraph({
   colorScheme: 'light' | 'dark';
 }) {
   const graph = new Digraph('schema', false, {
+    bgcolor: 'transparent',
     fontname: 'Arial',
     fontsize: 13,
     labelloc: 't',
