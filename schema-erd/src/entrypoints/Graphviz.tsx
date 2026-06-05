@@ -72,6 +72,7 @@ export default function Graphviz({ ctx }: Props) {
       throw error;
     });
   }, []);
+  const clusterBorderColor = ctx.cssDesignTokens['--color--border'];
 
   useEffect(() => {
     if (!firstRun.current) {
@@ -110,13 +111,21 @@ export default function Graphviz({ ctx }: Props) {
         itemTypes: ctx.itemTypes,
         fields: ctx.fields,
         colorScheme: ctx.colorScheme,
+        clusterBorderColor,
       });
 
       setDot(generatedDot);
     }
 
     buildGraph().catch(throwAsync);
-  }, [loadingState, ctx.itemTypes, ctx.fields, ctx.colorScheme, throwAsync]);
+  }, [
+    loadingState,
+    ctx.itemTypes,
+    ctx.fields,
+    ctx.colorScheme,
+    clusterBorderColor,
+    throwAsync,
+  ]);
 
   useEffect(() => {
     if (!dot) {

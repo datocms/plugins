@@ -161,15 +161,58 @@ function addFieldNodeToSubgraph(
   graph.addEdge(parentEdge);
 }
 
+function colorChannelToHex(channel: string) {
+  const parsedValue = Number.parseFloat(channel);
+  const value = channel.endsWith('%')
+    ? Math.round((parsedValue / 100) * 255)
+    : Math.round(parsedValue);
+  const clampedValue = Math.min(255, Math.max(0, value));
+
+  return clampedValue.toString(16).padStart(2, '0');
+}
+
+function toGraphvizColor(color: string, fallback: string) {
+  const trimmedColor = color.trim();
+  const hexMatch = trimmedColor.match(
+    /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i,
+  );
+
+  if (hexMatch) {
+    if (hexMatch[1].length === 3) {
+      const [red, green, blue] = hexMatch[1];
+      return `#${red}${red}${green}${green}${blue}${blue}`;
+    }
+
+    return `#${hexMatch[1].slice(0, 6)}`;
+  }
+
+  const rgbMatch = trimmedColor.match(
+    /^rgba?\(\s*([0-9.]+%?)\s*(?:,\s*|\s+)([0-9.]+%?)\s*(?:,\s*|\s+)([0-9.]+%?)/i,
+  );
+
+  if (!rgbMatch) {
+    return fallback;
+  }
+
+  return `#${colorChannelToHex(rgbMatch[1])}${colorChannelToHex(
+    rgbMatch[2],
+  )}${colorChannelToHex(rgbMatch[3])}`;
+}
+
 function addItemTypeSubgraph(
   graph: Digraph,
   itemType: ItemType,
   fields: Partial<Record<string, Field>>,
   colorScheme: 'light' | 'dark',
+  clusterBorderColor: string,
 ) {
+  const normalizedClusterBorderColor = toGraphvizColor(
+    clusterBorderColor,
+    colorScheme === 'dark' ? 'grey55' : 'grey65',
+  );
   const subgraph = new Subgraph(`cluster-${itemType.id}`, {
-    style: 'filled',
-    color: colorScheme === 'dark' ? 'gray20' : 'aliceblue',
+    style: 'rounded',
+    color: normalizedClusterBorderColor,
   });
 
   subgraph.attributes.node.apply({
@@ -223,10 +266,12 @@ export function generateGraph({
   itemTypes,
   fields,
   colorScheme,
+  clusterBorderColor,
 }: {
   itemTypes: Partial<Record<string, ItemType>>;
   fields: Partial<Record<string, Field>>;
   colorScheme: 'light' | 'dark';
+  clusterBorderColor: string;
 }) {
   const graph = new Digraph('schema', false, {
     bgcolor: 'transparent',
@@ -242,7 +287,13 @@ export function generateGraph({
   buildGraphDefaults(graph, colorScheme);
 
   for (const itemType of allEntities(itemTypes)) {
-    addItemTypeSubgraph(graph, itemType, fields, colorScheme);
+    addItemTypeSubgraph(
+      graph,
+      itemType,
+      fields,
+      colorScheme,
+      clusterBorderColor,
+    );
   }
 
   return toDot(graph);
