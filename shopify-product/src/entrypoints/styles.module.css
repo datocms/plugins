@@ -1,4 +1,4 @@
 .error {
-  color: var(--alert-color);
+  color: var(--color--danger-soft--ink);
   margin-bottom: var(--spacing-m);
 }

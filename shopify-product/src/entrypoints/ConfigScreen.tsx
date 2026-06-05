@@ -4,6 +4,7 @@ import {
   Canvas,
   FieldGroup,
   Form,
+  Section,
   SwitchField,
   TextField,
 } from 'datocms-react-ui';
@@ -70,9 +71,21 @@ export default function ConfigScreen({ ctx }: Props) {
             {submitErrors?.tupleFailing && (
               <div className={s.error}>{submitErrors.tupleFailing}</div>
             )}
-            <FieldGroup>
-              {!values.useDemoStore && (
-                <>
+            <Section title="Credentials">
+              <FieldGroup>
+                <Field name="useDemoStore">
+                  {({ input }) => (
+                    <SwitchField
+                      id="useDemoStore"
+                      name={input.name}
+                      label="Use demo store?"
+                      hint="Use mock products from the DatoCMS demo Shopify store."
+                      value={Boolean(input.value)}
+                      onChange={input.onChange}
+                    />
+                  )}
+                </Field>
+                {!values.useDemoStore && (
                   <Field name="shopifyDomain">
                     {({ input, meta: { error } }) => (
                       <TextField
@@ -91,7 +104,8 @@ export default function ConfigScreen({ ctx }: Props) {
                         {...input}
                       />
                     )}
-                  </Field>
+                  </Field>)}
+                {!values.useDemoStore && (
                   <Field name="storefrontAccessToken">
                     {({ input, meta: { error } }) => (
                       <TextField
@@ -119,8 +133,10 @@ export default function ConfigScreen({ ctx }: Props) {
                       />
                     )}
                   </Field>
-                </>
-              )}
+                )}
+              </FieldGroup>
+            </Section>
+            <Section title="Auto-apply to fields">
               <Field name="autoApplyToFieldsWithApiKey">
                 {({ input, meta: { error } }) => (
                   <TextField
@@ -134,19 +150,7 @@ export default function ConfigScreen({ ctx }: Props) {
                   />
                 )}
               </Field>
-              <Field name="useDemoStore">
-                {({ input }) => (
-                  <SwitchField
-                    id="useDemoStore"
-                    name={input.name}
-                    label="Use demo store"
-                    hint="Use mock products from the DatoCMS demo Shopify store."
-                    value={Boolean(input.value)}
-                    onChange={input.onChange}
-                  />
-                )}
-              </Field>
-            </FieldGroup>
+            </Section>
             <Button
               type="submit"
               fullWidth
