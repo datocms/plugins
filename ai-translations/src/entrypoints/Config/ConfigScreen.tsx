@@ -21,7 +21,7 @@ import {
   Spinner,
   SwitchField,
 } from 'datocms-react-ui';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactTextareaAutosize from 'react-textarea-autosize';
 import { defaultPrompt } from '../../prompts/DefaultPrompt';
 import { listRelevantAnthropicModels } from '../../utils/translation/AnthropicModels';
@@ -676,8 +676,12 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
 
   // Performance concurrency is now fully automatic; no user setting.
 
-  // A loading state to indicate asynchronous operations (like saving or model fetching)
+  // Save operation state
   const [isLoading, setIsLoading] = useState(false);
+  // Model option fetch state
+  const [isModelListLoading, setIsModelListLoading] = useState(false);
+  const modelListRequestId = useRef(0);
+  const latestGptModel = useRef(gptModel);
 
   // Holds all possible GPT models fetched from the OpenAI API
   const [listOfModels, setListOfModels] = useState<string[]>([
@@ -705,6 +709,10 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
    */
 
   useEffect(() => {
+    latestGptModel.current = gptModel;
+  }, [gptModel]);
+
+  useEffect(() => {
     if (vendor !== 'openai' || !apiKey) return;
     for (const itemTypeID in ctx.itemTypes) {
       loadFieldsForItemType(itemTypeID, ctx, setListOfFields);
@@ -712,19 +720,45 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   }, [ctx, apiKey, vendor]);
 
   useEffect(() => {
-    if (vendor !== 'openai') return;
-    if (apiKey) {
-      fetchAvailableModels(
-        apiKey,
-        setListOfModels,
-        setGptModel,
-        gptModel,
-      ).catch(console.error);
-    } else {
+    modelListRequestId.current += 1;
+    const requestId = modelListRequestId.current;
+
+    if (vendor !== 'openai') {
+      setIsModelListLoading(false);
+      return;
+    }
+
+    if (!apiKey) {
+      setIsModelListLoading(false);
       setListOfModels(['Insert a valid OpenAI API Key']);
       setGptModel('None');
+      return;
     }
-  }, [apiKey, vendor, gptModel, setGptModel]);
+
+    setIsModelListLoading(true);
+    setListOfModels(['Loading models...']);
+
+    fetchAvailableModels(
+      apiKey,
+      (models) => {
+        if (modelListRequestId.current === requestId) {
+          setListOfModels(models);
+        }
+      },
+      (model) => {
+        if (modelListRequestId.current === requestId) {
+          setGptModel(model);
+        }
+      },
+      latestGptModel.current,
+    )
+      .catch(console.error)
+      .finally(() => {
+        if (modelListRequestId.current === requestId) {
+          setIsModelListLoading(false);
+        }
+      });
+  }, [apiKey, vendor, setGptModel]);
 
   // Load Gemini models dynamically when Google vendor + key
   useEffect(() => {
@@ -908,6 +942,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
             gptModel={gptModel}
             setGptModel={setGptModel}
             listOfModels={listOfModels}
+            isModelListLoading={isModelListLoading}
           />
         ) : vendor === 'google' ? (
           <GeminiConfig

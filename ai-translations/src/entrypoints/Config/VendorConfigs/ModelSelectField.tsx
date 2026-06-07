@@ -14,6 +14,7 @@ export interface ModelSelectFieldProps {
   onChange: (value: string) => void;
   models: string[];
   hint?: string;
+  isLoading?: boolean;
 }
 
 export default function ModelSelectField({
@@ -23,6 +24,7 @@ export default function ModelSelectField({
   onChange,
   models,
   hint,
+  isLoading = false,
 }: ModelSelectFieldProps) {
   const options = useMemo(
     () => models.map((m) => ({ label: m, value: m })),
@@ -36,6 +38,10 @@ export default function ModelSelectField({
     }
   };
 
+  const selectedValue = isLoading
+    ? { label: 'Loading models...', value: 'Loading models...' }
+    : { label: value, value };
+
   return (
     <SelectField
       name={id}
@@ -43,8 +49,13 @@ export default function ModelSelectField({
       label={label}
       required
       hint={hint}
-      value={{ label: value, value }}
-      selectInputProps={{ options }}
+      placeholder={isLoading ? 'Loading models...' : undefined}
+      value={selectedValue}
+      selectInputProps={{
+        isDisabled: isLoading,
+        isLoading,
+        options,
+      }}
       onChange={handleChange}
     />
   );

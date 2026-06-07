@@ -24,6 +24,7 @@ export interface OpenAIConfigProps {
   gptModel: string;
   setGptModel: (value: string) => void;
   listOfModels: string[];
+  isModelListLoading: boolean;
 }
 
 export default function OpenAIConfig({
@@ -32,6 +33,7 @@ export default function OpenAIConfig({
   gptModel,
   setGptModel,
   listOfModels,
+  isModelListLoading,
 }: OpenAIConfigProps) {
   return (
     <FieldGroup>
@@ -51,6 +53,7 @@ export default function OpenAIConfig({
         value={gptModel}
         onChange={setGptModel}
         models={listOfModels}
+        isLoading={isModelListLoading}
       />
     </FieldGroup>
   );
