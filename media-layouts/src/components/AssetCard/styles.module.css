@@ -12,7 +12,7 @@
 }
 
 .card:hover {
-  border-color: var(--color--focus--border);
+  border-color: var(--color--border-hover);
   box-shadow: var(--shadow--raised);
 }
 
@@ -107,7 +107,7 @@
 }
 
 .controlButton:hover:not(:disabled) {
-  border-color: var(--color--focus--border);
+  border-color: var(--color--border-hover);
   background: var(--color--surface-muted);
 }
 
@@ -199,7 +199,7 @@
 }
 
 .cssClassInput:hover:not(:disabled) {
-  border-color: var(--color--focus--border);
+  border-color: var(--color--border-hover);
 }
 
 .cssClassInput:focus {
@@ -233,7 +233,7 @@
 }
 
 .lazyToggle:hover {
-  border-color: var(--color--focus--border);
+  border-color: var(--color--border-hover);
 }
 
 .lazyToggle input {
@@ -315,7 +315,7 @@
 
 .menuButton:hover {
   background: var(--color--surface-muted);
-  border-color: var(--color--focus--border);
+  border-color: var(--color--border-hover);
   color: var(--color--ink);
 }
 

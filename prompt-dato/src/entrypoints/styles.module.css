@@ -7,7 +7,6 @@
   --gap: 16px;
   --fs-body: 13.5px;
   --lh-body: 1.55;
-  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
 
   color: var(--color--ink);
   font-family: inherit;
@@ -139,8 +138,8 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  transition: background 0.15s var(--ease), border-color 0.15s var(--ease),
-    opacity 0.15s var(--ease);
+  transition: background 0.15s var(--material-ease), border-color 0.15s var(--material-ease),
+    opacity 0.15s var(--material-ease);
 }
 
 .newChatButton:hover:not(:disabled) {
@@ -175,8 +174,8 @@
   font-weight: 500;
   white-space: nowrap;
   line-height: 1;
-  transition: background 0.15s var(--ease), border-color 0.15s var(--ease),
-    color 0.15s var(--ease), opacity 0.15s var(--ease);
+  transition: background 0.15s var(--material-ease), border-color 0.15s var(--material-ease),
+    color 0.15s var(--material-ease), opacity 0.15s var(--material-ease);
 }
 
 .clearChatsButton:hover:not(:disabled) {
@@ -232,7 +231,7 @@
   align-items: stretch;
   border-bottom: 1px solid var(--color--border);
   background: var(--color--surface);
-  transition: background 0.15s var(--ease);
+  transition: background 0.15s var(--material-ease);
 }
 
 .historyRow:last-child {
@@ -301,8 +300,8 @@
   border-radius: var(--radius-sm);
   color: var(--color--ink-subtle);
   opacity: 0.68;
-  transition: background 0.15s var(--ease), color 0.15s var(--ease),
-    opacity 0.15s var(--ease);
+  transition: background 0.15s var(--material-ease), color 0.15s var(--material-ease),
+    opacity 0.15s var(--material-ease);
 }
 
 .historyDelete:focus-visible {
@@ -353,8 +352,8 @@
   gap: 4px;
   font-size: 12.5px;
   font-weight: 500;
-  transition: background 0.15s var(--ease), border-color 0.15s var(--ease),
-    color 0.15s var(--ease), opacity 0.15s var(--ease);
+  transition: background 0.15s var(--material-ease), border-color 0.15s var(--material-ease),
+    color 0.15s var(--material-ease), opacity 0.15s var(--material-ease);
 }
 
 .chatBackBtn:hover:not(:disabled) {
@@ -434,7 +433,7 @@
   color: var(--color--ink);
   max-width: 200px;
   min-width: 0;
-  animation: scopeIn 0.18s var(--ease);
+  animation: scopeIn 0.18s var(--material-ease);
 }
 
 .contextPill svg {
@@ -453,9 +452,9 @@
 }
 
 .scopePill {
-  background: var(--color--primary-soft--surface);
-  border-color: var(--color--primary-soft--border);
-  color: var(--color--primary-soft--ink);
+  background: var(--color--selected--surface);
+  border-color: var(--color--selected--border);
+  color: var(--color--selected--ink);
   padding-right: 4px;
 }
 
@@ -471,17 +470,17 @@
   border-radius: 3px;
   display: inline-grid;
   place-items: center;
-  color: var(--color--primary-soft--ink);
+  color: var(--color--selected--ink);
   opacity: 0.7;
   background: transparent;
   border: 0;
   padding: 0;
   cursor: pointer;
-  transition: background 0.12s var(--ease), opacity 0.12s var(--ease);
+  transition: background 0.12s var(--material-ease), opacity 0.12s var(--material-ease);
 }
 
 .scopePill button:hover {
-  background: var(--color--primary-soft--surface-hover);
+  background: var(--color--selected--surface-hover);
   opacity: 1;
 }
 
@@ -503,8 +502,8 @@
 }
 
 .toolBtnPressed {
-  background: var(--color--primary-soft--surface);
-  color: var(--color--primary-soft--ink);
+  background: var(--color--selected--surface);
+  color: var(--color--selected--ink);
 }
 
 /* ===== Messages list ===== */
@@ -536,7 +535,7 @@
   align-items: flex-start;
   gap: 14px;
   padding: 8px 4px;
-  animation: fadeIn 0.3s var(--ease);
+  animation: fadeIn 0.3s var(--material-ease);
 }
 
 .emptyHead {
@@ -548,7 +547,7 @@
 
 .wave {
   display: inline-block;
-  animation: wave 1.8s var(--ease) infinite;
+  animation: wave 1.8s var(--material-ease) infinite;
   transform-origin: 70% 70%;
 }
 
@@ -601,7 +600,7 @@
   font-size: 12.5px;
   color: var(--color--ink);
   line-height: 1.45;
-  transition: border-color 0.15s var(--ease), background 0.15s var(--ease);
+  transition: border-color 0.15s var(--material-ease), background 0.15s var(--material-ease);
   cursor: pointer;
 }
 
@@ -656,7 +655,7 @@
 
 .skelIcon {
   background: var(--color--surface-muted);
-  animation: shimmer 1.4s var(--ease) infinite;
+  animation: shimmer 1.4s var(--material-ease) infinite;
 }
 
 .skelLines {
@@ -672,7 +671,7 @@
   height: 9px;
   border-radius: 2px;
   background: var(--color--surface-muted);
-  animation: shimmer 1.4s var(--ease) infinite;
+  animation: shimmer 1.4s var(--material-ease) infinite;
 }
 
 .skelLineTitle {
@@ -709,12 +708,12 @@
   height: 32px;
   padding: 0 14px;
   border-radius: var(--radius-sm);
-  background: var(--color--ink);
-  color: var(--color--surface);
+  background: var(--color--primary--surface);
+  color: var(--color--primary--ink);
   font-size: 13px;
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.15s var(--ease);
+  transition: background 0.15s var(--material-ease);
 }
 
 .primaryAction:hover {
@@ -726,7 +725,7 @@
   display: flex;
   flex-direction: column;
   gap: 4px;
-  animation: msgIn 0.3s var(--ease) both;
+  animation: msgIn 0.3s var(--material-ease) both;
   max-width: 100%;
 }
 
@@ -845,7 +844,7 @@
 }
 
 .markdownBubble code {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--monospaced-font-family);
   background: var(--color--code--surface);
   color: var(--color--code--ink);
   padding: 1px 5px;
@@ -872,13 +871,13 @@
 }
 
 .markdownBubble a {
-  color: var(--color--primary-soft--ink);
+  color: var(--color--ink-link);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
 
 .markdownBubble a:hover {
-  color: var(--color--ink-primary);
+  color: var(--color--ink-hover);
 }
 
 .markdownBubble blockquote {
@@ -936,7 +935,7 @@
   border-radius: 50%;
   background: var(--color--primary--surface);
   opacity: 0.42;
-  animation: activityBlink 1.8s var(--ease) infinite;
+  animation: activityBlink 1.8s var(--material-ease) infinite;
 }
 
 .processTrace {
@@ -957,12 +956,12 @@
   align-items: center;
   gap: 7px;
   text-align: left;
-  transition: border-color 0.15s var(--ease), background 0.15s var(--ease);
+  transition: border-color 0.15s var(--material-ease), background 0.15s var(--material-ease);
 }
 
 .processToggleRunning {
-  border-color: var(--color--primary-soft--border);
-  background: var(--color--primary-soft--surface);
+  border-color: var(--color--selected--border);
+  background: var(--color--selected--surface);
 }
 
 .processToggle:hover {
@@ -993,7 +992,7 @@
 }
 
 .processSummaryRunning {
-  animation: activityTextBlink 2.4s var(--ease) infinite;
+  animation: activityTextBlink 2.4s var(--material-ease) infinite;
 }
 
 .processStatus {
@@ -1002,7 +1001,7 @@
 }
 
 .processStatusRunning {
-  animation: activityTextBlink 1.8s var(--ease) infinite;
+  animation: activityTextBlink 1.8s var(--material-ease) infinite;
 }
 
 .processPanel {
@@ -1049,7 +1048,7 @@
 }
 
 .processEntryCode {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--monospaced-font-family);
   font-size: 11px;
   color: var(--color--ink-subtle);
   background: var(--color--surface-muted);
@@ -1104,7 +1103,7 @@
   border-radius: var(--radius);
   background: var(--color--surface);
   padding: 8px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--monospaced-font-family);
   font-size: 11px;
   line-height: 1.45;
   color: var(--color--ink);
@@ -1130,7 +1129,7 @@
   height: 5px;
   border-radius: 50%;
   background: var(--color--ink-subtle);
-  animation: dot 1.2s var(--ease) infinite;
+  animation: dot 1.2s var(--material-ease) infinite;
 }
 
 .thinkingDots span:nth-child(2) {
@@ -1190,8 +1189,8 @@
   border-radius: var(--radius-sm);
   gap: 4px;
   animation: none;
-  transition: background 0.12s var(--ease), border-color 0.12s var(--ease),
-    color 0.12s var(--ease);
+  transition: background 0.12s var(--material-ease), border-color 0.12s var(--material-ease),
+    color 0.12s var(--material-ease);
 }
 
 .fieldMentionPill:hover {
@@ -1260,7 +1259,7 @@
 }
 
 .proposalMeta code {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--monospaced-font-family);
   font-size: 11px;
   background: var(--color--surface-muted);
   padding: 1px 5px;
@@ -1292,12 +1291,12 @@
   border-top: 1px solid var(--color--border);
   background: var(--color--surface);
   padding: 10px 14px 12px;
-  animation: fadeIn 0.2s var(--ease);
+  animation: fadeIn 0.2s var(--material-ease);
 }
 
 .proposalArgs {
   margin: 0;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--monospaced-font-family);
   font-size: 11.5px;
   line-height: 1.55;
   color: var(--color--ink);
@@ -1357,9 +1356,9 @@
   background: var(--color--surface);
   color: var(--color--ink);
   cursor: pointer;
-  transition: background 0.15s var(--ease), color 0.15s var(--ease),
-    border-color 0.15s var(--ease), box-shadow 0.15s var(--ease),
-    opacity 0.15s var(--ease);
+  transition: background 0.15s var(--material-ease), color 0.15s var(--material-ease),
+    border-color 0.15s var(--material-ease), box-shadow 0.15s var(--material-ease),
+    opacity 0.15s var(--material-ease);
 }
 
 .proposalBtn:hover:not(:disabled) {
@@ -1447,7 +1446,7 @@
 }
 
 .errorDetail {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--monospaced-font-family);
   font-size: 11.5px;
   color: var(--color--danger-soft--ink);
   word-break: break-word;
@@ -1487,13 +1486,13 @@
   border: 1px solid var(--color--border-hover);
   border-radius: var(--radius);
   background: var(--color--surface);
-  transition: border-color 0.15s var(--ease), box-shadow 0.15s var(--ease);
+  transition: border-color 0.15s var(--material-ease), box-shadow 0.15s var(--material-ease);
   display: flex;
   flex-direction: column;
 }
 
 .composer:focus-within {
-  border-color: var(--color--primary-soft--border);
+  border-color: var(--color--focus--border);
   box-shadow: 0 0 0 3px var(--color--focus--outline);
 }
 
@@ -1514,7 +1513,7 @@
   color: var(--color--ink);
   padding: 3px 7px;
   border-radius: var(--radius-sm);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--monospaced-font-family);
   font-size: 10.5px;
 }
 
@@ -1573,7 +1572,7 @@
   align-items: center;
   gap: 5px;
   font-size: 11.5px;
-  transition: background 0.15s var(--ease), color 0.15s var(--ease);
+  transition: background 0.15s var(--material-ease), color 0.15s var(--material-ease);
 }
 
 .toolBtn:hover {
@@ -1590,11 +1589,11 @@
   width: 30px;
   height: 30px;
   border-radius: var(--radius-sm);
-  background: var(--color--ink);
-  color: var(--color--surface);
+  background: var(--color--primary--surface);
+  color: var(--color--primary--ink);
   display: grid;
   place-items: center;
-  transition: background 0.15s var(--ease), opacity 0.15s var(--ease);
+  transition: background 0.15s var(--material-ease), opacity 0.15s var(--material-ease);
 }
 
 .sendBtn:disabled {
@@ -1629,7 +1628,7 @@
   border-radius: 50%;
   background: currentColor;
   opacity: 0.35;
-  animation: sendDotBlink 1.35s var(--ease) infinite;
+  animation: sendDotBlink 1.35s var(--material-ease) infinite;
 }
 
 .sendProgress span:nth-child(2) {
@@ -1674,8 +1673,8 @@
   font-size: 11.5px;
   font-weight: 500;
   letter-spacing: 0.01em;
-  transition: background 0.15s var(--ease), color 0.15s var(--ease),
-    border-color 0.15s var(--ease);
+  transition: background 0.15s var(--material-ease), color 0.15s var(--material-ease),
+    border-color 0.15s var(--material-ease);
 }
 
 .autoApproveToggle:hover:not(:disabled) {
@@ -1699,7 +1698,7 @@
   border-color: var(--color--danger-soft--border);
   color: var(--color--danger-soft--ink);
   font-weight: 600;
-  box-shadow: 0 0 0 2px var(--color--danger-soft--surface);
+  box-shadow: 0 0 0 2px var(--color--danger-soft--outline);
 }
 
 .autoApproveToggleActive:hover:not(:disabled) {
@@ -1721,7 +1720,7 @@
   padding: 4px;
   display: none;
   z-index: 30;
-  animation: menuIn 0.16s var(--ease);
+  animation: menuIn 0.16s var(--material-ease);
 }
 
 .mentionPop.open {
@@ -1749,7 +1748,7 @@
   background: transparent;
   border: 0;
   cursor: pointer;
-  transition: background 0.12s var(--ease);
+  transition: background 0.12s var(--material-ease);
 }
 
 .mopt:hover {
@@ -1821,12 +1820,12 @@
 /* ===== Activity timeline refinements ===== */
 .activityPulse {
   opacity: 0.55;
-  animation: activityBlink 1.6s var(--ease) infinite;
+  animation: activityBlink 1.6s var(--material-ease) infinite;
 }
 
 .processToggleRunning {
-  border-color: var(--color--primary-soft--border);
-  background: var(--color--primary-soft--surface);
+  border-color: var(--color--selected--border);
+  background: var(--color--selected--surface);
 }
 
 .processToggle {
@@ -1846,7 +1845,7 @@
   height: 1px;
   background: var(--color--primary--surface);
   opacity: 0.32;
-  animation: processPanelSweep 1.8s var(--ease) infinite;
+  animation: processPanelSweep 1.8s var(--material-ease) infinite;
 }
 
 .processEntries {
@@ -1936,7 +1935,7 @@
 }
 
 .sendProgress span {
-  animation: sendDotBlink 1.35s var(--ease) infinite;
+  animation: sendDotBlink 1.35s var(--material-ease) infinite;
   opacity: 0.35;
 }
 
@@ -1988,7 +1987,7 @@
 }
 
 .proposalToolLine code {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--monospaced-font-family);
   font-size: 11px;
   background: var(--color--surface-muted);
   padding: 1px 5px;
@@ -2044,7 +2043,7 @@
   border-radius: var(--radius);
   background: var(--color--surface);
   padding: 8px;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--monospaced-font-family);
   font-size: 11px;
   line-height: 1.45;
   color: var(--color--ink);

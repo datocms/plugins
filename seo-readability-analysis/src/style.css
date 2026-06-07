@@ -118,7 +118,7 @@
 }
 
 .Plugin__line-with-decoration a {
-  color: var(--color--ink);
+  color: var(--color--ink-link);
 }
 
 .Plugin__line-with-decoration__decoration {

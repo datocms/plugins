@@ -373,7 +373,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
                     padding: 'var(--spacing-l)',
                     color: 'var(--color--ink-subtle)',
                     backgroundColor: 'var(--color--surface-muted)',
-                    borderRadius: 'var(--border-radius)',
+                    borderRadius: '4px',
                   }}
                 >
                   No fields configured yet. Add a configuration above to get
@@ -390,15 +390,15 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
                         alignItems: 'center',
                         padding: 'var(--spacing-s)',
                         backgroundColor: 'var(--color--surface-muted)',
-                        borderRadius: 'var(--border-radius)',
-                        marginBottom: 'var(--spacing-xs)',
+                        borderRadius: '4px',
+                        marginBottom: 'var(--spacing-s)',
                       }}
                     >
                       <div>
                         <strong>
                           {config.modelLabel || getModelName(config.modelId)}
                         </strong>
-                        <span style={{ margin: '0 var(--spacing-xs)' }}>→</span>
+                        <span style={{ margin: '0 var(--spacing-s)' }}>→</span>
                         <span>
                           {config.fieldLabel || `Field ID: ${config.fieldId}`}
                         </span>
@@ -434,7 +434,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
                 style={{
                   backgroundColor: 'var(--color--surface-muted)',
                   padding: 'var(--spacing-m)',
-                  borderRadius: 'var(--border-radius)',
+                  borderRadius: '4px',
                   marginBottom: 'var(--spacing-m)',
                 }}
               >

@@ -19,7 +19,7 @@
 /* Larger variant with extra padding and font size */
 .editorLarge {
   padding: 14px 16px;
-  font-size: var(--text-base, 15px);
+  font-size: var(--font-size-m);
 }
 
 /* ProseMirror specific styles */

@@ -60,14 +60,6 @@
   --space-12: 72px;
 
   /* ===========================================
-   * FONT SIZE TOKENS
-   * =========================================== */
-
-  --font-size-xxs: 11px;
-  --font-size-xs: 13px;
-  --font-size-s: 14px;
-
-  /* ===========================================
    * BORDER RADIUS TOKENS
    * =========================================== */
 
@@ -98,15 +90,6 @@
   --avatar-sm: 20px;
   --avatar-md: 24px;
   --avatar-lg: 32px;
-
-  /* ===========================================
-   * TRANSITION TOKENS
-   * Consistent animation timing
-   * =========================================== */
-
-  --transition-fast: 0.1s ease;
-  --transition-normal: 0.2s ease;
-  --transition-slow: 0.3s ease;
 
   /* ============================================================================
    * Z-INDEX SCALE

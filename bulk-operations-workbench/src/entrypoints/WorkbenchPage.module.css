@@ -14,7 +14,7 @@
 
 .stepper {
   display: flex;
-  gap: var(--spacing-xs, 4px);
+  gap: var(--spacing-s);
   border-bottom: 1px solid var(--color--border);
   padding-bottom: 2px;
   overflow-x: auto;
@@ -61,7 +61,7 @@
   height: 24px;
   border-radius: 999px;
   border: 1px solid var(--color--border);
-  background: var(--base-background-color);
+  background: var(--color--surface);
   font-size: 0.8rem;
   font-weight: 600;
   flex-shrink: 0;
@@ -171,7 +171,7 @@
 .inlineSection {
   border: 1px solid var(--color--border);
   padding: var(--spacing-m);
-  background: var(--base-background-color);
+  background: var(--color--surface);
   display: flex;
   flex-direction: row;
   align-items: center;
@@ -270,7 +270,7 @@
 
 .tableCard {
   border: 1px solid var(--color--border);
-  background: var(--base-background-color);
+  background: var(--color--surface);
 }
 
 .tableScroll {
@@ -314,11 +314,11 @@
   border-radius: 6px;
   font-size: 0.8rem;
   color: var(--color--ink);
-  background: var(--base-background-color);
+  background: var(--color--surface);
 }
 
 .mono {
-  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-family: var(--monospaced-font-family);
   font-size: 0.85rem;
 }
 
@@ -399,7 +399,7 @@
 }
 
 .matchingKey {
-  font-family: ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace;
+  font-family: var(--monospaced-font-family);
   font-size: 0.8rem;
   color: var(--color--ink-subtle);
   flex-shrink: 0;

@@ -8,8 +8,7 @@
   max-width: 800px;
   margin: 0 auto;
   padding: var(--spacing-xl) var(--spacing-l);
-  font-family:
-    colfax-web, "Roboto", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-family: var(--base-font-family);
 }
 
 .header {
@@ -35,7 +34,7 @@
 .card {
   background: var(--color--surface);
   border: 1px solid var(--color--border);
-  border-radius: var(--border-radius-m);
+  border-radius: 4px;
   padding: var(--spacing-l);
   margin-bottom: var(--spacing-l);
   box-shadow: var(--shadow--raised);
@@ -61,7 +60,7 @@
 .percentageText {
   color: var(--color--ink-subtle);
   font-size: 0.9rem;
-  font-family: var(--font-family-mono);
+  font-family: var(--monospaced-font-family);
   margin-top: -8px; /* Pull closer to the text above */
 }
 
@@ -69,7 +68,7 @@
   text-align: center;
   padding: var(--spacing-xl);
   background: var(--color--surface-muted);
-  border-radius: var(--border-radius-m);
+  border-radius: 4px;
   color: var(--color--ink-subtle);
 }
 
@@ -92,7 +91,7 @@
 .analysisItem {
   background: var(--color--surface-muted);
   padding: var(--spacing-m);
-  border-radius: var(--border-radius-m);
+  border-radius: 4px;
   display: flex;
   flex-direction: column;
 }
@@ -116,7 +115,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: var(--spacing-xs);
+  margin-bottom: var(--spacing-s);
   gap: var(--spacing-m);
 }
 
@@ -141,7 +140,7 @@
 }
 
 .statValueCode {
-  font-family: var(--font-family-mono);
+  font-family: var(--monospaced-font-family);
   font-size: 0.85rem;
   color: var(--color--ink);
   background: var(--color--surface-muted);
@@ -165,7 +164,7 @@
 
 .warningIcon {
   display: inline-flex;
-  margin-left: var(--spacing-xs);
+  margin-left: var(--spacing-s);
   vertical-align: middle;
 }
 
@@ -174,7 +173,7 @@
   font-style: italic;
   padding: var(--spacing-m);
   background: var(--color--surface-muted);
-  border-radius: var(--border-radius-m);
+  border-radius: 4px;
   text-align: center;
   margin: 0;
 }
@@ -184,7 +183,7 @@
   padding: 0;
   margin: 0;
   border: 1px solid var(--color--border);
-  border-radius: var(--border-radius-m);
+  border-radius: 4px;
   overflow: hidden;
 }
 
@@ -249,7 +248,7 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  font-family: var(--font-family-mono);
+  font-family: var(--monospaced-font-family);
 }
 
 .fieldMeta {
@@ -285,7 +284,7 @@
   margin-top: var(--spacing-l);
   padding: var(--spacing-m);
   background: var(--color--surface-muted);
-  border-radius: var(--border-radius-m);
+  border-radius: 4px;
   display: flex;
   flex-direction: column;
   gap: var(--spacing-m);
@@ -396,13 +395,13 @@
   justify-content: space-between;
   font-size: 0.8rem;
   color: var(--color--ink-subtle);
-  margin-bottom: var(--spacing-xs);
+  margin-bottom: var(--spacing-s);
 }
 
 .currentStep {
   font-weight: 600;
   color: var(--color--ink);
-  margin-bottom: var(--spacing-xs);
+  margin-bottom: var(--spacing-s);
 }
 
 /* Success State */
@@ -419,7 +418,7 @@
   height: 64px;
   border-radius: 50%;
   background: var(--color--success-soft--surface);
-  color: var(--positive-color);
+  color: var(--color--success-soft--ink);
   margin-bottom: var(--spacing-m);
 }
 
@@ -441,7 +440,7 @@
   justify-content: center;
   background: var(--color--surface-muted);
   padding: var(--spacing-l) var(--spacing-xl);
-  border-radius: var(--border-radius-l);
+  border-radius: 6px;
   margin-bottom: var(--spacing-xl);
 }
 
@@ -463,7 +462,7 @@
   font-weight: 700;
   color: var(--color--ink);
   line-height: 1;
-  margin-bottom: var(--spacing-xs);
+  margin-bottom: var(--spacing-s);
 }
 
 .statLabel {
@@ -482,6 +481,6 @@
   background: var(--color--surface-muted);
   padding: 2px 6px;
   border-radius: 4px;
-  font-family: var(--font-family-mono);
+  font-family: var(--monospaced-font-family);
   color: var(--color--ink);
 }

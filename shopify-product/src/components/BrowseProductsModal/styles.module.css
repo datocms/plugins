@@ -41,7 +41,7 @@
 }
 
 .product:hover {
-  border-color: var(--color--focus--border);
+  border-color: var(--color--border-hover);
 }
 
 .product__image {

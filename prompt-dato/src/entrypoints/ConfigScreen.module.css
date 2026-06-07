@@ -33,8 +33,8 @@
 }
 
 .statusDot.connected {
-  background: var(--color--success-soft--surface);
-  box-shadow: 0 0 0 3px var(--color--success-soft--surface);
+  background: var(--color--ink-success);
+  box-shadow: 0 0 0 3px var(--color--success-soft--outline);
 }
 
 .statusDot.disconnected {

@@ -9,7 +9,7 @@
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  font-family: var(--font-family);
+  font-family: var(--base-font-family);
   background: transparent;
   border: 0;
   border-radius: 0;

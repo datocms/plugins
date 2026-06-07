@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-bulk-operations-workbench",
   "homepage": "https://github.com/datocms/plugins/tree/master/bulk-operations-workbench#readme",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "author": "DatoCMS <support@datocms.com>",
   "description": "Bulk edit text-like records with preview and batched execution.",
   "keywords": [

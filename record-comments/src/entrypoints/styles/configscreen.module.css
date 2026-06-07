@@ -136,9 +136,7 @@
 }
 
 .code {
-  font-family:
-    "SF Mono", "Monaco", "Inconsolata", "Fira Mono", "Droid Sans Mono",
-    "Source Code Pro", monospace;
+  font-family: var(--monospaced-font-family);
   font-size: 0.875em;
   background: var(--color--surface-muted);
   padding: 0.2em 0.5em;
@@ -195,7 +193,7 @@
 .modelApiKey {
   font-size: 0.85rem;
   color: var(--color--ink-subtle);
-  font-family: "SF Mono", "Monaco", "Inconsolata", "Fira Mono", monospace;
+  font-family: var(--monospaced-font-family);
 }
 
 /* Progress Bar */
@@ -406,7 +404,7 @@
 .scanProgressCount {
   font-size: 0.9rem;
   color: var(--color--ink-subtle);
-  font-family: "SF Mono", "Monaco", "Inconsolata", "Fira Mono", monospace;
+  font-family: var(--monospaced-font-family);
 }
 
 .scanDetails {
@@ -433,7 +431,7 @@
   flex-shrink: 0;
   padding: 0.25rem 0.625rem;
   background: var(--color--primary--surface);
-  color: var(--color--primary-soft--surface);
+  color: var(--color--primary--ink);
   border-radius: 999px;
   font-size: 0.8rem;
   font-weight: 500;

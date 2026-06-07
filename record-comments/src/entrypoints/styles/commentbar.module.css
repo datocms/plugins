@@ -97,7 +97,7 @@
   background-color: var(--color--surface-muted);
   border: 1px solid var(--color--border);
   border-radius: var(--radius-xl);
-  transition: all var(--transition-fast);
+  transition: all 0.1s var(--material-ease);
   overflow: visible;
   box-sizing: border-box;
 }
@@ -210,7 +210,7 @@
   border: none;
   border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: all 0.1s var(--material-ease);
 }
 
 .toolbarButton:hover {
@@ -286,8 +286,8 @@
   opacity: 0;
   visibility: hidden;
   transition:
-    opacity var(--transition-fast),
-    visibility var(--transition-fast);
+    opacity 0.1s var(--material-ease),
+    visibility 0.1s var(--material-ease);
   pointer-events: none;
   z-index: var(--z-sticky);
 }
@@ -319,7 +319,7 @@
   border: none;
   border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: all 0.1s var(--material-ease);
 }
 
 .sendButton:hover {
@@ -362,12 +362,12 @@
   border: 1px solid var(--color--border);
   border-radius: var(--radius-lg);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: all 0.1s var(--material-ease);
 }
 
 .loadMoreButton:hover {
   background-color: var(--color--surface-muted);
-  border-color: var(--color--focus--border);
+  border-color: var(--color--border-hover);
 }
 
 .loadMoreButton:active {

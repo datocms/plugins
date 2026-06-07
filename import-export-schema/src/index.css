@@ -41,7 +41,7 @@ body {
     height: calc(100% - 40px);
     box-sizing: border-box;
     border-radius: 20px;
-    border: 4px dashed var(--color--focus--border);
+    border: 4px dashed var(--color--selected--border);
   }
 }
 

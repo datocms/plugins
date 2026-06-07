@@ -11,7 +11,7 @@
   gap: 0 10px;
   padding: 8px 4px;
   border-radius: var(--radius-md);
-  transition: background-color var(--transition-fast);
+  transition: background-color 0.1s var(--material-ease);
 }
 
 .commentBody:hover {
@@ -90,9 +90,9 @@
   border: 1px solid var(--color--border);
   border-radius: var(--radius-lg);
   transition:
-    background-color var(--transition-fast),
-    border-color var(--transition-fast),
-    box-shadow var(--transition-fast);
+    background-color 0.1s var(--material-ease),
+    border-color 0.1s var(--material-ease),
+    box-shadow 0.1s var(--material-ease);
   overflow: visible;
 }
 
@@ -125,8 +125,8 @@
   outline: none;
   box-sizing: border-box;
   transition:
-    border-color var(--transition-fast),
-    box-shadow var(--transition-fast);
+    border-color 0.1s var(--material-ease),
+    box-shadow 0.1s var(--material-ease);
 }
 
 .textarea:focus {
@@ -159,7 +159,7 @@
   border: 1px solid var(--color--border);
   border-radius: 12px;
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: all 0.1s var(--material-ease);
 }
 
 .reaction:hover {
@@ -210,7 +210,7 @@
   border: 1px solid var(--color--border);
   border-radius: var(--radius-lg);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: all 0.1s var(--material-ease);
   margin-left: -4px;
 }
 
@@ -263,8 +263,8 @@
   color: var(--color--ink-link);
   opacity: 0.7;
   transition:
-    transform var(--transition-normal),
-    opacity var(--transition-fast);
+    transform 0.2s var(--material-ease),
+    opacity 0.1s var(--material-ease);
   flex-shrink: 0;
 }
 
@@ -582,7 +582,7 @@
   background: transparent;
   border: none;
   cursor: pointer;
-  transition: background-color var(--transition-fast);
+  transition: background-color 0.1s var(--material-ease);
   text-align: left;
 }
 
@@ -607,7 +607,7 @@
 .mentionFieldApiKey {
   font-size: calc(var(--font-size-xxs) + 1px);
   color: var(--color--ink-subtle);
-  font-family: "SF Mono", Monaco, "Courier New", monospace;
+  font-family: var(--monospaced-font-family);
 }
 
 .mentionOptionSelected .mentionFieldApiKey {
@@ -657,7 +657,7 @@
   border: none;
   border-radius: 3px;
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: all 0.1s var(--material-ease);
   vertical-align: baseline;
 }
 
@@ -796,7 +796,7 @@
   border-radius: 3px;
   cursor: pointer;
   vertical-align: baseline;
-  transition: all var(--transition-fast);
+  transition: all 0.1s var(--material-ease);
 }
 
 .userMention:hover {
@@ -859,7 +859,7 @@
   border-radius: 3px;
   cursor: pointer;
   vertical-align: middle;
-  transition: all var(--transition-fast);
+  transition: all 0.1s var(--material-ease);
 }
 
 .assetMention:hover {
@@ -928,19 +928,19 @@
   cursor: pointer;
   font-family: inherit;
   transition:
-    border-color var(--transition-fast),
-    box-shadow var(--transition-fast);
+    border-color 0.1s var(--material-ease),
+    box-shadow 0.1s var(--material-ease);
 }
 
 .assetMentionBlock:hover {
-  border-color: var(--color--focus--border);
-  box-shadow: 0 2px 8px var(--color--primary-soft--surface);
+  border-color: var(--color--border-hover);
+  box-shadow: var(--shadow--raised);
 }
 
 .assetMentionBlock:focus {
   outline: none;
-  border-color: var(--color--ink-link);
-  box-shadow: 0 0 0 2px var(--color--primary-soft--surface);
+  border-color: var(--color--focus--border);
+  box-shadow: 0 0 0 2px var(--color--focus--outline);
 }
 
 .assetMentionBlockThumb {
@@ -1032,7 +1032,7 @@
   border-radius: 4px;
   cursor: pointer;
   vertical-align: middle;
-  transition: all var(--transition-fast);
+  transition: all 0.1s var(--material-ease);
 }
 
 .recordMention:hover {
@@ -1128,7 +1128,7 @@
   border-radius: 3px;
   cursor: pointer;
   vertical-align: baseline;
-  transition: all var(--transition-fast);
+  transition: all 0.1s var(--material-ease);
 }
 
 .modelMention:hover {
@@ -1187,8 +1187,8 @@
   outline: none;
   box-sizing: border-box;
   transition:
-    border-color var(--transition-fast),
-    box-shadow var(--transition-fast);
+    border-color 0.1s var(--material-ease),
+    box-shadow 0.1s var(--material-ease);
 }
 
 .recordModelSearchInput:focus {
@@ -1217,7 +1217,7 @@
   border: none;
   border-radius: var(--radius-md);
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: all 0.1s var(--material-ease);
 }
 
 .mentionBackButton:hover {

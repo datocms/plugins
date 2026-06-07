@@ -54,10 +54,10 @@
   gap: 0;
   max-height: 300px;
   overflow-y: auto;
-  border-radius: var(--border-radius);
+  border-radius: 4px;
   background-color: var(--color--surface-muted);
   border: 1px solid var(--color--border);
-  font-family: monospace;
+  font-family: var(--monospaced-font-family);
   padding: 0;
 }
 
@@ -108,7 +108,7 @@
 
 .card {
   background-color: var(--color--surface);
-  border-radius: var(--border-radius-m);
+  border-radius: 4px;
   padding: var(--spacing-m);
   margin-bottom: var(--spacing-m);
   box-shadow: var(--shadow--raised);
@@ -140,21 +140,21 @@
 .statsCard {
   padding: var(--spacing-m);
   background-color: var(--color--surface);
-  border-radius: var(--border-radius);
+  border-radius: 4px;
   box-shadow: var(--shadow--raised);
   transition: transform 0.2s ease-in-out;
 }
 
 .statsCard:hover {
   transform: translateY(-2px);
-  box-shadow: var(--box-shadow);
+  box-shadow: var(--shadow--lifted);
 }
 
 .statsRow {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: var(--spacing-xs) 0;
+  padding: var(--spacing-s) 0;
   border-bottom: 1px solid var(--color--border);
 }
 

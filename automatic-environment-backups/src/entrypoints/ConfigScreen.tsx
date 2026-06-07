@@ -1349,7 +1349,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     display: 'flex',
     alignItems: 'center',
     gap: 'var(--spacing-s)',
-    marginBottom: 'var(--spacing-xs)',
+    marginBottom: 'var(--spacing-s)',
   };
 
   const overviewRowContentStyle: CSSProperties = {
