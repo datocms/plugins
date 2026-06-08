@@ -221,9 +221,14 @@
 .choiceMeta,
 .selectionSummary,
 .emptyStateSubtitle,
+.requestStatusWarning,
 .requestStatusMeta {
   font-size: 13px;
   color: var(--color--ink-subtle);
+}
+
+.requestStatusWarning {
+  color: var(--color--ink-warning);
 }
 
 .requestStatusMeta {

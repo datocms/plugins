@@ -25,7 +25,7 @@
 .cellSelected {
   border-color: var(--color--selected--border);
   background: var(--color--selected--surface);
-  box-shadow: 0 0 0 2px var(--color--selected--border);
+  box-shadow: 0 0 0 3px var(--color--selected--border);
 }
 
 .cell:hover {

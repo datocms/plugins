@@ -54,16 +54,18 @@ const MISSING_PROVIDER_KEY_MESSAGE =
 const MISSING_PROVIDER_MODEL_MESSAGE =
   'Select a model in plugin settings before generating images.';
 const MISSING_PROMPT_MESSAGE = 'Enter a prompt before generating images.';
-const REQUEST_TIMEOUT_MINUTES = 6;
+const REQUEST_TIMEOUT_MINUTES = 10;
 const REQUEST_TIMEOUT_MS = REQUEST_TIMEOUT_MINUTES * 60_000;
 const REQUEST_TIMEOUT_MESSAGE =
   `The request timed out after ${REQUEST_TIMEOUT_MINUTES} minutes. Try again with fewer images or a smaller size.`;
+const GENERATION_DURATION_WARNING =
+  'Images can take 5-10 minutes to generate.';
 const REQUEST_CANCELLED_MESSAGE = 'Request cancelled.';
 const GENERATING_LABEL = 'Generating…';
 const SENDING_REQUEST_LABEL = 'Sending request…';
 const WAITING_FOR_IMAGES_LABEL = 'Waiting for images…';
 const STILL_WAITING_LABEL =
-  'Still waiting. Large requests can take a minute or two.';
+  'Still waiting. Large requests can take several minutes.';
 const INLINE_SPINNER_STYLE: CSSProperties = {
   marginLeft: 0,
   transform: 'none',
@@ -621,6 +623,9 @@ const AssetBrowser = () => {
               <div className={s.requestStatusText}>
                 <span className={s.requestStatusTitle}>
                   {getActiveRequestLabel(activeRequest.elapsedSeconds)}
+                </span>
+                <span className={s.requestStatusWarning}>
+                  {GENERATION_DURATION_WARNING}
                 </span>
                 <span className={s.requestStatusMeta}>
                   <Spinner size={13} style={INLINE_SPINNER_STYLE} />
