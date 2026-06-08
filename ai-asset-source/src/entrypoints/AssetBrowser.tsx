@@ -54,9 +54,10 @@ const MISSING_PROVIDER_KEY_MESSAGE =
 const MISSING_PROVIDER_MODEL_MESSAGE =
   'Select a model in plugin settings before generating images.';
 const MISSING_PROMPT_MESSAGE = 'Enter a prompt before generating images.';
-const REQUEST_TIMEOUT_MS = 180_000;
+const REQUEST_TIMEOUT_MINUTES = 6;
+const REQUEST_TIMEOUT_MS = REQUEST_TIMEOUT_MINUTES * 60_000;
 const REQUEST_TIMEOUT_MESSAGE =
-  'The request timed out after 3 minutes. Try again with fewer images or a smaller size.';
+  `The request timed out after ${REQUEST_TIMEOUT_MINUTES} minutes. Try again with fewer images or a smaller size.`;
 const REQUEST_CANCELLED_MESSAGE = 'Request cancelled.';
 const GENERATING_LABEL = 'Generating…';
 const SENDING_REQUEST_LABEL = 'Sending request…';
@@ -99,11 +100,28 @@ type ActiveGenerationRequest = {
   timeoutMs: number;
 };
 
+type RequestLogContext = {
+  requestId: string;
+  provider: ImageOperationRequest['provider'];
+  model: string;
+  aspectRatio: ImageOperationRequest['aspectRatio'];
+  imageSize: ImageOperationRequest['imageSize'];
+  variationCount: ImageOperationRequest['variationCount'];
+  outputQuality?: ImageOperationRequest['outputQuality'];
+  outputFormat?: ImageOperationRequest['outputFormat'];
+  outputCompression?: ImageOperationRequest['outputCompression'];
+  promptLength: number;
+  timeoutMs: number;
+  startedAt: string;
+};
+
 const AssetBrowser = () => {
   const ctx = useCtx<RenderAssetSourceCtx>();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const activeControllerRef = useRef<AbortController | null>(null);
   const abortReasonRef = useRef<AbortReason | null>(null);
+  const activeRequestLogContextRef = useRef<RequestLogContext | null>(null);
+  const lastWaitingLogSecondRef = useRef<number | null>(null);
   const parameters = useMemo(
     () =>
       normalizeConfigParameters(
@@ -201,6 +219,29 @@ const AssetBrowser = () => {
       window.clearInterval(intervalId);
     };
   }, [activeRequest?.requestId]);
+
+  useEffect(() => {
+    if (
+      !activeRequest ||
+      activeRequest.elapsedSeconds < 60 ||
+      activeRequest.elapsedSeconds % 60 !== 0 ||
+      lastWaitingLogSecondRef.current === activeRequest.elapsedSeconds
+    ) {
+      return;
+    }
+
+    const logContext = activeRequestLogContextRef.current;
+
+    if (!logContext) {
+      return;
+    }
+
+    lastWaitingLogSecondRef.current = activeRequest.elapsedSeconds;
+    console.info(
+      '[asset-source] request still waiting',
+      withRequestDuration(logContext, activeRequest.elapsedSeconds * 1000),
+    );
+  }, [activeRequest]);
 
   useEffect(() => {
     if (!capabilities.supportsVariationCount && variationCount !== 1) {
@@ -326,12 +367,18 @@ const AssetBrowser = () => {
 
       const requestId = buildRequestId();
       const startedAtMs = Date.now();
-      const startedAt = new Date(startedAtMs).toISOString();
       const controller = new AbortController();
       let timeoutId: number | undefined;
+      const requestLogContext = buildRequestLogContext(
+        requestId,
+        normalizedRequest,
+        startedAtMs,
+      );
 
       activeControllerRef.current = controller;
       abortReasonRef.current = null;
+      activeRequestLogContextRef.current = requestLogContext;
+      lastWaitingLogSecondRef.current = null;
       setStatus('submitted');
       setFeedbackMessage(null);
       setActiveRequest({
@@ -341,15 +388,7 @@ const AssetBrowser = () => {
         timeoutMs: REQUEST_TIMEOUT_MS,
       });
 
-      console.info('[asset-source] request started', {
-        requestId,
-        provider: normalizedRequest.provider,
-        model: normalizedRequest.model,
-        aspectRatio: normalizedRequest.aspectRatio,
-        variationCount: normalizedRequest.variationCount,
-        promptLength: normalizedRequest.prompt.length,
-        startedAt,
-      });
+      console.info('[asset-source] request started', requestLogContext);
 
       timeoutId = window.setTimeout(() => {
         if (activeControllerRef.current !== controller) {
@@ -357,6 +396,10 @@ const AssetBrowser = () => {
         }
 
         abortReasonRef.current = 'timeout';
+        console.warn(
+          '[asset-source] request timeout reached',
+          withRequestDuration(requestLogContext, Date.now() - startedAtMs),
+        );
         controller.abort();
       }, REQUEST_TIMEOUT_MS);
 
@@ -367,13 +410,16 @@ const AssetBrowser = () => {
         const durationMs = Date.now() - startedAtMs;
 
         if (controller.signal.aborted) {
-          logAbortedRequest(requestId, durationMs, abortReasonRef.current);
+          logAbortedRequest(
+            requestLogContext,
+            durationMs,
+            abortReasonRef.current,
+          );
           return;
         }
 
         console.info('[asset-source] request completed', {
-          requestId,
-          durationMs,
+          ...withRequestDuration(requestLogContext, durationMs),
           imageCount: countGeneratedImages(result),
         });
         setRequests((current) => [result, ...current].slice(0, MAX_REQUESTS));
@@ -384,7 +430,7 @@ const AssetBrowser = () => {
         if (controller.signal.aborted || isAbortError(error)) {
           const reason = getAbortReason(abortReasonRef.current);
 
-          logAbortedRequest(requestId, durationMs, reason);
+          logAbortedRequest(requestLogContext, durationMs, reason);
 
           if (reason === 'timeout') {
             setRequests((current) =>
@@ -415,12 +461,13 @@ const AssetBrowser = () => {
 
         const nextErrorMessage = normalizeProviderError(provider, error);
         const details = readProviderErrorDetails(error);
+        const errorLogDetails = readErrorLogDetails(error);
 
         console.error('[asset-source] request failed', {
-          requestId,
-          durationMs,
+          ...withRequestDuration(requestLogContext, durationMs),
           message: nextErrorMessage,
           status: details.status,
+          ...errorLogDetails,
           error,
         });
 
@@ -449,6 +496,8 @@ const AssetBrowser = () => {
         }
 
         abortReasonRef.current = null;
+        activeRequestLogContextRef.current = null;
+        lastWaitingLogSecondRef.current = null;
         setActiveRequest(null);
       }
     },
@@ -706,6 +755,48 @@ function buildRequestId(): string {
     .slice(2, 8)}`;
 }
 
+function buildRequestLogContext(
+  requestId: string,
+  request: ImageOperationRequest,
+  startedAtMs: number,
+): RequestLogContext {
+  const context: RequestLogContext = {
+    requestId,
+    provider: request.provider,
+    model: request.model,
+    aspectRatio: request.aspectRatio,
+    imageSize: request.imageSize,
+    variationCount: request.variationCount,
+    promptLength: request.prompt.length,
+    timeoutMs: REQUEST_TIMEOUT_MS,
+    startedAt: new Date(startedAtMs).toISOString(),
+  };
+
+  if (request.outputQuality) {
+    context.outputQuality = request.outputQuality;
+  }
+
+  if (request.outputFormat) {
+    context.outputFormat = request.outputFormat;
+  }
+
+  if (typeof request.outputCompression === 'number') {
+    context.outputCompression = request.outputCompression;
+  }
+
+  return context;
+}
+
+function withRequestDuration(
+  context: RequestLogContext,
+  durationMs: number,
+): RequestLogContext & { durationMs: number } {
+  return {
+    ...context,
+    durationMs,
+  };
+}
+
 function countGeneratedImages(batch: NormalizedGenerationBatch): number {
   return batch.images.filter((image) => image.kind === 'success').length;
 }
@@ -715,15 +806,41 @@ function getAbortReason(reason: AbortReason | null): AbortReason {
 }
 
 function logAbortedRequest(
-  requestId: string,
+  context: RequestLogContext,
   durationMs: number,
   reason: AbortReason | null,
 ): void {
-  console.info('[asset-source] request aborted', {
-    requestId,
-    durationMs,
-    reason: reason || 'cancel',
-  });
+  const normalizedReason = getAbortReason(reason);
+  const payload = {
+    ...withRequestDuration(context, durationMs),
+    reason: normalizedReason,
+  };
+
+  if (normalizedReason === 'timeout') {
+    console.warn('[asset-source] request aborted by timeout', payload);
+    return;
+  }
+
+  console.info('[asset-source] request cancelled', payload);
+}
+
+function readErrorLogDetails(
+  error: unknown,
+): { errorName?: string; errorMessage?: string } {
+  if (error instanceof Error) {
+    return {
+      errorName: error.name,
+      errorMessage: error.message,
+    };
+  }
+
+  if (typeof error === 'string') {
+    return {
+      errorMessage: error,
+    };
+  }
+
+  return {};
 }
 
 function getSelectedImages(
