@@ -63,7 +63,7 @@
   border: 1px solid var(--color--border);
   border-radius: 4px;
   padding: 8px 12px;
-  font-size: 14px;
+  font-size: var(--font-size-s);
   color: var(--color--ink);
   display: inline-block;
   cursor: pointer;

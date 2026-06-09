@@ -4,7 +4,7 @@ import { AiOutlineOpenAI } from 'react-icons/ai';
 import { BsCheckCircleFill, BsXCircleFill } from 'react-icons/bs';
 import styles from '../../../styles.module.css';
 import { PENDING_HINT_THRESHOLD_SECONDS } from '../../../utils/constants';
-import { localeSelect } from '../../../utils/localeUtils';
+import { formatLocaleLabel } from '../../../utils/localeUtils';
 
 /**
  * ChatbubbleTranslate.tsx
@@ -15,7 +15,7 @@ import { localeSelect } from '../../../utils/localeUtils';
  * The component uses Framer Motion for animations:
  * - When status is 'pending', the bubble displays a spinning OpenAI icon to indicate ongoing translation.
  * - When the status changes to 'done', the bubble transitions smoothly, stops spinning, and displays a checkmark.
- * - When the status is 'error', the bubble shows a red error icon and error styling.
+ * - When the status is 'error', the bubble shows an error icon and error styling.
  *
  * Props:
  * - bubble: {
@@ -25,7 +25,6 @@ import { localeSelect } from '../../../utils/localeUtils';
  *     fieldPath: string;    // The path to the field in the CMS for potential navigation or identification.
  *     errorMessage?: string; // Optional error message when status is 'error'.
  *   }
- * - theme: 'light'|'dark';  // Current theme provided by DatoCMS context for styling.
  * - index: number;          // Index of this bubble in the list for potential staggered animations.
  */
 
@@ -160,7 +159,7 @@ export function ChatBubble({ bubble }: Props) {
           <div className={styles.bubbleContent}>
             <span className={styles.bubbleText}>
               “<strong>{bubble.fieldLabel}</strong>” to{' '}
-              <strong>{localeSelect(bubble.locale)?.name}</strong> [
+              <strong>{formatLocaleLabel(bubble.locale)}</strong> [
               <code>{bubble.locale}</code>]
             </span>
           </div>

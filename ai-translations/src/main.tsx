@@ -27,7 +27,15 @@ import { connect } from 'datocms-plugin-sdk';
 import { Button, Canvas } from 'datocms-react-ui';
 
 import 'datocms-react-ui/styles.css';
+import AITranslationsPickerModal, {
+  type AITranslationsPickerModalParams,
+  type AITranslationsPickerModalResult,
+} from './components/AITranslationsPickerModal';
 import ErrorBoundary from './components/ErrorBoundary';
+import TranslationConfirmModal, {
+  type TranslationConfirmModalParams,
+  isTranslationConfirmModalParams,
+} from './components/TranslationConfirmModal';
 import TranslationProgressModal from './components/TranslationProgressModal';
 import ConfigScreen, {
   type ctxParamsType,
@@ -39,12 +47,11 @@ import {
 } from './entrypoints/Config/configConstants';
 import AIBulkTranslationsPage from './entrypoints/CustomPage/AIBulkTranslationsPage';
 import LoadingAddon from './entrypoints/LoadingAddon';
-import DatoGPTTranslateSidebar from './entrypoints/Sidebar/DatoGPTTranslateSidebar';
+import TranslateSidebar from './entrypoints/Sidebar/TranslateSidebar';
 import { defaultPrompt } from './prompts/DefaultPrompt';
-import { localeSelect } from './utils/localeUtils';
+import { formatLocaleWithCode } from './utils/localeUtils';
 import { render } from './utils/render';
 // Import refactored utility functions and types
-import { parseActionId } from './utils/translation/ItemsDropdownUtils';
 import {
   formatErrorForUser,
   handleUIError,
@@ -62,24 +69,19 @@ import TranslateField from './utils/translation/TranslateField';
 import { isEmptyStructuredText } from './utils/translation/utils';
 
 /**
- * Result shape returned from the translation progress modal.
- */
-interface TranslationModalResult {
-  completed: boolean;
-  canceled: boolean;
-}
-
-/**
  * Parameters passed to the TranslationProgressModal.
  * Shared interface between modal opener and renderer for type safety.
+ * NOTE: Keep in sync with the interface inside TranslationProgressModal.tsx.
  */
 interface TranslationProgressModalParams {
   totalRecords: number;
   fromLocale: string;
-  toLocale: string;
+  /** Target locale keys (one or more). */
+  toLocales: string[];
   accessToken: string;
   pluginParams: ctxParamsType;
   itemIds: string[];
+  selectedFieldsByModel?: Record<string, string[]>;
 }
 
 type EnvironmentNavigationCtx = {
@@ -110,7 +112,7 @@ function isTranslationProgressModalParams(
   return (
     typeof p.totalRecords === 'number' &&
     typeof p.fromLocale === 'string' &&
-    typeof p.toLocale === 'string' &&
+    Array.isArray(p.toLocales) &&
     typeof p.accessToken === 'string' &&
     p.pluginParams !== undefined &&
     Array.isArray(p.itemIds)
@@ -141,19 +143,6 @@ function getPluginParams(ctx: {
   return params as ctxParamsType;
 }
 
-/**
- * Type guard for TranslationModalResult.
- * The modal can return undefined or an object with completed/canceled flags.
- */
-function isTranslationModalResult(
-  value: unknown,
-): value is TranslationModalResult {
-  return (
-    value !== null &&
-    typeof value === 'object' &&
-    ('completed' in value || 'canceled' in value)
-  );
-}
 
 /**
  * Helper function to get nested values by dot/bracket notation
@@ -371,17 +360,18 @@ connect({
       return [];
     }
 
-    return ctx.site.attributes.locales.map((locale) => ({
-      label: `Translate Record from ${locale}`,
-      icon: 'language',
-      actions: ctx.site.attributes.locales
-        .filter((targetLocale) => targetLocale !== locale)
-        .map((targetLocale) => ({
-          label: `to ${targetLocale}`,
-          icon: 'globe',
-          id: `translateRecord-${locale}-${targetLocale}`,
-        })),
-    }));
+    // Single entry point — opens a picker modal where the user configures
+    // source/target locales and per-model field selection in one place.
+    // The plugin SDK's items-dropdown actions only support two visible
+    // levels, so the "AI Translations → From → To" hierarchy is collapsed
+    // into a modal-based picker instead.
+    return [
+      {
+        id: 'aiTranslationsPicker',
+        label: 'AI Translate these records',
+        icon: 'language',
+      },
+    ];
   },
 
   async executeItemsDropdownAction(
@@ -389,49 +379,112 @@ connect({
     items: Item[],
     ctx: ExecuteItemsDropdownActionCtx,
   ) {
+    if (actionId !== 'aiTranslationsPicker') return;
     if (!ctx.currentUserAccessToken) {
       ctx.alert('No user access token found');
       return;
     }
+    const accessToken = ctx.currentUserAccessToken;
 
-    // Parse action ID to get locale information
-    const { fromLocale, toLocale } = parseActionId(actionId);
+    // Resolve the set of models present in the selection. Each item's
+    // `item_type` reference resolves through the SDK's `ctx.itemTypes`
+    // repo, which is populated for whichever item types the CMS has
+    // already loaded. We fall back to the relationship id if name/api_key
+    // aren't found — better to show a usable picker than to abort.
+    const uniqueItemTypeIds = Array.from(
+      new Set(
+        items
+          .map((item) => item.relationships?.item_type?.data?.id)
+          .filter((id): id is string => typeof id === 'string'),
+      ),
+    );
+
+    const models: AITranslationsPickerModalParams['models'] =
+      uniqueItemTypeIds.map((id) => {
+        const itemType = ctx.itemTypes[id];
+        return {
+          value: id,
+          label: itemType?.attributes?.name ?? `Model ${id}`,
+          code: itemType?.attributes?.api_key ?? id,
+        };
+      });
+
+    if (models.length === 0) {
+      ctx.alert('Could not resolve the models for the selected records.');
+      return;
+    }
 
     const pluginParams = getPluginParams(ctx);
 
-    // Open a modal to show translation progress and handle translation process
-    const modalPromise = ctx.openModal({
-      id: 'translationProgressModal',
-      title: 'Translation Progress',
-      width: 'l',
-      parameters: {
-        totalRecords: items.length,
-        fromLocale,
-        toLocale,
-        accessToken: ctx.currentUserAccessToken,
-        pluginParams,
-        itemIds: items.map((item) => item.id),
-      },
-    });
-
     try {
-      // Wait for the modal to be closed by the user
-      const result = await modalPromise;
+      const itemIds = items.map((item) => item.id);
+      const pickerParams: AITranslationsPickerModalParams = {
+        itemIds,
+        models,
+        pluginParams,
+        accessToken,
+      };
 
-      if (isTranslationModalResult(result)) {
-        if (result.completed) {
-          await ctx.notice(
-            `Successfully translated ${items.length} record(s) from ${fromLocale} to ${toLocale}`,
-          );
-        } else if (result.canceled) {
-          await ctx.notice(
-            `Translation from ${fromLocale} to ${toLocale} was canceled`,
-          );
-        } else {
-          await ctx.alert(
-            'The translation failed with errors.',
-          );
-        }
+      const result = (await ctx.openModal({
+        id: 'aiTranslationsPickerModal',
+        title: 'AI Translations',
+        width: 'l',
+        parameters: pickerParams as unknown as Record<string, unknown>,
+      })) as AITranslationsPickerModalResult | undefined;
+
+      // The picker resolves with `config` only when the user clicked
+      // "Translate"; anything else (dismissed/cancelled) bails out here.
+      if (!result?.config) return;
+
+      const {
+        fromLocale,
+        toLocales,
+        selectedFieldsByModel,
+        models: modelsBreakdown,
+      } = result.config;
+
+      // Styled confirm modal (record count + locale chips + per-model field
+      // breakdown) instead of the native text-only openConfirm. Opened here in
+      // the dropdown handler's non-modal context — NOT inside the picker modal,
+      // which would nest modal-on-modal and hang behind the current modal.
+      const confirmParams: TranslationConfirmModalParams = {
+        recordCount: itemIds.length,
+        fromLocale,
+        toLocales,
+        models: modelsBreakdown,
+      };
+      const confirmed = await ctx.openModal({
+        id: 'translationConfirmModal',
+        title: 'Start translation?',
+        width: 'm',
+        parameters: confirmParams as unknown as Record<string, unknown>,
+      });
+
+      if (confirmed !== true) return;
+
+      const progressParams: TranslationProgressModalParams = {
+        totalRecords: itemIds.length,
+        fromLocale,
+        toLocales,
+        accessToken,
+        pluginParams,
+        itemIds,
+        selectedFieldsByModel,
+      };
+
+      const progressResult = (await ctx.openModal({
+        id: 'translationProgressModal',
+        title: 'Translation Progress',
+        width: 'l',
+        parameters: progressParams as unknown as Record<string, unknown>,
+      })) as { completed?: boolean; canceled?: boolean } | undefined;
+
+      if (progressResult?.canceled) {
+        await ctx.notice('Bulk translation was canceled');
+      } else if (progressResult?.completed) {
+        await ctx.notice(`Successfully translated ${items.length} record(s).`);
+      } else {
+        await ctx.alert('The translation finished with errors.');
       }
     } catch (error) {
       handleUIError(error, pluginParams.vendor, ctx);
@@ -463,7 +516,7 @@ connect({
     return [
       {
         id: 'datoGptTranslateSidebar',
-        label: 'DatoGPT Translate',
+        label: 'AI Translations',
         placement: ['after', 'info'],
         startOpen: true,
       },
@@ -506,7 +559,7 @@ connect({
               ctx.navigateTo(buildPluginSettingsPath(ctx))
             }
           >
-            <DatoGPTTranslateSidebar ctx={ctx} />
+            <TranslateSidebar ctx={ctx} />
           </ErrorBoundary>,
         );
       }
@@ -578,7 +631,7 @@ connect({
             .filter((locale) => locale !== ctx.locale)
             .map((locale) => ({
               id: `translateTo.${locale}`,
-              label: localeSelect(locale)?.name,
+              label: formatLocaleWithCode(locale),
               icon: 'globe',
             })),
         ],
@@ -595,7 +648,7 @@ connect({
             .filter((locale) => locale !== ctx.locale)
             .map((locale) => ({
               id: `translateFrom.${locale}`,
-              label: localeSelect(locale)?.name,
+              label: formatLocaleWithCode(locale),
               icon: 'globe',
             })),
         ],
@@ -640,16 +693,14 @@ connect({
       )?.[locale];
       if (!fieldValueInSourceLocale) {
         ctx.alert(
-          `The field on the ${localeSelect(locale)?.name} locale is empty`,
+          `The field on the ${formatLocaleWithCode(locale)} locale is empty`,
         );
         return;
       }
 
       ctx.customToast({
         type: 'warning',
-        message: `Translating "${ctx.field.attributes.label}" from ${
-          localeSelect(locale)?.name
-        }...`,
+        message: `Translating "${ctx.field.attributes.label}" from ${formatLocaleWithCode(locale)}...`,
         dismissAfterTimeout: true,
       });
       let translatedValue: unknown;
@@ -676,9 +727,7 @@ connect({
         translatedValue,
       );
       ctx.notice(
-        `Translated "${ctx.field.attributes.label}" from ${
-          localeSelect(locale)?.name
-        }`,
+        `Translated "${ctx.field.attributes.label}" from ${formatLocaleWithCode(locale)}`,
       );
 
       return;
@@ -739,9 +788,7 @@ connect({
       ctx.customToast({
         dismissAfterTimeout: true,
         type: 'warning',
-        message: `Translating "${ctx.field.attributes.label}" to ${
-          localeSelect(locale)?.name
-        }...`,
+        message: `Translating "${ctx.field.attributes.label}" to ${formatLocaleWithCode(locale)}...`,
       });
 
       let translatedValue: unknown;
@@ -767,9 +814,7 @@ connect({
         translatedValue,
       );
       ctx.notice(
-        `Translated "${ctx.field.attributes.label}" to ${
-          localeSelect(locale)?.name
-        }`,
+        `Translated "${ctx.field.attributes.label}" to ${formatLocaleWithCode(locale)}`,
       );
       return;
     }
@@ -796,6 +841,30 @@ connect({
         return render(
           <ErrorBoundary>
             <TranslationProgressModal ctx={ctx} parameters={ctx.parameters} />
+          </ErrorBoundary>,
+        );
+      case 'aiTranslationsPickerModal':
+        return render(
+          <ErrorBoundary>
+            <AITranslationsPickerModal
+              ctx={ctx}
+              parameters={
+                ctx.parameters as unknown as AITranslationsPickerModalParams
+              }
+            />
+          </ErrorBoundary>,
+        );
+      case 'translationConfirmModal':
+        if (!isTranslationConfirmModalParams(ctx.parameters)) {
+          return render(
+            <Canvas ctx={ctx}>
+              <p>Invalid modal parameters</p>
+            </Canvas>,
+          );
+        }
+        return render(
+          <ErrorBoundary>
+            <TranslationConfirmModal ctx={ctx} parameters={ctx.parameters} />
           </ErrorBoundary>,
         );
       default:

@@ -1,0 +1,78 @@
+.modal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-l);
+  padding: var(--spacing-l);
+}
+
+.intro {
+  margin: 0;
+  font-size: var(--font-size-m);
+  color: var(--color--ink);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+}
+
+.localeRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 40px minmax(0, 1fr);
+  gap: var(--spacing-m);
+  align-items: start;
+}
+
+.localeArrow {
+  align-self: center;
+  width: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color--ink);
+  font-size: 18px;
+  font-weight: var(--font-weight-bold);
+  margin-top: 28px;
+}
+
+.subsectionHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: var(--spacing-s);
+}
+
+.subsectionLabel {
+  font-size: var(--font-size-s);
+  font-weight: var(--font-weight-bold);
+  color: var(--color--ink);
+}
+
+.subsectionHint {
+  font-size: var(--font-size-s);
+  color: var(--color--ink-subtle);
+}
+
+.modelFieldList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-m);
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--spacing-s);
+  border-top: 1px solid var(--color--border);
+  padding-top: var(--spacing-m);
+}
+
+@media (max-width: 600px) {
+  .localeRow {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .localeArrow {
+    display: none;
+  }
+}

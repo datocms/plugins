@@ -1,5 +1,7 @@
 # Changelog
 
+- 3.5.1: Fixed translation cancellation and completion reliability. Cancelling a bulk or multi-record run now actually stops it instead of continuing in the background; the progress dialog's Close button no longer stays stuck on "Please wait…" when fewer records come back than were selected; and the single-record sidebar surfaces a clean "cancelled" state instead of an error.
+- 3.5.0: Bulk and multi-record translation UX overhaul (select individual models and fields to translate). Also improved Dark Mode support.
 - 3.4.6: Fix for SEO "Translate to all locales" functionality setting wrong result-language pairs.
 - 3.4.2: Fix for optional & empty localized fields not getting correctly copied to new locales. Empty optional fields will now be null in the new locale, while required fields that cannot be translated will be a direct copy of the source locale's value.
 - 3.4.1: Fixed several DeepL bugs from 3.4.0: glossary loading no longer races on duplicate fetches, error detection survives DeepL rewording their messages, and glossary caches now reset when you change API keys. Also fixed a latent bug where empty AI responses crashed translations instead of falling back to the original text.

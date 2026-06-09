@@ -40,8 +40,8 @@ function ProgressListItem({
 
 import type { ctxParamsType } from '../entrypoints/Config/ConfigScreen';
 import { buildDatoCMSClient } from '../utils/clients';
-import { getLocaleName } from '../utils/localeUtils';
 import { createSchemaRepository } from '../utils/schemaRepository';
+import { LocaleChip } from './BulkTranslations/LocaleChip';
 // no direct types from OpenAI or buildClient needed here
 import {
   formatErrorForUser,
@@ -65,10 +65,19 @@ import './TranslationProgressModal.css';
 interface TranslationProgressModalParams {
   totalRecords: number;
   fromLocale: string;
-  toLocale: string;
+  /**
+   * Target locale keys (one or more). Each record is translated into every
+   * target locale and saved in a single CMA call.
+   */
+  toLocales: string[];
   accessToken: string;
   pluginParams: ctxParamsType;
   itemIds: string[];
+  /**
+   * Optional per-model field allowlist (keyed by item_type id). When present,
+   * only the listed field api_keys are translated for matching records.
+   */
+  selectedFieldsByModel?: Record<string, string[]>;
 }
 
 interface TranslationProgressModalProps {
@@ -95,14 +104,18 @@ export default function TranslationProgressModal({
   const {
     totalRecords,
     fromLocale,
-    toLocale,
+    toLocales,
     accessToken,
     pluginParams,
     itemIds,
+    selectedFieldsByModel,
   } = parameters;
   const [progress, setProgress] = useState<ProgressUpdate[]>([]);
   const [isCompleted, setIsCompleted] = useState(false);
-  const [isCancelled, setIsCancelled] = useState(false);
+  // Cancellation is read from inside a long-running async loop, so it must be a
+  // ref: a state value would be captured stale in the once-only effect closure
+  // (the `checkCancellation` callback would forever read its mount-time `false`).
+  const isCancelledRef = useRef(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [hasFatalError, setHasFatalError] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -114,6 +127,10 @@ export default function TranslationProgressModal({
   // Stable callback to add a progress update — wrapped in useCallback so it
   // can be safely listed as a useEffect dependency without causing re-runs.
   const addProgressUpdate = useCallback((update: ProgressUpdate) => {
+    // Drop updates that arrive after a cancel: the modal has already resolved
+    // and the loop is unwinding, so committing more state is wasted (and would
+    // warn about setting state on an unmounting component).
+    if (isCancelledRef.current) return;
     setProgress((prev) => {
       // Filter out previous updates for the same record and create a new array
       const filteredUpdates = prev.filter(
@@ -160,18 +177,28 @@ export default function TranslationProgressModal({
           client,
           provider,
           fromLocale,
-          toLocale,
+          toLocales,
           getFieldTypeDictionary,
           pluginParams,
           ctx,
           accessToken,
           {
             onProgress: addProgressUpdate,
-            checkCancellation: () => isCancelled,
+            checkCancellation: () => isCancelledRef.current,
             abortSignal: controller.signal,
+            selectedFieldsByModel,
           },
           schemaRepository,
         );
+
+        // Clear the processing flag on the happy path too. The completion
+        // effect below only fires when every record reports back; if fewer
+        // records come back than requested (e.g. some were deleted between
+        // selection and fetch) that effect never runs, and without this the
+        // Close button would stay disabled forever.
+        if (isMounted) {
+          setIsProcessing(false);
+        }
       } catch (error) {
         if (isMounted) {
           setHasFatalError(true);
@@ -201,10 +228,10 @@ export default function TranslationProgressModal({
     addProgressUpdate,
     ctx,
     fromLocale,
-    isCancelled,
     itemIds,
     pluginParams,
-    toLocale,
+    selectedFieldsByModel,
+    toLocales,
   ]);
 
   // Translation handled by shared translateAndUpdateRecords utility
@@ -231,7 +258,7 @@ export default function TranslationProgressModal({
 
   // Make sure to set completed state when all records are processed
   useEffect(() => {
-    if (completedCount === totalRecords && totalRecords > 0) {
+    if (completedCount >= totalRecords && totalRecords > 0) {
       setIsCompleted(true);
       setIsProcessing(false);
     }
@@ -256,7 +283,7 @@ export default function TranslationProgressModal({
   };
 
   const handleCancel = () => {
-    setIsCancelled(true);
+    isCancelledRef.current = true;
     // Abort in-flight requests to stop streaming immediately
     abortRef.current?.abort();
     ctx.resolve({ completed: false, canceled: true });
@@ -267,10 +294,18 @@ export default function TranslationProgressModal({
       <div className="TranslationProgressModal">
         <div className="TranslationProgressModal__intro">
           <div className="TranslationProgressModal__languages">
-            <p>
-              Translating from <strong>{getLocaleName(fromLocale)}</strong> to{' '}
-              <strong>{getLocaleName(toLocale)}</strong>
-            </p>
+            <div className="TranslationProgressModal__lang-row">
+              <span className="TranslationProgressModal__lang-label">From</span>
+              <LocaleChip locale={fromLocale} />
+            </div>
+            <div className="TranslationProgressModal__lang-row">
+              <span className="TranslationProgressModal__lang-label">To</span>
+              <div className="TranslationProgressModal__lang-chips">
+                {toLocales.map((loc) => (
+                  <LocaleChip key={loc} locale={loc} />
+                ))}
+              </div>
+            </div>
             <p className="TranslationProgressModal__progress-text">
               Progress: {completedCount} of {totalRecords} records processed (
               {percentComplete}%)

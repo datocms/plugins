@@ -10,7 +10,7 @@
 }
 
 .container {
-  width: min(560px, 100%);
+  width: min(800px, 100%);
   position: relative;
 }
 
@@ -23,7 +23,7 @@
   box-shadow: var(--shadow--raised);
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: var(--spacing-l);
 }
 
 .card::before {
@@ -51,7 +51,7 @@
 
 .cardCaption {
   margin: 0;
-  font-size: var(--font-size-xs);
+  font-size: var(--font-size-s);
   line-height: 1.5;
   color: var(--color--ink-subtle);
 }
@@ -74,7 +74,7 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr) 40px minmax(0, 1fr);
   gap: var(--spacing-m);
-  align-items: center;
+  align-items: start;
 }
 
 .localeArrow {
@@ -86,6 +86,8 @@
   color: var(--color--ink);
   font-size: 18px;
   font-weight: 600;
+    margin-top: 28px; /* aligns with select inputs after the label */
+
 }
 
 .selectionChips {
@@ -107,23 +109,47 @@
 .actions {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--spacing-s);
 }
 
 .helperText {
-  font-size: 12px;
+  font-size: var(--font-size-s);
   color: var(--color--ink-subtle);
   text-align: center;
 }
 
 .statusReady {
   color: var(--color--success-soft--ink);
-  font-weight: 600;
+  font-weight: var(--font-weight-bold);
 }
 
 .statusPending {
+  color: var(--color--ink-warning);
+  font-weight: var(--font-weight-bold);
+}
+
+/* "What's left" checklist shown under a disabled Start button. */
+.blockers {
+  padding: var(--spacing-m);
+  border-radius: 5px;
+  background: var(--color--warning-soft--surface);
   color: var(--color--warning-soft--ink);
-  font-weight: 600;
+  text-align: left;
+}
+
+.blockersTitle {
+  font-size: var(--font-size-s);
+  font-weight: var(--font-weight-bold);
+  margin-bottom: var(--spacing-s);
+}
+
+.blockerList {
+  margin: 0;
+  padding-left: var(--spacing-l);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--font-size-s);
 }
 
 .loadingOverlay {
@@ -135,19 +161,46 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: var(--spacing-m);
+  z-index: 1;
 }
 
 .loadingText {
-  font-size: 13px;
+  font-size: var(--font-size-s);
   color: var(--color--ink-subtle);
 }
 
 .footerNote {
-  margin-top: 22px;
-  font-size: 12px;
+  margin-top: var(--spacing-l);
+  font-size: var(--font-size-s);
   color: var(--color--ink-subtle);
   text-align: center;
+}
+
+/* --- Fields-to-translate section ---------------------------------------- */
+
+.subsectionHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: var(--spacing-s);
+}
+
+.subsectionLabel {
+  font-size: var(--font-size-s);
+  font-weight: var(--font-weight-bold);
+  color: var(--color--ink);
+}
+
+.subsectionHint {
+  font-size: var(--font-size-s);
+  color: var(--color--ink-subtle);
+}
+
+.modelFieldList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-m);
 }
 
 @media (max-width: 720px) {

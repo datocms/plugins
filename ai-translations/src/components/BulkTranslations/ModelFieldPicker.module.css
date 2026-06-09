@@ -1,0 +1,27 @@
+/* Dead-end state for a model with no translatable fields. */
+.noFields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-s);
+}
+
+.noFieldsNotice {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-m);
+  padding: var(--spacing-m);
+  border-radius: 5px;
+  background: var(--color--warning-soft--surface);
+  color: var(--color--warning-soft--ink);
+  border: 1px solid var(--color--warning-soft--border);
+  font-size: var(--font-size-s);
+}
+
+.noFieldsIcon {
+  flex: 0 0 auto;
+}
+
+.noFieldsBody {
+  flex: 1;
+  line-height: 1.4;
+}
