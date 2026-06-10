@@ -400,6 +400,70 @@ describe('StructuredTextTranslation', () => {
           { bypassFieldTypeAllowlist: true },
         );
       });
+
+      it('should translate block nodes when no inline text nodes exist', async () => {
+        vi.mocked(translateFieldValue).mockResolvedValue([
+          {
+            type: 'block',
+            item: 'translated-block',
+            originalIndex: 1,
+          },
+        ]);
+
+        const structuredText = [
+          {
+            type: 'thematicBreak',
+          },
+          {
+            id: 'source-block-id',
+            type: 'block',
+            item: 'source-block',
+          },
+        ];
+
+        const result = await translateStructuredTextValue(
+          structuredText,
+          mockPluginParams,
+          'de',
+          'en',
+          mockProvider,
+          'api-token',
+          'main',
+        );
+
+        expect(translateArray).not.toHaveBeenCalled();
+        expect(translateFieldValue).toHaveBeenCalledWith(
+          [
+            {
+              type: 'block',
+              item: 'source-block',
+              originalIndex: 1,
+            },
+          ],
+          mockPluginParams,
+          'de',
+          'en',
+          'rich_text',
+          mockProvider,
+          '',
+          'api-token',
+          '',
+          'main',
+          undefined,
+          '',
+          undefined,
+          { bypassFieldTypeAllowlist: true },
+        );
+        expect(result).toEqual([
+          {
+            type: 'thematicBreak',
+          },
+          {
+            type: 'block',
+            item: 'translated-block',
+          },
+        ]);
+      });
     });
 
     describe('array length mismatch handling', () => {

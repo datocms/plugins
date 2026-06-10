@@ -13,7 +13,7 @@
  */
 
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
-import { createLogger } from '../logging/Logger';
+import { createLogger, type Logger } from '../logging/Logger';
 import type { SchemaRepository } from '../schemaRepository';
 import { handleTranslationError } from './ProviderErrors';
 import { translateFieldValue } from './TranslateField';
@@ -368,6 +368,117 @@ function enforcePunctuationBoundarySpaces(
   return out;
 }
 
+interface InlineTextTranslationParams {
+  provider: TranslationProvider;
+  pluginParams: ctxParamsType;
+  textValues: string[];
+  textLeaves: StructuredTextTextLeaf[];
+  fieldValueWithoutBlocks: StructuredTextNode[];
+  fromLocale: string;
+  toLocale: string;
+  recordContext: string;
+  logger: Logger;
+}
+
+async function translateInlineTextLeaves({
+  provider,
+  pluginParams,
+  textValues,
+  textLeaves,
+  fieldValueWithoutBlocks,
+  fromLocale,
+  toLocale,
+  recordContext,
+  logger,
+}: InlineTextTranslationParams): Promise<StructuredTextNode[]> {
+  const translatedValues = await translateArray(
+    provider,
+    pluginParams,
+    textValues,
+    fromLocale,
+    toLocale,
+    { isHTML: false, recordContext },
+  );
+
+  let processedTranslatedValues = translatedValues;
+
+  if (translatedValues.length !== textValues.length) {
+    logger.warning(
+      `Translation mismatch: got ${translatedValues.length} values, expected ${textValues.length}`,
+      { original: textValues, translated: translatedValues },
+    );
+
+    processedTranslatedValues = alignSegmentsPreservingWhitespace(
+      textValues,
+      translatedValues,
+    );
+    if (processedTranslatedValues.length !== textValues.length) {
+      processedTranslatedValues = ensureArrayLengthsMatch(
+        textValues,
+        processedTranslatedValues,
+      );
+    }
+
+    logger.info('Adjusted translated values to match original length', {
+      adjustedLength: processedTranslatedValues.length,
+    });
+  }
+
+  processedTranslatedValues = preserveEdgeWhitespace(
+    textValues,
+    processedTranslatedValues,
+  );
+  processedTranslatedValues = enforceBoundarySpaces(
+    textValues,
+    processedTranslatedValues,
+  );
+  processedTranslatedValues = enforcePunctuationBoundarySpaces(
+    textValues,
+    processedTranslatedValues,
+  );
+
+  return rebuildStructuredTextLeaves(
+    fieldValueWithoutBlocks,
+    textLeaves,
+    processedTranslatedValues,
+  ) as StructuredTextNode[];
+}
+
+interface TranslationPlanLogParams {
+  logger: Logger;
+  textValues: string[];
+  textLeaves: StructuredTextTextLeaf[];
+  blockNodeCount: number;
+  fromLocale: string;
+  toLocale: string;
+}
+
+function logTranslationPlan({
+  logger,
+  textValues,
+  textLeaves,
+  blockNodeCount,
+  fromLocale,
+  toLocale,
+}: TranslationPlanLogParams): void {
+  if (textValues.length > 0) {
+    logger.info(`Found ${textValues.length} text nodes to translate`);
+    logger.info('Structured text inline source payload', {
+      fromLocale,
+      toLocale,
+      textLeaves,
+      textValues,
+    });
+    return;
+  }
+
+  logger.info('No inline text values found; translating block nodes only', {
+    fromLocale,
+    toLocale,
+    blockNodeCount,
+  });
+}
+
 /**
  * Translates a structured text field value while preserving its structure
  *
@@ -448,83 +559,36 @@ export async function translateStructuredTextValue(
   const textLeaves = collectVisibleTextLeaves(fieldValueWithoutBlocks);
   const textValues = textLeaves.map((leaf) => leaf.value);
 
-  if (textValues.length === 0) {
-    logger.info('No text values found to translate');
+  if (textValues.length === 0 && blockNodes.length === 0) {
+    logger.info('No text values or block nodes found to translate');
     return fieldValue;
   }
 
-  logger.info(`Found ${textValues.length} text nodes to translate`);
-  logger.info('Structured text inline source payload', {
+  logTranslationPlan({
+    logger,
+    textValues,
+    textLeaves,
+    blockNodeCount: blockNodes.length,
     fromLocale,
     toLocale,
-    textLeaves,
-    textValues,
   });
 
   try {
-    // Translate inline text values as an array using helper
-    const translatedValues = await translateArray(
-      provider,
-      pluginParams,
-      textValues,
-      fromLocale,
-      toLocale,
-      { isHTML: false, recordContext },
-    );
+    let finalReconstructedObject = fieldValueWithoutBlocks as StructuredTextNode[];
 
-    // Check for length mismatch and attempt recovery
-    let processedTranslatedValues = translatedValues;
-
-    if (translatedValues.length !== textValues.length) {
-      logger.warning(
-        `Translation mismatch: got ${translatedValues.length} values, expected ${textValues.length}`,
-        { original: textValues, translated: translatedValues },
-      );
-
-      // First align segments so pure-whitespace originals stay in-place
-      processedTranslatedValues = alignSegmentsPreservingWhitespace(
+    if (textValues.length > 0) {
+      finalReconstructedObject = await translateInlineTextLeaves({
+        provider,
+        pluginParams,
         textValues,
-        translatedValues,
-      );
-      // If still off, pad/truncate conservatively
-      if (processedTranslatedValues.length !== textValues.length) {
-        processedTranslatedValues = ensureArrayLengthsMatch(
-          textValues,
-          processedTranslatedValues,
-        );
-      }
-
-      logger.info('Adjusted translated values to match original length', {
-        adjustedLength: processedTranslatedValues.length,
+        textLeaves,
+        fieldValueWithoutBlocks,
+        fromLocale,
+        toLocale,
+        recordContext,
+        logger,
       });
     }
-
-    // Re-apply original edge whitespace to avoid word concatenation across inline nodes
-    processedTranslatedValues = preserveEdgeWhitespace(
-      textValues,
-      processedTranslatedValues,
-    );
-    // Finally, enforce required boundary spaces when the original had them
-    processedTranslatedValues = enforceBoundarySpaces(
-      textValues,
-      processedTranslatedValues,
-    );
-    // And if the original left ended with punctuation but translator dropped it,
-    // still keep a separating space.
-    processedTranslatedValues = enforcePunctuationBoundarySpaces(
-      textValues,
-      processedTranslatedValues,
-    );
-
-    // Reconstruct the inline text portion with the newly translated text
-    const reconstructedObject = rebuildStructuredTextLeaves(
-      fieldValueWithoutBlocks,
-      textLeaves,
-      processedTranslatedValues,
-    ) as StructuredTextNode[];
-
-    // Insert block nodes back into their original positions
-    let finalReconstructedObject = reconstructedObject;
 
     // If there are block nodes, translate them separately
     if (blockNodes.length > 0) {
