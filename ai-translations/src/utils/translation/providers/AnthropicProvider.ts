@@ -70,7 +70,15 @@ export default class AnthropicProvider implements TranslationProvider {
     body: Record<string, unknown>,
     signal: AbortSignal,
     prompt: string,
+    debug?: StreamOptions['debug'],
   ): Promise<string> {
+    debug?.request?.('Provider request', {
+      provider: this.vendor,
+      operation: 'completeText',
+      url: this.baseUrl,
+      body,
+    });
+
     const res = await fetch(this.baseUrl, {
       method: 'POST',
       headers: {
@@ -84,12 +92,21 @@ export default class AnthropicProvider implements TranslationProvider {
 
     if (!res.ok) {
       let msg = res.statusText;
+      let rawError: unknown = null;
       try {
         const err = await res.json();
+        rawError = err;
         msg = err?.error?.message || msg;
       } catch {
         // JSON parsing failed, use statusText
       }
+      debug?.response?.('Provider error response', {
+        provider: this.vendor,
+        operation: 'completeText',
+        status: res.status,
+        statusText: res.statusText,
+        response: rawError,
+      });
       throw new ProviderError(msg, res.status, 'anthropic');
     }
 
@@ -102,15 +119,21 @@ export default class AnthropicProvider implements TranslationProvider {
       }
     }
     const result = parts.join('');
+    debug?.response?.('Provider response', {
+      provider: this.vendor,
+      operation: 'completeText',
+      status: res.status,
+      response: data,
+      text: result,
+    });
 
-    // EDGE-003: Log warning if API returned empty response (may indicate issue)
-    // NOTE: Uses console.warn because providers are stateless and don't have
-    // access to pluginParams required by the Logger utility. This warning
-    // indicates a potential API issue that should always be visible.
     if (!result && prompt.trim()) {
-      console.warn(
-        '[AnthropicProvider] API returned empty response for non-empty prompt',
-      );
+      debug?.response?.('Provider empty response warning', {
+        provider: this.vendor,
+        operation: 'completeText',
+        status: res.status,
+        response: data,
+      });
     }
     return result;
   }
@@ -135,7 +158,7 @@ export default class AnthropicProvider implements TranslationProvider {
     };
 
     return withTimeout(options, (signal) =>
-      this.fetchAnthropicResponse(body, signal, prompt),
+      this.fetchAnthropicResponse(body, signal, prompt, options?.debug),
     );
   }
 }

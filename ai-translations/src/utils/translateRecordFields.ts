@@ -190,6 +190,18 @@ async function runFieldLocaleJob(params: RunJobParams): Promise<void> {
   };
 
   try {
+    logger.info('Source field payload', {
+      flow: 'sidebar',
+      fieldPath,
+      baseFieldPath,
+      fieldLabel,
+      fieldId,
+      fieldApiKey,
+      fieldType,
+      sourceLocale,
+      targetLocale: locale,
+      value: sourceLocaleValue,
+    });
     const translatedFieldValue = await translateFieldWithTimeout(
       sourceLocaleValue,
       pluginParams,
@@ -211,6 +223,30 @@ async function runFieldLocaleJob(params: RunJobParams): Promise<void> {
     await nextFrame();
     if (getFatalAbort() || options.checkCancellation?.()) return;
 
+    logger.info('Translated field payload', {
+      flow: 'sidebar',
+      fieldPath,
+      baseFieldPath,
+      fieldLabel,
+      fieldId,
+      fieldApiKey,
+      fieldType,
+      sourceLocale,
+      targetLocale: locale,
+      value: translatedFieldValue,
+    });
+    logger.info('Form write payload', {
+      flow: 'sidebar',
+      fieldPath,
+      baseFieldPath,
+      fieldLabel,
+      fieldId,
+      fieldApiKey,
+      fieldType,
+      sourceLocale,
+      targetLocale: locale,
+      value: translatedFieldValue,
+    });
     await setFieldValue(fieldPath, translatedFieldValue);
     options.onComplete?.(fieldLabel, locale, fieldPath, baseFieldPath);
     const end = performance.now?.() ?? Date.now();

@@ -12,6 +12,13 @@ export type VendorId = 'openai' | 'google' | 'anthropic' | 'deepl';
  */
 export const DEFAULT_API_TIMEOUT_MS = 120000;
 
+export type ProviderDebugHook = (message: string, data?: unknown) => void;
+
+export interface ProviderDebugHooks {
+  request?: ProviderDebugHook;
+  response?: ProviderDebugHook;
+}
+
 /**
  * Options passed to provider calls to control request lifecycle.
  */
@@ -20,6 +27,7 @@ export interface StreamOptions {
   abortSignal?: AbortSignal;
   /** Optional timeout in milliseconds (defaults to DEFAULT_API_TIMEOUT_MS). */
   timeoutMs?: number;
+  debug?: ProviderDebugHooks;
 }
 
 /**
@@ -96,6 +104,7 @@ export interface BatchTranslationOptions {
   originalSourceLocale?: string;
   /** Original DatoCMS target locale before normalization (for error messages). */
   originalTargetLocale?: string;
+  debug?: ProviderDebugHooks;
 }
 
 /**

@@ -69,7 +69,7 @@ describe('Logger', () => {
     expect(data.nested.count).toBe(2);
   });
 
-  it('uses the same copyable JSON format for prompt, response, and warning logs', () => {
+  it('uses the same copyable JSON format for prompt, request, response, and warning logs', () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     const logger = createLogger(
       buildParams({ enableDebugging: true }),
@@ -77,10 +77,14 @@ describe('Logger', () => {
     );
 
     logger.logPrompt('Prompt prepared', 'Translate this value');
+    logger.logRequest('Request sent', {
+      url: 'https://example.com/translate',
+      body: { text: 'Translate this value' },
+    });
     logger.logResponse('Response received', { text: 'Translated value' });
     logger.warning('Retry scheduled', { attempt: 2 });
 
-    expect(logSpy).toHaveBeenCalledTimes(3);
+    expect(logSpy).toHaveBeenCalledTimes(4);
     const levels = logSpy.mock.calls.map((call) => {
       const value = call[0];
       if (typeof value !== 'string') {
@@ -88,7 +92,7 @@ describe('Logger', () => {
       }
       return (JSON.parse(value) as { level: string }).level;
     });
-    expect(levels).toEqual(['PROMPT', 'RESPONSE', 'WARNING']);
+    expect(levels).toEqual(['PROMPT', 'REQUEST', 'RESPONSE', 'WARNING']);
   });
 
   it('redacts configured secrets and sensitive keys', () => {

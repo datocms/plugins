@@ -6,13 +6,14 @@
  */
 
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
+import { createLogger, type Logger } from '../logging/Logger';
 import { resolveGlossaryId } from './DeepLGlossary';
 import { isFormalitySupported, mapDatoToDeepL } from './DeepLMap';
 import {
   formatErrorForUser,
   normalizeProviderError,
 } from './ProviderErrors';
-import type { TranslationProvider } from './types';
+import type { ProviderDebugHooks, TranslationProvider } from './types';
 
 /**
  * Maximum number of segments to translate in a single API call for chat vendors.
@@ -27,10 +28,31 @@ type Options = {
   recordContext?: string;
 };
 
+type ParseContext = {
+  provider: string;
+  fromLocale: string;
+  toLocale: string;
+  chunkStart?: number;
+  chunkSize?: number;
+};
+
+type ParseResponseResult = {
+  array: unknown[];
+  repaired: boolean;
+  repairedArray?: unknown[];
+};
+
 /**
  * Map of safe tokens to their original values.
  */
 export type TokenMap = { safe: string; orig: string }[];
+
+function buildProviderDebugHooks(logger: Logger): ProviderDebugHooks {
+  return {
+    request: (message, data) => logger.logRequest(message, data),
+    response: (message, data) => logger.logResponse(message, data),
+  };
+}
 
 /**
  * Replaces placeholders and variables with safe tokens to protect them during translation.
@@ -78,23 +100,40 @@ function detokenize(text: string, map: TokenMap): string {
  * @param text - Raw text that should contain a JSON array.
  * @returns The parsed array on success, or null on failure.
  */
-function tryRepairJsonArray(text: string): unknown[] | null {
+function tryRepairJsonArray(
+  text: string,
+  logger: Logger,
+  context: ParseContext,
+): unknown[] | null {
   const start = text.indexOf('[');
   const end = text.lastIndexOf(']');
-  if (start < 0 || end <= start) return null;
+  if (start < 0 || end <= start) {
+    logger.warning('Response repair skipped', {
+      ...context,
+      reason: 'missing-array-brackets',
+      rawResponse: text,
+    });
+    return null;
+  }
 
   try {
     const repaired = JSON.parse(text.slice(start, end + 1));
     if (Array.isArray(repaired)) {
-      console.info(
-        '[translateArray] JSON repaired by extracting array brackets',
-      );
+      logger.info('Response repaired by extracting array brackets', {
+        ...context,
+        rawResponse: text,
+        extractedRange: [start, end],
+        repairedArray: repaired,
+      });
       return repaired;
     }
-  } catch {
-    console.warn('[translateArray] JSON repair failed', {
+  } catch (error) {
+    logger.warning('Response repair failed', {
+      ...context,
       originalLength: text.length,
       extractedRange: [start, end],
+      rawResponse: text,
+      error,
     });
   }
   return null;
@@ -107,25 +146,54 @@ function tryRepairJsonArray(text: string): unknown[] | null {
  * @param trimmedTxt - Trimmed response text from the provider.
  * @returns The parsed array, or throws if no valid array can be recovered.
  */
-function parseResponseArray(trimmedTxt: string): unknown[] {
+function parseResponseArray(
+  trimmedTxt: string,
+  logger: Logger,
+  context: ParseContext,
+): ParseResponseResult {
   // Empty/blank response — return an empty array so length repair downstream
   // can fall back to the original segments instead of throwing. This matches
   // the contract relied on by parseTranslationResponse callers.
-  if (trimmedTxt.length === 0) return [];
+  if (trimmedTxt.length === 0) {
+    logger.warning('Response was empty; falling back by length repair', {
+      ...context,
+      rawResponse: trimmedTxt,
+    });
+    return { array: [], repaired: false };
+  }
 
   try {
     const parsed = JSON.parse(trimmedTxt);
-    if (Array.isArray(parsed)) return parsed;
-  } catch {
-    // fall through to repair
+    if (Array.isArray(parsed)) {
+      logger.info('Parsed response array', {
+        ...context,
+        rawResponse: trimmedTxt,
+        parsedArray: parsed,
+      });
+      return { array: parsed, repaired: false };
+    }
+    logger.warning('Parsed response was not an array', {
+      ...context,
+      rawResponse: trimmedTxt,
+      parsed,
+    });
+  } catch (error) {
+    logger.warning('Response JSON parse failed', {
+      ...context,
+      rawResponse: trimmedTxt,
+      error,
+    });
   }
 
-  const repaired = tryRepairJsonArray(trimmedTxt);
+  const repaired = tryRepairJsonArray(trimmedTxt, logger, context);
   if (repaired) {
-    console.info(
-      `[translateArray] Successfully parsed ${repaired.length} segments after JSON repair`,
-    );
-    return repaired;
+    logger.info('Parsed response array after repair', {
+      ...context,
+      rawResponse: trimmedTxt,
+      repairedArray: repaired,
+      repairedLength: repaired.length,
+    });
+    return { array: repaired, repaired: true, repairedArray: repaired };
   }
 
   throw new Error('Model did not return a JSON array');
@@ -142,9 +210,12 @@ function parseResponseArray(trimmedTxt: string): unknown[] {
 function parseTranslationResponse(
   responseText: string,
   originalSegments: string[],
+  logger: Logger,
+  context: ParseContext,
 ): string[] {
   const trimmedTxt = (responseText || '').trim();
-  const arr = parseResponseArray(trimmedTxt);
+  const parsed = parseResponseArray(trimmedTxt, logger, context);
+  const arr = parsed.array;
 
   // Length repair: ensure output has same length as input
   const fixed: string[] = [];
@@ -152,6 +223,16 @@ function parseTranslationResponse(
     const v = arr[i];
     fixed.push(typeof v === 'string' ? v : String(originalSegments[i] ?? ''));
   }
+
+  logger.info('Final parsed response array', {
+    ...context,
+    rawResponse: responseText,
+    parsedArray: arr,
+    repaired: parsed.repaired,
+    repairedArray: parsed.repairedArray,
+    originalSegments,
+    finalArray: fixed,
+  });
 
   return fixed;
 }
@@ -189,13 +270,15 @@ async function translateWithNativeBatchProvider(
   fromLocale: string,
   toLocale: string,
   opts: Options,
+  logger: Logger,
+  providerDebugHooks: ProviderDebugHooks,
 ): Promise<string[]> {
   const target = mapDatoToDeepL(toLocale, 'target');
   const source = fromLocale ? mapDatoToDeepL(fromLocale, 'source') : undefined;
   const formality =
     opts.formality && isFormalitySupported(target) ? opts.formality : undefined;
 
-  return provider.translateArray(protectedSegments, {
+  const requestOptions = {
     sourceLang: source,
     targetLang: target,
     isHTML: !!opts.isHTML,
@@ -207,7 +290,28 @@ async function translateWithNativeBatchProvider(
     glossaryId: resolveGlossaryId(pluginParams, fromLocale, toLocale),
     originalSourceLocale: fromLocale,
     originalTargetLocale: toLocale,
+    debug: providerDebugHooks,
+  };
+
+  logger.logRequest('Native batch translation request', {
+    provider: provider.vendor,
+    fromLocale,
+    toLocale,
+    segments: protectedSegments,
+    options: requestOptions,
   });
+
+  const translated = await provider.translateArray(
+    protectedSegments,
+    requestOptions,
+  );
+  logger.logResponse('Native batch translation response', {
+    provider: provider.vendor,
+    fromLocale,
+    toLocale,
+    responseArray: translated,
+  });
+  return translated;
 }
 
 /**
@@ -225,13 +329,41 @@ async function translateWithChatProvider(
   protectedSegments: string[],
   fromLocale: string,
   toLocale: string,
+  logger: Logger,
+  providerDebugHooks: ProviderDebugHooks,
 ): Promise<string[]> {
   const instruction = `Translate the following array of strings from ${fromLocale} to ${toLocale}. Return ONLY a valid JSON array of the exact same length, preserving placeholders like {foo}, {{bar}}, and tokens like ⟦PH_0⟧. You may encounter ICU Message Format strings (e.g., {gender, select, male {He said} female {She said}}). You MUST preserve the structure, keywords, and variable keys exactly. ONLY translate the human-readable content inside the brackets. Do not explain.`;
 
   if (protectedSegments.length <= CHAT_VENDOR_CHUNK_SIZE) {
     const prompt = `${instruction}\n${JSON.stringify(protectedSegments)}`;
-    const txt = await provider.completeText(prompt);
-    return parseTranslationResponse(txt, protectedSegments);
+    logger.logPrompt('Prompt request', prompt);
+    logger.logRequest('Provider text request input', {
+      provider: provider.vendor,
+      fromLocale,
+      toLocale,
+      chunkStart: 0,
+      chunkSize: protectedSegments.length,
+      prompt,
+      protectedSegments,
+    });
+    const txt = await provider.completeText(prompt, {
+      debug: providerDebugHooks,
+    });
+    logger.logResponse('Raw provider response', {
+      provider: provider.vendor,
+      fromLocale,
+      toLocale,
+      chunkStart: 0,
+      chunkSize: protectedSegments.length,
+      rawResponse: txt,
+    });
+    return parseTranslationResponse(txt, protectedSegments, logger, {
+      provider: provider.vendor,
+      fromLocale,
+      toLocale,
+      chunkStart: 0,
+      chunkSize: protectedSegments.length,
+    });
   }
 
   // Chunk large arrays to improve reliability and enable partial recovery
@@ -241,8 +373,34 @@ async function translateWithChatProvider(
       chunkStart + CHAT_VENDOR_CHUNK_SIZE,
     );
     const chunkPrompt = `${instruction}\n${JSON.stringify(chunkSegments)}`;
-    const chunkResponse = await provider.completeText(chunkPrompt);
-    return parseTranslationResponse(chunkResponse, chunkSegments);
+    logger.logPrompt('Prompt request', chunkPrompt);
+    logger.logRequest('Provider text request input', {
+      provider: provider.vendor,
+      fromLocale,
+      toLocale,
+      chunkStart,
+      chunkSize: chunkSegments.length,
+      prompt: chunkPrompt,
+      protectedSegments: chunkSegments,
+    });
+    const chunkResponse = await provider.completeText(chunkPrompt, {
+      debug: providerDebugHooks,
+    });
+    logger.logResponse('Raw provider response', {
+      provider: provider.vendor,
+      fromLocale,
+      toLocale,
+      chunkStart,
+      chunkSize: chunkSegments.length,
+      rawResponse: chunkResponse,
+    });
+    return parseTranslationResponse(chunkResponse, chunkSegments, logger, {
+      provider: provider.vendor,
+      fromLocale,
+      toLocale,
+      chunkStart,
+      chunkSize: chunkSegments.length,
+    });
   };
 
   const chunkStarts: number[] = [];
@@ -267,12 +425,25 @@ export async function translateArray(
 ): Promise<string[]> {
   if (!Array.isArray(segments) || segments.length === 0) return segments;
 
+  const logger = createLogger(pluginParams, 'translateArray');
+  const providerDebugHooks = buildProviderDebugHooks(logger);
+
   // Protect placeholders
   const tokenMaps: TokenMap[] = [];
   const protectedSegments = segments.map((s) => {
     const { safe, map } = tokenize(String(s ?? ''));
     tokenMaps.push(map);
     return safe;
+  });
+
+  logger.info('Translation batch payload', {
+    provider: provider.vendor,
+    fromLocale,
+    toLocale,
+    options: opts,
+    originalSegments: segments,
+    protectedSegments,
+    tokenMaps,
   });
 
   try {
@@ -291,6 +462,8 @@ export async function translateArray(
         fromLocale,
         toLocale,
         opts,
+        logger,
+        providerDebugHooks,
       );
     } else {
       out = await translateWithChatProvider(
@@ -298,14 +471,25 @@ export async function translateArray(
         protectedSegments,
         fromLocale,
         toLocale,
+        logger,
+        providerDebugHooks,
       );
     }
 
     // Reinsert tokens with safe fallback for tokenMaps
-    return out.map((t, i) => {
+    const finalSegments = out.map((t, i) => {
       const tokenMap = tokenMaps[i] ?? [];
       return detokenize(String(t ?? ''), tokenMap);
     });
+    logger.info('Translation batch output', {
+      provider: provider.vendor,
+      fromLocale,
+      toLocale,
+      translatedSegments: out,
+      finalSegments,
+      tokenMaps,
+    });
+    return finalSegments;
   } catch (error) {
     const norm = normalizeProviderError(error, provider.vendor);
     // ERR-002: Preserve original error context in the cause chain

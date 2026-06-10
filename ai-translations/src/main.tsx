@@ -49,6 +49,7 @@ import AIBulkTranslationsPage from './entrypoints/CustomPage/AIBulkTranslationsP
 import LoadingAddon from './entrypoints/LoadingAddon';
 import TranslateSidebar from './entrypoints/Sidebar/TranslateSidebar';
 import { defaultPrompt } from './prompts/DefaultPrompt';
+import { createLogger } from './utils/logging/Logger';
 import { formatLocaleWithCode } from './utils/localeUtils';
 import { render } from './utils/render';
 // Import refactored utility functions and types
@@ -680,6 +681,7 @@ connect({
     ctx: ExecuteFieldDropdownActionCtx,
   ) {
     const pluginParams = getPluginParams(ctx);
+    const logger = createLogger(pluginParams, 'executeFieldDropdownAction');
     const locales = ctx.formValues.internalLocales as string[];
     const fieldType = ctx.field.attributes.appearance.editor;
     const fieldValue = ctx.formValues[ctx.field.attributes.api_key];
@@ -722,10 +724,30 @@ connect({
       }
 
       // Persist translated value into the current editing locale
-      await ctx.setFieldValue(
-        `${ctx.field.attributes.api_key}.${ctx.locale}`,
-        translatedValue,
-      );
+      const fieldPath = `${ctx.field.attributes.api_key}.${ctx.locale}`;
+      logger.info('Translated field payload', {
+        flow: 'dropdown',
+        actionId,
+        fieldPath,
+        fieldId: ctx.field.id,
+        fieldApiKey: ctx.field.attributes.api_key,
+        fieldType,
+        sourceLocale: locale,
+        targetLocale: ctx.locale,
+        value: translatedValue,
+      });
+      logger.info('Form write payload', {
+        flow: 'dropdown',
+        actionId,
+        fieldPath,
+        fieldId: ctx.field.id,
+        fieldApiKey: ctx.field.attributes.api_key,
+        fieldType,
+        sourceLocale: locale,
+        targetLocale: ctx.locale,
+        value: translatedValue,
+      });
+      await ctx.setFieldValue(fieldPath, translatedValue);
       ctx.notice(
         `Translated "${ctx.field.attributes.label}" from ${formatLocaleWithCode(locale)}`,
       );
@@ -768,10 +790,30 @@ connect({
             return;
           }
 
-          await ctx.setFieldValue(
-            `${ctx.field.attributes.api_key}.${loc}`,
-            translatedValue,
-          );
+          const fieldPath = `${ctx.field.attributes.api_key}.${loc}`;
+          logger.info('Translated field payload', {
+            flow: 'dropdown',
+            actionId,
+            fieldPath,
+            fieldId: ctx.field.id,
+            fieldApiKey: ctx.field.attributes.api_key,
+            fieldType,
+            sourceLocale: ctx.locale,
+            targetLocale: loc,
+            value: translatedValue,
+          });
+          logger.info('Form write payload', {
+            flow: 'dropdown',
+            actionId,
+            fieldPath,
+            fieldId: ctx.field.id,
+            fieldApiKey: ctx.field.attributes.api_key,
+            fieldType,
+            sourceLocale: ctx.locale,
+            targetLocale: loc,
+            value: translatedValue,
+          });
+          await ctx.setFieldValue(fieldPath, translatedValue);
         };
 
         const targetLocales = locales.filter((loc) => loc !== ctx.locale);
@@ -809,10 +851,30 @@ connect({
         return;
       }
 
-      await ctx.setFieldValue(
-        `${ctx.field.attributes.api_key}.${locale}`,
-        translatedValue,
-      );
+      const fieldPath = `${ctx.field.attributes.api_key}.${locale}`;
+      logger.info('Translated field payload', {
+        flow: 'dropdown',
+        actionId,
+        fieldPath,
+        fieldId: ctx.field.id,
+        fieldApiKey: ctx.field.attributes.api_key,
+        fieldType,
+        sourceLocale: ctx.locale,
+        targetLocale: locale,
+        value: translatedValue,
+      });
+      logger.info('Form write payload', {
+        flow: 'dropdown',
+        actionId,
+        fieldPath,
+        fieldId: ctx.field.id,
+        fieldApiKey: ctx.field.attributes.api_key,
+        fieldType,
+        sourceLocale: ctx.locale,
+        targetLocale: locale,
+        value: translatedValue,
+      });
+      await ctx.setFieldValue(fieldPath, translatedValue);
       ctx.notice(
         `Translated "${ctx.field.attributes.label}" to ${formatLocaleWithCode(locale)}`,
       );

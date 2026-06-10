@@ -50,6 +50,7 @@ export default class GeminiProvider implements TranslationProvider {
   public readonly vendor: VendorId = 'google';
   private readonly genAI: GoogleGenerativeAI;
   private readonly model: GenerativeModel;
+  private readonly modelId: string;
   private readonly temperature?: number;
   private readonly maxOutputTokens?: number;
 
@@ -63,6 +64,7 @@ export default class GeminiProvider implements TranslationProvider {
     this.genAI = new GoogleGenerativeAI(cfg.apiKey);
     // PERF-002: Cache model instance to avoid recreating on each call
     this.model = this.genAI.getGenerativeModel({ model: cfg.model });
+    this.modelId = cfg.model;
     this.temperature = cfg.temperature;
     this.maxOutputTokens = cfg.maxOutputTokens;
   }
@@ -85,6 +87,7 @@ export default class GeminiProvider implements TranslationProvider {
     }
 
     const model = this.model;
+    const modelId = this.modelId;
     const temperature = this.temperature;
     const maxOutputTokens = this.maxOutputTokens;
 
@@ -95,6 +98,13 @@ export default class GeminiProvider implements TranslationProvider {
       }
 
       const request = buildGeminiRequest(prompt, temperature, maxOutputTokens);
+      options?.debug?.request?.('Provider request', {
+        provider: 'google',
+        operation: 'streamText',
+        url: 'https://generativelanguage.googleapis.com',
+        model: modelId,
+        body: request,
+      });
       const result = await model.generateContentStream(request);
 
       for await (const item of result.stream) {
@@ -103,6 +113,13 @@ export default class GeminiProvider implements TranslationProvider {
           throw new DOMException('Aborted', 'AbortError');
         }
         const text = item.text?.();
+        options?.debug?.response?.('Provider stream response chunk', {
+          provider: 'google',
+          operation: 'streamText',
+          model: modelId,
+          response: item,
+          text: text ?? '',
+        });
         if (text) {
           yield text;
         }
@@ -125,6 +142,7 @@ export default class GeminiProvider implements TranslationProvider {
     }
 
     const model = this.model;
+    const modelId = this.modelId;
     const temperature = this.temperature;
     const maxOutputTokens = this.maxOutputTokens;
 
@@ -135,8 +153,27 @@ export default class GeminiProvider implements TranslationProvider {
       }
 
       const request = buildGeminiRequest(prompt, temperature, maxOutputTokens);
+      options?.debug?.request?.('Provider request', {
+        provider: this.vendor,
+        operation: 'completeText',
+        url: 'https://generativelanguage.googleapis.com',
+        model: modelId,
+        body: request,
+        options: {
+          timeoutMs: options?.timeoutMs,
+          hasAbortSignal: options?.abortSignal !== undefined,
+        },
+      });
       const result = await model.generateContent(request);
-      return result.response?.text?.() ?? '';
+      const text = result.response?.text?.() ?? '';
+      options?.debug?.response?.('Provider response', {
+        provider: this.vendor,
+        operation: 'completeText',
+        model: modelId,
+        response: result.response ?? null,
+        text,
+      });
+      return text;
     });
   }
 }

@@ -3,10 +3,20 @@
  * Tests placeholder tokenization, detokenization, and array translation.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import { tokenize, translateArray } from './translateArray';
 import type { TranslationProvider } from './types';
+
+type LogPayload = {
+  level: string;
+  message: string;
+  data?: unknown;
+};
+
+function parseLogPayloads(calls: unknown[][]): LogPayload[] {
+  return calls.map((call) => JSON.parse(String(call[0])) as LogPayload);
+}
 
 describe('translateArray.ts', () => {
   describe('tokenize', () => {
@@ -179,6 +189,10 @@ describe('translateArray.ts', () => {
       };
     });
 
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
     describe('input validation', () => {
       it('should return empty array for empty input', async () => {
         const result = await translateArray(
@@ -224,6 +238,104 @@ describe('translateArray.ts', () => {
         expect(result).toEqual(['Hallo', 'Welt']);
       });
 
+      it('should suppress debug logs when debugging is disabled', async () => {
+        const logSpy = vi
+          .spyOn(console, 'log')
+          .mockImplementation(() => undefined);
+        vi.mocked(mockProvider.completeText).mockResolvedValue('["Hallo"]');
+
+        await translateArray(
+          mockProvider,
+          mockPluginParams,
+          ['Hello'],
+          'en',
+          'de',
+        );
+
+        expect(logSpy).not.toHaveBeenCalled();
+      });
+
+      it('should log useful copyable request and response payloads when debugging is enabled', async () => {
+        const logSpy = vi
+          .spyOn(console, 'log')
+          .mockImplementation(() => undefined);
+        vi.mocked(mockProvider.completeText).mockImplementation(
+          async (_prompt, options) => {
+            options?.debug?.request?.('Provider request', {
+              url: 'https://provider.example/translate',
+              body: { text: 'Hello ⟦PH_0⟧' },
+            });
+            options?.debug?.response?.('Provider response', {
+              status: 200,
+              text: '["Hallo ⟦PH_0⟧"]',
+            });
+            return '["Hallo ⟦PH_0⟧"]';
+          },
+        );
+
+        const result = await translateArray(
+          mockProvider,
+          { ...mockPluginParams, enableDebugging: true },
+          ['Hello {{name}}'],
+          'en',
+          'de',
+          { isHTML: true, formality: 'more', recordContext: 'Record title' },
+        );
+
+        expect(result).toEqual(['Hallo {{name}}']);
+        const payloads = parseLogPayloads(logSpy.mock.calls);
+        const messages = payloads.map((payload) => payload.message);
+        expect(messages).toEqual(
+          expect.arrayContaining([
+            'Translation batch payload',
+            'Provider text request input',
+            'Provider request',
+            'Provider response',
+            'Raw provider response',
+            'Parsed response array',
+            'Final parsed response array',
+            'Translation batch output',
+          ]),
+        );
+
+        const batchPayload = payloads.find(
+          (payload) => payload.message === 'Translation batch payload',
+        );
+        const batchData = batchPayload?.data as {
+          originalSegments: string[];
+          protectedSegments: string[];
+          tokenMaps: Array<Array<{ safe: string; orig: string }>>;
+        };
+        expect(batchData.originalSegments).toEqual(['Hello {{name}}']);
+        expect(batchData.protectedSegments).toEqual(['Hello ⟦PH_0⟧']);
+        expect(batchData.tokenMaps[0]?.[0]).toEqual({
+          safe: '⟦PH_0⟧',
+          orig: '{{name}}',
+        });
+
+        const requestPayload = payloads.find(
+          (payload) => payload.message === 'Provider text request input',
+        );
+        const requestData = requestPayload?.data as {
+          prompt: string;
+          protectedSegments: string[];
+        };
+        expect(requestData.prompt).toContain('["Hello ⟦PH_0⟧"]');
+        expect(requestData.protectedSegments).toEqual(['Hello ⟦PH_0⟧']);
+
+        const responsePayload = payloads.find(
+          (payload) => payload.message === 'Raw provider response',
+        );
+        const responseData = responsePayload?.data as { rawResponse: string };
+        expect(responseData.rawResponse).toBe('["Hallo ⟦PH_0⟧"]');
+
+        const outputPayload = payloads.find(
+          (payload) => payload.message === 'Translation batch output',
+        );
+        const outputData = outputPayload?.data as { finalSegments: string[] };
+        expect(outputData.finalSegments).toEqual(['Hallo {{name}}']);
+      });
+
       it('should protect and restore placeholders', async () => {
         vi.mocked(mockProvider.completeText).mockResolvedValue(
           '["Hallo ⟦PH_0⟧"]',
@@ -254,6 +366,37 @@ describe('translateArray.ts', () => {
         );
 
         expect(result).toEqual(['Hallo', 'Welt']);
+      });
+
+      it('should log response repair diagnostics for wrapped JSON', async () => {
+        const logSpy = vi
+          .spyOn(console, 'log')
+          .mockImplementation(() => undefined);
+        vi.mocked(mockProvider.completeText).mockResolvedValue(
+          'Here is the translation:\n["Hallo"]\nDone!',
+        );
+
+        const result = await translateArray(
+          mockProvider,
+          { ...mockPluginParams, enableDebugging: true },
+          ['Hello'],
+          'en',
+          'de',
+        );
+
+        expect(result).toEqual(['Hallo']);
+        const payloads = parseLogPayloads(logSpy.mock.calls);
+        const repairPayload = payloads.find(
+          (payload) =>
+            payload.message === 'Response repaired by extracting array brackets',
+        );
+        expect(repairPayload).toBeDefined();
+        const repairData = repairPayload?.data as {
+          rawResponse: string;
+          repairedArray: string[];
+        };
+        expect(repairData.rawResponse).toContain('Here is the translation');
+        expect(repairData.repairedArray).toEqual(['Hallo']);
       });
 
       it('should handle array length mismatch by padding with originals', async () => {
@@ -368,6 +511,44 @@ describe('translateArray.ts', () => {
             preserveFormatting: true,
           }),
         );
+      });
+
+      it('should log native request and response payloads when debugging is enabled', async () => {
+        const logSpy = vi
+          .spyOn(console, 'log')
+          .mockImplementation(() => undefined);
+        mockDeepLProvider.translateArray.mockResolvedValue(['Hallo']);
+
+        await translateArray(
+          mockDeepLProvider,
+          { ...mockPluginParams, enableDebugging: true },
+          ['Hello'],
+          'en',
+          'de',
+          { isHTML: true },
+        );
+
+        const payloads = parseLogPayloads(logSpy.mock.calls);
+        const messages = payloads.map((payload) => payload.message);
+        expect(messages).toEqual(
+          expect.arrayContaining([
+            'Native batch translation request',
+            'Native batch translation response',
+            'Translation batch output',
+          ]),
+        );
+        const requestPayload = payloads.find(
+          (payload) => payload.message === 'Native batch translation request',
+        );
+        const requestData = requestPayload?.data as {
+          provider: string;
+          segments: string[];
+          options: { targetLang: string; isHTML: boolean };
+        };
+        expect(requestData.provider).toBe('deepl');
+        expect(requestData.segments).toEqual(['Hello']);
+        expect(requestData.options.targetLang).toBe('DE');
+        expect(requestData.options.isHTML).toBe(true);
       });
     });
 

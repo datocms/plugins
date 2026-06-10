@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import type { TranslationProvider } from './types';
 
@@ -30,6 +30,15 @@ import { translateDefaultFieldValue } from './DefaultTranslation';
 import { translateFieldValue } from './TranslateField';
 import { translateArray } from './translateArray';
 
+type LogPayload = {
+  message: string;
+  data?: unknown;
+};
+
+function parseLogPayloads(calls: unknown[][]): LogPayload[] {
+  return calls.map((call) => JSON.parse(String(call[0])) as LogPayload);
+}
+
 describe('TranslateField', () => {
   const pluginParams: ctxParamsType = {
     apiKey: 'test-key',
@@ -54,6 +63,10 @@ describe('TranslateField', () => {
     vi.clearAllMocks();
   });
 
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('normalizes translated slug values deterministically', async () => {
     vi.mocked(translateDefaultFieldValue).mockResolvedValue('Caffè & tè!');
 
@@ -71,6 +84,55 @@ describe('TranslateField', () => {
         'main',
       ),
     ).resolves.toBe('caffe-te');
+  });
+
+  it('logs source and translated field payloads when debugging is enabled', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    vi.mocked(translateDefaultFieldValue).mockResolvedValue('Bonjour');
+
+    const result = await translateFieldValue(
+      'Hello',
+      { ...pluginParams, enableDebugging: true },
+      'fr',
+      'en',
+      'single_line',
+      provider,
+      '',
+      'api-token',
+      'field-title',
+      'main',
+      undefined,
+      'Record title',
+      undefined,
+      { fieldApiKey: 'title' },
+    );
+
+    expect(result).toBe('Bonjour');
+    const payloads = parseLogPayloads(logSpy.mock.calls);
+    const messages = payloads.map((payload) => payload.message);
+    expect(messages).toEqual(
+      expect.arrayContaining([
+        'Source field payload',
+        'Translated field payload',
+      ]),
+    );
+    const sourcePayload = payloads.find(
+      (payload) => payload.message === 'Source field payload',
+    );
+    const sourceData = sourcePayload?.data as {
+      fieldId: string;
+      fieldApiKey: string;
+      value: string;
+    };
+    expect(sourceData.fieldId).toBe('field-title');
+    expect(sourceData.fieldApiKey).toBe('title');
+    expect(sourceData.value).toBe('Hello');
+
+    const translatedPayload = payloads.find(
+      (payload) => payload.message === 'Translated field payload',
+    );
+    const translatedData = translatedPayload?.data as { value: string };
+    expect(translatedData.value).toBe('Bonjour');
   });
 
   it('throws when slug normalization produces an empty string', async () => {
@@ -141,5 +203,61 @@ describe('TranslateField', () => {
     expect(result[0].content[0].children[0].children[0].value).toBe(
       'Clicca qui',
     );
+  });
+
+  it('logs block payloads and per-field diagnostics when debugging is enabled', async () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    vi.mocked(translateArray).mockResolvedValue(['Clicca qui']);
+
+    await translateFieldValue(
+      [
+        {
+          id: 'wrapper-id',
+          blockModelId: 'block-model-1',
+          content: [
+            {
+              type: 'paragraph',
+              children: [{ type: 'span', value: 'Click here' }],
+            },
+          ],
+        },
+      ],
+      { ...pluginParams, enableDebugging: true },
+      'it',
+      'en',
+      'rich_text',
+      provider,
+      '',
+      'api-token',
+      'field-rich',
+      'main',
+    );
+
+    const payloads = parseLogPayloads(logSpy.mock.calls);
+    const messages = payloads.map((payload) => payload.message);
+    expect(messages).toEqual(
+      expect.arrayContaining([
+        'Block payload before processing',
+        'Block field source payload',
+        'Block field translated payload',
+        'Block translation completed',
+      ]),
+    );
+    const sourcePayload = payloads.find(
+      (payload) => payload.message === 'Block field source payload',
+    );
+    const sourceData = sourcePayload?.data as {
+      fieldKey: string;
+      editor: string;
+      value: unknown;
+    };
+    expect(sourceData.fieldKey).toBe('content');
+    expect(sourceData.editor).toBe('structured_text');
+    expect(sourceData.value).toEqual([
+      {
+        type: 'paragraph',
+        children: [{ type: 'span', value: 'Click here' }],
+      },
+    ]);
   });
 });

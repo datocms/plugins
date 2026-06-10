@@ -78,6 +78,11 @@ function extractErrorMessage(value: unknown): string {
   return typeof record.message === 'string' ? record.message.toLowerCase() : '';
 }
 
+function toRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
 /**
  * DeepL API provider with native array translation support. Uses fetch
  * directly via the DatoCMS CORS proxy to handle browser CORS restrictions.
@@ -232,10 +237,13 @@ export default class DeepLProvider implements TranslationProvider {
    */
   async completeText(
     prompt: string,
-    _options?: StreamOptions,
+    options?: StreamOptions,
   ): Promise<string> {
     // Fallback single-string translation via DeepL
-    const arr = await this.translateArray([prompt], { targetLang: 'EN' });
+    const arr = await this.translateArray([prompt], {
+      targetLang: 'EN',
+      debug: options?.debug,
+    });
     return arr[0] || '';
   }
 
@@ -441,13 +449,28 @@ export default class DeepLProvider implements TranslationProvider {
    * @param res - The failed fetch Response.
    * @returns Never — always throws.
    */
-  private async throwDeepLError(res: Response): Promise<never> {
-    let msg = res.statusText;
+  private async readJsonBody(res: Response): Promise<unknown> {
     try {
-      const err: Record<string, unknown> = await res.json();
-      msg = this.extractDeepLErrorMessage(err, msg);
+      return await res.json();
     } catch {
-      /* JSON parse failed, use statusText */
+      return null;
+    }
+  }
+
+  private async throwDeepLError(
+    res: Response,
+    raw?: Record<string, unknown> | null,
+  ): Promise<never> {
+    let msg = res.statusText;
+    if (raw) {
+      msg = this.extractDeepLErrorMessage(raw, msg);
+    } else if (raw === undefined) {
+      try {
+        const err: Record<string, unknown> = await res.json();
+        msg = this.extractDeepLErrorMessage(err, msg);
+      } catch {
+        /* JSON parse failed, use statusText */
+      }
     }
     if (/wrong endpoint/i.test(msg)) {
       msg = this.buildWrongEndpointMessage(msg);
@@ -479,43 +502,104 @@ export default class DeepLProvider implements TranslationProvider {
     headers: Record<string, string>,
     signal: AbortSignal,
   ): Promise<void> {
+    const requestBody = this.buildDeepLRequestBody(
+      slice,
+      opts,
+      glossaryId,
+      !!glossaryId,
+    );
+    opts.debug?.request?.('Provider request', {
+      provider: this.vendor,
+      operation: 'translateArray',
+      url,
+      batchStartIndex,
+      body: requestBody,
+      options: {
+        timeoutMs: opts.timeoutMs,
+        originalSourceLocale: opts.originalSourceLocale,
+        originalTargetLocale: opts.originalTargetLocale,
+      },
+    });
     let res = await fetch(url, {
       method: 'POST',
       headers,
-      body: JSON.stringify(
-        this.buildDeepLRequestBody(slice, opts, glossaryId, !!glossaryId),
-      ),
+      body: JSON.stringify(requestBody),
       signal,
     });
+    let latestErrorRaw: unknown;
+    let hasLatestErrorRaw = false;
 
     // On first failure, attempt glossary-mismatch recovery
     if (!res.ok) {
       let msg = res.statusText;
-      try {
-        const raw = (await res.json()) as Record<string, unknown>;
-        msg = this.extractDeepLErrorMessage(raw, msg);
-      } catch {
-        /* JSON parse failed, use statusText */
+      const raw = await this.readJsonBody(res);
+      latestErrorRaw = raw;
+      hasLatestErrorRaw = true;
+      opts.debug?.response?.('Provider error response', {
+        provider: this.vendor,
+        operation: 'translateArray',
+        status: res.status,
+        statusText: res.statusText,
+        batchStartIndex,
+        response: raw,
+      });
+      const rawRecord = toRecord(raw);
+      if (rawRecord) {
+        msg = this.extractDeepLErrorMessage(rawRecord, msg);
       }
 
       if (this.isGlossaryMismatchError(msg, res.status, glossaryId)) {
         // Retry without the glossary to recover from language-pair mismatch
+        const retryBody = this.buildDeepLRequestBody(
+          slice,
+          opts,
+          glossaryId,
+          false,
+        );
+        opts.debug?.request?.('Provider retry request', {
+          provider: this.vendor,
+          operation: 'translateArray',
+          url,
+          batchStartIndex,
+          body: retryBody,
+        });
         res = await fetch(url, {
           method: 'POST',
           headers,
-          body: JSON.stringify(
-            this.buildDeepLRequestBody(slice, opts, glossaryId, false),
-          ),
+          body: JSON.stringify(retryBody),
           signal,
         });
+        latestErrorRaw = undefined;
+        hasLatestErrorRaw = false;
       }
     }
 
     if (!res.ok) {
-      await this.throwDeepLError(res);
+      const raw = hasLatestErrorRaw
+        ? latestErrorRaw
+        : await this.readJsonBody(res);
+      if (!hasLatestErrorRaw) {
+        opts.debug?.response?.('Provider error response', {
+          provider: this.vendor,
+          operation: 'translateArray',
+          status: res.status,
+          statusText: res.statusText,
+          batchStartIndex,
+          response: raw,
+        });
+      }
+      await this.throwDeepLError(res, toRecord(raw));
     }
 
-    const data: DeepLResponse = await res.json();
+    const rawData = await this.readJsonBody(res);
+    opts.debug?.response?.('Provider response', {
+      provider: this.vendor,
+      operation: 'translateArray',
+      status: res.status,
+      batchStartIndex,
+      response: rawData,
+    });
+    const data = rawData as DeepLResponse;
     const translations: string[] = Array.isArray(data?.translations)
       ? data.translations.map((t: DeepLTranslation) => String(t?.text ?? ''))
       : [];

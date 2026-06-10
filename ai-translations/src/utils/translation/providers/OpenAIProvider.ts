@@ -21,6 +21,7 @@ export default class OpenAIProvider implements TranslationProvider {
   public readonly vendor: VendorId = 'openai';
   private readonly client: OpenAI;
   private readonly model: string;
+  private readonly baseUrl: string;
 
   /**
    * Creates a provider bound to a model and API credentials.
@@ -35,6 +36,7 @@ export default class OpenAIProvider implements TranslationProvider {
       dangerouslyAllowBrowser: true,
     });
     this.model = cfg.model;
+    this.baseUrl = cfg.baseUrl ?? 'https://api.openai.com/v1';
   }
 
   /**
@@ -54,18 +56,30 @@ export default class OpenAIProvider implements TranslationProvider {
 
     const client = this.client;
     const model = this.model;
+    const baseUrl = this.baseUrl;
 
     yield* withTimeoutGenerator(options, async function* (signal: AbortSignal) {
-      const stream = await client.chat.completions.create(
-        {
-          model,
-          messages: [{ role: 'user', content: prompt }],
-          stream: true,
-        },
-        { signal },
-      );
+      const requestBody = {
+        model,
+        messages: [{ role: 'user' as const, content: prompt }],
+        stream: true as const,
+      };
+      options?.debug?.request?.('Provider request', {
+        provider: 'openai',
+        operation: 'streamText',
+        url: `${baseUrl.replace(/\/$/, '')}/chat/completions`,
+        body: requestBody,
+      });
+      const stream = await client.chat.completions.create(requestBody, {
+        signal,
+      });
 
       for await (const chunk of stream) {
+        options?.debug?.response?.('Provider stream response chunk', {
+          provider: 'openai',
+          operation: 'streamText',
+          chunk,
+        });
         const delta = chunk.choices?.[0]?.delta;
         const content = delta && 'content' in delta ? delta.content : null;
         if (content) {
@@ -88,15 +102,32 @@ export default class OpenAIProvider implements TranslationProvider {
     }
 
     return withTimeout(options, async (signal) => {
-      const resp = await this.client.chat.completions.create(
-        {
-          model: this.model,
-          messages: [{ role: 'user', content: prompt }],
-          stream: false,
+      const requestBody = {
+        model: this.model,
+        messages: [{ role: 'user' as const, content: prompt }],
+        stream: false as const,
+      };
+      options?.debug?.request?.('Provider request', {
+        provider: this.vendor,
+        operation: 'completeText',
+        url: `${this.baseUrl.replace(/\/$/, '')}/chat/completions`,
+        body: requestBody,
+        options: {
+          timeoutMs: options?.timeoutMs,
+          hasAbortSignal: options?.abortSignal !== undefined,
         },
-        { signal },
-      );
-      return resp.choices?.[0]?.message?.content ?? '';
+      });
+      const resp = await this.client.chat.completions.create(requestBody, {
+        signal,
+      });
+      const text = resp.choices?.[0]?.message?.content ?? '';
+      options?.debug?.response?.('Provider response', {
+        provider: this.vendor,
+        operation: 'completeText',
+        response: resp,
+        text,
+      });
+      return text;
     });
   }
 }

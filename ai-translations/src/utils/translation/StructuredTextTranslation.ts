@@ -407,6 +407,13 @@ export async function translateStructuredTextValue(
     fieldValue = initialValue.document.children;
     isAPIResponse = true;
   }
+  logger.info('Structured text source payload', {
+    fromLocale,
+    toLocale,
+    isAPIResponse,
+    value: initialValue,
+    workingValue: fieldValue,
+  });
 
   // Skip translation if null or not an array
   if (!fieldValue || !Array.isArray(fieldValue) || fieldValue.length === 0) {
@@ -447,6 +454,12 @@ export async function translateStructuredTextValue(
   }
 
   logger.info(`Found ${textValues.length} text nodes to translate`);
+  logger.info('Structured text inline source payload', {
+    fromLocale,
+    toLocale,
+    textLeaves,
+    textValues,
+  });
 
   try {
     // Translate inline text values as an array using helper
@@ -515,7 +528,11 @@ export async function translateStructuredTextValue(
 
     // If there are block nodes, translate them separately
     if (blockNodes.length > 0) {
-      logger.info(`Translating ${blockNodes.length} block nodes`);
+      logger.info(`Translating ${blockNodes.length} block nodes`, {
+        fromLocale,
+        toLocale,
+        blockNodes,
+      });
 
       // Key change: Pass the entire blockNodes array to translateFieldValue
       // and use 'rich_text' as the field type instead of translating each block separately
@@ -535,6 +552,11 @@ export async function translateStructuredTextValue(
         schemaRepository,
         buildNestedTranslationOptions(cmaBaseUrl),
       )) as StructuredTextNode[];
+      logger.info('Structured text translated block payload', {
+        fromLocale,
+        toLocale,
+        translatedBlockNodes,
+      });
 
       // Insert translated blocks back at their original positions
       for (const node of translatedBlockNodes) {
@@ -554,16 +576,26 @@ export async function translateStructuredTextValue(
     ).map(({ originalIndex, ...rest }) => rest);
 
     if (isAPIResponse) {
-      return {
+      const apiResponsePayload = {
         document: {
           children: cleanedReconstructedObject,
           type: 'root',
         },
         schema: 'dast',
       };
+      logger.info('Structured text translated payload', {
+        fromLocale,
+        toLocale,
+        value: apiResponsePayload,
+      });
+      return apiResponsePayload;
     }
 
-    logger.info('Successfully translated structured text');
+    logger.info('Successfully translated structured text', {
+      fromLocale,
+      toLocale,
+      value: cleanedReconstructedObject,
+    });
     return cleanedReconstructedObject;
   } catch (error) {
     // DRY-001: Use centralized error handler

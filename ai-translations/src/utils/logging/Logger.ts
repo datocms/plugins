@@ -11,7 +11,13 @@ import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
  */
 type LoggableData = unknown;
 
-type LogLevel = 'INFO' | 'PROMPT' | 'RESPONSE' | 'WARNING' | 'ERROR';
+type LogLevel =
+  | 'INFO'
+  | 'PROMPT'
+  | 'REQUEST'
+  | 'RESPONSE'
+  | 'WARNING'
+  | 'ERROR';
 
 type LogPayload = {
   timestamp: string;
@@ -63,12 +69,14 @@ export class Logger {
   }
 
   private isSensitiveKey(key: string): boolean {
-    const k = key.toLowerCase();
+    const k = key.toLowerCase().replace(/[_-]/g, '');
+    if (k === 'fieldapikey') return false;
     return (
-      k.includes('apikey') ||
-      k.includes('api_key') ||
+      k === 'apikey' ||
+      k.endsWith('apikey') ||
       k.includes('authorization') ||
-      k.includes('token') ||
+      k === 'token' ||
+      k.endsWith('token') ||
       k.includes('secret')
     );
   }
@@ -205,6 +213,13 @@ export class Logger {
    */
   logPrompt(message: string, prompt: string): void {
     this.log('PROMPT', message, prompt);
+  }
+
+  /**
+   * Log a request payload being sent to the selected provider.
+   */
+  logRequest(message: string, request: LoggableData): void {
+    this.log('REQUEST', message, request);
   }
 
   /**

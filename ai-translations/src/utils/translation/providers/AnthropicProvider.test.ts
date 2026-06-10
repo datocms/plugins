@@ -245,21 +245,25 @@ describe('AnthropicProvider', () => {
     });
 
     describe('empty response warning', () => {
-      it('should warn on empty response for non-empty prompt', async () => {
-        const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-
+      it('should emit a debug hook on empty response for non-empty prompt', async () => {
+        const response = vi.fn();
         mockFetch.mockResolvedValue({
           ok: true,
           json: () => Promise.resolve({ content: [] }),
         });
 
-        await provider.completeText('Non-empty prompt');
+        await provider.completeText('Non-empty prompt', {
+          debug: { response },
+        });
 
-        expect(warnSpy).toHaveBeenCalledWith(
-          expect.stringContaining('empty response'),
+        expect(response).toHaveBeenCalledWith(
+          'Provider empty response warning',
+          expect.objectContaining({
+            provider: 'anthropic',
+            operation: 'completeText',
+            response: { content: [] },
+          }),
         );
-
-        warnSpy.mockRestore();
       });
     });
   });

@@ -3,7 +3,7 @@
  * Tests translation of structured text fields with complex node structures.
  */
 
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import { translateStructuredTextValue } from './StructuredTextTranslation';
 import type { TranslationProvider } from './types';
@@ -20,6 +20,15 @@ vi.mock('./TranslateField', () => ({
 
 import { translateFieldValue } from './TranslateField';
 import { translateArray } from './translateArray';
+
+type LogPayload = {
+  message: string;
+  data?: unknown;
+};
+
+function parseLogPayloads(calls: unknown[][]): LogPayload[] {
+  return calls.map((call) => JSON.parse(String(call[0])) as LogPayload);
+}
 
 describe('StructuredTextTranslation', () => {
   const mockPluginParams: ctxParamsType = {
@@ -45,6 +54,10 @@ describe('StructuredTextTranslation', () => {
       streamText: vi.fn(),
       completeText: vi.fn(),
     };
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   describe('translateStructuredTextValue', () => {
@@ -130,6 +143,51 @@ describe('StructuredTextTranslation', () => {
             children: [{ text: 'Hallo Welt' }],
           },
         ]);
+      });
+
+      it('should log source and final structured text payloads when debugging is enabled', async () => {
+        const logSpy = vi
+          .spyOn(console, 'log')
+          .mockImplementation(() => undefined);
+        vi.mocked(translateArray).mockResolvedValue(['Hallo Welt']);
+
+        const structuredText = [
+          {
+            type: 'paragraph',
+            children: [{ text: 'Hello World' }],
+          },
+        ];
+
+        const result = await translateStructuredTextValue(
+          structuredText,
+          { ...mockPluginParams, enableDebugging: true },
+          'de',
+          'en',
+          mockProvider,
+          'api-token',
+          'main',
+        );
+
+        expect(result).toEqual([
+          {
+            type: 'paragraph',
+            children: [{ text: 'Hallo Welt' }],
+          },
+        ]);
+        const payloads = parseLogPayloads(logSpy.mock.calls);
+        const messages = payloads.map((payload) => payload.message);
+        expect(messages).toEqual(
+          expect.arrayContaining([
+            'Structured text source payload',
+            'Structured text inline source payload',
+            'Successfully translated structured text',
+          ]),
+        );
+        const sourcePayload = payloads.find(
+          (payload) => payload.message === 'Structured text source payload',
+        );
+        const sourceData = sourcePayload?.data as { value: unknown };
+        expect(sourceData.value).toEqual(structuredText);
       });
 
       it('should translate multiple text nodes', async () => {

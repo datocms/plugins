@@ -331,6 +331,15 @@ export async function translateFieldValue(
     fromLocale,
     toLocale,
   });
+  logger.info('Source field payload', {
+    fieldType,
+    fieldId,
+    fieldApiKey: options.fieldApiKey,
+    fromLocale,
+    toLocale,
+    recordContext,
+    value: fieldValue,
+  });
 
   if (
     isFieldExcluded(pluginParams.apiKeysToBeExcludedFromThisPlugin, [
@@ -338,6 +347,15 @@ export async function translateFieldValue(
       options.fieldApiKey,
     ])
   ) {
+    logger.info('Skipping field translation', {
+      reason: 'excluded',
+      fieldType,
+      fieldId,
+      fieldApiKey: options.fieldApiKey,
+      fromLocale,
+      toLocale,
+      value: fieldValue,
+    });
     return fieldValue;
   }
 
@@ -352,6 +370,15 @@ export async function translateFieldValue(
     (!fieldTranslatable && !options.bypassFieldTypeAllowlist) ||
     !fieldValue
   ) {
+    logger.info('Skipping field translation', {
+      reason: !fieldValue ? 'empty-value' : 'field-type-not-enabled',
+      fieldType,
+      fieldId,
+      fieldApiKey: options.fieldApiKey,
+      fromLocale,
+      toLocale,
+      value: fieldValue,
+    });
     return fieldValue;
   }
 
@@ -436,8 +463,25 @@ export async function translateFieldValue(
     if (!normalizedSlug) {
       throw new Error('Translated slug is empty after normalization');
     }
+    logger.info('Translated field payload', {
+      fieldType,
+      fieldId,
+      fieldApiKey: options.fieldApiKey,
+      fromLocale,
+      toLocale,
+      value: normalizedSlug,
+    });
     return normalizedSlug;
   }
+
+  logger.info('Translated field payload', {
+    fieldType,
+    fieldId,
+    fieldApiKey: options.fieldApiKey,
+    fromLocale,
+    toLocale,
+    value: translatedValue,
+  });
 
   return translatedValue;
 }
@@ -796,14 +840,28 @@ async function processBlockFields(
   ctx: BlockFieldProcessingContext,
 ): Promise<void> {
   // Collect translatable fields (skip metadata fields)
-  const translatableFields = Object.keys(source).filter(
-    (field) =>
-      !BLOCK_METADATA_FIELDS.includes(
+  const translatableFields: string[] = [];
+  for (const field of Object.keys(source)) {
+    if (
+      BLOCK_METADATA_FIELDS.includes(
         field as (typeof BLOCK_METADATA_FIELDS)[number],
-      ),
-  );
+      )
+    ) {
+      ctx.logger.info('Block field skipped', {
+        fieldKey: field,
+        reason: 'metadata-field',
+        value: source[field],
+      });
+      continue;
+    }
+    translatableFields.push(field);
+  }
 
   if (translatableFields.length === 0) {
+    ctx.logger.info('Block processing skipped', {
+      reason: 'no-translatable-fields',
+      source,
+    });
     return;
   }
 
@@ -814,6 +872,17 @@ async function processBlockFields(
 
       const fieldMeta = fieldTypeDictionary[field];
       const isLocalizedField = fieldMeta?.localized === true;
+      const fieldEditor = fieldMeta?.editor || 'text';
+
+      ctx.logger.info('Block field source payload', {
+        fieldKey: field,
+        fieldId: fieldMeta?.id,
+        editor: fieldEditor,
+        localized: isLocalizedField,
+        fromLocale: ctx.fromLocale,
+        toLocale: ctx.toLocale,
+        value: source[field],
+      });
 
       const resolved = resolveFieldValueForTranslation(
         source[field],
@@ -823,8 +892,28 @@ async function processBlockFields(
       );
 
       if (resolved.skip) {
+        ctx.logger.info('Block field skipped', {
+          fieldKey: field,
+          fieldId: fieldMeta?.id,
+          editor: fieldEditor,
+          localized: isLocalizedField,
+          reason: 'missing-source-locale-value',
+          fromLocale: ctx.fromLocale,
+          toLocale: ctx.toLocale,
+          value: source[field],
+        });
         return { field, value: source[field] };
       }
+
+      ctx.logger.info('Block field translation input', {
+        fieldKey: field,
+        fieldId: fieldMeta?.id,
+        editor: fieldEditor,
+        localized: isLocalizedField,
+        fromLocale: ctx.fromLocale,
+        toLocale: ctx.toLocale,
+        value: resolved.valueToTranslate,
+      });
 
       const translatedValue = await translateBlockFieldValue(
         field,
@@ -835,8 +924,30 @@ async function processBlockFields(
 
       if (resolved.localizedContainer && resolved.targetLocaleKey) {
         resolved.localizedContainer[resolved.targetLocaleKey] = translatedValue;
+        ctx.logger.info('Block field translated payload', {
+          fieldKey: field,
+          fieldId: fieldMeta?.id,
+          editor: fieldEditor,
+          localized: isLocalizedField,
+          targetLocaleKey: resolved.targetLocaleKey,
+          fromLocale: ctx.fromLocale,
+          toLocale: ctx.toLocale,
+          translatedValue,
+          writtenValue: resolved.localizedContainer,
+        });
         return { field, value: resolved.localizedContainer };
       }
+
+      ctx.logger.info('Block field translated payload', {
+        fieldKey: field,
+        fieldId: fieldMeta?.id,
+        editor: fieldEditor,
+        localized: isLocalizedField,
+        fromLocale: ctx.fromLocale,
+        toLocale: ctx.toLocale,
+        translatedValue,
+        writtenValue: translatedValue,
+      });
 
       return { field, value: translatedValue };
     },
@@ -900,7 +1011,12 @@ async function translateBlockValue(
   cmaBaseUrl?: string,
 ) {
   const logger = createLogger(pluginParams, 'translateBlockValue');
-  logger.info('Translating block value');
+  logger.info('Translating block value', {
+    fieldType,
+    fromLocale,
+    toLocale,
+    value: fieldValue,
+  });
 
   const isSingleBlock =
     fieldType === 'framed_single_block' ||
@@ -909,6 +1025,13 @@ async function translateBlockValue(
     isSingleBlock ? [fieldValue] : fieldValue
   ) as Array<DatoCMSBlock>;
   const cleanedFieldValue = rawBlocks.map(stripBlockWrapperIdentifiers);
+  logger.info('Block payload before processing', {
+    fieldType,
+    fromLocale,
+    toLocale,
+    rawBlocks,
+    cleanedFieldValue,
+  });
 
   // Create processing context with all translation configuration
   const processingContext: BlockFieldProcessingContext = {
@@ -976,6 +1099,10 @@ async function translateBlockValue(
       logger.warning('Block model ID not found', block);
       return;
     }
+    logger.info('Block processing started', {
+      blockModelId,
+      block,
+    });
 
     const fieldTypeDictionary = await fetchBlockFields(
       apiToken,
@@ -1018,6 +1145,11 @@ async function translateBlockValue(
       effectiveFieldTypes,
       processingContext,
     );
+    logger.info('Block processing completed', {
+      blockModelId,
+      block,
+      sourceObject,
+    });
   }
 
   // Process blocks sequentially using reduce to avoid await-in-loop
@@ -1026,8 +1158,16 @@ async function translateBlockValue(
     Promise.resolve(),
   );
 
-  logger.info('Block translation completed');
-  return isSingleBlock ? cleanedFieldValue[0] : cleanedFieldValue;
+  const translatedBlockValue = isSingleBlock
+    ? cleanedFieldValue[0]
+    : cleanedFieldValue;
+  logger.info('Block translation completed', {
+    fieldType,
+    fromLocale,
+    toLocale,
+    value: translatedBlockValue,
+  });
+  return translatedBlockValue;
 }
 
 /**
@@ -1144,6 +1284,15 @@ async function TranslateField(
     // Get the field API key and ensure it's always a string
     const fieldApiKey = ctx.field.attributes.api_key ?? '';
     const fieldIdentifier = ctx.field.id ?? ctx.fieldPath ?? '';
+    logger.info('Dropdown source payload', {
+      fieldType,
+      fieldId: fieldIdentifier,
+      fieldApiKey,
+      fieldPath: ctx.fieldPath,
+      fromLocale,
+      toLocale,
+      value: fieldValue,
+    });
 
     let fieldTypePrompt = 'Return the response in the format of ';
     const fieldPromptObject = fieldPrompt;
@@ -1175,6 +1324,15 @@ async function TranslateField(
       },
     );
 
+    logger.info('Dropdown translated payload', {
+      fieldType,
+      fieldId: fieldIdentifier,
+      fieldApiKey,
+      fieldPath: ctx.fieldPath,
+      fromLocale,
+      toLocale,
+      value: translatedValue,
+    });
     logger.info('Field translation completed');
     return translatedValue;
   } catch (error) {
