@@ -53,31 +53,6 @@ describe('TranslateSidebar', () => {
     enableDebugging: false,
   };
 
-  // Two localized single-line fields so the field picker has something to
-  // populate and the Translate button enables itself.
-  const stubFields = [
-    {
-      id: 'field-title',
-      attributes: {
-        api_key: 'title',
-        label: 'Title',
-        localized: true,
-        position: 1,
-        appearance: { editor: 'single_line' },
-      },
-    },
-    {
-      id: 'field-summary',
-      attributes: {
-        api_key: 'summary',
-        label: 'Summary',
-        localized: true,
-        position: 2,
-        appearance: { editor: 'single_line' },
-      },
-    },
-  ];
-
   const baseCtx = {
     plugin: { id: 'plugin-1', attributes: { parameters: pluginParams } },
     itemType: {
@@ -89,7 +64,6 @@ describe('TranslateSidebar', () => {
     alert: vi.fn(),
     navigateTo: vi.fn(),
     scrollToField: vi.fn(),
-    loadItemTypeFields: vi.fn().mockResolvedValue(stubFields),
     theme: {
       semiTransparentAccentColor: 'rgba(0, 0, 0, 0.1)',
       accentColor: '#6b46ff',
@@ -98,7 +72,20 @@ describe('TranslateSidebar', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    baseCtx.loadItemTypeFields.mockResolvedValue(stubFields);
+  });
+
+  it('keeps field selection copy out of the compact sidebar', () => {
+    render(<TranslateSidebar ctx={asCtx(baseCtx)} />);
+
+    expect(screen.queryByText('Fields to translate')).toBeNull();
+    expect(
+      screen.queryByText(/Defaults to every translatable field/i),
+    ).toBeNull();
+    expect(
+      (screen.getByRole('button', {
+        name: 'Translate all fields',
+      }) as HTMLButtonElement).disabled,
+    ).toBe(false);
   });
 
   it('navigates using the base field path and locale from a progress bubble', async () => {
@@ -110,12 +97,16 @@ describe('TranslateSidebar', () => {
 
     render(<TranslateSidebar ctx={asCtx(baseCtx)} />);
 
-    // Wait for the field picker to populate (Translate button enables once
-    // fields load and at least one is selected).
     const translateButton = await screen.findByRole('button', {
-      name: /^Translate all fields to/,
+      name: 'Translate all fields',
     });
     fireEvent.click(translateButton);
+
+    await waitFor(() => {
+      expect(translateRecordFields).toHaveBeenCalled();
+    });
+    const translateOptions = vi.mocked(translateRecordFields).mock.calls[0]?.[4];
+    expect(translateOptions).not.toHaveProperty('allowedFieldApiKeys');
 
     const bubbleButton = await screen.findByRole('button', {
       name: /Go to field: Title \(it\)/i,
@@ -136,7 +127,7 @@ describe('TranslateSidebar', () => {
     render(<TranslateSidebar ctx={asCtx(baseCtx)} />);
 
     const translateButton = await screen.findByRole('button', {
-      name: /^Translate all fields to/,
+      name: 'Translate all fields',
     });
     fireEvent.click(translateButton);
 

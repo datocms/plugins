@@ -11,23 +11,22 @@
   gap: var(--spacing-s);
 }
 
-.subsectionHeader {
+.localeRow {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-bottom: var(--spacing-s);
+  align-items: center;
+  gap: var(--spacing-s);
 }
 
-.subsectionLabel {
-  font-size: var(--font-size-s);
-  font-weight: var(--font-weight-bold);
+.localeCue {
   color: var(--color--ink);
+  font-size: var(--font-size-m);
+  font-weight: var(--font-weight-bold);
+  line-height: 1;
 }
 
-.subsectionHint {
-  font-size: var(--font-size-s);
-  color: var(--color--ink-subtle);
-  line-height: 1.4;
+.localeSelect {
+  flex: 1;
+  min-width: 0;
 }
 
 .configurePrompt {

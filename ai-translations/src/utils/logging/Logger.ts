@@ -11,15 +11,15 @@ import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
  */
 type LoggableData = unknown;
 
-/**
- * Available log levels with corresponding colors for clear visual distinction.
- */
-const LOG_LEVELS = {
-  INFO: { label: 'INFO', color: '#4a90e2' },
-  PROMPT: { label: 'PROMPT', color: '#50e3c2' },
-  RESPONSE: { label: 'RESPONSE', color: '#b8e986' },
-  WARNING: { label: 'WARNING', color: '#f5a623' },
-  ERROR: { label: 'ERROR', color: '#d0021b' },
+type LogLevel = 'INFO' | 'PROMPT' | 'RESPONSE' | 'WARNING' | 'ERROR';
+
+type LogPayload = {
+  timestamp: string;
+  level: LogLevel;
+  source: string;
+  message: string;
+  data?: LoggableData;
+  error?: LoggableData;
 };
 
 /**
@@ -76,7 +76,7 @@ export class Logger {
   private sanitizeObjectEntry(
     key: string,
     value: unknown,
-    depth: number,
+    seen: WeakSet<object>,
   ): unknown {
     if (this.isSensitiveKey(key)) {
       return typeof value === 'string' && value.length > 4
@@ -84,56 +84,113 @@ export class Logger {
         : '[REDACTED]';
     }
     if (typeof value === 'string') return this.redactString(value);
-    return this.sanitize(value as LoggableData, depth + 1);
+    return this.sanitize(value as LoggableData, seen);
   }
 
-  private sanitize(data: LoggableData, depth = 0): LoggableData {
+  private sanitizeArray(data: unknown[], seen: WeakSet<object>): LoggableData {
+    if (seen.has(data)) return '[Circular]';
+    seen.add(data);
+    const out = data.map((v) => this.sanitize(v, seen));
+    seen.delete(data);
+    return out;
+  }
+
+  private sanitizeRecord(data: object, seen: WeakSet<object>): LoggableData {
+    if (seen.has(data)) return '[Circular]';
+    seen.add(data);
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
+      out[k] = this.sanitizeObjectEntry(k, v, seen);
+    }
+    seen.delete(data);
+    return out;
+  }
+
+  private sanitize(data: LoggableData, seen = new WeakSet<object>()): LoggableData {
     if (typeof data === 'string') return this.redactString(data);
     if (data == null) return data;
-    if (depth > 3) return '[Object]';
-    if (Array.isArray(data))
-      return data.map((v) => this.sanitize(v, depth + 1));
-    if (typeof data === 'object') {
-      const out: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
-        out[k] = this.sanitizeObjectEntry(k, v, depth);
-      }
-      return out;
+    if (typeof data === 'bigint') return data.toString();
+    if (typeof data === 'symbol') return data.toString();
+    if (typeof data === 'function') {
+      return data.name ? `[Function ${data.name}]` : '[Function]';
     }
+    if (data instanceof Date) return data.toISOString();
+    if (data instanceof Error) return this.sanitizeError(data, seen);
+    if (Array.isArray(data)) return this.sanitizeArray(data, seen);
+    if (typeof data === 'object') return this.sanitizeRecord(data, seen);
     return data;
   }
 
+  private sanitizeError(error: Error, seen: WeakSet<object>): LoggableData {
+    if (seen.has(error)) return '[Circular]';
+    seen.add(error);
+
+    const out: Record<string, unknown> = {
+      name: this.redactString(error.name),
+      message: this.redactString(error.message),
+    };
+
+    if (error.stack) {
+      out.stack = this.redactString(error.stack);
+    }
+
+    const cause = (error as { cause?: unknown }).cause;
+    if (cause !== undefined) {
+      out.cause = this.sanitize(cause, seen);
+    }
+
+    for (const [key, value] of Object.entries(
+      error as unknown as Record<string, unknown>,
+    )) {
+      out[key] = this.sanitizeObjectEntry(key, value, seen);
+    }
+
+    seen.delete(error);
+    return out;
+  }
+
+  private payloadToJson(payload: LogPayload): string {
+    return JSON.stringify(this.sanitize(payload), null, 2);
+  }
+
+  private buildPayload(
+    level: LogLevel,
+    message: string,
+    value?: { key: 'data' | 'error'; payload: LoggableData },
+  ): LogPayload {
+    const payload: LogPayload = {
+      timestamp: new Date().toISOString(),
+      level,
+      source: this.source,
+      message: this.redactString(message),
+    };
+
+    if (value) {
+      payload[value.key] = value.payload;
+    }
+
+    return payload;
+  }
+
   /**
-   * Format and print a log message with a consistent style.
+   * Format and print one copyable JSON string.
    *
-   * @param level - The log level (INFO, PROMPT, etc.)
+   * @param level - The log level
    * @param message - The message to log
    * @param data - Optional data to include in the log
    * @private
    */
-  private log(
-    level: keyof typeof LOG_LEVELS,
-    message: string,
-    data?: LoggableData,
-  ): void {
+  private log(level: LogLevel, message: string, data?: LoggableData): void {
     if (!this.enabled) return;
-
-    const logConfig = LOG_LEVELS[level];
-    const timestamp = new Date().toISOString();
-
-    console.group(
-      `%c ${timestamp} %c ${logConfig.label} %c ${this.source} %c ${message}`,
-      'background: #333; color: white; padding: 2px 4px;',
-      `background: ${logConfig.color}; color: white; padding: 2px 4px;`,
-      'background: #666; color: white; padding: 2px 4px;',
-      'color: black; padding: 2px 0;',
+    console.log(
+      this.payloadToJson(
+        this.buildPayload(
+          level,
+          message,
+          data === undefined ? undefined : { key: 'data', payload: data },
+        ),
+      ),
     );
-
-    if (data !== undefined) {
-      console.log(this.sanitize(data));
-    }
-
-    console.groupEnd();
   }
 
   /**
@@ -144,14 +201,14 @@ export class Logger {
   }
 
   /**
-   * Log a prompt being sent to OpenAI.
+   * Log a prompt being sent to the selected provider.
    */
   logPrompt(message: string, prompt: string): void {
     this.log('PROMPT', message, prompt);
   }
 
   /**
-   * Log a response received from OpenAI.
+   * Log a response received from the selected provider.
    */
   logResponse(message: string, response: LoggableData): void {
     this.log('RESPONSE', message, response);
@@ -168,14 +225,15 @@ export class Logger {
    * Log an error (always visible regardless of debug setting).
    */
   error(message: string, error?: LoggableData): void {
-    // Errors are always logged, even if debugging is disabled
-    const sanitized = this.sanitize(error);
-    const redactedMsg = this.redactString(message);
-    console.error(`${this.source}: ${redactedMsg}`, sanitized);
-    // Also log in our format if debugging is enabled
-    if (this.enabled) {
-      this.log('ERROR', redactedMsg, sanitized);
-    }
+    console.error(
+      this.payloadToJson(
+        this.buildPayload(
+          'ERROR',
+          message,
+          error === undefined ? undefined : { key: 'error', payload: error },
+        ),
+      ),
+    );
   }
 }
 

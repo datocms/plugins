@@ -2,10 +2,9 @@
  * TranslateSidebar.tsx
  * --------------------
  * Sidebar panel for translating the fields of *the record currently open in
- * the form*. The configuration UI mirrors the bulk page and the records-
- * action picker modal: same chip-style locale selects, same per-model field
- * picker, same "All other locales" option. The actual translation runs in
- * form context (via `translateRecordFields`, which writes through
+ * the form*. The compact configuration UI lets editors pick a source locale
+ * and one or more target locales. The actual translation runs in form context
+ * (via `translateRecordFields`, which writes through
  * `ctx.setFieldValue`) so changes show up in the form immediately and the
  * user can review them before saving.
  *
@@ -23,18 +22,8 @@ import {
   type ChipOption,
   renderChipOption,
 } from '../../components/BulkTranslations/chipOption';
-import { ModelFieldPicker } from '../../components/BulkTranslations/ModelFieldPicker';
 import { formatLocaleLabel } from '../../utils/localeUtils';
 import { translateRecordFields } from '../../utils/translateRecordFields';
-import {
-  ALL_LOCALES_VALUE,
-  defaultFieldSelection,
-  filterTranslatableFields,
-  resolveTargetLocales,
-  type SdkField,
-  sortFieldsByLayoutOrder,
-  type TranslatableField,
-} from '../../utils/translation/BulkTranslationHelpers';
 import { handleUIError } from '../../utils/translation/ProviderErrors';
 import { isProviderConfigured } from '../../utils/translation/ProviderFactory';
 import type { ctxParamsType } from '../Config/ConfigScreen';
@@ -45,39 +34,28 @@ type SingleValue<T> = T | null;
 type MultiValue<T> = readonly T[];
 
 type LocaleOption = ChipOption;
-type ModelOption = ChipOption & { code: string };
 
 type PropTypes = {
   ctx: RenderItemFormSidebarPanelCtx;
-};
-
-const ALL_LOCALES_OPTION: LocaleOption = {
-  label: 'All other locales',
-  value: ALL_LOCALES_VALUE,
 };
 
 function getEnvironmentPrefix(ctx: RenderItemFormSidebarPanelCtx): string {
   return ctx.isEnvironmentPrimary ? '' : `/environments/${ctx.environment}`;
 }
 
+function normalizeLocaleSelection(
+  value: SingleValue<LocaleOption> | MultiValue<LocaleOption>,
+): LocaleOption[] {
+  if (Array.isArray(value)) return [...value];
+  return value ? [value as LocaleOption] : [];
+}
+
 /** Auto-dismiss timer for the success banner, in milliseconds. */
 const SUCCESS_TIMER_DURATION_MS = 7500;
 
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Keeps the sidebar state close to the render branch.
 export default function TranslateSidebar({ ctx }: PropTypes) {
   const pluginParams = ctx.plugin.attributes.parameters as ctxParamsType;
   const internalLocales = ctx.formValues.internalLocales as Array<string>;
-
-  // Build the model option for this record's item type so `ModelFieldPicker`
-  // gets the same `{ label, code }` shape it renders on the bulk page.
-  const model: ModelOption = useMemo(() => {
-    const itemType = ctx.itemType;
-    return {
-      label: itemType.attributes.name ?? 'Record',
-      value: itemType.id,
-      code: itemType.attributes.api_key ?? itemType.id,
-    };
-  }, [ctx.itemType]);
 
   const locales = useMemo<LocaleOption[]>(
     () =>
@@ -92,17 +70,9 @@ export default function TranslateSidebar({ ctx }: PropTypes) {
   const [sourceLocale, setSourceLocale] = useState<LocaleOption | null>(
     locales[0] ?? null,
   );
-  // Default to "All other locales" so the common case takes zero clicks.
   const [targetLocaleOptions, setTargetLocaleOptions] = useState<LocaleOption[]>(
-    [ALL_LOCALES_OPTION],
+    () => locales.slice(1),
   );
-  const [translatableFields, setTranslatableFields] = useState<
-    TranslatableField[]
-  >([]);
-  const [selectedFieldApiKeys, setSelectedFieldApiKeys] = useState<string[]>(
-    [],
-  );
-  const [isLoadingFields, setIsLoadingFields] = useState(true);
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isCancelling, setIsCancelling] = useState<boolean>(false);
@@ -130,112 +100,37 @@ export default function TranslateSidebar({ ctx }: PropTypes) {
   // value would be captured stale in the in-flight async closure.
   const isCancellingRef = useRef(false);
 
-  // Load and filter the translatable fields for this record's model so the
-  // user can opt fields in or out before kicking off the translation.
-  useEffect(() => {
-    let cancelled = false;
-    // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Keeps field loading and error handling together.
-    async function loadFields() {
-      try {
-        const raw = (await ctx.loadItemTypeFields(model.value)) as SdkField[];
-        if (cancelled) return;
-        const ordered = sortFieldsByLayoutOrder(raw);
-        const translatable = filterTranslatableFields(ordered, {
-          translationFields: pluginParams.translationFields ?? [],
-          apiKeysToBeExcludedFromThisPlugin:
-            pluginParams.apiKeysToBeExcludedFromThisPlugin ?? [],
-        });
-        setTranslatableFields(translatable);
-        setSelectedFieldApiKeys(defaultFieldSelection(translatable));
-      } catch (error) {
-        if (cancelled) return;
-        console.error('Error loading fields for sidebar:', error);
-        ctx.alert(
-          `Error loading fields: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
-      } finally {
-        if (!cancelled) setIsLoadingFields(false);
-      }
-    }
-    void loadFields();
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    ctx,
-    model.value,
-    pluginParams.translationFields,
-    pluginParams.apiKeysToBeExcludedFromThisPlugin,
-  ]);
-
-  // Mirrors the bulk page's mutex: picking "All" replaces specific picks and
-  // vice versa, so the chips stay clean.
   const handleTargetLocalesChange = (
     newValue: SingleValue<LocaleOption> | MultiValue<LocaleOption>,
   ) => {
-    const next: LocaleOption[] = Array.isArray(newValue)
-      ? [...newValue]
-      : newValue
-        ? [newValue]
-        : [];
-    const hadAll = targetLocaleOptions.some(
-      (o) => o.value === ALL_LOCALES_VALUE,
-    );
-    const hasAll = next.some((o) => o.value === ALL_LOCALES_VALUE);
-
-    if (!hadAll && hasAll) {
-      setTargetLocaleOptions([ALL_LOCALES_OPTION]);
-      return;
-    }
-    if (hadAll && hasAll && next.length > 1) {
-      setTargetLocaleOptions(next.filter((o) => o.value !== ALL_LOCALES_VALUE));
-      return;
-    }
-    setTargetLocaleOptions(next);
+    setTargetLocaleOptions(normalizeLocaleSelection(newValue));
   };
 
   const handleSourceLocaleChange = (
     newValue: SingleValue<LocaleOption> | MultiValue<LocaleOption>,
   ) => {
-    if (newValue && !Array.isArray(newValue)) {
-      const next = newValue as LocaleOption;
+    const [next] = normalizeLocaleSelection(newValue);
+    if (next) {
       setSourceLocale(next);
-      // Drop the new source from the target picker if it was selected.
-      setTargetLocaleOptions((prev) =>
-        prev.filter((o) => o.value !== next.value),
-      );
+      setTargetLocaleOptions(locales.filter((o) => o.value !== next.value));
     }
   };
 
   const sourceLocaleValue = sourceLocale?.value ?? null;
-  const allLocaleValues = useMemo(
-    () => locales.map((l) => l.value),
-    [locales],
-  );
   const concreteTargetLocales = useMemo(
     () =>
       sourceLocaleValue
-        ? resolveTargetLocales(
-            targetLocaleOptions.map((o) => o.value),
-            allLocaleValues,
-            sourceLocaleValue,
-          )
+        ? targetLocaleOptions
+            .map((o) => o.value)
+            .filter((locale) => locale !== sourceLocaleValue)
         : [],
-    [sourceLocaleValue, targetLocaleOptions, allLocaleValues],
+    [sourceLocaleValue, targetLocaleOptions],
   );
 
-  const isReady =
-    !!sourceLocaleValue &&
-    concreteTargetLocales.length > 0 &&
-    selectedFieldApiKeys.length > 0;
+  const isReady = !!sourceLocaleValue && concreteTargetLocales.length > 0;
 
   const targetOptions = useMemo<LocaleOption[]>(
-    () => [
-      ALL_LOCALES_OPTION,
-      ...locales.filter((l) => l.value !== sourceLocaleValue),
-    ],
+    () => locales.filter((l) => l.value !== sourceLocaleValue),
     [locales, sourceLocaleValue],
   );
 
@@ -320,7 +215,6 @@ export default function TranslateSidebar({ ctx }: PropTypes) {
   async function handleTranslateAllFields() {
     if (!sourceLocaleValue) return;
     if (concreteTargetLocales.length === 0) return;
-    if (selectedFieldApiKeys.length === 0) return;
 
     setIsLoading(true);
     setTranslationBubbles([]);
@@ -392,7 +286,6 @@ export default function TranslateSidebar({ ctx }: PropTypes) {
           },
           checkCancellation: () => isCancellingRef.current,
           abortSignal: controller.signal,
-          allowedFieldApiKeys: new Set(selectedFieldApiKeys),
         },
       );
 
@@ -430,27 +323,31 @@ export default function TranslateSidebar({ ctx }: PropTypes) {
             className={s.form}
           >
             <div className={s.section}>
-              <SelectField
-                name="sourceLocale"
-                id="sourceLocale"
-                label="Source language"
-                hint="Translate from"
-                value={sourceLocale}
-                selectInputProps={{
-                  options: locales,
-                  formatOptionLabel: renderChipOption,
-                  classNamePrefix: CHIP_SELECT_CLASS_PREFIX,
-                }}
-                onChange={handleSourceLocaleChange}
-              />
+              <div className={s.localeRow}>
+                <div className={s.localeCue}>From</div>
+                <div className={s.localeSelect}>
+                  <SelectField
+                    name="sourceLocale"
+                    id="sourceLocale"
+                    label=""
+                    value={sourceLocale}
+                    selectInputProps={{
+                      options: locales,
+                      formatOptionLabel: renderChipOption,
+                      classNamePrefix: CHIP_SELECT_CLASS_PREFIX,
+                    }}
+                    onChange={handleSourceLocaleChange}
+                  />
+                </div>
+                <div className={s.localeCue}>To</div>
+              </div>
             </div>
 
             <div className={s.section}>
               <SelectField
-                name="targetLocales"
-                id="targetLocales"
-                label="Target languages"
-                hint="Pick one or more, or “All other locales”"
+                name="targetLocaleOptions"
+                id="targetLocaleOptions"
+                label=""
                 value={targetLocaleOptions}
                 selectInputProps={{
                   isMulti: true,
@@ -462,27 +359,8 @@ export default function TranslateSidebar({ ctx }: PropTypes) {
               />
             </div>
 
-            <div className={s.section}>
-              <div className={s.subsectionHeader}>
-                <div className={s.subsectionLabel}>Fields to translate</div>
-                <div className={s.subsectionHint}>
-                  Defaults to every translatable field on this record. Remove
-                  any you want to leave alone.
-                </div>
-              </div>
-              <ModelFieldPicker
-                model={model}
-                fields={isLoadingFields ? undefined : translatableFields}
-                isLoading={isLoadingFields}
-                selectedApiKeys={selectedFieldApiKeys}
-                onChange={setSelectedFieldApiKeys}
-              />
-            </div>
-
             <Button fullWidth disabled={!isReady} onClick={handleTranslateAllFields}>
-              {selectedFieldApiKeys.length === translatableFields.length
-                ? `Translate all fields to ${concreteTargetLocales.length} locale${concreteTargetLocales.length === 1 ? '' : 's'}`
-                : `Translate ${selectedFieldApiKeys.length} field${selectedFieldApiKeys.length === 1 ? '' : 's'} to ${concreteTargetLocales.length} locale${concreteTargetLocales.length === 1 ? '' : 's'}`}
+              Translate all fields
             </Button>
           </motion.div>
         ) : (
