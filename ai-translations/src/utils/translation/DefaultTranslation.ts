@@ -18,6 +18,10 @@ import { handleTranslationError } from './ProviderErrors';
 import { translateArray } from './translateArray';
 import type { StreamCallbacks, TranslationProvider } from './types';
 
+type DefaultTranslationOptions = {
+  isHTML?: boolean;
+};
+
 /**
  * Translates a basic text field value using OpenAI's language model
  *
@@ -43,6 +47,7 @@ export async function translateDefaultFieldValue(
   provider: TranslationProvider,
   _streamCallbacks?: StreamCallbacks,
   recordContext = '',
+  options: DefaultTranslationOptions = {},
 ): Promise<unknown> {
   // If nothing to translate, return as is
   if (fieldValue === null || fieldValue === undefined || fieldValue === '') {
@@ -64,7 +69,7 @@ export async function translateDefaultFieldValue(
       [String(fieldValue)],
       fromLocale,
       toLocale,
-      { isHTML: false, recordContext },
+      { isHTML: options.isHTML === true, recordContext },
     );
     return translated;
   } catch (error) {

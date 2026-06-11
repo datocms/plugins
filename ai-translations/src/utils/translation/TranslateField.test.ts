@@ -135,6 +135,74 @@ describe('TranslateField', () => {
     expect(translatedData.value).toBe('Bonjour');
   });
 
+  it('enables HTML mode for WYSIWYG fields', async () => {
+    const params = {
+      ...pluginParams,
+      translationFields: [...pluginParams.translationFields, 'wysiwyg'],
+    };
+    vi.mocked(translateDefaultFieldValue).mockResolvedValue('<p>Bonjour</p>');
+
+    await translateFieldValue(
+      '<p>Hello</p>',
+      params,
+      'fr',
+      'en',
+      'wysiwyg',
+      provider,
+      '',
+      'api-token',
+      'field-body',
+      'main',
+      undefined,
+      'Record content',
+      undefined,
+      { fieldApiKey: 'body' },
+    );
+
+    expect(translateDefaultFieldValue).toHaveBeenCalledWith(
+      '<p>Hello</p>',
+      params,
+      'fr',
+      'en',
+      provider,
+      undefined,
+      'Record content',
+      { isHTML: true },
+    );
+  });
+
+  it('keeps text fields out of HTML mode', async () => {
+    vi.mocked(translateDefaultFieldValue).mockResolvedValue('Bonjour');
+
+    await translateFieldValue(
+      'Hello',
+      pluginParams,
+      'fr',
+      'en',
+      'single_line',
+      provider,
+      '',
+      'api-token',
+      'field-title',
+      'main',
+      undefined,
+      'Record title',
+      undefined,
+      { fieldApiKey: 'title' },
+    );
+
+    expect(translateDefaultFieldValue).toHaveBeenCalledWith(
+      'Hello',
+      pluginParams,
+      'fr',
+      'en',
+      provider,
+      undefined,
+      'Record title',
+      { isHTML: false },
+    );
+  });
+
   it('throws when slug normalization produces an empty string', async () => {
     vi.mocked(translateDefaultFieldValue).mockResolvedValue('!!!');
 

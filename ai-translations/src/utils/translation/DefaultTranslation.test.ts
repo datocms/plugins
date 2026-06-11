@@ -129,6 +129,30 @@ describe('DefaultTranslation', () => {
         );
       });
 
+      it('should enable HTML mode when requested', async () => {
+        vi.mocked(translateArray).mockResolvedValue(['<p>Hallo</p>']);
+
+        await translateDefaultFieldValue(
+          '<p>Hello</p>',
+          mockPluginParams,
+          'de',
+          'en',
+          mockProvider,
+          undefined,
+          'This is formatted content',
+          { isHTML: true },
+        );
+
+        expect(translateArray).toHaveBeenCalledWith(
+          mockProvider,
+          mockPluginParams,
+          ['<p>Hello</p>'],
+          'en',
+          'de',
+          { isHTML: true, recordContext: 'This is formatted content' },
+        );
+      });
+
       it('should convert non-string values to string', async () => {
         vi.mocked(translateArray).mockResolvedValue(['123']);
 

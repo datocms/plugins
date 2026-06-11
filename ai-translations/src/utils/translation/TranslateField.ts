@@ -454,6 +454,7 @@ export async function translateFieldValue(
         provider,
         streamCallbacks,
         recordContext,
+        { isHTML: fieldType === 'wysiwyg' },
       );
       break;
   }
