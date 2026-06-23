@@ -134,12 +134,31 @@ In the plugin's "Exclusion Rules" section you can suppress translation actions a
 - **Roles**: Choose roles to hide all plugins functions from
 - **Fields**: Choose individual fields that should be excluded, even when their model is included
 
+## Translation Quality Checks
+
+The plugin verifies each AI translation for completeness and surfaces anything that looks off, so an incomplete result is never saved silently.
+
+It checks for:
+
+- **Dropped or truncated content** — a response with the wrong number of segments, a model that hit its output-token limit, or a multi-block HTML field the model split apart. These are repaired where possible (e.g. an over-split HTML field is rejoined) and flagged.
+- **Lost placeholders** — `{{var}}`, `{var}`, `%s`, `:slug`, and ICU tokens that disappear in translation.
+- **Structural drift** — HTML or Markdown whose block structure (paragraphs, headings, lists, links) no longer matches the source.
+- **Likely non-translations** — output identical to the source, or far shorter than expected.
+
+Where you see the results:
+
+- **Single field / whole record** (sidebar and field dropdown): after translating, a short summary appears — a blocking alert when content may be incomplete, a notice for softer warnings — so you can review before saving.
+- **Bulk**: flagged records are marked **"completed with warnings"** (distinct from clean successes and failures) in the progress modal, and a review list of the affected records is shown after the run.
+
+The checks are advisory and never block your work; they highlight fields worth a human glance.
+
 ## Troubleshooting
 
 - **Invalid API Key**: Ensure your key matches the selected vendor and has access.
 - **Rate Limit/Quota**: Reduce concurrency/batch size, switch to a lighter model, or increase your vendor quota.
 - **Model Not Found**: Verify the exact model id exists for your account/region and is spelled correctly.
 - **Localization**: Make sure your project has at least two locales, otherwise translation actions won't appear.
+- **"Field may be incomplete" / "completed with warnings"**: A quality check flagged a possible dropped, truncated, or placeholder issue. The value was still applied (repaired where possible) — review the flagged field. A truncation warning usually means the model hit its output-token limit; try a smaller field or a model with a larger output limit.
 
 ## DeepL Glossaries
 

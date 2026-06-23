@@ -8,7 +8,12 @@ import {
   withTimeout,
   withTimeoutGenerator,
 } from '../providerUtils';
-import type { StreamOptions, TranslationProvider, VendorId } from '../types';
+import type {
+  CompletionResult,
+  StreamOptions,
+  TranslationProvider,
+  VendorId,
+} from '../types';
 
 type GeminiProviderConfig = {
   apiKey: string;
@@ -136,9 +141,12 @@ export default class GeminiProvider implements TranslationProvider {
    * @param options - Optional abort signal for early termination.
    * @returns Final text response.
    */
-  async completeText(prompt: string, options?: StreamOptions): Promise<string> {
+  async completeTextWithMeta(
+    prompt: string,
+    options?: StreamOptions,
+  ): Promise<CompletionResult> {
     if (isEmptyPrompt(prompt)) {
-      return '';
+      return { text: '' };
     }
 
     const model = this.model;
@@ -166,6 +174,8 @@ export default class GeminiProvider implements TranslationProvider {
       });
       const result = await model.generateContent(request);
       const text = result.response?.text?.() ?? '';
+      const finishReason =
+        result.response?.candidates?.[0]?.finishReason ?? undefined;
       options?.debug?.response?.('Provider response', {
         provider: this.vendor,
         operation: 'completeText',
@@ -173,7 +183,12 @@ export default class GeminiProvider implements TranslationProvider {
         response: result.response ?? null,
         text,
       });
-      return text;
+      return { text, finishReason };
     });
+  }
+
+  /** Single-shot text completion. Delegates to {@link completeTextWithMeta}. */
+  async completeText(prompt: string, options?: StreamOptions): Promise<string> {
+    return (await this.completeTextWithMeta(prompt, options)).text;
   }
 }

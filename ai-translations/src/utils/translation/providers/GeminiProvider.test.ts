@@ -74,6 +74,19 @@ describe('GeminiProvider', () => {
     });
   });
 
+  describe('completeTextWithMeta', () => {
+    it('returns text and the candidate finishReason from the response', async () => {
+      mockGenerateContent.mockResolvedValue({
+        response: {
+          text: () => 'Hallo',
+          candidates: [{ finishReason: 'MAX_TOKENS' }],
+        },
+      });
+      const result = await provider.completeTextWithMeta('Translate');
+      expect(result).toEqual({ text: 'Hallo', finishReason: 'MAX_TOKENS' });
+    });
+  });
+
   describe('completeText', () => {
     it('should return empty string for empty prompt', async () => {
       const result = await provider.completeText('');

@@ -67,6 +67,7 @@ import {
   isFieldTranslatable,
 } from './utils/translation/SharedFieldUtils';
 import TranslateField from './utils/translation/TranslateField';
+import type { QcFlag } from './utils/translation/qc/types';
 import { isEmptyStructuredText } from './utils/translation/utils';
 
 /**
@@ -243,6 +244,31 @@ function resolveHasFieldValueInLocale(
 /**
  * Primary plugin connection point.
  */
+/**
+ * Surfaces collected QC flags from a single-field dropdown translation: a
+ * blocking alert for hard errors (incomplete content) and a notice otherwise.
+ */
+function surfaceFieldQcFlags(
+  ctx: ExecuteFieldDropdownActionCtx,
+  flags: QcFlag[],
+): void {
+  if (flags.length === 0) return;
+  const errorCount = flags.filter((flag) => flag.severity === 'error').length;
+  const summary = flags
+    .slice(0, 8)
+    .map((flag) => `• ${flag.message}`)
+    .join('\n');
+  if (errorCount > 0) {
+    ctx.alert(
+      `Translation finished, but ${errorCount} field(s) may be incomplete — please review:\n${summary}`,
+    );
+  } else {
+    ctx.notice(
+      `Translation finished with ${flags.length} note(s) worth reviewing.`,
+    );
+  }
+}
+
 connect({
   onBoot(ctx) {
     const pluginParams = getPluginParams(ctx);
@@ -478,15 +504,35 @@ connect({
         title: 'Translation Progress',
         width: 'l',
         parameters: progressParams as unknown as Record<string, unknown>,
-      })) as { completed?: boolean; canceled?: boolean } | undefined;
+      })) as
+        | {
+            completed?: boolean;
+            canceled?: boolean;
+            progress?: import('./utils/translation/ItemsDropdownUtils').ProgressUpdate[];
+          }
+        | undefined;
 
+      const flagged = (progressResult?.progress ?? []).filter(
+        (update) =>
+          update.status === 'error' ||
+          update.status === 'completed-with-warnings',
+      );
       if (progressResult?.canceled) {
         await ctx.notice('Bulk translation was canceled');
+      } else if (flagged.length > 0) {
+        const reviewList = flagged
+          .slice(0, 20)
+          .map((update) => `• ${(update.message ?? update.recordId).slice(0, 140)}`)
+          .join('\n');
+        const more =
+          flagged.length > 20 ? `\n…and ${flagged.length - 20} more.` : '';
+        await ctx.alert(
+          `Translation finished — ${flagged.length} record(s) need review:\n${reviewList}${more}`,
+        );
       } else if (progressResult?.completed) {
         await ctx.notice(`Successfully translated ${items.length} record(s).`);
-      } else {
-        await ctx.alert('The translation finished with errors.');
       }
+      // else: the modal was dismissed via its chrome (no result) — say nothing.
     } catch (error) {
       handleUIError(error, pluginParams.vendor, ctx);
     }
@@ -705,6 +751,7 @@ connect({
         message: `Translating "${ctx.field.attributes.label}" from ${formatLocaleWithCode(locale)}...`,
         dismissAfterTimeout: true,
       });
+      const qcFlags: QcFlag[] = [];
       let translatedValue: unknown;
       try {
         translatedValue = await TranslateField(
@@ -715,6 +762,9 @@ connect({
           locale,
           fieldType,
           ctx.environment,
+          undefined,
+          '',
+          (flag) => qcFlags.push(flag),
         );
       } catch (e) {
         const provider = getProvider(pluginParams);
@@ -751,6 +801,7 @@ connect({
       ctx.notice(
         `Translated "${ctx.field.attributes.label}" from ${formatLocaleWithCode(locale)}`,
       );
+      surfaceFieldQcFlags(ctx, qcFlags);
 
       return;
     }
@@ -767,6 +818,7 @@ connect({
           dismissAfterTimeout: true,
         });
 
+        const qcFlags: QcFlag[] = [];
         /**
          * Translates a single locale and writes the result to the form.
          * Extracted to avoid await-in-loop lint errors in the sequential chain.
@@ -782,6 +834,9 @@ connect({
               ctx.locale,
               fieldType,
               ctx.environment,
+              undefined,
+              '',
+              (flag) => qcFlags.push(flag),
             );
           } catch (e) {
             const provider = getProvider(pluginParams);
@@ -823,6 +878,7 @@ connect({
         );
 
         ctx.notice(`Translated "${ctx.field.attributes.label}" to all locales`);
+        surfaceFieldQcFlags(ctx, qcFlags);
         return;
       }
 
@@ -833,6 +889,7 @@ connect({
         message: `Translating "${ctx.field.attributes.label}" to ${formatLocaleWithCode(locale)}...`,
       });
 
+      const qcFlags: QcFlag[] = [];
       let translatedValue: unknown;
       try {
         translatedValue = await TranslateField(
@@ -843,6 +900,9 @@ connect({
           ctx.locale,
           fieldType,
           ctx.environment,
+          undefined,
+          '',
+          (flag) => qcFlags.push(flag),
         );
       } catch (e) {
         const provider = getProvider(pluginParams);
@@ -878,6 +938,7 @@ connect({
       ctx.notice(
         `Translated "${ctx.field.attributes.label}" to ${formatLocaleWithCode(locale)}`,
       );
+      surfaceFieldQcFlags(ctx, qcFlags);
       return;
     }
 

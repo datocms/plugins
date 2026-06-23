@@ -1,0 +1,42 @@
+{
+  "provider": "openai",
+  "scenario": "structured-output",
+  "request": {
+    "model": "gpt-4o-mini",
+    "response_format": "json_schema(object items)"
+  },
+  "ok": true,
+  "response": {
+    "object": "chat.completion",
+    "model": "gpt-4o-mini-2024-07-18",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "{\"0\":\"Développez votre équipe avec des outils de flux de travail plus intelligents\",\"1\":\"Automatisez les tâches routinières, mettez en évidence des informations en temps réel et faites avancer chaque projet sans le travail inutile.\"}",
+          "refusal": null,
+          "annotations": []
+        },
+        "logprobs": null,
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 193,
+      "completion_tokens": 50,
+      "total_tokens": 243,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "audio_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 0,
+        "audio_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "service_tier": "default"
+  }
+}

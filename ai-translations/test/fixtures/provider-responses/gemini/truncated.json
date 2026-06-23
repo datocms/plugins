@@ -1,0 +1,33 @@
+{
+  "provider": "gemini",
+  "scenario": "truncated",
+  "request": {
+    "model": "gemini-2.5-flash",
+    "maxOutputTokens": 8
+  },
+  "ok": true,
+  "response": {
+    "candidates": [
+      {
+        "content": {
+          "role": "model"
+        },
+        "finishReason": "MAX_TOKENS",
+        "index": 0
+      }
+    ],
+    "usageMetadata": {
+      "promptTokenCount": 147,
+      "totalTokenCount": 151,
+      "promptTokensDetails": [
+        {
+          "modality": "TEXT",
+          "tokenCount": 147
+        }
+      ],
+      "thoughtsTokenCount": 4,
+      "serviceTier": "standard"
+    },
+    "modelVersion": "gemini-2.5-flash"
+  }
+}

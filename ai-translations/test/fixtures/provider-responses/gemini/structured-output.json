@@ -1,0 +1,39 @@
+{
+  "provider": "gemini",
+  "scenario": "structured-output",
+  "request": {
+    "model": "gemini-2.5-flash",
+    "responseSchema": "ARRAY<STRING> minItems=maxItems=N"
+  },
+  "ok": true,
+  "response": {
+    "candidates": [
+      {
+        "content": {
+          "parts": [
+            {
+              "text": "[\"Développez votre équipe avec des outils de flux de travail plus intelligents\",\"Automatisez les tâches de routine, mettez en lumière des informations en temps réel et faites avancer chaque projet sans les tâches superflues.\"]"
+            }
+          ],
+          "role": "model"
+        },
+        "finishReason": "STOP",
+        "index": 0
+      }
+    ],
+    "usageMetadata": {
+      "promptTokenCount": 147,
+      "candidatesTokenCount": 45,
+      "totalTokenCount": 375,
+      "promptTokensDetails": [
+        {
+          "modality": "TEXT",
+          "tokenCount": 147
+        }
+      ],
+      "thoughtsTokenCount": 183,
+      "serviceTier": "standard"
+    },
+    "modelVersion": "gemini-2.5-flash"
+  }
+}

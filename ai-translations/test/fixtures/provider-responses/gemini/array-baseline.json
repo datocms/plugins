@@ -1,0 +1,42 @@
+{
+  "provider": "gemini",
+  "scenario": "array-baseline",
+  "request": {
+    "model": "gemini-2.5-flash",
+    "segments": [
+      "Grow your team with smarter workflow tools",
+      "Automate routine tasks, surface insights in real time, and keep every project moving forward without the busywork."
+    ]
+  },
+  "ok": true,
+  "response": {
+    "candidates": [
+      {
+        "content": {
+          "parts": [
+            {
+              "text": "```json\n[\n  \"Développez votre équipe avec des outils de workflow plus intelligents\",\n  \"Automatisez les tâches routinières, faites apparaître des informations en temps réel et faites avancer chaque projet sans le travail fastidieux.\"\n]\n```"
+            }
+          ],
+          "role": "model"
+        },
+        "finishReason": "STOP",
+        "index": 0
+      }
+    ],
+    "usageMetadata": {
+      "promptTokenCount": 147,
+      "candidatesTokenCount": 55,
+      "totalTokenCount": 411,
+      "promptTokensDetails": [
+        {
+          "modality": "TEXT",
+          "tokenCount": 147
+        }
+      ],
+      "thoughtsTokenCount": 209,
+      "serviceTier": "standard"
+    },
+    "modelVersion": "gemini-2.5-flash"
+  }
+}

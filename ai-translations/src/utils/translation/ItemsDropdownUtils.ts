@@ -249,7 +249,11 @@ function hasKeyDeep(obj: Record<string, unknown>, targetKey: string): boolean {
 /**
  * Status flags for batch translation steps.
  */
-export type ProgressStatus = 'processing' | 'completed' | 'error';
+export type ProgressStatus =
+  | 'processing'
+  | 'completed'
+  | 'completed-with-warnings'
+  | 'error';
 
 /**
  * Progress event payload describing the per-record state.
@@ -561,6 +565,7 @@ export async function translateAndUpdateRecords(
       return 'continue';
     }
 
+    const hasWarnings = translatedFields.warnings.length > 0;
     const completionMessage =
       translatedFields.translatedFieldCount === 0
         ? `No eligible fields to translate for "${recordLabel}" (#${recordId}).`
@@ -568,7 +573,10 @@ export async function translateAndUpdateRecords(
     updateProgress({
       recordIndex,
       recordId,
-      status: 'completed',
+      status:
+        translatedFields.translatedFieldCount > 0 && hasWarnings
+          ? 'completed-with-warnings'
+          : 'completed',
       message: completionMessage,
     });
     return 'done';
@@ -809,6 +817,13 @@ export async function buildTranslatedUpdatePayload(
         {
           fieldApiKey: field,
           ...(cmaBaseUrl ? { cmaBaseUrl } : {}),
+          onQcFlag: (flag) => {
+            warnings.push(
+              `${flag.severity === 'error' ? 'Translation issue' : 'Note'} — "${flag.fieldPath ?? field}" → ${formatLocaleWithCode(
+                flag.locale ?? toLocale,
+              )}: ${flag.message}`,
+            );
+          },
         },
       );
 

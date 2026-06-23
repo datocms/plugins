@@ -6,9 +6,10 @@ import { useCallback, useEffect, useRef, useState } from 'react';
  * Returns the default status label when a progress update has no explicit message.
  */
 function defaultStatusLabel(
-  status: 'completed' | 'processing' | 'error' | string,
+  status: import('../utils/translation/ItemsDropdownUtils').ProgressStatus,
 ): string {
   if (status === 'completed') return 'Completed';
+  if (status === 'completed-with-warnings') return 'Completed (with warnings)';
   if (status === 'processing') return 'Processing...';
   if (status === 'error') return 'Error';
   return '';
@@ -30,6 +31,7 @@ function ProgressListItem({
     >
       <span className="TranslationProgressModal__update-status">
         {update.status === 'completed' && '✓'}
+        {update.status === 'completed-with-warnings' && '⚠'}
         {update.status === 'processing' && <Spinner size={16} />}
         {update.status === 'error' && '✗'}
       </span>
@@ -249,12 +251,21 @@ export default function TranslationProgressModal({
     ),
   );
 
-  const completedCount = processedRecords.filter(
-    (update) => update.status === 'completed' || update.status === 'error',
+  // Real per-record results only: the synthetic fatal-error entry uses
+  // recordIndex -1 and must not inflate the processed/percent counts (it would
+  // otherwise push percent past 100% and falsely flip "completed").
+  const realRecords = processedRecords.filter((update) => update.recordIndex >= 0);
+  const completedCount = realRecords.filter(
+    (update) =>
+      update.status === 'completed' ||
+      update.status === 'completed-with-warnings' ||
+      update.status === 'error',
   ).length;
 
   const percentComplete =
-    totalRecords > 0 ? Math.round((completedCount / totalRecords) * 100) : 0;
+    totalRecords > 0
+      ? Math.min(100, Math.round((completedCount / totalRecords) * 100))
+      : 0;
 
   // Make sure to set completed state when all records are processed
   useEffect(() => {
@@ -312,15 +323,17 @@ export default function TranslationProgressModal({
             </p>
             <p className="TranslationProgressModal__stats">
               {
-                processedRecords.filter(
-                  (update) => update.status === 'completed',
-                ).length
+                realRecords.filter((update) => update.status === 'completed')
+                  .length
               }{' '}
               successful,{' '}
               {
-                processedRecords.filter((update) => update.status === 'error')
-                  .length
+                realRecords.filter(
+                  (update) => update.status === 'completed-with-warnings',
+                ).length
               }{' '}
+              with warnings,{' '}
+              {realRecords.filter((update) => update.status === 'error').length}{' '}
               failed
             </p>
           </div>

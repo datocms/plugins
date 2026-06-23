@@ -1,0 +1,33 @@
+{
+  "provider": "gemini",
+  "scenario": "html-multiblock-oversplit",
+  "source": "Synthetic fixture modeled on the reported cropping bug (Basecamp card 10026091779) with fictional hotel/place names. A single two-paragraph WYSIWYG HTML segment is returned by the model as a TWO-element JSON array (one element per <p>), which the old length-repair cropped to the first paragraph. The per-<p> data-path-to-node attributes make both paragraphs detectable after rejoin.",
+  "request": {
+    "model": "gemini (modeled)",
+    "instruction": "naive",
+    "segments": [
+      "<p data-path-to-node=\"0\">Harbor View Lodge sits in the Saltmere Quarter, a short walk from the Marlow Avenue shops and the old harbor. The hotel is about 1.5 kilometres from Eastport Central station, roughly a 20-minute walk or a 10-minute ride on tram lines 2 or 6 to Brindle Square.</p>\n<p data-path-to-node=\"1\">The property has a relaxed, practical design with an open lobby that doubles as a lounge and cafe. Rooms are compact and tidy, with walk-in showers and motion-activated lighting. Some include a small balcony over the canal. Facilities include a 24-hour gym and a quiet reading nook. The building carries a regional eco certification for low energy use and follows a water-saving programme with plant-based cleaning supplies.</p>"
+    ]
+  },
+  "ok": true,
+  "response": {
+    "candidates": [
+      {
+        "content": {
+          "role": "model",
+          "parts": [
+            {
+              "text": "```json\n[\n  \"<p data-path-to-node=\\\"0\\\">Harbor View Lodge ligt in de wijk Saltmere, op korte loopafstand van de winkels aan Marlow Avenue en de oude haven. Het hotel ligt op ongeveer 1,5 kilometer van station Eastport Central, ongeveer 20 minuten lopen of 10 minuten met tramlijn 2 of 6 naar Brindle Square.</p>\",\n  \"<p data-path-to-node=\\\"1\\\">De accommodatie heeft een ontspannen, praktisch ontwerp met een open lobby die dienstdoet als lounge en cafe. De kamers zijn compact en netjes, met inloopdouches en bewegingsgestuurde verlichting. Sommige hebben een klein balkon aan het kanaal. Voorzieningen zijn onder meer een 24-uurs fitnessruimte en een rustige leeshoek. Het gebouw heeft een regionaal eco-certificaat voor laag energieverbruik en volgt een waterbesparingsprogramma met plantaardige schoonmaakmiddelen.</p>\"\n]\n```"
+            }
+          ]
+        },
+        "finishReason": "STOP"
+      }
+    ],
+    "usageMetadata": {
+      "promptTokenCount": 318,
+      "candidatesTokenCount": 402,
+      "totalTokenCount": 720
+    }
+  }
+}

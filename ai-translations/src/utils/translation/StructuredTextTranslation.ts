@@ -16,6 +16,7 @@ import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import { createLogger, type Logger } from '../logging/Logger';
 import type { SchemaRepository } from '../schemaRepository';
 import { handleTranslationError } from './ProviderErrors';
+import type { OnQcFlag } from './qc/types';
 import { translateFieldValue } from './TranslateField';
 import { translateArray } from './translateArray';
 import type { StreamCallbacks, TranslationProvider } from './types';
@@ -84,10 +85,15 @@ interface StructuredTextTextLeaf {
   value: string;
 }
 
-function buildNestedTranslationOptions(cmaBaseUrl?: string) {
-  return cmaBaseUrl
-    ? { bypassFieldTypeAllowlist: true, cmaBaseUrl }
-    : { bypassFieldTypeAllowlist: true };
+function buildNestedTranslationOptions(
+  cmaBaseUrl?: string,
+  onQcFlag?: OnQcFlag,
+) {
+  return {
+    bypassFieldTypeAllowlist: true,
+    ...(cmaBaseUrl ? { cmaBaseUrl } : {}),
+    ...(onQcFlag ? { onQcFlag } : {}),
+  };
 }
 
 /**
@@ -378,6 +384,7 @@ interface InlineTextTranslationParams {
   toLocale: string;
   recordContext: string;
   logger: Logger;
+  onQcFlag?: OnQcFlag;
 }
 
 async function translateInlineTextLeaves({
@@ -389,6 +396,7 @@ async function translateInlineTextLeaves({
   fromLocale,
   toLocale,
   recordContext,
+  onQcFlag,
   logger,
 }: InlineTextTranslationParams): Promise<StructuredTextNode[]> {
   const translatedValues = await translateArray(
@@ -397,7 +405,7 @@ async function translateInlineTextLeaves({
     textValues,
     fromLocale,
     toLocale,
-    { isHTML: false, recordContext },
+    { isHTML: false, recordContext, onQcFlag },
   );
 
   let processedTranslatedValues = translatedValues;
@@ -506,6 +514,7 @@ export async function translateStructuredTextValue(
   recordContext = '',
   schemaRepository?: SchemaRepository,
   cmaBaseUrl?: string,
+  onQcFlag?: OnQcFlag,
 ): Promise<unknown> {
   // Create logger
   const logger = createLogger(pluginParams, 'StructuredTextTranslation');
@@ -586,6 +595,7 @@ export async function translateStructuredTextValue(
         fromLocale,
         toLocale,
         recordContext,
+        onQcFlag,
         logger,
       });
     }
@@ -614,7 +624,7 @@ export async function translateStructuredTextValue(
         streamCallbacks,
         recordContext,
         schemaRepository,
-        buildNestedTranslationOptions(cmaBaseUrl),
+        buildNestedTranslationOptions(cmaBaseUrl, onQcFlag),
       )) as StructuredTextNode[];
       logger.info('Structured text translated block payload', {
         fromLocale,

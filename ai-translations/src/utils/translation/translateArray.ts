@@ -13,6 +13,18 @@ import {
   formatErrorForUser,
   normalizeProviderError,
 } from './ProviderErrors';
+import {
+  checkLengthMismatch,
+  checkPlaceholderSurvival,
+  checkTruncated,
+} from './qc/checks';
+import {
+  checkHtmlStructure,
+  checkLengthRatio,
+  checkMarkdownStructure,
+  checkNoOp,
+} from './qc/structuralChecks';
+import type { OnQcFlag, QcFlag } from './qc/types';
 import type { ProviderDebugHooks, TranslationProvider } from './types';
 
 /**
@@ -24,8 +36,12 @@ const CHAT_VENDOR_CHUNK_SIZE = 25;
 
 type Options = {
   isHTML?: boolean;
+  /** Field content kind, selects the structural check (html vs markdown). */
+  kind?: 'html' | 'markdown' | 'text';
   formality?: 'default' | 'more' | 'less';
   recordContext?: string;
+  /** Optional sink for quality-control flags emitted during the translation. */
+  onQcFlag?: OnQcFlag;
 };
 
 type ParseContext = {
@@ -212,16 +228,75 @@ function parseTranslationResponse(
   originalSegments: string[],
   logger: Logger,
   context: ParseContext,
+  isHtml: boolean,
+  onQcFlag?: OnQcFlag,
+  finishReason?: string,
 ): string[] {
   const trimmedTxt = (responseText || '').trim();
-  const parsed = parseResponseArray(trimmedTxt, logger, context);
+  let parsed: ParseResponseResult;
+  try {
+    parsed = parseResponseArray(trimmedTxt, logger, context);
+  } catch (error) {
+    // A truncated response is frequently unparseable (cut mid-JSON). Rather than
+    // fail the whole field, fall back to an empty array: the length-repair below
+    // pads every slot with the untranslated source, and the truncation is
+    // flagged via checkTruncated.
+    if (!checkTruncated({ finishReason })) throw error;
+    logger.warning(
+      'Response unparseable but provider signalled truncation; falling back to source',
+      { ...context, finishReason, rawResponse: responseText },
+    );
+    parsed = { array: [], repaired: false };
+  }
   const arr = parsed.array;
 
-  // Length repair: ensure output has same length as input
-  const fixed: string[] = [];
-  for (let i = 0; i < originalSegments.length; i++) {
-    const v = arr[i];
-    fixed.push(typeof v === 'string' ? v : String(originalSegments[i] ?? ''));
+  // Reconcile the model's array length against the input length.
+  //
+  // Over-split repair (HTML only): a single HTML segment can come back as
+  // several elements when the model splits a multi-block value (e.g. a WYSIWYG
+  // field holding several <p> blocks) into one element per block. The positional
+  // length repair below maps output to input by index, so it would silently drop
+  // every element past the first — cropping the field. When exactly one segment
+  // was sent, rejoin the returned string elements with newlines (whitespace
+  // between block-level HTML elements is insignificant) instead of discarding
+  // the surplus. This is gated to HTML because newlines are NOT a safe join
+  // separator for single_line, slug, json, or markdown values.
+  const stringParts = arr.filter((v): v is string => typeof v === 'string');
+  const isOverSplitRejoin =
+    isHtml && originalSegments.length === 1 && stringParts.length > 1;
+
+  // The truncation signal is independent of the array shape.
+  const truncatedFlag = checkTruncated({ finishReason });
+  if (truncatedFlag) onQcFlag?.(truncatedFlag);
+
+  let fixed: string[];
+  if (isOverSplitRejoin) {
+    // A single HTML segment came back over-split into one element per block.
+    // Rejoin with newlines (insignificant between block-level HTML elements) —
+    // nothing is dropped, so this is a CLEAN recovery, not a length mismatch.
+    // (If a block were genuinely lost, the html-structure check flags it.)
+    fixed = [stringParts.join('\n')];
+    logger.warning('Model over-split a single segment; rejoined elements', {
+      ...context,
+      rawResponse: responseText,
+      parsedArray: arr,
+      returnedLength: arr.length,
+    });
+  } else {
+    // Genuine count mismatch: the model returned a different number of elements
+    // than were sent. Flag it (using the real element count, arr.length — a
+    // non-string element still counts as returned and is source-padded below),
+    // then pad/truncate positionally so output matches input length.
+    const lengthFlag = checkLengthMismatch({
+      expected: originalSegments.length,
+      received: arr.length,
+    });
+    if (lengthFlag) onQcFlag?.(lengthFlag);
+    fixed = [];
+    for (let i = 0; i < originalSegments.length; i++) {
+      const v = arr[i];
+      fixed.push(typeof v === 'string' ? v : String(originalSegments[i] ?? ''));
+    }
   }
 
   logger.info('Final parsed response array', {
@@ -331,8 +406,19 @@ async function translateWithChatProvider(
   toLocale: string,
   logger: Logger,
   providerDebugHooks: ProviderDebugHooks,
+  isHtml: boolean,
+  onQcFlag?: OnQcFlag,
 ): Promise<string[]> {
-  const instruction = `Translate the following array of strings from ${fromLocale} to ${toLocale}. Return ONLY a valid JSON array of the exact same length, preserving placeholders like {foo}, {{bar}}, and tokens like ⟦PH_0⟧. You may encounter ICU Message Format strings (e.g., {gender, select, male {He said} female {She said}}). You MUST preserve the structure, keywords, and variable keys exactly. ONLY translate the human-readable content inside the brackets. Do not explain.`;
+  // Prefer the metadata-aware completion so we can observe truncation
+  // (finish/stop reason); fall back to plain completeText otherwise.
+  const complete = async (
+    p: string,
+  ): Promise<{ text: string; finishReason?: string }> =>
+    provider.completeTextWithMeta
+      ? provider.completeTextWithMeta(p, { debug: providerDebugHooks })
+      : { text: await provider.completeText(p, { debug: providerDebugHooks }) };
+
+  const instruction = `Translate the following array of strings from ${fromLocale} to ${toLocale}. Return ONLY a valid JSON array of the exact same length, with a strict one-to-one mapping: each input string maps to exactly one output string. NEVER split a single input string into multiple array elements and never merge multiple inputs into one, even when a string contains newlines or multiple HTML blocks like <p>…</p><p>…</p> — translate the whole string as one element. Preserve placeholders like {foo}, {{bar}}, and tokens like ⟦PH_0⟧. You may encounter ICU Message Format strings (e.g., {gender, select, male {He said} female {She said}}). You MUST preserve the structure, keywords, and variable keys exactly. ONLY translate the human-readable content inside the brackets. Do not explain.`;
 
   if (protectedSegments.length <= CHAT_VENDOR_CHUNK_SIZE) {
     const prompt = `${instruction}\n${JSON.stringify(protectedSegments)}`;
@@ -346,9 +432,7 @@ async function translateWithChatProvider(
       prompt,
       protectedSegments,
     });
-    const txt = await provider.completeText(prompt, {
-      debug: providerDebugHooks,
-    });
+    const { text: txt, finishReason } = await complete(prompt);
     logger.logResponse('Raw provider response', {
       provider: provider.vendor,
       fromLocale,
@@ -357,13 +441,21 @@ async function translateWithChatProvider(
       chunkSize: protectedSegments.length,
       rawResponse: txt,
     });
-    return parseTranslationResponse(txt, protectedSegments, logger, {
-      provider: provider.vendor,
-      fromLocale,
-      toLocale,
-      chunkStart: 0,
-      chunkSize: protectedSegments.length,
-    });
+    return parseTranslationResponse(
+      txt,
+      protectedSegments,
+      logger,
+      {
+        provider: provider.vendor,
+        fromLocale,
+        toLocale,
+        chunkStart: 0,
+        chunkSize: protectedSegments.length,
+      },
+      isHtml,
+      onQcFlag,
+      finishReason,
+    );
   }
 
   // Chunk large arrays to improve reliability and enable partial recovery
@@ -383,9 +475,7 @@ async function translateWithChatProvider(
       prompt: chunkPrompt,
       protectedSegments: chunkSegments,
     });
-    const chunkResponse = await provider.completeText(chunkPrompt, {
-      debug: providerDebugHooks,
-    });
+    const { text: chunkResponse, finishReason } = await complete(chunkPrompt);
     logger.logResponse('Raw provider response', {
       provider: provider.vendor,
       fromLocale,
@@ -394,13 +484,21 @@ async function translateWithChatProvider(
       chunkSize: chunkSegments.length,
       rawResponse: chunkResponse,
     });
-    return parseTranslationResponse(chunkResponse, chunkSegments, logger, {
-      provider: provider.vendor,
-      fromLocale,
-      toLocale,
-      chunkStart,
-      chunkSize: chunkSegments.length,
-    });
+    return parseTranslationResponse(
+      chunkResponse,
+      chunkSegments,
+      logger,
+      {
+        provider: provider.vendor,
+        fromLocale,
+        toLocale,
+        chunkStart,
+        chunkSize: chunkSegments.length,
+      },
+      isHtml,
+      onQcFlag,
+      finishReason,
+    );
   };
 
   const chunkStarts: number[] = [];
@@ -427,6 +525,11 @@ export async function translateArray(
 
   const logger = createLogger(pluginParams, 'translateArray');
   const providerDebugHooks = buildProviderDebugHooks(logger);
+
+  // QC flags are buffered, then emitted at the end so redundant warnings can be
+  // suppressed before handing them to the caller.
+  const qcFlags: QcFlag[] = [];
+  const collect: OnQcFlag = (flag) => qcFlags.push(flag);
 
   // Protect placeholders
   const tokenMaps: TokenMap[] = [];
@@ -473,13 +576,23 @@ export async function translateArray(
         toLocale,
         logger,
         providerDebugHooks,
+        opts.isHTML === true,
+        collect,
       );
     }
 
-    // Reinsert tokens with safe fallback for tokenMaps
+    // Reinsert tokens with safe fallback for tokenMaps; QC: flag any protected
+    // placeholder the model dropped before we detokenize.
     const finalSegments = out.map((t, i) => {
       const tokenMap = tokenMaps[i] ?? [];
-      return detokenize(String(t ?? ''), tokenMap);
+      const output = String(t ?? '');
+      const placeholderFlag = checkPlaceholderSurvival({
+        tokens: tokenMap.map((m) => m.safe),
+        output,
+        segmentIndex: i,
+      });
+      if (placeholderFlag) collect(placeholderFlag);
+      return detokenize(output, tokenMap);
     });
     logger.info('Translation batch output', {
       provider: provider.vendor,
@@ -489,6 +602,48 @@ export async function translateArray(
       finalSegments,
       tokenMaps,
     });
+
+    if (opts.onQcFlag) {
+      // Phase 2 content checks: compare each source segment to its translation.
+      const htmlMode = opts.kind === 'html' || opts.isHTML === true;
+      const markdownMode = opts.kind === 'markdown';
+      finalSegments.forEach((translated, i) => {
+        const source = String(segments[i] ?? '');
+        if (htmlMode) {
+          const flag = checkHtmlStructure({ source, translated, segmentIndex: i });
+          if (flag) collect(flag);
+        } else if (markdownMode) {
+          const flag = checkMarkdownStructure({
+            source,
+            translated,
+            segmentIndex: i,
+          });
+          if (flag) collect(flag);
+        }
+        const ratioFlag = checkLengthRatio({ source, translated, segmentIndex: i });
+        if (ratioFlag) collect(ratioFlag);
+      });
+      const noOpFlag = checkNoOp({
+        sources: segments.map((s) => String(s ?? '')),
+        translateds: finalSegments,
+      });
+      if (noOpFlag) collect(noOpFlag);
+
+      // Alert-fatigue suppression. A hard error already implies the value is
+      // suspect, so drop the weaker length-ratio warning on the same field. And
+      // when the response was truncated, the source-padding fallback makes the
+      // output equal the source, which spuriously trips no-op ("may not have
+      // run") — truncated already explains it, so drop no-op too.
+      const hasError = qcFlags.some((flag) => flag.severity === 'error');
+      const hasTruncated = qcFlags.some((flag) => flag.checkId === 'truncated');
+      const emitted = qcFlags.filter(
+        (flag) =>
+          !(hasError && flag.checkId === 'length-ratio') &&
+          !(hasTruncated && flag.checkId === 'no-op'),
+      );
+      for (const flag of emitted) opts.onQcFlag(flag);
+    }
+
     return finalSegments;
   } catch (error) {
     const norm = normalizeProviderError(error, provider.vendor);

@@ -1,0 +1,45 @@
+{
+  "provider": "openai",
+  "scenario": "array-baseline",
+  "request": {
+    "model": "gpt-4o-mini",
+    "segments": [
+      "Grow your team with smarter workflow tools",
+      "Automate routine tasks, surface insights in real time, and keep every project moving forward without the busywork."
+    ]
+  },
+  "ok": true,
+  "response": {
+    "object": "chat.completion",
+    "model": "gpt-4o-mini-2024-07-18",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "[\"Faites croître votre équipe avec des outils de flux de travail plus intelligents\",\"Automatisez les tâches routinières, faites ressortir des informations en temps réel et faites avancer chaque projet sans le travail encombrant.\"]",
+          "refusal": null,
+          "annotations": []
+        },
+        "logprobs": null,
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 158,
+      "completion_tokens": 48,
+      "total_tokens": 206,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "audio_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 0,
+        "audio_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "service_tier": "default"
+  }
+}

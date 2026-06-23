@@ -401,6 +401,51 @@ describe('StructuredTextTranslation', () => {
         );
       });
 
+      it('threads onQcFlag into the nested block translation', async () => {
+        vi.mocked(translateArray).mockResolvedValue(['Übersetzter Text']);
+        vi.mocked(translateFieldValue).mockResolvedValue([
+          { type: 'block', item: 'block-123', originalIndex: 1 },
+        ]);
+
+        const structuredText = [
+          { type: 'paragraph', children: [{ text: 'Translated text' }] },
+          { type: 'block', item: 'block-123' },
+        ];
+        const onQcFlag = vi.fn();
+
+        await translateStructuredTextValue(
+          structuredText,
+          mockPluginParams,
+          'de',
+          'en',
+          mockProvider,
+          'api-token',
+          'main',
+          undefined,
+          '',
+          undefined,
+          undefined,
+          onQcFlag,
+        );
+
+        expect(translateFieldValue).toHaveBeenCalledWith(
+          expect.any(Array),
+          mockPluginParams,
+          'de',
+          'en',
+          'rich_text',
+          mockProvider,
+          '',
+          'api-token',
+          '',
+          'main',
+          undefined,
+          '',
+          undefined,
+          expect.objectContaining({ bypassFieldTypeAllowlist: true, onQcFlag }),
+        );
+      });
+
       it('should translate block nodes when no inline text nodes exist', async () => {
         vi.mocked(translateFieldValue).mockResolvedValue([
           {

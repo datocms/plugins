@@ -1,0 +1,26 @@
+{
+  "provider": "deepl",
+  "scenario": "array-baseline",
+  "request": {
+    "target_lang": "FR",
+    "texts": 2
+  },
+  "ok": true,
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "translations": [
+        {
+          "text": "Développez votre équipe grâce à des outils de gestion des flux de travail plus performants",
+          "detected_source_language": "EN",
+          "billed_characters": 42
+        },
+        {
+          "text": "Automatisez les tâches routinières, mettez en évidence des informations pertinentes en temps réel et assurez l'avancement de chaque projet sans vous encombrer de tâches fastidieuses.",
+          "detected_source_language": "EN",
+          "billed_characters": 114
+        }
+      ]
+    }
+  }
+}

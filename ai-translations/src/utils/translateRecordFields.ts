@@ -32,6 +32,7 @@ import {
   normalizeProviderError,
 } from './translation/ProviderErrors';
 import { getProvider } from './translation/ProviderFactory';
+import type { OnQcFlag } from './translation/qc/types';
 import {
   getExactSourceValue,
   prepareFieldTypePrompt,
@@ -86,6 +87,7 @@ type TranslateOptions = {
   ) => void;
   checkCancellation?: () => boolean;
   abortSignal?: AbortSignal;
+  onQcFlag?: OnQcFlag;
 };
 
 /**
@@ -217,6 +219,7 @@ async function runFieldLocaleJob(params: RunJobParams): Promise<void> {
       streamCallbacks,
       recordContext,
       fieldApiKey,
+      options.onQcFlag,
     );
 
     if (getFatalAbort() || options.checkCancellation?.()) return;
@@ -319,6 +322,7 @@ async function translateFieldWithTimeout(
   streamCallbacks: Parameters<typeof translateFieldValue>[10],
   recordContext: string,
   fieldApiKey: string,
+  onQcFlag?: OnQcFlag,
 ): Promise<unknown> {
   const translationPromise = translateFieldValue(
     sourceLocaleValue,
@@ -337,6 +341,7 @@ async function translateFieldWithTimeout(
     {
       fieldApiKey,
       ...(cmaBaseUrl ? { cmaBaseUrl } : {}),
+      onQcFlag,
     },
   );
 

@@ -1,0 +1,42 @@
+{
+  "provider": "gemini",
+  "scenario": "html-multiblock-hardened",
+  "request": {
+    "model": "gemini-2.5-flash",
+    "instruction": "hardened",
+    "segments": [
+      "<p data-path-to-node=\"0\">Harbor View Lodge sits in the Saltmere Quarter, a short walk from the Marlow Avenue shops and the old harbor. The hotel is about 1.5 kilometres from Eastport Central station, roughly a 20-minute walk or a 10-minute ride on tram lines 2 or 6 to Brindle Square.</p>\n<p data-path-to-node=\"1\">The property has a relaxed, practical design with an open lobby that doubles as a lounge and cafe. Rooms are compact and tidy, with walk-in showers and motion-activated lighting. Some include a small balcony over the canal. Facilities include a 24-hour gym and a quiet reading nook. The building carries a regional eco certification for low energy use and follows a water-saving programme with plant-based cleaning supplies.</p>"
+    ]
+  },
+  "ok": true,
+  "response": {
+    "candidates": [
+      {
+        "content": {
+          "parts": [
+            {
+              "text": "```json\n[\n  \"<p data-path-to-node=\\\"0\\\">Le Harbor View Lodge est situé dans le quartier de Saltmere, à quelques pas des boutiques de Marlow Avenue et du vieux port. L'hôtel se trouve à environ 1,5 kilomètre de la gare centrale d'Eastport, soit environ 20 minutes de marche ou 10 minutes en tramway (lignes 2 ou 6) jusqu'à Brindle Square.</p>\\n<p data-path-to-node=\\\"1\\\">L'établissement présente un design détendu et fonctionnel avec un hall ouvert qui sert également de salon et de café. Les chambres sont compactes et bien rangées, avec des douches à l'italienne et un éclairage activé par le mouvement. Certaines comprennent un petit balcon donnant sur le canal. Les installations comprennent une salle de sport ouverte 24h/24 et un coin lecture paisible. Le bâtiment possède une éco-certification régionale pour sa faible consommation d'énergie et suit un programme d'économie d'eau avec des produits de nettoyage à base de plantes.</p>\"\n]\n```"
+            }
+          ],
+          "role": "model"
+        },
+        "finishReason": "STOP",
+        "index": 0
+      }
+    ],
+    "usageMetadata": {
+      "promptTokenCount": 301,
+      "candidatesTokenCount": 240,
+      "totalTokenCount": 1236,
+      "promptTokensDetails": [
+        {
+          "modality": "TEXT",
+          "tokenCount": 301
+        }
+      ],
+      "thoughtsTokenCount": 695,
+      "serviceTier": "standard"
+    },
+    "modelVersion": "gemini-2.5-flash"
+  }
+}

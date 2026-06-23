@@ -1,0 +1,44 @@
+{
+  "provider": "openai",
+  "scenario": "placeholders",
+  "request": {
+    "model": "gpt-4o-mini",
+    "segments": [
+      "Welcome {{name}}, you have %s new messages about :topic."
+    ]
+  },
+  "ok": true,
+  "response": {
+    "object": "chat.completion",
+    "model": "gpt-4o-mini-2024-07-18",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "[\"Bienvenue {{name}}, vous avez %s nouveaux messages à propos de :topic.\"]",
+          "refusal": null,
+          "annotations": []
+        },
+        "logprobs": null,
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 142,
+      "completion_tokens": 18,
+      "total_tokens": 160,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "audio_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 0,
+        "audio_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "service_tier": "default"
+  }
+}

@@ -60,6 +60,7 @@ type LocaleOption = ChipOption;
 interface TranslationModalResult {
   completed?: boolean;
   canceled?: boolean;
+  progress?: import('../../utils/translation/ItemsDropdownUtils').ProgressUpdate[];
 }
 
 /**
@@ -414,17 +415,29 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
         | undefined;
 
       const localeCount = targetLocales.length;
+      const flagged = (result?.progress ?? []).filter(
+        (update) =>
+          update.status === 'error' ||
+          update.status === 'completed-with-warnings',
+      );
       if (result?.canceled) {
         await ctx.notice('Bulk translation was canceled');
+      } else if (flagged.length > 0) {
+        const reviewList = flagged
+          .slice(0, 20)
+          .map((update) => `• ${(update.message ?? update.recordId).slice(0, 140)}`)
+          .join('\n');
+        const more =
+          flagged.length > 20 ? `\n…and ${flagged.length - 20} more.` : '';
+        await ctx.alert(
+          `Bulk translation finished — ${flagged.length} record(s) need review:\n${reviewList}${more}`,
+        );
       } else if (result?.completed) {
         await ctx.notice(
           `Successfully translated ${allRecordIds.length} record(s) to ${localeCount} locale(s)`,
         );
-      } else {
-        await ctx.alert(
-          'Bulk translation finished with errors; review the modal output above.',
-        );
       }
+      // else: the modal was dismissed via its chrome (no result) — say nothing.
     } catch (error) {
       handleUIError(error, pluginParams.vendor, ctx);
     } finally {

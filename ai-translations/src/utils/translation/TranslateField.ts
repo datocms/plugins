@@ -53,6 +53,7 @@ import {
   type SchemaRepository,
 } from '../schemaRepository';
 import { translateDefaultFieldValue } from './DefaultTranslation';
+import type { OnQcFlag } from './qc/types';
 import { translateFileFieldValue } from './FileFieldTranslation';
 import { handleTranslationError } from './ProviderErrors';
 import { getProvider } from './ProviderFactory';
@@ -169,6 +170,8 @@ interface TranslateFieldValueOptions {
   bypassFieldTypeAllowlist?: boolean;
   fieldApiKey?: string;
   cmaBaseUrl?: string;
+  /** Optional sink for QC flags; stamped with fieldPath/locale before forwarding. */
+  onQcFlag?: OnQcFlag;
 }
 
 /**
@@ -382,6 +385,16 @@ export async function translateFieldValue(
     return fieldValue;
   }
 
+  // Stamp QC flags emitted by the engine with this field's path + locale.
+  const onQcFlag: OnQcFlag | undefined = options.onQcFlag
+    ? (flag) =>
+        options.onQcFlag?.({
+          ...flag,
+          fieldPath: flag.fieldPath ?? options.fieldApiKey,
+          locale: flag.locale ?? toLocale,
+        })
+    : undefined;
+
   let translatedValue: unknown;
 
   switch (fieldType) {
@@ -395,6 +408,7 @@ export async function translateFieldValue(
         fieldTypePrompt,
         streamCallbacks,
         recordContext,
+        onQcFlag,
       );
       break;
     case 'structured_text':
@@ -410,6 +424,7 @@ export async function translateFieldValue(
         recordContext,
         schemaRepository,
         options.cmaBaseUrl,
+        onQcFlag,
       );
       break;
     case 'rich_text':
@@ -428,6 +443,7 @@ export async function translateFieldValue(
         recordContext,
         schemaRepository,
         options.cmaBaseUrl,
+        onQcFlag,
       );
       break;
     case 'file':
@@ -443,6 +459,7 @@ export async function translateFieldValue(
         streamCallbacks,
         recordContext,
         options.cmaBaseUrl,
+        onQcFlag,
       );
       break;
     default:
@@ -454,7 +471,16 @@ export async function translateFieldValue(
         provider,
         streamCallbacks,
         recordContext,
-        { isHTML: fieldType === 'wysiwyg' },
+        {
+          isHTML: fieldType === 'wysiwyg',
+          kind:
+            fieldType === 'wysiwyg'
+              ? 'html'
+              : fieldType === 'markdown'
+                ? 'markdown'
+                : 'text',
+          onQcFlag,
+        },
       );
       break;
   }
@@ -620,6 +646,7 @@ interface BlockFieldProcessingContext {
   recordContext: string;
   logger: Logger;
   schemaRepository?: SchemaRepository;
+  onQcFlag?: OnQcFlag;
 }
 
 /**
@@ -819,7 +846,7 @@ async function translateBlockFieldValue(
     ctx.streamCallbacks,
     ctx.recordContext,
     ctx.schemaRepository,
-    { fieldApiKey: field, cmaBaseUrl: ctx.cmaBaseUrl },
+    { fieldApiKey: field, cmaBaseUrl: ctx.cmaBaseUrl, onQcFlag: ctx.onQcFlag },
   );
 }
 
@@ -1010,6 +1037,7 @@ async function translateBlockValue(
   recordContext = '',
   schemaRepository?: SchemaRepository,
   cmaBaseUrl?: string,
+  onQcFlag?: OnQcFlag,
 ) {
   const logger = createLogger(pluginParams, 'translateBlockValue');
   logger.info('Translating block value', {
@@ -1047,6 +1075,7 @@ async function translateBlockValue(
     recordContext,
     logger,
     schemaRepository,
+    onQcFlag,
   };
 
   /**
@@ -1259,6 +1288,7 @@ async function TranslateField(
   environment: string,
   streamCallbacks?: StreamCallbacks,
   recordContext = '',
+  onQcFlag?: OnQcFlag,
 ) {
   const apiToken = await ctx.currentUserAccessToken;
   // Resolve provider (OpenAI for now; vendor-agnostic interface)
@@ -1322,6 +1352,7 @@ async function TranslateField(
       {
         fieldApiKey,
         cmaBaseUrl: ctx.cmaBaseUrl,
+        onQcFlag,
       },
     );
 

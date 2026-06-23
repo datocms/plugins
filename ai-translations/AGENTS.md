@@ -7,8 +7,11 @@ This package is a Vite + React + TypeScript DatoCMS plugin for translating local
 - `src/entrypoints/Config/`: plugin settings UI, including vendor selection, prompt settings, exclusions, and feature toggles.
 - `src/entrypoints/Sidebar/` (whole-record) and `src/entrypoints/CustomPage/AIBulkTranslationsPage.tsx` (bulk page) host the translation UIs; shared modals and pickers live in `src/components/` (`AITranslationsPickerModal`, `TranslationConfirmModal`, `TranslationProgressModal`) and `src/components/BulkTranslations/` (`ModelFieldPicker`, chip renderers).
 - `src/utils/translation/`: provider abstraction, translation core, field-specific translators, shared guards, and vendor helpers.
+- `src/utils/translation/qc/`: translation quality control — pure check functions (`checks.ts`, `structuralChecks.ts`) and the `QcFlag` model (`types.ts`) used to detect incomplete/degraded translations.
 - `src/prompts/`: prompt templates used by translation flows.
 - `src/**/*.test.ts(x)`: Vitest coverage lives next to the code it exercises.
+- `test/fixtures/provider-responses/`: sanitized real provider response envelopes (no secrets) that ground the parser/QC tests; regenerate with `test/capture-provider-responses.mjs`.
+- `docs/superpowers/`: design specs and implementation plans for larger features.
 - `dist/`: generated plugin bundle; do not edit manually.
 
 ## Build, Test, and Development Commands
@@ -38,8 +41,10 @@ Run from `ai-translations/`:
 - Prompt placeholders and locale handling are shared behavior; treat them as cross-cutting concerns, not one-off UI details.
 - If you touch provider errors, batching, locale mapping, or translation routing, review the corresponding tests before finishing.
 - Cancellation flags — and anything the long-running translation loop reads through `checkCancellation` — must live in a `useRef`, not `useState`. The loop closes over its start-time snapshot, so a state value is read stale and the run never stops cooperatively (the user clicks Cancel but records keep translating). Keep a parallel `useState` only when the UI must re-render off the flag (e.g. a "Cancelling…" button label), and write both.
+- Quality control: the engine emits `QcFlag`s (`length-mismatch`, `placeholder-loss`, `truncated`, `html-structure`, `markdown-structure`, `no-op`, `length-ratio`) through a non-breaking `onQcFlag` callback threaded via the translation options. `translateFieldValue` stamps each flag with its field path + locale; entrypoints collect them and surface a review summary (sidebar / field-dropdown alert+notice; bulk gets a `completed-with-warnings` status + a retained review list). Repairs are flagged, never silent — a wrong-length response is repaired (over-split single HTML segments are rejoined) and flagged; a truncated/unparseable response falls back to source and is flagged. When you add a field-type translator, forward `onQcFlag` (and the `kind` html/markdown/text hint) down to `translateArray`.
 
 ## Testing Guidelines
 - Use `npm run build` as the baseline validation step.
 - Add or update Vitest coverage when changing translation logic, provider selection, locale behavior, or error normalization.
 - Prefer targeted unit coverage around `src/utils/translation/` over manual-only verification for core translation behavior.
+- The parser/QC tests are grounded in real provider response shapes under `test/fixtures/provider-responses/` (fenced JSON, truncation, multi-candidate, structured output, over-split). To refresh them, put keys in a gitignored `.env.testing` and run `node --env-file=.env.testing test/capture-provider-responses.mjs`; the script writes only sanitized envelopes (no keys, no real customer content).

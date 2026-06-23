@@ -4,7 +4,12 @@ import {
   withTimeout,
   withTimeoutGenerator,
 } from '../providerUtils';
-import type { StreamOptions, TranslationProvider, VendorId } from '../types';
+import type {
+  CompletionResult,
+  StreamOptions,
+  TranslationProvider,
+  VendorId,
+} from '../types';
 
 type OpenAIProviderConfig = {
   apiKey: string;
@@ -96,9 +101,12 @@ export default class OpenAIProvider implements TranslationProvider {
    * @param options - Optional abort signal.
    * @returns Final message content (or empty string).
    */
-  async completeText(prompt: string, options?: StreamOptions): Promise<string> {
+  async completeTextWithMeta(
+    prompt: string,
+    options?: StreamOptions,
+  ): Promise<CompletionResult> {
     if (isEmptyPrompt(prompt)) {
-      return '';
+      return { text: '' };
     }
 
     return withTimeout(options, async (signal) => {
@@ -121,13 +129,19 @@ export default class OpenAIProvider implements TranslationProvider {
         signal,
       });
       const text = resp.choices?.[0]?.message?.content ?? '';
+      const finishReason = resp.choices?.[0]?.finish_reason ?? undefined;
       options?.debug?.response?.('Provider response', {
         provider: this.vendor,
         operation: 'completeText',
         response: resp,
         text,
       });
-      return text;
+      return { text, finishReason };
     });
+  }
+
+  /** Single-shot text completion. Delegates to {@link completeTextWithMeta}. */
+  async completeText(prompt: string, options?: StreamOptions): Promise<string> {
+    return (await this.completeTextWithMeta(prompt, options)).text;
   }
 }

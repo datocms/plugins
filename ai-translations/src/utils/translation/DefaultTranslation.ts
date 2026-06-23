@@ -15,11 +15,14 @@
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import { createLogger } from '../logging/Logger';
 import { handleTranslationError } from './ProviderErrors';
+import type { OnQcFlag } from './qc/types';
 import { translateArray } from './translateArray';
 import type { StreamCallbacks, TranslationProvider } from './types';
 
 type DefaultTranslationOptions = {
   isHTML?: boolean;
+  kind?: 'html' | 'markdown' | 'text';
+  onQcFlag?: OnQcFlag;
 };
 
 /**
@@ -69,7 +72,12 @@ export async function translateDefaultFieldValue(
       [String(fieldValue)],
       fromLocale,
       toLocale,
-      { isHTML: options.isHTML === true, recordContext },
+      {
+        isHTML: options.isHTML === true,
+        recordContext,
+        kind: options.kind,
+        onQcFlag: options.onQcFlag,
+      },
     );
     return translated;
   } catch (error) {

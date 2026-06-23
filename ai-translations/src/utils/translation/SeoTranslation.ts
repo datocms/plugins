@@ -16,6 +16,7 @@ import locale from 'locale-codes';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import { createLogger } from '../logging/Logger';
 import { handleTranslationError } from './ProviderErrors';
+import type { OnQcFlag } from './qc/types';
 import { translateArray } from './translateArray';
 import type { StreamCallbacks, TranslationProvider } from './types';
 
@@ -64,6 +65,7 @@ export async function translateSeoFieldValue(
   fieldTypePrompt: string,
   _streamCallbacks?: StreamCallbacks,
   recordContext = '',
+  onQcFlag?: OnQcFlag,
 ): Promise<SeoObject> {
   const logger = createLogger(pluginParams, 'translateSeoFieldValue');
   logger.info('Starting SEO field translation', { fromLocale, toLocale });
@@ -118,7 +120,7 @@ export async function translateSeoFieldValue(
       [sourceTitle, sourceDescription],
       fromLocale,
       toLocale,
-      { isHTML: false, recordContext },
+      { isHTML: false, recordContext, onQcFlag },
     );
 
     // Build a fresh result preserving any non-translated properties (e.g.

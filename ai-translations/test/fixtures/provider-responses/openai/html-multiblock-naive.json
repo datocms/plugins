@@ -1,0 +1,45 @@
+{
+  "provider": "openai",
+  "scenario": "html-multiblock-naive",
+  "request": {
+    "model": "gpt-4o-mini",
+    "instruction": "naive",
+    "segments": [
+      "<p data-path-to-node=\"0\">Harbor View Lodge sits in the Saltmere Quarter, a short walk from the Marlow Avenue shops and the old harbor. The hotel is about 1.5 kilometres from Eastport Central station, roughly a 20-minute walk or a 10-minute ride on tram lines 2 or 6 to Brindle Square.</p>\n<p data-path-to-node=\"1\">The property has a relaxed, practical design with an open lobby that doubles as a lounge and cafe. Rooms are compact and tidy, with walk-in showers and motion-activated lighting. Some include a small balcony over the canal. Facilities include a 24-hour gym and a quiet reading nook. The building carries a regional eco certification for low energy use and follows a water-saving programme with plant-based cleaning supplies.</p>"
+    ]
+  },
+  "ok": true,
+  "response": {
+    "object": "chat.completion",
+    "model": "gpt-4o-mini-2024-07-18",
+    "choices": [
+      {
+        "index": 0,
+        "message": {
+          "role": "assistant",
+          "content": "```json\n[\n    \"<p data-path-to-node=\\\"0\\\">Le Harbor View Lodge est situé dans le quartier de Saltmere, à une courte distance à pied des commerces de Marlow Avenue et du vieux port. L'hôtel se trouve à environ 1,5 kilomètres de la gare d'Eastport Central, soit environ 20 minutes à pied ou 10 minutes en tram sur les lignes 2 ou 6 jusqu'à Brindle Square.</p>\\n<p data-path-to-node=\\\"1\\\">La propriété possède un design décontracté et pratique avec un hall ouvert qui fait également office de salon et de café. Les chambres sont compactes et soignées, avec des douches à l'italienne et un éclairage activé par mouvement. Certaines comprennent un petit balcon donnant sur le canal. Les installations incluent une salle de sport ouverte 24 heures sur 24 et un coin lecture calme. Le bâtiment possède une certification écologique régionale pour une faible consommation d'énergie et suit un programme d'économie d'eau avec des produits de nettoyage à base de plantes.</p>\"\n]\n```",
+          "refusal": null,
+          "annotations": []
+        },
+        "logprobs": null,
+        "finish_reason": "stop"
+      }
+    ],
+    "usage": {
+      "prompt_tokens": 196,
+      "completion_tokens": 221,
+      "total_tokens": 417,
+      "prompt_tokens_details": {
+        "cached_tokens": 0,
+        "audio_tokens": 0
+      },
+      "completion_tokens_details": {
+        "reasoning_tokens": 0,
+        "audio_tokens": 0,
+        "accepted_prediction_tokens": 0,
+        "rejected_prediction_tokens": 0
+      }
+    },
+    "service_tier": "default"
+  }
+}

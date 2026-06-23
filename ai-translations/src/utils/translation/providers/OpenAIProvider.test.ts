@@ -65,6 +65,16 @@ describe('OpenAIProvider', () => {
     });
   });
 
+  describe('completeTextWithMeta', () => {
+    it('returns text and the finish_reason from the response', async () => {
+      mockCreate.mockResolvedValue({
+        choices: [{ message: { content: 'Hallo' }, finish_reason: 'length' }],
+      });
+      const result = await provider.completeTextWithMeta('Translate');
+      expect(result).toEqual({ text: 'Hallo', finishReason: 'length' });
+    });
+  });
+
   describe('completeText', () => {
     it('should return empty string for empty prompt', async () => {
       const result = await provider.completeText('');

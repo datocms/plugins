@@ -1,5 +1,10 @@
 import { isEmptyPrompt, withTimeout } from '../providerUtils';
-import type { StreamOptions, TranslationProvider, VendorId } from '../types';
+import type {
+  CompletionResult,
+  StreamOptions,
+  TranslationProvider,
+  VendorId,
+} from '../types';
 import { ProviderError } from '../types';
 
 type AnthropicProviderConfig = {
@@ -71,7 +76,7 @@ export default class AnthropicProvider implements TranslationProvider {
     signal: AbortSignal,
     prompt: string,
     debug?: StreamOptions['debug'],
-  ): Promise<string> {
+  ): Promise<CompletionResult> {
     debug?.request?.('Provider request', {
       provider: this.vendor,
       operation: 'completeText',
@@ -135,7 +140,9 @@ export default class AnthropicProvider implements TranslationProvider {
         response: data,
       });
     }
-    return result;
+    const finishReason =
+      typeof data?.stop_reason === 'string' ? data.stop_reason : undefined;
+    return { text: result, finishReason };
   }
 
   /**
@@ -145,14 +152,17 @@ export default class AnthropicProvider implements TranslationProvider {
    * @param options - Optional abort signal.
    * @returns Response text string.
    */
-  async completeText(prompt: string, options?: StreamOptions): Promise<string> {
+  async completeTextWithMeta(
+    prompt: string,
+    options?: StreamOptions,
+  ): Promise<CompletionResult> {
     if (isEmptyPrompt(prompt)) {
-      return '';
+      return { text: '' };
     }
 
     const body: Record<string, unknown> = {
       model: this.model,
-      max_output_tokens: this.maxOutputTokens,
+      max_tokens: this.maxOutputTokens,
       temperature: this.temperature,
       messages: [{ role: 'user', content: prompt }],
     };
@@ -160,5 +170,10 @@ export default class AnthropicProvider implements TranslationProvider {
     return withTimeout(options, (signal) =>
       this.fetchAnthropicResponse(body, signal, prompt, options?.debug),
     );
+  }
+
+  /** Single-shot text completion. Delegates to {@link completeTextWithMeta}. */
+  async completeText(prompt: string, options?: StreamOptions): Promise<string> {
+    return (await this.completeTextWithMeta(prompt, options)).text;
   }
 }

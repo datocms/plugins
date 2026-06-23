@@ -27,3 +27,10 @@ dist-ssr
 
 # Personal agent instructions
 AGENTS.local.md
+
+# Local secrets / API keys (never commit)
+.env
+.env.*
+!.env.example
+# Example CMA record used for local fixture capture
+cma-example.json

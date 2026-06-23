@@ -5,6 +5,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
+import type { QcFlag } from './qc/types';
 import { tokenize, translateArray } from './translateArray';
 import type { TranslationProvider } from './types';
 
@@ -413,6 +414,49 @@ describe('translateArray.ts', () => {
         expect(result).toEqual(['Hallo', 'World']);
       });
 
+      it('should rejoin when model splits a single HTML segment into multiple elements', async () => {
+        // Regression: a WYSIWYG field is sent as one segment containing several
+        // block-level <p> elements. Chat models frequently "helpfully" split it
+        // into one array element per block, returning more elements than were
+        // sent. For HTML the length repair must rejoin them (newlines between
+        // block elements are insignificant) instead of dropping the tail.
+        vi.mocked(mockProvider.completeText).mockResolvedValue(
+          '["<p>Eerste paragraaf.</p>", "<p>Tweede paragraaf.</p>"]',
+        );
+
+        const result = await translateArray(
+          mockProvider,
+          mockPluginParams,
+          ['<p>First paragraph.</p>\n<p>Second paragraph.</p>'],
+          'en',
+          'nl',
+          { isHTML: true },
+        );
+
+        expect(result).toEqual([
+          '<p>Eerste paragraaf.</p>\n<p>Tweede paragraaf.</p>',
+        ]);
+      });
+
+      it('should NOT rejoin an over-split non-HTML segment (avoids corrupting single_line/json)', async () => {
+        // The newline-rejoin recovery is gated to HTML only. For a plain
+        // single-line value, injecting newlines would corrupt it, so the
+        // positional length repair (keep the first element) is used instead.
+        vi.mocked(mockProvider.completeText).mockResolvedValue(
+          '["Rojo", "verde", "azul"]',
+        );
+
+        const result = await translateArray(
+          mockProvider,
+          mockPluginParams,
+          ['Red, green, blue'],
+          'en',
+          'es',
+        );
+
+        expect(result).toEqual(['Rojo']);
+      });
+
       it('should handle non-string values in response', async () => {
         vi.mocked(mockProvider.completeText).mockResolvedValue(
           '[123, null, "Welt"]',
@@ -439,6 +483,146 @@ describe('translateArray.ts', () => {
         await expect(
           translateArray(mockProvider, mockPluginParams, ['Hello'], 'en', 'de'),
         ).rejects.toThrow('Translation provider error');
+      });
+    });
+
+    describe('QC flags', () => {
+      it('emits a length-mismatch flag when the model over-splits a single segment', async () => {
+        vi.mocked(mockProvider.completeText).mockResolvedValue('["a","b"]');
+        const flags: QcFlag[] = [];
+
+        await translateArray(mockProvider, mockPluginParams, ['x'], 'en', 'de', {
+          onQcFlag: (f) => flags.push(f),
+        });
+
+        expect(flags.some((f) => f.checkId === 'length-mismatch')).toBe(true);
+      });
+
+      it('emits no flags on a clean, length-matched response', async () => {
+        vi.mocked(mockProvider.completeText).mockResolvedValue('["a","b"]');
+        const flags: QcFlag[] = [];
+
+        await translateArray(
+          mockProvider,
+          mockPluginParams,
+          ['x', 'y'],
+          'en',
+          'de',
+          { onQcFlag: (f) => flags.push(f) },
+        );
+
+        expect(flags).toHaveLength(0);
+      });
+
+      it('emits a placeholder-loss flag when a protected token is dropped', async () => {
+        // Model returns the translation without the protected {{name}} token.
+        vi.mocked(mockProvider.completeText).mockResolvedValue('["Hallo"]');
+        const flags: QcFlag[] = [];
+
+        await translateArray(
+          mockProvider,
+          mockPluginParams,
+          ['Hello {{name}}'],
+          'en',
+          'de',
+          { onQcFlag: (f) => flags.push(f) },
+        );
+
+        expect(flags.some((f) => f.checkId === 'placeholder-loss')).toBe(true);
+      });
+
+      it('emits a truncated flag when the provider reports a cut-off', async () => {
+        const metaProvider: TranslationProvider = {
+          vendor: 'openai',
+          streamText: vi.fn(),
+          completeText: vi.fn(),
+          completeTextWithMeta: vi
+            .fn()
+            .mockResolvedValue({ text: '["Hallo"]', finishReason: 'length' }),
+        };
+        const flags: QcFlag[] = [];
+
+        await translateArray(
+          metaProvider,
+          mockPluginParams,
+          ['Hello'],
+          'en',
+          'de',
+          { onQcFlag: (f) => flags.push(f) },
+        );
+
+        expect(flags.some((f) => f.checkId === 'truncated')).toBe(true);
+      });
+
+      it('emits an html-structure flag when a block is dropped (isHTML)', async () => {
+        vi.mocked(mockProvider.completeText).mockResolvedValue('["<p>x</p>"]');
+        const flags: QcFlag[] = [];
+
+        await translateArray(
+          mockProvider,
+          mockPluginParams,
+          ['<p>a</p><p>b</p>'],
+          'en',
+          'de',
+          { isHTML: true, onQcFlag: (f) => flags.push(f) },
+        );
+
+        expect(flags.some((f) => f.checkId === 'html-structure')).toBe(true);
+      });
+
+      it('emits a markdown-structure flag when a heading is dropped (kind=markdown)', async () => {
+        vi.mocked(mockProvider.completeText).mockResolvedValue(
+          JSON.stringify(['Alinea zonder kop']),
+        );
+        const flags: QcFlag[] = [];
+
+        await translateArray(
+          mockProvider,
+          mockPluginParams,
+          ['## Title\n\nParagraph here'],
+          'en',
+          'de',
+          { kind: 'markdown', onQcFlag: (f) => flags.push(f) },
+        );
+
+        expect(flags.some((f) => f.checkId === 'markdown-structure')).toBe(true);
+      });
+
+      it('emits a no-op warning when the value is returned unchanged', async () => {
+        vi.mocked(mockProvider.completeText).mockResolvedValue(
+          JSON.stringify(['Hello world this is some text']),
+        );
+        const flags: QcFlag[] = [];
+
+        await translateArray(
+          mockProvider,
+          mockPluginParams,
+          ['Hello world this is some text'],
+          'en',
+          'de',
+          { onQcFlag: (f) => flags.push(f) },
+        );
+
+        expect(flags.some((f) => f.checkId === 'no-op')).toBe(true);
+      });
+
+      it('suppresses length-ratio when a hard error already fired on the field', async () => {
+        vi.mocked(mockProvider.completeText).mockResolvedValue(
+          JSON.stringify(['tiny', 'extra']),
+        );
+        const flags: QcFlag[] = [];
+
+        await translateArray(
+          mockProvider,
+          mockPluginParams,
+          ['This is a long enough source sentence to matter.'],
+          'en',
+          'de',
+          { onQcFlag: (f) => flags.push(f) },
+        );
+
+        expect(flags.some((f) => f.checkId === 'length-mismatch')).toBe(true);
+        expect(flags.some((f) => f.checkId === 'length-ratio')).toBe(false);
       });
     });
 
@@ -580,6 +764,24 @@ describe('translateArray.ts', () => {
         } catch (e) {
           expect((e as Error).cause).toBe(originalError);
         }
+      });
+    });
+
+    describe('prompt safety', () => {
+      it('should instruct the model not to split elements or change the array length', async () => {
+        vi.mocked(mockProvider.completeText).mockResolvedValue('["Hallo"]');
+
+        await translateArray(
+          mockProvider,
+          mockPluginParams,
+          ['<p>a</p>\n<p>b</p>'],
+          'en',
+          'de',
+        );
+
+        const prompt = vi.mocked(mockProvider.completeText).mock.calls[0][0];
+        expect(prompt).toContain('exact same length');
+        expect(prompt.toLowerCase()).toContain('split');
       });
     });
 

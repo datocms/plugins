@@ -1,0 +1,22 @@
+{
+  "provider": "deepl",
+  "scenario": "html-tag-handling",
+  "request": {
+    "target_lang": "FR",
+    "tag_handling": "html"
+  },
+  "ok": true,
+  "response": {
+    "httpStatus": 200,
+    "body": {
+      "translations": [
+        {
+          "text": "<p data-path-to-node=\"0\">Le Harbor View Lodge est situé dans le quartier de Saltmere, à quelques pas des boutiques de Marlow Avenue et du vieux port. L&#x27;hôtel se trouve à environ 1,5 kilomètre de la gare d&#x27;Eastport Central, soit environ 20 minutes à pied ou 10 minutes en tramway (lignes 2 ou 6) jusqu&#x27;à Brindle Square.</p>\n<p data-path-to-node=\"1\">L&#x27;établissement présente un design à la fois décontracté et fonctionnel, avec un hall ouvert qui fait office à la fois de salon et de café. Les chambres sont compactes et soignées, équipées de douches à l&#x27;italienne et d&#x27;un éclairage à détection de mouvement. Certaines disposent d&#x27;un petit balcon donnant sur le canal. L&#x27;établissement propose notamment une salle de sport ouverte 24h/24 et un coin lecture au calme. Le bâtiment bénéficie d&#x27;une certification écologique régionale pour sa faible consommation d&#x27;énergie et met en œuvre un programme d&#x27;économie d&#x27;eau avec des produits d&#x27;entretien à base végétale.</p>",
+          "detected_source_language": "EN",
+          "billed_characters": 683,
+          "tag_handling_version": "v2"
+        }
+      ]
+    }
+  }
+}

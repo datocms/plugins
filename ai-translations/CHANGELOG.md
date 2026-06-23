@@ -1,5 +1,6 @@
 # Changelog
 
+- 3.6.0: Added translation quality checks. Each AI translation is now verified for completeness — wrong-length, over-split, and truncated responses, lost placeholders, HTML/Markdown structural drift, and likely non-translations are detected, repaired where possible, and surfaced for review (a summary in the sidebar and field dropdown; a "completed with warnings" status and a post-run review list in bulk) instead of being saved silently. Also fixed an over-split bug where multi-paragraph WYSIWYG/HTML fields could be cropped to the first block, and corrected the Anthropic request to send `max_tokens`.
 - 3.5.1: Fixed translation cancellation and completion reliability. Cancelling a bulk or multi-record run now actually stops it instead of continuing in the background; the progress dialog's Close button no longer stays stuck on "Please wait…" when fewer records come back than were selected; and the single-record sidebar surfaces a clean "cancelled" state instead of an error.
 - 3.5.0: Bulk and multi-record translation UX overhaul (select individual models and fields to translate). Also improved Dark Mode support.
 - 3.4.6: Fix for SEO "Translate to all locales" functionality setting wrong result-language pairs.

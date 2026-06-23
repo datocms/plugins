@@ -16,6 +16,7 @@ import { buildClient } from '@datocms/cma-client-browser';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import { createLogger } from '../logging/Logger';
 import { handleTranslationError } from './ProviderErrors';
+import type { OnQcFlag } from './qc/types';
 import { findExactLocaleKey } from './SharedFieldUtils';
 import { translateArray } from './translateArray';
 import type { StreamCallbacks, TranslationProvider } from './types';
@@ -98,6 +99,7 @@ export async function translateFileFieldValue(
   _streamCallbacks?: StreamCallbacks,
   recordContext = '',
   cmaBaseUrl?: string,
+  onQcFlag?: OnQcFlag,
 ): Promise<unknown> {
   // Create logger for this module
   const logger = createLogger(pluginParams, 'FileFieldTranslation');
@@ -119,7 +121,14 @@ export async function translateFileFieldValue(
 
     // Translate each file in the gallery
     const translatedFiles = await Promise.all(
-      fieldValue.map(async (file) => {
+      fieldValue.map(async (file, fileIndex) => {
+        // Disambiguate QC flags per gallery item — every file otherwise reports
+        // the same field path + segmentIndex, so a reviewer can't tell which
+        // asset's metadata is suspect.
+        const fileOnQcFlag: OnQcFlag | undefined = onQcFlag
+          ? (flag) =>
+              onQcFlag({ ...flag, message: `[file ${fileIndex + 1}] ${flag.message}` })
+          : undefined;
         return translateSingleFileMetadata(
           file,
           pluginParams,
@@ -131,6 +140,7 @@ export async function translateFileFieldValue(
           _streamCallbacks,
           recordContext,
           cmaBaseUrl,
+          fileOnQcFlag,
         );
       }),
     );
@@ -151,6 +161,7 @@ export async function translateFileFieldValue(
     _streamCallbacks,
     recordContext,
     cmaBaseUrl,
+    onQcFlag,
   );
 }
 
@@ -439,6 +450,7 @@ async function translateSingleFileMetadata(
   _streamCallbacks?: StreamCallbacks,
   recordContext = '',
   cmaBaseUrl?: string,
+  onQcFlag?: OnQcFlag,
 ): Promise<unknown> {
   const logger = createLogger(
     pluginParams,
@@ -493,7 +505,7 @@ async function translateSingleFileMetadata(
       values,
       fromLocale,
       toLocale,
-      { isHTML: false, recordContext },
+      { isHTML: false, recordContext, onQcFlag },
     );
 
     return applyTranslatedFileEntries(

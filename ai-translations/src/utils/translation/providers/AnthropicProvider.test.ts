@@ -70,6 +70,24 @@ describe('AnthropicProvider', () => {
     });
   });
 
+  describe('completeTextWithMeta', () => {
+    it('returns text and stop_reason, and sends max_tokens (not max_output_tokens)', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          content: [{ type: 'text', text: 'Hallo' }],
+          stop_reason: 'max_tokens',
+        }),
+      });
+      const result = await provider.completeTextWithMeta('Translate');
+      expect(result).toEqual({ text: 'Hallo', finishReason: 'max_tokens' });
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body as string);
+      expect(body).toHaveProperty('max_tokens', 1024);
+      expect(body).not.toHaveProperty('max_output_tokens');
+    });
+  });
+
   describe('completeText', () => {
     it('should return empty string for empty prompt', async () => {
       const result = await provider.completeText('');
@@ -122,7 +140,7 @@ describe('AnthropicProvider', () => {
       const body = JSON.parse(mockFetch.mock.calls[0][1].body);
       expect(body).toEqual({
         model: 'claude-3-sonnet-20240229',
-        max_output_tokens: 1024,
+        max_tokens: 1024,
         temperature: undefined,
         messages: [{ role: 'user', content: 'Test prompt' }],
       });
@@ -408,7 +426,7 @@ describe('AnthropicProvider', () => {
       await providerWithTokens.completeText('Test');
 
       const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-      expect(body.max_output_tokens).toBe(4096);
+      expect(body.max_tokens).toBe(4096);
     });
   });
 });

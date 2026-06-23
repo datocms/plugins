@@ -24,6 +24,7 @@ import {
 } from '../../components/BulkTranslations/chipOption';
 import { formatLocaleLabel } from '../../utils/localeUtils';
 import { translateRecordFields } from '../../utils/translateRecordFields';
+import type { QcFlag } from '../../utils/translation/qc/types';
 import { handleUIError } from '../../utils/translation/ProviderErrors';
 import { isProviderConfigured } from '../../utils/translation/ProviderFactory';
 import type { ctxParamsType } from '../Config/ConfigScreen';
@@ -224,6 +225,7 @@ export default function TranslateSidebar({ ctx }: PropTypes) {
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
+    const qcFlags: QcFlag[] = [];
 
     try {
       await translateRecordFields(
@@ -284,6 +286,9 @@ export default function TranslateSidebar({ ctx }: PropTypes) {
               `Failed to translate "${fieldLabel}" to ${locale}: ${errorMessage}`,
             );
           },
+          onQcFlag: (flag) => {
+            qcFlags.push(flag);
+          },
           checkCancellation: () => isCancellingRef.current,
           abortSignal: controller.signal,
         },
@@ -293,6 +298,23 @@ export default function TranslateSidebar({ ctx }: PropTypes) {
         ctx.notice('Translation cancelled');
         setIsCancelling(false);
         setIsLoading(false);
+      } else if (qcFlags.length > 0) {
+        const errorCount = qcFlags.filter(
+          (flag) => flag.severity === 'error',
+        ).length;
+        const summary = qcFlags
+          .slice(0, 8)
+          .map((flag) => `• ${flag.message}`)
+          .join('\n');
+        if (errorCount > 0) {
+          ctx.alert(
+            `Translation finished, but ${errorCount} field(s) may be incomplete — please review before saving:\n${summary}`,
+          );
+        } else {
+          ctx.notice(
+            `Translation finished with ${qcFlags.length} note(s) worth reviewing.`,
+          );
+        }
       }
     } catch (error) {
       handleUIError(error, pluginParams.vendor, ctx);

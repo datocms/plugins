@@ -31,6 +31,17 @@ export interface StreamOptions {
 }
 
 /**
+ * Result of a single-shot completion that also carries provider metadata.
+ * `finishReason` is the provider's raw finish/stop reason (e.g. OpenAI
+ * `finish_reason`, Anthropic `stop_reason`, Gemini `finishReason`), used to
+ * detect truncation.
+ */
+export interface CompletionResult {
+  text: string;
+  finishReason?: string;
+}
+
+/**
  * Creates an AbortSignal that will abort after the specified timeout,
  * optionally combined with an external abort signal.
  * EDGE-002: Utility for adding timeouts to API calls.
@@ -127,6 +138,15 @@ export interface TranslationProvider {
   streamText(prompt: string, options?: StreamOptions): AsyncIterable<string>;
   /** Single-shot text completion - the primary translation method. */
   completeText(prompt: string, options?: StreamOptions): Promise<string>;
+  /**
+   * Single-shot completion that also surfaces provider metadata (notably the
+   * finish/stop reason, used to detect truncation). Optional; callers fall back
+   * to {@link completeText} when absent.
+   */
+  completeTextWithMeta?(
+    prompt: string,
+    options?: StreamOptions,
+  ): Promise<CompletionResult>;
   /**
    * Optional batch translation for providers that support it natively.
    * When present, translateArray() will use this instead of building prompts.

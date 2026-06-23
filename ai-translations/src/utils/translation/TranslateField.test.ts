@@ -167,7 +167,7 @@ describe('TranslateField', () => {
       provider,
       undefined,
       'Record content',
-      { isHTML: true },
+      { isHTML: true, kind: 'html', onQcFlag: undefined },
     );
   });
 
@@ -199,7 +199,7 @@ describe('TranslateField', () => {
       provider,
       undefined,
       'Record title',
-      { isHTML: false },
+      { isHTML: false, kind: 'text', onQcFlag: undefined },
     );
   });
 
