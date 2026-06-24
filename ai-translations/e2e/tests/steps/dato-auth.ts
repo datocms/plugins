@@ -20,9 +20,12 @@ export const loginAndSaveState = async (storagePath: string): Promise<void> => {
     await page.getByRole('button', { name: 'Log in' }).click();
 
     if (env.E2E_DASHBOARD_TOTP_SECRET) {
-      // otplib is CJS; pull `authenticator` off its default export, lazily, so
-      // the dependency is only touched when 2FA is actually enabled.
-      const { authenticator } = (await import('otplib')).default;
+      // otplib is CJS; resolve `authenticator` from either interop shape lazily,
+      // so the dependency is only touched when 2FA is actually enabled.
+      type OtpLib = { authenticator: { generate(secret: string): string } };
+      const mod = (await import('otplib')) as unknown as Partial<OtpLib> & { default?: OtpLib };
+      const authenticator = mod.default?.authenticator ?? mod.authenticator;
+      if (!authenticator) throw new Error('otplib.authenticator unavailable');
       const code = authenticator.generate(env.E2E_DASHBOARD_TOTP_SECRET);
       await page.getByRole('textbox', { name: /code|2fa|authenticator/i }).fill(code);
       await page.getByRole('button', { name: /verify|continue|log in/i }).click();
