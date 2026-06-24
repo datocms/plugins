@@ -5,6 +5,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
+import { withExpectedError } from '../testing/withExpectedError';
 import { translateStructuredTextValue } from './StructuredTextTranslation';
 import type { TranslationProvider } from './types';
 
@@ -714,14 +715,16 @@ describe('StructuredTextTranslation', () => {
         ];
 
         await expect(
-          translateStructuredTextValue(
-            structuredText,
-            mockPluginParams,
-            'de',
-            'en',
-            mockProvider,
-            'api-token',
-            'main',
+          withExpectedError('structured text translation', () =>
+            translateStructuredTextValue(
+              structuredText,
+              mockPluginParams,
+              'de',
+              'en',
+              mockProvider,
+              'api-token',
+              'main',
+            ),
           ),
         ).rejects.toThrow();
       });

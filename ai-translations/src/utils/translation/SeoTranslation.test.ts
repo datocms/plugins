@@ -5,6 +5,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
+import { withExpectedError } from '../testing/withExpectedError';
 import { type SeoObject, translateSeoFieldValue } from './SeoTranslation';
 import type { TranslationProvider } from './types';
 
@@ -398,13 +399,15 @@ describe('SeoTranslation', () => {
         };
 
         await expect(
-          translateSeoFieldValue(
-            seoObject,
-            mockPluginParams,
-            'de',
-            'en',
-            mockProvider,
-            '',
+          withExpectedError('SEO translation', () =>
+            translateSeoFieldValue(
+              seoObject,
+              mockPluginParams,
+              'de',
+              'en',
+              mockProvider,
+              '',
+            ),
           ),
         ).rejects.toThrow();
       });

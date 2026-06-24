@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
+import { withExpectedError } from '../testing/withExpectedError';
 import {
   buildTranslatedUpdatePayload,
   type DatoCMSRecordFromAPI,
@@ -198,15 +199,19 @@ describe('ItemsDropdownUtils', () => {
           { type: 'paragraph', children: [{ text: 'Corpo' }] },
         ]);
 
-      const result = await buildTranslatedUpdatePayload(
-        record,
-        'en',
-        'it',
-        fieldTypeDictionary,
-        provider,
-        pluginParams,
-        'access-token',
-        'main',
+      const result = await withExpectedError(
+        'record field translation (empty slug)',
+        () =>
+          buildTranslatedUpdatePayload(
+            record,
+            'en',
+            'it',
+            fieldTypeDictionary,
+            provider,
+            pluginParams,
+            'access-token',
+            'main',
+          ),
       );
 
       expect(result.payload.title).toEqual({

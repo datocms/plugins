@@ -5,6 +5,7 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
+import { withExpectedError } from '../testing/withExpectedError';
 import { translateDefaultFieldValue } from './DefaultTranslation';
 import type { TranslationProvider } from './types';
 
@@ -181,12 +182,14 @@ describe('DefaultTranslation', () => {
         vi.mocked(translateArray).mockRejectedValue(new Error('API Error'));
 
         await expect(
-          translateDefaultFieldValue(
-            'Hello',
-            mockPluginParams,
-            'de',
-            'en',
-            mockProvider,
+          withExpectedError('default field translation', () =>
+            translateDefaultFieldValue(
+              'Hello',
+              mockPluginParams,
+              'de',
+              'en',
+              mockProvider,
+            ),
           ),
         ).rejects.toThrow();
       });
