@@ -5,7 +5,9 @@ import { destroyEnv } from './fork-environments';
 /** Recursively collect every test's `(projectName, ok)` from the JSON report. */
 type JsonSuite = {
   specs?: Array<{
-    tests?: Array<{ projectName?: string; results?: Array<{ status?: string }> }>;
+    // Playwright's per-test `status` is the aggregated outcome:
+    // 'expected' (passed) | 'unexpected' (failed) | 'flaky' | 'skipped'.
+    tests?: Array<{ projectName?: string; status?: string }>;
   }>;
   suites?: JsonSuite[];
 };
@@ -14,7 +16,7 @@ const collectProjectStatus = (suite: JsonSuite, out: Map<string, boolean>): void
   for (const spec of suite.specs ?? []) {
     for (const t of spec.tests ?? []) {
       const project = t.projectName ?? '';
-      const ok = (t.results ?? []).every((r) => r.status === 'expected' || r.status === 'skipped');
+      const ok = t.status === 'expected' || t.status === 'skipped';
       out.set(project, (out.get(project) ?? true) && ok);
     }
   }
