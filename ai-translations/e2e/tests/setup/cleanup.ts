@@ -39,6 +39,23 @@ export const sweepStaleEnvs = async (): Promise<void> => {
 };
 
 /**
+ * Best-effort drop of same-named leftovers before a fork (e.g. a prior run in
+ * the same second that aborted after forking). Missing envs and delete errors
+ * are ignored — this only clears the way for {@link forkAll}.
+ */
+export const dropEnvsIfPresent = async (envNames: string[]): Promise<void> => {
+  const existing = new Set((await cmaClient().environments.list()).map((e) => e.id));
+  for (const name of envNames) {
+    if (!existing.has(name)) continue;
+    try {
+      await destroyEnv(name);
+    } catch {
+      // ignore — fork will surface a real collision if the delete truly failed
+    }
+  }
+};
+
+/**
  * Destroy the given environments, attempting all and throwing an aggregate on
  * failure — a green run that can't clean up after itself must fail loud.
  */
