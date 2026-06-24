@@ -34,3 +34,10 @@ AGENTS.local.md
 !.env.example
 # Example CMA record used for local fixture capture
 cma-example.json
+
+# Playwright (E2E) artifacts
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/e2e/.auth/

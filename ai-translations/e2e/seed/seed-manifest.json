@@ -1,0 +1,538 @@
+{
+  "project": {
+    "name": "AI Translation E2E",
+    "id": "219952"
+  },
+  "locales": [
+    "en",
+    "es",
+    "pt-BR",
+    "fr",
+    "de",
+    "it",
+    "ru",
+    "ar",
+    "ja",
+    "zh-Hans",
+    "hi",
+    "sw"
+  ],
+  "primaryLocale": "en",
+  "schema": {
+    "models": {
+      "article": {
+        "id": "YTxPjssPRpadR7n7EI2YFg",
+        "fields": [
+          {
+            "api_key": "author_name",
+            "editor": "single_line",
+            "field_type": "string",
+            "localized": false
+          },
+          {
+            "api_key": "body_html",
+            "editor": "wysiwyg",
+            "field_type": "text",
+            "localized": true
+          },
+          {
+            "api_key": "body_markdown",
+            "editor": "markdown",
+            "field_type": "text",
+            "localized": true
+          },
+          {
+            "api_key": "content_blocks",
+            "editor": "rich_text",
+            "field_type": "rich_text",
+            "localized": true
+          },
+          {
+            "api_key": "cover_image",
+            "editor": "file",
+            "field_type": "file",
+            "localized": true
+          },
+          {
+            "api_key": "excerpt",
+            "editor": "textarea",
+            "field_type": "text",
+            "localized": true
+          },
+          {
+            "api_key": "featured_data",
+            "editor": "json",
+            "field_type": "json",
+            "localized": true
+          },
+          {
+            "api_key": "inline_note",
+            "editor": "frameless_single_block",
+            "field_type": "single_block",
+            "localized": true
+          },
+          {
+            "api_key": "is_premium",
+            "editor": "boolean",
+            "field_type": "boolean",
+            "localized": false
+          },
+          {
+            "api_key": "media_gallery",
+            "editor": "gallery",
+            "field_type": "gallery",
+            "localized": true
+          },
+          {
+            "api_key": "seo",
+            "editor": "seo",
+            "field_type": "seo",
+            "localized": true
+          },
+          {
+            "api_key": "slug",
+            "editor": "slug",
+            "field_type": "slug",
+            "localized": true
+          },
+          {
+            "api_key": "spotlight",
+            "editor": "framed_single_block",
+            "field_type": "single_block",
+            "localized": true
+          },
+          {
+            "api_key": "structured_body",
+            "editor": "structured_text",
+            "field_type": "structured_text",
+            "localized": true
+          },
+          {
+            "api_key": "title",
+            "editor": "single_line",
+            "field_type": "string",
+            "localized": true
+          },
+          {
+            "api_key": "view_count",
+            "editor": "integer",
+            "field_type": "integer",
+            "localized": false
+          }
+        ]
+      },
+      "product": {
+        "id": "c4Q6LdYlQDi4oXeXBhfA6g",
+        "fields": [
+          {
+            "api_key": "attributes_json",
+            "editor": "json",
+            "field_type": "json",
+            "localized": true
+          },
+          {
+            "api_key": "description",
+            "editor": "textarea",
+            "field_type": "text",
+            "localized": true
+          },
+          {
+            "api_key": "features",
+            "editor": "rich_text",
+            "field_type": "rich_text",
+            "localized": true
+          },
+          {
+            "api_key": "hero",
+            "editor": "framed_single_block",
+            "field_type": "single_block",
+            "localized": true
+          },
+          {
+            "api_key": "main_image",
+            "editor": "file",
+            "field_type": "file",
+            "localized": true
+          },
+          {
+            "api_key": "name",
+            "editor": "single_line",
+            "field_type": "string",
+            "localized": true
+          },
+          {
+            "api_key": "price",
+            "editor": "float",
+            "field_type": "float",
+            "localized": false
+          },
+          {
+            "api_key": "promo_markdown",
+            "editor": "markdown",
+            "field_type": "text",
+            "localized": true
+          },
+          {
+            "api_key": "seo",
+            "editor": "seo",
+            "field_type": "seo",
+            "localized": true
+          },
+          {
+            "api_key": "sku",
+            "editor": "single_line",
+            "field_type": "string",
+            "localized": false
+          },
+          {
+            "api_key": "slug",
+            "editor": "slug",
+            "field_type": "slug",
+            "localized": true
+          },
+          {
+            "api_key": "specs_html",
+            "editor": "wysiwyg",
+            "field_type": "text",
+            "localized": true
+          },
+          {
+            "api_key": "subtitle",
+            "editor": "single_line",
+            "field_type": "string",
+            "localized": true
+          }
+        ]
+      }
+    },
+    "blocks": {
+      "cta": {
+        "id": "AWXFKLzcTzmihrcssNnJHQ",
+        "fields": [
+          {
+            "api_key": "label",
+            "editor": "single_line",
+            "field_type": "string",
+            "localized": false
+          },
+          {
+            "api_key": "open_in_new_tab",
+            "editor": "boolean",
+            "field_type": "boolean",
+            "localized": false
+          }
+        ]
+      },
+      "hero": {
+        "id": "ON0QhCGASkOywPazRly_dA",
+        "fields": [
+          {
+            "api_key": "background_image",
+            "editor": "file",
+            "field_type": "file",
+            "localized": false
+          },
+          {
+            "api_key": "cta_label",
+            "editor": "single_line",
+            "field_type": "string",
+            "localized": false
+          },
+          {
+            "api_key": "display_order",
+            "editor": "integer",
+            "field_type": "integer",
+            "localized": false
+          },
+          {
+            "api_key": "heading",
+            "editor": "single_line",
+            "field_type": "string",
+            "localized": false
+          },
+          {
+            "api_key": "tagline",
+            "editor": "textarea",
+            "field_type": "text",
+            "localized": false
+          }
+        ]
+      },
+      "quote": {
+        "id": "OypBBmK4TBmldM_5Wn9J8g",
+        "fields": [
+          {
+            "api_key": "attribution",
+            "editor": "single_line",
+            "field_type": "string",
+            "localized": false
+          },
+          {
+            "api_key": "quote_text",
+            "editor": "textarea",
+            "field_type": "text",
+            "localized": false
+          }
+        ]
+      },
+      "callout": {
+        "id": "PMvSGN5XQ0Smja9syJogAA",
+        "fields": [
+          {
+            "api_key": "body",
+            "editor": "markdown",
+            "field_type": "text",
+            "localized": false
+          },
+          {
+            "api_key": "is_dismissible",
+            "editor": "boolean",
+            "field_type": "boolean",
+            "localized": false
+          },
+          {
+            "api_key": "title",
+            "editor": "single_line",
+            "field_type": "string",
+            "localized": false
+          }
+        ]
+      },
+      "feature_item": {
+        "id": "dF6YPRzAR5-fQ_Up9t1RPw",
+        "fields": [
+          {
+            "api_key": "description",
+            "editor": "textarea",
+            "field_type": "text",
+            "localized": false
+          },
+          {
+            "api_key": "detail_html",
+            "editor": "wysiwyg",
+            "field_type": "text",
+            "localized": false
+          },
+          {
+            "api_key": "name",
+            "editor": "single_line",
+            "field_type": "string",
+            "localized": false
+          }
+        ]
+      }
+    }
+  },
+  "records": [
+    {
+      "id": "FM_XzOw1QvKicqOS9emYHw",
+      "model": "article",
+      "title": "Visas, Vaccines & VPNs: A Pre-Trip Checklist",
+      "sourceLocales": [
+        "en",
+        "fr"
+      ],
+      "emptyTargetLocales": [
+        "es",
+        "pt-BR",
+        "de",
+        "it",
+        "ru",
+        "ar",
+        "ja",
+        "zh-Hans",
+        "hi",
+        "sw"
+      ]
+    },
+    {
+      "id": "aqmXlXoxSwS2m_Dk4vChYw",
+      "model": "article",
+      "title": "A Weekend in the Mountains",
+      "sourceLocales": [
+        "en",
+        "ru"
+      ],
+      "emptyTargetLocales": [
+        "es",
+        "pt-BR",
+        "fr",
+        "de",
+        "it",
+        "ar",
+        "ja",
+        "zh-Hans",
+        "hi",
+        "sw"
+      ]
+    },
+    {
+      "id": "AZcSXDgLSZyzJwDs9OYxcg",
+      "model": "article",
+      "title": "دليل السفر من {{brand}}",
+      "sourceLocales": [
+        "ar",
+        "zh-Hans"
+      ],
+      "emptyTargetLocales": [
+        "en",
+        "es",
+        "pt-BR",
+        "fr",
+        "de",
+        "it",
+        "ru",
+        "ja",
+        "hi",
+        "sw"
+      ]
+    },
+    {
+      "id": "cQyjIde0Qp2UWbzt-ZYV1A",
+      "model": "product",
+      "title": "Featherlight Packable Rain Jacket",
+      "sourceLocales": [
+        "en",
+        "it"
+      ],
+      "emptyTargetLocales": [
+        "es",
+        "pt-BR",
+        "fr",
+        "de",
+        "ru",
+        "ar",
+        "ja",
+        "zh-Hans",
+        "hi",
+        "sw"
+      ]
+    },
+    {
+      "id": "TJahsLZIRWaGzJTgEVGKxQ",
+      "model": "product",
+      "title": "Cumbre 1L Thermosflasche",
+      "sourceLocales": [
+        "de",
+        "es"
+      ],
+      "emptyTargetLocales": [
+        "en",
+        "pt-BR",
+        "fr",
+        "it",
+        "ru",
+        "ar",
+        "ja",
+        "zh-Hans",
+        "hi",
+        "sw"
+      ]
+    },
+    {
+      "id": "VLjZLr7MRqG-QPo1E1s2Yw",
+      "model": "product",
+      "title": "Wanderer 45L Travel Backpack",
+      "sourceLocales": [
+        "en",
+        "es"
+      ],
+      "emptyTargetLocales": [
+        "pt-BR",
+        "fr",
+        "de",
+        "it",
+        "ru",
+        "ar",
+        "ja",
+        "zh-Hans",
+        "hi",
+        "sw"
+      ]
+    },
+    {
+      "id": "Y9bl5h5wT0K9hQg_Lsta7Q",
+      "model": "article",
+      "title": "So baust du eine Capsule-Reisegarderobe",
+      "sourceLocales": [
+        "de",
+        "en"
+      ],
+      "emptyTargetLocales": [
+        "es",
+        "pt-BR",
+        "fr",
+        "it",
+        "ru",
+        "ar",
+        "ja",
+        "zh-Hans",
+        "hi",
+        "sw"
+      ]
+    },
+    {
+      "id": "MGC-q-kDQvqFZDAuga0WQA",
+      "model": "article",
+      "title": "Pueblos medievales que no te puedes perder",
+      "sourceLocales": [
+        "es",
+        "it"
+      ],
+      "emptyTargetLocales": [
+        "en",
+        "pt-BR",
+        "fr",
+        "de",
+        "ru",
+        "ar",
+        "ja",
+        "zh-Hans",
+        "hi",
+        "sw"
+      ]
+    },
+    {
+      "id": "VOUF4Mr4Qw-mlkhP0MNUQg",
+      "model": "article",
+      "title": "Five Underrated Coastal Towns",
+      "sourceLocales": [
+        "en",
+        "es"
+      ],
+      "emptyTargetLocales": [
+        "pt-BR",
+        "fr",
+        "de",
+        "it",
+        "ru",
+        "ar",
+        "ja",
+        "zh-Hans",
+        "hi",
+        "sw"
+      ]
+    },
+    {
+      "id": "a6FyPwoiSJO4ZWtt5lNXMw",
+      "model": "article",
+      "title": "The Complete Guide to Sustainable Travel",
+      "sourceLocales": [
+        "en",
+        "it"
+      ],
+      "emptyTargetLocales": [
+        "es",
+        "pt-BR",
+        "fr",
+        "de",
+        "ru",
+        "ar",
+        "ja",
+        "zh-Hans",
+        "hi",
+        "sw"
+      ]
+    }
+  ]
+}

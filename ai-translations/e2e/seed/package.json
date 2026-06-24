@@ -1,0 +1,10 @@
+{
+  "name": "ai-translations-e2e-seed",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
+  "description": "Seeds the AI Translation E2E DatoCMS project (locales, schema, records).",
+  "dependencies": {
+    "@datocms/cma-client-node": "^5.5.3"
+  }
+}

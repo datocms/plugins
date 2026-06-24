@@ -1,0 +1,17 @@
+{
+  "//": "Standalone tsconfig for the E2E suite. NOT referenced by the root tsconfig, so `tsc -b` (the app build) ignores it. Scoped to Playwright types only — it deliberately omits Vitest's global `test`/`expect`/`describe` so the two runners' ambient types never clash. Type resolution for @playwright/test/node resolves once those deps are installed.",
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["@playwright/test", "node"],
+    "strict": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "isolatedModules": true,
+    "noEmit": true
+  },
+  "include": ["tests/**/*.ts", "fixtures/**/*.ts", "../playwright.config.ts"],
+  "exclude": ["seed", "node_modules"]
+}
