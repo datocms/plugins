@@ -505,7 +505,7 @@ async function translateSingleFileMetadata(
       values,
       fromLocale,
       toLocale,
-      { isHTML: false, recordContext, onQcFlag },
+      { isHTML: false, recordContext, onQcFlag, qcAtomicSegments: true },
     );
 
     return applyTranslatedFileEntries(

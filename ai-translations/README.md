@@ -148,7 +148,7 @@ It checks for:
 Where you see the results:
 
 - **Single field / whole record** (sidebar and field dropdown): after translating, a short summary appears — a blocking alert when content may be incomplete, a notice for softer warnings — so you can review before saving.
-- **Bulk**: flagged records are marked **"completed with warnings"** (distinct from clean successes and failures) in the progress modal, and a review list of the affected records is shown after the run.
+- **Bulk**: a record with a content-corrupting issue (truncation, a lost placeholder, a wrong-length or structurally-drifted value) is marked as a **failure**, while a record with only softer suspicions (a likely non-translation, an unusually short value) is marked **"completed with warnings"** — both distinct from clean successes — in the progress modal, and a review list of the affected records is shown after the run.
 
 The checks are advisory and never block your work; they highlight fields worth a human glance.
 
@@ -158,7 +158,7 @@ The checks are advisory and never block your work; they highlight fields worth a
 - **Rate Limit/Quota**: Reduce concurrency/batch size, switch to a lighter model, or increase your vendor quota.
 - **Model Not Found**: Verify the exact model id exists for your account/region and is spelled correctly.
 - **Localization**: Make sure your project has at least two locales, otherwise translation actions won't appear.
-- **"Field may be incomplete" / "completed with warnings"**: A quality check flagged a possible dropped, truncated, or placeholder issue. The value was still applied (repaired where possible) — review the flagged field. A truncation warning usually means the model hit its output-token limit; try a smaller field or a model with a larger output limit.
+- **"Field may be incomplete" / a failed or "completed with warnings" record**: A quality check flagged a possible dropped, truncated, or placeholder issue. The value was still applied (repaired where possible) — review the flagged field. In bulk, content-corrupting issues mark the record as failed while softer suspicions show as "completed with warnings". A truncation warning usually means the model hit its output-token limit; try a smaller field or a model with a larger output limit.
 
 ## DeepL Glossaries
 

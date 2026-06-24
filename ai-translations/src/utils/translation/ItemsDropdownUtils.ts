@@ -292,6 +292,14 @@ export interface BuildTranslatedUpdatePayloadResult {
   payload: Record<string, Record<string, unknown>>;
   translatedFieldCount: number;
   warnings: string[];
+  /**
+   * Count of `error`-severity QC flags raised while translating this record's
+   * fields (truncation, placeholder loss, length/structure mismatch). A record
+   * with `errorCount > 0` is NOT a clean success even when fields were written —
+   * the bulk reporter escalates it to `status: 'error'` so degraded content is
+   * surfaced for manual vetting (design §6b), never silently counted as done.
+   */
+  errorCount: number;
 }
 
 /**
@@ -477,6 +485,7 @@ export async function translateAndUpdateRecords(
     const mergedPayload: Record<string, Record<string, unknown>> = {};
     const aggregatedWarnings: string[] = [];
     let totalTranslatedFields = 0;
+    let totalErrorCount = 0;
 
     /**
      * Translates the record into one target locale and merges the result.
@@ -511,6 +520,7 @@ export async function translateAndUpdateRecords(
       mergeLocalePayloadInto(mergedPayload, localeResult.payload);
       aggregatedWarnings.push(...localeResult.warnings);
       totalTranslatedFields += localeResult.translatedFieldCount;
+      totalErrorCount += localeResult.errorCount;
     }
 
     // Sequential per-locale to keep within provider rate-limit budgets and
@@ -534,6 +544,7 @@ export async function translateAndUpdateRecords(
       payload: mergedPayload,
       translatedFieldCount: totalTranslatedFields,
       warnings: aggregatedWarnings,
+      errorCount: totalErrorCount,
     };
   }
 
@@ -551,6 +562,8 @@ export async function translateAndUpdateRecords(
       translatedFields.warnings.length > 0
         ? ` Warnings: ${translatedFields.warnings.join(' ')}`
         : '';
+    const hasWarnings = translatedFields.warnings.length > 0;
+    const hasErrors = translatedFields.errorCount > 0;
 
     if (
       translatedFields.translatedFieldCount === 0 &&
@@ -565,7 +578,20 @@ export async function translateAndUpdateRecords(
       return 'continue';
     }
 
-    const hasWarnings = translatedFields.warnings.length > 0;
+    // A field was written but carries a content-corrupting QC error (truncated /
+    // placeholder loss / length or structure mismatch). The CMA write already
+    // happened, but this is NOT a clean success — surface it as a real failure so
+    // the modal counters and the retained review list treat it as one (design §6b).
+    if (hasErrors) {
+      updateProgress({
+        recordIndex,
+        recordId,
+        status: 'error',
+        message: `Translated "${recordLabel}" (#${recordId}) but ${translatedFields.errorCount} field/locale value(s) may be incomplete.${warningSuffix}`,
+      });
+      return 'continue';
+    }
+
     const completionMessage =
       translatedFields.translatedFieldCount === 0
         ? `No eligible fields to translate for "${recordLabel}" (#${recordId}).`
@@ -759,6 +785,7 @@ export async function buildTranslatedUpdatePayload(
   const updatePayload: Record<string, Record<string, unknown>> = {};
   const warnings: string[] = [];
   let translatedFieldCount = 0;
+  let errorCount = 0;
 
   const recordContext = generateRecordContext(record, fromLocale);
 
@@ -818,6 +845,7 @@ export async function buildTranslatedUpdatePayload(
           fieldApiKey: field,
           ...(cmaBaseUrl ? { cmaBaseUrl } : {}),
           onQcFlag: (flag) => {
+            if (flag.severity === 'error') errorCount += 1;
             warnings.push(
               `${flag.severity === 'error' ? 'Translation issue' : 'Note'} — "${flag.fieldPath ?? field}" → ${formatLocaleWithCode(
                 flag.locale ?? toLocale,
@@ -885,6 +913,7 @@ export async function buildTranslatedUpdatePayload(
     payload: updatePayload,
     translatedFieldCount,
     warnings,
+    errorCount,
   };
 }
 

@@ -92,6 +92,21 @@ const STRUCTURAL_MD_KEYS = new Set([
   'image',
 ]);
 
+const MD_IMAGE_RE = /!\[[^\]]*\]\([^)]*\)/g;
+const MD_LINK_RE = /(?<!!)\[[^\]]*\]\([^)]*\)/g;
+
+/** Classifies a non-empty, non-fenced trimmed Markdown line into a block key. */
+function classifyMarkdownBlock(trimmed: string): string {
+  const heading = /^(#{1,6})\s/.exec(trimmed);
+  if (heading) return `h${heading[1].length}`;
+  if (/^>/.test(trimmed)) return 'blockquote';
+  if (/^(-{3,}|\*{3,}|_{3,})$/.test(trimmed)) return 'hr';
+  if (/^[-*+]\s/.test(trimmed)) return 'ul-item';
+  if (/^\d+[.)]\s/.test(trimmed)) return 'ol-item';
+  if (/^\|.*\|/.test(trimmed)) return 'table-row';
+  return 'paragraph';
+}
+
 /**
  * Builds a multiset of Markdown block signatures using a fenced-code-aware line
  * scanner (no markdown parser dependency).
@@ -112,17 +127,9 @@ function markdownSignature(markdown: string): Map<string, number> {
     const trimmed = line.trim();
     if (trimmed === '') continue;
 
-    bump('image', (line.match(/!\[[^\]]*\]\([^)]*\)/g) || []).length);
-    bump('link', (line.match(/(?<!!)\[[^\]]*\]\([^)]*\)/g) || []).length);
-
-    const heading = /^(#{1,6})\s/.exec(trimmed);
-    if (heading) bump(`h${heading[1].length}`);
-    else if (/^>/.test(trimmed)) bump('blockquote');
-    else if (/^(-{3,}|\*{3,}|_{3,})$/.test(trimmed)) bump('hr');
-    else if (/^[-*+]\s/.test(trimmed)) bump('ul-item');
-    else if (/^\d+[.)]\s/.test(trimmed)) bump('ol-item');
-    else if (/^\|.*\|/.test(trimmed)) bump('table-row');
-    else bump('paragraph');
+    bump('image', (line.match(MD_IMAGE_RE) || []).length);
+    bump('link', (line.match(MD_LINK_RE) || []).length);
+    bump(classifyMarkdownBlock(trimmed));
   }
   return sig;
 }

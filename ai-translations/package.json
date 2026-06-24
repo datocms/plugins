@@ -30,8 +30,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "coverage": "vitest run --coverage",
-    "lint": "biome lint ./src",
-    "lint:fix": "biome lint --write ./src"
+    "lint": "npx @biomejs/biome@2.4.10 lint ./src",
+    "lint:fix": "npx @biomejs/biome@2.4.10 lint --write ./src"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.78.0",

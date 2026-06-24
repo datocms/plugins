@@ -175,6 +175,25 @@ interface TranslateFieldValueOptions {
 }
 
 /**
+ * Wraps a raw engine QC callback so each flag is stamped with this field's path
+ * and target locale (engine-level checks don't know either). Returns undefined
+ * when no sink was provided.
+ */
+function stampFieldQcFlag(
+  onQcFlag: OnQcFlag | undefined,
+  fieldApiKey: string | undefined,
+  toLocale: string,
+): OnQcFlag | undefined {
+  if (!onQcFlag) return undefined;
+  return (flag) =>
+    onQcFlag({
+      ...flag,
+      fieldPath: flag.fieldPath ?? fieldApiKey,
+      locale: flag.locale ?? toLocale,
+    });
+}
+
+/**
  * Creates a deep clone of a JSON-like value while preserving nested identifiers.
  *
  * @param value - The value to clone.
@@ -386,14 +405,11 @@ export async function translateFieldValue(
   }
 
   // Stamp QC flags emitted by the engine with this field's path + locale.
-  const onQcFlag: OnQcFlag | undefined = options.onQcFlag
-    ? (flag) =>
-        options.onQcFlag?.({
-          ...flag,
-          fieldPath: flag.fieldPath ?? options.fieldApiKey,
-          locale: flag.locale ?? toLocale,
-        })
-    : undefined;
+  const onQcFlag = stampFieldQcFlag(
+    options.onQcFlag,
+    options.fieldApiKey,
+    toLocale,
+  );
 
   let translatedValue: unknown;
 

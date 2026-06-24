@@ -42,6 +42,13 @@ type Options = {
   recordContext?: string;
   /** Optional sink for quality-control flags emitted during the translation. */
   onQcFlag?: OnQcFlag;
+  /**
+   * When the segment array holds independent sub-fields rather than parts of one
+   * field (e.g. SEO title+description, file alt/title/metadata), the `no-op`
+   * check is evaluated per segment instead of aggregated across the batch — each
+   * segment is its own field, so a single wholly-unchanged value is flagged.
+   */
+  qcAtomicSegments?: boolean;
 };
 
 type ParseContext = {
@@ -223,6 +230,80 @@ function parseResponseArray(
  * @param originalSegments - Original segments for length repair fallback.
  * @returns Array of translated strings with the same length as originalSegments.
  */
+/**
+ * Parses the response into an array, tolerating a truncated (hence often
+ * unparseable) response by returning an empty array so the length repair can
+ * source-pad every slot. Re-throws genuine parse errors when not truncated.
+ */
+function parseOrEmptyOnTruncation(
+  trimmedTxt: string,
+  responseText: string,
+  finishReason: string | undefined,
+  logger: Logger,
+  context: ParseContext,
+): ParseResponseResult {
+  try {
+    return parseResponseArray(trimmedTxt, logger, context);
+  } catch (error) {
+    if (!checkTruncated({ finishReason })) throw error;
+    logger.warning(
+      'Response unparseable but provider signalled truncation; falling back to source',
+      { ...context, finishReason, rawResponse: responseText },
+    );
+    return { array: [], repaired: false };
+  }
+}
+
+/**
+ * Reconciles the model's array against the input length.
+ *
+ * Over-split repair (HTML only): a single HTML segment can come back as several
+ * elements when the model splits a multi-block value (e.g. a WYSIWYG field
+ * holding several `<p>` blocks) into one element per block. Positional repair
+ * maps output to input by index, so it would silently drop every element past
+ * the first. When exactly one segment was sent, rejoin the string elements with
+ * newlines (insignificant between block-level HTML elements) — a CLEAN recovery,
+ * not a length mismatch. Gated to HTML because newlines are NOT a safe join
+ * separator for single_line/slug/json/markdown values.
+ *
+ * Otherwise, emit a `length-mismatch` flag (using the real element count,
+ * `arr.length`) and pad/truncate positionally so output matches input length.
+ */
+function reconcileArrayLength(args: {
+  arr: unknown[];
+  originalSegments: string[];
+  isHtml: boolean;
+  responseText: string;
+  logger: Logger;
+  context: ParseContext;
+  onQcFlag?: OnQcFlag;
+}): string[] {
+  const { arr, originalSegments, isHtml, responseText, logger, context } = args;
+  const stringParts = arr.filter((v): v is string => typeof v === 'string');
+  const isOverSplitRejoin =
+    isHtml && originalSegments.length === 1 && stringParts.length > 1;
+
+  if (isOverSplitRejoin) {
+    logger.warning('Model over-split a single segment; rejoined elements', {
+      ...context,
+      rawResponse: responseText,
+      parsedArray: arr,
+      returnedLength: arr.length,
+    });
+    return [stringParts.join('\n')];
+  }
+
+  const lengthFlag = checkLengthMismatch({
+    expected: originalSegments.length,
+    received: arr.length,
+  });
+  if (lengthFlag) args.onQcFlag?.(lengthFlag);
+  return originalSegments.map((seg, i) => {
+    const v = arr[i];
+    return typeof v === 'string' ? v : String(seg ?? '');
+  });
+}
+
 function parseTranslationResponse(
   responseText: string,
   originalSegments: string[],
@@ -233,71 +314,28 @@ function parseTranslationResponse(
   finishReason?: string,
 ): string[] {
   const trimmedTxt = (responseText || '').trim();
-  let parsed: ParseResponseResult;
-  try {
-    parsed = parseResponseArray(trimmedTxt, logger, context);
-  } catch (error) {
-    // A truncated response is frequently unparseable (cut mid-JSON). Rather than
-    // fail the whole field, fall back to an empty array: the length-repair below
-    // pads every slot with the untranslated source, and the truncation is
-    // flagged via checkTruncated.
-    if (!checkTruncated({ finishReason })) throw error;
-    logger.warning(
-      'Response unparseable but provider signalled truncation; falling back to source',
-      { ...context, finishReason, rawResponse: responseText },
-    );
-    parsed = { array: [], repaired: false };
-  }
+  const parsed = parseOrEmptyOnTruncation(
+    trimmedTxt,
+    responseText,
+    finishReason,
+    logger,
+    context,
+  );
   const arr = parsed.array;
-
-  // Reconcile the model's array length against the input length.
-  //
-  // Over-split repair (HTML only): a single HTML segment can come back as
-  // several elements when the model splits a multi-block value (e.g. a WYSIWYG
-  // field holding several <p> blocks) into one element per block. The positional
-  // length repair below maps output to input by index, so it would silently drop
-  // every element past the first — cropping the field. When exactly one segment
-  // was sent, rejoin the returned string elements with newlines (whitespace
-  // between block-level HTML elements is insignificant) instead of discarding
-  // the surplus. This is gated to HTML because newlines are NOT a safe join
-  // separator for single_line, slug, json, or markdown values.
-  const stringParts = arr.filter((v): v is string => typeof v === 'string');
-  const isOverSplitRejoin =
-    isHtml && originalSegments.length === 1 && stringParts.length > 1;
 
   // The truncation signal is independent of the array shape.
   const truncatedFlag = checkTruncated({ finishReason });
   if (truncatedFlag) onQcFlag?.(truncatedFlag);
 
-  let fixed: string[];
-  if (isOverSplitRejoin) {
-    // A single HTML segment came back over-split into one element per block.
-    // Rejoin with newlines (insignificant between block-level HTML elements) —
-    // nothing is dropped, so this is a CLEAN recovery, not a length mismatch.
-    // (If a block were genuinely lost, the html-structure check flags it.)
-    fixed = [stringParts.join('\n')];
-    logger.warning('Model over-split a single segment; rejoined elements', {
-      ...context,
-      rawResponse: responseText,
-      parsedArray: arr,
-      returnedLength: arr.length,
-    });
-  } else {
-    // Genuine count mismatch: the model returned a different number of elements
-    // than were sent. Flag it (using the real element count, arr.length — a
-    // non-string element still counts as returned and is source-padded below),
-    // then pad/truncate positionally so output matches input length.
-    const lengthFlag = checkLengthMismatch({
-      expected: originalSegments.length,
-      received: arr.length,
-    });
-    if (lengthFlag) onQcFlag?.(lengthFlag);
-    fixed = [];
-    for (let i = 0; i < originalSegments.length; i++) {
-      const v = arr[i];
-      fixed.push(typeof v === 'string' ? v : String(originalSegments[i] ?? ''));
-    }
-  }
+  const fixed = reconcileArrayLength({
+    arr,
+    originalSegments,
+    isHtml,
+    responseText,
+    logger,
+    context,
+    onQcFlag,
+  });
 
   logger.info('Final parsed response array', {
     ...context,
@@ -310,6 +348,96 @@ function parseTranslationResponse(
   });
 
   return fixed;
+}
+
+/** Structure + ratio (+ per-segment no-op) flags for a single segment. */
+function segmentContentFlags(args: {
+  source: string;
+  translated: string;
+  segmentIndex: number;
+  isHtml: boolean;
+  isMarkdown: boolean;
+  atomicSegments: boolean;
+}): QcFlag[] {
+  const { source, translated, segmentIndex, isHtml, isMarkdown, atomicSegments } =
+    args;
+  const out: QcFlag[] = [];
+  if (isHtml) {
+    const flag = checkHtmlStructure({ source, translated, segmentIndex });
+    if (flag) out.push(flag);
+  } else if (isMarkdown) {
+    const flag = checkMarkdownStructure({ source, translated, segmentIndex });
+    if (flag) out.push(flag);
+  }
+  const ratio = checkLengthRatio({ source, translated, segmentIndex });
+  if (ratio) out.push(ratio);
+  if (atomicSegments) {
+    const noOp = checkNoOp({ sources: [source], translateds: [translated] });
+    if (noOp) out.push({ ...noOp, segmentIndex });
+  }
+  return out;
+}
+
+/**
+ * Runs the Phase 2 content checks (HTML/Markdown structure, length-ratio, no-op)
+ * over each translated segment and returns the resulting flags. `no-op` is
+ * aggregated across the batch by default, or evaluated per segment when the
+ * segments are independent sub-fields (`atomicSegments`).
+ */
+function runQcContentChecks(args: {
+  sources: string[];
+  translateds: string[];
+  isHtml: boolean;
+  isMarkdown: boolean;
+  atomicSegments: boolean;
+}): QcFlag[] {
+  const { sources, translateds, isHtml, isMarkdown, atomicSegments } = args;
+  const flags = translateds.flatMap((translated, i) =>
+    segmentContentFlags({
+      source: sources[i] ?? '',
+      translated,
+      segmentIndex: i,
+      isHtml,
+      isMarkdown,
+      atomicSegments,
+    }),
+  );
+
+  if (!atomicSegments) {
+    const noOp = checkNoOp({ sources, translateds });
+    if (noOp) flags.push(noOp);
+  }
+
+  return flags;
+}
+
+/**
+ * Drops redundant overlapping QC flags. `length-ratio` is the weakest signal, so
+ * it is suppressed when a field-wide deterministic error already condemns the
+ * value (length-mismatch / truncated, which carry no segmentIndex) or when a
+ * per-segment error fired on the SAME segment. `no-op` is suppressed when a
+ * truncation already explains the source-padded tail it would otherwise trip on.
+ */
+function suppressRedundantFlags(flags: QcFlag[]): QcFlag[] {
+  const errorSegments = new Set<number>();
+  let hasFieldWideError = false;
+  for (const flag of flags) {
+    if (flag.severity !== 'error') continue;
+    if (flag.segmentIndex === undefined) hasFieldWideError = true;
+    else errorSegments.add(flag.segmentIndex);
+  }
+  const hasTruncated = flags.some((flag) => flag.checkId === 'truncated');
+
+  return flags.filter((flag) => {
+    if (flag.checkId === 'length-ratio') {
+      if (hasFieldWideError) return false;
+      return !(
+        flag.segmentIndex !== undefined && errorSegments.has(flag.segmentIndex)
+      );
+    }
+    if (flag.checkId === 'no-op') return !hasTruncated;
+    return true;
+  });
 }
 
 /**
@@ -604,43 +732,17 @@ export async function translateArray(
     });
 
     if (opts.onQcFlag) {
-      // Phase 2 content checks: compare each source segment to its translation.
-      const htmlMode = opts.kind === 'html' || opts.isHTML === true;
-      const markdownMode = opts.kind === 'markdown';
-      finalSegments.forEach((translated, i) => {
-        const source = String(segments[i] ?? '');
-        if (htmlMode) {
-          const flag = checkHtmlStructure({ source, translated, segmentIndex: i });
-          if (flag) collect(flag);
-        } else if (markdownMode) {
-          const flag = checkMarkdownStructure({
-            source,
-            translated,
-            segmentIndex: i,
-          });
-          if (flag) collect(flag);
-        }
-        const ratioFlag = checkLengthRatio({ source, translated, segmentIndex: i });
-        if (ratioFlag) collect(ratioFlag);
-      });
-      const noOpFlag = checkNoOp({
+      // Phase 2 content checks (structure / ratio / no-op), unioned with the
+      // deterministic flags already collected (length-mismatch / truncated /
+      // placeholder-loss), then de-duplicated of redundant overlaps.
+      const contentFlags = runQcContentChecks({
         sources: segments.map((s) => String(s ?? '')),
         translateds: finalSegments,
+        isHtml: opts.kind === 'html' || opts.isHTML === true,
+        isMarkdown: opts.kind === 'markdown',
+        atomicSegments: opts.qcAtomicSegments === true,
       });
-      if (noOpFlag) collect(noOpFlag);
-
-      // Alert-fatigue suppression. A hard error already implies the value is
-      // suspect, so drop the weaker length-ratio warning on the same field. And
-      // when the response was truncated, the source-padding fallback makes the
-      // output equal the source, which spuriously trips no-op ("may not have
-      // run") — truncated already explains it, so drop no-op too.
-      const hasError = qcFlags.some((flag) => flag.severity === 'error');
-      const hasTruncated = qcFlags.some((flag) => flag.checkId === 'truncated');
-      const emitted = qcFlags.filter(
-        (flag) =>
-          !(hasError && flag.checkId === 'length-ratio') &&
-          !(hasTruncated && flag.checkId === 'no-op'),
-      );
+      const emitted = suppressRedundantFlags([...qcFlags, ...contentFlags]);
       for (const flag of emitted) opts.onQcFlag(flag);
     }
 

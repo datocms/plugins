@@ -67,6 +67,37 @@ describe('checkMarkdownStructure', () => {
       severity: 'warning',
     });
   });
+
+  it('flags an error when a link is dropped', () => {
+    const flag = checkMarkdownStructure({
+      source: 'Read [the docs](https://example.com) before starting.',
+      translated: 'Lees dit voordat je begint.',
+    });
+    expect(flag).toMatchObject({
+      checkId: 'markdown-structure',
+      severity: 'error',
+    });
+  });
+
+  it('flags an error when an image is dropped', () => {
+    const flag = checkMarkdownStructure({
+      source: 'Intro\n\n![diagram](diagram.png)\n\nOutro',
+      translated: 'Intro\n\nGeen afbeelding\n\nOutro',
+    });
+    expect(flag).toMatchObject({
+      checkId: 'markdown-structure',
+      severity: 'error',
+    });
+  });
+
+  it('does not flag when only link anchor text is rephrased', () => {
+    expect(
+      checkMarkdownStructure({
+        source: 'See [the official docs](https://example.com) here.',
+        translated: 'Zie [de officiële documentatie](https://example.com) hier.',
+      }),
+    ).toBeNull();
+  });
 });
 
 describe('checkNoOp', () => {

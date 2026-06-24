@@ -120,7 +120,7 @@ export async function translateSeoFieldValue(
       [sourceTitle, sourceDescription],
       fromLocale,
       toLocale,
-      { isHTML: false, recordContext, onQcFlag },
+      { isHTML: false, recordContext, onQcFlag, qcAtomicSegments: true },
     );
 
     // Build a fresh result preserving any non-translated properties (e.g.

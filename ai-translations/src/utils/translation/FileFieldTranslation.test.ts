@@ -81,7 +81,7 @@ describe('FileFieldTranslation', () => {
       ['Alt EN', 'Title EN', 'Meta EN'],
       'en',
       'it',
-      { isHTML: false, recordContext: '' },
+      { isHTML: false, recordContext: '', qcAtomicSegments: true },
     );
 
     expect(result).toEqual({
@@ -124,7 +124,7 @@ describe('FileFieldTranslation', () => {
       ['Alt EN', 'Title EN', 'Meta EN'],
       'en',
       'it',
-      { isHTML: false, recordContext: '' },
+      { isHTML: false, recordContext: '', qcAtomicSegments: true },
     );
 
     expect(result).toEqual({
@@ -170,7 +170,7 @@ describe('FileFieldTranslation', () => {
       ['Alt EN', 'Title EN', 'Meta EN'],
       'en',
       'it',
-      { isHTML: false, recordContext: '' },
+      { isHTML: false, recordContext: '', qcAtomicSegments: true },
     );
 
     expect(result).toEqual({
@@ -224,7 +224,7 @@ describe('FileFieldTranslation', () => {
       ['Alt EN default', 'Title EN default', 'Meta EN'],
       'en',
       'it',
-      { isHTML: false, recordContext: '' },
+      { isHTML: false, recordContext: '', qcAtomicSegments: true },
     );
 
     expect(result).toEqual({

@@ -13,6 +13,7 @@ vi.mock('./TranslateField', () => ({
 }));
 
 import { translateFieldValue } from './TranslateField';
+import type { QcFlag } from './qc/types';
 
 describe('ItemsDropdownUtils', () => {
   const pluginParams: ctxParamsType = {
@@ -221,6 +222,63 @@ describe('ItemsDropdownUtils', () => {
       expect(result.warnings).toContain(
         'Field "slug" to Italian [it] was skipped: Plugin error: Translated slug is empty after normalization.',
       );
+    });
+
+    it('counts an error-severity QC flag while still translating the field', async () => {
+      vi.mocked(translateFieldValue).mockImplementation(async (...args) => {
+        // The 14th positional arg carries the internal options incl. onQcFlag.
+        const opts = args[13] as
+          | { onQcFlag?: (flag: QcFlag) => void }
+          | undefined;
+        opts?.onQcFlag?.({
+          checkId: 'truncated',
+          severity: 'error',
+          message: 'Provider cut the response off.',
+        });
+        return 'Ciao';
+      });
+
+      const result = await buildTranslatedUpdatePayload(
+        record,
+        'en',
+        'it',
+        fieldTypeDictionary,
+        provider,
+        { ...pluginParams, translationFields: ['single_line'] },
+        'access-token',
+        'main',
+      );
+
+      expect(result.translatedFieldCount).toBeGreaterThan(0);
+      expect(result.errorCount).toBeGreaterThan(0);
+    });
+
+    it('does not count a warning-severity QC flag as an error', async () => {
+      vi.mocked(translateFieldValue).mockImplementation(async (...args) => {
+        const opts = args[13] as
+          | { onQcFlag?: (flag: QcFlag) => void }
+          | undefined;
+        opts?.onQcFlag?.({
+          checkId: 'no-op',
+          severity: 'warning',
+          message: 'Unchanged from source.',
+        });
+        return 'Ciao';
+      });
+
+      const result = await buildTranslatedUpdatePayload(
+        record,
+        'en',
+        'it',
+        fieldTypeDictionary,
+        provider,
+        { ...pluginParams, translationFields: ['single_line'] },
+        'access-token',
+        'main',
+      );
+
+      expect(result.errorCount).toBe(0);
+      expect(result.warnings.length).toBeGreaterThan(0);
     });
 
     it('copies source value for required non-block fields, strips IDs for required block fields', async () => {

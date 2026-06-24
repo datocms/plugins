@@ -624,6 +624,77 @@ describe('translateArray.ts', () => {
         expect(flags.some((f) => f.checkId === 'length-mismatch')).toBe(true);
         expect(flags.some((f) => f.checkId === 'length-ratio')).toBe(false);
       });
+
+      it('keeps length-ratio on a clean segment when another segment has a per-segment error', async () => {
+        // seg 0 drops its placeholder (per-segment error, segmentIndex 0);
+        // seg 1 is heavily truncated and should still raise its own ratio flag.
+        vi.mocked(mockProvider.completeText).mockResolvedValue(
+          JSON.stringify(['Hello this is fine length here', 'tiny']),
+        );
+        const flags: QcFlag[] = [];
+
+        await translateArray(
+          mockProvider,
+          mockPluginParams,
+          [
+            'Hello {{name}} this is fine length here',
+            'This is a long enough source sentence to matter.',
+          ],
+          'en',
+          'de',
+          { onQcFlag: (f) => flags.push(f) },
+        );
+
+        expect(flags.some((f) => f.checkId === 'placeholder-loss')).toBe(true);
+        expect(
+          flags.some(
+            (f) => f.checkId === 'length-ratio' && f.segmentIndex === 1,
+          ),
+        ).toBe(true);
+      });
+
+      it('flags a no-op per segment for independent-field batches (qcAtomicSegments)', async () => {
+        // Title returned unchanged, description translated. As independent
+        // fields each segment is its own no-op unit, so the unchanged title
+        // is flagged even though it is only half the batch.
+        vi.mocked(mockProvider.completeText).mockResolvedValue(
+          JSON.stringify(['Our company values', 'Beschrijving vertaald hier']),
+        );
+        const flags: QcFlag[] = [];
+
+        await translateArray(
+          mockProvider,
+          mockPluginParams,
+          ['Our company values', 'Description translated here'],
+          'en',
+          'de',
+          { qcAtomicSegments: true, onQcFlag: (f) => flags.push(f) },
+        );
+
+        expect(
+          flags.some((f) => f.checkId === 'no-op' && f.segmentIndex === 0),
+        ).toBe(true);
+      });
+
+      it('does not aggregate independent-field no-ops without qcAtomicSegments', async () => {
+        // Same inputs, default (field-aggregate) mode: 1 of 2 unchanged = 50%,
+        // not above the >50% threshold, so no field-level no-op fires.
+        vi.mocked(mockProvider.completeText).mockResolvedValue(
+          JSON.stringify(['Our company values', 'Beschrijving vertaald hier']),
+        );
+        const flags: QcFlag[] = [];
+
+        await translateArray(
+          mockProvider,
+          mockPluginParams,
+          ['Our company values', 'Description translated here'],
+          'en',
+          'de',
+          { onQcFlag: (f) => flags.push(f) },
+        );
+
+        expect(flags.some((f) => f.checkId === 'no-op')).toBe(false);
+      });
     });
 
     describe('DeepL provider translation', () => {

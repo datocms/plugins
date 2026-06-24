@@ -120,7 +120,7 @@ describe('SeoTranslation', () => {
           ['Title EN', 'Desc EN'],
           'en',
           'de',
-          { isHTML: false, recordContext: '' },
+          { isHTML: false, recordContext: '', qcAtomicSegments: true },
         );
       });
 
@@ -195,7 +195,11 @@ describe('SeoTranslation', () => {
           ['Title', 'Desc'],
           'en',
           'de',
-          { isHTML: false, recordContext: 'Product page SEO' },
+          {
+            isHTML: false,
+            recordContext: 'Product page SEO',
+            qcAtomicSegments: true,
+          },
         );
       });
     });
