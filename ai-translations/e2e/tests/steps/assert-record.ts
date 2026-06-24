@@ -120,6 +120,33 @@ export const assertPlaceholdersSurvive = async (
   }
 };
 
+/**
+ * Scan every field for placeholder tokens in the source locale and assert each
+ * survives byte-identical into every target locale. Avoids coupling to a
+ * specific seed field; asserts the record has at least one token somewhere.
+ */
+export const assertPlaceholdersSurviveAnyField = async (
+  envName: string,
+  itemId: string,
+  sourceLocale: string,
+  targetLocales: string[],
+): Promise<void> => {
+  const item = (await cmaClient(envName).items.find(itemId)) as Record<string, unknown>;
+  let foundAny = false;
+  for (const [field, raw] of Object.entries(item)) {
+    const tokens = extractTokens(localeValue(raw, sourceLocale));
+    if (tokens.length === 0) continue;
+    foundAny = true;
+    for (const locale of targetLocales) {
+      const text = JSON.stringify(localeValue(raw, locale) ?? '');
+      for (const token of tokens) {
+        expect(text, `${token} must survive into ${field}[${locale}]`).toContain(token);
+      }
+    }
+  }
+  expect(foundAny, `${itemId} should carry placeholder tokens in ${sourceLocale}`).toBe(true);
+};
+
 /** Snapshot raw field values for later "untouched" comparison. */
 export const snapshotFields = async (
   envName: string,

@@ -25,6 +25,10 @@ export const TIMEOUTS = {
   one_min: 60_000,
   three_min: 180_000,
   five_min: 300_000,
+  ten_min: 600_000,
+  // Generous budget for a whole-record translation on a slow / rate-limited
+  // provider (e.g. Gemini free tier backing off across a kitchen-sink record).
+  twelve_min: 720_000,
 } as const;
 
 /** Numeric project id (account-API/site id) of the E2E project. */

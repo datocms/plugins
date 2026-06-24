@@ -1,4 +1,4 @@
-import { ENV_NAME_PREFIX, TIMESTAMP } from '../setup/constants';
+import { ENV_NAME_PREFIX } from '../setup/constants';
 import type { TestEnv } from '../setup/env';
 
 export type Vendor = 'openai' | 'google' | 'deepl';
@@ -13,14 +13,17 @@ export type ProviderSpec = {
 };
 
 /**
- * The three provider lanes. The active LLM model is resolved dynamically at
- * setup time (top-ranked relevant model for the given key) rather than pinned
- * here, so a deprecated id can never break a run — see `plugin-params.ts`.
+ * The three provider lanes. Env names are FIXED (not timestamped): Playwright
+ * re-imports this module in each worker process separately from `global-setup`,
+ * so any `new Date()`-derived name would diverge between the env that gets forked
+ * and the name a worker navigates to. Fixed names stay identical across every
+ * process; `dropEnvsIfPresent` in global-setup clears leftovers before forking.
+ * The active LLM model is resolved dynamically at setup time (see plugin-params).
  */
 export const PROVIDERS: ProviderSpec[] = [
-  { vendor: 'openai', keyEnv: 'OPENAI', envName: `${ENV_NAME_PREFIX}${TIMESTAMP}-openai` },
-  { vendor: 'google', keyEnv: 'GEMINI', envName: `${ENV_NAME_PREFIX}${TIMESTAMP}-google` },
-  { vendor: 'deepl', keyEnv: 'DEEPL', envName: `${ENV_NAME_PREFIX}${TIMESTAMP}-deepl` },
+  { vendor: 'openai', keyEnv: 'OPENAI', envName: `${ENV_NAME_PREFIX}openai` },
+  { vendor: 'google', keyEnv: 'GEMINI', envName: `${ENV_NAME_PREFIX}google` },
+  { vendor: 'deepl', keyEnv: 'DEEPL', envName: `${ENV_NAME_PREFIX}deepl` },
 ];
 
 /** Per-Playwright-project metadata, read back via `test.info().project.metadata`. */

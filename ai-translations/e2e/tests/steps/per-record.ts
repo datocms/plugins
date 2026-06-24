@@ -37,9 +37,11 @@ const openTranslationPanel = async (page: Page): Promise<FrameLocator> => {
   const header = page
     .locator('.SidebarPanel__header', { has: page.getByText('AI Translations', { exact: true }) })
     .first();
-  await header.scrollIntoViewIfNeeded();
+  // Wait for the panel header to attach+stabilise (the plugin iframe loading
+  // re-renders the sidebar, so an explicit scrollIntoView races the detach).
+  await expect(header).toBeVisible({ timeout: TIMEOUTS.one_min });
   if ((await panelIframeWidth(page)) === 0) {
-    await header.click();
+    await header.click(); // auto-scrolls and auto-retries if the node re-renders
     await expect.poll(() => panelIframeWidth(page), { timeout: TIMEOUTS.thirty_sec }).toBeGreaterThan(0);
   }
   return page.locator('iframe[src*="localhost:5173"]').filter({ visible: true }).contentFrame();
@@ -86,8 +88,9 @@ export const translateRecordViaSidebar = async (
   await panel.getByRole('button', { name: 'Translate all fields' }).click();
 
   // Completion: the panel shows a celebration line once values are applied.
+  // Budget for a slow / rate-limited provider translating every field.
   const done = panel.getByText(/Translations were applied to the form/i);
-  await expect(done).toBeVisible({ timeout: TIMEOUTS.five_min });
+  await expect(done).toBeVisible({ timeout: TIMEOUTS.ten_min });
 
   // QC warnings/errors surface as dashboard toasts (ctx.notice / ctx.alert),
   // which fire just after completion — give them a beat to render.

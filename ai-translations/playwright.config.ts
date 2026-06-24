@@ -38,9 +38,6 @@ export default defineConfig({
     video: 'retain-on-failure',
     screenshot: 'only-on-failure',
     storageState: 'e2e/.auth/state.json',
-    // Wide enough that the record's right sidebar (where the AI Translations
-    // panel lives) is never auto-collapsed.
-    viewport: { width: 2000, height: 1200 },
     // The dev-URL plugin is served over http://localhost while the admin is
     // https, and it's a "local network" resource — both are blocked by default
     // in headless Chromium. These two flags + ignoreHTTPSErrors let the plugin
@@ -60,9 +57,11 @@ export default defineConfig({
   },
   projects: PROVIDERS.map((provider) => ({
     name: provider.vendor,
-    use: {
-      ...devices['Desktop Chrome'],
-      metadata: { vendor: provider.vendor, envName: provider.envName },
-    },
+    // Project-level metadata — read in tests via `test.info().project.metadata`.
+    // (Nesting it under `use` leaves project.metadata undefined.)
+    metadata: { vendor: provider.vendor, envName: provider.envName },
+    // Override the device viewport (1280×720) — the record's right sidebar,
+    // where the AI Translations panel lives, is auto-collapsed when narrow.
+    use: { ...devices['Desktop Chrome'], viewport: { width: 2000, height: 1200 } },
   })),
 });

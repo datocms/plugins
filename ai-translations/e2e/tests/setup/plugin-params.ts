@@ -14,8 +14,18 @@ const DEV_PLUGIN_URL = 'http://localhost:5173';
 /** Display name used for the private plugin install (from package.json datoCmsPlugin.title). */
 const PLUGIN_NAME = 'AI Translations';
 
-/** Every editor type the plugin can translate (keys of the shared field-type map). */
-const ALL_TRANSLATION_FIELDS = Object.keys(translateFieldTypes);
+/**
+ * Editors the suite translates. We drop `structured_text` and `rich_text`: each
+ * expands into many sequential per-node/per-block provider calls, which a
+ * rate-limited free-tier provider (Gemini) can't finish within a sane test
+ * budget. The retained set still covers the QC paths — placeholders live in
+ * json/text/markdown, plus slug + SEO. Bulk still exercises modular content on
+ * the (small) product model.
+ */
+const HEAVY_EDITORS = new Set(['structured_text', 'rich_text']);
+const ALL_TRANSLATION_FIELDS = Object.keys(translateFieldTypes).filter(
+  (editor) => !HEAVY_EDITORS.has(editor),
+);
 
 let cachedPluginId: string | undefined;
 
