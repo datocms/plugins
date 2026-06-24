@@ -29,6 +29,10 @@
     "prepublishOnly": "npm run build",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:report": "playwright show-report e2e/playwright-report",
+    "install:browsers": "playwright install chromium",
     "coverage": "vitest run --coverage",
     "lint": "npx @biomejs/biome@2.4.10 lint ./src",
     "lint:fix": "npx @biomejs/biome@2.4.10 lint --write ./src"
@@ -49,6 +53,8 @@
     "react-type-animation": "^3.2.0"
   },
   "devDependencies": {
+    "@datocms/cma-client-node": "^5.5.3",
+    "@playwright/test": "^1.61.1",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^25.5.0",
@@ -56,8 +62,11 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.2.0",
     "@vitest/coverage-v8": "^4.1.2",
+    "dotenv": "^17.4.2",
     "globals": "^17.4.0",
     "jsdom": "^28.1.0",
+    "otplib": "^13.4.1",
+    "tsx": "^4.22.4",
     "typescript": "^5.9.3",
     "vite": "^7.3.1",
     "vitest": "^4.0.18"
