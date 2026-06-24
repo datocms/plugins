@@ -38,6 +38,18 @@ export default defineConfig({
     video: 'retain-on-failure',
     screenshot: 'only-on-failure',
     storageState: 'e2e/.auth/state.json',
+    // Wide enough that the record's right sidebar (where the AI Translations
+    // panel lives) is never auto-collapsed.
+    viewport: { width: 2000, height: 1200 },
+    // The dev-URL plugin is served over http://localhost while the admin is
+    // https, and it's a "local network" resource — both are blocked by default
+    // in headless Chromium. These two flags + ignoreHTTPSErrors let the plugin
+    // iframe load and complete its SDK handshake. Without them the panel never
+    // registers (ERR_BLOCKED_BY_LOCAL_NETWORK_ACCESS_CHECKS).
+    ignoreHTTPSErrors: true,
+    launchOptions: {
+      args: ['--allow-running-insecure-content', '--disable-features=LocalNetworkAccessChecks'],
+    },
   },
   // The dev-URL plugin must be live during the run.
   webServer: {
