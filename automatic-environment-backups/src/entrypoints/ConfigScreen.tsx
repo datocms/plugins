@@ -3,9 +3,6 @@ import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import {
   Button,
   Canvas,
-  Dropdown,
-  DropdownMenu,
-  DropdownOption,
   Form,
   Section,
   SwitchField,
@@ -13,7 +10,8 @@ import {
 } from 'datocms-react-ui';
 import {
   type CSSProperties,
-  type MouseEvent,
+  type KeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   useCallback,
   useEffect,
   useRef,
@@ -356,8 +354,11 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   const [connectionActivityMessage, setConnectionActivityMessage] = useState<
     string | null
   >(null);
+  const [isDeployProviderMenuOpen, setIsDeployProviderMenuOpen] =
+    useState(false);
   const debugLogger = createDebugLogger(debugEnabled, 'ConfigScreen');
   const persistQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const deployProviderMenuRef = useRef<HTMLDivElement>(null);
 
   const persistPluginParameters = useCallback(
     async (updates: Record<string, unknown>) => {
@@ -907,6 +908,37 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     };
   }, [fetchAvailableEnvironmentIds]);
 
+  useEffect(() => {
+    if (!isDeployProviderMenuOpen) {
+      return undefined;
+    }
+
+    const handleOutsideInteraction = (event: MouseEvent | TouchEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+
+      if (!deployProviderMenuRef.current?.contains(target)) {
+        setIsDeployProviderMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleOutsideInteraction);
+    document.addEventListener('touchstart', handleOutsideInteraction);
+
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideInteraction);
+      document.removeEventListener('touchstart', handleOutsideInteraction);
+    };
+  }, [isDeployProviderMenuOpen]);
+
+  useEffect(() => {
+    if (isConnecting || isHealthChecking || isDisconnecting) {
+      setIsDeployProviderMenuOpen(false);
+    }
+  }, [isConnecting, isHealthChecking, isDisconnecting]);
+
   const handleConnectLambdaError = useCallback(
     async (error: unknown, candidateUrl: string) => {
       if (error instanceof LambdaHealthCheckError) {
@@ -1167,8 +1199,18 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       return;
     }
 
+    setIsDeployProviderMenuOpen(false);
     debugLogger.log('Opening deploy provider', { provider, url: option.url });
-    window.open(option.url, '_blank', 'noreferrer');
+    window.open(option.url, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleDeployProviderMenuKeyDown = (
+    event: KeyboardEvent<HTMLDivElement>,
+  ) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setIsDeployProviderMenuOpen(false);
+    }
   };
 
   const setCadenceEnabled = (cadence: BackupCadence, enabled: boolean) => {
@@ -1187,7 +1229,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   };
 
   const openEnvironmentsSettings = async (
-    event: MouseEvent<HTMLAnchorElement>,
+    event: ReactMouseEvent<HTMLAnchorElement>,
   ) => {
     event.preventDefault();
     const environmentPrefix = ctx.isEnvironmentPrimary
@@ -1260,6 +1302,9 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   const disconnectButtonLabel = isDisconnecting
     ? 'Disconnecting...'
     : 'Disconnect';
+  const isDeployProviderMenuDisabled =
+    isConnecting || isHealthChecking || isDisconnecting;
+  const deployProviderMenuId = 'deploy-provider-menu';
 
   const lambdaActionButtonStyle: CSSProperties = {
     width: '100%',
@@ -1274,6 +1319,39 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     boxSizing: 'border-box',
     flex: '1 1 0',
     whiteSpace: 'nowrap',
+  };
+
+  const deployProviderMenuContainerStyle: CSSProperties = {
+    position: 'relative',
+    flex: '1 1 0',
+  };
+
+  const deployProviderMenuStyle: CSSProperties = {
+    position: 'absolute',
+    top: 'calc(100% + var(--spacing-xs))',
+    left: 0,
+    zIndex: 1000,
+    minWidth: '180px',
+    width: '100%',
+    border: '1px solid var(--color--border)',
+    borderRadius: '6px',
+    background: 'var(--color--surface)',
+    boxShadow: '0 8px 24px rgb(0 0 0 / 12%)',
+    padding: 'var(--spacing-xs) 0',
+  };
+
+  const deployProviderOptionStyle: CSSProperties = {
+    display: 'block',
+    width: '100%',
+    border: 0,
+    background: 'transparent',
+    color: 'var(--color--ink)',
+    cursor: 'pointer',
+    font: 'inherit',
+    fontSize: 'var(--font-size-s)',
+    lineHeight: '1.3',
+    padding: 'var(--spacing-s) var(--spacing-m)',
+    textAlign: 'left',
   };
 
   const cardStyle = {
@@ -1513,32 +1591,47 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
               marginTop: 'var(--spacing-l)',
             }}
           >
-            <div style={{ flex: '1 1 0' }}>
-              <Dropdown
-                renderTrigger={({ onClick }) => (
-                  <Button
-                    buttonType="muted"
-                    onClick={onClick}
-                    disabled={
-                      isConnecting || isHealthChecking || isDisconnecting
-                    }
-                    style={lambdaActionButtonStyle}
-                  >
-                    Deploy lambda
-                  </Button>
-                )}
+            <div
+              ref={deployProviderMenuRef}
+              style={deployProviderMenuContainerStyle}
+              onKeyDown={handleDeployProviderMenuKeyDown}
+            >
+              <Button
+                buttonType="muted"
+                onClick={() =>
+                  setIsDeployProviderMenuOpen((current) => !current)
+                }
+                disabled={isDeployProviderMenuDisabled}
+                style={lambdaActionButtonStyle}
+                aria-haspopup="menu"
+                aria-expanded={isDeployProviderMenuOpen}
+                aria-controls={
+                  isDeployProviderMenuOpen ? deployProviderMenuId : undefined
+                }
               >
-                <DropdownMenu alignment="left">
+                Deploy lambda
+              </Button>
+
+              {isDeployProviderMenuOpen && (
+                <div
+                  id={deployProviderMenuId}
+                  role="menu"
+                  aria-label="Deploy lambda providers"
+                  style={deployProviderMenuStyle}
+                >
                   {DEPLOY_PROVIDER_OPTIONS.map((option) => (
-                    <DropdownOption
+                    <button
                       key={option.provider}
+                      type="button"
+                      role="menuitem"
                       onClick={() => handleDeployProviderClick(option.provider)}
+                      style={deployProviderOptionStyle}
                     >
                       {option.label}
-                    </DropdownOption>
+                    </button>
                   ))}
-                </DropdownMenu>
-              </Dropdown>
+                </div>
+              )}
             </div>
 
             <Button
