@@ -3,6 +3,7 @@ import { loginAndSaveState } from '../steps/dato-auth';
 import { PROVIDERS } from '../fixtures/providers';
 import { configureEnvForProvider, resolvePluginId } from './plugin-params';
 import { dropEnvsIfPresent, sweepStaleEnvs } from './cleanup';
+import { resetOutcomes } from './outcomes';
 import { forkAll } from './fork-environments';
 import { requireEnv } from './env';
 
@@ -20,6 +21,7 @@ export const STORAGE_STATE = 'e2e/.auth/state.json';
  */
 const globalSetup = async (): Promise<void> => {
   requireEnv();
+  resetOutcomes(); // clear the per-test outcome ledger the teardown reads
   await resolvePluginId(); // installs the dev-URL plugin in `main` if absent
   await sweepStaleEnvs();
 

@@ -1,49 +1,23 @@
-import { readFileSync } from 'node:fs';
 import { PROVIDERS } from '../fixtures/providers';
 import { destroyEnv } from './fork-environments';
-
-/** Recursively collect every test's `(projectName, ok)` from the JSON report. */
-type JsonSuite = {
-  specs?: Array<{
-    // Playwright's per-test `status` is the aggregated outcome:
-    // 'expected' (passed) | 'unexpected' (failed) | 'flaky' | 'skipped'.
-    tests?: Array<{ projectName?: string; status?: string }>;
-  }>;
-  suites?: JsonSuite[];
-};
-
-const collectProjectStatus = (suite: JsonSuite, out: Map<string, boolean>): void => {
-  for (const spec of suite.specs ?? []) {
-    for (const t of spec.tests ?? []) {
-      const project = t.projectName ?? '';
-      const ok = t.status === 'expected' || t.status === 'skipped';
-      out.set(project, (out.get(project) ?? true) && ok);
-    }
-  }
-  for (const child of suite.suites ?? []) collectProjectStatus(child, out);
-};
+import { readPassedProjects } from './outcomes';
 
 /**
- * Destroy a provider's environment only if that provider's project had zero
- * failures; leave failed projects' envs in place for debugging (the stale-env
- * age-sweep reaps them later). If the JSON report is unreadable, destroy
- * nothing — never blindly tear down after an unknown outcome.
+ * Destroy a provider's environment only if every test in its project passed (or
+ * was skipped); leave failed projects' envs in place for debugging (the
+ * stale-env sweep reaps them on the next run). Reads the per-test outcome ledger
+ * (`outcomes.jsonl`) rather than the JSON report, which Playwright writes only
+ * *after* globalTeardown runs.
  */
 const globalTeardown = async (): Promise<void> => {
-  let report: JsonSuite;
-  try {
-    report = JSON.parse(readFileSync('e2e/test-results/results.json', 'utf8')) as JsonSuite;
-  } catch {
-    console.warn('global-teardown: no results.json — leaving all envs for the age-sweep.');
+  const passedByProject = readPassedProjects();
+  if (passedByProject.size === 0) {
+    console.warn('global-teardown: empty outcome ledger — leaving all envs for the sweep.');
     return;
   }
 
-  const passedByProject = new Map<string, boolean>();
-  collectProjectStatus(report, passedByProject);
-
   for (const provider of PROVIDERS) {
-    const passed = passedByProject.get(provider.vendor);
-    if (passed) {
+    if (passedByProject.get(provider.vendor)) {
       try {
         await destroyEnv(provider.envName);
         console.log(`global-teardown: destroyed ${provider.envName} (project passed)`);
@@ -51,7 +25,7 @@ const globalTeardown = async (): Promise<void> => {
         console.warn(`global-teardown: could not destroy ${provider.envName}: ${(error as Error).message}`);
       }
     } else {
-      console.log(`global-teardown: keeping ${provider.envName} (project failed or unknown) for debugging`);
+      console.log(`global-teardown: keeping ${provider.envName} (project failed) for debugging`);
     }
   }
 };

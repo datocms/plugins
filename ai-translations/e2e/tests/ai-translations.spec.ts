@@ -8,6 +8,7 @@ import {
   findRecord,
   loadManifest,
 } from './steps/assert-record';
+import { recordOutcome } from './setup/outcomes';
 import { bulkPageUrl, runBulkTranslation } from './steps/bulk';
 import { openRecord, saveRecord, translateRecordViaSidebar } from './steps/per-record';
 
@@ -37,6 +38,13 @@ const skipPerRecordOnGoogle = (): void =>
   );
 
 test.describe('AI Translations', () => {
+  // Record each test's outcome for the result-gated env teardown (the JSON
+  // report isn't written until after globalTeardown runs).
+  test.afterEach(({}, testInfo) => {
+    const ok = testInfo.status === testInfo.expectedStatus || testInfo.status === 'skipped';
+    recordOutcome(testInfo.project.name, ok);
+  });
+
   test('per-record: sidebar translates a kitchen-sink record and saves', async ({ page }) => {
     skipPerRecordOnGoogle();
     test.setTimeout(TIMEOUTS.twelve_min + TIMEOUTS.three_min);
