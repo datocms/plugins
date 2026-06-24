@@ -205,6 +205,7 @@ function parseResponseArray(
  *
  * @param responseText - Raw response text from the translation provider.
  * @param originalSegments - Original segments for length repair fallback.
+ * @param isHtml - Whether the segments are HTML (enables the over-split rejoin).
  * @returns Array of translated strings with the same length as originalSegments.
  */
 function parseTranslationResponse(
@@ -212,16 +213,41 @@ function parseTranslationResponse(
   originalSegments: string[],
   logger: Logger,
   context: ParseContext,
+  isHtml: boolean,
 ): string[] {
   const trimmedTxt = (responseText || '').trim();
   const parsed = parseResponseArray(trimmedTxt, logger, context);
   const arr = parsed.array;
 
-  // Length repair: ensure output has same length as input
-  const fixed: string[] = [];
-  for (let i = 0; i < originalSegments.length; i++) {
-    const v = arr[i];
-    fixed.push(typeof v === 'string' ? v : String(originalSegments[i] ?? ''));
+  // Over-split repair (HTML only): a single HTML segment can come back as
+  // several elements when the model splits a multi-block value (e.g. a WYSIWYG
+  // field holding several <p> blocks) into one element per block. The positional
+  // length repair below maps output to input by index, so it would silently drop
+  // every element past the first — cropping the field. When exactly one segment
+  // was sent, rejoin the returned string elements with newlines (whitespace
+  // between block-level HTML elements is insignificant) instead of discarding
+  // the surplus. This is gated to HTML because newlines are NOT a safe join
+  // separator for single_line, slug, or json values.
+  const stringParts = arr.filter((v): v is string => typeof v === 'string');
+  const isOverSplitRejoin =
+    isHtml && originalSegments.length === 1 && stringParts.length > 1;
+
+  let fixed: string[];
+  if (isOverSplitRejoin) {
+    fixed = [stringParts.join('\n')];
+    logger.warning('Model over-split a single HTML segment; rejoined elements', {
+      ...context,
+      rawResponse: responseText,
+      parsedArray: arr,
+      returnedLength: arr.length,
+    });
+  } else {
+    // Length repair: ensure output has same length as input
+    fixed = [];
+    for (let i = 0; i < originalSegments.length; i++) {
+      const v = arr[i];
+      fixed.push(typeof v === 'string' ? v : String(originalSegments[i] ?? ''));
+    }
   }
 
   logger.info('Final parsed response array', {
@@ -331,8 +357,9 @@ async function translateWithChatProvider(
   toLocale: string,
   logger: Logger,
   providerDebugHooks: ProviderDebugHooks,
+  isHtml: boolean,
 ): Promise<string[]> {
-  const instruction = `Translate the following array of strings from ${fromLocale} to ${toLocale}. Return ONLY a valid JSON array of the exact same length, preserving placeholders like {foo}, {{bar}}, and tokens like ⟦PH_0⟧. You may encounter ICU Message Format strings (e.g., {gender, select, male {He said} female {She said}}). You MUST preserve the structure, keywords, and variable keys exactly. ONLY translate the human-readable content inside the brackets. Do not explain.`;
+  const instruction = `Translate the following array of strings from ${fromLocale} to ${toLocale}. Return ONLY a valid JSON array of the exact same length, with a strict one-to-one mapping: each input string maps to exactly one output string. NEVER split a single input string into multiple array elements and never merge multiple inputs into one, even when a string contains newlines or multiple HTML blocks like <p>…</p><p>…</p> — translate the whole string as one element. Preserve placeholders like {foo}, {{bar}}, and tokens like ⟦PH_0⟧. You may encounter ICU Message Format strings (e.g., {gender, select, male {He said} female {She said}}). You MUST preserve the structure, keywords, and variable keys exactly. ONLY translate the human-readable content inside the brackets. Do not explain.`;
 
   if (protectedSegments.length <= CHAT_VENDOR_CHUNK_SIZE) {
     const prompt = `${instruction}\n${JSON.stringify(protectedSegments)}`;
@@ -357,13 +384,19 @@ async function translateWithChatProvider(
       chunkSize: protectedSegments.length,
       rawResponse: txt,
     });
-    return parseTranslationResponse(txt, protectedSegments, logger, {
-      provider: provider.vendor,
-      fromLocale,
-      toLocale,
-      chunkStart: 0,
-      chunkSize: protectedSegments.length,
-    });
+    return parseTranslationResponse(
+      txt,
+      protectedSegments,
+      logger,
+      {
+        provider: provider.vendor,
+        fromLocale,
+        toLocale,
+        chunkStart: 0,
+        chunkSize: protectedSegments.length,
+      },
+      isHtml,
+    );
   }
 
   // Chunk large arrays to improve reliability and enable partial recovery
@@ -394,13 +427,19 @@ async function translateWithChatProvider(
       chunkSize: chunkSegments.length,
       rawResponse: chunkResponse,
     });
-    return parseTranslationResponse(chunkResponse, chunkSegments, logger, {
-      provider: provider.vendor,
-      fromLocale,
-      toLocale,
-      chunkStart,
-      chunkSize: chunkSegments.length,
-    });
+    return parseTranslationResponse(
+      chunkResponse,
+      chunkSegments,
+      logger,
+      {
+        provider: provider.vendor,
+        fromLocale,
+        toLocale,
+        chunkStart,
+        chunkSize: chunkSegments.length,
+      },
+      isHtml,
+    );
   };
 
   const chunkStarts: number[] = [];
@@ -473,6 +512,7 @@ export async function translateArray(
         toLocale,
         logger,
         providerDebugHooks,
+        opts.isHTML === true,
       );
     }
 
