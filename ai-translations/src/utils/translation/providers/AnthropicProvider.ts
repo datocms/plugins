@@ -85,6 +85,7 @@ export default class AnthropicProvider implements TranslationProvider {
         'content-type': 'application/json',
         'x-api-key': this.apiKey,
         'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
       },
       body: JSON.stringify(body),
       signal,
@@ -152,7 +153,7 @@ export default class AnthropicProvider implements TranslationProvider {
 
     const body: Record<string, unknown> = {
       model: this.model,
-      max_output_tokens: this.maxOutputTokens,
+      max_tokens: this.maxOutputTokens,
       temperature: this.temperature,
       messages: [{ role: 'user', content: prompt }],
     };
