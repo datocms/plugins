@@ -1,5 +1,6 @@
 # Changelog
 
+- 3.5.6: Fixed AI translations cropping multi-block HTML fields (WYSIWYG / rich-text) to their first block. When a chat provider (OpenAI, Google/Gemini, Anthropic) split a single multi-paragraph field into one array element per block, the surplus blocks were silently dropped on save. They are now rejoined losslessly, and the translation prompt instructs the model to keep each field as a single element. DeepL was unaffected.
 - 3.5.1: Fixed translation cancellation and completion reliability. Cancelling a bulk or multi-record run now actually stops it instead of continuing in the background; the progress dialog's Close button no longer stays stuck on "Please wait…" when fewer records come back than were selected; and the single-record sidebar surfaces a clean "cancelled" state instead of an error.
 - 3.5.0: Bulk and multi-record translation UX overhaul (select individual models and fields to translate). Also improved Dark Mode support.
 - 3.4.6: Fix for SEO "Translate to all locales" functionality setting wrong result-language pairs.
