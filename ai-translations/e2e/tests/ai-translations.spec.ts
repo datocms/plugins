@@ -35,11 +35,22 @@ const meta = (): ProjectMeta => test.info().project.metadata as ProjectMeta;
  */
 const FREE_TIER_VENDORS = new Set<ProjectMeta['vendor']>(['google', 'anthropic']);
 
-const skipPerRecordOnFreeTier = (): void =>
-  test.skip(
-    FREE_TIER_VENDORS.has(meta().vendor),
-    'Free-tier Gemini/Claude rate limits make whole-record sidebar translation exceed the budget',
-  );
+/**
+ * Skip the calling per-record test on a free-tier lane, first emitting a visible
+ * `test.step` that states *why* — `test.skip`'s reason otherwise only surfaces as
+ * a hover tooltip / Annotations entry, so a lane's ⊘ looks unexplained in the UI.
+ * Steps that run before a runtime `test.skip()` are retained on the skipped test,
+ * so this breadcrumb shows up in the Actions tree, the report, and the terminal.
+ */
+const skipPerRecordOnFreeTier = async (): Promise<void> => {
+  const { vendor } = meta();
+  if (!FREE_TIER_VENDORS.has(vendor)) return;
+  const reason =
+    'free-tier rate limits make a whole-record sidebar translation exceed the test ' +
+    'budget — per-record runs only on openai + deepl; bulk still covers this lane';
+  await step(vendor, `skipping per-record — ${reason}`, async () => {});
+  test.skip(true, reason);
+};
 
 test.describe('AI Translations', () => {
   // Surface which lane (vendor + forked env) each test runs against in the HTML
@@ -57,7 +68,7 @@ test.describe('AI Translations', () => {
   });
 
   test('per-record: sidebar translates a kitchen-sink record and saves', async ({ page }) => {
-    skipPerRecordOnFreeTier();
+    await skipPerRecordOnFreeTier();
     test.setTimeout(TIMEOUTS.twelve_min + TIMEOUTS.three_min);
     const { vendor, envName } = meta();
 
@@ -80,7 +91,7 @@ test.describe('AI Translations', () => {
   });
 
   test('per-record: placeholder tokens survive, or a save error is surfaced (A5)', async ({ page }) => {
-    skipPerRecordOnFreeTier();
+    await skipPerRecordOnFreeTier();
     test.setTimeout(TIMEOUTS.twelve_min + TIMEOUTS.three_min);
     const { vendor, envName } = meta();
 
