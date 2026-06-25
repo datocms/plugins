@@ -1,4 +1,4 @@
-import { ENV_NAME_PREFIX } from '../setup/constants';
+import { ENV_NAME_PREFIX, RUN_ID } from '../setup/constants';
 import { hasProviderKey, type ProviderKey } from '../setup/env';
 
 export type Vendor = 'openai' | 'google' | 'deepl' | 'anthropic';
@@ -8,24 +8,25 @@ export type ProviderSpec = {
   vendor: Vendor;
   /** Which `.env.testing` key holds this vendor's API key. */
   keyEnv: ProviderKey;
-  /** Stable env name for this lane, e.g. `e2e-260624112233-openai`. */
+  /** Per-run env name for this lane, e.g. `e2e-openai-1750000000`. */
   envName: string;
 };
 
 /**
- * Every lane the suite knows how to run. Env names are FIXED (not timestamped):
- * Playwright re-imports this module in each worker process separately from
- * `global-setup`, so any `new Date()`-derived name would diverge between the env
- * that gets forked and the name a worker navigates to. Fixed names stay identical
- * across every process; `dropEnvsIfPresent` in global-setup clears leftovers
- * before forking. The active LLM model is resolved dynamically at setup time
- * (see plugin-params).
+ * Every lane the suite knows how to run. Each env is named
+ * `e2e-<vendor>-<RUN_ID>`, where {@link RUN_ID} is the run's unix-seconds stamp
+ * shared across all of the run's processes (see constants.ts for how it is
+ * computed once and propagated). The per-run suffix lets multiple developers (or
+ * CI jobs) run the suite at the same time without their forked envs colliding.
+ * The longest name, `e2e-anthropic-<10-digit-seconds>` (24 chars), fits within
+ * DatoCMS's environment-id length cap. The active LLM model is resolved
+ * dynamically at setup time (see plugin-params).
  */
 const ALL_PROVIDERS: ProviderSpec[] = [
-  { vendor: 'openai', keyEnv: 'OPENAI', envName: `${ENV_NAME_PREFIX}openai` },
-  { vendor: 'google', keyEnv: 'GEMINI', envName: `${ENV_NAME_PREFIX}google` },
-  { vendor: 'deepl', keyEnv: 'DEEPL', envName: `${ENV_NAME_PREFIX}deepl` },
-  { vendor: 'anthropic', keyEnv: 'CLAUDE', envName: `${ENV_NAME_PREFIX}anthropic` },
+  { vendor: 'openai', keyEnv: 'OPENAI', envName: `${ENV_NAME_PREFIX}openai-${RUN_ID}` },
+  { vendor: 'google', keyEnv: 'GEMINI', envName: `${ENV_NAME_PREFIX}google-${RUN_ID}` },
+  { vendor: 'deepl', keyEnv: 'DEEPL', envName: `${ENV_NAME_PREFIX}deepl-${RUN_ID}` },
+  { vendor: 'anthropic', keyEnv: 'CLAUDE', envName: `${ENV_NAME_PREFIX}anthropic-${RUN_ID}` },
 ];
 
 /**

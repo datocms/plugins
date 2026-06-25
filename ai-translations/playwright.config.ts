@@ -32,7 +32,10 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: 0,
   reporter: [
-    ['list'],
+    // `printSteps` streams each `test.step` to the terminal as it completes, so a
+    // tester watching the run sees the named per-lane milestones live (paired with
+    // the immediate `▶` breadcrumbs the steps log on entry — see setup/log.ts).
+    ['list', { printSteps: true }],
     ['html', { outputFolder: 'e2e/playwright-report', open: 'never' }],
     ['json', { outputFile: 'e2e/test-results/results.json' }],
   ],

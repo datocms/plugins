@@ -35,6 +35,7 @@ AGENTS.local.md
 .env
 .env.*
 !.env.example
+!.env.testing.example
 # Example CMA record used for local fixture capture
 cma-example.json
 

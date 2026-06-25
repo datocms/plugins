@@ -2,6 +2,7 @@ import { type Frame, type FrameLocator, type Page, expect } from '@playwright/te
 import { PROJECT_SUBDOMAIN, TIMEOUTS } from '../setup/constants';
 import { resolvePluginId } from '../setup/plugin-params';
 import type { ProjectMeta } from '../fixtures/providers';
+import { note } from '../setup/log';
 
 /** Direct URL to the plugin's Bulk Translations settings page in an environment. */
 export const bulkPageUrl = async (meta: ProjectMeta): Promise<string> => {
@@ -82,22 +83,28 @@ const parseReport = (progressText: string, statsText: string): BulkReport => {
  */
 export const runBulkTranslation = async (
   page: Page,
-  opts: { modelCode: string; toLocale: string },
+  opts: { modelCode: string; toLocale: string; vendor: string },
 ): Promise<BulkReport> => {
+  const { vendor } = opts;
   const frame = bulkFrame(page);
 
   // Controls: 0=source, 1=target locales, 2=models.
+  note(vendor, `selecting model "${opts.modelCode}"…`);
   await selectByCode(frame, 2, opts.modelCode);
   await frame.getByText(/Fields to translate/i).waitFor({ timeout: TIMEOUTS.thirty_sec });
+  note(vendor, `selecting target locale "${opts.toLocale}"…`);
   await selectByCode(frame, 1, opts.toLocale);
 
+  note(vendor, 'starting the bulk run…');
   await frame.getByRole('button', { name: /start bulk translation/i }).click();
 
   // Confirm modal (its own iframe): the confirm button reads "Translate <N records>".
+  note(vendor, 'confirming the run…');
   const confirmFrame = await frameWithButton(page, /^Translate /);
   await confirmFrame.getByRole('button', { name: /^Translate / }).click();
 
   // Progress modal (its own iframe): Close enables only once the run completes.
+  note(vendor, 'bulk run in progress — waiting for the progress modal to finish (up to 5 min)…');
   const progressFrame = await frameWithButton(page, /^(Close|Please wait)/);
   const close = progressFrame.getByRole('button', { name: 'Close', exact: true });
   await expect(close).toBeEnabled({ timeout: TIMEOUTS.five_min });
@@ -111,6 +118,7 @@ export const runBulkTranslation = async (
     .innerText()
     .catch(() => '');
   const report = parseReport(progressText, statsText);
+  note(vendor, `bulk run finished: ${report.summary}`);
 
   await close.click();
   return report;

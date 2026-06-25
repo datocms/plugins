@@ -1,14 +1,36 @@
 import { requireEnv } from './env';
 
 /**
- * One compact run id per process, ≤ 12 chars (`YYMMDDHHmmss`), so the full env
- * name `e2e-<ts>-openai` stays within DatoCMS's 24-char environment-id cap.
- * Computed once at import so every fork/cleanup in the run shares it.
+ * One per-run id shared by EVERY process of a single `playwright test`
+ * invocation: the unix time in seconds at which the run started.
+ *
+ * Why route it through an env var instead of just calling `Date.now()` at import?
+ * Playwright re-imports this module in each worker process — and again for global
+ * setup/teardown — each a separate Node process that starts seconds apart.
+ * Computing the id per process would diverge: `global-setup` would fork
+ * `e2e-openai-<t1>` while a worker, spawned seconds later, would navigate to
+ * `e2e-openai-<t2>`. So the FIRST process to load this module (the main runner,
+ * during config evaluation, before any worker is forked) stamps the id into
+ * `process.env.E2E_RUN_ID`; the workers Playwright forks afterwards inherit that
+ * env and reuse the same value. Set `E2E_RUN_ID` yourself (shell or `.env.testing`)
+ * to pin a run — e.g. in CI, or to re-attach cleanup to a crashed run's envs.
+ *
+ * Unix-seconds granularity keeps concurrent developers' runs apart: two runs
+ * would have to start within the same wall-clock second to collide. Orphaned envs
+ * from a crashed run are reaped by the next run's age-based sweep, which reads
+ * each env's server-side `meta.created_at` rather than parsing the name — so the
+ * suffix's shape never affects cleanup (see {@link ENV_MAX_AGE_DAYS} and
+ * `cleanup.ts`).
  */
-export const TIMESTAMP = new Date()
-  .toISOString() // 2026-06-24T11:22:33.444Z
-  .replace(/[^0-9]/g, '') // 20260624112233444
-  .slice(2, 14); // 260624112233 (12 chars)
+const resolveRunId = (): string => {
+  const pinned = process.env.E2E_RUN_ID?.trim();
+  if (pinned) return pinned;
+  const id = String(Math.floor(Date.now() / 1000));
+  process.env.E2E_RUN_ID = id; // propagate to the worker processes forked later
+  return id;
+};
+
+export const RUN_ID = resolveRunId();
 
 /** Shared prefix for every environment this suite creates. */
 export const ENV_NAME_PREFIX = 'e2e-';

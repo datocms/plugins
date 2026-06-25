@@ -8,6 +8,7 @@ import { listRelevantOpenAIModels } from '../../../src/utils/translation/OpenAIM
 import type { ProviderSpec } from '../fixtures/providers';
 import { cmaClient } from './cma';
 import { requireEnv } from './env';
+import { note, phase } from './log';
 
 /** Entry-point URL of the dev build registered as a private plugin. */
 const DEV_PLUGIN_URL = 'http://localhost:5173';
@@ -54,6 +55,7 @@ export const resolvePluginId = async (): Promise<string> => {
     url: DEV_PLUGIN_URL,
     permissions: ['currentUserAccessToken'],
   });
+  phase(`installed dev-URL plugin in main (id ${created.id})`);
   cachedPluginId = created.id;
   return created.id;
 };
@@ -129,6 +131,8 @@ export const configureEnvForProvider = async (
   spec: ProviderSpec,
 ): Promise<void> => {
   const pluginId = await resolvePluginId();
+  note(spec.vendor, 'resolving the active model…');
   const model = await resolveModel(spec);
   await cmaClient(envName).plugins.update(pluginId, { parameters: buildParams(spec, model) });
+  note(spec.vendor, `configured ${envName} → ${model || '(DeepL — no model)'}`);
 };

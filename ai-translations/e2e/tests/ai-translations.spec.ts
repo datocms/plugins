@@ -9,6 +9,7 @@ import {
   loadManifest,
 } from './steps/assert-record';
 import { recordOutcome } from './setup/outcomes';
+import { step } from './setup/log';
 import { bulkPageUrl, runBulkTranslation } from './steps/bulk';
 import { openRecord, saveRecord, translateRecordViaSidebar } from './steps/per-record';
 
@@ -41,6 +42,13 @@ const skipPerRecordOnFreeTier = (): void =>
   );
 
 test.describe('AI Translations', () => {
+  // Surface which lane (vendor + forked env) each test runs against in the HTML
+  // report header — handy when scanning a parallel run's results.
+  test.beforeEach(({}, testInfo) => {
+    const m = meta();
+    testInfo.annotations.push({ type: 'lane', description: `${m.vendor} → ${m.envName}` });
+  });
+
   // Record each test's outcome for the result-gated env teardown (the JSON
   // report isn't written until after globalTeardown runs).
   test.afterEach(({}, testInfo) => {
@@ -51,30 +59,46 @@ test.describe('AI Translations', () => {
   test('per-record: sidebar translates a kitchen-sink record and saves', async ({ page }) => {
     skipPerRecordOnFreeTier();
     test.setTimeout(TIMEOUTS.twelve_min + TIMEOUTS.three_min);
-    await openRecord(page, meta(), ARTICLE, A1.id);
+    const { vendor, envName } = meta();
 
-    const run = await translateRecordViaSidebar(page, { fromLocale: 'en' });
+    await step(vendor, `open kitchen-sink record ${A1.id} (article) in ${envName}`, () =>
+      openRecord(page, meta(), ARTICLE, A1.id),
+    );
+
+    const run = await step(vendor, 'translate every field via the sidebar (en → record locales)', () =>
+      translateRecordViaSidebar(page, { fromLocale: 'en', vendor }),
+    );
     expect(run.completed, 'translation should complete').toBe(true);
 
-    const save = await saveRecord(page);
+    const save = await step(vendor, 'save the record', () => saveRecord(page, vendor));
     expect(save.status, `save should succeed (got ${save.status}: ${save.fieldErrors.join('; ')})`).toBe(200);
 
     // The sidebar translates among the record's active locales (en → it here).
-    await assertLocalesPopulated(meta().envName, A1.id, ['it'], ['title', 'slug', 'excerpt']);
+    await step(vendor, 'assert it title/slug/excerpt are populated (CMA)', () =>
+      assertLocalesPopulated(envName, A1.id, ['it'], ['title', 'slug', 'excerpt']),
+    );
   });
 
   test('per-record: placeholder tokens survive, or a save error is surfaced (A5)', async ({ page }) => {
     skipPerRecordOnFreeTier();
     test.setTimeout(TIMEOUTS.twelve_min + TIMEOUTS.three_min);
-    await openRecord(page, meta(), ARTICLE, A5.id);
+    const { vendor, envName } = meta();
 
-    const run = await translateRecordViaSidebar(page, { fromLocale: 'en' });
+    await step(vendor, `open placeholder record ${A5.id} (article) in ${envName}`, () =>
+      openRecord(page, meta(), ARTICLE, A5.id),
+    );
+
+    const run = await step(vendor, 'translate every field via the sidebar (en → record locales)', () =>
+      translateRecordViaSidebar(page, { fromLocale: 'en', vendor }),
+    );
     expect(run.completed, 'translation should complete').toBe(true);
 
-    const save = await saveRecord(page);
+    const save = await step(vendor, 'save the record', () => saveRecord(page, vendor));
     if (save.status === 200) {
       // Placeholders ({{…}}, {…}, %s, :slug) must survive into the target locale.
-      await assertPlaceholdersSurviveAnyField(meta().envName, A5.id, 'en', ['fr']);
+      await step(vendor, 'assert placeholder tokens survived into fr (CMA)', () =>
+        assertPlaceholdersSurviveAnyField(envName, A5.id, 'en', ['fr']),
+      );
     } else {
       // Card objective #1: a field validation error on save must be surfaced to
       // the user, never silently dropped.
@@ -84,10 +108,16 @@ test.describe('AI Translations', () => {
 
   test('bulk: produces a per-record outcome report across a model', async ({ page }) => {
     test.setTimeout(TIMEOUTS.five_min + TIMEOUTS.five_min);
-    await page.goto(await bulkPageUrl(meta()), { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(3000);
+    const { vendor, envName } = meta();
 
-    const report = await runBulkTranslation(page, { modelCode: 'product', toLocale: 'es' });
+    await step(vendor, 'open the Bulk Translations page', async () => {
+      await page.goto(await bulkPageUrl(meta()), { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(3000);
+    });
+
+    const report = await step(vendor, 'run bulk translation (product → es)', () =>
+      runBulkTranslation(page, { modelCode: 'product', toLocale: 'es', vendor }),
+    );
 
     // The seed has three product records; every one must be accounted for in the
     // report (the card's "which records translated / warned / failed").
@@ -96,14 +126,16 @@ test.describe('AI Translations', () => {
 
     // Every successfully-translated product must now have a Spanish name.
     if (report.completed + report.withWarnings > 0) {
-      const products = await cmaClient(meta().envName).items.list({
-        filter: { type: 'product' },
+      await step(vendor, 'verify translated products have an es name (CMA)', async () => {
+        const products = await cmaClient(envName).items.list({
+          filter: { type: 'product' },
+        });
+        const withSpanish = products.filter((p) => {
+          const name = p.name as Record<string, unknown> | undefined;
+          return name && typeof name.es === 'string' && name.es.length > 0;
+        });
+        expect(withSpanish.length, 'at least one product should have an es name').toBeGreaterThan(0);
       });
-      const withSpanish = products.filter((p) => {
-        const name = p.name as Record<string, unknown> | undefined;
-        return name && typeof name.es === 'string' && name.es.length > 0;
-      });
-      expect(withSpanish.length, 'at least one product should have an es name').toBeGreaterThan(0);
     }
   });
 });

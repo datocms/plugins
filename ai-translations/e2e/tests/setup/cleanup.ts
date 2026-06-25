@@ -1,23 +1,18 @@
 import { cmaClient } from './cma';
-import { ENV_MAX_AGE_DAYS, ENV_NAME_PREFIX, TIMESTAMP } from './constants';
+import { ENV_MAX_AGE_DAYS, ENV_NAME_PREFIX, RUN_ID } from './constants';
 import { destroyEnv } from './fork-environments';
+import { note, warn } from './log';
 
 const MS_PER_DAY = 86_400_000;
 
 /**
- * Parse the `YYMMDDHHmmss` run id out of an env name like
- * `e2e-260624112233-openai` into epoch ms; `NaN` if it doesn't match.
- */
-const runTimestampMs = (envId: string): number => {
-  const match = envId.match(/^e2e-(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})-/);
-  if (!match) return Number.NaN;
-  const [, yy, mo, dd, hh, mi, ss] = match;
-  return Date.parse(`20${yy}-${mo}-${dd}T${hh}:${mi}:${ss}Z`);
-};
-
-/**
  * Destroy stale `e2e-*` environments older than {@link ENV_MAX_AGE_DAYS},
- * skipping the current run's (matched by {@link TIMESTAMP}). Best-effort: a
+ * skipping the current run's (matched by {@link RUN_ID}). This is the safety net
+ * that reaps orphaned envs left by a crashed run — with per-run (random) env
+ * names those never collide with a later run, so age is the only thing that can
+ * reclaim them. Age comes from the environment's server-side `meta.created_at`
+ * (the random name encodes no time), so a concurrent run's envs — created within
+ * the last minutes, far newer than the cutoff — are never swept. Best-effort: a
  * failed delete is logged, not thrown, so it can never redden a run.
  */
 export const sweepStaleEnvs = async (): Promise<void> => {
@@ -26,14 +21,14 @@ export const sweepStaleEnvs = async (): Promise<void> => {
 
   for (const env of envs) {
     if (!env.id.startsWith(ENV_NAME_PREFIX)) continue;
-    if (env.id.includes(`-${TIMESTAMP}-`)) continue; // never this run's
-    const ts = runTimestampMs(env.id);
-    if (!Number.isFinite(ts) || ts >= cutoff) continue;
+    if (env.id.endsWith(`-${RUN_ID}`)) continue; // never this run's
+    const createdMs = Date.parse(env.meta.created_at ?? '');
+    if (!Number.isFinite(createdMs) || createdMs >= cutoff) continue;
     try {
       await destroyEnv(env.id);
-      console.log(`swept stale env ${env.id}`);
+      note(env.id, 'swept (stale)');
     } catch (error) {
-      console.warn(`could not sweep ${env.id}: ${(error as Error).message}`);
+      warn(env.id, `could not sweep: ${(error as Error).message}`);
     }
   }
 };

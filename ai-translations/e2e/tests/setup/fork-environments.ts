@@ -1,17 +1,30 @@
 import { cmaClient } from './cma';
 import { PRIMARY_ENV, TIMEOUTS } from './constants';
+import { note, phase } from './log';
 
-/** Poll an environment until it reports `ready`, bounded by `TIMEOUTS.five_min`. */
+/**
+ * Poll an environment until it reports `ready`, bounded by `TIMEOUTS.five_min`.
+ * Reports fork progress as it advances (throttled to ~10% steps) so a slow fork
+ * is visibly progressing rather than apparently hung.
+ */
 export const waitForEnvReady = async (envName: string): Promise<void> => {
   const client = cmaClient();
   const deadline = Date.now() + TIMEOUTS.five_min;
+  let lastPct = -1;
   for (;;) {
     const env = await client.environments.find(envName);
-    if (env.meta.status === 'ready') return;
+    const pct = Math.round(env.meta.fork_completion_percentage ?? 0);
+    if (env.meta.status === 'ready') {
+      note(envName, 'ready ✓');
+      return;
+    }
+    if (pct >= lastPct + 10) {
+      note(envName, `forking… ${pct}%`);
+      lastPct = pct;
+    }
     if (Date.now() > deadline) {
       throw new Error(
-        `Environment ${envName} not ready after 5 min (status=${env.meta.status}, ` +
-          `${env.meta.fork_completion_percentage ?? 0}%)`,
+        `Environment ${envName} not ready after 5 min (status=${env.meta.status}, ${pct}%)`,
       );
     }
     await new Promise((resolve) => setTimeout(resolve, 3000));
@@ -33,9 +46,11 @@ export const destroyEnv = async (envName: string): Promise<void> => {
  */
 export const forkAll = async (envNames: string[]): Promise<void> => {
   const client = cmaClient();
+  phase('maintenance mode ON (fast-fork needs a read-only source)');
   await client.maintenanceMode.activate({ force: true });
   try {
     for (const id of envNames) {
+      note(id, `fork requested from ${PRIMARY_ENV}`);
       await client.environments.fork(
         PRIMARY_ENV,
         { id },
@@ -44,6 +59,7 @@ export const forkAll = async (envNames: string[]): Promise<void> => {
     }
     await Promise.all(envNames.map(waitForEnvReady));
   } finally {
+    phase('maintenance mode OFF');
     await client.maintenanceMode.deactivate();
   }
 };

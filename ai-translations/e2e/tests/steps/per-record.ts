@@ -1,6 +1,7 @@
 import { type FrameLocator, type Page, expect } from '@playwright/test';
 import { PROJECT_SUBDOMAIN, TIMEOUTS } from '../setup/constants';
 import type { ProjectMeta } from '../fixtures/providers';
+import { note } from '../setup/log';
 
 /** Direct URL to a record's edit form within a specific environment. */
 export const editorUrl = (meta: ProjectMeta, itemTypeId: string, itemId: string): string =>
@@ -12,9 +13,10 @@ export const editorUrl = (meta: ProjectMeta, itemTypeId: string, itemId: string)
  * disabled … Take over" banner; translating writes to the form, so we must hold
  * the editing session. Take over if the banner is present (two-step confirm).
  */
-const takeOverIfLocked = async (page: Page): Promise<void> => {
+const takeOverIfLocked = async (page: Page, vendor: string): Promise<void> => {
   const takeOver = page.getByRole('button', { name: 'Take over' });
   if ((await takeOver.count()) === 0) return;
+  note(vendor, 'record locked by a stale editing session — taking over');
   await takeOver.first().click();
   const confirm = page.getByRole('button', { name: /yes, take control/i });
   await confirm.click({ timeout: TIMEOUTS.thirty_sec });
@@ -77,20 +79,26 @@ export type SidebarRunResult = { completed: boolean; toasts: string[] };
  */
 export const translateRecordViaSidebar = async (
   page: Page,
-  opts: { fromLocale: string },
+  opts: { fromLocale: string; vendor: string },
 ): Promise<SidebarRunResult> => {
+  const { vendor } = opts;
+  note(vendor, 'opening the AI Translations sidebar panel…');
   const panel = await openTranslationPanel(page);
 
   // Source select is the first control; the target select keeps its default
   // (all other active locales of the record).
+  note(vendor, `setting source locale "${opts.fromLocale}"…`);
   await selectLocale(panel, 0, opts.fromLocale);
 
+  note(vendor, 'clicking "Translate all fields" (one provider call per field)…');
   await panel.getByRole('button', { name: 'Translate all fields' }).click();
 
   // Completion: the panel shows a celebration line once values are applied.
   // Budget for a slow / rate-limited provider translating every field.
+  note(vendor, 'translating — waiting for every field to be applied to the form (up to 10 min)…');
   const done = panel.getByText(/Translations were applied to the form/i);
   await expect(done).toBeVisible({ timeout: TIMEOUTS.ten_min });
+  note(vendor, 'translations applied to the form ✓');
 
   // QC warnings/errors surface as dashboard toasts (ctx.notice / ctx.alert),
   // which fire just after completion — give them a beat to render.
@@ -110,9 +118,10 @@ export const openRecord = async (
   itemTypeId: string,
   itemId: string,
 ): Promise<void> => {
+  note(meta.vendor, `navigating to record ${itemId} in ${meta.envName}…`);
   await page.goto(editorUrl(meta, itemTypeId, itemId), { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(2000);
-  await takeOverIfLocked(page);
+  await takeOverIfLocked(page, meta.vendor);
 };
 
 /** Outcome of a save attempt: the CMA PUT status + any field-validation messages. */
@@ -145,10 +154,11 @@ const clickSaveAndCapture = async (page: Page): Promise<SaveResult> => {
  * version. Retries once through a fresh take-over if the record is transiently
  * locked by a stale editing session.
  */
-export const saveRecord = async (page: Page): Promise<SaveResult> => {
+export const saveRecord = async (page: Page, vendor: string): Promise<SaveResult> => {
   let result = await clickSaveAndCapture(page);
   if (result.locked) {
-    await takeOverIfLocked(page);
+    note(vendor, 'save hit a transient ITEM_LOCKED — taking over and retrying once');
+    await takeOverIfLocked(page, vendor);
     result = await clickSaveAndCapture(page);
   }
   return result;

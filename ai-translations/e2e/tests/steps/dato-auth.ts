@@ -1,6 +1,7 @@
 import { chromium } from '@playwright/test';
 import { PROJECT_SUBDOMAIN, TIMEOUTS } from '../setup/constants';
 import { requireEnv } from '../setup/env';
+import { phase } from '../setup/log';
 
 /**
  * Log in to the **project admin** (`<subdomain>.admin.datocms.com`) once and
@@ -17,6 +18,7 @@ export const loginAndSaveState = async (storagePath: string): Promise<void> => {
   const browser = await chromium.launch();
   try {
     const page = await browser.newPage();
+    phase(`logging in as ${env.E2E_DASHBOARD_EMAIL} at ${PROJECT_SUBDOMAIN()}.admin.datocms.com…`);
     await page.goto(`https://${PROJECT_SUBDOMAIN()}.admin.datocms.com/sign_in`);
 
     await page.locator('input[name="email"]').fill(env.E2E_DASHBOARD_EMAIL);
@@ -42,6 +44,7 @@ export const loginAndSaveState = async (storagePath: string): Promise<void> => {
     await page.waitForLoadState('networkidle');
 
     await page.context().storageState({ path: storagePath });
+    phase('login succeeded — session saved ✓');
   } finally {
     await browser.close();
   }

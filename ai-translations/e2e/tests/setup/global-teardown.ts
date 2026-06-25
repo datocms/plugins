@@ -1,5 +1,6 @@
 import { PROVIDERS } from '../fixtures/providers';
 import { destroyEnv } from './fork-environments';
+import { note, phase, warn } from './log';
 import { readPassedProjects } from './outcomes';
 
 /**
@@ -12,20 +13,21 @@ import { readPassedProjects } from './outcomes';
 const globalTeardown = async (): Promise<void> => {
   const passedByProject = readPassedProjects();
   if (passedByProject.size === 0) {
-    console.warn('global-teardown: empty outcome ledger — leaving all envs for the sweep.');
+    phase('empty outcome ledger — leaving all envs for the sweep', 'teardown');
     return;
   }
 
+  phase('destroying envs of passed projects; keeping failed ones for debugging', 'teardown');
   for (const provider of PROVIDERS) {
     if (passedByProject.get(provider.vendor)) {
       try {
         await destroyEnv(provider.envName);
-        console.log(`global-teardown: destroyed ${provider.envName} (project passed)`);
+        note(provider.vendor, `destroyed ${provider.envName} (project passed)`);
       } catch (error) {
-        console.warn(`global-teardown: could not destroy ${provider.envName}: ${(error as Error).message}`);
+        warn(provider.vendor, `could not destroy ${provider.envName}: ${(error as Error).message}`);
       }
     } else {
-      console.log(`global-teardown: keeping ${provider.envName} (project failed) for debugging`);
+      note(provider.vendor, `keeping ${provider.envName} (project failed) for debugging`);
     }
   }
 };

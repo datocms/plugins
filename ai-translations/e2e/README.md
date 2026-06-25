@@ -16,8 +16,8 @@ its own README.
    - ensures the dev-URL plugin is installed in `main` (auto-installs if absent),
    - reaps stale `e2e-*` environments,
    - puts the project in maintenance mode and **fast-forks** one sandbox env per
-     active provider (`e2e-openai`, `e2e-google`, `e2e-deepl`, `e2e-anthropic`),
-     then takes it back out,
+     active provider, named `e2e-<vendor>-<run-id>` (e.g. `e2e-openai-1750000000`,
+     where the run id is the run's unix-seconds stamp), then takes it back out,
    - pins each env's plugin `parameters` to its vendor (env-scoped),
    - logs in once and saves the session to `.auth/state.json`.
 2. **The suite** (`tests/ai-translations.spec.ts`) runs three tests per active provider,
@@ -43,6 +43,7 @@ Reused by the seed + suite:
 | `E2E_PROJECT_ID` | `219952` |
 | `E2E_PROJECT_SUBDOMAIN` | `ai-translation-e2e` |
 | `E2E_DASHBOARD_TOTP_SECRET` | *(optional)* only if the account has 2FA |
+| `E2E_RUN_ID` | *(optional)* pins the per-run id used in forked env names; auto-generated from unix-seconds when unset (see "Per-run env names" below) |
 
 > **Quote values containing `#`.** `dotenv` treats an unquoted `#` as the start of
 > an inline comment and silently truncates the value — wrap such values in
@@ -74,6 +75,29 @@ npm run test:e2e:report    # open the last HTML report
 A green run self-cleans its environments; a failed run leaves them in place for
 debugging (and they're reaped on the next run).
 
+## Reading the run output
+
+Because every provider lane runs in parallel, output is tagged so interleaved
+lines stay legible. Each line is `[<tag> +<elapsed>s] message`:
+
+- **`[setup …]` / `[teardown …]`** — the `globalSetup`/`globalTeardown` phases
+  (validate env → install plugin → sweep → fork each env → pin each env's model →
+  log in; and on teardown, which envs were destroyed/kept). The slow bits
+  (forking, login) now report progress, so a stuck run shows *where* it stuck.
+- **`[e2e-<vendor> …]`** — per-environment fork progress (`forking… 40%`, `ready ✓`).
+- **`[<vendor> …]`** — per-lane test progress. A `▶` line is a `test.step` starting;
+  the matching duration prints when it finishes. Long waits (`waiting … up to 10
+  min`) emit a breadcrumb *before* the wait so the lane never looks hung.
+
+Each lane's resolved model is logged at setup (`[anthropic …] configured
+e2e-anthropic-1750000000 → claude-haiku-4-5-…`), so you can see exactly what each
+provider ran. The opening `[setup …] run <id> — …` line prints the run id, so you
+can tell which forked envs are yours.
+
+The same milestones are recorded as named, timed **`test.step`s**, so they also
+show up in the HTML report, the trace viewer (`test:e2e:report`), and UI mode
+(`test:e2e:ui`) — the best place to see *where* a failed lane broke.
+
 ## Implementation notes / gotchas
 
 - **Plugins are environment-scoped.** Forking copies the plugin *and its
@@ -92,10 +116,19 @@ debugging (and they're reaped on the next run).
   project-level `metadata` (read via `test.info().project.metadata`), *not* under
   `use` — nesting it under `use` leaves it `undefined` and navigation falls back
   to `main`.
-- **Fixed env names.** Playwright re-imports the config per worker, so a
-  timestamped name would diverge between the forked env and the name a worker
-  navigates to. Names are fixed (`e2e-<vendor>`); `dropEnvsIfPresent` handles
-  idempotency.
+- **Per-run env names + concurrency.** Each run's envs are named
+  `e2e-<vendor>-<unix-seconds>`, so multiple developers (or CI jobs) can run the
+  suite at the same time without their forked envs colliding. Playwright
+  re-imports the config in every worker process, so the run stamp can't be
+  recomputed per process — it would diverge between the forked env and the name a
+  worker navigates to. Instead the first process stamps it into the `E2E_RUN_ID`
+  env var (constants.ts) and the workers Playwright forks afterwards inherit it;
+  set `E2E_RUN_ID` yourself to pin a run. Orphaned envs from a crashed run no
+  longer collide with a later run, so they're reclaimed by the next run's
+  age-based stale-env sweep — which reads each env's server-side `created_at`
+  (older than `ENV_MAX_AGE_DAYS`), so it works for any run-id shape — rather than
+  by same-name replacement. The one residual collision is two runs starting in the
+  *same* wall-clock second — vanishingly rare for human-initiated runs.
 - **Free-tier rate limits (Gemini, Claude).** The per-record sidebar makes one
   provider call per field, sequentially; free-tier Gemini and the free-plan Claude
   key rate-limit hard enough that a whole record blows the budget. The two
