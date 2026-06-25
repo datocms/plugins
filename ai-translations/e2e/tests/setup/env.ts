@@ -8,14 +8,12 @@ loadEnv({
 });
 
 /**
- * Required env vars, in one tuple so the runtime check and the {@link TestEnv}
- * type can never drift. Dashboard creds use the existing `E2E_DASHBOARD_*`
- * names already present in `.env.testing`.
+ * Infrastructure vars required for ANY run — without these nothing can fork an
+ * environment, authenticate, or navigate. In one tuple so the runtime check and
+ * the {@link TestEnv} type can never drift. Provider API keys are deliberately
+ * NOT here: they are optional (see {@link PROVIDER_KEYS}).
  */
 const REQUIRED = [
-  'OPENAI',
-  'GEMINI',
-  'DEEPL',
   'E2E_PROJECT_CMA_TOKEN',
   'E2E_DASHBOARD_EMAIL',
   'E2E_DASHBOARD_PASSWORD',
@@ -23,14 +21,35 @@ const REQUIRED = [
   'E2E_PROJECT_SUBDOMAIN',
 ] as const;
 
-/** Optional vars — only consumed when present (2FA is currently off). */
-const OPTIONAL = ['E2E_DASHBOARD_TOTP_SECRET'] as const;
+/**
+ * Provider API keys — all optional. A provider lane runs only when its key is
+ * present and non-empty in `.env.testing`; a missing or empty key skips that
+ * lane, so populating a subset tests exactly that subset. See
+ * {@link hasProviderKey} and `fixtures/providers.ts`.
+ */
+export const PROVIDER_KEYS = ['OPENAI', 'GEMINI', 'DEEPL', 'CLAUDE'] as const;
+
+/** Optional vars — only consumed when present (provider keys + 2FA, currently off). */
+const OPTIONAL = [
+  'E2E_DASHBOARD_TOTP_SECRET',
+  'OPENAI',
+  'GEMINI',
+  'DEEPL',
+  'CLAUDE',
+] as const;
 
 type RequiredVar = (typeof REQUIRED)[number];
 type OptionalVar = (typeof OPTIONAL)[number];
 
+/** A provider API-key env name (each gates one matrix lane). */
+export type ProviderKey = (typeof PROVIDER_KEYS)[number];
+
 /** Strongly-typed bag of validated, trimmed environment variables. */
 export type TestEnv = Record<RequiredVar, string> & Partial<Record<OptionalVar, string>>;
+
+/** True when an optional provider key is present and non-empty in the loaded env. */
+export const hasProviderKey = (name: ProviderKey): boolean =>
+  Boolean(process.env[name]?.trim());
 
 /**
  * Validate every required env var at once and return a typed, trimmed bag.

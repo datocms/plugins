@@ -26,11 +26,16 @@ import {
   type ChipOption,
   renderChipOption,
 } from '../../components/BulkTranslations/chipOption';
+import { BulkTranslationReport } from '../../components/BulkTranslations/BulkTranslationReport';
 import { ModelFieldPicker } from '../../components/BulkTranslations/ModelFieldPicker';
 import type { TranslationConfirmModalParams } from '../../components/TranslationConfirmModal';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import { buildDatoCMSClient } from '../../utils/clients';
 import { formatLocaleLabel } from '../../utils/localeUtils';
+import {
+  type BulkReportRow,
+  buildBulkReportRows,
+} from '../../utils/translation/bulkReport';
 import {
   ALL_LOCALES_VALUE,
   defaultFieldSelection,
@@ -95,6 +100,9 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
   >(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [isStartingTranslation, setIsStartingTranslation] = useState(false);
+  // Persisted end-of-run report (which records failed and why). Survives until
+  // the next run or an explicit dismiss, so the user can review/export it.
+  const [reportRows, setReportRows] = useState<BulkReportRow[]>([]);
 
   // Initial load: models + locales
   useEffect(() => {
@@ -339,6 +347,8 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
     }
 
     setIsStartingTranslation(true);
+    // Drop any previous run's report so a stale list never lingers over a new run.
+    setReportRows([]);
 
     try {
       const client = buildDatoCMSClient(
@@ -415,22 +425,17 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
         | undefined;
 
       const localeCount = targetLocales.length;
-      const flagged = (result?.progress ?? []).filter(
-        (update) =>
-          update.status === 'error' ||
-          update.status === 'completed-with-warnings',
-      );
+      // Build the full, structured report (no 20-row cap) and persist it to the
+      // page so it can be reviewed and exported after the modal closes.
+      const rows = buildBulkReportRows(result?.progress ?? []);
+      setReportRows(rows);
+      const flaggedRecordCount = new Set(rows.map((r) => r.recordId)).size;
+
       if (result?.canceled) {
         await ctx.notice('Bulk translation was canceled');
-      } else if (flagged.length > 0) {
-        const reviewList = flagged
-          .slice(0, 20)
-          .map((update) => `• ${(update.message ?? update.recordId).slice(0, 140)}`)
-          .join('\n');
-        const more =
-          flagged.length > 20 ? `\n…and ${flagged.length - 20} more.` : '';
-        await ctx.alert(
-          `Bulk translation finished — ${flagged.length} record(s) need review:\n${reviewList}${more}`,
+      } else if (rows.length > 0) {
+        await ctx.notice(
+          `Bulk translation finished — ${flaggedRecordCount} record(s) need review. See the report below.`,
         );
       } else if (result?.completed) {
         await ctx.notice(
@@ -617,6 +622,18 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
                 </div>
               )}
             </div>
+
+            {reportRows.length > 0 && (
+              <div className={s.section}>
+                <BulkTranslationReport
+                  rows={reportRows}
+                  onClose={() => setReportRows([])}
+                  onCopied={(message) => {
+                    void ctx.notice(message);
+                  }}
+                />
+              </div>
+            )}
           </div>
         </div>
 

@@ -1,9 +1,9 @@
 # AI Translations — End-to-End tests
 
 Browser-driven Playwright suite that exercises the plugin's **per-record** and
-**bulk** translation workflows against the real DatoCMS dashboard, across three
-providers (OpenAI / Google / DeepL) in parallel — one fast-forked sandbox
-environment per provider. See the design + plan under
+**bulk** translation workflows against the real DatoCMS dashboard, across
+providers (OpenAI / Google / DeepL / Anthropic) in parallel — one fast-forked
+sandbox per provider **whose key is present in `.env.testing`**. See the design + plan under
 `docs/superpowers/specs/` and `docs/superpowers/plans/`.
 
 The `seed/` subfolder builds the fixture project this suite forks from; it has
@@ -15,11 +15,12 @@ its own README.
    - validates `.env.testing`,
    - ensures the dev-URL plugin is installed in `main` (auto-installs if absent),
    - reaps stale `e2e-*` environments,
-   - puts the project in maintenance mode and **fast-forks** three sandbox envs
-     (`e2e-openai`, `e2e-google`, `e2e-deepl`), then takes it back out,
+   - puts the project in maintenance mode and **fast-forks** one sandbox env per
+     active provider (`e2e-openai`, `e2e-google`, `e2e-deepl`, `e2e-anthropic`),
+     then takes it back out,
    - pins each env's plugin `parameters` to its vendor (env-scoped),
    - logs in once and saves the session to `.auth/state.json`.
-2. **The suite** (`tests/ai-translations.spec.ts`) runs three tests per provider,
+2. **The suite** (`tests/ai-translations.spec.ts`) runs three tests per active provider,
    each project against its own environment, fully in parallel:
    - per-record sidebar translation of a kitchen-sink record (translate + save),
    - per-record placeholder survival / graceful save-error handling,
@@ -36,7 +37,7 @@ Reused by the seed + suite:
 
 | Var | What |
 | - | - |
-| `OPENAI`, `GEMINI`, `DEEPL` | provider API keys |
+| `OPENAI`, `GEMINI`, `DEEPL`, `CLAUDE` | provider API keys — **all optional**; the matrix runs only providers whose key is set (missing/empty are skipped) |
 | `E2E_PROJECT_CMA_TOKEN` | CMA token for the fixture project (full-access) |
 | `E2E_DASHBOARD_EMAIL` / `E2E_DASHBOARD_PASSWORD` | dashboard login for the fixture project |
 | `E2E_PROJECT_ID` | `219952` |
@@ -64,8 +65,8 @@ npm run install:browsers
 ## Running
 
 ```bash
-npm run test:e2e            # all three providers, parallel
-npm run test:e2e -- --project=openai   # one provider
+npm run test:e2e            # every provider with a key set, parallel
+npm run test:e2e -- --project=anthropic   # one provider (openai|google|deepl|anthropic)
 npm run test:e2e:ui        # Playwright UI mode
 npm run test:e2e:report    # open the last HTML report
 ```
@@ -95,11 +96,12 @@ debugging (and they're reaped on the next run).
   timestamped name would diverge between the forked env and the name a worker
   navigates to. Names are fixed (`e2e-<vendor>`); `dropEnvsIfPresent` handles
   idempotency.
-- **Gemini free-tier rate limits.** The per-record sidebar makes one provider
-  call per field, sequentially; Gemini's free tier rate-limits hard enough that a
-  whole record blows the budget. The two per-record tests are therefore skipped
-  for `google` (openai + deepl cover per-record; bulk covers all three). Supply a
-  paid Gemini key and delete the `skipPerRecordOnGoogle()` guard to re-enable.
+- **Free-tier rate limits (Gemini, Claude).** The per-record sidebar makes one
+  provider call per field, sequentially; free-tier Gemini and the free-plan Claude
+  key rate-limit hard enough that a whole record blows the budget. The two
+  per-record tests are therefore skipped for `google` and `anthropic` (openai +
+  deepl cover per-record; bulk covers every provider). With a paid key, drop the
+  vendor from `FREE_TIER_VENDORS` in the spec to re-enable.
 - **Heavy editors excluded.** `structured_text` and `rich_text` are dropped from
   the translated field set (`plugin-params.ts`) — each expands into many
   sequential calls. The retained editors still cover the QC paths (placeholders

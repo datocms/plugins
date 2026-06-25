@@ -221,6 +221,67 @@ function formatDatoCMSCodeSuffix(codes: string[]): string {
 }
 
 /**
+ * Maps a DatoCMS field-validator code to a short human-readable reason.
+ */
+function describeValidatorCode(code: string | undefined): string {
+  switch (code) {
+    case 'VALIDATION_LENGTH':
+      return 'exceeds its allowed length';
+    case 'VALIDATION_REQUIRED':
+      return 'is required but the translation is empty';
+    case 'VALIDATION_FORMAT':
+    case 'VALIDATION_SLUG_FORMAT':
+      return 'has an invalid format';
+    case 'VALIDATION_UNIQUENESS':
+      return 'must be unique';
+    default:
+      return code ? `failed validation (${code})` : 'failed validation';
+  }
+}
+
+/**
+ * Pulls `{ field, code }` from each structured validation entry's
+ * `attributes.details`, so a 422 can name the offending field(s) and reason(s)
+ * instead of surfacing an opaque "rejected the record update" message.
+ */
+type ValidationFieldError = { field?: string; code?: string };
+
+/** Pulls `{ field, code }` from one entry's `attributes.details`, or `null`. */
+function extractFieldError(entry: unknown): ValidationFieldError | null {
+  if (entry === null || typeof entry !== 'object') return null;
+  const details = getNestedObject(entry as Record<string, unknown>, [
+    'attributes',
+    'details',
+  ]);
+  if (!details) return null;
+  const field = typeof details.field === 'string' ? details.field : undefined;
+  const code = typeof details.code === 'string' ? details.code : undefined;
+  return field || code ? { field, code } : null;
+}
+
+function extractValidationFieldErrors(
+  entries: unknown[],
+): ValidationFieldError[] {
+  return entries
+    .map(extractFieldError)
+    .filter((e): e is ValidationFieldError => e !== null);
+}
+
+/**
+ * Builds a field-named message for a 422 validation rejection, or `null` when
+ * no per-field details are present (caller falls back to a generic message).
+ */
+function formatValidationMessage(entries: unknown[]): string | null {
+  const named = extractValidationFieldErrors(entries).filter((e) => e.field);
+  if (named.length === 0) return null;
+  const parts = named.map(
+    (e) => `field "${e.field}" ${describeValidatorCode(e.code)}`,
+  );
+  // No "DatoCMS" prefix here — formatErrorForUser adds the single source label.
+  return `The record update was rejected because ${parts.join('; ')}.`;
+}
+
+/**
  * Normalizes DatoCMS CMA client errors before generic provider matching.
  */
 function normalizeDatoCMSError(
@@ -270,6 +331,15 @@ function normalizeDatoCMSError(
   }
 
   if (status === 422) {
+    const validationMessage = formatValidationMessage(entries);
+    if (validationMessage) {
+      return {
+        source: 'datocms',
+        code: 'datocms',
+        message: validationMessage,
+        hint: 'Shorten or fix the translated value(s), or relax the field validator(s) in the model settings, then retry.',
+      };
+    }
     return {
       source: 'datocms',
       code: 'datocms',

@@ -13,8 +13,8 @@ import { bulkPageUrl, runBulkTranslation } from './steps/bulk';
 import { openRecord, saveRecord, translateRecordViaSidebar } from './steps/per-record';
 
 /**
- * Provider-agnostic suite. Each Playwright project (openai/google/deepl) carries
- * its own forked environment in `project.metadata`, so the same three tests run
+ * Provider-agnostic suite. Each Playwright project (openai/google/deepl/anthropic)
+ * carries its own forked environment in `project.metadata`, so the same tests run
  * concurrently, one provider per environment. See the design doc for the matrix.
  */
 const manifest = loadManifest();
@@ -26,15 +26,18 @@ const meta = (): ProjectMeta => test.info().project.metadata as ProjectMeta;
 
 /**
  * The per-record sidebar translates every field sequentially, one provider call
- * per field/segment. Gemini's free tier rate-limits hard enough that a whole
- * record exceeds any sane test budget, so per-record is skipped for `google`
- * (still covered by openai + deepl; bulk covers all three). Supply a paid Gemini
- * key and delete this guard to re-enable.
+ * per field/segment. Free-tier chat keys (Gemini, and the free-plan Claude key)
+ * rate-limit hard enough that a whole record exceeds any sane test budget, so
+ * per-record is skipped for those vendors (still covered by openai + deepl; bulk
+ * covers all of them). Supply a paid key and drop the vendor from this guard to
+ * re-enable.
  */
-const skipPerRecordOnGoogle = (): void =>
+const FREE_TIER_VENDORS = new Set<ProjectMeta['vendor']>(['google', 'anthropic']);
+
+const skipPerRecordOnFreeTier = (): void =>
   test.skip(
-    meta().vendor === 'google',
-    'Gemini free-tier rate limits make whole-record sidebar translation exceed the budget',
+    FREE_TIER_VENDORS.has(meta().vendor),
+    'Free-tier Gemini/Claude rate limits make whole-record sidebar translation exceed the budget',
   );
 
 test.describe('AI Translations', () => {
@@ -46,7 +49,7 @@ test.describe('AI Translations', () => {
   });
 
   test('per-record: sidebar translates a kitchen-sink record and saves', async ({ page }) => {
-    skipPerRecordOnGoogle();
+    skipPerRecordOnFreeTier();
     test.setTimeout(TIMEOUTS.twelve_min + TIMEOUTS.three_min);
     await openRecord(page, meta(), ARTICLE, A1.id);
 
@@ -61,7 +64,7 @@ test.describe('AI Translations', () => {
   });
 
   test('per-record: placeholder tokens survive, or a save error is surfaced (A5)', async ({ page }) => {
-    skipPerRecordOnGoogle();
+    skipPerRecordOnFreeTier();
     test.setTimeout(TIMEOUTS.twelve_min + TIMEOUTS.three_min);
     await openRecord(page, meta(), ARTICLE, A5.id);
 

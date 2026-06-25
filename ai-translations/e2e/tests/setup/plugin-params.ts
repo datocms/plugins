@@ -2,6 +2,7 @@ import {
   defaultPromptValue,
   translateFieldTypes,
 } from '../../../src/entrypoints/Config/configConstants';
+import { listRelevantAnthropicModels } from '../../../src/utils/translation/AnthropicModels';
 import { listRelevantGeminiModels } from '../../../src/utils/translation/GeminiModels';
 import { listRelevantOpenAIModels } from '../../../src/utils/translation/OpenAIModels';
 import type { ProviderSpec } from '../fixtures/providers';
@@ -65,6 +66,8 @@ const resolveModel = async (spec: ProviderSpec, env = requireEnv()): Promise<str
       return (await listRelevantOpenAIModels(key))[0] ?? '';
     case 'google':
       return (await listRelevantGeminiModels(key))[0] ?? '';
+    case 'anthropic':
+      return (await listRelevantAnthropicModels(key))[0] ?? '';
     case 'deepl':
       return '';
   }
@@ -94,6 +97,15 @@ const buildParams = (spec: ProviderSpec, model: string, env = requireEnv()) => {
         gptModel: '',
         googleApiKey: key,
         geminiModel: model,
+      };
+    case 'anthropic':
+      return {
+        ...base,
+        vendor: 'anthropic',
+        apiKey: '',
+        gptModel: '',
+        anthropicApiKey: key,
+        anthropicModel: model,
       };
     case 'deepl':
       return {

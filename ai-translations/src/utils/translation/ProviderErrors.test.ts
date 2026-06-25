@@ -165,6 +165,83 @@ describe('ProviderErrors.ts', () => {
         expect(formatErrorForUser(result)).toContain('record is locked');
       });
 
+      it('names the failing field and reason for a 422 length-validation error', () => {
+        const error = {
+          request: {
+            url: 'https://site-api.datocms.com/items/123',
+            method: 'PUT',
+            headers: {},
+          },
+          response: {
+            status: 422,
+            statusText: 'Unprocessable Entity',
+            headers: {},
+            body: {
+              data: [
+                {
+                  id: 'err',
+                  type: 'api_error',
+                  attributes: {
+                    code: 'INVALID_FIELD',
+                    details: { field: 'title', code: 'VALIDATION_LENGTH' },
+                  },
+                },
+              ],
+            },
+          },
+        };
+        const result = normalizeProviderError(error, 'openai');
+
+        expect(result.source).toBe('datocms');
+        const msg = formatErrorForUser(result);
+        // The cryptic generic message is replaced by field + reason.
+        expect(msg).toContain('title');
+        expect(msg.toLowerCase()).toContain('length');
+        // …without an awkward double "DatoCMS … DatoCMS" prefix.
+        expect(msg.match(/DatoCMS/g)?.length ?? 0).toBe(1);
+      });
+
+      it('lists every invalid field for a multi-field 422 validation error', () => {
+        const error = {
+          request: {
+            url: 'https://site-api.datocms.com/items/123',
+            method: 'PUT',
+            headers: {},
+          },
+          response: {
+            status: 422,
+            statusText: 'Unprocessable Entity',
+            headers: {},
+            body: {
+              data: [
+                {
+                  id: 'a',
+                  type: 'api_error',
+                  attributes: {
+                    code: 'INVALID_FIELD',
+                    details: { field: 'title', code: 'VALIDATION_LENGTH' },
+                  },
+                },
+                {
+                  id: 'b',
+                  type: 'api_error',
+                  attributes: {
+                    code: 'INVALID_FIELD',
+                    details: { field: 'slug', code: 'VALIDATION_REQUIRED' },
+                  },
+                },
+              ],
+            },
+          },
+        };
+        const result = normalizeProviderError(error, 'openai');
+        const msg = formatErrorForUser(result);
+
+        expect(msg).toContain('title');
+        expect(msg).toContain('slug');
+        expect(msg.toLowerCase()).toContain('required');
+      });
+
       it('should label DatoCMS request timeouts', () => {
         const error = {
           request: {

@@ -5,10 +5,17 @@ import { PROVIDERS } from './e2e/tests/fixtures/providers';
 
 // Fail fast on a misconfigured environment before launching anything.
 requireEnv();
+if (PROVIDERS.length === 0) {
+  throw new Error(
+    'No provider API keys found in .env.testing (any of OPENAI, GEMINI, DEEPL, CLAUDE).\n' +
+      'Set at least one provider key to run the matrix.',
+  );
+}
 
 /**
- * Browser-driven E2E for the AI Translations plugin. Three projects — one per
- * provider — run fully in parallel (`workers: 3`), each against its own
+ * Browser-driven E2E for the AI Translations plugin. One project per provider
+ * whose API key is present in `.env.testing` (missing keys are skipped), each
+ * running fully in parallel (`workers` = number of active lanes) against its own
  * fast-forked sandbox environment provisioned in `global-setup`. Specs live in
  * `e2e/tests/`; `e2e/seed/` builds the fixture project the forks are taken from.
  * See docs/superpowers/specs/2026-06-24-ai-translations-e2e-design.md.
@@ -20,7 +27,7 @@ export default defineConfig({
   testMatch: '**/*.spec.ts',
   globalSetup: './e2e/tests/setup/global-setup.ts',
   globalTeardown: './e2e/tests/setup/global-teardown.ts',
-  workers: 3,
+  workers: PROVIDERS.length,
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: 0,

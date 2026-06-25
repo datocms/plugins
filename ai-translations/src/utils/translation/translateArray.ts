@@ -9,6 +9,7 @@ import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import { createLogger, type Logger } from '../logging/Logger';
 import { resolveGlossaryId } from './DeepLGlossary';
 import { isFormalitySupported, mapDatoToDeepL } from './DeepLMap';
+import { recoverJsonArray } from './jsonArrayRecovery';
 import {
   formatErrorForUser,
   normalizeProviderError,
@@ -217,6 +218,21 @@ function parseResponseArray(
       repairedLength: repaired.length,
     });
     return { array: repaired, repaired: true, repairedArray: repaired };
+  }
+
+  // Last resort: recover lightly-malformed arrays (single-quoted strings,
+  // trailing commas) the model emits intermittently — the "single quotes only
+  // translated after 3-4 retries" failure mode. Quote-aware, so it never
+  // corrupts string contents.
+  const recovered = recoverJsonArray(trimmedTxt);
+  if (recovered) {
+    logger.info('Parsed response array after relaxed recovery', {
+      ...context,
+      rawResponse: trimmedTxt,
+      repairedArray: recovered,
+      repairedLength: recovered.length,
+    });
+    return { array: recovered, repaired: true, repairedArray: recovered };
   }
 
   throw new Error('Model did not return a JSON array');

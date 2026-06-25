@@ -13,6 +13,8 @@ import {
   formatErrorForUser,
   normalizeProviderError,
 } from './ProviderErrors';
+import { checkFieldLength } from './qc/validatorChecks';
+import type { QcFlag } from './qc/types';
 import {
   type FieldTypeDictionary,
   type FieldValidators,
@@ -263,6 +265,12 @@ export type ProgressUpdate = {
   recordId: string;
   status: ProgressStatus;
   message?: string;
+  /**
+   * Structured QC flags raised while translating this record, retained
+   * alongside the human `message` so the bulk report can group by field/locale/
+   * check and export machine-readable rows (not just a flattened string).
+   */
+  qcFlags?: QcFlag[];
 };
 
 /**
@@ -300,6 +308,12 @@ export interface BuildTranslatedUpdatePayloadResult {
    * surfaced for manual vetting (design §6b), never silently counted as done.
    */
   errorCount: number;
+  /**
+   * Raw QC flags raised for this record's fields, retained (in addition to the
+   * flattened `warnings` strings) so the end-of-run report can group by
+   * field/locale/check and export structured rows.
+   */
+  qcFlags: QcFlag[];
 }
 
 /**
@@ -484,6 +498,7 @@ export async function translateAndUpdateRecords(
 
     const mergedPayload: Record<string, Record<string, unknown>> = {};
     const aggregatedWarnings: string[] = [];
+    const aggregatedQcFlags: QcFlag[] = [];
     let totalTranslatedFields = 0;
     let totalErrorCount = 0;
 
@@ -519,6 +534,7 @@ export async function translateAndUpdateRecords(
 
       mergeLocalePayloadInto(mergedPayload, localeResult.payload);
       aggregatedWarnings.push(...localeResult.warnings);
+      aggregatedQcFlags.push(...localeResult.qcFlags);
       totalTranslatedFields += localeResult.translatedFieldCount;
       totalErrorCount += localeResult.errorCount;
     }
@@ -545,6 +561,7 @@ export async function translateAndUpdateRecords(
       translatedFieldCount: totalTranslatedFields,
       warnings: aggregatedWarnings,
       errorCount: totalErrorCount,
+      qcFlags: aggregatedQcFlags,
     };
   }
 
@@ -574,6 +591,7 @@ export async function translateAndUpdateRecords(
         recordId,
         status: 'error',
         message: `No fields were updated for "${recordLabel}" (#${recordId}).${warningSuffix}`,
+        qcFlags: translatedFields.qcFlags,
       });
       return 'continue';
     }
@@ -588,6 +606,7 @@ export async function translateAndUpdateRecords(
         recordId,
         status: 'error',
         message: `Translated "${recordLabel}" (#${recordId}) but ${translatedFields.errorCount} field/locale value(s) may be incomplete.${warningSuffix}`,
+        qcFlags: translatedFields.qcFlags,
       });
       return 'continue';
     }
@@ -604,6 +623,7 @@ export async function translateAndUpdateRecords(
           ? 'completed-with-warnings'
           : 'completed',
       message: completionMessage,
+      qcFlags: translatedFields.qcFlags,
     });
     return 'done';
   }
@@ -784,6 +804,7 @@ export async function buildTranslatedUpdatePayload(
 ): Promise<BuildTranslatedUpdatePayloadResult> {
   const updatePayload: Record<string, Record<string, unknown>> = {};
   const warnings: string[] = [];
+  const qcFlags: QcFlag[] = [];
   let translatedFieldCount = 0;
   let errorCount = 0;
 
@@ -804,6 +825,27 @@ export async function buildTranslatedUpdatePayload(
       )
     );
   });
+
+  /**
+   * Routes a QC flag into the per-record accumulators: error-severity flags
+   * bump `errorCount` (which escalates the record to a failure in the report),
+   * and every flag becomes a human-readable warning line.
+   */
+  function recordQcFlag(flag: QcFlag, field: string): void {
+    if (flag.severity === 'error') errorCount += 1;
+    // Retain the structured flag (with field/locale stamped) for the report…
+    qcFlags.push({
+      ...flag,
+      fieldPath: flag.fieldPath ?? field,
+      locale: flag.locale ?? toLocale,
+    });
+    // …and the human line for the live progress message.
+    warnings.push(
+      `${flag.severity === 'error' ? 'Translation issue' : 'Note'} — "${flag.fieldPath ?? field}" → ${formatLocaleWithCode(
+        flag.locale ?? toLocale,
+      )}: ${flag.message}`,
+    );
+  }
 
   /**
    * Translates one field and writes the result onto `updatePayload[field]`,
@@ -844,16 +886,20 @@ export async function buildTranslatedUpdatePayload(
         {
           fieldApiKey: field,
           ...(cmaBaseUrl ? { cmaBaseUrl } : {}),
-          onQcFlag: (flag) => {
-            if (flag.severity === 'error') errorCount += 1;
-            warnings.push(
-              `${flag.severity === 'error' ? 'Translation issue' : 'Note'} — "${flag.fieldPath ?? field}" → ${formatLocaleWithCode(
-                flag.locale ?? toLocale,
-              )}: ${flag.message}`,
-            );
-          },
+          onQcFlag: (flag) => recordQcFlag(flag, field),
         },
       );
+
+      // Schema-aware guard: a value over the field's length validator WILL be
+      // rejected by the CMA. Flag it (error-tier) so the record surfaces as a
+      // failure naming the field, instead of the save 422-ing opaquely.
+      const lengthFlag = checkFieldLength({
+        value: translatedValue,
+        validators: fieldTypeDictionary[field].validators,
+        fieldPath: field,
+        locale: toLocale,
+      });
+      if (lengthFlag) recordQcFlag(lengthFlag, field);
 
       updatePayload[field] = {
         ...((record[field] as Record<string, unknown>) || {}),
@@ -914,6 +960,7 @@ export async function buildTranslatedUpdatePayload(
     translatedFieldCount,
     warnings,
     errorCount,
+    qcFlags,
   };
 }
 

@@ -286,6 +286,95 @@ describe('ItemsDropdownUtils', () => {
       expect(result.warnings.length).toBeGreaterThan(0);
     });
 
+    it('flags an error when a translated value overflows the field length validator', async () => {
+      // The customer's case: translation grows past the field's character limit.
+      vi.mocked(translateFieldValue).mockResolvedValue('Ciao mondo bellissimo');
+
+      const dictWithLimit = {
+        ...fieldTypeDictionary,
+        title: {
+          ...fieldTypeDictionary.title,
+          validators: { length: { max: 5 } },
+        },
+      };
+
+      const result = await buildTranslatedUpdatePayload(
+        record,
+        'en',
+        'it',
+        dictWithLimit,
+        provider,
+        { ...pluginParams, translationFields: ['single_line'] },
+        'access-token',
+        'main',
+      );
+
+      expect(result.errorCount).toBeGreaterThan(0);
+      expect(
+        result.warnings.some(
+          (w) => w.includes('title') && w.includes('at most 5'),
+        ),
+      ).toBe(true);
+    });
+
+    it('returns the structured QC flags (not just warning strings) for the report', async () => {
+      vi.mocked(translateFieldValue).mockResolvedValue('Ciao mondo bellissimo');
+
+      const dictWithLimit = {
+        ...fieldTypeDictionary,
+        title: {
+          ...fieldTypeDictionary.title,
+          validators: { length: { max: 5 } },
+        },
+      };
+
+      const result = await buildTranslatedUpdatePayload(
+        record,
+        'en',
+        'it',
+        dictWithLimit,
+        provider,
+        { ...pluginParams, translationFields: ['single_line'] },
+        'access-token',
+        'main',
+      );
+
+      const lengthFlag = result.qcFlags.find(
+        (f) => f.checkId === 'length-validator',
+      );
+      expect(lengthFlag).toMatchObject({
+        checkId: 'length-validator',
+        severity: 'error',
+        fieldPath: 'title',
+        locale: 'it',
+      });
+    });
+
+    it('does not flag a length validator the translation respects', async () => {
+      vi.mocked(translateFieldValue).mockResolvedValue('Ciao');
+
+      const dictWithLimit = {
+        ...fieldTypeDictionary,
+        title: {
+          ...fieldTypeDictionary.title,
+          validators: { length: { max: 50 } },
+        },
+      };
+
+      const result = await buildTranslatedUpdatePayload(
+        record,
+        'en',
+        'it',
+        dictWithLimit,
+        provider,
+        { ...pluginParams, translationFields: ['single_line'] },
+        'access-token',
+        'main',
+      );
+
+      expect(result.errorCount).toBe(0);
+    });
+
     it('copies source value for required non-block fields, strips IDs for required block fields', async () => {
       vi.mocked(translateFieldValue).mockResolvedValue('Ciao');
 

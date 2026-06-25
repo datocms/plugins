@@ -369,6 +369,42 @@ describe('translateArray.ts', () => {
         expect(result).toEqual(['Hallo', 'Welt']);
       });
 
+      it('should recover a single-quoted array the model returned instead of JSON', async () => {
+        // Reproduces the "single quotes only translated after 3-4 retries" bug:
+        // the model emits a JS/Python-style single-quoted array, which strict
+        // JSON.parse + bracket-extraction both reject. It must now recover on
+        // the first attempt instead of throwing.
+        vi.mocked(mockProvider.completeText).mockResolvedValue(
+          "['Aujourd\\'hui', 'L\\'hôtel est ouvert']",
+        );
+
+        const result = await translateArray(
+          mockProvider,
+          mockPluginParams,
+          ["Today", "The hotel is open"],
+          'en',
+          'fr',
+        );
+
+        expect(result).toEqual(["Aujourd'hui", 'L\'hôtel est ouvert']);
+      });
+
+      it('should recover a single-quoted array wrapped in a markdown fence', async () => {
+        vi.mocked(mockProvider.completeText).mockResolvedValue(
+          "```json\n['Hallo', 'Welt']\n```",
+        );
+
+        const result = await translateArray(
+          mockProvider,
+          mockPluginParams,
+          ['Hello', 'World'],
+          'en',
+          'de',
+        );
+
+        expect(result).toEqual(['Hallo', 'Welt']);
+      });
+
       it('should log response repair diagnostics for wrapped JSON', async () => {
         const logSpy = vi
           .spyOn(console, 'log')

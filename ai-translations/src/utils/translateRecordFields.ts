@@ -32,8 +32,10 @@ import {
   normalizeProviderError,
 } from './translation/ProviderErrors';
 import { getProvider } from './translation/ProviderFactory';
+import { checkFieldLength } from './translation/qc/validatorChecks';
 import type { OnQcFlag } from './translation/qc/types';
 import {
+  type FieldValidators,
   getExactSourceValue,
   prepareFieldTypePrompt,
 } from './translation/SharedFieldUtils';
@@ -120,6 +122,7 @@ type RunJobParams = {
   fieldId: string;
   fieldApiKey: string;
   fieldTypePrompt: string;
+  validators?: FieldValidators;
   pluginParams: ctxParamsType;
   sourceLocale: string;
   provider: TranslationProvider;
@@ -251,6 +254,18 @@ async function runFieldLocaleJob(params: RunJobParams): Promise<void> {
       value: translatedFieldValue,
     });
     await setFieldValue(fieldPath, translatedFieldValue);
+
+    // Schema-aware guard: warn before the user saves a value the CMA would
+    // reject for overflowing the field's length validator (the proactive half
+    // of the silent-truncation fix). Flows through the existing QC sink.
+    const lengthFlag = checkFieldLength({
+      value: translatedFieldValue,
+      validators: params.validators,
+      fieldPath: baseFieldPath,
+      locale,
+    });
+    if (lengthFlag) options.onQcFlag?.(lengthFlag);
+
     options.onComplete?.(fieldLabel, locale, fieldPath, baseFieldPath);
     const end = performance.now?.() ?? Date.now();
     logger.info('Task finished', {
@@ -640,6 +655,7 @@ export async function translateRecordFields(
     fieldId: string,
     fieldApiKey: string,
     fieldTypePrompt: string,
+    validators: FieldValidators | undefined,
   ): Job {
     return {
       id: fieldPath,
@@ -658,6 +674,7 @@ export async function translateRecordFields(
           fieldId,
           fieldApiKey,
           fieldTypePrompt,
+          validators,
           pluginParams,
           sourceLocale,
           provider,
@@ -694,6 +711,7 @@ export async function translateRecordFields(
     isFramelessField: boolean | undefined;
     framelessParentKey: string | undefined;
     sourceLocaleValue: unknown;
+    validators: FieldValidators | undefined;
   };
 
   /**
@@ -758,6 +776,7 @@ export async function translateRecordFields(
       isFramelessField,
       framelessParentKey,
       sourceLocaleValue,
+      validators: field.attributes.validators as FieldValidators | undefined,
     };
   }
 
@@ -774,6 +793,7 @@ export async function translateRecordFields(
       isFramelessField,
       framelessParentKey,
       sourceLocaleValue,
+      validators,
     } = data;
     const fieldTypePrompt = prepareFieldTypePrompt(fieldType);
     const hasFramelessParent = isFramelessField && framelessParentKey;
@@ -796,6 +816,7 @@ export async function translateRecordFields(
           fieldId,
           fieldApiKey,
           fieldTypePrompt,
+          validators,
         ),
       );
     }

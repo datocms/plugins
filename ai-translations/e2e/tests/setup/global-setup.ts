@@ -15,9 +15,9 @@ export const STORAGE_STATE = 'e2e/.auth/state.json';
  *   1. validate env (fail fast),
  *   2. ensure the dev-URL plugin is installed in `main`,
  *   3. reap stale `e2e-*` envs from earlier runs,
- *   4. fast-fork one sandbox env per provider,
+ *   4. fast-fork one sandbox env per active provider (those with a key set),
  *   5. pin each env's plugin to its provider (env-scoped params),
- *   6. log in once and persist the session for all three projects.
+ *   6. log in once and persist the session for every project.
  */
 const globalSetup = async (): Promise<void> => {
   requireEnv();
