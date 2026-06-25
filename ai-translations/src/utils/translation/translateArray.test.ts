@@ -239,6 +239,54 @@ describe('translateArray.ts', () => {
         expect(result).toEqual(['Hallo', 'Welt']);
       });
 
+      it('should rejoin when the model splits a single HTML segment into multiple elements', async () => {
+        // Regression (Basecamp card 10026091779): a WYSIWYG/rich-text field is
+        // sent as ONE segment containing several block-level <p> elements. Chat
+        // models (Google/OpenAI/Anthropic) frequently "helpfully" split it into
+        // one array element per block, returning more elements than were sent.
+        // The positional length repair maps output to input by index, so it
+        // dropped every element past the first — cropping the field to its first
+        // paragraph. For HTML the elements must be rejoined (newlines between
+        // block-level elements are insignificant) instead of discarding the tail.
+        vi.mocked(mockProvider.completeText).mockResolvedValue(
+          '["<p data-path-to-node=\\"0\\">Eerste paragraaf.</p>", "<p data-path-to-node=\\"1\\">Tweede paragraaf.</p>"]',
+        );
+
+        const result = await translateArray(
+          mockProvider,
+          mockPluginParams,
+          [
+            '<p data-path-to-node="0">First paragraph.</p>\n<p data-path-to-node="1">Second paragraph.</p>',
+          ],
+          'en',
+          'nl',
+          { isHTML: true },
+        );
+
+        expect(result).toEqual([
+          '<p data-path-to-node="0">Eerste paragraaf.</p>\n<p data-path-to-node="1">Tweede paragraaf.</p>',
+        ]);
+      });
+
+      it('should NOT rejoin an over-split non-HTML segment (avoids corrupting single_line/json/slug)', async () => {
+        // The newline-rejoin recovery is gated to HTML only. For a plain
+        // single-line value, injecting newlines would corrupt it, so the
+        // positional length repair (keep the first element) is retained.
+        vi.mocked(mockProvider.completeText).mockResolvedValue(
+          '["Rojo", "verde", "azul"]',
+        );
+
+        const result = await translateArray(
+          mockProvider,
+          mockPluginParams,
+          ['Red, green, blue'],
+          'en',
+          'es',
+        );
+
+        expect(result).toEqual(['Rojo']);
+      });
+
       it('should suppress debug logs when debugging is disabled', async () => {
         const logSpy = vi
           .spyOn(console, 'log')
