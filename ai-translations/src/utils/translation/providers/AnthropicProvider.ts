@@ -90,6 +90,9 @@ export default class AnthropicProvider implements TranslationProvider {
         'content-type': 'application/json',
         'x-api-key': this.apiKey,
         'anthropic-version': '2023-06-01',
+        // Opt in to direct browser (CORS) calls — the plugin runs inside the
+        // DatoCMS iframe and calls the Messages API from the client. See #148.
+        'anthropic-dangerous-direct-browser-access': 'true',
       },
       body: JSON.stringify(body),
       signal,
