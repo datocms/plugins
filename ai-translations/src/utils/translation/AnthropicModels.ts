@@ -44,6 +44,9 @@ export async function listRelevantAnthropicModels(
       headers: {
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
+        // The config screen lists models from inside the DatoCMS iframe;
+        // Anthropic blocks browser-origin requests without this header (#148).
+        'anthropic-dangerous-direct-browser-access': 'true',
       },
     });
     if (!res.ok) throw new Error(String(res.status));
