@@ -45,7 +45,10 @@ export const AdvancedSettings = ({
             fontSize: 'var(--font-size-xs)',
           }}
         >
-          This plugin runs in Lambda cron mode only.
+          Backups are created by the scheduled serverless function you deploy:
+          it runs once a day (02:05 UTC) and clones your primary environment
+          into sandbox backups. This plugin only configures and monitors that
+          function — nothing runs from your browser.
         </p>
       </Section>
     </Form>

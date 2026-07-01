@@ -1,7 +1,13 @@
-import { Button, TextField } from 'datocms-react-ui';
+import { Button, Spinner, TextField } from 'datocms-react-ui';
 import { useState } from 'react';
 import { StatusBox } from './StatusBox';
 import type { BackupsConfig } from './useBackupsConfig';
+
+const spinnerRowStyle = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 'var(--spacing-s)',
+} as const;
 
 /**
  * Step 2 — point the plugin at the deployed function and verify it responds and
@@ -72,7 +78,12 @@ export const StepConnect = ({ config }: { config: BackupsConfig }) => {
       </div>
 
       {isTesting ? (
-        <StatusBox variant="neutral">Testing connection…</StatusBox>
+        <StatusBox variant="neutral">
+          <span style={spinnerRowStyle}>
+            <Spinner size={20} />
+            Testing connection to {urlInput.trim() || 'your function'}…
+          </span>
+        </StatusBox>
       ) : connectionTestError ? (
         <StatusBox variant="error" title={connectionTestError.summary}>
           {connectionTestError.details.length > 0 && (

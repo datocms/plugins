@@ -1,4 +1,4 @@
-import { Button, TextField } from 'datocms-react-ui';
+import { Button, Spinner, TextField } from 'datocms-react-ui';
 import {
   type CSSProperties,
   type KeyboardEvent,
@@ -14,6 +14,37 @@ import { StatusBox } from './StatusBox';
 import type { BackupsConfig } from './useBackupsConfig';
 
 const DEPLOY_MENU_ID = 'deploy-provider-menu';
+
+/** Two-circular-arrows "regenerate" glyph (icons aren't shippable from the SDK). */
+const RegenerateIcon = () => (
+  <svg
+    width="14"
+    height="14"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <path d="M23 4v6h-6" />
+    <path d="M1 20v-6h6" />
+    <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+  </svg>
+);
+
+const linkButtonStyle: CSSProperties = {
+  border: 0,
+  background: 'transparent',
+  padding: 0,
+  margin: 0,
+  color: 'inherit',
+  font: 'inherit',
+  fontWeight: 600,
+  textDecoration: 'underline',
+  cursor: 'pointer',
+};
 
 const menuContainerStyle: CSSProperties = {
   position: 'relative',
@@ -50,17 +81,18 @@ const menuOptionStyle: CSSProperties = {
 
 /**
  * Step 1 — create/rotate the shared auth secret and deploy the scheduler. The
- * secret is generated (fresh install) or loaded as-is, saved explicitly, then a
- * provider deploy menu + paste callout are revealed. Editing a saved secret
- * while connected raises a redeploy warning.
+ * field carries an inline regenerate icon; one "Save and copy" action persists
+ * the secret and puts it on the clipboard for the deployment env var. Editing a
+ * saved secret raises a warning (with a "Revert to saved?" escape hatch), and a
+ * provider deploy menu + paste callout are revealed once a secret is saved.
  */
 export const StepSecret = ({ config }: { config: BackupsConfig }) => {
   const {
     secretInput,
     setSecretInput,
-    saveSecret,
+    saveAndCopySecret,
     regenerateSecret,
-    copySecret,
+    revertSecret,
     isSavingSecret,
     savedSecret,
     isConnected,
@@ -72,7 +104,6 @@ export const StepSecret = ({ config }: { config: BackupsConfig }) => {
   const hasSavedSecret = savedSecret.trim().length > 0;
   const trimmedInput = secretInput.trim();
   const secretEdited = hasSavedSecret && trimmedInput !== savedSecret.trim();
-  const showRedeployWarning = isConnected && secretEdited;
 
   useEffect(() => {
     if (!isMenuOpen) {
@@ -113,76 +144,69 @@ export const StepSecret = ({ config }: { config: BackupsConfig }) => {
 
   return (
     <>
-      <TextField
-        name="lambdaAuthSecret"
-        id="lambdaAuthSecret"
-        label="Shared auth secret"
-        value={secretInput}
-        placeholder="Generate a strong secret"
-        onChange={setSecretInput}
-      />
+      <div style={{ display: 'flex', gap: 'var(--spacing-s)', alignItems: 'flex-end' }}>
+        <div style={{ flex: 1 }}>
+          <TextField
+            name="lambdaAuthSecret"
+            id="lambdaAuthSecret"
+            label="Shared auth secret"
+            value={secretInput}
+            placeholder="Generate a strong secret"
+            onChange={setSecretInput}
+          />
+        </div>
+        {/* Native title on the wrapping span carries the tooltip — the icon-only
+            Button has no text label. */}
+        <span title="Regenerate shared secret" style={{ display: 'inline-flex' }}>
+          <Button
+            buttonType="muted"
+            buttonSize="xs"
+            onClick={regenerateSecret}
+            disabled={isSavingSecret}
+            aria-label="Regenerate shared secret"
+          >
+            <RegenerateIcon />
+          </Button>
+        </span>
+      </div>
 
-      <div
-        style={{
-          display: 'flex',
-          gap: 'var(--spacing-s)',
-          flexWrap: 'wrap',
-        }}
-      >
-        <Button
-          buttonType="muted"
-          buttonSize="s"
-          onClick={regenerateSecret}
-          disabled={isSavingSecret}
-        >
-          Generate
-        </Button>
-        <Button
-          buttonType="muted"
-          buttonSize="s"
-          onClick={() => {
-            void copySecret();
-          }}
-          disabled={trimmedInput.length === 0}
-        >
-          Copy
-        </Button>
+      <div style={{ display: 'flex', gap: 'var(--spacing-s)', flexWrap: 'wrap' }}>
         <Button
           buttonType="primary"
           buttonSize="s"
           onClick={() => {
-            void saveSecret();
+            void saveAndCopySecret();
           }}
           disabled={isSavingSecret || trimmedInput.length === 0}
+          leftIcon={isSavingSecret ? <Spinner size={16} /> : undefined}
         >
-          {isSavingSecret ? 'Saving…' : 'Save secret'}
+          {isSavingSecret ? 'Saving…' : 'Save and copy'}
         </Button>
       </div>
 
-      {showRedeployWarning && (
+      {secretEdited && (
         <StatusBox variant="warning">
-          Changing this means updating <code>DATOCMS_BACKUPS_SHARED_SECRET</code>{' '}
-          on your deployment and redeploying, or the connection will fail.
+          {isConnected ? (
+            <>
+              Changing this means updating{' '}
+              <code>DATOCMS_BACKUPS_SHARED_SECRET</code> on your deployment and
+              redeploying, or the connection will fail.{' '}
+            </>
+          ) : (
+            <>You&rsquo;ve modified the saved secret. </>
+          )}
+          <button type="button" onClick={revertSecret} style={linkButtonStyle}>
+            Revert to saved?
+          </button>
         </StatusBox>
       )}
 
       {hasSavedSecret && (
         <>
           <StatusBox variant="neutral" title="Deploy the scheduler">
-            Paste this value as <code>DATOCMS_BACKUPS_SHARED_SECRET</code> on your
-            provider, then come back with the deployed URL.
-            <span
-              style={{
-                display: 'block',
-                marginTop: 'var(--spacing-s)',
-                fontFamily: 'monospace',
-                fontSize: 'var(--font-size-xs)',
-                wordBreak: 'break-all',
-                color: 'var(--color--ink)',
-              }}
-            >
-              {savedSecret}
-            </span>
+            Deploy the scheduler to your provider, setting{' '}
+            <code>DATOCMS_BACKUPS_SHARED_SECRET</code> to the secret above. Once
+            you have the deployed URL, continue to the next step.
           </StatusBox>
 
           <div

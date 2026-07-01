@@ -1,4 +1,4 @@
-import { Button, SwitchField } from 'datocms-react-ui';
+import { Button, Spinner, SwitchField } from 'datocms-react-ui';
 import type { CSSProperties } from 'react';
 import { BACKUP_CADENCES, getCadenceLabel } from '../utils/backupSchedule';
 import { StatusBox } from './StatusBox';
@@ -53,8 +53,19 @@ export const StepSchedule = ({ config }: { config: BackupsConfig }) => {
         </Button>
       </div>
 
-      {progressMessage && (
-        <StatusBox variant="neutral">{progressMessage}</StatusBox>
+      {isSavingSchedule && (
+        <StatusBox variant="neutral">
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 'var(--spacing-s)',
+            }}
+          >
+            <Spinner size={20} />
+            {progressMessage ?? 'Saving schedule and creating initial backups…'}
+          </span>
+        </StatusBox>
       )}
     </>
   );

@@ -1,4 +1,4 @@
-import { Button } from 'datocms-react-ui';
+import { Button, Spinner } from 'datocms-react-ui';
 import type { CSSProperties } from 'react';
 import type { BackupOverviewRow } from '../types/types';
 import { getCadenceLabel, normalizeBackupScheduleConfig } from '../utils/backupSchedule';
@@ -141,15 +141,18 @@ export const StatusOverview = ({
       </div>
 
       {isLoadingOverview && (
-        <p
-          style={{
-            margin: '0 0 var(--spacing-s)',
-            color: 'var(--color--ink-subtle)',
-            fontSize: 'var(--font-size-xs)',
-          }}
-        >
-          Refreshing backup status…
-        </p>
+        <StatusBox variant="neutral" style={{ marginBottom: 'var(--spacing-m)' }}>
+          <span
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 'var(--spacing-s)',
+            }}
+          >
+            <Spinner size={20} />
+            Loading backup status…
+          </span>
+        </StatusBox>
       )}
 
       {overviewError && (
@@ -212,6 +215,7 @@ export const StatusOverview = ({
                     void backupNow(row.scope);
                   }}
                   disabled={isRowDisabled}
+                  leftIcon={isRowLoading ? <Spinner size={16} /> : undefined}
                 >
                   {isRowLoading ? 'Backing up…' : 'Backup now'}
                 </Button>

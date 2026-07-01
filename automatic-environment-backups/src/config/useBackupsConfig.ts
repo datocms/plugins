@@ -672,6 +672,22 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
     }
   }, [ctx, debugLogger, params, persistPluginParameters, secretInput]);
 
+  /**
+   * Persist the edited secret and immediately copy it to the clipboard so the
+   * user can paste it into their deployment's `DATOCMS_BACKUPS_SHARED_SECRET`
+   * env var in one action. Reuses {@link saveSecret} (validates + persists) and
+   * {@link copySecret} (clipboard + notice/alert).
+   */
+  const saveAndCopySecret = useCallback(async () => {
+    await saveSecret();
+    await copySecret();
+  }, [copySecret, saveSecret]);
+
+  /** Discard the in-flight secret edit, restoring the field to the saved value. */
+  const revertSecret = useCallback(() => {
+    setSecretInput(savedSecret);
+  }, [savedSecret]);
+
   const saveAndTestConnection = useCallback(async () => {
     const candidateUrl = urlInput.trim();
     if (!candidateUrl) {
@@ -1010,7 +1026,9 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
     debugEnabled,
     // handlers
     saveSecret,
+    saveAndCopySecret,
     regenerateSecret,
+    revertSecret,
     copySecret,
     saveAndTestConnection,
     disconnect,

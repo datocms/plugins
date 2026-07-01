@@ -12,6 +12,7 @@ import { StepConnect } from '../config/StepConnect';
 import { StepSchedule } from '../config/StepSchedule';
 import { StepSection } from '../config/StepSection';
 import { StepSecret } from '../config/StepSecret';
+import { StepTimeline } from '../config/StepTimeline';
 import { useBackupsConfig } from '../config/useBackupsConfig';
 import { getCadenceLabel } from '../utils/backupSchedule';
 
@@ -28,11 +29,14 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   const statuses = deriveStepStatuses(params);
   const { currentStep } = statuses;
 
-  // The current/error step auto-expands; users can [Edit] an `ok` step to
-  // override. Syncing to `currentStep` (tracked via a ref) follows the wizard
-  // as saves advance it, without clobbering manual edits.
-  const [expandedStep, setExpandedStep] = useState<SetupStepId | null>(
-    currentStep,
+  // Multi-open accordion: track an open-step Set instead of a single expanded
+  // step. Toggling one step is purely additive and never collapses another, so
+  // clicking [Edit] on a lower step can't shift a higher one out from under the
+  // viewport (the old single-`expandedStep` model caused that scroll-jump CLS).
+  // We deliberately keep the custom StepSection (numbered card + status badge)
+  // rather than the SDK collapsible Section; the multi-open model is the fix.
+  const [openSteps, setOpenSteps] = useState<Set<SetupStepId>>(
+    () => new Set(currentStep ? [currentStep] : []),
   );
   const previousCurrentStepRef = useRef(currentStep);
   useEffect(() => {
@@ -43,19 +47,29 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     previousCurrentStepRef.current = currentStep;
 
     // Right after the secret is saved (secret → connect) with nothing deployed
-    // yet, keep step 1 expanded so its deploy menu + paste callout stay visible;
-    // the user advances to step 2 when they have a deployed URL in hand.
+    // yet, keep step 1's deploy callout visible AND reveal step 2 so the user
+    // can paste their deployed URL without losing the deploy menu.
     const justSavedSecretBeforeDeploy =
       previous === 'secret' && currentStep === 'connect' && !config.savedUrl;
     if (justSavedSecretBeforeDeploy) {
+      setOpenSteps(new Set<SetupStepId>(['secret', 'connect']));
       return;
     }
 
-    setExpandedStep(currentStep);
+    // On any other current-step change, focus the accordion on the new step.
+    setOpenSteps(new Set<SetupStepId>(currentStep ? [currentStep] : []));
   }, [currentStep, config.savedUrl]);
 
   const toggleStep = (step: SetupStepId) =>
-    setExpandedStep((current) => (current === step ? null : step));
+    setOpenSteps((prev) => {
+      const next = new Set(prev);
+      if (next.has(step)) {
+        next.delete(step);
+      } else {
+        next.add(step);
+      }
+      return next;
+    });
 
   const enabledCadences = readEnabledCadences(params);
   const secretSummary = 'Secret saved.';
@@ -69,12 +83,14 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   return (
     <Canvas ctx={ctx}>
       <div style={{ maxWidth: '760px', margin: '0 auto' }}>
+        <StepTimeline statuses={statuses} />
+
         <StepSection
           stepNumber={1}
           title="Auth secret & deploy"
           description="Create a shared secret the plugin and your deployed function use to authenticate, then deploy the scheduler."
           status={statuses.secret}
-          isExpanded={expandedStep === 'secret'}
+          isExpanded={openSteps.has('secret')}
           onToggle={() => toggleStep('secret')}
           summary={secretSummary}
         >
@@ -86,7 +102,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           title="Connect & test"
           description="Tell the plugin where your function is deployed and verify it responds and authenticates."
           status={statuses.connect}
-          isExpanded={expandedStep === 'connect'}
+          isExpanded={openSteps.has('connect')}
           onToggle={() => toggleStep('connect')}
           summary={connectSummary}
         >
@@ -98,7 +114,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           title="Backup cadence"
           description="Choose how often backups run. The scheduler runs once daily and creates the sandbox backups you enable."
           status={statuses.schedule}
-          isExpanded={expandedStep === 'schedule'}
+          isExpanded={openSteps.has('schedule')}
           onToggle={() => toggleStep('schedule')}
           summary={scheduleSummary}
         >
