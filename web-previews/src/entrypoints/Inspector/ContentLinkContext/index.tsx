@@ -25,6 +25,17 @@ type IframeState = { path: string; key: string };
 
 type CleanContentLinkState = Omit<ContentLinkState, 'itemIdsPerEnvironment'>;
 
+type InspectorPanelSyncState =
+  | { type: 'itemList'; path: string }
+  | { type: 'wrongEnvironment'; path: string; environments: string[] };
+
+function getInspectorPanelSyncKey(
+  frontendName: string,
+  panelState: InspectorPanelSyncState,
+) {
+  return [frontendName, panelState.path, panelState.type].join('\u0000');
+}
+
 interface ContextValue {
   contentLink:
     | { type: 'connecting' }
@@ -79,6 +90,19 @@ export function ContentLinkContextProvider({ children, frontend }: Props) {
   const [contentLinkState, setContentLinkState] = useState<
     CleanContentLinkState | undefined
   >(undefined);
+  const [inspectorPanelSyncState, setInspectorPanelSyncState] = useState<
+    InspectorPanelSyncState | undefined
+  >(undefined);
+  const lastSyncedInspectorPanelKeyRef = useRef<string | undefined>(undefined);
+  const lastFlashStateRef = useRef<{
+    clickToEditEnabled: boolean;
+    connectionReady: boolean;
+    panelKey: string | undefined;
+  }>({
+    clickToEditEnabled: false,
+    connectionReady: false,
+    panelKey: undefined,
+  });
 
   const [isPingActive, setIsPingActive] = useState<boolean>(true);
   const lastPingTimeRef = useRef<number>(Date.now());
@@ -117,6 +141,11 @@ export function ContentLinkContextProvider({ children, frontend }: Props) {
       setContentLinkState(rest);
 
       const currentEnvItems = itemIdsPerEnvironment[currentEnvironmentId] ?? [];
+      const safePath = normalizePathForVisualEditing({
+        path: rest.path,
+        draftModeUrl: currentVisualEditing.enableDraftModeUrl,
+        fallbackPath,
+      });
 
       // Check for items from other environments
       const otherEnvironments = Object.keys(itemIdsPerEnvironment).filter(
@@ -133,30 +162,27 @@ export function ContentLinkContextProvider({ children, frontend }: Props) {
 
       // If there are NO records for the current environment but there are records from other environments
       if (currentEnvItems.length === 0 && otherEnvironments.length > 0) {
-        ctx.setInspectorMode({
-          type: 'customPanel',
-          panelId: 'CONTENT_COMING_FROM_WRONG_ENVIRONMENT',
-          parameters: { environments: otherEnvironments },
+        setInspectorPanelSyncState({
+          type: 'wrongEnvironment',
+          path: safePath,
+          environments: otherEnvironments,
         });
       } else {
         ctx.setInspectorItemListData({
           title: 'Records in this page',
           itemIds: currentEnvItems,
         });
+        setInspectorPanelSyncState({ type: 'itemList', path: safePath });
       }
 
-      lastVisitedPathRef.current = normalizePathForVisualEditing({
-        path: rest.path,
-        draftModeUrl: currentVisualEditing.enableDraftModeUrl,
-        fallbackPath,
-      });
+      lastVisitedPathRef.current = safePath;
     },
-    openItem: (info) => {
+    openItem: async (info) => {
       if (info.environment !== currentEnvironmentId) {
         return;
       }
 
-      ctx.setInspectorMode({ type: 'itemEditor', ...info });
+      await ctx.setInspectorMode({ type: 'itemEditor', ...info });
     },
     onPing: () => {
       lastPingTimeRef.current = Date.now();
@@ -215,44 +241,73 @@ export function ContentLinkContextProvider({ children, frontend }: Props) {
   }, [ctx.highlightedItemId]);
 
   useEffect(() => {
-    if (!contentLinkState?.path) {
+    if (!inspectorPanelSyncState) {
       return;
     }
 
-    const safePath = normalizePathForVisualEditing({
-      path: contentLinkState.path,
-      draftModeUrl: currentVisualEditing.enableDraftModeUrl,
-      fallbackPath,
-    });
-
-    ctx.setInspectorMode(
-      { type: 'itemList' },
-      { ignoreIfUnsavedChanges: true },
+    const panelKey = getInspectorPanelSyncKey(
+      frontend.name,
+      inspectorPanelSyncState,
     );
+
+    if (lastSyncedInspectorPanelKeyRef.current === panelKey) {
+      return;
+    }
+
+    lastSyncedInspectorPanelKeyRef.current = panelKey;
+
+    if (inspectorPanelSyncState.type === 'wrongEnvironment') {
+      ctx.setInspectorMode({
+        type: 'customPanel',
+        panelId: 'CONTENT_COMING_FROM_WRONG_ENVIRONMENT',
+        parameters: { environments: inspectorPanelSyncState.environments },
+      });
+    } else {
+      ctx.setInspectorMode(
+        { type: 'itemList' },
+        { ignoreIfUnsavedChanges: true },
+      );
+    }
 
     ctx.navigateTo(
       inspectorUrl(ctx, {
-        path: safePath,
+        path: inspectorPanelSyncState.path,
         frontend: frontend.name,
       }),
     );
+  }, [frontend.name, inspectorPanelSyncState, ctx]);
 
-    if (
-      connection.type === 'connected' &&
-      contentLinkState.clickToEditEnabled
-    ) {
+  useEffect(() => {
+    const clickToEditEnabled = contentLinkState?.clickToEditEnabled ?? false;
+    const connectionReady = connection.type === 'connected';
+    const panelKey = inspectorPanelSyncState
+      ? getInspectorPanelSyncKey(frontend.name, inspectorPanelSyncState)
+      : undefined;
+    const lastFlashState = lastFlashStateRef.current;
+
+    lastFlashStateRef.current = {
+      clickToEditEnabled,
+      connectionReady,
+      panelKey,
+    };
+
+    if (!connectionReady || !clickToEditEnabled || !panelKey) {
+      return;
+    }
+
+    const shouldFlash =
+      lastFlashState.panelKey !== panelKey ||
+      !lastFlashState.clickToEditEnabled ||
+      !lastFlashState.connectionReady;
+
+    if (shouldFlash) {
       connection.methods.flashAll({ scrollToNearestTarget: false });
     }
   }, [
-    contentLinkState?.path,
     contentLinkState?.clickToEditEnabled,
     connection,
-    currentVisualEditing.enableDraftModeUrl,
     frontend.name,
-    fallbackPath,
-    ctx.setInspectorMode,
-    ctx.navigateTo,
-    ctx,
+    inspectorPanelSyncState,
   ]);
 
   const reloadIframe = useCallback(() => {

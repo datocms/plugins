@@ -48,7 +48,7 @@ export default function useContentLinkConnection({
 
   const handleOpenItem = useMethodProxy(
     (info: EditUrlInfo) => {
-      openItem(info);
+      return openItem(info);
     },
     [openItem],
   );
