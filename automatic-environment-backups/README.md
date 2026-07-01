@@ -6,42 +6,42 @@ Because DatoCMS does not have a built-in job scheduler, the plugin has to create
 
 The lambda function is only used as a job scheduler, similar to a cronjob. The lambda calls the DatoCMS Content Management API (CMA) to actually manage the environments and perform the backups.
 
+![The Automatic Environment Backups configuration wizard](docs/config-wizard.png)
+
 ## How it works
 
+- The plugin's configuration screen is a guided, four-step wizard with a progress bar showing the state of each step.
 - Backup cadence is configured in the plugin (`daily`, `weekly`, `bi-weekly`, `monthly`).
-- The deployed scheduler calls the backup endpoints.
-- The plugin validates connectivity between the serverless functions using health checks against `/api/datocms/plugin-health`.
-- The **Backup overview** lists each enabled cadence with its last run, next scheduled run, and the linked sandbox environment, plus a per-slot **Backup now** button for on-demand execution.
-- The created backups are just forked sandboxes inside your DatoCMS project (named with a `backup-plugin-<cadence>` prefix), NOT separate files on an external provider. The external providers are only used to provide scheduled lambda executions that call our API to create a scheduled backup.
-- Source code for the deployed lambda function is at https://github.com/marcelofinamorvieira/datocms-backups-scheduled-function#deploying-on-cloudflare-workers (this lambda was written by Marcelo Finamor, a DatoCMS employee).
+- The deployed scheduler runs once a day (02:05 UTC) and calls the backup endpoints.
+- The plugin validates connectivity to the serverless function with a health check against `/api/datocms/plugin-health`, authenticated with a shared secret.
+- The **Status overview** lists each enabled cadence with its last run, next scheduled run, and the linked sandbox environment, plus a per-cadence **Backup now** button for on-demand execution.
+- The created backups are just forked sandboxes inside your DatoCMS project (named with a `backup-plugin-<cadence>` prefix), NOT separate files on an external provider. The external providers are only used to run the scheduled function that calls the CMA to create a backup.
+- Source code for the deployed lambda function is at https://github.com/marcelofinamorvieira/datocms-backups-scheduled-function (this lambda was written by Marcelo Finamor, a DatoCMS employee).
 
 ## Before you begin
+
 - You will need an account with Vercel, Netlify, or Cloudflare that is capable of creating projects and adding serverless functions (lambdas). Usually the free plan will suffice.
 - In your DatoCMS project, you will have to create a new API token with access to the CMA and an admin role. In older DatoCMS projects, this may have been automatically created as a "Full Access API Token", but newer projects will require manual creation of a similar token.
 
 ## Setup
 
-1. Make sure you've read the "Before you begin" section, above.
-2. Install the plugin.
-3. Open your DatoCMS project Configuration and find the Automatic Environment Backups plugin settings.
-4. In the **Lambda setup** section, leave the Lambda URL blank for now (it will be used later).
-5. Change the default `superSecretToken` lambda auth secret to something safer, preferably a pseudorandom string.
-6. Click the **Deploy lambda** button and choose one of the provided options (Vercel, Netlify, or Cloudflare).
-7. A new browser tab will open where you must finish the lambda setup on that provider. You'll have to provide the project CMA API token (`DATOCMS_FULLACCESS_API_TOKEN`) and the lambda auth secret (`DATOCMS_BACKUPS_SHARED_SECRET`) that you configured earlier.
-8. Once the lambda is deployed on the external provider, find and copy its deployment domain, e.g. `https://my-backup-app.vercel.app/` (just the domain, no path needed). Make sure it is publicly accessible and not hidden behind a preview login gate.
-9. Back in the plugin settings, paste that deployed URL into the **Lambda URL** field.
-10. Click **Connect**, wait a few seconds, and confirm that the health check status is **Connected (ping successful)**.
-11. Toggle on the backup cadences you want under **Backup schedule** and click **Save**. After saving, the plugin automatically creates any missing backup environments for the enabled cadences.
+The configuration screen walks you through four steps. Completed steps collapse to a summary you can re-open with **Edit**; the progress bar at the top shows overall state and reads **All ok!** once everything is configured.
+
+1. Read the "Before you begin" section above, then install the plugin and open your DatoCMS project Configuration → Plugins → Automatic Environment Backups.
+2. **Step 1 — Auth secret & deploy.** A strong shared secret is generated for you (use the regenerate icon to roll a new one). Click **Save and copy** to store it and copy it to your clipboard. Then click **Deploy to…** and pick a provider. On the provider, set the `DATOCMS_BACKUPS_SHARED_SECRET` environment variable to the secret you just copied, and `DATOCMS_FULLACCESS_API_TOKEN` to your CMA/admin token. Deploy, then copy the deployment's public URL (e.g. `https://my-backups.netlify.app`).
+3. **Step 2 — Connect & test.** Paste the deployed URL into **Deployed function URL** and click **Save & test connection**. The status box confirms the function responds and authenticates, or shows the exact error (for example, an auth mismatch means the plugin's secret and the provider's `DATOCMS_BACKUPS_SHARED_SECRET` differ — make them match and redeploy).
+4. **Step 3 — Backup cadence.** Toggle the cadences you want and click **Save & continue**. The plugin creates any missing backup environments for the enabled cadences.
+5. **Status overview.** Once all three steps are green, the overview shows "Configured and ready", plus the last/next backup and linked environment for each cadence and a per-cadence **Backup now** button. You can leave the screen — backups run on their own.
 
 ## Managing the connection
 
-- Use **Change Lambda URL** to point at a different deployment; the plugin re-runs the health ping against the new URL before persisting it.
-- Use **Disconnect** to clear the saved Lambda URL. The cron schedule on the external provider keeps running until you remove the deployment there, but the plugin will no longer surface its status.
-- Re-opening the configuration screen runs a health check against the saved URL automatically, so a stale or expired deployment is caught before you make any other changes.
+- Re-open any completed step with its **Edit** button to change the secret, URL, or cadence. Each step re-validates and re-gates the later steps when needed — for example, changing the shared secret clears the connection so you re-test it (remember to update `DATOCMS_BACKUPS_SHARED_SECRET` on your deployment and redeploy).
+- Use **Disconnect** in step 2 to clear the saved deployment URL. The cron schedule on the external provider keeps running until you remove the deployment there, but the plugin will no longer surface its status.
+- Re-opening the configuration screen automatically re-runs a health check against the saved URL, so a broken or expired deployment is caught immediately and surfaced on the affected step (and in the Status overview).
 
 ## Advanced settings
 
-- **Enable debug logs** — When enabled, plugin events and outbound lambda requests are logged to the browser console for troubleshooting.
+- **Enable debug logs** — When enabled, plugin events and outbound requests are logged to the browser console for troubleshooting.
 
 ## Changelog
 
