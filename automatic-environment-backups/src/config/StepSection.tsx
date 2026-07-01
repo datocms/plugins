@@ -205,6 +205,16 @@ export const StepSection = ({
           </Button>
         </div>
       )}
+
+      {!isDisabled &&
+        !isExpanded &&
+        (status === 'current' || status === 'error') && (
+          <div style={{ padding: '0 var(--spacing-l) var(--spacing-l)' }}>
+            <Button buttonType="muted" buttonSize="s" onClick={onToggle}>
+              {status === 'error' ? 'Review & fix' : 'Open this step'}
+            </Button>
+          </div>
+        )}
     </section>
   );
 };

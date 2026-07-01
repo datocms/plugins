@@ -34,6 +34,7 @@ import { generateAuthSecret } from './generateAuthSecret';
 import {
   type BackupsParameters,
   getProjectTimezone,
+  hasStoredBackupSchedule,
   isConnectionHealthy,
   readAuthSecret,
   readConnection,
@@ -46,14 +47,17 @@ const MISSING_AUTH_SECRET_MESSAGE =
   'Enter Lambda auth secret before calling lambda endpoints.';
 const BACKUP_NOW_AFTER_SAVE_RETRY_DELAY_MS = 1200;
 
+/** Extract a human-readable message from an unknown thrown value. */
 const getErrorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : 'Unknown error';
 
+/** Resolve after `ms` milliseconds (used to space out backup-now retries). */
 const delay = (ms: number): Promise<void> =>
   new Promise<void>((resolve) => {
     setTimeout(resolve, ms);
   });
 
+/** The plugin's id from ctx, or undefined when it is missing/blank. */
 const getPluginIdFromCtx = (ctx: RenderConfigScreenCtx): string | undefined => {
   const candidate = (ctx.plugin as { id?: unknown } | undefined)?.id;
   return typeof candidate === 'string' && candidate.trim()
@@ -129,18 +133,27 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
   const persistQueueRef = useRef<Promise<void>>(Promise.resolve());
   const hasRunMountCheckRef = useRef(false);
   const isMountCheckUnmountedRef = useRef(false);
+  // Merge base for the persist queue. Accumulates every write so sequential
+  // persists compose, even without a CMA token to re-read authoritative params
+  // (the frozen mount closure would otherwise merge each write against the stale
+  // first-render params and silently drop the previous write).
+  const latestPersistedParamsRef = useRef<Record<string, unknown>>(
+    toPluginParameterRecord(params),
+  );
 
   // Snapshot of the first-render params so the run-once mount effect always
   // validates against the values present at load, regardless of later persists.
   const initialMountRef = useRef<{
     secret: string;
     url: string;
+    hasStoredSchedule: boolean;
     scheduleNormalization: ReturnType<typeof normalizeBackupScheduleConfig>;
   } | null>(null);
   if (!initialMountRef.current) {
     initialMountRef.current = {
       secret: savedSecret,
       url: savedUrl,
+      hasStoredSchedule: hasStoredBackupSchedule(params),
       scheduleNormalization: normalizeBackupScheduleConfig({
         value: params?.backupSchedule,
         timezoneFallback: projectTimezone,
@@ -156,9 +169,9 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
   const persistPluginParameters = useCallback(
     async (updates: Record<string, unknown>) => {
       const persistTask = async () => {
-        let latestParameters = toPluginParameterRecord(
-          ctx.plugin.attributes.parameters,
-        );
+        // Default merge base is the running accumulator so writes compose in
+        // order regardless of token availability.
+        let latestParameters = latestPersistedParamsRef.current;
         const pluginId = getPluginIdFromCtx(ctx);
 
         if (pluginId && ctx.currentUserAccessToken) {
@@ -169,18 +182,19 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
               baseUrl: ctx.cmaBaseUrl,
             });
             const plugin = await client.plugins.find(pluginId);
+            // Authoritative read also picks up any external changes.
             latestParameters = toPluginParameterRecord(plugin.parameters);
           } catch (error) {
             debugLogger.warn(
-              'Falling back to local plugin parameters because authoritative read failed',
+              'Falling back to accumulated plugin parameters because authoritative read failed',
               { pluginId, error: getErrorMessage(error) },
             );
           }
         }
 
-        await ctx.updatePluginParameters(
-          mergePluginParameterUpdates(latestParameters, updates),
-        );
+        const merged = mergePluginParameterUpdates(latestParameters, updates);
+        latestPersistedParamsRef.current = merged;
+        await ctx.updatePluginParameters(merged);
       };
 
       const queuedPersist = persistQueueRef.current.then(
@@ -469,13 +483,12 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
         setUrlInput(verificationResult.normalizedBaseUrl);
         setConnectionTestError(null);
 
+        // Persist ONLY the connection result. The secret and URL are already
+        // saved; re-writing them from the frozen first-render snapshot would
+        // clobber a secret the user saves while this check is in flight.
         await persistPluginParameters({
-          deploymentURL: verificationResult.normalizedBaseUrl,
-          netlifyURL: verificationResult.normalizedBaseUrl,
-          vercelURL: verificationResult.normalizedBaseUrl,
           lambdaConnection: connectedState,
           connectionValidationMode: 'health',
-          lambdaAuthSecret: secret,
         });
       } catch (error) {
         if (isCancelled()) {
@@ -514,7 +527,13 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
         return;
       }
 
-      if (snapshot.scheduleNormalization.requiresMigration) {
+      // Only migrate a schedule that was actually stored in a legacy shape.
+      // A fresh install has no stored schedule, and persisting a default here
+      // would make step 3 auto-complete with cadences the user never chose.
+      if (
+        snapshot.hasStoredSchedule &&
+        snapshot.scheduleNormalization.requiresMigration
+      ) {
         try {
           await persistPluginParameters({
             backupSchedule: snapshot.scheduleNormalization.config,
@@ -632,12 +651,12 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
     try {
       const previousSecret = readAuthSecret(params);
       const secretChanged = nextSecret !== previousSecret;
-      const wasConnected = isConnectionHealthy(params);
 
       const updates: Record<string, unknown> = { lambdaAuthSecret: nextSecret };
-      // Changing a secret invalidates any prior healthy connection: re-gate the
-      // Connect step so the user re-tests against the new secret.
-      if (secretChanged && wasConnected) {
+      // Any secret change invalidates the recorded connection state (healthy or
+      // failed): clear it so the Connect step re-gates and the user re-tests
+      // against the new secret, instead of showing a stale error/OK.
+      if (secretChanged) {
         updates.lambdaConnection = null;
         updates.connectionValidationMode = null;
       }
@@ -674,6 +693,7 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
       return;
     }
 
+    const hadHealthyConnection = isConnectionHealthy(params);
     setIsConnecting(true);
     setConnectionTestError(null);
 
@@ -692,14 +712,16 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
       );
 
       // Persist the deployment URL triplet (legacy netlify/vercel keys kept in
-      // lockstep) together with the resulting connection state.
+      // lockstep) together with the resulting connection state. The secret is
+      // not re-written here — it is already saved, and re-persisting a value
+      // captured before this multi-second request risks clobbering a concurrent
+      // secret save.
       await persistPluginParameters({
         deploymentURL: verificationResult.normalizedBaseUrl,
         netlifyURL: verificationResult.normalizedBaseUrl,
         vercelURL: verificationResult.normalizedBaseUrl,
         lambdaConnection: connectedState,
         connectionValidationMode: 'health',
-        lambdaAuthSecret: secret,
       });
 
       setUrlInput(verificationResult.normalizedBaseUrl);
@@ -707,6 +729,18 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
         endpoint: verificationResult.endpoint,
       });
       ctx.notice('Lambda function connected successfully.');
+
+      // If a schedule is already saved (e.g. reconnecting to a fresh
+      // deployment), create any missing backup environments now — matching the
+      // old connect behavior. Fresh installs have no stored schedule yet, so
+      // creation stays step 3's responsibility.
+      if (hasStoredBackupSchedule(params)) {
+        await ensureBackupsExistForCadences({
+          baseUrl: verificationResult.normalizedBaseUrl,
+          lambdaAuthSecret: secret,
+          cadences: readEnabledCadences(params, projectTimezone),
+        });
+      }
     } catch (error) {
       if (error instanceof LambdaHealthCheckError) {
         const disconnectedState = buildDisconnectedLambdaConnectionState(
@@ -715,16 +749,26 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
           'config_connect',
         );
         debugLogger.warn('Lambda health check failed during connect', error);
-        try {
-          await persistPluginParameters({
-            deploymentURL: candidateUrl,
-            netlifyURL: candidateUrl,
-            vercelURL: candidateUrl,
-            lambdaConnection: disconnectedState,
-            connectionValidationMode: null,
-          });
-        } catch {
-          // Ignore persistence errors while surfacing the error in the UI.
+        // Always surface the failure in the UI, independent of persistence.
+        setConnectionTestError({
+          summary: error.message || 'Connection test failed.',
+          details: getLambdaConnectionErrorDetails(disconnectedState),
+        });
+        // Never clobber a previously-healthy deployment on a failed test (e.g.
+        // a typo). Only persist the failing URL/state when there is no working
+        // connection to preserve, so the error stays sticky during setup.
+        if (!hadHealthyConnection) {
+          try {
+            await persistPluginParameters({
+              deploymentURL: candidateUrl,
+              netlifyURL: candidateUrl,
+              vercelURL: candidateUrl,
+              lambdaConnection: disconnectedState,
+              connectionValidationMode: null,
+            });
+          } catch {
+            // Error already surfaced via connectionTestError above.
+          }
         }
       } else {
         debugLogger.error('Unexpected error while connecting lambda', error);
@@ -736,7 +780,15 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
     } finally {
       setIsConnecting(false);
     }
-  }, [ctx, debugLogger, params, persistPluginParameters, urlInput]);
+  }, [
+    ctx,
+    debugLogger,
+    ensureBackupsExistForCadences,
+    params,
+    persistPluginParameters,
+    projectTimezone,
+    urlInput,
+  ]);
 
   const disconnect = useCallback(async () => {
     setIsDisconnecting(true);
@@ -857,10 +909,13 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
       try {
         await persistPluginParameters({ debug: enabled });
       } catch (error) {
+        // Revert the optimistic toggle and tell the user it did not stick.
+        setDebugEnabled(!enabled);
         debugLogger.error('Could not persist debug setting', error);
+        await ctx.alert('Could not save the debug setting.');
       }
     },
-    [debugLogger, persistPluginParameters],
+    [ctx, debugLogger, persistPluginParameters],
   );
 
   const backupNow = useCallback(

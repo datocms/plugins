@@ -35,8 +35,10 @@ export const deriveStepStatuses = (params: BackupsParameters): StepStatuses => {
   const urlSet = readDeploymentUrl(params) !== '';
   const hasFailedPing =
     urlSet && !connected && readConnection(params)?.status === 'disconnected';
-  const scheduleSet =
-    hasStoredBackupSchedule(params) && readEnabledCadences(params).length > 0;
+  // A stored schedule always carries at least one cadence (the save handler
+  // rejects an empty set and the normalizer defaults to daily+weekly), so
+  // presence alone is the completion signal.
+  const scheduleSet = hasStoredBackupSchedule(params);
 
   const secret: StepStatus = secretSet ? 'ok' : 'current';
 
@@ -95,8 +97,7 @@ export const buildStatusChecklist = (
   const connected = isConnectionHealthy(params);
   const urlSet = readDeploymentUrl(params) !== '';
   const enabledCadences = readEnabledCadences(params);
-  const scheduleSet =
-    hasStoredBackupSchedule(params) && enabledCadences.length > 0;
+  const scheduleSet = hasStoredBackupSchedule(params);
 
   const secretItem: ChecklistItem =
     secret === ''
