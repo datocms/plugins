@@ -4,8 +4,8 @@ import {Canvas, FieldGroup, Form, SelectField, Section} from 'datocms-react-ui';
 import {Form as FormHandler, FormSpy, Field} from 'react-final-form';
 import arrayMutators from 'final-form-arrays';
 import type {GroupBase} from 'react-select';
-import type {FieldConfig, Option, Presentation, ValidFieldParameters, ValidPluginParameters} from '../../lib/types';
-import {normalizeFieldParameters, normalizePluginParameters} from '../../lib/types';
+import type {FieldConfig, Presentation, ValidFieldParameters, ValidPluginParameters} from '../../lib/types';
+import {normalizeFieldParameters, normalizeOption, normalizePluginParameters} from '../../lib/types';
 import OptionsSection from './OptionsSection';
 import PresentationSection from './PresentationSection';
 
@@ -14,18 +14,11 @@ type Opt = {label: string; value: string};
 
 type FormValues = FieldConfig;
 
-function cleanOption(raw: Record<string, string>): Option {
-	if (raw.type === 'image') {
-		return {name: raw.name ?? '', type: 'image', url: raw.url ?? '', value: raw.value ?? ''};
-	}
-	return {name: raw.name ?? '', type: 'color', color: raw.color ?? '', value: raw.value ?? ''};
-}
-
 function cleanFieldConfig(values: Partial<FormValues>): ValidFieldParameters {
 	const config: FieldConfig = {};
 	if (values.presets?.length) config.presets = values.presets;
 	if (values.options?.length) {
-		config.options = values.options.map(opt => cleanOption(opt as Record<string, string>));
+		config.options = values.options.map(opt => normalizeOption(opt as Record<string, string>));
 	}
 	if (values.presentation) {
 		const pres: Presentation = {};

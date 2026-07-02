@@ -7,7 +7,7 @@ import {FieldArray} from 'react-final-form-arrays';
 import {FontAwesomeIcon} from '@fortawesome/react-fontawesome';
 import {faPlus} from '@fortawesome/free-solid-svg-icons';
 import type {Option, Preset, Presets} from '../../lib/types';
-import {normalizePluginParameters} from '../../lib/types';
+import {normalizeOption, normalizePluginParameters} from '../../lib/types';
 import s from '../../lib/styles.module.css';
 import lang, {EN_SAVE_SETTINGS, EN_SETTINGS_UPDATED} from '../../lang';
 import PresetSection from './PresetSection';
@@ -22,20 +22,13 @@ function presetsToFormValues(presets: Presets): FormValues {
 	};
 }
 
-function cleanOption(raw: Record<string, string>): Option {
-	if (raw.type === 'image') {
-		return {name: raw.name ?? '', type: 'image', url: raw.url ?? '', value: raw.value ?? ''};
-	}
-	return {name: raw.name ?? '', type: 'color', color: raw.color ?? '', value: raw.value ?? ''};
-}
-
 function formValuesToPresets(values: FormValues): Presets {
 	return Object.fromEntries(
 		(values.presets ?? [])
 			.filter(p => p?.name)
 			.map(p => [
 				p.name,
-				(p.options ?? []).map(opt => cleanOption(opt as Record<string, string>)) as Preset,
+				(p.options ?? []).map(opt => normalizeOption(opt as Record<string, string>)) as Preset,
 			]),
 	);
 }
