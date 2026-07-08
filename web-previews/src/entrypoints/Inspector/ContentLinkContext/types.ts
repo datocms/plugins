@@ -22,7 +22,7 @@ export interface WebPreviewsMethods {
   onInit: () => OnInitData;
   onPing: () => void;
   onStateChange: (payload: ContentLinkState) => void;
-  openItem: (payload: EditUrlInfo) => void;
+  openItem: (payload: EditUrlInfo) => void | Promise<void>;
 }
 
 // Methods that @datocms/content-link exposes

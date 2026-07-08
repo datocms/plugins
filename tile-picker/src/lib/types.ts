@@ -85,15 +85,18 @@ function isValidPluginParameters(params: unknown): params is ValidPluginParamete
 }
 
 function normalizePluginParameters(params: unknown): ValidPluginParameters {
-	if (isValidPluginParameters(params)) return params;
+	if (isValidPluginParameters(params)) {
+		return {
+			paramsVersion: '2',
+			presets: normalizePresets(params.presets),
+		};
+	}
 	const legacy = (params ?? {}) as LegacyPluginParameters;
 	let presets: Presets = {};
 	if (typeof legacy.presets === 'string') {
 		try {
 			const parsed = JSON.parse(legacy.presets) as Record<string, Array<Record<string, string>>>;
-			presets = Object.fromEntries(
-				Object.entries(parsed).map(([key, options]) => [key, options.map(normalizeOption)]),
-			);
+			presets = normalizePresets(parsed);
 		} catch { /* fall through */ }
 	}
 	return {paramsVersion: '2', presets};
@@ -110,8 +113,28 @@ function normalizeOption(raw: Record<string, string>): Option {
 	return {name: raw.name ?? '', type: 'color', color: raw.color ?? raw.display ?? '', value: raw.value ?? ''};
 }
 
+function normalizePresets(presets: Record<string, Array<Option | Record<string, string>>>): Presets {
+	return Object.fromEntries(
+		Object.entries(presets).map(([key, options]) => [
+			key,
+			options.map(opt => normalizeOption(opt as Record<string, string>)),
+		]),
+	);
+}
+
 function normalizeFieldParameters(params: unknown): ValidFieldParameters {
-	if (isValidFieldParameters(params)) return params;
+	if (isValidFieldParameters(params)) {
+		const config = params.config ?? {};
+		return {
+			paramsVersion: '2',
+			config: {
+				...config,
+				...(config.options ? {
+					options: config.options.map(opt => normalizeOption(opt as unknown as Record<string, string>)),
+				} : {}),
+			},
+		};
+	}
 	const legacy = (params ?? {}) as LegacyFieldParameters;
 	let config: FieldConfig = {};
 	if (typeof legacy.collection === 'string' && legacy.collection) {

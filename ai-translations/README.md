@@ -92,6 +92,14 @@ If anything required is missing (for example a model with no fields selected, or
 
 ![AI Bulk Translations Page](https://github.com/user-attachments/assets/eefd5f25-efc7-4f3b-bf49-ff05d623b35c)
 
+### Linked records and warnings
+
+Link and Links fields (references to other records) are **not translated** — a reference points at the same shared record regardless of locale. When you translate into a new locale, the plugin copies those references from the source locale so the new locale is valid. This also prevents failures on fields that require a minimum number of linked records, which used to abort the whole record's translation. The linked records themselves are never followed or re-translated.
+
+Whenever this happens, the record's row in the bulk progress modal is flagged with an amber warning icon and a **"— with warnings"** label; its title links (in a new tab) to the record, and hovering the row reveals the full detail in a tooltip. Any fields that genuinely failed to translate are surfaced the same way.
+
+The modal also has an **Export CSV** button that downloads a per-record report — status (success/warning/failure), the CMA update timestamp, record ID, title, edit URL, source and target locales, the field IDs (and api keys) that were translated, the link-field IDs whose references were copied without translation, and a notes column with the warnings — handy for auditing a large run or handing follow-up work to an editor.
+
 ## Contextual Translations
 
 The plugin now supports context-aware translations through the `{recordContext}` placeholder:

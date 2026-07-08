@@ -160,6 +160,52 @@ export function isFieldRequired(validators: FieldValidators | undefined): boolea
 }
 
 /**
+ * Checks whether a field's validators enforce a minimum number of items via
+ * the `size` validator (`min` or `eq` >= 1).
+ *
+ * Multiple-links (`links`) and gallery fields have no `required` validator —
+ * their "must contain at least N" constraint is only expressible through
+ * `size`. Locale-sync must treat such fields like required fields, otherwise a
+ * `null`/empty target locale violates the constraint and the CMA rejects the
+ * whole record update.
+ *
+ * @param validators - The validators object from a field's schema metadata.
+ * @returns True when at least one item is mandatory.
+ */
+export function hasMinItemsValidator(
+  validators: FieldValidators | undefined,
+): boolean {
+  if (!validators || typeof validators !== 'object') return false;
+  const size = (validators as Record<string, unknown>).size;
+  if (!size || typeof size !== 'object') return false;
+  const { min, eq } = size as { min?: unknown; eq?: unknown };
+  return (
+    (typeof min === 'number' && min >= 1) || (typeof eq === 'number' && eq >= 1)
+  );
+}
+
+/**
+ * Detects a link / links (record reference) field via its item-type
+ * validators (`item_item_type` for single links, `items_item_type` for
+ * multiple links). Both are mandatory validators on those field types, so this
+ * is a reliable, editor-agnostic signal.
+ *
+ * Reference fields point to other records that are shared across locales; the
+ * plugin never "translates" them, so their references should be carried into a
+ * new locale rather than nulled out. `structured_text_links` is intentionally
+ * excluded — structured text is translated through its own path.
+ *
+ * @param validators - The validators object from a field's schema metadata.
+ * @returns True when the field references other records.
+ */
+export function isReferenceField(
+  validators: FieldValidators | undefined,
+): boolean {
+  if (!validators || typeof validators !== 'object') return false;
+  return 'item_item_type' in validators || 'items_item_type' in validators;
+}
+
+/**
  * Normalizes a translated slug to a deterministic, Dato-safe value.
  *
  * @param value - The translated slug candidate.
