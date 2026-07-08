@@ -122,7 +122,7 @@ describe('AnthropicProvider', () => {
       const body = JSON.parse(mockFetch.mock.calls[0][1].body);
       expect(body).toEqual({
         model: 'claude-3-sonnet-20240229',
-        max_output_tokens: 1024,
+        max_tokens: 1024,
         temperature: undefined,
         messages: [{ role: 'user', content: 'Test prompt' }],
       });
@@ -408,7 +408,7 @@ describe('AnthropicProvider', () => {
       await providerWithTokens.completeText('Test');
 
       const body = JSON.parse(mockFetch.mock.calls[0][1].body);
-      expect(body.max_output_tokens).toBe(4096);
+      expect(body.max_tokens).toBe(4096);
     });
   });
 });

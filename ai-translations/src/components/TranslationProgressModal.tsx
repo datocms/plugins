@@ -1,48 +1,17 @@
 import type { RenderModalCtx } from 'datocms-plugin-sdk';
 import { Button, Canvas, Spinner } from 'datocms-react-ui';
 import { useCallback, useEffect, useRef, useState } from 'react';
-
-/**
- * Returns the default status label when a progress update has no explicit message.
- */
-function defaultStatusLabel(
-  status: 'completed' | 'processing' | 'error' | string,
-): string {
-  if (status === 'completed') return 'Completed';
-  if (status === 'processing') return 'Processing...';
-  if (status === 'error') return 'Error';
-  return '';
-}
-
-/**
- * Renders a single progress list item for one record.
- */
-function ProgressListItem({
-  update,
-}: {
-  update: import('../utils/translation/ItemsDropdownUtils').ProgressUpdate;
-}) {
-  const label = update.message ?? defaultStatusLabel(update.status);
-  return (
-    <li
-      key={update.recordId}
-      className={`TranslationProgressModal__update-item TranslationProgressModal__update-item--${update.status}`}
-    >
-      <span className="TranslationProgressModal__update-status">
-        {update.status === 'completed' && '✓'}
-        {update.status === 'processing' && <Spinner size={16} />}
-        {update.status === 'error' && '✗'}
-      </span>
-      <span className="TranslationProgressModal__update-message">{label}</span>
-    </li>
-  );
-}
-
 import type { ctxParamsType } from '../entrypoints/Config/ConfigScreen';
 import { buildDatoCMSClient } from '../utils/clients';
+import {
+  buildTranslationReportRows,
+  downloadCsv,
+  toCsv,
+} from '../utils/csvExport';
+import { buildRecordEditorUrl } from '../utils/recordUrl';
 import { createSchemaRepository } from '../utils/schemaRepository';
 import { LocaleChip } from './BulkTranslations/LocaleChip';
-// no direct types from OpenAI or buildClient needed here
+import { ProgressRow } from './BulkTranslations/ProgressRow';
 import {
   formatErrorForUser,
   normalizeProviderError,
@@ -203,14 +172,19 @@ export default function TranslationProgressModal({
         if (isMounted) {
           setHasFatalError(true);
           setIsProcessing(false);
+          const failureMessage = `Translation failed: ${getTranslationErrorMessage(
+            error,
+            pluginParams.vendor,
+          )}`;
           addProgressUpdate({
             recordIndex: -1,
             recordId: 'fatal',
             status: 'error',
-            message: `Translation failed: ${getTranslationErrorMessage(
-              error,
-              pluginParams.vendor,
-            )}`,
+            message: failureMessage,
+            statusText: failureMessage,
+            // Carry the reason as a warning so it also lands in the CSV `notes`
+            // column (which is sourced from `warnings`, not `message`).
+            warnings: [failureMessage],
           });
         }
       }
@@ -252,6 +226,39 @@ export default function TranslationProgressModal({
   const completedCount = processedRecords.filter(
     (update) => update.status === 'completed' || update.status === 'error',
   ).length;
+
+  const successfulCount = processedRecords.filter(
+    (update) => update.status === 'completed',
+  ).length;
+  const failedCount = processedRecords.filter(
+    (update) => update.status === 'error',
+  ).length;
+  // Records that finished but raised warnings (e.g. copied linked records),
+  // ordered by their position so the list reads top-to-bottom.
+  const recordsWithWarnings = processedRecords
+    .filter((update) => (update.warnings?.length ?? 0) > 0)
+    .sort((a, b) => a.recordIndex - b.recordIndex);
+
+  const buildRecordUrl = (update: ProgressUpdate): string | undefined =>
+    buildRecordEditorUrl({
+      internalDomain: ctx.site?.attributes?.internal_domain,
+      environment: ctx.environment,
+      isEnvironmentPrimary: ctx.isEnvironmentPrimary,
+      itemTypeId: update.itemTypeId,
+      recordId: update.recordId,
+    });
+
+  const handleExportCsv = () => {
+    const { headers, rows } = buildTranslationReportRows(processedRecords, {
+      fromLocale,
+      toLocales,
+      buildUrl: buildRecordUrl,
+    });
+    downloadCsv(
+      `ai-translations-report-${new Date().toISOString().slice(0, 10)}.csv`,
+      toCsv(headers, rows),
+    );
+  };
 
   const percentComplete =
     totalRecords > 0 ? Math.round((completedCount / totalRecords) * 100) : 0;
@@ -311,17 +318,10 @@ export default function TranslationProgressModal({
               {percentComplete}%)
             </p>
             <p className="TranslationProgressModal__stats">
-              {
-                processedRecords.filter(
-                  (update) => update.status === 'completed',
-                ).length
-              }{' '}
-              successful,{' '}
-              {
-                processedRecords.filter((update) => update.status === 'error')
-                  .length
-              }{' '}
-              failed
+              {successfulCount} successful
+              {recordsWithWarnings.length > 0 &&
+                ` (${recordsWithWarnings.length} with warnings)`}
+              , {failedCount} failed
             </p>
           </div>
           {/* Progress bar */}
@@ -346,7 +346,11 @@ export default function TranslationProgressModal({
                 // Newest updates first so the most recent work is visible
                 .sort((a, b) => b.recordIndex - a.recordIndex)
                 .map((update) => (
-                  <ProgressListItem key={update.recordId} update={update} />
+                  <ProgressRow
+                    key={update.recordId}
+                    update={update}
+                    recordUrl={buildRecordUrl(update)}
+                  />
                 ))}
             </ul>
           ) : (
@@ -360,6 +364,17 @@ export default function TranslationProgressModal({
         </div>
 
         <div className="TranslationProgressModal__footer">
+          {processedRecords.length > 0 && (
+            <Button
+              type="button"
+              buttonType="muted"
+              onClick={handleExportCsv}
+              buttonSize="s"
+              className="TranslationProgressModal__export-button"
+            >
+              Export CSV
+            </Button>
+          )}
           {!isCompleted && isProcessing && (
             <Button
               type="button"

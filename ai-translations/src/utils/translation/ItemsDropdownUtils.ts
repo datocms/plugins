@@ -18,7 +18,9 @@ import {
   type FieldValidators,
   findExactLocaleKey,
   getExactSourceValue,
+  hasMinItemsValidator,
   isFieldRequired,
+  isReferenceField,
   prepareFieldTypePrompt,
 } from './SharedFieldUtils';
 // no specific ctx type required here; we accept a minimal ctx shape
@@ -259,7 +261,60 @@ export type ProgressUpdate = {
   recordId: string;
   status: ProgressStatus;
   message?: string;
+  /**
+   * Label-free status phrase for the row (e.g. "Translated", "Saving…"), so the
+   * UI can render the record label as a separate link without parsing `message`.
+   */
+  statusText?: string;
+  /** Human-readable record label, so the UI can render rows/links without parsing `message`. */
+  recordLabel?: string;
+  /** Item type id of the record, used to build a link to its editor. */
+  itemTypeId?: string;
+  /** CMA `updated_at` of the record after the write (for the CSV report). */
+  updatedAt?: string;
+  /** API keys of fields that were AI-translated on this record. */
+  translatedFieldApiKeys?: string[];
+  /** Field ids (UUIDs) of fields that were AI-translated on this record. */
+  translatedFieldIds?: string[];
+  /** API keys of link/links fields whose references were copied without translation. */
+  copiedLinkFieldApiKeys?: string[];
+  /** Field ids (UUIDs) of link/links fields whose references were copied without translation. */
+  copiedLinkFieldIds?: string[];
+  /**
+   * Structured per-record warnings, one consolidated line per concern. Surfaced
+   * separately from `message` so the UI can flag the record (icon + tooltip)
+   * instead of concatenating everything into the status line.
+   */
+  warnings?: string[];
 };
+
+/**
+ * A single record-reference copy event: a link/links field whose source
+ * references were carried into `toLocale` by the locale-sync fallback.
+ */
+export type ReferenceCopy = { field: string; toLocale: string };
+
+/**
+ * Consolidates reference-copy events into a single human-readable warning line
+ * per record, deduplicating fields and locales. Returns null when empty.
+ *
+ * @param copies - The reference-copy events for one record.
+ * @returns A one-line summary, or null when there is nothing to report.
+ */
+export function summarizeReferenceCopies(
+  copies: ReferenceCopy[],
+): string | null {
+  if (copies.length === 0) return null;
+  const fields: string[] = [];
+  const locales: string[] = [];
+  for (const { field, toLocale } of copies) {
+    if (!fields.includes(field)) fields.push(field);
+    if (!locales.includes(toLocale)) locales.push(toLocale);
+  }
+  const fieldList = fields.map((f) => `"${f}"`).join(', ');
+  const localeList = locales.map((l) => formatLocaleWithCode(l)).join(', ');
+  return `Copied linked records in ${fieldList} into ${localeList} — these are shared references and weren't translated; review whether they should differ per locale.`;
+}
 
 /**
  * Options for batch translation flow, including progress and cancellation.
@@ -287,7 +342,36 @@ export type TranslateBatchOptions = {
 export interface BuildTranslatedUpdatePayloadResult {
   payload: Record<string, Record<string, unknown>>;
   translatedFieldCount: number;
+  /**
+   * Count of localized reference (link/links) fields whose source references
+   * were carried into the target locale by the locale-sync fallback. Used so a
+   * record that only had references copied is not misreported as "no fields
+   * updated".
+   */
+  referenceFieldsCopied: number;
+  /** API keys of the fields that were AI-translated (for the CSV report). */
+  translatedFields: string[];
+  /**
+   * Structured record-reference copy events. Consolidated into one per-record
+   * warning line by `summarizeReferenceCopies` rather than emitted as one
+   * sentence per field/locale.
+   */
+  referenceCopies: ReferenceCopy[];
+  /** Genuine per-field translation failures (not reference-copy notices). */
   warnings: string[];
+}
+
+/**
+ * Per-record outcome aggregated across all target locales, with field lists
+ * resolved to both api_keys and ids and the CMA write timestamp captured.
+ */
+export interface RecordTranslationOutcome
+  extends BuildTranslatedUpdatePayloadResult {
+  translatedFieldApiKeys: string[];
+  translatedFieldIds: string[];
+  copiedLinkFieldApiKeys: string[];
+  copiedLinkFieldIds: string[];
+  updatedAt?: string;
 }
 
 /**
@@ -465,14 +549,22 @@ export async function translateAndUpdateRecords(
     record: DatoCMSRecordFromAPI,
     recordIndex: number,
     recordLabel: string,
-  ): Promise<BuildTranslatedUpdatePayloadResult> {
+  ): Promise<RecordTranslationOutcome> {
     const fieldTypeDictionary = await getFieldTypeDictionary(
       record.item_type.id,
     );
+    const itemTypeId = record.item_type.id;
+    const toFieldIds = (apiKeys: string[]): string[] =>
+      apiKeys
+        .map((key) => fieldTypeDictionary[key]?.id)
+        .filter((id): id is string => Boolean(id));
 
     const mergedPayload: Record<string, Record<string, unknown>> = {};
     const aggregatedWarnings: string[] = [];
+    const aggregatedReferenceCopies: ReferenceCopy[] = [];
+    const aggregatedTranslatedFields: string[] = [];
     let totalTranslatedFields = 0;
+    let totalReferenceFieldsCopied = 0;
 
     /**
      * Translates the record into one target locale and merges the result.
@@ -484,6 +576,9 @@ export async function translateAndUpdateRecords(
         recordId: record.id,
         status: 'processing',
         message: `Translating "${recordLabel}" (#${record.id}) to ${formatLocaleWithCode(toLocale)}…`,
+        statusText: `Translating to ${formatLocaleWithCode(toLocale)}…`,
+        recordLabel,
+        itemTypeId,
       });
 
       const localeResult = await buildTranslatedUpdatePayload(
@@ -506,7 +601,10 @@ export async function translateAndUpdateRecords(
 
       mergeLocalePayloadInto(mergedPayload, localeResult.payload);
       aggregatedWarnings.push(...localeResult.warnings);
+      aggregatedReferenceCopies.push(...localeResult.referenceCopies);
+      aggregatedTranslatedFields.push(...localeResult.translatedFields);
       totalTranslatedFields += localeResult.translatedFieldCount;
+      totalReferenceFieldsCopied += localeResult.referenceFieldsCopied;
     }
 
     // Sequential per-locale to keep within provider rate-limit budgets and
@@ -516,20 +614,44 @@ export async function translateAndUpdateRecords(
       Promise.resolve(),
     );
 
+    // Timestamp for the CSV report: the write's fresh `updated_at` when we
+    // touched the record, otherwise the record's existing timestamp.
+    const recordMeta = (record as { meta?: { updated_at?: string } }).meta;
+    let updatedAt = recordMeta?.updated_at;
     if (Object.keys(mergedPayload).length > 0) {
       updateProgress({
         recordIndex,
         recordId: record.id,
         status: 'processing',
         message: `Saving "${recordLabel}" (#${record.id})…`,
+        statusText: 'Saving…',
+        recordLabel,
+        itemTypeId,
       });
-      await client.items.update(record.id, mergedPayload);
+      const updated = (await client.items.update(
+        record.id,
+        mergedPayload,
+      )) as { meta?: { updated_at?: string } };
+      updatedAt = updated?.meta?.updated_at ?? updatedAt;
     }
+
+    const translatedFieldApiKeys = [...new Set(aggregatedTranslatedFields)];
+    const copiedLinkFieldApiKeys = [
+      ...new Set(aggregatedReferenceCopies.map((copy) => copy.field)),
+    ];
 
     return {
       payload: mergedPayload,
       translatedFieldCount: totalTranslatedFields,
+      referenceFieldsCopied: totalReferenceFieldsCopied,
+      translatedFields: aggregatedTranslatedFields,
+      referenceCopies: aggregatedReferenceCopies,
       warnings: aggregatedWarnings,
+      translatedFieldApiKeys,
+      translatedFieldIds: toFieldIds(translatedFieldApiKeys),
+      copiedLinkFieldApiKeys,
+      copiedLinkFieldIds: toFieldIds(copiedLinkFieldApiKeys),
+      updatedAt,
     };
   }
 
@@ -538,38 +660,73 @@ export async function translateAndUpdateRecords(
    * outcome code ('done' or 'continue').
    */
   function reportTranslationResult(
-    translatedFields: BuildTranslatedUpdatePayloadResult,
+    outcome: RecordTranslationOutcome,
     recordIndex: number,
     recordId: string,
     recordLabel: string,
+    itemTypeId: string,
   ): 'continue' | 'done' {
-    const warningSuffix =
-      translatedFields.warnings.length > 0
-        ? ` Warnings: ${translatedFields.warnings.join(' ')}`
-        : '';
+    // Structured, consolidated per-record warnings: a single reference-copy
+    // summary line (if any) followed by any genuine per-field failures. These
+    // ride on the progress update separately from `message`, so the UI can flag
+    // the record (icon + tooltip) instead of concatenating a wall of text.
+    const referenceSummary = summarizeReferenceCopies(outcome.referenceCopies);
+    const recordWarnings = [
+      ...(referenceSummary ? [referenceSummary] : []),
+      ...outcome.warnings,
+    ];
+    const warnings = recordWarnings.length > 0 ? recordWarnings : undefined;
 
-    if (
-      translatedFields.translatedFieldCount === 0 &&
-      translatedFields.warnings.length > 0
-    ) {
+    // The per-record fields shared by every finished update (drive the row link
+    // and the CSV report).
+    const reportFields = {
+      recordLabel,
+      itemTypeId,
+      updatedAt: outcome.updatedAt,
+      translatedFieldApiKeys: outcome.translatedFieldApiKeys,
+      translatedFieldIds: outcome.translatedFieldIds,
+      copiedLinkFieldApiKeys: outcome.copiedLinkFieldApiKeys,
+      copiedLinkFieldIds: outcome.copiedLinkFieldIds,
+      warnings,
+    };
+
+    // Copied references count as a real update: the record was written even
+    // when no field was AI-translated. Only treat it as an error when nothing
+    // at all was written yet failures were raised (i.e. every field failed).
+    const updatedFieldCount =
+      outcome.translatedFieldCount + outcome.referenceFieldsCopied;
+
+    if (updatedFieldCount === 0 && outcome.warnings.length > 0) {
       updateProgress({
         recordIndex,
         recordId,
         status: 'error',
-        message: `No fields were updated for "${recordLabel}" (#${recordId}).${warningSuffix}`,
+        message: `No fields were updated for "${recordLabel}" (#${recordId}).`,
+        statusText: 'No fields were updated',
+        ...reportFields,
       });
       return 'continue';
     }
 
-    const completionMessage =
-      translatedFields.translatedFieldCount === 0
-        ? `No eligible fields to translate for "${recordLabel}" (#${recordId}).`
-        : `Translated "${recordLabel}" (#${recordId}).${warningSuffix}`;
+    let completionMessage: string;
+    let statusText: string;
+    if (outcome.translatedFieldCount > 0) {
+      completionMessage = `Translated "${recordLabel}" (#${recordId}).`;
+      statusText = 'Translated';
+    } else if (outcome.referenceFieldsCopied > 0) {
+      completionMessage = `Copied linked records into new locales for "${recordLabel}" (#${recordId}).`;
+      statusText = 'Copied linked records into new locales';
+    } else {
+      completionMessage = `No eligible fields to translate for "${recordLabel}" (#${recordId}).`;
+      statusText = 'No eligible fields to translate';
+    }
     updateProgress({
       recordIndex,
       recordId,
       status: 'completed',
       message: completionMessage,
+      statusText,
+      ...reportFields,
     });
     return 'done';
   }
@@ -586,12 +743,19 @@ export async function translateAndUpdateRecords(
   ): Promise<'cancelled' | 'continue' | 'done'> {
     const recordLabel = deriveRecordLabel(record, fromLocale);
 
+    const itemTypeId = record.item_type.id;
+    const recordUpdatedAt = (record as { meta?: { updated_at?: string } }).meta
+      ?.updated_at;
+
     if (options.checkCancellation?.()) {
       updateProgress({
         recordIndex,
         recordId: record.id,
         status: 'error',
         message: `Translation cancelled for "${recordLabel}" (#${record.id}).`,
+        statusText: 'Cancelled',
+        recordLabel,
+        itemTypeId,
       });
       return 'cancelled';
     }
@@ -601,6 +765,9 @@ export async function translateAndUpdateRecords(
       recordId: record.id,
       status: 'processing',
       message: `Translating "${recordLabel}" (#${record.id})…`,
+      statusText: 'Translating…',
+      recordLabel,
+      itemTypeId,
     });
 
     try {
@@ -613,21 +780,27 @@ export async function translateAndUpdateRecords(
           recordId: record.id,
           status: 'error',
           message: errorMsg,
+          statusText: 'Missing source locale',
+          recordLabel,
+          itemTypeId,
+          updatedAt: recordUpdatedAt,
+          warnings: [errorMsg],
         });
         return 'continue';
       }
 
-      const translatedFields = await translateAndSaveRecord(
+      const outcome = await translateAndSaveRecord(
         record,
         recordIndex,
         recordLabel,
       );
 
       return reportTranslationResult(
-        translatedFields,
+        outcome,
         recordIndex,
         record.id,
         recordLabel,
+        itemTypeId,
       );
     } catch (error) {
       const friendlyMessage = getFriendlyDatoErrorMessage(error, record.id);
@@ -642,6 +815,11 @@ export async function translateAndUpdateRecords(
         message:
           friendlyMessage ??
           `Failed "${recordLabel}" (#${record.id}): ${formattedMessage}`,
+        statusText: 'Failed',
+        recordLabel,
+        itemTypeId,
+        updatedAt: recordUpdatedAt,
+        warnings: [friendlyMessage ?? formattedMessage],
       });
       return 'continue';
     }
@@ -704,6 +882,53 @@ const BLOCK_EDITOR_TYPES = new Set([
 ]);
 
 /**
+ * Counts how many record references a locale-sync value holds: array length for
+ * multiple-links fields, 1 for a populated single link, 0 when empty.
+ */
+function countReferences(value: unknown): number {
+  if (Array.isArray(value)) return value.length;
+  return value != null ? 1 : 0;
+}
+
+/**
+ * Resolves the locale-sync fallback for a single untranslated localized field.
+ *
+ * Every localized field must carry a value for the new locale or the CMA
+ * rejects the update. For fields the plugin cannot translate we copy the source
+ * value when the field mandates one — a `required` constraint, a min-count
+ * `size` validator (links/gallery have no `required`), or a record reference
+ * (shared across locales) — otherwise we leave the locale empty so
+ * untranslatable content is not duplicated. Required block fields get their
+ * source blocks with ids stripped so the CMA creates fresh instances.
+ *
+ * @param meta - Field metadata (editor + validators) from the dictionary.
+ * @param sourceValue - The source-locale value for the field.
+ * @returns The value to write into the target locale and whether it carried
+ *   record references over (used to warn the editor and count updates).
+ */
+function resolveLocaleSyncFallback(
+  meta: FieldTypeDictionary[string],
+  sourceValue: unknown,
+): { value: unknown; referenceCopied: boolean } {
+  const isReference = isReferenceField(meta.validators);
+  const shouldCopySource =
+    sourceValue != null &&
+    (isFieldRequired(meta.validators) ||
+      hasMinItemsValidator(meta.validators) ||
+      isReference);
+
+  if (!shouldCopySource) {
+    return { value: null, referenceCopied: false };
+  }
+
+  const value = BLOCK_EDITOR_TYPES.has(meta.editor)
+    ? stripBlockIds(sourceValue)
+    : sourceValue;
+
+  return { value, referenceCopied: isReference && countReferences(value) > 0 };
+}
+
+/**
  * Builds an update payload that translates a record from `fromLocale` into a
  * single `toLocale`. Caller-side orchestration is responsible for looping
  * across multiple target locales and merging the per-locale payloads so a
@@ -750,7 +975,10 @@ export async function buildTranslatedUpdatePayload(
 ): Promise<BuildTranslatedUpdatePayloadResult> {
   const updatePayload: Record<string, Record<string, unknown>> = {};
   const warnings: string[] = [];
+  const referenceCopies: ReferenceCopy[] = [];
+  const translatedFields: string[] = [];
   let translatedFieldCount = 0;
+  let referenceFieldsCopied = 0;
 
   const recordContext = generateRecordContext(record, fromLocale);
 
@@ -817,6 +1045,7 @@ export async function buildTranslatedUpdatePayload(
         [toLocale]: translatedValue,
       };
       translatedFieldCount += 1;
+      translatedFields.push(field);
     } catch (error) {
       const norm = normalizeProviderError(error, provider.vendor);
       const formattedMessage = formatErrorForUser(norm);
@@ -850,14 +1079,19 @@ export async function buildTranslatedUpdatePayload(
     if (existingTargetKey !== undefined) continue;
 
     const sourceValue = getExactSourceValue(fieldData, fromLocale);
-    const isRequired = isFieldRequired(meta.validators) && sourceValue != null;
-    const isBlockField = BLOCK_EDITOR_TYPES.has(meta.editor);
+    const { value: fallbackValue, referenceCopied } = resolveLocaleSyncFallback(
+      meta,
+      sourceValue,
+    );
 
-    let fallbackValue: unknown = null;
-    if (isRequired && isBlockField) {
-      fallbackValue = stripBlockIds(sourceValue);
-    } else if (isRequired) {
-      fallbackValue = sourceValue;
+    // When we carry record references into the new locale, record it as a
+    // structured event: the linked records themselves are NOT followed or
+    // translated (this deliberately avoids deep/recursive traversal of the
+    // reference graph), so the editor is later warned that they may still need
+    // localizing. These are consolidated into one per-record line downstream.
+    if (referenceCopied) {
+      referenceFieldsCopied += 1;
+      referenceCopies.push({ field, toLocale });
     }
 
     updatePayload[field] = {
@@ -869,6 +1103,9 @@ export async function buildTranslatedUpdatePayload(
   return {
     payload: updatePayload,
     translatedFieldCount,
+    referenceFieldsCopied,
+    translatedFields,
+    referenceCopies,
     warnings,
   };
 }
