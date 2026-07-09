@@ -55,6 +55,7 @@ import {
 import { translateDefaultFieldValue } from './DefaultTranslation';
 import type { OnQcFlag } from './qc/types';
 import { translateFileFieldValue } from './FileFieldTranslation';
+import { translateJsonFieldValue } from './JsonFieldTranslation';
 import { handleTranslationError } from './ProviderErrors';
 import { getProvider } from './ProviderFactory';
 import { type SeoObject, translateSeoFieldValue } from './SeoTranslation';
@@ -476,6 +477,22 @@ export async function translateFieldValue(
         recordContext,
         options.cmaBaseUrl,
         onQcFlag,
+      );
+      break;
+    case 'json':
+      // Structural: translate only string leaf values so keys/numbers/syntax
+      // survive and the result is valid JSON by construction. The old
+      // whole-document-as-text path let providers translate keys and break
+      // syntax, which DatoCMS rejected at save time (422 INVALID_FORMAT).
+      translatedValue = await translateJsonFieldValue(
+        fieldValue,
+        pluginParams,
+        toLocale,
+        fromLocale,
+        provider,
+        streamCallbacks,
+        recordContext,
+        { onQcFlag },
       );
       break;
     default:

@@ -155,14 +155,18 @@ broken-key bulk run (every record fails WITH the auth reason — the outage
 story), single-block (`spotlight`/`inline_note`) empty-target assertions,
 sandbox-prefixed record-link hrefs, and the retained report's Download JSON.
 
-**Open question (investigation chip filed):** creating a record's pt-BR locale
-SPARSELY (partial-field bulk → title + nulls) and then whole-record
-sidebar-translating it produced a 422 "locales failing some validations:
-Portuguese (Brazil)" on the editor save, while it/es saved fine in the same
-run. The partial-selection E2E was moved to the product model (never
-editor-opened) to decouple the suites; whether a field-translation path
-mishandles that sparse-locale state (slug format? JSON validity past QC?) needs
-a daylight look.
+**Resolved: the pt-BR 422 was a JSON-field product bug (third one found).** The
+sparse locale was a red herring — the captured PUT body named
+`featured_data.pt-BR: INVALID_FORMAT`. `json` fields had no dedicated
+translation path: the whole raw document went to the provider as prose, which
+translated the KEYS and mangled syntax (DeepL: `"estimatedMinutes": 8` →
+`"tempo estimado": 8 minutos`, no longer JSON). Which locale broke was provider
+roulette — it/es survived, pt-BR didn't. Fixed structurally
+(`JsonFieldTranslation.ts`: parse → translate only non-empty string leaf values
+→ re-serialize; valid by construction, keys/numbers/booleans byte-exact,
+placeholders still protected), with a `json-validity` warning flag on the
+unparseable-draft fallback. Verified by re-running the exact failing repro
+(save now 200) and the kitchen-sink/A7 E2E flows.
 
 **Known-remaining (add-later, in value order):** mid-run Cancel (timing-flaky
 on a fast lane; needs a slow-lane or throttled run), role-exclusion surfaces +

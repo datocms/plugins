@@ -22,7 +22,8 @@ export type QcCheckId =
   | 'markdown-structure'
   | 'no-op'
   | 'length-ratio'
-  | 'length-validator';
+  | 'length-validator'
+  | 'json-validity';
 
 /** A single completeness finding for one field/locale (optionally one segment). */
 export type QcFlag = {
