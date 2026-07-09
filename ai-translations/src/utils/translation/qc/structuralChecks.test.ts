@@ -68,6 +68,25 @@ describe('checkMarkdownStructure', () => {
     });
   });
 
+  it('does not mistake a year opening a prose sentence for an ordered-list item', () => {
+    // "2020. A pivotal year…" is prose, not a list. A correct translation may
+    // reorder the year, which used to read as a "missing ol-item" error.
+    expect(
+      checkMarkdownStructure({
+        source: '2020. A pivotal year for the company.',
+        translated: 'Ein entscheidendes Jahr für das Unternehmen: 2020.',
+      }),
+    ).toBeNull();
+  });
+
+  it('still tracks real ordered-list items', () => {
+    const flag = checkMarkdownStructure({
+      source: '1. First step\n2. Second step',
+      translated: 'Erster Schritt ohne Nummerierung',
+    });
+    expect(flag).toMatchObject({ checkId: 'markdown-structure', severity: 'error' });
+  });
+
   it('flags an error when a link is dropped', () => {
     const flag = checkMarkdownStructure({
       source: 'Read [the docs](https://example.com) before starting.',
@@ -154,5 +173,27 @@ describe('checkLengthRatio', () => {
 
   it('skips very short sources where ratios are noise', () => {
     expect(checkLengthRatio({ source: 'Hi there', translated: 'H' })).toBeNull();
+  });
+
+  it('does not flag a legitimately compact CJK translation of a Latin source', () => {
+    // CJK packs far more information per character: a correct zh translation
+    // routinely lands at 20-30% of the Latin source's character count. The
+    // fixed 30% floor false-alarmed on essentially every substantial en→zh/ja
+    // field; a predominantly-CJK translation gets a lower floor instead.
+    expect(
+      checkLengthRatio({
+        source: 'Get started with our platform today and explore every feature.',
+        translated: '立即开始使用我们的平台',
+      }),
+    ).toBeNull();
+  });
+
+  it('still flags a truly truncated CJK translation', () => {
+    const flag = checkLengthRatio({
+      source:
+        'This long marketing paragraph describes the product, its capabilities, its pricing tiers, and the onboarding steps a new customer follows.',
+      translated: '产品',
+    });
+    expect(flag).toMatchObject({ checkId: 'length-ratio', severity: 'warning' });
   });
 });

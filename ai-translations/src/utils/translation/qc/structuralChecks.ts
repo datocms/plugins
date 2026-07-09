@@ -102,7 +102,12 @@ function classifyMarkdownBlock(trimmed: string): string {
   if (/^>/.test(trimmed)) return 'blockquote';
   if (/^(-{3,}|\*{3,}|_{3,})$/.test(trimmed)) return 'hr';
   if (/^[-*+]\s/.test(trimmed)) return 'ul-item';
-  if (/^\d+[.)]\s/.test(trimmed)) return 'ol-item';
+  // Only 1-2 digit markers count as ordered-list items: CommonMark allows any
+  // number, but a 3+-digit "marker" in real content is almost always a year or
+  // figure opening a prose sentence ("2020. A pivotal year…"), and a correct
+  // translation may reorder it — misclassifying it produced false
+  // missing-list-item structure errors on good translations.
+  if (/^\d{1,2}[.)]\s/.test(trimmed)) return 'ol-item';
   if (/^\|.*\|/.test(trimmed)) return 'table-row';
   return 'paragraph';
 }
@@ -231,16 +236,34 @@ function stripForRatio(text: string): string {
     .trim();
 }
 
+/** CJK code points (Han incl. ext-A/compat, kana incl. half-width, hangul). */
+const CJK_CHAR_RE =
+  /[぀-ヿ㐀-䶿一-鿿豈-﫿ｦ-ﾟ가-힯]/g;
+
 /**
- * Heuristic: flags when a non-trivial source produced a translation under ~30%
- * of its character length — a loose, one-sided truncation alarm. No upper bound
- * (legitimate expansion is unbounded) and short sources are skipped.
+ * Ratio floor below which a translation is flagged as possibly truncated. CJK
+ * scripts pack far more information per character than Latin (a good zh/ja/ko
+ * translation of a Latin source routinely lands at 20-30% of its character
+ * count), so a translation that is predominantly CJK gets a much lower floor —
+ * otherwise every substantial en→zh field false-alarms.
+ */
+function ratioFloor(translated: string): number {
+  const cjkCount = (translated.match(CJK_CHAR_RE) || []).length;
+  const isMostlyCjk = translated.length > 0 && cjkCount / translated.length > 0.5;
+  return isMostlyCjk ? 0.12 : 0.3;
+}
+
+/**
+ * Heuristic: flags when a non-trivial source produced a translation under a
+ * script-aware fraction of its character length — a loose, one-sided truncation
+ * alarm. No upper bound (legitimate expansion is unbounded) and short sources
+ * are skipped.
  */
 export function checkLengthRatio(args: SegmentArgs): QcFlag | null {
   const source = stripForRatio(args.source);
   const translated = stripForRatio(args.translated);
   if (source.length < 20) return null;
-  if (translated.length / source.length >= 0.3) return null;
+  if (translated.length / source.length >= ratioFloor(translated)) return null;
   return {
     checkId: 'length-ratio',
     severity: 'warning',

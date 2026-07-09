@@ -268,9 +268,33 @@ describe('translateArray.ts', () => {
         ]);
       });
 
-      it('should NOT rejoin an over-split non-HTML segment (avoids corrupting single_line/json/slug)', async () => {
-        // The newline-rejoin recovery is gated to HTML only. For a plain
-        // single-line value, injecting newlines would corrupt it, so the
+      it('should rejoin when the model splits a single Markdown segment into multiple elements', async () => {
+        // Same over-split failure mode as HTML, markdown flavour: a markdown
+        // field is sent as ONE segment holding several blocks; the model
+        // returns one element per block. Positional repair would crop the value
+        // to its first block (silent data loss) — instead the elements are
+        // rejoined with a blank line, the markdown block boundary.
+        vi.mocked(mockProvider.completeText).mockResolvedValue(
+          '["## Introducción", "Primer párrafo del cuerpo.", "Segundo párrafo del cuerpo."]',
+        );
+
+        const result = await translateArray(
+          mockProvider,
+          mockPluginParams,
+          ['## Intro\n\nBody paragraph one.\n\nBody paragraph two.'],
+          'en',
+          'es',
+          { kind: 'markdown' },
+        );
+
+        expect(result).toEqual([
+          '## Introducción\n\nPrimer párrafo del cuerpo.\n\nSegundo párrafo del cuerpo.',
+        ]);
+      });
+
+      it('should NOT rejoin an over-split plain-text segment (avoids corrupting single_line/json/slug)', async () => {
+        // The rejoin recovery covers block content (html/markdown) only. For a
+        // plain single-line value, injecting separators would corrupt it, so the
         // positional length repair (keep the first element) is retained.
         vi.mocked(mockProvider.completeText).mockResolvedValue(
           '["Rojo", "verde", "azul"]',

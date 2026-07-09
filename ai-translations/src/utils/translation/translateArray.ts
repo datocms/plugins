@@ -35,10 +35,13 @@ import type { ProviderDebugHooks, TranslationProvider } from './types';
  */
 const CHAT_VENDOR_CHUNK_SIZE = 25;
 
+/** Normalized field content kind, driving structural checks and repairs. */
+type ContentKind = 'html' | 'markdown' | 'text';
+
 type Options = {
   isHTML?: boolean;
   /** Field content kind, selects the structural check (html vs markdown). */
-  kind?: 'html' | 'markdown' | 'text';
+  kind?: ContentKind;
   formality?: 'default' | 'more' | 'less';
   recordContext?: string;
   /** Optional sink for quality-control flags emitted during the translation. */
@@ -273,14 +276,17 @@ function parseOrEmptyOnTruncation(
 /**
  * Reconciles the model's array against the input length.
  *
- * Over-split repair (HTML only): a single HTML segment can come back as several
- * elements when the model splits a multi-block value (e.g. a WYSIWYG field
- * holding several `<p>` blocks) into one element per block. Positional repair
- * maps output to input by index, so it would silently drop every element past
- * the first. When exactly one segment was sent, rejoin the string elements with
- * newlines (insignificant between block-level HTML elements) — a CLEAN recovery,
- * not a length mismatch. Gated to HTML because newlines are NOT a safe join
- * separator for single_line/slug/json/markdown values.
+ * Over-split repair (block content only): a single HTML or Markdown segment can
+ * come back as several elements when the model splits a multi-block value (e.g.
+ * a WYSIWYG field holding several `<p>` blocks, or a Markdown document with
+ * several paragraphs) into one element per block. Positional repair maps output
+ * to input by index, so it would silently drop every element past the first.
+ * When exactly one segment was sent, rejoin the string elements with a
+ * kind-appropriate block separator — newline for HTML (insignificant between
+ * block-level elements), blank line for Markdown (the block boundary) — a CLEAN
+ * recovery, not a length mismatch. Plain-text kinds (single_line/slug/json)
+ * keep positional repair: no join separator is safe there, and a short value's
+ * first element is the least-wrong recovery.
  *
  * Otherwise, emit a `length-mismatch` flag (using the real element count,
  * `arr.length`) and pad/truncate positionally so output matches input length.
@@ -288,16 +294,17 @@ function parseOrEmptyOnTruncation(
 function reconcileArrayLength(args: {
   arr: unknown[];
   originalSegments: string[];
-  isHtml: boolean;
+  kind: ContentKind;
   responseText: string;
   logger: Logger;
   context: ParseContext;
   onQcFlag?: OnQcFlag;
 }): string[] {
-  const { arr, originalSegments, isHtml, responseText, logger, context } = args;
+  const { arr, originalSegments, kind, responseText, logger, context } = args;
   const stringParts = arr.filter((v): v is string => typeof v === 'string');
+  const isBlockContent = kind === 'html' || kind === 'markdown';
   const isOverSplitRejoin =
-    isHtml && originalSegments.length === 1 && stringParts.length > 1;
+    isBlockContent && originalSegments.length === 1 && stringParts.length > 1;
 
   if (isOverSplitRejoin) {
     logger.warning('Model over-split a single segment; rejoined elements', {
@@ -306,7 +313,7 @@ function reconcileArrayLength(args: {
       parsedArray: arr,
       returnedLength: arr.length,
     });
-    return [stringParts.join('\n')];
+    return [stringParts.join(kind === 'markdown' ? '\n\n' : '\n')];
   }
 
   const lengthFlag = checkLengthMismatch({
@@ -325,7 +332,7 @@ function parseTranslationResponse(
   originalSegments: string[],
   logger: Logger,
   context: ParseContext,
-  isHtml: boolean,
+  kind: ContentKind,
   onQcFlag?: OnQcFlag,
   finishReason?: string,
 ): string[] {
@@ -346,7 +353,7 @@ function parseTranslationResponse(
   const fixed = reconcileArrayLength({
     arr,
     originalSegments,
-    isHtml,
+    kind,
     responseText,
     logger,
     context,
@@ -431,8 +438,12 @@ function runQcContentChecks(args: {
  * Drops redundant overlapping QC flags. `length-ratio` is the weakest signal, so
  * it is suppressed when a field-wide deterministic error already condemns the
  * value (length-mismatch / truncated, which carry no segmentIndex) or when a
- * per-segment error fired on the SAME segment. `no-op` is suppressed when a
- * truncation already explains the source-padded tail it would otherwise trip on.
+ * per-segment error fired on the SAME segment. The AGGREGATE `no-op` (no
+ * segmentIndex) is suppressed when a truncation already explains the
+ * source-padded tail it would otherwise trip on; PER-SEGMENT no-ops (atomic
+ * sub-fields like SEO title/description) are kept — a sibling segment's
+ * truncation doesn't explain an independent sub-field coming back untranslated,
+ * and losing that genuine signal is worse than an occasional overlapping row.
  */
 function suppressRedundantFlags(flags: QcFlag[]): QcFlag[] {
   const errorSegments = new Set<number>();
@@ -451,7 +462,9 @@ function suppressRedundantFlags(flags: QcFlag[]): QcFlag[] {
         flag.segmentIndex !== undefined && errorSegments.has(flag.segmentIndex)
       );
     }
-    if (flag.checkId === 'no-op') return !hasTruncated;
+    if (flag.checkId === 'no-op' && flag.segmentIndex === undefined) {
+      return !hasTruncated;
+    }
     return true;
   });
 }
@@ -550,7 +563,7 @@ async function translateWithChatProvider(
   toLocale: string,
   logger: Logger,
   providerDebugHooks: ProviderDebugHooks,
-  isHtml: boolean,
+  kind: ContentKind,
   onQcFlag?: OnQcFlag,
 ): Promise<string[]> {
   // Prefer the metadata-aware completion so we can observe truncation
@@ -596,7 +609,7 @@ async function translateWithChatProvider(
         chunkStart: 0,
         chunkSize: protectedSegments.length,
       },
-      isHtml,
+      kind,
       onQcFlag,
       finishReason,
     );
@@ -639,7 +652,7 @@ async function translateWithChatProvider(
         chunkStart,
         chunkSize: chunkSegments.length,
       },
-      isHtml,
+      kind,
       onQcFlag,
       finishReason,
     );
@@ -669,6 +682,13 @@ export async function translateArray(
 
   const logger = createLogger(pluginParams, 'translateArray');
   const providerDebugHooks = buildProviderDebugHooks(logger);
+
+  // One normalized content kind drives both the over-split repair and the
+  // structural QC checks (the legacy `isHTML` boolean maps to 'html').
+  const kind: ContentKind =
+    opts.kind === 'html' || opts.isHTML === true
+      ? 'html'
+      : (opts.kind ?? 'text');
 
   // QC flags are buffered, then emitted at the end so redundant warnings can be
   // suppressed before handing them to the caller.
@@ -720,7 +740,7 @@ export async function translateArray(
         toLocale,
         logger,
         providerDebugHooks,
-        opts.isHTML === true,
+        kind,
         collect,
       );
     }
@@ -754,8 +774,8 @@ export async function translateArray(
       const contentFlags = runQcContentChecks({
         sources: segments.map((s) => String(s ?? '')),
         translateds: finalSegments,
-        isHtml: opts.kind === 'html' || opts.isHTML === true,
-        isMarkdown: opts.kind === 'markdown',
+        isHtml: kind === 'html',
+        isMarkdown: kind === 'markdown',
         atomicSegments: opts.qcAtomicSegments === true,
       });
       const emitted = suppressRedundantFlags([...qcFlags, ...contentFlags]);
