@@ -113,7 +113,12 @@ export default function TranslateSidebar({ ctx }: PropTypes) {
     const [next] = normalizeLocaleSelection(newValue);
     if (next) {
       setSourceLocale(next);
-      setTargetLocaleOptions(locales.filter((o) => o.value !== next.value));
+      // Reset the targets only when the source actually CHANGED (the old set
+      // may contain the new source). Re-picking the same source must not wipe
+      // a target selection the user has deliberately narrowed.
+      if (next.value !== sourceLocale?.value) {
+        setTargetLocaleOptions(locales.filter((o) => o.value !== next.value));
+      }
     }
   };
 
