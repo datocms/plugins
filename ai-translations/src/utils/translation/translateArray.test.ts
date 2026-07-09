@@ -876,6 +876,89 @@ describe('translateArray.ts', () => {
         );
       });
 
+      it('applies the configured deeplFormality when no per-call formality is given', async () => {
+        // Regression: the ConfigScreen's deeplFormality setting previously had
+        // NO runtime effect — only the (never-passed) opts.formality was read.
+        mockDeepLProvider.translateArray.mockResolvedValue(['Hallo']);
+
+        await translateArray(
+          mockDeepLProvider,
+          { ...mockPluginParams, deeplFormality: 'less' },
+          ['Hello'],
+          'en',
+          'de',
+        );
+
+        expect(mockDeepLProvider.translateArray).toHaveBeenCalledWith(
+          expect.any(Array),
+          expect.objectContaining({ formality: 'less' }),
+        );
+      });
+
+      it("treats deeplFormality 'default' as unset and skips unsupported targets", async () => {
+        mockDeepLProvider.translateArray.mockResolvedValue(['Hola']);
+
+        // 'default' → omit entirely (let DeepL decide).
+        await translateArray(
+          mockDeepLProvider,
+          { ...mockPluginParams, deeplFormality: 'default' },
+          ['Hello'],
+          'en',
+          'de',
+        );
+        expect(
+          mockDeepLProvider.translateArray.mock.calls[0][1].formality,
+        ).toBeUndefined();
+
+        // Formality-unsupported target (e.g. EN) → omitted even when configured.
+        mockDeepLProvider.translateArray.mockResolvedValue(['Hello']);
+        await translateArray(
+          mockDeepLProvider,
+          { ...mockPluginParams, deeplFormality: 'more' },
+          ['Hallo'],
+          'de',
+          'en',
+        );
+        expect(
+          mockDeepLProvider.translateArray.mock.calls[1][1].formality,
+        ).toBeUndefined();
+      });
+
+      it('extends (never replaces) the protective tag lists with the configured deepl*Tags', async () => {
+        // Regression: the ConfigScreen's deeplIgnoreTags / deeplNonSplittingTags /
+        // deeplSplittingTags settings were ignored (hardcoded lists were sent).
+        // User values must EXTEND the baselines — ph/notranslate protect
+        // tokenized placeholders and must always survive.
+        mockDeepLProvider.translateArray.mockResolvedValue(['Hallo']);
+
+        await translateArray(
+          mockDeepLProvider,
+          {
+            ...mockPluginParams,
+            deeplIgnoreTags: 'kbd, samp',
+            deeplNonSplittingTags: 'abbr',
+            deeplSplittingTags: 'section',
+          },
+          ['Hello'],
+          'en',
+          'de',
+        );
+
+        const options = mockDeepLProvider.translateArray.mock.calls[0][1];
+        expect(options.ignoreTags).toEqual(['notranslate', 'ph', 'kbd', 'samp']);
+        expect(options.nonSplittingTags).toEqual([
+          'a',
+          'code',
+          'pre',
+          'strong',
+          'em',
+          'ph',
+          'notranslate',
+          'abbr',
+        ]);
+        expect(options.splittingTags).toEqual(['section']);
+      });
+
       it('should log native request and response payloads when debugging is enabled', async () => {
         const logSpy = vi
           .spyOn(console, 'log')

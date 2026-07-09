@@ -38,6 +38,18 @@ const CHAT_VENDOR_CHUNK_SIZE = 25;
 /** Normalized field content kind, driving structural checks and repairs. */
 type ContentKind = 'html' | 'markdown' | 'text';
 
+/**
+ * Merges a comma-separated user tag list (a ConfigScreen deepl*Tags setting)
+ * into a baseline list, deduped, preserving baseline order first.
+ */
+function mergeTagList(baseline: string[], configured?: string): string[] {
+  const extra = (configured ?? '')
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+  return [...new Set([...baseline, ...extra])];
+}
+
 type Options = {
   isHTML?: boolean;
   /** Field content kind, selects the structural check (html vs markdown). */
@@ -507,8 +519,17 @@ async function translateWithNativeBatchProvider(
 ): Promise<string[]> {
   const target = mapDatoToDeepL(toLocale, 'target');
   const source = fromLocale ? mapDatoToDeepL(fromLocale, 'source') : undefined;
+  // Explicit per-call formality wins; otherwise the plugin's configured
+  // deeplFormality applies ('default' means "let DeepL decide", i.e. omit).
+  const configuredFormality =
+    pluginParams?.deeplFormality && pluginParams.deeplFormality !== 'default'
+      ? pluginParams.deeplFormality
+      : undefined;
+  const requestedFormality = opts.formality ?? configuredFormality;
   const formality =
-    opts.formality && isFormalitySupported(target) ? opts.formality : undefined;
+    requestedFormality && isFormalitySupported(target)
+      ? requestedFormality
+      : undefined;
 
   const requestOptions = {
     sourceLang: source,
@@ -516,9 +537,16 @@ async function translateWithNativeBatchProvider(
     isHTML: !!opts.isHTML,
     formality,
     preserveFormatting: pluginParams?.deeplPreserveFormatting !== false,
-    ignoreTags: ['notranslate', 'ph'],
-    nonSplittingTags: ['a', 'code', 'pre', 'strong', 'em', 'ph', 'notranslate'],
-    splittingTags: [],
+    // The baseline tag lists protect tokenized placeholders (ph/notranslate)
+    // and keep inline markup intact — the configured deepl*Tags settings
+    // EXTEND them (never replace: dropping ph/notranslate would let DeepL
+    // translate protected placeholder tokens).
+    ignoreTags: mergeTagList(['notranslate', 'ph'], pluginParams?.deeplIgnoreTags),
+    nonSplittingTags: mergeTagList(
+      ['a', 'code', 'pre', 'strong', 'em', 'ph', 'notranslate'],
+      pluginParams?.deeplNonSplittingTags,
+    ),
+    splittingTags: mergeTagList([], pluginParams?.deeplSplittingTags),
     glossaryId: resolveGlossaryId(pluginParams, fromLocale, toLocale),
     originalSourceLocale: fromLocale,
     originalTargetLocale: toLocale,
