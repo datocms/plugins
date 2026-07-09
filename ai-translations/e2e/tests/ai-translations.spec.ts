@@ -23,6 +23,7 @@ import { bulkPageUrl, frameWithButton, runBulkTranslation } from './steps/bulk';
 import {
   fieldMenuEntries,
   runItemsDropdownTranslation,
+  selectAllRecords,
   translateFieldViaDropdown,
 } from './steps/dropdown-actions';
 import {
@@ -148,6 +149,16 @@ test.describe('AI Translations', () => {
       expect(lines[0]).toContain('notes');
       // Header + one data row per record.
       expect(lines.length, `expected header + ${report.total} rows`).toBe(report.total + 1);
+      // Row bodies, not just counts: every row leads with a known status, and
+      // any embedded editor URL targets THIS forked environment.
+      for (const line of lines.slice(1)) {
+        expect(line, 'each row starts with a known status').toMatch(
+          /^(success|warning|failure),/,
+        );
+        if (line.includes('/editor/item_types/')) {
+          expect(line).toContain(`/environments/${envName}/`);
+        }
+      }
       // Each record row links to its editor (master's record-link feature) —
       // and inside a sandbox env the href must carry the environment prefix,
       // or the link lands in the primary environment's editor.
@@ -829,6 +840,78 @@ test.describe('AI Translations', () => {
       const es = (await getLocaleValue(envName, A2.id, 'excerpt', 'es')) as string;
       expect(en, 'excerpt.en should be populated by Translate from').toBeTruthy();
       expect(en, 'excerpt.en should be a translation of es, not a copy').not.toBe(es);
+    });
+  });
+
+  test('items dropdown: picker and confirm Cancel paths bail without side effects', async ({ page }) => {
+    const { vendor, envName } = meta();
+    test.skip(vendor !== 'deepl', 'cancel paths are provider-independent — asserted on the DeepL lane');
+    test.setTimeout(TIMEOUTS.five_min);
+
+    await step(vendor, 'open the product table and the batch action', async () => {
+      await cmaClient(envName).itemTypes.update(PRODUCT, { collection_appearance: 'table' });
+      await page.goto(
+        `https://${PROJECT_SUBDOMAIN()}.admin.datocms.com/environments/${envName}` +
+          `/editor/item_types/${PRODUCT}/items`,
+        { waitUntil: 'domcontentloaded' },
+      );
+      await selectAllRecords(page);
+    });
+
+    const openAction = async () => {
+      // A dismissed modal clears the record selection — re-select each time
+      // (idempotent: selectAllRecords no-ops when the trigger is already up).
+      await selectAllRecords(page);
+      const batchTrigger = page.locator('button.Dropdown__icon-trigger--reverse:visible');
+      const action = page
+        .locator('.Dropdown__menu-container:visible .Dropdown__menu__option')
+        .filter({ hasText: 'AI Translate these records' })
+        .first();
+      await expect
+        .poll(
+          async () => {
+            if (await action.count().catch(() => 0)) return true;
+            await page.keyboard.press('Escape');
+            await batchTrigger.click();
+            await page.waitForTimeout(1000);
+            return (await action.count().catch(() => 0)) > 0;
+          },
+          { timeout: TIMEOUTS.three_min },
+        )
+        .toBe(true);
+      await action.click();
+    };
+
+    await step(vendor, 'Cancel in the picker: silent bail, no confirm modal', async () => {
+      await openAction();
+      const picker = await frameWithButton(page, /^Translate \d+ record/);
+      await picker.getByRole('button', { name: 'Cancel' }).click();
+      await page.waitForTimeout(3000);
+      await expect(
+        page.getByText('Start translation?'),
+        'no confirm modal after a picker cancel',
+      ).toHaveCount(0);
+      await expect(
+        page.getByText('Translation Progress'),
+        'no progress modal after a picker cancel',
+      ).toHaveCount(0);
+    });
+
+    await step(vendor, 'Cancel in the confirm modal: the run never starts', async () => {
+      await openAction();
+      const picker = await frameWithButton(page, /^Translate \d+ record/);
+      await picker.getByRole('button', { name: /^Translate \d+ record/ }).click();
+      const confirm = await frameWithButton(
+        page,
+        /^Translate \d+ record/,
+        'Fields to translate',
+      );
+      await confirm.getByRole('button', { name: 'Cancel' }).click();
+      await page.waitForTimeout(3000);
+      await expect(
+        page.getByText('Translation Progress'),
+        'no progress modal after a confirm cancel',
+      ).toHaveCount(0);
     });
   });
 

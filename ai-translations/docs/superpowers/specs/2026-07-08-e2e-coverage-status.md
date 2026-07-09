@@ -176,10 +176,15 @@ no field actions), onBoot default re-seeding, a non-default source locale
 driving a bulk run (de → fr), sidebar target narrowing with the unselected
 locale proven byte-untouched, and a non-default source locale bulk run.
 
-**Known-remaining (add-later):** mid-run Cancel paths (bulk progress modal,
-picker/confirm bail-outs), retained-report Copy button (clipboard perms),
-deeper CSV row-body assertions, and the badge length overflow through the
-FIELD-action path (attempted: the kebab flow on the catalog record never fired
+Also covered since: picker + confirm-modal Cancel bail-outs (no run starts, no
+modals linger) and CSV row-body depth (every row leads with a known status;
+embedded editor URLs target the forked env).
+
+**Known-remaining (add-later):** MID-RUN Cancel in the bulk progress modal
+(timing-sensitive on the fast lane), retained-report Copy button (clipboard
+perms), role exclusion (needs a collaborator login — the harness session is
+the project owner), and the badge length overflow through the FIELD-action
+path (attempted: the kebab flow on the catalog record never fired
 the action in E2E — zero toasts, likely a submenu-interaction quirk on that
 record's menu; the sidebar badge test still covers translate-time length
 surfacing). **Role exclusion turns out to be untestable
