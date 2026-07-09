@@ -50,12 +50,59 @@ is schema-side — so one lane suffices).
   `article → es` run accounts for every record and asserts (CMA) that at least one
   article now has an `es` title that *differs* from its `en` source — real translation
   into an empty locale, not just an overwrite or a copy.
+- **Translated editors, not just presence** (audit 9, 11, 29 — closed): the DeepL
+  lane now pins **every** editor into `translationFields` (structured_text /
+  rich_text / single_block included — DeepL's batch API absorbs the fan-out that
+  made these unaffordable on the chat lanes), and the article bulk test asserts
+  A1's heavy editors landed in the EMPTY `es` target: `body_html` keeps its
+  top-level element count (the 3.5.6 over-split crop regression, Basecamp "AI
+  Translate truncating HTML response arrays"), `content_blocks.es` carries every
+  source block, `structured_body.es` is populated and differs from `en`, and
+  `cover_image`/`media_gallery` land per-asset.
+- **Source-locale integrity** (new; Basecamp "Fixing corrupted AI Translation SEO
+  Fields", the ≤3.4.5 in-place mutation bug): the A1 kitchen-sink test snapshots
+  the `en` slice of every localized field before translating and asserts it
+  byte-identical after save — a translation run must never corrupt its source.
+- **Retained on-page review list** (audit 20, 21): after the catalog bulk modal
+  closes, the persisted `BulkTranslationReport` region must still list the
+  reference-copy warning rows (naming `related_articles`) and the badge
+  length-failure row.
+- **Provider-appropriate outcomes** (audit 24, scoped): on DeepL the product bulk
+  may fail at most the source-less record and must translate every en-sourced
+  product; chat lanes stay unpinned (QC warnings are legitimate there).
+- **Field-dropdown surface** (new — found by a surface sweep, not in the original
+  audit): `fieldDropdownActions`/`executeFieldDropdownAction` ("Translate to →")
+  had ZERO coverage. A DeepL-lane test CMA-clears A2's `excerpt.es`, drives the
+  field kebab → "Translate to → [es]", asserts the completion notice, saves, and
+  proves the empty target was really written.
+- **Items-dropdown surface** (new — same sweep): `itemsDropdownActions` ("AI
+  Translate these records" → picker modal → confirm → progress) had ZERO
+  coverage. A DeepL-lane test flips the product model to the `table` collection
+  appearance (the only appearance with multi-select), selects all records,
+  drives the picker (en → pt-BR), and asserts the per-record report accounts for
+  all three products — including the record with no `en` source — plus a real
+  pt-BR translation via CMA.
 
 Plus, from the merge itself: a `csvExport` bug (warned records dropped from the CSV)
 was fixed, and the E2E login flake (`networkidle`) was removed. Suite internals are
 now documented in [`e2e/AGENTS.md`](../../../e2e/AGENTS.md).
 
 ## Remaining gaps (prioritized)
+
+### Found while closing these: two latent E2E-suite hazards (both fixed)
+
+- **Editing-session locks leaked into the bulk tests.** Per-record tests lock the
+  records they open for minutes past the test's end, so the later bulk runs hit
+  "record is locked" on exactly those records. Worse, the catalog test's
+  `errors ≥ 1` was being satisfied by that lock error — the badge **length**
+  failure it claims to prove may never have been exercised in a full-suite run.
+  Fixed by ordering bulk tests before every editor test and asserting the
+  failure's stated reason (length/validation) in the CSV, not just its count.
+- **A6's slug outcome is DeepL-weather.** zh-Hans → ar sometimes yields a
+  Latin-ish slug (normalizes fine → wholesale success) and sometimes Arabic
+  script (normalizes empty → surfaced failure). The test now accepts either
+  surfaced outcome; what it pins is that the run finishes and never ends
+  silently.
 
 ### Resolved: the A6 "hang" was an E2E-harness bug, not a plugin bug
 The first attempt at an A6 (`zh-Hans` source) per-record test appeared to hang for
@@ -71,18 +118,6 @@ burned the full 10-min timeout. Fixed by making the helper key off the "Cancel"
 button (shown only while actively translating; hidden on both success and error) and
 accumulate auto-dismissing toasts. A6 now runs in ~7.5s and asserts the run finishes
 and surfaces the untranslatable slug. No plugin change was needed.
-- **Assert translated editors, not just presence** (audit 9, 11, 29): the bulk/per-
-  record CMA assertions confirm a locale is *populated*; strengthen them to confirm
-  `structured_text`/`rich_text`/`single_block`/`file`/`gallery` values actually
-  changed vs source and into an *empty* target locale (A1 currently checks `it`, a
-  source locale).
-
-### Medium
-- **Warning-severity QC bucket + retained review list** (audit 20, 21): the on-page
-  `BulkTranslationReport` table surviving modal close.
-- **Provider-appropriate outcomes** (audit 24): assert DeepL takes the happy path
-  while a chat vendor surfaces the defect-path warnings.
-
 ### Low / hard to make deterministic
 - **Provider-dependent QC checks** (audit 19, 22, 25, 30–35): `truncated`,
   `no-op`, `html-structure`, `markdown-structure`, `length-ratio`, `length-mismatch`.

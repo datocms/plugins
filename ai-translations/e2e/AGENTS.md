@@ -131,6 +131,19 @@ suite to translate into. `seed-manifest.json` lists every record's `sourceLocale
   free-tier lanes (`FREE_TIER_VENDORS = google, anthropic` in the spec) because a
   whole-record sidebar run exceeds the budget on rate-limited free keys; openai + deepl
   cover it, bulk covers everyone.
+- **`dropdown-actions.ts`** — the plugin's two DASHBOARD-chrome surfaces.
+  `translateFieldViaDropdown` drives a field's kebab menu (`[id="field--<path>"]
+  button.Dropdown__icon-trigger` → hover the "Translate to/from" group → click the
+  "<Label> [<code>]" entry); it retries opening the menu because the plugin's
+  actions register only after its hidden frame boots. `runItemsDropdownTranslation`
+  drives the record-list batch action ("AI Translate these records" → picker →
+  confirm → progress). Multi-selection ONLY exists in the `table` collection
+  appearance — flip the model via CMA in the fork first (`itemTypes.update(id,
+  { collection_appearance: 'table' })`); the batch dropdown trigger is
+  `button.Dropdown__icon-trigger--reverse`. Gotcha: the picker and the confirm
+  modal both expose a "Translate N records" button — `frameWithButton`'s
+  `withoutText: 'Fields to translate'` filter is how the confirm frame is told
+  apart from the (closing) picker frame.
 - **`bulk.ts`** — `runBulkTranslation(page, { modelCode, toLocale, vendor })` drives the
   Bulk Translations page. **`modelCode` is the model's `api_key`** (matched via the
   `<code>` chip in the model dropdown). It waits for the progress modal's Close button
@@ -149,6 +162,15 @@ the `parseReport` regex in lockstep, or every bulk test silently reads zeros.
 
 ## Hard-won gotchas (read before debugging)
 
+- **Editing-session locks outlive tests — bulk tests run FIRST in the spec.**
+  Opening a record in the editor takes a lock that persists for minutes after the
+  test's page closes, and any later bulk translation that CMA-saves the same
+  record fails with "the record is locked because it is being edited" — the
+  plugin correctly reports it, but the bulk test then fails (or worse, "passes"
+  with a lock error satisfying a `errors ≥ 1` assertion that was meant to prove
+  a validator failure). The spec is therefore ordered bulk-tests-first, editor
+  tests after; keep it that way, and when asserting a specific failure kind,
+  match on the CSV `notes` reason, not just the error count.
 - **Never wait on `networkidle` against the dashboard.** It holds long-lived
   connections (websockets/long-polling) and never goes idle → a 30s timeout that fails
   `global-setup` intermittently. `dato-auth.ts` confirms auth by the URL leaving
