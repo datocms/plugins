@@ -25,7 +25,12 @@ import {
   runItemsDropdownTranslation,
   translateFieldViaDropdown,
 } from './steps/dropdown-actions';
-import { openRecord, saveRecord, translateRecordViaSidebar } from './steps/per-record';
+import {
+  openRecord,
+  openTranslationPanel,
+  saveRecord,
+  translateRecordViaSidebar,
+} from './steps/per-record';
 import { getPluginParams, setPluginParams } from './steps/plugin-config';
 
 /**
@@ -827,6 +832,300 @@ test.describe('AI Translations', () => {
     });
   });
 
+  test('bulk page: dead-end states — model without records, model without translatable fields', async ({ page }) => {
+    const { vendor, envName } = meta();
+    test.skip(vendor !== 'deepl', 'dead-end states are provider-independent — asserted on the DeepL lane');
+    test.setTimeout(TIMEOUTS.five_min);
+
+    // Fixture models live only in this disposable fork (create-if-absent so a
+    // kept env can re-run): one translatable model with ZERO records, one model
+    // whose only field is untranslatable.
+    await step(vendor, 'ensure the dead-end fixture models exist (CMA)', async () => {
+      const client = cmaClient(envName);
+      const types = await client.itemTypes.list();
+      if (!types.some((t) => t.api_key === 'e2e_empty_content')) {
+        const emptyModel = await client.itemTypes.create({
+          name: 'E2E Empty Content',
+          api_key: 'e2e_empty_content',
+        });
+        await client.fields.create(emptyModel.id, {
+          label: 'Title',
+          api_key: 'title',
+          field_type: 'string',
+          localized: true,
+        });
+      }
+      if (!types.some((t) => t.api_key === 'e2e_untranslatable')) {
+        const boolModel = await client.itemTypes.create({
+          name: 'E2E Untranslatable',
+          api_key: 'e2e_untranslatable',
+        });
+        await client.fields.create(boolModel.id, {
+          label: 'Flag',
+          api_key: 'flag',
+          field_type: 'boolean',
+          localized: false,
+        });
+      }
+    });
+
+    await step(vendor, 'open the Bulk Translations page', async () => {
+      await page.goto(await bulkPageUrl(meta()), { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(3000);
+    });
+    const frame = await frameWithButton(page, /Start bulk translation/i);
+
+    await step(vendor, 'a records-less model alerts instead of running', async () => {
+      await frame.locator('[class*="-control"]').nth(2).click();
+      await frame
+        .locator('[class*="-option"]')
+        .filter({ has: frame.locator('code', { hasText: /^e2e_empty_content$/ }) })
+        .first()
+        .click();
+      await frame.getByText(/Fields to translate/i).waitFor({ timeout: TIMEOUTS.thirty_sec });
+      await frame.getByRole('button', { name: /start bulk translation/i }).click();
+      // The dead end surfaces BEFORE any confirm modal: a dashboard alert.
+      await expect(
+        page.getByText('No records found in the selected models').first(),
+        'the no-records alert should surface',
+      ).toBeVisible({ timeout: TIMEOUTS.thirty_sec });
+    });
+
+    await step(vendor, 'an untranslatable model shows the dead-end notice with a working Remove', async () => {
+      await frame.locator('[class*="-control"]').nth(2).click();
+      await frame
+        .locator('[class*="-option"]')
+        .filter({ has: frame.locator('code', { hasText: /^e2e_untranslatable$/ }) })
+        .first()
+        .click();
+      const notice = frame.getByText(/No translatable fields/i).first();
+      await expect(notice, 'the picker should name the dead end').toBeVisible({
+        timeout: TIMEOUTS.thirty_sec,
+      });
+      // The readiness blocker names the model and the way out…
+      await expect(
+        frame.getByText(/has no translatable fields — remove it/i).first(),
+      ).toBeVisible();
+      // …and Remove actually removes it. Scope to the dead-end notice box —
+      // the page has other "Remove" affordances (chip clears, exclusions).
+      await frame
+        .locator('[class*="noFields"]')
+        .getByRole('button', { name: 'Remove' })
+        .first()
+        .click();
+      await expect(frame.getByText(/No translatable fields/i)).toHaveCount(0);
+    });
+  });
+
+  test('bulk page: readiness blockers gate Start and the target mutex holds', async ({ page }) => {
+    const { vendor } = meta();
+    test.skip(vendor !== 'deepl', 'readiness UI is provider-independent — asserted on the DeepL lane');
+    test.setTimeout(TIMEOUTS.five_min);
+
+    await step(vendor, 'open the Bulk Translations page', async () => {
+      await page.goto(await bulkPageUrl(meta()), { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(3000);
+    });
+    const frame = await frameWithButton(page, /Start bulk translation/i);
+    const start = frame.getByRole('button', { name: /start bulk translation/i });
+
+    await step(vendor, 'with no model selected, Start is blocked with the reason', async () => {
+      await expect(start).toBeDisabled();
+      await expect(frame.getByText('Before you can translate:')).toBeVisible();
+      await expect(frame.getByText('Pick at least one model to translate.')).toBeVisible();
+    });
+
+    await step(vendor, 'target select: a specific locale replaces "All other locales" and back', async () => {
+      // Assert on the select's VALUE (its control's chips) — the same string
+      // also appears in the field hint and the open options menu.
+      const targetControl = frame.locator('[class*="-control"]').nth(1);
+      // Picking a specific target drops the sentinel…
+      await targetControl.click();
+      await frame
+        .locator('[class*="-option"]')
+        .filter({ has: frame.locator('code', { hasText: /^es$/ }) })
+        .first()
+        .click();
+      await expect(targetControl.getByText('All other locales')).toHaveCount(0);
+      await expect(targetControl.locator('code', { hasText: /^es$/ }).first()).toBeVisible();
+      // …and re-picking the sentinel drops the specific locale.
+      await targetControl.click();
+      await frame
+        .locator('[class*="-option"]')
+        .filter({ hasText: 'All other locales' })
+        .first()
+        .click();
+      await expect(targetControl.getByText('All other locales').first()).toBeVisible();
+      await expect(targetControl.locator('code', { hasText: /^es$/ })).toHaveCount(0);
+    });
+
+    await step(vendor, 'selecting a model satisfies readiness and Start unlocks', async () => {
+      await frame.locator('[class*="-control"]').nth(2).click();
+      await frame
+        .locator('[class*="-option"]')
+        .filter({ has: frame.locator('code', { hasText: /^product$/ }) })
+        .first()
+        .click();
+      await frame.getByText(/Fields to translate/i).waitFor({ timeout: TIMEOUTS.thirty_sec });
+      await expect(start).toBeEnabled({ timeout: TIMEOUTS.thirty_sec });
+      await expect(frame.getByText(/Ready to translate to \d+ locales?/)).toBeVisible();
+    });
+  });
+
+  test('per-record: a single-locale record degrades both surfaces gracefully', async ({ page }) => {
+    const { vendor, envName } = meta();
+    test.skip(vendor !== 'deepl', 'single-locale guard is provider-independent — asserted on the DeepL lane');
+    test.setTimeout(TIMEOUTS.five_min);
+
+    // A record whose ONLY locale is en: the sidebar must explain itself and the
+    // field kebab must offer no translate actions (nowhere to translate to).
+    const recordId = await step(vendor, 'ensure the single-locale fixture record exists (CMA)', async () => {
+      const client = cmaClient(envName);
+      const existing = await client.items.list({
+        filter: { type: 'article', fields: { slug: { eq: { en: 'single-locale-guard-e2e' } } } },
+      }).catch(() => []);
+      if (existing.length > 0) return existing[0].id;
+      const created = await client.items.create({
+        item_type: { type: 'item_type', id: ARTICLE },
+        title: { en: 'Single Locale Guard' },
+        slug: { en: 'single-locale-guard-e2e' },
+      });
+      return created.id;
+    });
+
+    await step(vendor, `open the single-locale record ${recordId}`, () =>
+      openRecord(page, meta(), ARTICLE, recordId),
+    );
+
+    await step(vendor, 'the sidebar panel explains the single-locale limitation', async () => {
+      const panel = page
+        .locator('iframe[src*="localhost:5173"]')
+        .filter({ visible: true })
+        .first()
+        .contentFrame();
+      await expect(
+        panel.getByText(/more than one\s+locale/i).first(),
+        'the sidebar should state the more-than-one-locale requirement',
+      ).toBeVisible({ timeout: TIMEOUTS.one_min });
+    });
+
+    await step(vendor, 'the field kebab offers no translate actions', async () => {
+      const entries = await fieldMenuEntries(page, 'title.en');
+      expect(entries.join(' | ')).toMatch(/Go to/);
+      expect(
+        entries.join(' | '),
+        'no translate actions on a single-locale record',
+      ).not.toMatch(/Translate to|Translate from/);
+    });
+  });
+
+  test('bulk: a non-default source locale drives the run (de → fr)', async ({ page }) => {
+    test.setTimeout(TIMEOUTS.five_min + TIMEOUTS.three_min);
+    const { vendor, envName } = meta();
+    // Every other bulk run leaves the source select at its default (the first
+    // project locale). Prove a chosen source drives translation: only the
+    // de-sourced product translates; en-only records are accounted for as
+    // ineligible rather than silently translated from the wrong source.
+    test.skip(vendor !== 'deepl', 'source-locale selection asserted on the DeepL lane');
+    const P2 = findRecord(manifest, 'product', ['de', 'es']);
+
+    await step(vendor, 'open the Bulk Translations page', async () => {
+      await page.goto(await bulkPageUrl(meta()), { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(3000);
+    });
+
+    const report = await step(vendor, 'run bulk translation (product, de → fr)', () =>
+      runBulkTranslation(page, {
+        modelCode: 'product',
+        toLocale: 'fr',
+        fromLocale: 'de',
+        vendor,
+      }),
+    );
+    expect(report.total, report.summary).toBe(3);
+    expect(report.completed + report.withWarnings + report.errors, report.summary).toBe(3);
+
+    await step(vendor, 'assert the de-sourced product got a real fr translation (CMA)', async () => {
+      const item = (await cmaClient(envName).items.find(P2.id)) as Record<
+        string,
+        Record<string, unknown>
+      >;
+      const fr = item.name.fr as string;
+      expect(fr, 'name.fr should be populated from the de source').toBeTruthy();
+      expect(fr, 'name.fr should be a translation, not a copy of de').not.toBe(item.name.de);
+    });
+  });
+
+  test('per-record: sidebar target narrowing leaves unselected locales untouched', async ({ page }) => {
+    const { vendor, envName } = meta();
+    test.skip(vendor !== 'deepl', 'target narrowing asserted on the DeepL lane');
+    test.setTimeout(TIMEOUTS.five_min + TIMEOUTS.three_min);
+
+    // Give A2 a third locale (de) so "narrow to de" leaves a REAL unselected
+    // locale (es) to protect. Adding a locale requires EVERY localized field to
+    // carry an explicit value for it (null is fine) — see the CMA's
+    // INVALID_LOCALES rule. Idempotent: skip when de is already present.
+    const LOCALIZED = manifest.schema.models.article.fields
+      .filter((f) => f.localized)
+      .map((f) => f.api_key);
+    await step(vendor, 'ensure A2 carries a de slice (CMA)', async () => {
+      const client = cmaClient(envName);
+      const item = (await client.items.find(A2.id)) as Record<string, unknown>;
+      if ((item.title as Record<string, unknown>).de) return;
+      const payload: Record<string, unknown> = {};
+      for (const field of LOCALIZED) {
+        const current = (item[field] ?? {}) as Record<string, unknown>;
+        const seed =
+          field === 'title' || field === 'excerpt'
+            ? current.en
+            : field === 'slug'
+              ? 'narrowing-fixture-de'
+              : null;
+        payload[field] = { ...current, de: seed };
+      }
+      await client.items.update(A2.id, payload);
+    });
+
+    const esBefore = await step(vendor, "snapshot A2's es slices (the UNSELECTED target)", () =>
+      snapshotLocaleValues(envName, A2.id, 'es', LOCALIZED),
+    );
+
+    await step(vendor, `open record ${A2.id} (en + es + de)`, () =>
+      openRecord(page, meta(), ARTICLE, A2.id),
+    );
+
+    // Narrow the sidebar's target selection from the default (all other
+    // locales) to just de, then translate.
+    const run = await step(vendor, 'translate en → (de only) via the sidebar', async () => {
+      // Expand the panel first (it can be collapsed), THEN narrow the targets.
+      // The sidebar pre-resolves its target selection into CONCRETE chips (es +
+      // de here; its menu is empty once every option is selected), so narrowing
+      // means REMOVING the unwanted chip, not picking from the menu.
+      const panel = await openTranslationPanel(page);
+      const targetControl = panel.locator('[class*="-control"]').nth(1);
+      await targetControl
+        .locator('[class*="multi-value"]')
+        .filter({ has: panel.locator('code', { hasText: /^es$/ }) })
+        .locator('[class*="multi-value__remove"]')
+        .click();
+      await expect(
+        targetControl.locator('code', { hasText: /^es$/ }),
+        'the es chip should be removed from the target selection',
+      ).toHaveCount(0);
+      return translateRecordViaSidebar(page, { fromLocale: 'en', vendor });
+    });
+    expect(run.completed, 'narrowed translation should finish').toBe(true);
+
+    const save = await step(vendor, 'save the record', () => saveRecord(page, vendor));
+    expect(save.status, `save should succeed (got ${save.status})`).toBe(200);
+
+    await step(vendor, 'assert de translated and es byte-untouched (CMA)', async () => {
+      await assertLocalesPopulated(envName, A2.id, ['de'], ['title', 'excerpt']);
+      // The unselected locale must not have been rewritten by the run.
+      await assertLocaleValuesUnchanged(envName, A2.id, 'es', esBefore);
+    });
+  });
+
   test('config screen: vendor switch swaps credential fields and gates Save on dirtiness', async ({ page }) => {
     const { vendor, envName } = meta();
     test.skip(vendor !== 'deepl', 'config-screen smoke asserted on the DeepL lane');
@@ -1040,6 +1339,51 @@ test.describe('AI Translations', () => {
         expect(entries.join(' | '), 'no live translate actions while unconfigured').not.toMatch(
           /Translate to|Translate from/,
         );
+      });
+    } finally {
+      await setPluginParams(envName, original);
+    }
+  });
+
+  test('onBoot re-seeds missing default parameters', async ({ page }) => {
+    const { vendor, envName } = meta();
+    test.skip(vendor !== 'deepl', 'onBoot seeding is provider-independent — asserted on the DeepL lane');
+    test.setTimeout(TIMEOUTS.five_min);
+
+    const original = await getPluginParams(envName);
+    try {
+      await step(vendor, 'strip the params down to bare credentials', () =>
+        setPluginParams(envName, {
+          vendor: 'deepl',
+          deeplApiKey: original.deeplApiKey,
+          deeplEndpoint: original.deeplEndpoint ?? 'auto',
+        }),
+      );
+
+      await step(vendor, 'boot the plugin by opening a record', () =>
+        openRecord(page, meta(), ARTICLE, A2.id),
+      );
+
+      await step(vendor, 'onBoot wrote the missing defaults back (CMA)', async () => {
+        await expect
+          .poll(
+            async () => {
+              const params = await getPluginParams(envName);
+              return (
+                Array.isArray(params.translationFields) &&
+                (params.translationFields as string[]).length > 0 &&
+                typeof params.prompt === 'string' &&
+                (params.prompt as string).length > 0 &&
+                params.translateWholeRecord === true &&
+                Array.isArray(params.modelsToBeExcludedFromThisPlugin)
+              );
+            },
+            {
+              timeout: TIMEOUTS.one_min,
+              message: 'onBoot should have re-seeded the default parameters',
+            },
+          )
+          .toBe(true);
       });
     } finally {
       await setPluginParams(envName, original);

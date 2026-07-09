@@ -20,11 +20,24 @@ its own README.
      where the run id is the run's unix-seconds stamp), then takes it back out,
    - pins each env's plugin `parameters` to its vendor (env-scoped),
    - logs in once and saves the session to `.auth/state.json`.
-2. **The suite** (`tests/ai-translations.spec.ts`) runs three tests per active provider,
-   each project against its own environment, fully in parallel:
-   - per-record sidebar translation of a kitchen-sink record (translate + save),
-   - per-record placeholder survival / graceful save-error handling,
-   - bulk translation with a per-record outcome report.
+2. **The suite** (`tests/ai-translations.spec.ts`) runs one project per active
+   provider, each against its own environment, fully in parallel. Every test
+   runs on every lane unless gated; provider-independent behaviour is asserted
+   once on the deterministic DeepL lane. Coverage spans (see
+   [`AGENTS.md`](AGENTS.md) and the coverage-status doc for the full matrix):
+   - bulk translations (product/catalog/article models: outcome report + CSV,
+     reference-copy + length-validator paths, empty-target proof with
+     heavy-editor structure parity, partial field selection);
+   - per-record sidebar flows (kitchen-sink translate + save, placeholder
+     survival, non-Latin sources, pre-filled targets, QC length alerts,
+     single-locale guard);
+   - field dropdown actions (Translate to / from / All locales, empty-source
+     guard) and the records-list batch action (picker → confirm → progress);
+   - the config screen (vendor switch, Save gating) and surface gating for
+     every plugin parameter (feature toggles, model/field/role exclusions,
+     unconfigured and broken-key degradation);
+   - dead-end states (records-less model, untranslatable model, readiness
+     blockers).
 3. **global-teardown** destroys each provider's env **only if its project
    passed**; failed projects' envs are left for debugging and reaped by the next
    run's stale-env sweep.
@@ -135,10 +148,11 @@ show up in the HTML report, the trace viewer (`test:e2e:report`), and UI mode
   per-record tests are therefore skipped for `google` and `anthropic` (openai +
   deepl cover per-record; bulk covers every provider). With a paid key, drop the
   vendor from `FREE_TIER_VENDORS` in the spec to re-enable.
-- **Heavy editors excluded.** `structured_text` and `rich_text` are dropped from
-  the translated field set (`plugin-params.ts`) — each expands into many
-  sequential calls. The retained editors still cover the QC paths (placeholders
-  in json/text/markdown, slug, SEO).
+- **Heavy editors: DeepL lane only.** `structured_text` and `rich_text` are
+  dropped from the CHAT lanes' translated field set (`plugin-params.ts`) — each
+  expands into many sequential calls that rate-limited free tiers can't afford.
+  The DeepL lane keeps EVERY editor (its batch API absorbs the fan-out), so
+  heavy-editor behaviour is proven end-to-end there.
 - **Per-record vs bulk scope.** The sidebar translates among a record's *active*
   locales (writes to the form → the suite saves, then asserts via CMA). The bulk
   page is CMA-based and fills any target locale.

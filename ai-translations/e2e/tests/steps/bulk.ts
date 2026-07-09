@@ -127,6 +127,8 @@ export const runBulkTranslation = async (
     modelCode: string;
     toLocale: string;
     vendor: string;
+    /** Source locale code; default: the select's initial value (first locale). */
+    fromLocale?: string;
     /** Progress-modal completion budget; default 5 min. The DeepL lane translates
      * EVERY editor (incl. structured/rich text), so heavy models need longer. */
     closeTimeout?: number;
@@ -143,6 +145,10 @@ export const runBulkTranslation = async (
   const frame = bulkFrame(page);
 
   // Controls: 0=source, 1=target locales, 2=models, 3+=per-model field pickers.
+  if (opts.fromLocale) {
+    note(vendor, `selecting source locale "${opts.fromLocale}"…`);
+    await selectByCode(frame, 0, opts.fromLocale);
+  }
   note(vendor, `selecting model "${opts.modelCode}"…`);
   await selectByCode(frame, 2, opts.modelCode);
   await frame.getByText(/Fields to translate/i).waitFor({ timeout: TIMEOUTS.thirty_sec });

@@ -168,15 +168,25 @@ placeholders still protected), with a `json-validity` warning flag on the
 unparseable-draft fallback. Verified by re-running the exact failing repro
 (save now 200) and the kitchen-sink/A7 E2E flows.
 
-**Known-remaining (add-later, in value order):** mid-run Cancel (timing-flaky
-on a fast lane; needs a slow-lane or throttled run), role-exclusion surfaces +
-`can_edit_schema` menu gating (need a second dashboard role/session in the
-harness), non-default source locale on bulk/sidebar/picker, sidebar
-target-locale narrowing (negative), no-records / no-translatable-fields
-dead-ends, picker/confirm Cancel paths, bulk-page readiness blockers,
-target-select "All other locales" mutex UI, retained-report Copy button
-(clipboard perms), deeper CSV row-body assertions, field-level QC alert on the
-badge record, onBoot default seeding, single-locale guard.
+**Third wave (2026-07-09, overnight): the add-later list, worked down.** Now
+also covered: no-records and no-translatable-fields dead-ends (fixture models
+created in the fork), bulk-page readiness blockers + the target-select
+"All other locales" mutex, the single-locale record guard (sidebar message +
+no field actions), onBoot default re-seeding, a non-default source locale
+driving a bulk run (de → fr), sidebar target narrowing with the unselected
+locale proven byte-untouched, and a non-default source locale bulk run.
+
+**Known-remaining (add-later):** mid-run Cancel paths (bulk progress modal,
+picker/confirm bail-outs), retained-report Copy button (clipboard perms),
+deeper CSV row-body assertions, and the badge length overflow through the
+FIELD-action path (attempted: the kebab flow on the catalog record never fired
+the action in E2E — zero toasts, likely a submenu-interaction quirk on that
+record's menu; the sidebar badge test still covers translate-time length
+surfacing). **Role exclusion turns out to be untestable
+from this harness's session:** the dashboard login is the project OWNER, whose
+`ctx.currentRole.id` is a virtual role not present in `roles.list()` — even
+excluding every enumerable role leaves the surfaces visible. Exercising it
+needs a collaborator login (second dashboard account) in the harness.
 
 **Deliberately skipped (with rationale):** provider-dependent QC outcomes and
 error buckets beyond auth (nondeterministic; unit-tested on real fixtures),

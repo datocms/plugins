@@ -33,9 +33,10 @@ const panelIframeWidth = (page: Page): Promise<number> =>
  * Expand the AI Translations sidebar panel (it ships `startOpen`, but a prior
  * interaction can collapse it) and return a FrameLocator for the *visible*
  * plugin iframe — the hidden bootstrap frame has zero width, so `:visible`
- * selects the right one.
+ * selects the right one. Exported for tests that pre-configure the panel
+ * (e.g. narrowing the target-locale selection) before running a translation.
  */
-const openTranslationPanel = async (page: Page): Promise<FrameLocator> => {
+export const openTranslationPanel = async (page: Page): Promise<FrameLocator> => {
   const header = page
     .locator('.SidebarPanel__header', { has: page.getByText('AI Translations', { exact: true }) })
     .first();
