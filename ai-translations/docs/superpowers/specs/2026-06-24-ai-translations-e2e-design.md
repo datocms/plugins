@@ -145,8 +145,8 @@ the happy path more; OpenAI/Gemini are where the defect-path warnings fire.
 Reused: `OPENAI`, `GEMINI`, `DEEPL`, `E2E_PROJECT_CMA_TOKEN`.
 
 Added:
-- `E2E_DATO_EMAIL`, `E2E_DATO_PASSWORD` — dashboard login.
-- `E2E_DATO_TOTP_SECRET` — only if the account has 2FA enabled.
+- `E2E_DASHBOARD_EMAIL`, `E2E_DASHBOARD_PASSWORD` — dashboard login.
+- `E2E_DASHBOARD_TOTP_SECRET` — only if the account has 2FA enabled.
 - `E2E_PROJECT_ID=219952`, `E2E_PROJECT_SUBDOMAIN=ai-translation-e2e`.
 
 No plugin-id var: one install in `main`, inherited by every fork.
@@ -163,6 +163,6 @@ adds it at the e2e level.) Scripts: `test:e2e`, `test:e2e:ui`, `test:e2e:report`
 
 - GitHub Actions CI wiring (cleanup age-sweep is written to support a future cron;
   no workflow yaml yet).
-- The Anthropic provider (no key in `.env.testing`).
+- The Anthropic provider (no key in `.env.testing`). [Update: an Anthropic lane was added after this design; it runs when a CLAUDE key is present.]
 - Per-run Slack failure summary.
 - Automated plugin install (one-time manual install in `main`, documented).

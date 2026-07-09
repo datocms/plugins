@@ -13,7 +13,7 @@
 - **TypeScript + ESNext**, arrow functions, `const`, async/await, TSDoc on exported functions (repo + user style).
 - **Playwright config path is the repo root** (`ai-translations/playwright.config.ts`) — `e2e/tsconfig.json` already lists `"../playwright.config.ts"`. Do not move it.
 - **`testDir: "./e2e/tests"`**, replacing `e2e/tests/example.spec.ts`.
-- **Secrets come only from `.env.testing`** at the repo root, parsed via `dotenv` (path override) — never hard-code keys. Existing keys: `OPENAI`, `GEMINI`, `DEEPL`, `E2E_PROJECT_CMA_TOKEN`. New keys: `E2E_DATO_EMAIL`, `E2E_DATO_PASSWORD`, `E2E_DATO_TOTP_SECRET` (optional), `E2E_PROJECT_ID=219952`, `E2E_PROJECT_SUBDOMAIN=ai-translation-e2e`.
+- **Secrets come only from `.env.testing`** at the repo root, parsed via `dotenv` (path override) — never hard-code keys. Existing keys: `OPENAI`, `GEMINI`, `DEEPL`, `E2E_PROJECT_CMA_TOKEN`. New keys: `E2E_DASHBOARD_EMAIL`, `E2E_DASHBOARD_PASSWORD`, `E2E_DASHBOARD_TOTP_SECRET` (optional), `E2E_PROJECT_ID=219952`, `E2E_PROJECT_SUBDOMAIN=ai-translation-e2e`.
 - **Environment naming:** `e2e-<TIMESTAMP>-<vendor>` where `TIMESTAMP` is one ISO-derived slug per run (digits + trailing `z`), computed once. `vendor ∈ {openai, google, deepl}`.
 - **DatoCMS env-id rules:** lowercase, max 24 chars, `[a-z0-9-]`. Keep the slug short enough that `e2e-<ts>-openai` ≤ 24 chars (use a compact timestamp — see Task 2).
 - **Maintenance mode is ALWAYS deactivated in a `finally`** — never leave the project read-only.
@@ -90,9 +90,9 @@ loadEnv({ path: join(dirname(fileURLToPath(import.meta.url)), '../../../.env.tes
 
 const REQUIRED = [
   'OPENAI', 'GEMINI', 'DEEPL', 'E2E_PROJECT_CMA_TOKEN',
-  'E2E_DATO_EMAIL', 'E2E_DATO_PASSWORD', 'E2E_PROJECT_ID', 'E2E_PROJECT_SUBDOMAIN',
+  'E2E_DASHBOARD_EMAIL', 'E2E_DASHBOARD_PASSWORD', 'E2E_PROJECT_ID', 'E2E_PROJECT_SUBDOMAIN',
 ] as const;
-const OPTIONAL = ['E2E_DATO_TOTP_SECRET'] as const;
+const OPTIONAL = ['E2E_DASHBOARD_TOTP_SECRET'] as const;
 
 type Required = (typeof REQUIRED)[number];
 type Optional = (typeof OPTIONAL)[number];
@@ -523,12 +523,12 @@ export const loginAndSaveState = async (storagePath: string): Promise<void> => {
   const browser = await chromium.launch();
   const page = await browser.newPage();
   await page.goto('https://dashboard.datocms.com/login');
-  await page.getByRole('textbox', { name: 'Email' }).fill(env.E2E_DATO_EMAIL);
-  await page.getByRole('textbox', { name: 'Password' }).fill(env.E2E_DATO_PASSWORD);
+  await page.getByRole('textbox', { name: 'Email' }).fill(env.E2E_DASHBOARD_EMAIL);
+  await page.getByRole('textbox', { name: 'Password' }).fill(env.E2E_DASHBOARD_PASSWORD);
   await page.getByRole('button', { name: 'Log in' }).click();
 
-  if (env.E2E_DATO_TOTP_SECRET) {
-    const code = authenticator.generate(env.E2E_DATO_TOTP_SECRET);
+  if (env.E2E_DASHBOARD_TOTP_SECRET) {
+    const code = authenticator.generate(env.E2E_DASHBOARD_TOTP_SECRET);
     // DISCOVERY: confirm the 2FA input's accessible name on the live page.
     await page.getByRole('textbox', { name: /code|2fa|authenticator/i }).fill(code);
     await page.getByRole('button', { name: /verify|continue|log in/i }).click();

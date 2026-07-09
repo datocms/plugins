@@ -105,6 +105,7 @@ node 1-schema.mjs            # locales + models + fields   — IDEMPOTENT (skips
 node 2-uploads.mjs           # assets → uploads.json        — IDEMPOTENT
 node 3-records.mjs           # the core records             — NOT idempotent (creates duplicates on re-run)
 node 3b-coverage-records.mjs # A6/A7 + A5 top-up            — idempotent
+node 3c-catalog-records.mjs  # catalog_entry records for reference-copy + length-validator paths — idempotent
 node 4-verify.mjs            # coverage report + assertions (records ≥ 8, ≥2 locales each, editors present)
 node 5-manifest.mjs          # writes seed-manifest.json (committed; the suite loads it)
 ```
@@ -190,6 +191,10 @@ the `parseReport` regex in lockstep, or every bulk test silently reads zeros.
 - **Reference-copy / warned records** surface as `completed-with-warnings` and MUST
   appear in the Export CSV (`csvExport.ts` maps that status to a `warning` row). A bulk
   assertion of `csv rows === total + 1` catches a warned record being dropped.
+- **Result-gated teardown can destroy a lane's env after a worker crash.** The outcome
+  ledger only records tests that reached `afterEach`; if a worker process dies mid-test,
+  the lane can look all-green and its env gets destroyed, losing the debug state.
+  Accepted trade-off — rerun to reproduce; the age-sweep would otherwise leak envs.
 
 ## Self-healing failing tests
 
