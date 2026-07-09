@@ -105,4 +105,26 @@ describe('buildTranslationReportRows', () => {
     const { rows } = buildTranslationReportRows(updates, opts);
     expect(rows).toHaveLength(0);
   });
+
+  it('emits a "warning" row for the completed-with-warnings status', () => {
+    // The bulk emitter reports warned successes (QC warning or copied reference)
+    // as `completed-with-warnings`. Such records must appear in the report — they
+    // are the "which records warned and why" rows the export exists to surface.
+    const updates: ProgressUpdate[] = [
+      {
+        recordIndex: 0,
+        recordId: 'r1',
+        status: 'completed-with-warnings',
+        recordLabel: 'A',
+        copiedLinkFieldApiKeys: ['related'],
+        warnings: ['Copied linked records in "related" into it.'],
+      },
+    ];
+    const { headers, rows } = buildTranslationReportRows(updates, opts);
+    const col = (name: string) => headers.indexOf(name);
+    expect(rows).toHaveLength(1);
+    expect(rows[0][col('status')]).toBe('warning');
+    expect(rows[0][col('copied_link_field_api_keys')]).toBe('related');
+    expect(rows[0][col('notes')]).toContain('related');
+  });
 });

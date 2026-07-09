@@ -73,6 +73,11 @@ export interface TranslationReportOptions {
  */
 function reportStatus(update: ProgressUpdate): string | null {
   if (update.status === 'error') return 'failure';
+  // The bulk emitter reports every warned success — a QC warning-severity flag
+  // or a copied linked reference — as `completed-with-warnings`, so it must map
+  // to a `warning` row or the record would be silently dropped from the report
+  // (the "which records warned and why" data the report exists to surface).
+  if (update.status === 'completed-with-warnings') return 'warning';
   if (update.status === 'completed') {
     return (update.warnings?.length ?? 0) > 0 ? 'warning' : 'success';
   }

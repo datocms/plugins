@@ -135,6 +135,22 @@ test.describe('AI Translations', () => {
     expect(report.total, report.summary).toBe(3);
     expect(report.completed + report.withWarnings + report.errors, report.summary).toBe(3);
 
+    // The card's "report from bulk translations": the run ends with an
+    // exportable per-record CSV. Assert it downloaded and carries the header
+    // plus one row per accounted-for record.
+    await step(vendor, 'export + verify the per-record CSV report', () => {
+      const lines = report.csv.split('\n').filter((l) => l.trim().length > 0);
+      expect(report.csv, 'Export CSV should download a non-empty report').not.toBe('');
+      expect(lines[0], 'CSV header').toContain('status');
+      expect(lines[0]).toContain('edit_url');
+      expect(lines[0]).toContain('notes');
+      // Header + one data row per record.
+      expect(lines.length, `expected header + ${report.total} rows`).toBe(report.total + 1);
+      // Each record row links to its editor (master's record-link feature).
+      expect(report.hasRecordLink, 'a completed record row should link to its editor').toBe(true);
+      return Promise.resolve();
+    });
+
     // Every successfully-translated product must now have a Spanish name.
     if (report.completed + report.withWarnings > 0) {
       await step(vendor, 'verify translated products have an es name (CMA)', async () => {

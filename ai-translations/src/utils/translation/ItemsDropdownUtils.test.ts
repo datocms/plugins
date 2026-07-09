@@ -839,6 +839,172 @@ describe('ItemsDropdownUtils', () => {
       expect(finalUpdate?.copiedLinkFieldApiKeys).toContain('related');
       expect(finalUpdate?.copiedLinkFieldIds).toContain('field-related');
     });
+
+    // The merge seam: master's report pipeline (reference copies →
+    // completed-with-warnings) and the QC branch's error escalation (design §6b)
+    // both feed the per-record status. These assert their interaction end-to-end
+    // through translateAndUpdateRecords — behavior neither side's tests exercised.
+    const runSingleRecord = async (
+      record: DatoCMSRecordFromAPI,
+      dict: Record<string, unknown>,
+    ): Promise<ProgressUpdate | undefined> => {
+      const updates: ProgressUpdate[] = [];
+      const update = vi
+        .fn()
+        .mockResolvedValue({ meta: { updated_at: '2026-07-08T21:00:00.000Z' } });
+      // biome-ignore lint/suspicious/noExplicitAny: minimal CMA client stub
+      const client = { items: { update } } as any;
+      await translateAndUpdateRecords(
+        [record],
+        client,
+        provider,
+        'en',
+        ['it'],
+        vi.fn().mockResolvedValue(dict),
+        pluginParams,
+        { alert: vi.fn(), environment: 'main' },
+        'access-token',
+        { onProgress: (u) => updates.push(u) },
+      );
+      return updates.filter((u) => u.recordId === record.id).at(-1);
+    };
+
+    it('escalates an error-severity QC flag to status "error" even when the field wrote', async () => {
+      // The field translates and is saved, but the provider truncated it — a
+      // content-corrupting error. It must NOT be counted as a clean success.
+      vi.mocked(translateFieldValue).mockImplementation(async (...args) => {
+        const opts = args[13] as
+          | { onQcFlag?: (flag: QcFlag) => void }
+          | undefined;
+        opts?.onQcFlag?.({
+          checkId: 'truncated',
+          severity: 'error',
+          message: 'Provider cut the response off.',
+        });
+        return 'Ciao';
+      });
+
+      const finalUpdate = await runSingleRecord(
+        {
+          id: 'qc-err',
+          item_type: { id: 'm1' },
+          title: { en: 'Hello' },
+        },
+        {
+          title: { editor: 'single_line', id: 'field-title', isLocalized: true },
+        },
+      );
+
+      expect(finalUpdate?.status).toBe('error');
+      expect(finalUpdate?.message).toMatch(/may be incomplete/i);
+      expect(
+        finalUpdate?.qcFlags?.some((f) => f.checkId === 'truncated'),
+      ).toBe(true);
+    });
+
+    it('lets an error-severity QC flag win over a reference-copy warning (status "error")', async () => {
+      // title translates but truncates (error); related is a link field carried
+      // over by locale-sync (a warning). The error must win the status, and the
+      // update must still carry BOTH signals for the report.
+      vi.mocked(translateFieldValue).mockImplementation(async (...args) => {
+        const opts = args[13] as
+          | { onQcFlag?: (flag: QcFlag) => void }
+          | undefined;
+        opts?.onQcFlag?.({
+          checkId: 'truncated',
+          severity: 'error',
+          message: 'Provider cut the response off.',
+        });
+        return 'Ciao';
+      });
+
+      const finalUpdate = await runSingleRecord(
+        {
+          id: 'qc-err-ref',
+          item_type: { id: 'm1' },
+          title: { en: 'Hello' },
+          related: { en: ['rec-a', 'rec-b'] },
+        },
+        {
+          title: { editor: 'single_line', id: 'field-title', isLocalized: true },
+          related: {
+            editor: 'links_select',
+            id: 'field-related',
+            isLocalized: true,
+            validators: { items_item_type: { item_types: ['m1'] } },
+          },
+        },
+      );
+
+      expect(finalUpdate?.status).toBe('error');
+      expect(
+        finalUpdate?.qcFlags?.some((f) => f.checkId === 'truncated'),
+      ).toBe(true);
+      expect(finalUpdate?.copiedLinkFieldApiKeys).toContain('related');
+    });
+
+    it('surfaces a warning-severity QC flag as "completed-with-warnings"', async () => {
+      vi.mocked(translateFieldValue).mockImplementation(async (...args) => {
+        const opts = args[13] as
+          | { onQcFlag?: (flag: QcFlag) => void }
+          | undefined;
+        opts?.onQcFlag?.({
+          checkId: 'no-op',
+          severity: 'warning',
+          message: 'Unchanged from source.',
+        });
+        return 'Ciao';
+      });
+
+      const finalUpdate = await runSingleRecord(
+        {
+          id: 'qc-warn',
+          item_type: { id: 'm1' },
+          title: { en: 'Hello' },
+        },
+        {
+          title: { editor: 'single_line', id: 'field-title', isLocalized: true },
+        },
+      );
+
+      expect(finalUpdate?.status).toBe('completed-with-warnings');
+      expect(
+        finalUpdate?.qcFlags?.some((f) => f.checkId === 'no-op'),
+      ).toBe(true);
+    });
+
+    it('escalates an over-length translation to a failure naming the field (card #1)', async () => {
+      // The customer's silent-truncation case: the translation grows past the
+      // field's length validator. It must surface as a failure BEFORE the CMA
+      // 422s, naming the field and the limit.
+      vi.mocked(translateFieldValue).mockResolvedValue('Ciao mondo bellissimo');
+
+      const finalUpdate = await runSingleRecord(
+        {
+          id: 'too-long',
+          item_type: { id: 'm1' },
+          title: { en: 'Hello' },
+        },
+        {
+          title: {
+            editor: 'single_line',
+            id: 'field-title',
+            isLocalized: true,
+            validators: { length: { max: 5 } },
+          },
+        },
+      );
+
+      expect(finalUpdate?.status).toBe('error');
+      expect(
+        finalUpdate?.warnings?.some(
+          (w) => w.includes('title') && w.includes('at most 5'),
+        ),
+      ).toBe(true);
+      expect(
+        finalUpdate?.qcFlags?.some((f) => f.checkId === 'length-validator'),
+      ).toBe(true);
+    });
   });
 
   describe('summarizeReferenceCopies', () => {

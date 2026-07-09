@@ -12,6 +12,7 @@ import { buildRecordEditorUrl } from '../utils/recordUrl';
 import { createSchemaRepository } from '../utils/schemaRepository';
 import { LocaleChip } from './BulkTranslations/LocaleChip';
 import { ProgressRow } from './BulkTranslations/ProgressRow';
+import { summarizeBulkProgress } from './BulkTranslations/progressSummary';
 import {
   formatErrorForUser,
   normalizeProviderError,
@@ -223,30 +224,16 @@ export default function TranslationProgressModal({
     ),
   );
 
-  // Real per-record results only: the synthetic fatal-error entry uses
-  // recordIndex -1 and must not inflate the processed/percent counts (it would
-  // otherwise push percent past 100% and falsely flip "completed").
-  const realRecords = processedRecords.filter(
-    (update) => update.recordIndex >= 0,
-  );
-  const completedCount = realRecords.filter(
-    (update) =>
-      update.status === 'completed' ||
-      update.status === 'completed-with-warnings' ||
-      update.status === 'error',
-  ).length;
-
-  // Three mutually-exclusive status buckets for the counters (design §6b):
-  // clean successes, successes flagged with warnings, and failures.
-  const successfulCount = realRecords.filter(
-    (update) => update.status === 'completed',
-  ).length;
-  const withWarningsCount = realRecords.filter(
-    (update) => update.status === 'completed-with-warnings',
-  ).length;
-  const failedCount = realRecords.filter(
-    (update) => update.status === 'error',
-  ).length;
+  // Three mutually-exclusive status buckets (design §6b) + the clamped percent,
+  // derived by a pure helper that excludes the synthetic fatal-error entry
+  // (recordIndex -1) so it can't push the counts/percent past the total.
+  const {
+    completedCount,
+    successfulCount,
+    withWarningsCount,
+    failedCount,
+    percentComplete,
+  } = summarizeBulkProgress(processedRecords, totalRecords);
 
   const buildRecordUrl = (update: ProgressUpdate): string | undefined =>
     buildRecordEditorUrl({
@@ -268,11 +255,6 @@ export default function TranslationProgressModal({
       toCsv(headers, rows),
     );
   };
-
-  const percentComplete =
-    totalRecords > 0
-      ? Math.min(100, Math.round((completedCount / totalRecords) * 100))
-      : 0;
 
   // Make sure to set completed state when all records are processed
   useEffect(() => {

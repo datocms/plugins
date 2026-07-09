@@ -37,11 +37,20 @@ export const loginAndSaveState = async (storagePath: string): Promise<void> => {
       await page.getByRole('button', { name: /verify|continue|login/i }).click();
     }
 
-    // Authenticated once the URL leaves the sign-in page.
+    // Authenticated once the URL leaves the sign-in page (the session cookie is
+    // set on this redirect).
     await page.waitForURL((url) => !url.pathname.endsWith('/sign_in'), {
       timeout: TIMEOUTS.one_min,
     });
-    await page.waitForLoadState('networkidle');
+    // NOT `networkidle`: the dashboard holds long-lived connections (websockets /
+    // long-polling), so it never goes idle and the wait times out — a real flake
+    // that fails setup intermittently. Wait for the document `load` (bounded, so a
+    // slow boot can't hang the suite) plus a short settle for the SPA to persist
+    // its boot-time storage, then snapshot the already-authenticated session.
+    await page
+      .waitForLoadState('load', { timeout: TIMEOUTS.thirty_sec })
+      .catch(() => {});
+    await page.waitForTimeout(2_000);
 
     await page.context().storageState({ path: storagePath });
     phase('login succeeded — session saved ✓');

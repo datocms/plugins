@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { type Frame, type FrameLocator, type Page, expect } from '@playwright/test';
 import { PROJECT_SUBDOMAIN, TIMEOUTS } from '../setup/constants';
 import { resolvePluginId } from '../setup/plugin-params';
@@ -61,9 +62,34 @@ export type BulkReport = {
   withWarnings: number;
   errors: number;
   summary: string;
+  /**
+   * The exported CSV report text (BOM stripped), captured by clicking the
+   * modal's "Export CSV" button — master's per-record report feature (card:
+   * "report from bulk translations"). Empty string if the capture failed.
+   */
+  csv: string;
+  /** Whether at least one record row rendered a real editor link (an anchor). */
+  hasRecordLink: boolean;
 };
 
-const parseReport = (progressText: string, statsText: string): BulkReport => {
+/**
+ * Trigger the progress modal's "Export CSV" and return the downloaded file's
+ * text (leading UTF-8 BOM stripped). `downloadCsv` clicks a blob-URL anchor, so
+ * the download event fires on the page rather than inside the modal frame.
+ */
+const exportReportCsv = async (page: Page, frame: Frame): Promise<string> => {
+  const [download] = await Promise.all([
+    page.waitForEvent('download', { timeout: TIMEOUTS.thirty_sec }),
+    frame.getByRole('button', { name: /export csv/i }).click(),
+  ]);
+  const path = await download.path();
+  return readFileSync(path, 'utf8').replace(/^﻿/, '');
+};
+
+const parseReport = (
+  progressText: string,
+  statsText: string,
+): Omit<BulkReport, 'csv' | 'hasRecordLink'> => {
   const total = progressText.match(/of\s*(\d+)\s*records/i);
   const stats = statsText.match(/(\d+)\s*successful.*?(\d+)\s*with warnings.*?(\d+)\s*failed/is);
   return {
@@ -120,6 +146,19 @@ export const runBulkTranslation = async (
   const report = parseReport(progressText, statsText);
   note(vendor, `bulk run finished: ${report.summary}`);
 
+  // Master's report affordances (card: "report from bulk translations"): the
+  // finished modal exposes an Export CSV button and links each record row to its
+  // editor. Reuse this single (expensive) real-provider run to exercise both.
+  const csv = await exportReportCsv(page, progressFrame).catch((error) => {
+    note(vendor, `Export CSV capture failed: ${error}`);
+    return '';
+  });
+  const hasRecordLink =
+    (await progressFrame
+      .locator('a.TranslationProgressModal__record-link')
+      .count()
+      .catch(() => 0)) > 0;
+
   await close.click();
-  return report;
+  return { ...report, csv, hasRecordLink };
 };

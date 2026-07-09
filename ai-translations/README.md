@@ -156,7 +156,7 @@ It checks for:
 Where you see the results:
 
 - **Single field / whole record** (sidebar and field dropdown): after translating, a short summary appears — a blocking alert when content may be incomplete, a notice for softer warnings — so you can review before saving.
-- **Bulk**: a record with a content-corrupting issue (truncation, a lost placeholder, a wrong-length or structurally-drifted value) is marked as a **failure**, while a record with only softer suspicions (a likely non-translation, an unusually short value) is marked **"completed with warnings"** — both distinct from clean successes — in the progress modal, and a review list of the affected records is shown after the run.
+- **Bulk**: a record with a content-corrupting issue (truncation, a lost placeholder, a wrong-length or structurally-drifted value) is marked as a **failure**, while a record with only softer suspicions (a likely non-translation, an unusually short value) — or one whose only change was copying linked-record references into the new locale (see [Linked records and warnings](#linked-records-and-warnings)) — is marked **"completed with warnings"**, both distinct from clean successes, in the progress modal. The counters split into successful / with warnings / failed, and every record (with its status and reason) is available in the after-run review list and the **Export CSV** report.
 
 The checks are advisory and never block your work; they highlight fields worth a human glance.
 
