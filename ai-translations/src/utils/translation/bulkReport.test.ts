@@ -154,6 +154,97 @@ describe('buildBulkReportRows', () => {
     expect(rows).toHaveLength(2);
     expect(rows.map((r) => r.checkId)).toEqual(['no-op', 'reference-copy']);
   });
+
+  it('emits one row per free-text warning when there are no structured flags', () => {
+    const progress: ProgressUpdate[] = [
+      {
+        recordIndex: 0,
+        recordId: '13',
+        status: 'completed-with-warnings',
+        message: 'Translated "Spring Sale" (#13).',
+        warnings: [
+          'Field "B" to fr-FR was skipped: rate limit exceeded.',
+          'Field "C" to de-DE was skipped: rate limit exceeded.',
+        ],
+      },
+    ];
+    const rows = buildBulkReportRows(progress);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({
+      recordId: '13',
+      severity: 'warning',
+      checkId: 'warning',
+      fieldPath: '',
+      locale: '',
+    });
+    expect(rows[0].reason).toBe('Field "B" to fr-FR was skipped: rate limit exceeded.');
+    expect(rows[1].reason).toContain('de-DE');
+    // The success-sounding message must NOT leak in as a reason.
+    expect(rows.some((r) => r.reason.includes('Spring Sale'))).toBe(false);
+  });
+
+  it('does not duplicate the consolidated reference-copy warning as its own row', () => {
+    const progress: ProgressUpdate[] = [
+      {
+        recordIndex: 0,
+        recordId: '14',
+        status: 'completed-with-warnings',
+        message: 'Translated "Winter Collection" (#14).',
+        copiedLinkFieldApiKeys: ['related_articles'],
+        warnings: ['Copied linked records in "related_articles" into fr-FR.'],
+      },
+    ];
+    const rows = buildBulkReportRows(progress);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      fieldPath: 'related_articles',
+      checkId: 'reference-copy',
+    });
+  });
+
+  it('emits both warning rows and QC-flag rows on the same record', () => {
+    const progress: ProgressUpdate[] = [
+      {
+        recordIndex: 0,
+        recordId: '15',
+        status: 'completed-with-warnings',
+        message: 'Translated with notes',
+        warnings: ['Field "B" to fr-FR was skipped: rate limit exceeded.'],
+        qcFlags: [
+          {
+            checkId: 'no-op',
+            severity: 'warning',
+            fieldPath: 'subtitle',
+            locale: 'de',
+            message: 'Unchanged from source.',
+          },
+        ],
+      },
+    ];
+    const rows = buildBulkReportRows(progress);
+    expect(rows.map((r) => r.checkId)).toEqual(['no-op', 'warning']);
+  });
+
+  it('populates recordTitle and editUrl from the label and the URL builder', () => {
+    const progress: ProgressUpdate[] = [
+      {
+        recordIndex: 0,
+        recordId: '16',
+        status: 'error',
+        recordLabel: 'Homepage',
+        itemTypeId: 'm1',
+        message: 'DatoCMS rejected the record update.',
+      },
+    ];
+    const rows = buildBulkReportRows(
+      progress,
+      (u) => `https://example.admin.datocms.com/editor/items/${u.recordId}`,
+    );
+    expect(rows[0]).toMatchObject({
+      recordTitle: 'Homepage',
+      editUrl: 'https://example.admin.datocms.com/editor/items/16',
+    });
+  });
 });
 
 describe('toBulkReportCsv', () => {
@@ -171,7 +262,7 @@ describe('toBulkReportCsv', () => {
     ]);
     const lines = csv.split('\n');
     expect(lines[0]).toBe(
-      'Record ID,Status,Field,Locale,Severity,Check,Reason',
+      'Record ID,Record title,Edit URL,Status,Field,Locale,Severity,Check,Reason',
     );
     // The reason has a comma and quotes → must be wrapped and quotes doubled.
     expect(lines[1]).toContain('"Too long, ""way"" too long"');

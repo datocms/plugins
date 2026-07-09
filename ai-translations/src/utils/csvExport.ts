@@ -102,12 +102,16 @@ export function buildTranslationReportRows(
   for (const update of updates) {
     const status = reportStatus(update);
     if (!status) continue;
+    // A synthetic fatal-run entry (recordIndex < 0, e.g. recordId 'fatal') has
+    // no real record behind it, so any editor URL would be a broken link — emit
+    // an empty edit_url while keeping the row (it documents the fatal error).
+    const isSynthetic = update.recordIndex < 0;
     rows.push([
       status,
       update.updatedAt ?? '',
       update.recordId,
       update.recordLabel ?? '',
-      opts.buildUrl(update) ?? '',
+      isSynthetic ? '' : (opts.buildUrl(update) ?? ''),
       opts.fromLocale,
       targetLocales,
       (update.translatedFieldApiKeys ?? []).join(', '),

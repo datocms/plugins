@@ -32,6 +32,7 @@ import type { TranslationConfirmModalParams } from '../../components/Translation
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import { buildDatoCMSClient } from '../../utils/clients';
 import { formatLocaleLabel } from '../../utils/localeUtils';
+import { buildRecordEditorUrl } from '../../utils/recordUrl';
 import {
   type BulkReportRow,
   buildBulkReportRows,
@@ -426,8 +427,20 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
 
       const localeCount = targetLocales.length;
       // Build the full, structured report (no 20-row cap) and persist it to the
-      // page so it can be reviewed and exported after the modal closes.
-      const rows = buildBulkReportRows(result?.progress ?? []);
+      // page so it can be reviewed and exported after the modal closes. The same
+      // editor-URL builder the modal's CSV export uses turns each flagged record
+      // into a clickable link.
+      const buildRecordUrl = (
+        update: import('../../utils/translation/ItemsDropdownUtils').ProgressUpdate,
+      ): string | undefined =>
+        buildRecordEditorUrl({
+          internalDomain: ctx.site?.attributes?.internal_domain,
+          environment: ctx.environment,
+          isEnvironmentPrimary: ctx.isEnvironmentPrimary,
+          itemTypeId: update.itemTypeId,
+          recordId: update.recordId,
+        });
+      const rows = buildBulkReportRows(result?.progress ?? [], buildRecordUrl);
       setReportRows(rows);
       const flaggedRecordCount = new Set(rows.map((r) => r.recordId)).size;
 

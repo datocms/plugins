@@ -22,6 +22,37 @@ type Props = {
   onCopied?: (message: string) => void;
 };
 
+/**
+ * Renders the "Record" cell: the editor-friendly title (falling back to the
+ * record id) as an editor link when one is available, with the short record id
+ * shown muted underneath so it stays visible and copyable.
+ */
+function RecordCell({ row }: { row: BulkReportRow }) {
+  const label = row.recordTitle || row.recordId;
+  return (
+    <div className={s.recordCell}>
+      {row.editUrl ? (
+        <a
+          className={s.recordLink}
+          href={row.editUrl}
+          target="_blank"
+          rel="noreferrer"
+          title={row.recordId}
+        >
+          {label}
+        </a>
+      ) : (
+        <span className={s.recordLabel} title={row.recordId}>
+          {label}
+        </span>
+      )}
+      {row.recordTitle ? (
+        <span className={s.recordId}>{row.recordId}</span>
+      ) : null}
+    </div>
+  );
+}
+
 export function BulkTranslationReport({ rows, onClose, onCopied }: Props) {
   const csv = useMemo(() => toBulkReportCsv(rows), [rows]);
   const json = useMemo(() => toBulkReportJson(rows), [rows]);
@@ -107,7 +138,9 @@ export function BulkTranslationReport({ rows, onClose, onCopied }: Props) {
                 key={`${r.recordId}-${r.fieldPath}-${r.checkId}-${i}`}
                 className={r.severity === 'error' ? s.rowError : s.rowWarning}
               >
-                <td>{r.recordId}</td>
+                <td>
+                  <RecordCell row={r} />
+                </td>
                 <td>{r.fieldPath || '—'}</td>
                 <td>{r.locale || '—'}</td>
                 <td>{r.severity || '—'}</td>

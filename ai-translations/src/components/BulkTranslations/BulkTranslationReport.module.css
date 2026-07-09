@@ -80,6 +80,31 @@
   width: 50%;
 }
 
+.recordCell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.recordLink {
+  color: var(--accent-color, #1a73e8);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.recordLink:hover {
+  text-decoration: underline;
+}
+
+.recordLabel {
+  font-weight: 600;
+}
+
+.recordId {
+  font-size: var(--font-size-xs, 11px);
+  color: var(--light-body-color, #888);
+}
+
 .rowError td:nth-child(4) {
   color: var(--alert-color, #c0392b);
   font-weight: 600;

@@ -253,14 +253,17 @@ function surfaceFieldQcFlags(
   flags: QcFlag[],
 ): void {
   if (flags.length === 0) return;
-  const errorCount = flags.filter((flag) => flag.severity === 'error').length;
+  const errorFlags = flags.filter((flag) => flag.severity === 'error');
   const summary = flags
     .slice(0, 8)
     .map((flag) => `• ${flag.message}`)
     .join('\n');
-  if (errorCount > 0) {
+  if (errorFlags.length > 0) {
+    // Count distinct fields, not flags: several per-locale flags on one field
+    // must not read as several fields.
+    const fieldCount = new Set(errorFlags.map((flag) => flag.fieldPath)).size;
     ctx.alert(
-      `Translation finished, but ${errorCount} field(s) may be incomplete — please review:\n${summary}`,
+      `Translation finished, but ${fieldCount} field(s) may be incomplete — please review:\n${summary}`,
     );
   } else {
     ctx.notice(
@@ -522,7 +525,10 @@ connect({
       } else if (flagged.length > 0) {
         const reviewList = flagged
           .slice(0, 20)
-          .map((update) => `• ${(update.message ?? update.recordId).slice(0, 140)}`)
+          .map(
+            (update) =>
+              `• ${(update.warnings?.[0] ?? update.message ?? update.recordId).slice(0, 140)}`,
+          )
           .join('\n');
         const more =
           flagged.length > 20 ? `\n…and ${flagged.length - 20} more.` : '';
