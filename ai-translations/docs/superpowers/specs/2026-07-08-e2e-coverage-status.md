@@ -42,6 +42,10 @@ is schema-side — so one lane suffices).
   FROM `zh-Hans` and asserts the run finishes and surfaces the untranslatable slug.
   Fixing this exposed a real **E2E-harness bug** (below) — the translation itself was
   never slow.
+- **Pre-filled target locale + JSON-field placeholders** (audit 14, 27): A7 translates
+  `en → ru` (where `ru` title/seo are pre-filled) and asserts the run finishes, the
+  overwrite populates the previously-empty `ru` JSON field, and the placeholder tokens
+  (`{{nights}}`, `{{brand}}`, `%s`, `:slug`) survive into the Cyrillic target.
 
 Plus, from the merge itself: a `csvExport` bug (warned records dropped from the CSV)
 was fixed, and the E2E login flake (`networkidle`) was removed. Suite internals are
@@ -63,9 +67,6 @@ burned the full 10-min timeout. Fixed by making the helper key off the "Cancel"
 button (shown only while actively translating; hidden on both success and error) and
 accumulate auto-dismissing toasts. A6 now runs in ~7.5s and asserts the run finishes
 and surfaces the untranslatable slug. No plugin change was needed.
-- **A7 pre-filled target locale** (audit 14, 27): translate `en → ru` where `ru` is
-  partially pre-filled → the overwrite-vs-preserve branch; JSON-field placeholder
-  survival. No seed change (A7 exists).
 - **Assert translated editors, not just presence** (audit 9, 11, 29): the bulk/per-
   record CMA assertions confirm a locale is *populated*; strengthen them to confirm
   `structured_text`/`rich_text`/`single_block`/`file`/`gallery` values actually

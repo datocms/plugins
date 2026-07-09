@@ -26,6 +26,7 @@ const CATALOG = manifest.schema.models.catalog_entry.id;
 const A1 = findRecord(manifest, 'article', ['en', 'it']); // kitchen sink
 const A5 = findRecord(manifest, 'article', ['en', 'fr']); // placeholders + over-limit SEO
 const A6 = findRecord(manifest, 'article', ['ar', 'zh-Hans']); // non-Latin/RTL/CJK source
+const A7 = findRecord(manifest, 'article', ['en', 'ru']); // pre-filled ru target + JSON placeholders
 
 const meta = (): ProjectMeta => test.info().project.metadata as ProjectMeta;
 
@@ -163,6 +164,35 @@ test.describe('AI Translations', () => {
       await step(vendor, 'assert ar title/excerpt populated from the CJK source (CMA)', () =>
         assertLocalesPopulated(envName, A6.id, ['ar'], ['title', 'excerpt']),
       );
+    } else {
+      expect(save.fieldErrors.length, 'a save error must be surfaced').toBeGreaterThan(0);
+    }
+  });
+
+  test('per-record: translates into a pre-filled target locale and preserves JSON placeholders (A7)', async ({ page }) => {
+    const { vendor, envName } = meta();
+    test.skip(vendor !== 'deepl', 'pre-filled-target check runs on the DeepL lane');
+    test.setTimeout(TIMEOUTS.five_min + TIMEOUTS.three_min);
+
+    await step(vendor, `open pre-filled-target record ${A7.id} (article, en + partial ru)`, () =>
+      openRecord(page, meta(), ARTICLE, A7.id),
+    );
+
+    const run = await step(vendor, 'translate en → ru via the sidebar (ru title/seo already pre-filled)', () =>
+      translateRecordViaSidebar(page, { fromLocale: 'en', vendor }),
+    );
+    expect(run.completed, 'translation into a pre-filled target locale should finish').toBe(true);
+
+    const save = await step(vendor, 'save the record', () => saveRecord(page, vendor));
+    if (save.status === 200) {
+      await step(vendor, 'assert ru title + JSON populated and placeholders survived (CMA)', async () => {
+        // Overwrite branch: the previously-empty ru JSON field is now populated and
+        // the pre-filled ru title was (re)written from the en source.
+        await assertLocalesPopulated(envName, A7.id, ['ru'], ['title', 'featured_data']);
+        // The placeholder tokens ({{nights}}, {{brand}}, %s, :slug) in the JSON
+        // field must survive translation into the Cyrillic target.
+        await assertPlaceholdersSurviveAnyField(envName, A7.id, 'en', ['ru']);
+      });
     } else {
       expect(save.fieldErrors.length, 'a save error must be surfaced').toBeGreaterThan(0);
     }
