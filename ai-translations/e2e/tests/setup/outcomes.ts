@@ -1,12 +1,19 @@
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { RUN_ID } from './constants';
 
 /**
  * Per-test outcome ledger. The JSON reporter's `results.json` is written *after*
  * `globalTeardown` runs, so the result-gated teardown can't read it. Instead each
  * test appends its outcome here from `afterEach` (which runs during the test
  * phase), and `globalTeardown` reads the completed ledger.
+ *
+ * The path is RUN_ID-namespaced: two concurrent runs from the same checkout
+ * would otherwise truncate/interleave one shared file, and a teardown reading a
+ * mixed ledger could destroy an env whose lane actually failed (or keep ones
+ * that passed). RUN_ID is stamped once per invocation and inherited by every
+ * worker + the teardown process (see constants.ts).
  */
-const OUTCOMES_FILE = 'e2e/test-results/outcomes.jsonl';
+const OUTCOMES_FILE = `e2e/test-results/outcomes-${RUN_ID}.jsonl`;
 
 /** Truncate the ledger at the start of a run (called from global-setup). */
 export const resetOutcomes = (): void => {

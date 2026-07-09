@@ -28,7 +28,13 @@ export default defineConfig({
   globalSetup: './e2e/tests/setup/global-setup.ts',
   globalTeardown: './e2e/tests/setup/global-teardown.ts',
   workers: PROVIDERS.length,
-  fullyParallel: true,
+  // NOT fullyParallel: tests within a lane must run in FILE ORDER on one worker.
+  // The spec's bulk tests CMA-save records and are deliberately ordered before
+  // the editor tests, whose editing-session locks outlive them (see the spec's
+  // ordering note); fullyParallel would let the scheduler run two same-lane
+  // tests concurrently against one forked env, racing writes and re-creating
+  // the lock failures. Parallelism comes from projects: one worker per lane.
+  fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: 0,
   reporter: [
