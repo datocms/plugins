@@ -1,10 +1,11 @@
 /**
  * Builds and serializes the end-of-run bulk-translation report — a flat,
  * exportable list answering "which record failed and why". Each QC reason
- * becomes its own row (record + field + locale + check + message); a record
- * that only carries a save-level error (no structured flags) yields a single
- * row using its message. Pure functions so they are trivially testable and the
- * UI is a thin renderer over them.
+ * becomes its own row (record + field + locale + check + message), each
+ * reference-copied link field becomes its own row stating WHY the record is
+ * flagged (the references were shared, not translated); a record that carries
+ * neither yields a single row using its message. Pure functions so they are
+ * trivially testable and the UI is a thin renderer over them.
  */
 
 import type { ProgressStatus, ProgressUpdate } from './ItemsDropdownUtils';
@@ -32,44 +33,66 @@ const FLAGGED_STATUSES = new Set<ProgressStatus>([
 ]);
 
 /**
+ * Reason attached to each reference-copied link field's row. Mirrors the
+ * consolidated warning the progress stream raises (see ItemsDropdownUtils'
+ * buildReferenceCopyWarning) so the retained report and the progress modal's
+ * CSV export tell the same story.
+ */
+const REFERENCE_COPY_REASON =
+  'Linked records were copied into the new locale(s) as shared references and ' +
+  "weren't translated — review whether they should differ per locale.";
+
+/** One row per structured QC flag on the record. */
+const qcFlagRows = (update: ProgressUpdate): BulkReportRow[] =>
+  (update.qcFlags ?? []).map((flag) => ({
+    recordId: update.recordId,
+    status: update.status,
+    fieldPath: flag.fieldPath ?? '',
+    locale: flag.locale ?? '',
+    severity: flag.severity,
+    checkId: flag.checkId,
+    reason: flag.message,
+  }));
+
+/** One row per link field whose references were copied instead of translated. */
+const referenceCopyRows = (update: ProgressUpdate): BulkReportRow[] =>
+  (update.copiedLinkFieldApiKeys ?? []).map((fieldApiKey) => ({
+    recordId: update.recordId,
+    status: update.status,
+    fieldPath: fieldApiKey,
+    locale: '',
+    severity: 'warning',
+    checkId: 'reference-copy',
+    reason: REFERENCE_COPY_REASON,
+  }));
+
+/** Last-resort row from the record-level message (e.g. a CMA save rejection). */
+const messageRow = (update: ProgressUpdate): BulkReportRow => ({
+  recordId: update.recordId,
+  status: update.status,
+  fieldPath: '',
+  locale: '',
+  severity: update.status === 'error' ? 'error' : 'warning',
+  checkId: '',
+  reason: update.message ?? '',
+});
+
+/**
  * Flattens the per-record progress stream into report rows, keeping only
- * records that errored or completed with warnings.
+ * records that errored or completed with warnings. A record contributes one
+ * row per QC flag PLUS one row per reference-copied link field (the usual
+ * reason a record is merely "completed with warnings"); only when it carries
+ * neither does its bare message become the row.
  */
 export function buildBulkReportRows(
   progress: ProgressUpdate[],
 ): BulkReportRow[] {
-  const rows: BulkReportRow[] = [];
-  for (const update of progress) {
-    if (!FLAGGED_STATUSES.has(update.status)) continue;
-
-    const flags = update.qcFlags ?? [];
-    if (flags.length > 0) {
-      for (const flag of flags) {
-        rows.push({
-          recordId: update.recordId,
-          status: update.status,
-          fieldPath: flag.fieldPath ?? '',
-          locale: flag.locale ?? '',
-          severity: flag.severity,
-          checkId: flag.checkId,
-          reason: flag.message,
-        });
-      }
-      continue;
-    }
-
-    // No structured flags (e.g. a CMA save rejection): one row from the message.
-    rows.push({
-      recordId: update.recordId,
-      status: update.status,
-      fieldPath: '',
-      locale: '',
-      severity: update.status === 'error' ? 'error' : 'warning',
-      checkId: '',
-      reason: update.message ?? '',
+  return progress
+    .filter((update) => FLAGGED_STATUSES.has(update.status))
+    .flatMap((update) => {
+      const structured = [...qcFlagRows(update), ...referenceCopyRows(update)];
+      return structured.length > 0 ? structured : [messageRow(update)];
     });
-  }
-  return rows;
 }
 
 const CSV_HEADER = 'Record ID,Status,Field,Locale,Severity,Check,Reason';

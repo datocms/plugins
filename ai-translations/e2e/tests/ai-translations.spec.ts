@@ -214,12 +214,10 @@ test.describe('AI Translations', () => {
 
     // The persisted review list (audit 20/21): closing the progress modal must
     // NOT discard the report — the bulk page keeps a full on-page table of every
-    // flagged record/severity/reason until the next run. runBulkTranslation has
-    // already closed the modal by the time it returns, but the dismissed modal's
-    // iframe can linger "visible", so locate the bulk page by its content (the
-    // retained report's own "Download CSV" button) rather than by visibility.
-    // (The copied-FIELD name is a CSV-only column, asserted above — the on-page
-    // rows carry record/severity/reason.)
+    // flagged record/field/severity/reason until the next run. runBulkTranslation
+    // has already closed the modal by the time it returns, but the dismissed
+    // modal's iframe can linger "visible", so locate the bulk page by its content
+    // (the retained report's own "Download CSV" button) rather than by visibility.
     await step(vendor, 'assert the on-page report table survives closing the modal', async () => {
       const pageFrame = await frameWithButton(page, /^Download CSV$/);
       const reportRegion = pageFrame.getByRole('region', {
@@ -230,6 +228,12 @@ test.describe('AI Translations', () => {
       expect(text, 'report should summarize the flagged records').toMatch(/issues? across \d+ records?/);
       expect(text, 'report should retain a warning-severity row').toContain('warning');
       expect(text, 'report should retain the failure row').toContain('error');
+      // The reference-copy rows must NAME the copied field and state the shared-
+      // references reason — not just flag the record with a bare "Translated …".
+      expect(text, 'report should name the copied link field').toContain('related_articles');
+      expect(text, 'report should state the reference-copy reason').toMatch(
+        /shared references|copied/,
+      );
     });
 
     // CMA proof of the shallow, min-count-satisfying reference-copy: the target

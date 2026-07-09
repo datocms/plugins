@@ -105,6 +105,55 @@ describe('buildBulkReportRows', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0].severity).toBe('warning');
   });
+
+  it('emits one reason-bearing row per reference-copied link field', () => {
+    // The common "completed with warnings" case: no QC flags, only shallow
+    // link-field copies. The report must state WHY the record is flagged and
+    // WHICH field carried the copied references — not just the record message.
+    const progress: ProgressUpdate[] = [
+      {
+        recordIndex: 0,
+        recordId: '11',
+        status: 'completed-with-warnings',
+        message: 'Translated "Winter Collection" (#11).',
+        copiedLinkFieldApiKeys: ['related_articles', 'featured_products'],
+      },
+    ];
+    const rows = buildBulkReportRows(progress);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({
+      recordId: '11',
+      fieldPath: 'related_articles',
+      severity: 'warning',
+      checkId: 'reference-copy',
+    });
+    expect(rows[0].reason).toMatch(/shared references/i);
+    expect(rows[1].fieldPath).toBe('featured_products');
+  });
+
+  it('keeps reference-copy rows alongside QC-flag rows on the same record', () => {
+    const progress: ProgressUpdate[] = [
+      {
+        recordIndex: 0,
+        recordId: '12',
+        status: 'completed-with-warnings',
+        message: 'Translated with notes',
+        qcFlags: [
+          {
+            checkId: 'no-op',
+            severity: 'warning',
+            fieldPath: 'subtitle',
+            locale: 'de',
+            message: 'Unchanged from source.',
+          },
+        ],
+        copiedLinkFieldApiKeys: ['related_articles'],
+      },
+    ];
+    const rows = buildBulkReportRows(progress);
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.checkId)).toEqual(['no-op', 'reference-copy']);
+  });
 });
 
 describe('toBulkReportCsv', () => {
