@@ -46,9 +46,17 @@ now documented in [`e2e/AGENTS.md`](../../../e2e/AGENTS.md).
 ## Remaining gaps (prioritized)
 
 ### High — worth doing next
-- **A6 non-Latin/RTL/CJK source** (audit 13, 15, 26): translate FROM `zh-Hans`/`ar`
-  (A6, en empty) via the sidebar; asserts the hyphenated-locale `from-to` action-id
-  splitter and that RTL/CJK output is written. No seed change (A6 exists).
+- **⚠ A6 non-Latin/RTL/CJK source — attempted, exposed a possible perf/hang bug**
+  (audit 13, 15, 26). A per-record sidebar test translating A6 FROM `zh-Hans`
+  (kitchen-sink record) **timed out at >10 min**, whereas the equivalent A1
+  kitchen-sink translating from `en` finishes in ~10s — a ~60× gap for a
+  same-shape record and a single target locale. This is either a pathological
+  slowdown or a hang specific to a hyphenated/CJK **source** locale (the exact
+  `from-to` splitter path the audit flagged). The test was reverted (impractical
+  as written); the failing env `e2e-deepl-1783563632` was left up for debugging.
+  Next: reproduce against a **light** non-Latin record (title + one field only) to
+  isolate locale-vs-content-volume, then investigate the sidebar's per-field
+  translate loop for a `zh-Hans` source (retry storm? never-resolving await?).
 - **A7 pre-filled target locale** (audit 14, 27): translate `en → ru` where `ru` is
   partially pre-filled → the overwrite-vs-preserve branch; JSON-field placeholder
   survival. No seed change (A7 exists).
