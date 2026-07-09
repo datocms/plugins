@@ -191,6 +191,29 @@ the `parseReport` regex in lockstep, or every bulk test silently reads zeros.
   appear in the Export CSV (`csvExport.ts` maps that status to a `warning` row). A bulk
   assertion of `csv rows === total + 1` catches a warned record being dropped.
 
+## Self-healing failing tests
+
+`npm run self-heal` launches Claude Code with the **playwright-test-healer** agent
+([.claude/agents/playwright-test-healer.md](../.claude/agents/playwright-test-healer.md),
+ported from `vercel-deployment-e2e-tests`): it re-runs the failing tests live
+through Playwright's test MCP server ([.mcp.json](../.mcp.json)), drives the real
+browser to see what the dashboard actually renders now, patches
+selectors/waits in `tests/steps/`, and re-runs until green — logging every
+iteration.
+
+- **Guardrail:** the agent may repair *how* a step is located/awaited, never
+  *whether* it must succeed — no skipped tests, no weakened assertions. If the
+  plugin itself broke, it stops and reports a suspected real regression instead
+  of forcing green. That split matters here: this suite's whole job is catching
+  plugin bugs.
+- **Cost scoping:** the npm script blanks `OPENAI= GEMINI= CLAUDE=` so every
+  heal run forks/spends only the DeepL lane.
+- **First run:** Claude prompts you to enable the `playwright-test` MCP server
+  (or pre-approve it with `"enabledMcpjsonServers": ["playwright-test"]` in
+  `.claude/settings.local.json` — that file is gitignored, per-machine).
+- **Unattended variant** (careful — auto-approves its own edits):
+  `OPENAI= GEMINI= CLAUDE= claude -p --agent playwright-test-healer --permission-mode bypassPermissions --mcp-config .mcp.json --strict-mcp-config "run and heal the failing E2E tests"`.
+
 ## Adding coverage
 
 1. Prefer a unit test if the behavior is pure (QC checks, CSV rows, counters live in
