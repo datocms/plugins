@@ -82,6 +82,8 @@ export type BulkReport = {
   csv: string;
   /** Whether at least one record row rendered a real editor link (an anchor). */
   hasRecordLink: boolean;
+  /** The first record-row editor link's href ('' when none rendered). */
+  recordLinkHref: string;
 };
 
 /**
@@ -101,7 +103,7 @@ const exportReportCsv = async (page: Page, frame: Frame): Promise<string> => {
 export const parseReport = (
   progressText: string,
   statsText: string,
-): Omit<BulkReport, 'csv' | 'hasRecordLink'> => {
+): Omit<BulkReport, 'csv' | 'hasRecordLink' | 'recordLinkHref'> => {
   const total = progressText.match(/of\s*(\d+)\s*records/i);
   const stats = statsText.match(/(\d+)\s*successful.*?(\d+)\s*with warnings.*?(\d+)\s*failed/is);
   return {
@@ -128,17 +130,38 @@ export const runBulkTranslation = async (
     /** Progress-modal completion budget; default 5 min. The DeepL lane translates
      * EVERY editor (incl. structured/rich text), so heavy models need longer. */
     closeTimeout?: number;
+    /**
+     * Narrow the model's field selection to exactly these api_keys (default:
+     * every translatable field). Relies on ModelFieldPicker's narrowing rule —
+     * picking a specific field while "All fields" is active replaces the
+     * selection with just that field; further picks add to it.
+     */
+    onlyFields?: string[];
   },
 ): Promise<BulkReport> => {
   const { vendor } = opts;
   const frame = bulkFrame(page);
 
-  // Controls: 0=source, 1=target locales, 2=models.
+  // Controls: 0=source, 1=target locales, 2=models, 3+=per-model field pickers.
   note(vendor, `selecting model "${opts.modelCode}"…`);
   await selectByCode(frame, 2, opts.modelCode);
   await frame.getByText(/Fields to translate/i).waitFor({ timeout: TIMEOUTS.thirty_sec });
   note(vendor, `selecting target locale "${opts.toLocale}"…`);
   await selectByCode(frame, 1, opts.toLocale);
+
+  if (opts.onlyFields?.length) {
+    note(vendor, `narrowing field selection to [${opts.onlyFields.join(', ')}]…`);
+    // First pick narrows "All fields" down to that one; later picks add.
+    for (const fieldApiKey of opts.onlyFields) {
+      await selectByCode(frame, 3, fieldApiKey);
+    }
+    await expect(
+      frame.getByText(
+        new RegExp(`${opts.onlyFields.length} of \\d+ fields? selected`),
+      ),
+      'the field picker should confirm the narrowed selection',
+    ).toBeVisible({ timeout: TIMEOUTS.thirty_sec });
+  }
 
   note(vendor, 'starting the bulk run…');
   await frame.getByRole('button', { name: /start bulk translation/i }).click();
@@ -176,12 +199,12 @@ export const runBulkTranslation = async (
     note(vendor, `Export CSV capture failed: ${error}`);
     return '';
   });
-  const hasRecordLink =
-    (await progressFrame
-      .locator('a.TranslationProgressModal__record-link')
-      .count()
-      .catch(() => 0)) > 0;
+  const recordLinks = progressFrame.locator('a.TranslationProgressModal__record-link');
+  const hasRecordLink = (await recordLinks.count().catch(() => 0)) > 0;
+  const recordLinkHref = hasRecordLink
+    ? ((await recordLinks.first().getAttribute('href').catch(() => '')) ?? '')
+    : '';
 
   await close.click();
-  return { ...report, csv, hasRecordLink };
+  return { ...report, csv, hasRecordLink, recordLinkHref };
 };

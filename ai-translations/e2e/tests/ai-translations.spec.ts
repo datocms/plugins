@@ -1,9 +1,12 @@
+import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import type { ProjectMeta } from './fixtures/providers';
 import { cmaClient } from './setup/cma';
-import { TIMEOUTS } from './setup/constants';
+import { PROJECT_SUBDOMAIN, TIMEOUTS } from './setup/constants';
+import { resolvePluginId } from './setup/plugin-params';
 import {
   assertFieldsUnchanged,
+  assertLocaleEmpty,
   assertLocaleValuesUnchanged,
   assertLocalesPopulated,
   assertPlaceholdersSurviveAnyField,
@@ -18,10 +21,12 @@ import { recordOutcome } from './setup/outcomes';
 import { step } from './setup/log';
 import { bulkPageUrl, frameWithButton, runBulkTranslation } from './steps/bulk';
 import {
+  fieldMenuEntries,
   runItemsDropdownTranslation,
   translateFieldViaDropdown,
 } from './steps/dropdown-actions';
 import { openRecord, saveRecord, translateRecordViaSidebar } from './steps/per-record';
+import { getPluginParams, setPluginParams } from './steps/plugin-config';
 
 /**
  * Provider-agnostic suite. Each Playwright project (openai/google/deepl/anthropic)
@@ -138,8 +143,14 @@ test.describe('AI Translations', () => {
       expect(lines[0]).toContain('notes');
       // Header + one data row per record.
       expect(lines.length, `expected header + ${report.total} rows`).toBe(report.total + 1);
-      // Each record row links to its editor (master's record-link feature).
+      // Each record row links to its editor (master's record-link feature) —
+      // and inside a sandbox env the href must carry the environment prefix,
+      // or the link lands in the primary environment's editor.
       expect(report.hasRecordLink, 'a completed record row should link to its editor').toBe(true);
+      expect(
+        report.recordLinkHref,
+        'the record link must target the forked (sandbox) environment',
+      ).toContain(`/environments/${envName}/`);
       return Promise.resolve();
     });
 
@@ -234,6 +245,21 @@ test.describe('AI Translations', () => {
       expect(text, 'report should state the reference-copy reason').toMatch(
         /shared references|copied/,
       );
+
+      // The retained report's own machine export: Download JSON must produce
+      // parseable rows carrying the same structured facts as the table.
+      const [download] = await Promise.all([
+        page.waitForEvent('download', { timeout: TIMEOUTS.thirty_sec }),
+        pageFrame.getByRole('button', { name: 'Download JSON' }).click(),
+      ]);
+      const rows = JSON.parse(readFileSync((await download.path()) ?? '', 'utf8')) as Array<
+        Record<string, unknown>
+      >;
+      expect(rows.length, 'the JSON export should carry the report rows').toBeGreaterThan(0);
+      expect(
+        rows.some((r) => r.fieldPath === 'related_articles' && r.checkId === 'reference-copy'),
+        'the JSON export should carry the structured reference-copy row',
+      ).toBe(true);
     });
 
     // CMA proof of the shallow, min-count-satisfying reference-copy: the target
@@ -365,6 +391,60 @@ test.describe('AI Translations', () => {
         (item.media_gallery.es as unknown[])?.length,
         'media_gallery.es should carry every source asset',
       ).toBe((item.media_gallery.en as unknown[]).length);
+
+      // Single-block editors (framed + frameless) — the remaining two heavy
+      // editor shapes — must land in the empty target too.
+      expect(item.spotlight.es, 'spotlight.es (framed single block) should be populated').toBeTruthy();
+      expect(
+        item.inline_note.es,
+        'inline_note.es (frameless single block) should be populated',
+      ).toBeTruthy();
+    });
+  });
+
+  test('bulk: partial field selection translates only the chosen fields', async ({ page }) => {
+    test.setTimeout(TIMEOUTS.five_min + TIMEOUTS.three_min);
+    const { vendor, envName } = meta();
+    // The ModelFieldPicker's field allowlist is a first-class feature every
+    // bulk run so far has left at its default (all fields). Prove both halves:
+    // the chosen field translates, and the unchosen translatable fields stay
+    // untouched (locale-sync writes null for optional unselected fields).
+    // Runs on the PRODUCT model: its records are never opened in the editor,
+    // so the sparse pt-BR locale this creates can't destabilize the editor
+    // tests (the later items-dropdown run fills pt-BR completely anyway).
+    test.skip(vendor !== 'deepl', 'field-selection behaviour asserted on the DeepL lane');
+    const P1 = findRecord(manifest, 'product', ['en', 'it']);
+
+    await step(vendor, 'open the Bulk Translations page', async () => {
+      await page.goto(await bulkPageUrl(meta()), { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(3000);
+    });
+
+    const report = await step(vendor, 'run bulk translation (product → pt-BR, name only)', () =>
+      runBulkTranslation(page, {
+        modelCode: 'product',
+        toLocale: 'pt-BR',
+        vendor,
+        onlyFields: ['name'],
+      }),
+    );
+    expect(report.total, report.summary).toBe(3);
+    expect(report.completed + report.withWarnings + report.errors, report.summary).toBe(3);
+
+    await step(vendor, 'assert only the name landed in pt-BR on P1 (CMA)', async () => {
+      const item = (await cmaClient(envName).items.find(P1.id)) as Record<
+        string,
+        Record<string, unknown>
+      >;
+      const name = item.name['pt-BR'] as string;
+      expect(name, 'name.pt-BR should be populated').toBeTruthy();
+      // Unselected translatable fields must remain EMPTY in the new locale.
+      await assertLocaleEmpty(envName, P1.id, 'pt-BR', [
+        'description',
+        'promo_markdown',
+        'specs_html',
+        'seo',
+      ]);
     });
   });
 
@@ -669,5 +749,336 @@ test.describe('AI Translations', () => {
         'at least one product should have a translated pt-BR name differing from its en source',
       ).toBeGreaterThan(0);
     });
+  });
+
+  test('field dropdown: empty-source guard, translate-from, and all-locales flows (A2)', async ({ page }) => {
+    const { vendor, envName } = meta();
+    test.skip(vendor !== 'deepl', 'field-dropdown flows asserted on the DeepL lane');
+    test.setTimeout(TIMEOUTS.five_min + TIMEOUTS.three_min);
+
+    // 1. The empty-source guard: "Translate from" a locale with no value must
+    //    alert and bail BEFORE any provider call — never write anything.
+    await step(vendor, 'clear excerpt.es via CMA to make the source verifiably empty', async () => {
+      const item = (await cmaClient(envName).items.find(A2.id)) as Record<string, unknown>;
+      await cmaClient(envName).items.update(A2.id, {
+        excerpt: { ...(item.excerpt as Record<string, unknown>), es: null },
+      });
+    });
+    await step(vendor, `open record ${A2.id} (article, en + es)`, () =>
+      openRecord(page, meta(), ARTICLE, A2.id),
+    );
+    const guard = await step(vendor, 'Translate from → [es] with an empty es source', () =>
+      translateFieldViaDropdown(page, {
+        fieldPath: 'excerpt.en',
+        group: 'Translate from',
+        localeCode: 'es',
+        completionPattern: /locale is empty/i,
+        vendor,
+      }),
+    );
+    expect(
+      guard.toasts.join(' | '),
+      'the empty-source guard must alert, not translate',
+    ).toMatch(/locale is empty/i);
+
+    // 2. "Translate to → All locales": fills every other active locale (es
+    //    here) and announces the batch completion.
+    const run = await step(vendor, 'Translate to → All locales on excerpt.en', () =>
+      translateFieldViaDropdown(page, {
+        fieldPath: 'excerpt.en',
+        group: 'Translate to',
+        entryText: 'All locales',
+        // Strict completion form — the in-progress warning toast reads
+        // 'Translating … to all locales…' and must not satisfy the wait.
+        completionPattern: /Translated "Excerpt" to all locales/i,
+        vendor,
+      }),
+    );
+    expect(run.toasts.join(' | ')).toMatch(/Translated "Excerpt" to all locales/i);
+    const saveAll = await step(vendor, 'save the record', () => saveRecord(page, vendor));
+    expect(saveAll.status, `save should succeed (got ${saveAll.status})`).toBe(200);
+
+    // 3. The reverse direction: clear the CURRENT locale, then "Translate
+    //    from" the (now populated) es back into en.
+    await step(vendor, 'clear excerpt.en via CMA, keeping the es translation', async () => {
+      const item = (await cmaClient(envName).items.find(A2.id)) as Record<string, unknown>;
+      await cmaClient(envName).items.update(A2.id, {
+        excerpt: { ...(item.excerpt as Record<string, unknown>), en: null },
+      });
+    });
+    await step(vendor, 'reopen the record', () => openRecord(page, meta(), ARTICLE, A2.id));
+    const fromRun = await step(vendor, 'Translate from → [es] into the empty en', () =>
+      translateFieldViaDropdown(page, {
+        fieldPath: 'excerpt.en',
+        group: 'Translate from',
+        localeCode: 'es',
+        vendor,
+      }),
+    );
+    expect(fromRun.toasts.join(' | ')).toMatch(/Translated "Excerpt" from/i);
+    const save = await step(vendor, 'save the record', () => saveRecord(page, vendor));
+    expect(save.status, `save should succeed (got ${save.status})`).toBe(200);
+
+    await step(vendor, 'assert excerpt.en was rewritten from the es source (CMA)', async () => {
+      const en = (await getLocaleValue(envName, A2.id, 'excerpt', 'en')) as string;
+      const es = (await getLocaleValue(envName, A2.id, 'excerpt', 'es')) as string;
+      expect(en, 'excerpt.en should be populated by Translate from').toBeTruthy();
+      expect(en, 'excerpt.en should be a translation of es, not a copy').not.toBe(es);
+    });
+  });
+
+  test('config screen: vendor switch swaps credential fields and gates Save on dirtiness', async ({ page }) => {
+    const { vendor, envName } = meta();
+    test.skip(vendor !== 'deepl', 'config-screen smoke asserted on the DeepL lane');
+    test.setTimeout(TIMEOUTS.five_min);
+
+    await step(vendor, "open the plugin's settings screen", async () => {
+      const pluginId = await resolvePluginId();
+      await page.goto(
+        `https://${PROJECT_SUBDOMAIN()}.admin.datocms.com/environments/${envName}` +
+          `/configuration/plugins/${pluginId}/edit`,
+        { waitUntil: 'domcontentloaded' },
+      );
+      await page.waitForTimeout(3000);
+    });
+
+    const config = await step(vendor, 'locate the config frame (Save button present)', () =>
+      frameWithButton(page, /^Save/),
+    );
+
+    await step(vendor, 'assert the DeepL credentials render and Save starts disabled', async () => {
+      // The lane's params pin vendor=deepl, so its credential block renders…
+      await expect(config.getByText('DeepL API Key').first()).toBeVisible({
+        timeout: TIMEOUTS.thirty_sec,
+      });
+      // …and a pristine (non-dirty) form must not be saveable.
+      await expect(
+        config.getByRole('button', { name: /^Save/ }),
+        'Save should be disabled until the form is dirty',
+      ).toBeDisabled();
+    });
+
+    await step(vendor, 'switch the vendor to OpenAI and assert the credential swap', async () => {
+      await config.locator('[class*="-control"]').first().click();
+      await config
+        .locator('[class*="-option"]')
+        .filter({ hasText: 'OpenAI (ChatGPT)' })
+        .first()
+        .click();
+      await expect(config.getByText('OpenAI API Key').first()).toBeVisible({
+        timeout: TIMEOUTS.thirty_sec,
+      });
+      await expect(
+        config.getByText('DeepL API Key'),
+        "the DeepL block should be gone after the vendor switch",
+      ).toHaveCount(0);
+      // The switch dirties the form → Save unlocks. NOT clicked: this test
+      // must leave the lane's params untouched.
+      await expect(config.getByRole('button', { name: /^Save/ })).toBeEnabled();
+    });
+
+    await step(vendor, 'switch back to DeepL (nothing saved)', async () => {
+      await config.locator('[class*="-control"]').first().click();
+      await config.locator('[class*="-option"]').filter({ hasText: 'DeepL' }).first().click();
+      await expect(config.getByText('DeepL API Key').first()).toBeVisible({
+        timeout: TIMEOUTS.thirty_sec,
+      });
+    });
+  });
+
+  test('gating: plugin params control which surfaces render', async ({ page }) => {
+    const { vendor, envName } = meta();
+    test.skip(vendor !== 'deepl', 'surface gating is provider-independent — asserted on the DeepL lane');
+    test.setTimeout(TIMEOUTS.ten_min);
+
+    const P1 = manifest.records.find((r) => r.model === 'product' && r.sourceLocales.includes('en'))!;
+    const original = await step(vendor, "snapshot the lane's plugin params", () =>
+      getPluginParams(envName),
+    );
+
+    /** The record sidebar has rendered when at least one panel header exists. */
+    const sidebarSettled = async () => {
+      await expect(page.locator('.SidebarPanel__header').first()).toBeVisible({
+        timeout: TIMEOUTS.one_min,
+      });
+      await page.waitForTimeout(2000); // plugin panels register a beat later
+    };
+    const aiPanel = () =>
+      page.locator('.SidebarPanel__header', { hasText: 'AI Translations' });
+
+    try {
+      await step(vendor, 'translateWholeRecord=false hides the record sidebar panel', async () => {
+        await setPluginParams(envName, { ...original, translateWholeRecord: false });
+        await openRecord(page, meta(), ARTICLE, A2.id);
+        await sidebarSettled();
+        await expect(aiPanel(), 'no AI Translations panel expected').toHaveCount(0);
+      });
+
+      await step(vendor, 'translateBulkRecords=false removes the batch actions dropdown', async () => {
+        await setPluginParams(envName, { ...original, translateBulkRecords: false });
+        // Self-sufficient: multi-select needs the table appearance regardless
+        // of whether the items-dropdown test already flipped it in this fork.
+        await cmaClient(envName).itemTypes.update(PRODUCT, { collection_appearance: 'table' });
+        await page.goto(
+          `https://${PROJECT_SUBDOMAIN()}.admin.datocms.com/environments/${envName}` +
+            `/editor/item_types/${PRODUCT}/items`,
+          { waitUntil: 'domcontentloaded' },
+        );
+        // Select every record, wait for the NATIVE batch bar (proof the
+        // selection registered)…
+        const selectAll = page.locator(
+          '.ItemsTable__header-cell--checkbox input[type="checkbox"]',
+        );
+        await expect(selectAll).toBeVisible({ timeout: TIMEOUTS.one_min });
+        await selectAll.check();
+        await expect(
+          page.getByRole('button', { name: 'Show selection' }),
+          'the native batch bar should render for the selection',
+        ).toBeVisible({ timeout: TIMEOUTS.thirty_sec });
+        // …then assert the plugin-actions dropdown trigger never renders: the
+        // trigger exists ONLY to hold plugin batch actions, so with
+        // translateBulkRecords=false it must be absent entirely. Give the
+        // (hidden) plugin frame time to boot so a not-yet-registered action
+        // can't masquerade as a gated one.
+        await expect(
+          page.locator('iframe[src*="localhost:5173"]').first(),
+          'the plugin frame should have booted',
+        ).toBeAttached({ timeout: TIMEOUTS.one_min });
+        await page.waitForTimeout(5000);
+        await expect(
+          page.locator('button.Dropdown__icon-trigger--reverse'),
+          'the plugin batch-actions trigger must be gated off',
+        ).toHaveCount(0);
+      });
+
+      await step(vendor, 'model exclusion hides the sidebar AND the bulk-page model option', async () => {
+        await setPluginParams(envName, {
+          ...original,
+          modelsToBeExcludedFromThisPlugin: ['product'],
+        });
+        // Sidebar gone on the excluded model's records…
+        await openRecord(page, meta(), PRODUCT, P1.id);
+        await sidebarSettled();
+        await expect(aiPanel(), 'excluded model must not get the sidebar').toHaveCount(0);
+        // …still present on a non-excluded model…
+        await openRecord(page, meta(), ARTICLE, A2.id);
+        await sidebarSettled();
+        await expect(aiPanel().first(), 'non-excluded model keeps the sidebar').toBeVisible();
+        // …and the bulk page's model dropdown omits it (the exclusion
+        // previously leaked here — an excluded model stayed bulk-translatable).
+        await page.goto(await bulkPageUrl(meta()), { waitUntil: 'domcontentloaded' });
+        await page.waitForTimeout(3000);
+        const bulk = await frameWithButton(page, /Start bulk translation/i);
+        await bulk.locator('[class*="-control"]').nth(2).click();
+        const modelOptions = bulk.locator('[class*="-option"]');
+        await expect(modelOptions.first()).toBeVisible({ timeout: TIMEOUTS.thirty_sec });
+        const texts = (await modelOptions.allTextContents()).join(' | ');
+        expect(texts, 'bulk page should still offer the article model').toContain('article');
+        expect(texts, 'bulk page must not offer the excluded product model').not.toContain('product');
+      });
+
+      await step(vendor, 'field exclusion strips one field\'s translate actions', async () => {
+        await setPluginParams(envName, {
+          ...original,
+          apiKeysToBeExcludedFromThisPlugin: ['excerpt'],
+        });
+        await openRecord(page, meta(), ARTICLE, A2.id);
+        const excluded = await fieldMenuEntries(page, 'excerpt.en');
+        expect(
+          excluded.join(' | '),
+          'excluded field must have no translate actions',
+        ).not.toMatch(/Translate to|Translate from/);
+        const kept = await fieldMenuEntries(page, 'title.en');
+        expect(kept.join(' | '), 'sibling field keeps its actions').toMatch(/Translate to/);
+      });
+
+      await step(vendor, 'translationFields removal disables that editor type\'s actions', async () => {
+        // textarea (excerpt) is the probe: its label reliably carries the kebab
+        // chrome. (markdown fields render EasyMDE's own toolbar and no label
+        // kebab at all in the current dashboard, so they can't be probed here.)
+        const fields = (original.translationFields as string[]) ?? [];
+        await setPluginParams(envName, {
+          ...original,
+          translationFields: fields.filter((f) => f !== 'textarea'),
+        });
+        await openRecord(page, meta(), ARTICLE, A2.id);
+        const excerpt = await fieldMenuEntries(page, 'excerpt.en');
+        expect(
+          excerpt.join(' | '),
+          'textarea fields must lose their translate actions',
+        ).not.toMatch(/Translate to|Translate from/);
+        const kept = await fieldMenuEntries(page, 'title.en');
+        expect(kept.join(' | '), 'single_line fields keep theirs').toMatch(/Translate to/);
+      });
+    } finally {
+      await setPluginParams(envName, original);
+    }
+  });
+
+  test('unconfigured provider: surfaces degrade to configuration prompts', async ({ page }) => {
+    const { vendor, envName } = meta();
+    test.skip(vendor !== 'deepl', 'unconfigured gating asserted on the DeepL lane');
+    test.setTimeout(TIMEOUTS.five_min);
+
+    const original = await getPluginParams(envName);
+    try {
+      await step(vendor, 'blank the DeepL key so isProviderConfigured=false', () =>
+        setPluginParams(envName, { ...original, deeplApiKey: '' }),
+      );
+      await step(vendor, 'open a record', () => openRecord(page, meta(), ARTICLE, A2.id));
+
+      await step(vendor, 'sidebar shows the configure placeholder with Open Settings', async () => {
+        const panel = await frameWithButton(page, /Open Settings/);
+        await expect(
+          panel.getByText(/configure valid credentials/i).first(),
+        ).toBeVisible({ timeout: TIMEOUTS.thirty_sec });
+      });
+
+      await step(vendor, 'field menu shows the single not-configured action', async () => {
+        const entries = await fieldMenuEntries(page, 'title.en');
+        expect(entries.join(' | ')).toMatch(/configure valid AI vendor credentials/i);
+        expect(entries.join(' | '), 'no live translate actions while unconfigured').not.toMatch(
+          /Translate to|Translate from/,
+        );
+      });
+    } finally {
+      await setPluginParams(envName, original);
+    }
+  });
+
+  test('bulk run with a broken provider key fails every record with the stated reason', async ({ page }) => {
+    const { vendor, envName } = meta();
+    // Auth is rejected before any translation happens, so this costs nothing
+    // and is fully deterministic — it proves the per-record failure REPORTING
+    // (the support card's core ask) under a total-provider-outage.
+    test.skip(vendor !== 'deepl', 'provider-failure reporting asserted on the DeepL lane');
+    test.setTimeout(TIMEOUTS.five_min + TIMEOUTS.three_min);
+
+    const original = await getPluginParams(envName);
+    try {
+      await step(vendor, 'point the plugin at an invalid DeepL key', () =>
+        setPluginParams(envName, { ...original, deeplApiKey: 'invalid-key-e2e-0000' }),
+      );
+
+      await step(vendor, 'open the Bulk Translations page', async () => {
+        await page.goto(await bulkPageUrl(meta()), { waitUntil: 'domcontentloaded' });
+        await page.waitForTimeout(3000);
+      });
+
+      const report = await step(vendor, 'run bulk translation (product → fr) against the dead key', () =>
+        runBulkTranslation(page, { modelCode: 'product', toLocale: 'fr', vendor }),
+      );
+
+      // Every record must fail — and each failure must STATE the auth reason
+      // in the exported report, not silently vanish.
+      expect(report.total, report.summary).toBe(3);
+      expect(report.errors, `every record must fail on a dead key\n${report.summary}`).toBe(3);
+      expect(
+        report.csv.toLowerCase(),
+        'the CSV must carry the authorization failure reason',
+      ).toMatch(/auth|api key|invalid|credential|forbidden|401|403/);
+    } finally {
+      await setPluginParams(envName, original);
+    }
   });
 });

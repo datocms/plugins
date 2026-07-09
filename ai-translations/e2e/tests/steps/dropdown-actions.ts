@@ -27,16 +27,47 @@ import { type BulkReport, frameWithButton, parseReport } from './bulk';
 const menuOptions = (page: Page) =>
   page.locator('.Dropdown__menu-container:visible .Dropdown__menu__option');
 
+/**
+ * Open a field's kebab menu and return every entry's text once the menu has
+ * rendered (the built-in "Go to <field> field" entry is the ready signal —
+ * it is present regardless of plugin state, so its appearance means any
+ * plugin-registered entries are settled too). Closes the menu before
+ * returning, leaving the page as found. Used by the surface-gating tests to
+ * assert an action's PRESENCE or ABSENCE deterministically.
+ */
+export const fieldMenuEntries = async (
+  page: Page,
+  fieldPath: string,
+): Promise<string[]> => {
+  const kebab = page
+    .locator(`[id="field--${fieldPath}"] button.Dropdown__icon-trigger`)
+    .first();
+  await expect(kebab, `field ${fieldPath} should render a kebab menu`).toBeVisible({
+    timeout: TIMEOUTS.one_min,
+  });
+  await kebab.click();
+  await expect(
+    menuOptions(page).filter({ hasText: 'Go to' }).first(),
+    'the field menu should render (built-in entry present)',
+  ).toBeVisible({ timeout: TIMEOUTS.thirty_sec });
+  // Give the plugin's async action registration one settle beat beyond the
+  // built-in entry, then read the final entry set.
+  await page.waitForTimeout(1500);
+  const entries = await menuOptions(page).allTextContents();
+  await page.keyboard.press('Escape');
+  return entries.map((e) => e.trim());
+};
+
 /** Result of a field-dropdown translation: the toasts the run surfaced. */
 export type FieldDropdownRunResult = { toasts: string[] };
 
 /**
- * Translate one field via its kebab-menu dropdown action: open the menu, hover
- * the "Translate to/from" group, pick the locale entry (rendered as
- * `<label> [<code>]`, e.g. "Spanish [es]"), and wait for the plugin's
- * completion `ctx.notice` toast. Retries opening the menu until the plugin's
- * actions are registered — the hidden plugin frame boots a beat after the
- * record editor renders, and until then the kebab only holds built-in entries.
+ * Run one field kebab-menu dropdown action: open the menu, hover the
+ * "Translate to/from" group, pick an entry (a locale rendered as
+ * `<label> [<code>]`, or a named entry like "All locales"), and wait for the
+ * flow's terminal toast. Retries opening the menu until the plugin's actions
+ * are registered — the hidden plugin frame boots a beat after the record
+ * editor renders, and until then the kebab only holds built-in entries.
  */
 export const translateFieldViaDropdown = async (
   page: Page,
@@ -45,7 +76,15 @@ export const translateFieldViaDropdown = async (
     fieldPath: string;
     group: 'Translate to' | 'Translate from';
     /** Locale code shown in the entry's brackets, e.g. `es`. */
-    localeCode: string;
+    localeCode?: string;
+    /** Exact entry text when it isn't a bracketed locale (e.g. 'All locales'). */
+    entryText?: string;
+    /**
+     * Toast pattern that ends the flow. Defaults to the completion notice; an
+     * expected-failure flow (e.g. the empty-source guard) passes its alert
+     * pattern instead.
+     */
+    completionPattern?: RegExp;
     vendor: string;
   },
 ): Promise<FieldDropdownRunResult> => {
@@ -76,18 +115,19 @@ export const translateFieldViaDropdown = async (
     )
     .toBe(true);
 
-  // Hover the group to open its locale submenu, then pick the target by code.
-  note(vendor, `picking "${opts.group}" → [${opts.localeCode}]…`);
+  // Hover the group to open its submenu, then pick the entry (by locale code
+  // in brackets, or by its literal text for named entries).
+  const entryFilter = opts.entryText ?? `[${opts.localeCode}]`;
+  note(vendor, `picking "${opts.group}" → ${entryFilter}…`);
   await group.hover();
-  const entry = menuOptions(page)
-    .filter({ hasText: `[${opts.localeCode}]` })
-    .first();
+  const entry = menuOptions(page).filter({ hasText: entryFilter }).first();
   await entry.click({ timeout: TIMEOUTS.thirty_sec });
 
   // The run surfaces a warning toast while translating and a notice on
-  // completion; QC flags may add an alert. Accumulate toasts (they
-  // auto-dismiss) until the completion notice shows up.
-  note(vendor, 'waiting for the field translation to finish…');
+  // completion (or an alert on a guarded failure). Accumulate toasts (they
+  // auto-dismiss) until the terminal pattern shows up.
+  const completionPattern = opts.completionPattern ?? /Translated "/i;
+  note(vendor, 'waiting for the field action to settle…');
   const toasts = new Set<string>();
   await expect
     .poll(
@@ -97,21 +137,56 @@ export const translateFieldViaDropdown = async (
           .allInnerTexts()
           .catch(() => [] as string[]);
         for (const t of texts) if (t.trim()) toasts.add(t.trim());
-        return [...toasts].some((t) => /Translated "/i.test(t));
+        return [...toasts].some((t) => completionPattern.test(t));
       },
       {
         timeout: TIMEOUTS.three_min,
-        message: `no 'Translated "…"' completion notice; toasts seen:\n${[...toasts].join('\n') || '(none)'}`,
+        message: `no toast matching ${completionPattern}; toasts seen:\n${[...toasts].join('\n') || '(none)'}`,
       },
     )
     .toBe(true);
-  note(vendor, 'field translation finished');
+  note(vendor, 'field action settled');
   return { toasts: [...toasts] };
+};
+
+/**
+ * Select every record in a `table`-appearance record list and return once the
+ * batch-actions dropdown trigger is visible. The header checkbox can land
+ * during table hydration (especially right after a collection-appearance flip)
+ * and lose the selection, so the click retries until the trigger — which only
+ * renders while rows are selected — actually shows up.
+ */
+export const selectAllRecords = async (page: Page): Promise<void> => {
+  const selectAll = page.locator(
+    '.ItemsTable__header-cell--checkbox input[type="checkbox"]',
+  );
+  await expect(selectAll, 'the table header select-all checkbox').toBeVisible({
+    timeout: TIMEOUTS.one_min,
+  });
+  const batchTrigger = page.locator('button.Dropdown__icon-trigger--reverse:visible');
+  await expect
+    .poll(
+      async () => {
+        if (await batchTrigger.count().catch(() => 0)) return true;
+        // check() (not click()) — a plain click would TOGGLE, so a retry
+        // firing while the trigger is still rendering would deselect
+        // everything and oscillate forever. check() is a no-op when the
+        // header checkbox is already on.
+        await selectAll.check().catch(() => {});
+        await page.waitForTimeout(3000);
+        return (await batchTrigger.count().catch(() => 0)) > 0;
+      },
+      {
+        timeout: TIMEOUTS.one_min,
+        message: 'selecting all records never surfaced the batch-actions trigger',
+      },
+    )
+    .toBe(true);
 };
 
 /** Outcome of an items-dropdown bulk run. */
 export type ItemsDropdownRunResult = {
-  report: Omit<BulkReport, 'csv' | 'hasRecordLink'>;
+  report: Omit<BulkReport, 'csv' | 'hasRecordLink' | 'recordLinkHref'>;
   /** Dashboard toasts collected after the progress modal closed (the
    * "Successfully translated…" notice or the "need review" alert). */
   toasts: string[];
@@ -140,19 +215,9 @@ export const runItemsDropdownTranslation = async (
       `/editor/item_types/${opts.itemTypeId}/items`,
     { waitUntil: 'domcontentloaded' },
   );
-  const selectAll = page.locator(
-    '.ItemsTable__header-cell--checkbox input[type="checkbox"]',
-  );
-  await expect(selectAll, 'the table header select-all checkbox').toBeVisible({
-    timeout: TIMEOUTS.one_min,
-  });
-
   note(vendor, 'selecting every record…');
-  await selectAll.click();
+  await selectAllRecords(page);
   const batchTrigger = page.locator('button.Dropdown__icon-trigger--reverse:visible');
-  await expect(batchTrigger, 'the batch-actions dropdown trigger').toBeVisible({
-    timeout: TIMEOUTS.thirty_sec,
-  });
 
   // The plugin's items action registers once its hidden frame has booted.
   note(vendor, 'opening the batch-actions menu…');

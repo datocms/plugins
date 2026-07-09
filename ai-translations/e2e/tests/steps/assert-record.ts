@@ -78,6 +78,26 @@ export const extractTokens = (value: unknown): string[] => {
   return [...found];
 };
 
+/** Assert each listed localized field is EMPTY in a locale (negative coverage:
+ * fields deliberately left out of a run must stay untouched). */
+export const assertLocaleEmpty = async (
+  envName: string,
+  itemId: string,
+  locale: string,
+  fieldApiKeys: string[],
+): Promise<void> => {
+  const item = (await cmaClient(envName).items.find(itemId)) as Record<string, unknown>;
+  for (const field of fieldApiKeys) {
+    const value = localeValue(item[field], locale);
+    const isEmpty =
+      value == null || value === '' || (Array.isArray(value) && value.length === 0);
+    expect(
+      isEmpty,
+      `${field}[${locale}] must remain empty — it was not selected for translation (got: ${JSON.stringify(value)?.slice(0, 120)})`,
+    ).toBe(true);
+  }
+};
+
 /** Assert each listed localized field is non-empty in each target locale. */
 export const assertLocalesPopulated = async (
   envName: string,
