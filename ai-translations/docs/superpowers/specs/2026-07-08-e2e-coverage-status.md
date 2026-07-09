@@ -46,6 +46,10 @@ is schema-side — so one lane suffices).
   `en → ru` (where `ru` title/seo are pre-filled) and asserts the run finishes, the
   overwrite populates the previously-empty `ru` JSON field, and the placeholder tokens
   (`{{nights}}`, `{{brand}}`, `%s`, `:slug`) survive into the Cyrillic target.
+- **Article-model bulk into an empty target** (audit 16, and part of 9/11/29): a bulk
+  `article → es` run accounts for every record and asserts (CMA) that at least one
+  article now has an `es` title that *differs* from its `en` source — real translation
+  into an empty locale, not just an overwrite or a copy.
 
 Plus, from the merge itself: a `csvExport` bug (warned records dropped from the CSV)
 was fixed, and the E2E login flake (`networkidle`) was removed. Suite internals are
@@ -74,8 +78,6 @@ and surfaces the untranslatable slug. No plugin change was needed.
   source locale).
 
 ### Medium
-- **Bulk on the `article` model** (audit 16): only `product` + `catalog_entry` are
-  bulk-tested; the design intends article too.
 - **Warning-severity QC bucket + retained review list** (audit 20, 21): the on-page
   `BulkTranslationReport` table surviving modal close.
 - **Provider-appropriate outcomes** (audit 24): assert DeepL takes the happy path

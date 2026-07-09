@@ -355,4 +355,47 @@ test.describe('AI Translations', () => {
       ).toEqual(ra.en ?? ra.it);
     });
   });
+
+  test('bulk: translates the article model into an empty target locale', async ({ page }) => {
+    test.setTimeout(TIMEOUTS.five_min + TIMEOUTS.five_min);
+    const { vendor, envName } = meta();
+    // Article bulk (the design matrix's second model) into `es` — an EMPTY target
+    // for most article records, so we can prove real translated content (differs
+    // from the source), not just an overwrite of an already-populated locale.
+    test.skip(vendor !== 'deepl', 'article bulk asserted on the DeepL lane');
+
+    await step(vendor, 'open the Bulk Translations page', async () => {
+      await page.goto(await bulkPageUrl(meta()), { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(3000);
+    });
+
+    const report = await step(vendor, 'run bulk translation (article → es)', () =>
+      runBulkTranslation(page, { modelCode: 'article', toLocale: 'es', vendor }),
+    );
+
+    // Every article record is accounted for in the report (records with no `en`
+    // source report "no eligible fields" rather than being dropped).
+    expect(report.total, report.summary).toBeGreaterThanOrEqual(5);
+    expect(report.completed + report.withWarnings + report.errors, report.summary).toBe(report.total);
+
+    // Prove real translation INTO AN EMPTY TARGET: at least one article now has an
+    // es title that differs from its en source (a copy would be identical).
+    await step(vendor, 'assert an article got a translated (≠ source) es title (CMA)', async () => {
+      const articles = await cmaClient(envName).items.list({ filter: { type: 'article' } });
+      const translated = articles.filter((a) => {
+        const title = a.title as Record<string, unknown> | undefined;
+        return (
+          title &&
+          typeof title.en === 'string' &&
+          typeof title.es === 'string' &&
+          (title.es as string).length > 0 &&
+          title.es !== title.en
+        );
+      });
+      expect(
+        translated.length,
+        'at least one article should have a translated es title differing from its en source',
+      ).toBeGreaterThan(0);
+    });
+  });
 });
