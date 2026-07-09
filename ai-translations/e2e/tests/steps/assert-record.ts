@@ -147,6 +147,80 @@ export const assertPlaceholdersSurviveAnyField = async (
   expect(foundAny, `${itemId} should carry placeholder tokens in ${sourceLocale}`).toBe(true);
 };
 
+/** Pull one locale's value of a localized field from a CMA item payload. */
+export const getLocaleValue = async (
+  envName: string,
+  itemId: string,
+  fieldApiKey: string,
+  locale: string,
+): Promise<unknown> => {
+  const item = (await cmaClient(envName).items.find(itemId)) as Record<string, unknown>;
+  return localeValue(item[fieldApiKey], locale);
+};
+
+/**
+ * Snapshot one locale's slice of each listed localized field, for a later
+ * "source locale left untouched" comparison — the regression guard for the
+ * ≤3.4.5 in-place SEO mutation bug, where translating to several locales at
+ * once corrupted the SOURCE locale's data (Basecamp: "Fixing corrupted AI
+ * Translation SEO Fields").
+ */
+export const snapshotLocaleValues = async (
+  envName: string,
+  itemId: string,
+  locale: string,
+  fieldApiKeys: string[],
+): Promise<Record<string, unknown>> => {
+  const item = (await cmaClient(envName).items.find(itemId)) as Record<string, unknown>;
+  return Object.fromEntries(
+    fieldApiKeys.map((k) => [k, localeValue(item[k], locale)]),
+  );
+};
+
+/** Assert a locale's slice of each snapshotted field is byte-for-byte unchanged. */
+export const assertLocaleValuesUnchanged = async (
+  envName: string,
+  itemId: string,
+  locale: string,
+  snapshot: Record<string, unknown>,
+): Promise<void> => {
+  const item = (await cmaClient(envName).items.find(itemId)) as Record<string, unknown>;
+  for (const [field, before] of Object.entries(snapshot)) {
+    expect(
+      JSON.stringify(localeValue(item[field], locale)),
+      `${field}[${locale}] (the translation SOURCE) must never be mutated by a translation run`,
+    ).toBe(JSON.stringify(before));
+  }
+};
+
+/**
+ * Count the top-level elements of an HTML fragment (depth-0 tags). The 3.5.6
+ * over-split bug dropped whole top-level segments from translated WYSIWYG
+ * values ("AI Translate truncating HTML response arrays"), so source/target
+ * parity of this count is the regression signal. Void/self-closing tags (br,
+ * img, hr…) don't nest, so they only count at depth 0.
+ */
+export const countTopLevelHtmlElements = (html: string): number => {
+  const VOID = new Set(['br', 'hr', 'img', 'input', 'meta', 'link', 'source', 'embed', 'wbr']);
+  let depth = 0;
+  let count = 0;
+  for (const m of html.matchAll(/<(\/?)([a-zA-Z][\w-]*)[^>]*?(\/?)>/g)) {
+    const [, closing, rawTag, selfClosing] = m;
+    const tag = rawTag.toLowerCase();
+    if (VOID.has(tag) || selfClosing === '/') {
+      if (depth === 0 && !closing) count += 1;
+      continue;
+    }
+    if (closing) {
+      depth = Math.max(0, depth - 1);
+    } else {
+      if (depth === 0) count += 1;
+      depth += 1;
+    }
+  }
+  return count;
+};
+
 /** Snapshot raw field values for later "untouched" comparison. */
 export const snapshotFields = async (
   envName: string,

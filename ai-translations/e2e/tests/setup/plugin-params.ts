@@ -17,17 +17,22 @@ const DEV_PLUGIN_URL = 'http://localhost:5173';
 const PLUGIN_NAME = 'AI Translations';
 
 /**
- * Editors the suite translates. We drop `structured_text` and `rich_text`: each
- * expands into many sequential per-node/per-block provider calls, which a
- * rate-limited free-tier provider (Gemini) can't finish within a sane test
- * budget. The retained set still covers the QC paths — placeholders live in
- * json/text/markdown, plus slug + SEO. Bulk still exercises modular content on
- * the (small) product model.
+ * Editors the suite translates. On the chat lanes we drop `structured_text` and
+ * `rich_text`: each expands into many sequential per-node/per-block provider
+ * calls, which a rate-limited free-tier provider (Gemini) can't finish within a
+ * sane test budget. The retained set still covers the QC paths — placeholders
+ * live in json/text/markdown, plus slug + SEO.
+ *
+ * The DeepL lane keeps EVERY editor: DeepL's batch API is fast and deterministic,
+ * so it is the one lane that can prove structured_text / rich_text / single_block
+ * (which `isFieldTranslatable` unlocks via `rich_text`) translate end-to-end —
+ * the audit's "assert translated editors, not just presence" gap.
  */
 const HEAVY_EDITORS = new Set(['structured_text', 'rich_text']);
 const ALL_TRANSLATION_FIELDS = Object.keys(translateFieldTypes).filter(
   (editor) => !HEAVY_EDITORS.has(editor),
 );
+const DEEPL_TRANSLATION_FIELDS = Object.keys(translateFieldTypes);
 
 let cachedPluginId: string | undefined;
 
@@ -79,7 +84,8 @@ const resolveModel = async (spec: ProviderSpec, env = requireEnv()): Promise<str
 const buildParams = (spec: ProviderSpec, model: string, env = requireEnv()) => {
   const key = env[spec.keyEnv] as string;
   const base = {
-    translationFields: ALL_TRANSLATION_FIELDS,
+    translationFields:
+      spec.vendor === 'deepl' ? DEEPL_TRANSLATION_FIELDS : ALL_TRANSLATION_FIELDS,
     translateWholeRecord: true,
     translateBulkRecords: true,
     prompt: defaultPromptValue,

@@ -34,18 +34,30 @@ const selectByCode = async (
 
 /** The plugin renders confirm/progress as separate modal iframes; find the one
  * whose document currently holds a button matching `name`, polling until it
- * appears (modals mount a beat after the trigger). */
-const frameWithButton = async (page: Page, name: RegExp): Promise<Frame> => {
+ * appears (modals mount a beat after the trigger). `withoutText` skips frames
+ * whose body contains that text — needed when two sibling modals expose a
+ * same-named button (the items-dropdown picker and the confirm modal both have
+ * a "Translate N records" button; only the picker says "Fields to translate"). */
+export const frameWithButton = async (
+  page: Page,
+  name: RegExp,
+  withoutText?: string,
+): Promise<Frame> => {
   let found: Frame | undefined;
   await expect
     .poll(
       async () => {
         for (const frame of page.frames()) {
           if (!frame.url().includes('localhost:5173')) continue;
-          if (await frame.getByRole('button', { name }).count().catch(() => 0)) {
-            found = frame;
-            return true;
+          if (!(await frame.getByRole('button', { name }).count().catch(() => 0))) continue;
+          if (
+            withoutText &&
+            (await frame.getByText(withoutText).count().catch(() => 1)) > 0
+          ) {
+            continue;
           }
+          found = frame;
+          return true;
         }
         return false;
       },
@@ -86,7 +98,7 @@ const exportReportCsv = async (page: Page, frame: Frame): Promise<string> => {
   return readFileSync(path, 'utf8').replace(/^﻿/, '');
 };
 
-const parseReport = (
+export const parseReport = (
   progressText: string,
   statsText: string,
 ): Omit<BulkReport, 'csv' | 'hasRecordLink'> => {
@@ -109,7 +121,14 @@ const parseReport = (
  */
 export const runBulkTranslation = async (
   page: Page,
-  opts: { modelCode: string; toLocale: string; vendor: string },
+  opts: {
+    modelCode: string;
+    toLocale: string;
+    vendor: string;
+    /** Progress-modal completion budget; default 5 min. The DeepL lane translates
+     * EVERY editor (incl. structured/rich text), so heavy models need longer. */
+    closeTimeout?: number;
+  },
 ): Promise<BulkReport> => {
   const { vendor } = opts;
   const frame = bulkFrame(page);
@@ -130,10 +149,14 @@ export const runBulkTranslation = async (
   await confirmFrame.getByRole('button', { name: /^Translate / }).click();
 
   // Progress modal (its own iframe): Close enables only once the run completes.
-  note(vendor, 'bulk run in progress — waiting for the progress modal to finish (up to 5 min)…');
+  const closeTimeout = opts.closeTimeout ?? TIMEOUTS.five_min;
+  note(
+    vendor,
+    `bulk run in progress — waiting for the progress modal to finish (up to ${Math.round(closeTimeout / 60_000)} min)…`,
+  );
   const progressFrame = await frameWithButton(page, /^(Close|Please wait)/);
   const close = progressFrame.getByRole('button', { name: 'Close', exact: true });
-  await expect(close).toBeEnabled({ timeout: TIMEOUTS.five_min });
+  await expect(close).toBeEnabled({ timeout: closeTimeout });
 
   const progressText = await progressFrame
     .locator('.TranslationProgressModal__progress-text')
