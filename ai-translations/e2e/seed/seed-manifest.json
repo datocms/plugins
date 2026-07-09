@@ -20,6 +20,29 @@
   "primaryLocale": "en",
   "schema": {
     "models": {
+      "catalog_entry": {
+        "id": "EV2erh8XQISXlGhG8HB63g",
+        "fields": [
+          {
+            "api_key": "badge",
+            "editor": "single_line",
+            "field_type": "string",
+            "localized": true
+          },
+          {
+            "api_key": "related_articles",
+            "editor": "links_select",
+            "field_type": "links",
+            "localized": true
+          },
+          {
+            "api_key": "title",
+            "editor": "single_line",
+            "field_type": "string",
+            "localized": true
+          }
+        ]
+      },
       "article": {
         "id": "YTxPjssPRpadR7n7EI2YFg",
         "fields": [
@@ -324,6 +347,69 @@
     }
   },
   "records": [
+    {
+      "id": "AtgIaCaZQESdUiwjagswBQ",
+      "model": "catalog_entry",
+      "title": "Autumn Picks",
+      "sourceLocales": [
+        "en",
+        "it"
+      ],
+      "emptyTargetLocales": [
+        "es",
+        "pt-BR",
+        "fr",
+        "de",
+        "ru",
+        "ar",
+        "ja",
+        "zh-Hans",
+        "hi",
+        "sw"
+      ]
+    },
+    {
+      "id": "Nojx1UNfSCSR4Vmjf7kmbg",
+      "model": "catalog_entry",
+      "title": "Winter Collection",
+      "sourceLocales": [
+        "en",
+        "it"
+      ],
+      "emptyTargetLocales": [
+        "es",
+        "pt-BR",
+        "fr",
+        "de",
+        "ru",
+        "ar",
+        "ja",
+        "zh-Hans",
+        "hi",
+        "sw"
+      ]
+    },
+    {
+      "id": "XIQ_8uYXShmmfYRkxVjogw",
+      "model": "catalog_entry",
+      "title": "Summer Collection",
+      "sourceLocales": [
+        "en",
+        "it"
+      ],
+      "emptyTargetLocales": [
+        "es",
+        "pt-BR",
+        "fr",
+        "de",
+        "ru",
+        "ar",
+        "ja",
+        "zh-Hans",
+        "hi",
+        "sw"
+      ]
+    },
     {
       "id": "FM_XzOw1QvKicqOS9emYHw",
       "model": "article",

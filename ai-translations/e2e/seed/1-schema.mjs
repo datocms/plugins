@@ -144,8 +144,15 @@ async function main() {
   section('Main models');
   const article = await getOrCreateItemType('article', { name: 'Article' });
   const product = await getOrCreateItemType('product', { name: 'Product' });
+  // catalog_entry exists to exercise the localized reference (Link/Links) path:
+  // its required links field is never translated but must be carried into new
+  // locales by the locale-sync fallback (→ `completed-with-warnings`).
+  const catalog = await getOrCreateItemType('catalog_entry', {
+    name: 'Catalog Entry',
+  });
   await loadFields(article.id);
   await loadFields(product.id);
+  await loadFields(catalog.id);
 
   // 5a. Article fields — every translatable editor + negatives
   section('Article fields');
@@ -222,8 +229,38 @@ async function main() {
     client.itemTypes.update(product.id, { title_field: { id: productName.id, type: 'field' } }),
   );
 
+  // 5c. Catalog-entry fields — a translatable title + a REQUIRED localized links
+  // field. `items_item_type` marks it a reference field (isReferenceField) and
+  // `size.min` marks it min-count (hasMinItemsValidator) — together they drive
+  // the reference-copy + min-linked-records validation paths in the bulk flow.
+  section('Catalog-entry fields');
+  const catalogTitle = await field(catalog.id, 'title', {
+    ...single('Title'),
+    validators: { required: {} },
+  });
+  await field(catalog.id, 'related_articles', {
+    field_type: 'links',
+    label: 'Related articles',
+    localized: true,
+    validators: {
+      items_item_type: { item_types: [article.id] },
+      size: { min: 1 },
+    },
+  });
+  // A deliberately tiny character limit so ANY real translation of a short source
+  // word overflows it — drives the schema-aware length check (checkFieldLength /
+  // 'length-validator' flag) and the CMA's length 422 end-to-end. Optional, so a
+  // record can leave it empty to isolate the reference-copy path from this one.
+  await field(catalog.id, 'badge', {
+    ...single('Badge'),
+    validators: { length: { max: 5 } },
+  });
+  if (catalogTitle) await step('catalog_entry.title_field wiring', () =>
+    client.itemTypes.update(catalog.id, { title_field: { id: catalogTitle.id, type: 'field' } }),
+  );
+
   section('STAGE 1 complete');
-  console.log('Models:', { article: article.id, product: product.id });
+  console.log('Models:', { article: article.id, product: product.id, catalog_entry: catalog.id });
   console.log('Blocks:', blockIds);
   if (fieldFailures.length) {
     section(`⚠ ${fieldFailures.length} FIELD FAILURE(S) — fix appearance/validators and re-run`);

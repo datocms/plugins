@@ -165,4 +165,71 @@ test.describe('AI Translations', () => {
       });
     }
   });
+
+  test('bulk: linked-record reference-copy + length-validator report (catalog_entry)', async ({ page }) => {
+    test.setTimeout(TIMEOUTS.five_min + TIMEOUTS.five_min);
+    const { vendor, envName } = meta();
+    // Both behaviours are provider-INDEPENDENT: a link field is never sent to a
+    // provider (locale-sync copy), and the length check is schema-side. Asserting
+    // them once on the deterministic DeepL lane avoids vendor variance + the
+    // free-tier lanes (Gemini rate limits, no Anthropic credits) muddying the
+    // outcome. The `catalog_entry` seed model exists solely for this.
+    test.skip(
+      vendor !== 'deepl',
+      'reference-copy + length-validator are provider-independent — asserted on the DeepL lane',
+    );
+
+    await step(vendor, 'open the Bulk Translations page', async () => {
+      await page.goto(await bulkPageUrl(meta()), { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(3000);
+    });
+
+    const report = await step(vendor, 'run bulk translation (catalog_entry → es)', () =>
+      runBulkTranslation(page, { modelCode: 'catalog_entry', toLocale: 'es', vendor }),
+    );
+
+    // Three catalog records: two only copy linked references (→ completed-with-
+    // warnings), one overflows the badge length validator on translation (→ failure).
+    expect(report.total, report.summary).toBe(3);
+    expect(report.completed + report.withWarnings + report.errors, report.summary).toBe(3);
+
+    // Reference-copy (master 3.6.0): localized Link fields carried into the new
+    // locale surface the record as completed-with-warnings, with the copied field
+    // named and the reason stated in the CSV report (card #5).
+    expect(
+      report.withWarnings,
+      `expected ≥1 completed-with-warnings (reference copy)\n${report.summary}`,
+    ).toBeGreaterThanOrEqual(1);
+    expect(report.csv, 'CSV should name the copied link field').toContain('related_articles');
+    expect(
+      report.csv.toLowerCase(),
+      'CSV notes should explain the copied references',
+    ).toMatch(/shared references|copied linked/);
+
+    // Length-validator (card #1): a translation over the field's character limit is
+    // surfaced as a failure with a reason, never silently truncated/saved.
+    expect(
+      report.errors,
+      `expected ≥1 length-overflow failure (badge)\n${report.summary}`,
+    ).toBeGreaterThanOrEqual(1);
+
+    // CMA proof of the shallow, min-count-satisfying reference-copy: the target
+    // locale holds the SAME referenced ids as the source (not followed, not
+    // re-translated), and the save did not 422 on the size:{min:1} constraint.
+    await step(vendor, 'verify related_articles were copied into es (CMA)', async () => {
+      const entries = await cmaClient(envName).items.list({
+        filter: { type: 'catalog_entry' },
+      });
+      const copied = entries.find((entry) => {
+        const ra = entry.related_articles as Record<string, unknown> | undefined;
+        return ra && Array.isArray(ra.es) && (ra.es as unknown[]).length > 0;
+      });
+      expect(copied, 'a catalog entry should have es references copied from source').toBeTruthy();
+      const ra = copied!.related_articles as Record<string, unknown[]>;
+      expect(
+        ra.es,
+        'es references must equal the source references (shallow copy)',
+      ).toEqual(ra.en ?? ra.it);
+    });
+  });
 });
