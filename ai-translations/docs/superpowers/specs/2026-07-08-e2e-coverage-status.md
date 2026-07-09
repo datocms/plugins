@@ -38,6 +38,10 @@ is schema-side — so one lane suffices).
 - **Bulk report reasons / CSV warning+failure rows** (audit 17, 28, partial 18): the
   `catalog_entry` run exercises warning *and* failure rows with populated
   `copied_link_field_api_keys` + `notes`, not just bucket counts.
+- **Non-Latin / RTL / CJK source** (audit 13, 15): a per-record test translates A6
+  FROM `zh-Hans` and asserts the run finishes and surfaces the untranslatable slug.
+  Fixing this exposed a real **E2E-harness bug** (below) — the translation itself was
+  never slow.
 
 Plus, from the merge itself: a `csvExport` bug (warned records dropped from the CSV)
 was fixed, and the E2E login flake (`networkidle`) was removed. Suite internals are
@@ -45,18 +49,20 @@ now documented in [`e2e/AGENTS.md`](../../../e2e/AGENTS.md).
 
 ## Remaining gaps (prioritized)
 
-### High — worth doing next
-- **⚠ A6 non-Latin/RTL/CJK source — attempted, exposed a possible perf/hang bug**
-  (audit 13, 15, 26). A per-record sidebar test translating A6 FROM `zh-Hans`
-  (kitchen-sink record) **timed out at >10 min**, whereas the equivalent A1
-  kitchen-sink translating from `en` finishes in ~10s — a ~60× gap for a
-  same-shape record and a single target locale. This is either a pathological
-  slowdown or a hang specific to a hyphenated/CJK **source** locale (the exact
-  `from-to` splitter path the audit flagged). The test was reverted (impractical
-  as written); the failing env `e2e-deepl-1783563632` was left up for debugging.
-  Next: reproduce against a **light** non-Latin record (title + one field only) to
-  isolate locale-vs-content-volume, then investigate the sidebar's per-field
-  translate loop for a `zh-Hans` source (retry storm? never-resolving await?).
+### Resolved: the A6 "hang" was an E2E-harness bug, not a plugin bug
+The first attempt at an A6 (`zh-Hans` source) per-record test appeared to hang for
+>10 min. Systematic investigation ruled out every external factor (DeepL API and the
+CORS proxy are ~300–900ms for `zh→ar`, even at 12× concurrency; no rate-limiting;
+A6 is *lighter* than A1; both translate one target locale). Root cause: A6's `slug`
+can't translate into Arabic — a `webpage_slug` normalizes non-Latin script to empty,
+so the field throws "empty after normalization" (correct, and surfaced via
+`ctx.alert`). `TranslateSidebar` intentionally withholds the "Translations were
+applied" success banner whenever any field errors — and the E2E helper
+`translateRecordViaSidebar` waited *only* for that banner, so a partial failure
+burned the full 10-min timeout. Fixed by making the helper key off the "Cancel"
+button (shown only while actively translating; hidden on both success and error) and
+accumulate auto-dismissing toasts. A6 now runs in ~7.5s and asserts the run finishes
+and surfaces the untranslatable slug. No plugin change was needed.
 - **A7 pre-filled target locale** (audit 14, 27): translate `en → ru` where `ru` is
   partially pre-filled → the overwrite-vs-preserve branch; JSON-field placeholder
   survival. No seed change (A7 exists).

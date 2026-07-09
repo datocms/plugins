@@ -93,22 +93,46 @@ export const translateRecordViaSidebar = async (
   note(vendor, 'clicking "Translate all fields" (one provider call per field)…');
   await panel.getByRole('button', { name: 'Translate all fields' }).click();
 
-  // Completion: the panel shows a celebration line once values are applied.
-  // Budget for a slow / rate-limited provider translating every field.
-  note(vendor, 'translating — waiting for every field to be applied to the form (up to 10 min)…');
-  const done = panel.getByText(/Translations were applied to the form/i);
-  await expect(done).toBeVisible({ timeout: TIMEOUTS.ten_min });
-  note(vendor, 'translations applied to the form ✓');
+  // Completion signal: the "Cancel" button is rendered ONLY while a translation
+  // is actively running (`isLoading && !showTimer` in TranslateSidebar). It is
+  // the one marker that reliably covers BOTH outcomes — a full success hides it
+  // by switching to the success timer, and a run where any field legitimately
+  // fails (e.g. a slug that normalizes to empty in a non-Latin locale) hides it
+  // by clearing `isLoading`. The success banner is intentionally withheld on
+  // error, so waiting for that banner alone would hang for the whole timeout on
+  // any partial failure — the exact trap the A6 (zh-Hans source) run fell into.
+  const cancelBtn = panel.getByRole('button', { name: /^Cancel/i });
+  await expect(cancelBtn).toBeVisible({ timeout: TIMEOUTS.one_min });
 
-  // QC warnings/errors surface as dashboard toasts (ctx.notice / ctx.alert),
-  // which fire just after completion — give them a beat to render.
-  await page.waitForTimeout(1500);
-  const toasts = await page
-    .locator('[class*="oast" i], [class*="otification" i], [role="alert"]')
-    .allInnerTexts()
-    .catch(() => []);
+  // Poll for the run to finish while ACCUMULATING dashboard toasts: the QC
+  // `ctx.notice`/`ctx.alert` messages auto-dismiss, so a single snapshot at the
+  // end can miss a per-field error that surfaced mid-run.
+  note(vendor, 'translating — waiting for every field to settle (up to 10 min)…');
+  const toastTexts = new Set<string>();
+  const snapshotToasts = async (): Promise<void> => {
+    const texts = await page
+      .locator('[class*="oast" i], [class*="otification" i], [role="alert"]')
+      .allInnerTexts()
+      .catch(() => []);
+    for (const t of texts) {
+      const trimmed = t.trim();
+      if (trimmed) toastTexts.add(trimmed);
+    }
+  };
+  const MAX_POLLS = 600; // ~10 min at 1s spacing
+  let completed = false;
+  for (let i = 0; i < MAX_POLLS; i += 1) {
+    await snapshotToasts();
+    if (!(await cancelBtn.isVisible().catch(() => true))) {
+      completed = true;
+      break;
+    }
+    await page.waitForTimeout(1000);
+  }
+  await snapshotToasts();
+  note(vendor, completed ? 'translation run finished' : 'translation did not finish in budget');
 
-  return { completed: true, toasts: toasts.map((t) => t.trim()).filter(Boolean) };
+  return { completed, toasts: [...toastTexts] };
 };
 
 /** Open a record's editor, reusing the session, and take over if it's locked. */

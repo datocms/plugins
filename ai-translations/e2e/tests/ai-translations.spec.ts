@@ -25,6 +25,7 @@ const ARTICLE = manifest.schema.models.article.id;
 const CATALOG = manifest.schema.models.catalog_entry.id;
 const A1 = findRecord(manifest, 'article', ['en', 'it']); // kitchen sink
 const A5 = findRecord(manifest, 'article', ['en', 'fr']); // placeholders + over-limit SEO
+const A6 = findRecord(manifest, 'article', ['ar', 'zh-Hans']); // non-Latin/RTL/CJK source
 
 const meta = (): ProjectMeta => test.info().project.metadata as ProjectMeta;
 
@@ -128,6 +129,42 @@ test.describe('AI Translations', () => {
       // Card objective #1: a field validation error on save must be surfaced to
       // the user, never silently dropped.
       expect(save.fieldErrors.length, 'a save validation error must be surfaced').toBeGreaterThan(0);
+    }
+  });
+
+  test('per-record: translates from a non-Latin (CJK) source and surfaces an untranslatable slug', async ({ page }) => {
+    const { vendor, envName } = meta();
+    // Translating FROM a hyphenated CJK source (zh-Hans) exercises the non-Latin
+    // source path. Run on DeepL (solid CJK support, deterministic).
+    test.skip(vendor !== 'deepl', 'non-Latin-source check runs on the DeepL lane');
+    test.setTimeout(TIMEOUTS.five_min + TIMEOUTS.three_min);
+
+    await step(vendor, `open non-Latin record ${A6.id} (article, ar+zh-Hans source, en empty)`, () =>
+      openRecord(page, meta(), ARTICLE, A6.id),
+    );
+
+    const run = await step(vendor, 'translate from zh-Hans via the sidebar (hyphenated CJK source)', () =>
+      translateRecordViaSidebar(page, { fromLocale: 'zh-Hans', vendor }),
+    );
+    // Must FINISH (not hang): a non-Latin slug can't be normalized to a valid
+    // webpage-slug, so that one field fails — but the run must still settle and
+    // surface it, never blocking on the missing success banner.
+    expect(run.completed, 'translation from a non-Latin source should finish (not hang)').toBe(true);
+    expect(
+      run.toasts.join(' | '),
+      `expected the untranslatable slug to be surfaced, got:\n${run.toasts.join('\n') || '(none)'}`,
+    ).toMatch(/failed to translate|slug|normaliz/i);
+
+    // The translatable text DID come across from the CJK source: the other active
+    // locale (ar) still carries content (the slug kept its prior valid value, so
+    // the save succeeds).
+    const save = await step(vendor, 'save the record', () => saveRecord(page, vendor));
+    if (save.status === 200) {
+      await step(vendor, 'assert ar title/excerpt populated from the CJK source (CMA)', () =>
+        assertLocalesPopulated(envName, A6.id, ['ar'], ['title', 'excerpt']),
+      );
+    } else {
+      expect(save.fieldErrors.length, 'a save error must be surfaced').toBeGreaterThan(0);
     }
   });
 
