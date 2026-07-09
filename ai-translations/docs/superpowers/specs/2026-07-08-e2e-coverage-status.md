@@ -1,6 +1,6 @@
 # AI Translations — E2E coverage status (post master-merge)
 
-**Date:** 2026-07-08
+**Date:** 2026-07-08 (exhaustiveness audit + second wave: 2026-07-09)
 **Context:** after merging master 3.6.0 into `feature/translation-qc`, an audit
 mapped every "latest feature" (master's linked-record/bulk-warnings work + the QC
 engine) against the E2E suite. This records what was found, what has since been
@@ -132,6 +132,57 @@ and surfaces the untranslatable slug. No plugin change was needed.
 - **Over-limit SEO save error** (audit 7, 12): SEO meta lengths are best-practice
   hints, not hard `length` validators, so they don't reliably 422; the `badge`
   length-validator field is the deterministic stand-in for card #1.
+
+## Second wave (2026-07-09): exhaustiveness audit
+
+A multi-agent behavior-map of every hook/flow/param vs. what the (then) 10 tests
+actually asserted produced 32 candidate gaps plus a critique that found two
+**product bugs** (both fixed): the ConfigScreen's `deeplFormality`/`deepl*Tags`
+settings had no runtime effect, and `modelsToBeExcludedFromThisPlugin` was not
+enforced on the Bulk Translations page (an "excluded" model stayed
+bulk-translatable there; the settings-area menu item also now honors role
+exclusion).
+
+**Added (second wave, all DeepL lane):** partial field selection (allowlist +
+untouched-unselected negative), the field-dropdown empty-source guard /
+Translate-from direction / All-locales flows, a config-screen smoke (vendor
+switch swaps credential blocks, Save gated on dirtiness, nothing saved),
+surface gating (translateWholeRecord / translateBulkRecords / model exclusion
+incl. the bulk-page fix / field exclusion / translationFields removal — all
+zero-credit CMA param flips with restore), unconfigured-provider degradation
+(sidebar placeholder + Open Settings, not-configured field action), a
+broken-key bulk run (every record fails WITH the auth reason — the outage
+story), single-block (`spotlight`/`inline_note`) empty-target assertions,
+sandbox-prefixed record-link hrefs, and the retained report's Download JSON.
+
+**Open question (investigation chip filed):** creating a record's pt-BR locale
+SPARSELY (partial-field bulk → title + nulls) and then whole-record
+sidebar-translating it produced a 422 "locales failing some validations:
+Portuguese (Brazil)" on the editor save, while it/es saved fine in the same
+run. The partial-selection E2E was moved to the product model (never
+editor-opened) to decouple the suites; whether a field-translation path
+mishandles that sparse-locale state (slug format? JSON validity past QC?) needs
+a daylight look.
+
+**Known-remaining (add-later, in value order):** mid-run Cancel (timing-flaky
+on a fast lane; needs a slow-lane or throttled run), role-exclusion surfaces +
+`can_edit_schema` menu gating (need a second dashboard role/session in the
+harness), non-default source locale on bulk/sidebar/picker, sidebar
+target-locale narrowing (negative), no-records / no-translatable-fields
+dead-ends, picker/confirm Cancel paths, bulk-page readiness blockers,
+target-select "All other locales" mutex UI, retained-report Copy button
+(clipboard perms), deeper CSV row-body assertions, field-level QC alert on the
+badge record, onBoot default seeding, single-locale guard.
+
+**Deliberately skipped (with rationale):** provider-dependent QC outcomes and
+error buckets beyond auth (nondeterministic; unit-tested on real fixtures),
+`ja`/`hi`/`sw` as targets (no locale-specific code path; CJK-source covered by
+A6, CJK-target ratio logic unit-tested), missing-access-token branches
+(unreachable with the installed plugin's granted permission), primary-env URL
+branch (this suite always runs in sandboxes; unit-tested), LoadingAddon + TOTP
+login (env-dependent), multi-model items-picker (unreachable: the record list
+is single-model, so a selection never spans models), a11y/keyboard sweeps and
+cross-flow overwrite interactions (valuable but a separate initiative).
 
 ## How to extend
 

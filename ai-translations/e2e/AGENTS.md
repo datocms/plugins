@@ -135,16 +135,29 @@ suite to translate into. `seed-manifest.json` lists every record's `sourceLocale
 - **`dropdown-actions.ts`** — the plugin's two DASHBOARD-chrome surfaces.
   `translateFieldViaDropdown` drives a field's kebab menu (`[id="field--<path>"]
   button.Dropdown__icon-trigger` → hover the "Translate to/from" group → click the
-  "<Label> [<code>]" entry); it retries opening the menu because the plugin's
-  actions register only after its hidden frame boots. `runItemsDropdownTranslation`
-  drives the record-list batch action ("AI Translate these records" → picker →
-  confirm → progress). Multi-selection ONLY exists in the `table` collection
-  appearance — flip the model via CMA in the fork first (`itemTypes.update(id,
-  { collection_appearance: 'table' })`); the batch dropdown trigger is
-  `button.Dropdown__icon-trigger--reverse`. Gotcha: the picker and the confirm
+  "<Label> [<code>]" entry, or a named entry via `entryText`; pass
+  `completionPattern` for flows that end in something other than the
+  'Translated "…"' notice — and make it match the COMPLETION toast, not the
+  immediate 'Translating …' warning). It retries opening the menu because the
+  plugin's actions register only after its hidden frame boots.
+  `fieldMenuEntries` opens a kebab and returns every entry's text (the built-in
+  "Go to <field> field" entry is the rendered-signal) — the deterministic way
+  to assert an action's absence. `runItemsDropdownTranslation` drives the
+  record-list batch action ("AI Translate these records" → picker → confirm →
+  progress). Multi-selection ONLY exists in the `table` collection appearance —
+  flip the model via CMA in the fork first (`itemTypes.update(id,
+  { collection_appearance: 'table' })`); `selectAllRecords` handles the header
+  checkbox (with a retry — a click during table hydration can lose the
+  selection) and waits for the batch trigger
+  (`button.Dropdown__icon-trigger--reverse`). Gotcha: the picker and the confirm
   modal both expose a "Translate N records" button — `frameWithButton`'s
   `withoutText: 'Fields to translate'` filter is how the confirm frame is told
   apart from the (closing) picker frame.
+- **`plugin-config.ts`** — `getPluginParams`/`setPluginParams`: the lever behind
+  the surface-gating, unconfigured-provider, and broken-key tests (CMA param
+  flips in the disposable fork). RULE: any test that mutates params must
+  snapshot + restore in try/finally, and such tests sit at the END of the spec
+  so a mid-test failure can't sabotage translation tests behind them.
 - **`bulk.ts`** — `runBulkTranslation(page, { modelCode, toLocale, vendor })` drives the
   Bulk Translations page. **`modelCode` is the model's `api_key`** (matched via the
   `<code>` chip in the model dropdown). It waits for the progress modal's Close button
