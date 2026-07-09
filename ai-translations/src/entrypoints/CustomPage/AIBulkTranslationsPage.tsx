@@ -105,6 +105,8 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
   // the next run or an explicit dismiss, so the user can review/export it.
   const [reportRows, setReportRows] = useState<BulkReportRow[]>([]);
 
+  const pluginParams = ctx.plugin.attributes.parameters as ctxParamsType;
+
   // Initial load: models + locales
   useEffect(() => {
     async function loadData() {
@@ -122,7 +124,14 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
         );
 
         const itemTypes = await client.itemTypes.list();
-        const nonBlockModels = itemTypes.filter((m) => !m.modular_block);
+        // Same exclusion the field/sidebar/items surfaces honor: a model the
+        // plugin is disabled for must not be bulk-translatable here either.
+        const excludedModels = new Set(
+          pluginParams.modelsToBeExcludedFromThisPlugin ?? [],
+        );
+        const nonBlockModels = itemTypes.filter(
+          (m) => !m.modular_block && !excludedModels.has(m.api_key),
+        );
         setModels(
           nonBlockModels.map((m) => ({
             label: m.name,
@@ -155,9 +164,7 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
     }
 
     loadData();
-  }, [ctx]);
-
-  const pluginParams = ctx.plugin.attributes.parameters as ctxParamsType;
+  }, [ctx, pluginParams.modelsToBeExcludedFromThisPlugin]);
 
   /**
    * Loads, filters, and stores the translatable fields for a newly added

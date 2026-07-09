@@ -328,8 +328,13 @@ connect({
 
   // New hook to add a custom section in the Settings area
   settingsAreaSidebarItemGroups(ctx: SettingsAreaSidebarItemGroupsCtx) {
-    // Only show to users who can edit schema
-    if (!ctx.currentRole.attributes.can_edit_schema) {
+    // Only show to users who can edit schema — and honor the same role
+    // exclusion every other surface applies.
+    const pluginParams = getPluginParams(ctx);
+    if (
+      !ctx.currentRole.attributes.can_edit_schema ||
+      pluginParams.rolesToBeExcludedFromThisPlugin?.includes(ctx.currentRole.id)
+    ) {
       return [];
     }
 
