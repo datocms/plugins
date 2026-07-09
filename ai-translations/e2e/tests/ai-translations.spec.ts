@@ -3,10 +3,12 @@ import type { ProjectMeta } from './fixtures/providers';
 import { cmaClient } from './setup/cma';
 import { TIMEOUTS } from './setup/constants';
 import {
+  assertFieldsUnchanged,
   assertLocalesPopulated,
   assertPlaceholdersSurviveAnyField,
   findRecord,
   loadManifest,
+  snapshotFields,
 } from './steps/assert-record';
 import { recordOutcome } from './setup/outcomes';
 import { step } from './setup/log';
@@ -20,6 +22,7 @@ import { openRecord, saveRecord, translateRecordViaSidebar } from './steps/per-r
  */
 const manifest = loadManifest();
 const ARTICLE = manifest.schema.models.article.id;
+const CATALOG = manifest.schema.models.catalog_entry.id;
 const A1 = findRecord(manifest, 'article', ['en', 'it']); // kitchen sink
 const A5 = findRecord(manifest, 'article', ['en', 'fr']); // placeholders + over-limit SEO
 
@@ -76,6 +79,13 @@ test.describe('AI Translations', () => {
       openRecord(page, meta(), ARTICLE, A1.id),
     );
 
+    // Negative coverage: non-localized / numeric fields must be left byte-for-byte
+    // untouched by translation. Snapshot before, compare after the save.
+    const NON_LOCALIZED = ['author_name', 'view_count', 'is_premium'];
+    const before = await step(vendor, 'snapshot non-localized/numeric fields', () =>
+      snapshotFields(envName, A1.id, NON_LOCALIZED),
+    );
+
     const run = await step(vendor, 'translate every field via the sidebar (en → record locales)', () =>
       translateRecordViaSidebar(page, { fromLocale: 'en', vendor }),
     );
@@ -87,6 +97,10 @@ test.describe('AI Translations', () => {
     // The sidebar translates among the record's active locales (en → it here).
     await step(vendor, 'assert it title/slug/excerpt are populated (CMA)', () =>
       assertLocalesPopulated(envName, A1.id, ['it'], ['title', 'slug', 'excerpt']),
+    );
+
+    await step(vendor, 'assert non-localized/numeric fields were left untouched (CMA)', () =>
+      assertFieldsUnchanged(envName, A1.id, before),
     );
   });
 
@@ -115,6 +129,48 @@ test.describe('AI Translations', () => {
       // the user, never silently dropped.
       expect(save.fieldErrors.length, 'a save validation error must be surfaced').toBeGreaterThan(0);
     }
+  });
+
+  test('per-record: an over-limit translation surfaces a length alert (catalog badge)', async ({ page }) => {
+    const { vendor, envName } = meta();
+    // The schema length check is provider-independent; assert the translate-time
+    // surfacing once on the deterministic DeepL lane (the `badge` field's tiny
+    // limit is overflowed by any real translation).
+    test.skip(
+      vendor !== 'deepl',
+      'schema length check is provider-independent — asserted on the DeepL lane',
+    );
+    test.setTimeout(TIMEOUTS.five_min);
+
+    // The `catalog_entry` record carrying a `badge` (C3) — the only one seeded
+    // with a value that overflows the limit on translation.
+    const badgeEntry = await step(vendor, 'find the catalog entry with a badge', async () => {
+      const entries = await cmaClient(envName).items.list({
+        filter: { type: 'catalog_entry' },
+      });
+      const found = entries.find((entry) => {
+        const badge = entry.badge as Record<string, unknown> | undefined;
+        return badge && typeof badge.en === 'string' && badge.en.length > 0;
+      });
+      expect(found, 'a catalog entry with a badge should exist').toBeTruthy();
+      return found!;
+    });
+
+    await step(vendor, `open catalog entry ${badgeEntry.id}`, () =>
+      openRecord(page, meta(), CATALOG, badgeEntry.id),
+    );
+
+    const run = await step(vendor, 'translate via the sidebar (badge overflows the limit)', () =>
+      translateRecordViaSidebar(page, { fromLocale: 'en', vendor }),
+    );
+
+    // Design §6a: a content-corrupting issue must be surfaced at translate time
+    // (a ctx.alert toast), not discovered only when the CMA later rejects the save.
+    const toasts = run.toasts.join(' | ').toLowerCase();
+    expect(
+      toasts,
+      `expected a length/QC alert among the sidebar toasts, got:\n${run.toasts.join('\n') || '(none)'}`,
+    ).toMatch(/badge|length|character|allow|incomplete|issue|exceed|shorten/);
   });
 
   test('bulk: produces a per-record outcome report across a model', async ({ page }) => {
