@@ -125,6 +125,42 @@ export const injectRateLimit = async (
 };
 
 /**
+ * Fulfills matching provider requests with a `400`, mimicking a content-scoped
+ * failure (an oversized prompt, an unsupported input) rather than a systemic one.
+ *
+ * This is the ONLY remaining path to the locale-sync fallback loop for a failed
+ * field: systemic errors (429/401) now pause the run before it can save, so a
+ * content error is what proves a failed field is left out of the payload instead
+ * of being overwritten with `null`.
+ *
+ * @param page - The page whose provider traffic to intercept.
+ * @param vendor - Which provider host to fault.
+ * @param matchBody - Restrict the fault to requests whose POST body matches, so
+ *   only one field's translation fails while its siblings succeed for real.
+ */
+export const injectContentError = async (
+  page: Page,
+  vendor: Vendor,
+  matchBody: RegExp,
+): Promise<void> => {
+  await page.route(PROVIDER_HOST_PATTERNS[vendor], async (route: Route) => {
+    if (!matchBody.test(route.request().postData() ?? '')) {
+      return route.fallback();
+    }
+    await route.fulfill({
+      status: 400,
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        error: {
+          type: 'invalid_request_error',
+          message: 'Input exceeds the maximum context length.',
+        },
+      }),
+    });
+  });
+};
+
+/**
  * Fulfills every matching provider request with a `401`, mimicking a bad key.
  * Auth is systemic and never auto-retried, so a single fault suffices.
  *

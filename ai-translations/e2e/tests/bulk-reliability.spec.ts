@@ -16,6 +16,7 @@ import {
   clearFaults,
   injectAuthError,
   injectCmaFieldStrip,
+  injectContentError,
   injectRateLimit,
 } from './steps/fault-injection';
 
@@ -138,15 +139,17 @@ test.describe('AI Translations — bulk reliability', () => {
   // ── Pure-fault tests: every provider call is faulted, so they need no API key
   // and run on every active lane, exercising that vendor's error envelope. ────
 
-  test('a locale-wide rate limit never writes null into the target locale', async ({
+  test('a locale-wide rate limit pauses before anything is written', async ({
     page,
   }) => {
     const { vendor, envName } = meta();
     test.setTimeout(TIMEOUTS.five_min);
 
-    // Snapshot every product's target-locale slice BEFORE the run. `fr` is empty
-    // for all seeded products, so this pins the corruption regression: a failed
-    // field must never be written — the locale keeps exactly what it had.
+    // NOTE: a 429 is systemic, so the run pauses at the FIRST field and never
+    // reaches `items.update`. This test therefore proves "a rate limit writes
+    // nothing", NOT "a failed field is not nulled" — the fallback loop is never
+    // entered. The null-guard itself is pinned by the content-error test below,
+    // which is the only remaining path into that loop.
     const before = await step(vendor, 'snapshot every product fr slice (CMA)', async () => {
       const products = await cmaClient(envName).items.list({
         filter: { type: 'product' },
@@ -196,6 +199,105 @@ test.describe('AI Translations — bulk reliability', () => {
         }
       }
     });
+  });
+
+  // The real null-guard regression. A content-scoped error (400) fails ONE field
+  // and lets the run continue to the save, which is the only way into the
+  // locale-sync fallback loop. Its siblings hit the real provider, so this test
+  // needs a key — it is gated to the deterministic DeepL lane.
+  test('a content-scoped field failure leaves its locale untouched, never null', async ({
+    page,
+  }) => {
+    const { vendor, envName } = meta();
+    test.skip(vendor !== 'deepl', 'needs a real provider for the sibling fields');
+    test.setTimeout(TIMEOUTS.five_min);
+
+    const client = cmaClient(envName);
+
+    // Take a real product's source text for one field. The provider request must
+    // carry that text verbatim, so it is a reliable body matcher for faulting
+    // exactly this field's call and no other.
+    const { victimField, siblingField, victimSource } = await step(
+      vendor,
+      'pick a victim field from real seed content (CMA)',
+      async () => {
+        const [product] = await client.items.list({
+          filter: { type: 'product' },
+        });
+        const stringFields = LOCALIZED_PRODUCT_FIELDS.filter((field) => {
+          const value = (product[field] as Record<string, unknown> | null)?.en;
+          return typeof value === 'string' && value.trim().length > 8;
+        });
+        expect(
+          stringFields.length,
+          'the seed needs >=2 localized string fields to fault one and translate the other',
+        ).toBeGreaterThanOrEqual(2);
+        return {
+          victimField: stringFields[0],
+          siblingField: stringFields[1],
+          victimSource: (product[stringFields[0]] as Record<string, string>).en,
+        };
+      },
+    );
+
+    const before = await step(vendor, 'snapshot fr slices (CMA)', async () => {
+      const products = await client.items.list({ filter: { type: 'product' } });
+      return new Map(
+        products.map((item) => [
+          item.id,
+          (item[victimField] as Record<string, unknown> | null)?.fr,
+        ]),
+      );
+    });
+
+    await step(vendor, `fault only "${victimField}" calls with a 400`, () =>
+      injectContentError(
+        page,
+        vendor,
+        new RegExp(victimSource.slice(0, 24).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+      ),
+    );
+
+    await step(vendor, 'open the bulk page', async () => {
+      await page.goto(await bulkPageUrl(meta()), { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(3000);
+    });
+
+    const report = await step(vendor, 'run product → fr to completion', () =>
+      runBulkTranslation(page, {
+        modelCode: PRODUCT_CODE,
+        toLocale: 'fr',
+        vendor,
+        onlyFields: [victimField, siblingField],
+      }),
+    );
+
+    // A failed field fails its record — a partially translated record is never
+    // reported as a clean success.
+    expect(report.errors, report.summary).toBeGreaterThan(0);
+    expect(report.completed, report.summary).toBe(0);
+
+    await step(vendor, 'the victim field is untouched; its sibling translated', async () => {
+      const products = await client.items.list({ filter: { type: 'product' } });
+      for (const item of products) {
+        const victim = (item[victimField] as Record<string, unknown> | null)?.fr;
+        expect(
+          JSON.stringify(victim),
+          `${victimField}[fr] must keep its prior value — a failed translation must never overwrite it with null`,
+        ).toBe(JSON.stringify(before.get(item.id)));
+
+        const sibling = (item[siblingField] as Record<string, unknown> | null)?.fr;
+        expect(
+          sibling,
+          `${siblingField}[fr] should have translated normally alongside the failure`,
+        ).toBeTruthy();
+      }
+    });
+
+    // The CSV must not claim the faulted field was translated.
+    expect(report.csv).not.toMatch(
+      new RegExp(`${victimField}[^\\n]*\\btranslated\\b`, 'i'),
+    );
   });
 
   test('an auth error pauses immediately without a countdown', async ({ page }) => {

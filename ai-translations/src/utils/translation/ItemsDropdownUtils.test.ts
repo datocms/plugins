@@ -779,6 +779,41 @@ describe('ItemsDropdownUtils', () => {
   });
 
   describe('translateAndUpdateRecords', () => {
+    it('drops a CMA-swallowed field from the report instead of claiming it was translated', async () => {
+      vi.mocked(translateFieldValue).mockResolvedValue('Ciao');
+      const updates: ProgressUpdate[] = [];
+      // The CMA accepts the write but silently returns `null` for title.it —
+      // the exact shape of a dropped value. The read-back must demote it.
+      const update = vi.fn().mockImplementation(async () => ({
+        title: { en: 'Hello', it: null },
+        meta: { updated_at: '2026-07-08T21:00:00.000Z' },
+      }));
+      // biome-ignore lint/suspicious/noExplicitAny: minimal CMA client stub for the test
+      const client = { items: { update } } as any;
+
+      await translateAndUpdateRecords(
+        [{ id: 'r1', item_type: { id: 'm1' }, title: { en: 'Hello' } }],
+        client,
+        provider,
+        'en',
+        ['it'],
+        vi.fn().mockResolvedValue({
+          title: { editor: 'single_line', id: 'field-title', isLocalized: true },
+        }),
+        pluginParams,
+        { alert: vi.fn(), environment: 'main' },
+        'access-token',
+        { onProgress: (u) => updates.push(u) },
+      );
+
+      const finalUpdate = updates.filter((u) => u.recordId === 'r1').at(-1);
+      expect(finalUpdate?.status).toBe('error');
+      // The report must not list a field the CMA never persisted.
+      expect(finalUpdate?.translatedFieldApiKeys ?? []).not.toContain('title');
+      expect(finalUpdate?.translatedFieldIds ?? []).not.toContain('field-title');
+      expect(finalUpdate?.warnings?.join(' ')).toMatch(/came back null/i);
+    });
+
     it('attaches structured report data to the completed progress update', async () => {
       vi.mocked(translateFieldValue).mockResolvedValue('Ciao');
       const updates: ProgressUpdate[] = [];

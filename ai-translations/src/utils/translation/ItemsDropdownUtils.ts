@@ -797,14 +797,12 @@ export async function translateAndUpdateRecords(
     const mergedPayload: Record<string, Record<string, unknown>> = {};
     const aggregatedWarnings: string[] = [];
     const aggregatedReferenceCopies: ReferenceCopy[] = [];
-    const aggregatedTranslatedFields: string[] = [];
     const aggregatedQcFlags: QcFlag[] = [];
     const aggregatedFailedFields: {
       field: string;
       error: NormalizedProviderError;
     }[] = [];
     const localeOutcomes: LocaleOutcome[] = [];
-    let totalTranslatedFields = 0;
     let totalReferenceFieldsCopied = 0;
     let totalErrorCount = 0;
 
@@ -851,15 +849,13 @@ export async function translateAndUpdateRecords(
       mergeLocalePayloadInto(mergedPayload, localeResult.payload);
       aggregatedWarnings.push(...localeResult.warnings);
       aggregatedReferenceCopies.push(...localeResult.referenceCopies);
-      aggregatedTranslatedFields.push(...localeResult.translatedFields);
       aggregatedQcFlags.push(...localeResult.qcFlags);
       aggregatedFailedFields.push(...localeResult.failedFields);
       localeOutcomes.push({
         locale: toLocale,
-        translated: localeResult.translatedFields,
-        failed: localeResult.failedFields,
+        translated: [...localeResult.translatedFields],
+        failed: [...localeResult.failedFields],
       });
-      totalTranslatedFields += localeResult.translatedFieldCount;
       totalReferenceFieldsCopied += localeResult.referenceFieldsCopied;
       totalErrorCount += localeResult.errorCount;
     }
@@ -907,14 +903,26 @@ export async function translateAndUpdateRecords(
         outcome.translated = outcome.translated.filter(
           (field) => field !== mismatch.field,
         );
-        outcome.failed.push({
+        const demotion = {
           field: mismatch.field,
-          error: { code: 'datocms', source: 'datocms', message },
-        });
+          error: {
+            code: 'datocms',
+            source: 'datocms',
+            message,
+          } satisfies NormalizedProviderError,
+        };
+        outcome.failed.push(demotion);
+        aggregatedFailedFields.push(demotion);
       }
     }
 
-    const translatedFieldApiKeys = [...new Set(aggregatedTranslatedFields)];
+    // Derived AFTER the read-back demotion, never from a running tally: a field
+    // the CMA silently dropped must not survive in the report as `translated`,
+    // nor count toward the record's updated-field total. Tallying during the
+    // locale loop would freeze the pre-demotion answer.
+    const survivingTranslatedFields = localeOutcomes.flatMap((o) => o.translated);
+    const totalTranslatedFields = survivingTranslatedFields.length;
+    const translatedFieldApiKeys = [...new Set(survivingTranslatedFields)];
     const copiedLinkFieldApiKeys = [
       ...new Set(aggregatedReferenceCopies.map((copy) => copy.field)),
     ];
@@ -923,7 +931,7 @@ export async function translateAndUpdateRecords(
       payload: mergedPayload,
       translatedFieldCount: totalTranslatedFields,
       referenceFieldsCopied: totalReferenceFieldsCopied,
-      translatedFields: aggregatedTranslatedFields,
+      translatedFields: survivingTranslatedFields,
       referenceCopies: aggregatedReferenceCopies,
       warnings: aggregatedWarnings,
       errorCount: totalErrorCount,

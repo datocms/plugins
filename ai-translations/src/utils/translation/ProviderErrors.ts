@@ -1,4 +1,5 @@
 import type { Logger } from '../logging/Logger';
+import { retryAfterFromHeaders } from './retryAfter';
 import {
   hasStatusCode,
   isProviderConfigurationError,
@@ -700,16 +701,33 @@ function deriveNormalizedError(
 }
 
 /**
- * Reads the `retryAfterMs` a provider adapter parsed from a `Retry-After`
- * header onto a `ProviderError`. Returns `undefined` for any other error shape,
- * which callers treat as "no hint" and fall back to exponential backoff.
+ * Recovers a `Retry-After` hint from whatever shape the error arrived in.
+ *
+ * The Anthropic and DeepL adapters build a `ProviderError` and pre-parse the
+ * header onto `retryAfterMs`. The OpenAI and Google SDKs never pass through that
+ * constructor: OpenAI's `APIError` carries the raw `headers`, and the Google SDK
+ * nests them under `response.headers`. Reading all three here keeps the four
+ * vendors on one path.
+ *
+ * Returns `undefined` for any other shape — and routinely will, since a
+ * cross-origin caller can only read the header when the server sets
+ * `Access-Control-Expose-Headers`. Callers must fall back to exponential backoff.
  */
 function readRetryAfterMs(err: unknown): number | undefined {
-  if (err !== null && typeof err === 'object') {
-    const value = (err as { retryAfterMs?: unknown }).retryAfterMs;
-    if (typeof value === 'number') return value;
-  }
-  return undefined;
+  if (err === null || typeof err !== 'object') return undefined;
+
+  const obj = err as {
+    retryAfterMs?: unknown;
+    headers?: unknown;
+    response?: { headers?: unknown };
+  };
+  if (typeof obj.retryAfterMs === 'number') return obj.retryAfterMs;
+
+  const now = Date.now();
+  return (
+    retryAfterFromHeaders(obj.headers, now) ??
+    retryAfterFromHeaders(obj.response?.headers, now)
+  );
 }
 
 /**
