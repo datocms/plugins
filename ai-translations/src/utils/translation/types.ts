@@ -1,10 +1,24 @@
 // Vendor-agnostic translation types and interfaces
 // -------------------------------------------------
 
+import type { NormalizedProviderError } from './ProviderErrors';
+
 /**
  * Supported vendor identifiers for translation providers.
  */
 export type VendorId = 'openai' | 'google' | 'anthropic' | 'deepl';
+
+/**
+ * Why a field does or does not carry a value for the target locale.
+ *
+ * The distinction between `untranslatable` and `failed` is load-bearing: only
+ * the former may receive a locale-sync fallback. Filling a `failed` field would
+ * silently overwrite the target locale with `null` because a provider 429'd.
+ */
+export type FieldOutcome =
+  | { status: 'translated'; value: unknown }
+  | { status: 'untranslatable' }
+  | { status: 'failed'; error: NormalizedProviderError };
 
 /**
  * Default timeout for API calls in milliseconds (2 minutes).

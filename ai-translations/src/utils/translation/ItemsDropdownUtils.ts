@@ -11,6 +11,7 @@ import { formatLocaleWithCode } from '../localeUtils';
 import { isFieldIncludedInSelection } from './BulkTranslationHelpers';
 import {
   formatErrorForUser,
+  type NormalizedProviderError,
   normalizeProviderError,
 } from './ProviderErrors';
 import { checkFieldLength } from './qc/validatorChecks';
@@ -31,7 +32,7 @@ import {
   hasTranslatableSourceValue,
   shouldProcessField,
 } from './TranslationCore';
-import type { TranslationProvider } from './types';
+import type { FieldOutcome, TranslationProvider } from './types';
 
 /**
  * Optional per-model allowlist of field api_keys that the user explicitly
@@ -391,6 +392,13 @@ export interface BuildTranslatedUpdatePayloadResult {
    * field/locale/check and export structured rows.
    */
   qcFlags: QcFlag[];
+  /**
+   * Fields whose provider call FAILED (as opposed to being untranslatable).
+   * A failed field is deliberately left out of `payload` so the target locale
+   * is never overwritten with `null`; per-locale accounting uses this to fail
+   * the record instead of masking the loss behind a healthy sibling locale.
+   */
+  failedFields: { field: string; error: NormalizedProviderError }[];
 }
 
 /**
@@ -596,6 +604,10 @@ export async function translateAndUpdateRecords(
     const aggregatedReferenceCopies: ReferenceCopy[] = [];
     const aggregatedTranslatedFields: string[] = [];
     const aggregatedQcFlags: QcFlag[] = [];
+    const aggregatedFailedFields: {
+      field: string;
+      error: NormalizedProviderError;
+    }[] = [];
     let totalTranslatedFields = 0;
     let totalReferenceFieldsCopied = 0;
     let totalErrorCount = 0;
@@ -638,6 +650,7 @@ export async function translateAndUpdateRecords(
       aggregatedReferenceCopies.push(...localeResult.referenceCopies);
       aggregatedTranslatedFields.push(...localeResult.translatedFields);
       aggregatedQcFlags.push(...localeResult.qcFlags);
+      aggregatedFailedFields.push(...localeResult.failedFields);
       totalTranslatedFields += localeResult.translatedFieldCount;
       totalReferenceFieldsCopied += localeResult.referenceFieldsCopied;
       totalErrorCount += localeResult.errorCount;
@@ -685,6 +698,7 @@ export async function translateAndUpdateRecords(
       warnings: aggregatedWarnings,
       errorCount: totalErrorCount,
       qcFlags: aggregatedQcFlags,
+      failedFields: aggregatedFailedFields,
       translatedFieldApiKeys,
       translatedFieldIds: toFieldIds(translatedFieldApiKeys),
       copiedLinkFieldApiKeys,
@@ -969,6 +983,20 @@ function countReferences(value: unknown): number {
  * @returns The value to write into the target locale and whether it carried
  *   record references over (used to warn the editor and count updates).
  */
+/**
+ * Decides whether a field may receive a locale-sync fallback value.
+ *
+ * A field whose provider call FAILED must be left out of the payload entirely,
+ * so the target locale keeps whatever it had. Only fields we genuinely cannot
+ * translate (or never attempted) get filled.
+ *
+ * @param outcome - The field's outcome, or `undefined` if it was never attempted.
+ * @returns True when the fallback may write a value.
+ */
+export const shouldApplyLocaleSyncFallback = (
+  outcome: FieldOutcome | undefined,
+): boolean => outcome === undefined || outcome.status === 'untranslatable';
+
 function resolveLocaleSyncFallback(
   meta: FieldTypeDictionary[string],
   sourceValue: unknown,
@@ -1085,11 +1113,12 @@ export async function buildTranslatedUpdatePayload(
   });
 
   /**
-   * Translates one field and writes the result onto `updatePayload[field]`,
-   * preserving any pre-existing locale entries from the original record.
-   * Per-field failures surface as warnings; the rest of the record continues.
+   * Translates one field and reports its {@link FieldOutcome}. It deliberately
+   * does NOT mutate the payload: a `failed` field must stay out of the payload
+   * so its target locale is never overwritten with `null`, and only the caller
+   * can tell `failed` from `untranslatable`. Length QC still runs on success.
    */
-  async function translateField(field: string): Promise<void> {
+  async function translateField(field: string): Promise<FieldOutcome> {
     const sourceValue = getExactSourceValue(
       record[field] as Record<string, unknown>,
       fromLocale,
@@ -1099,7 +1128,7 @@ export async function buildTranslatedUpdatePayload(
     const fieldTypePrompt = prepareFieldTypePrompt(fieldType);
 
     if (!hasTranslatableSourceValue(fieldType, sourceValue)) {
-      return;
+      return { status: 'untranslatable' };
     }
 
     try {
@@ -1138,28 +1167,44 @@ export async function buildTranslatedUpdatePayload(
       });
       if (lengthFlag) recordQcFlag(lengthFlag, field);
 
-      updatePayload[field] = {
-        ...((record[field] as Record<string, unknown>) || {}),
-        [toLocale]: translatedValue,
-      };
-      translatedFieldCount += 1;
-      translatedFields.push(field);
+      return { status: 'translated', value: translatedValue };
     } catch (error) {
       const norm = normalizeProviderError(error, provider.vendor);
-      const formattedMessage = formatErrorForUser(norm);
       console.error(
-        `Error translating field ${field} → ${toLocale} for record ${record.id}: ${formattedMessage}`,
+        `Error translating field ${field} → ${toLocale} for record ${record.id}: ${formatErrorForUser(norm)}`,
       );
-      const suffix = formattedMessage.endsWith('.') ? '' : '.';
-      warnings.push(
-        `Field "${field}" to ${formatLocaleWithCode(toLocale)} was skipped: ${formattedMessage}${suffix}`,
-      );
+      return { status: 'failed', error: norm };
     }
   }
 
-  // Process fields sequentially using reduce to avoid await-in-loop
+  // Process fields sequentially using reduce to avoid await-in-loop. Only a
+  // `translated` outcome writes the payload; a `failed` outcome records a
+  // warning but leaves the field absent, so the target locale is untouched.
+  const outcomes = new Map<string, FieldOutcome>();
   await translatableFields.reduce(
-    (chain, field) => chain.then(() => translateField(field)),
+    (chain, field) =>
+      chain.then(async () => {
+        const outcome = await translateField(field);
+        outcomes.set(field, outcome);
+
+        if (outcome.status === 'translated') {
+          updatePayload[field] = {
+            ...((record[field] as Record<string, unknown>) || {}),
+            [toLocale]: outcome.value,
+          };
+          translatedFieldCount += 1;
+          translatedFields.push(field);
+          return;
+        }
+
+        if (outcome.status === 'failed') {
+          const formattedMessage = formatErrorForUser(outcome.error);
+          const suffix = formattedMessage.endsWith('.') ? '' : '.';
+          warnings.push(
+            `Field "${field}" to ${formatLocaleWithCode(toLocale)} was skipped: ${formattedMessage}${suffix}`,
+          );
+        }
+      }),
     Promise.resolve(),
   );
 
@@ -1170,7 +1215,10 @@ export async function buildTranslatedUpdatePayload(
   // creates fresh block instances.
   for (const [field, meta] of Object.entries(fieldTypeDictionary)) {
     if (!meta.isLocalized) continue;
-    if (updatePayload[field]) continue;
+    // A `failed` field is excluded here so its target locale keeps whatever it
+    // had; a `translated` field is already in the payload. Only untranslatable
+    // or never-attempted fields fall through to the fallback.
+    if (!shouldApplyLocaleSyncFallback(outcomes.get(field))) continue;
 
     const fieldData = (record[field] as Record<string, unknown>) ?? {};
     const existingTargetKey = findExactLocaleKey(fieldData, toLocale);
@@ -1198,6 +1246,10 @@ export async function buildTranslatedUpdatePayload(
     };
   }
 
+  const failedFields = [...outcomes].flatMap(([field, outcome]) =>
+    outcome.status === 'failed' ? [{ field, error: outcome.error }] : [],
+  );
+
   return {
     payload: updatePayload,
     translatedFieldCount,
@@ -1207,6 +1259,7 @@ export async function buildTranslatedUpdatePayload(
     warnings,
     errorCount,
     qcFlags,
+    failedFields,
   };
 }
 

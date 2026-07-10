@@ -222,11 +222,16 @@ describe('ItemsDropdownUtils', () => {
         de: 'Hallo',
         it: 'Ciao',
       });
-      expect(result.payload.slug).toEqual({
-        en: 'hello-world',
-        de: 'hallo-welt',
-        it: null,
-      });
+      // Core corruption fix: a field whose translation FAILED is left out of
+      // the payload entirely, so its target locale keeps whatever it had — it
+      // is never overwritten with null. A failed translation is not an empty one.
+      expect(result.payload).not.toHaveProperty('slug');
+      expect(result.failedFields).toEqual([
+        {
+          field: 'slug',
+          error: expect.objectContaining({ source: 'plugin' }),
+        },
+      ]);
       expect(result.warnings).toContain(
         'Field "slug" to Italian [it] was skipped: Plugin error: Translated slug is empty after normalization.',
       );
