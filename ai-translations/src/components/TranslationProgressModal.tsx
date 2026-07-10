@@ -11,6 +11,7 @@ import {
 import { buildRecordEditorUrl } from '../utils/recordUrl';
 import { createSchemaRepository } from '../utils/schemaRepository';
 import { LocaleChip } from './BulkTranslations/LocaleChip';
+import { isExportEnabled } from './BulkTranslations/exportGating';
 import { PausePanel } from './BulkTranslations/PausePanel';
 import {
   createPauseController,
@@ -412,17 +413,16 @@ export default function TranslationProgressModal({
         </div>
 
         <div className="TranslationProgressModal__footer">
-          {processedRecords.length > 0 && (
-            <Button
-              type="button"
-              buttonType="muted"
-              onClick={handleExportCsv}
-              buttonSize="s"
-              className="TranslationProgressModal__export-button"
-            >
-              Export CSV
-            </Button>
-          )}
+          <Button
+            type="button"
+            buttonType="muted"
+            onClick={handleExportCsv}
+            buttonSize="s"
+            disabled={!isExportEnabled(runStatus, processedRecords.length)}
+            className="TranslationProgressModal__export-button"
+          >
+            Export CSV
+          </Button>
           {runStatus.kind === 'running' && (
             <Button
               type="button"
