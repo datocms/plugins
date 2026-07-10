@@ -9,6 +9,7 @@ import {
   DEFAULT_API_TIMEOUT_MS,
   ProviderError,
 } from '../types';
+import { retryAfterFromHeaders } from '../retryAfter';
 
 /**
  * Type definition for a single translation in the DeepL API response.
@@ -475,7 +476,12 @@ export default class DeepLProvider implements TranslationProvider {
     if (/wrong endpoint/i.test(msg)) {
       msg = this.buildWrongEndpointMessage(msg);
     }
-    throw new ProviderError(msg, res.status, 'deepl');
+    throw new ProviderError(
+      msg,
+      res.status,
+      'deepl',
+      retryAfterFromHeaders(res.headers, Date.now()),
+    );
   }
 
   /**

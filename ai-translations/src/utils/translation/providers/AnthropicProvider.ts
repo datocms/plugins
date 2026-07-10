@@ -6,6 +6,7 @@ import type {
   VendorId,
 } from '../types';
 import { ProviderError } from '../types';
+import { retryAfterFromHeaders } from '../retryAfter';
 
 type AnthropicProviderConfig = {
   apiKey: string;
@@ -115,7 +116,12 @@ export default class AnthropicProvider implements TranslationProvider {
         statusText: res.statusText,
         response: rawError,
       });
-      throw new ProviderError(msg, res.status, 'anthropic');
+      throw new ProviderError(
+        msg,
+        res.status,
+        'anthropic',
+        retryAfterFromHeaders(res.headers, Date.now()),
+      );
     }
 
     const data = await res.json();

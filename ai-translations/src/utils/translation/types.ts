@@ -189,6 +189,12 @@ export class ProviderError extends Error {
   public readonly status?: number;
   /** The vendor that generated this error. */
   public readonly vendor?: VendorId;
+  /**
+   * Milliseconds the provider asked us to wait, parsed from `Retry-After`.
+   * Frequently `undefined`: browser callers can only read this header when the
+   * server sets `Access-Control-Expose-Headers`.
+   */
+  public readonly retryAfterMs?: number;
 
   /**
    * Creates a new ProviderError.
@@ -196,12 +202,19 @@ export class ProviderError extends Error {
    * @param message - Error message describing the failure.
    * @param status - Optional HTTP status code from the provider.
    * @param vendor - Optional vendor identifier for error context.
+   * @param retryAfterMs - Optional wait parsed from the `Retry-After` header.
    */
-  constructor(message: string, status?: number, vendor?: VendorId) {
+  constructor(
+    message: string,
+    status?: number,
+    vendor?: VendorId,
+    retryAfterMs?: number,
+  ) {
     super(message);
     this.name = 'ProviderError';
     this.status = status;
     this.vendor = vendor;
+    this.retryAfterMs = retryAfterMs;
   }
 }
 
