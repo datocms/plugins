@@ -181,3 +181,71 @@ export function isAbortError(error: unknown): error is DOMException {
 export function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
+
+/** Upper bound on the adaptive inter-request gap. */
+const PACER_MAX_GAP_MS = 10_000;
+/** Consecutive successes required before the pacer relaxes. */
+const PACER_DECAY_AFTER_SUCCESSES = 5;
+/** Additive jitter, as a fraction of the base delay. */
+const JITTER_FRACTION = 0.25;
+
+/**
+ * Resolves how long to wait before retrying a rate-limited call.
+ *
+ * A provider-supplied `Retry-After` wins when present, but it is only an
+ * optimization: cross-origin responses routinely hide the header, so the
+ * exponential fallback must be correct on its own. Jitter is added in both
+ * cases so that several waiters released from one limit do not re-collide.
+ *
+ * @param retryAfterMs - Provider hint, or `undefined` when unreadable.
+ * @param attempt - 1-based retry attempt.
+ * @param jitter - Returns a value in `[0, 1)`. Injected for testability.
+ * @returns Milliseconds to wait.
+ */
+export const computeRetryDelay = (
+  retryAfterMs: number | undefined,
+  attempt: number,
+  jitter: () => number = Math.random,
+): number => {
+  const base = retryAfterMs ?? calculateRateLimitBackoff(attempt);
+  return Math.round(base + base * JITTER_FRACTION * jitter());
+};
+
+/** A run-scoped, self-adjusting delay between provider calls. */
+export type Pacer = {
+  /** Current inter-request gap in milliseconds. */
+  gapMs: () => number;
+  /** Widen the gap: the provider just rate-limited us. */
+  onRateLimit: () => void;
+  /** Narrow the gap once the provider has been healthy for a while. */
+  onSuccess: () => void;
+};
+
+/**
+ * Creates an adaptive pacer. Doubling on each rate limit is what prevents one
+ * throttled locale from dragging every subsequent locale and record down with
+ * it; decaying after a success streak is what stops a single early 429 from
+ * slowing an otherwise healthy run to a crawl.
+ *
+ * @param initialGapMs - Baseline gap, typically `getRequestSpacingMs()`.
+ * @returns A stateful pacer.
+ */
+export const createPacer = (initialGapMs: number): Pacer => {
+  let gap = initialGapMs;
+  let streak = 0;
+
+  return {
+    gapMs: () => gap,
+    onRateLimit: () => {
+      streak = 0;
+      gap = Math.min(gap * 2, PACER_MAX_GAP_MS);
+    },
+    onSuccess: () => {
+      streak += 1;
+      if (streak >= PACER_DECAY_AFTER_SUCCESSES) {
+        streak = 0;
+        gap = Math.max(Math.round(gap / 2), initialGapMs);
+      }
+    },
+  };
+};
