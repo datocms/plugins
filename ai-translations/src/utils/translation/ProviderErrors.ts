@@ -745,6 +745,24 @@ interface UIContext {
   notice: (msg: string) => void;
 }
 
+/** Error codes whose next call will fail identically — the run must pause. */
+const SYSTEMIC_CODES = new Set<NormalizedProviderError['code']>([
+  'rate_limit',
+  'auth',
+  'quota',
+  'network',
+]);
+
+/**
+ * Classifies a normalized error as systemic (the whole run must pause) or
+ * content-scoped (fail this field and its record, then continue).
+ *
+ * @param err - The normalized provider error.
+ * @returns True when continuing the run would only burn quota.
+ */
+export const isSystemicError = (err: NormalizedProviderError): boolean =>
+  SYSTEMIC_CODES.has(err.code);
+
 /**
  * UI-layer error handler for DatoCMS contexts.
  * Normalizes errors and displays them via ctx.alert().
