@@ -84,7 +84,7 @@ export default function TranslationProgressModal({
   const [isCompleted, setIsCompleted] = useState(false);
   // Cancellation is read from inside a long-running async loop, so it must be a
   // ref: a state value would be captured stale in the once-only effect closure
-  // (the `checkCancellation` callback would forever read its mount-time `false`).
+  // (the `gate` callback would forever read its mount-time `false`).
   const isCancelledRef = useRef(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [hasFatalError, setHasFatalError] = useState(false);
@@ -154,7 +154,11 @@ export default function TranslationProgressModal({
           accessToken,
           {
             onProgress: addProgressUpdate,
-            checkCancellation: () => isCancelledRef.current,
+            // Between-unit run gate. The full pause machine (systemic-error
+            // handling, countdown) is layered on separately; here it only
+            // relays the existing cancel flag through the async seam.
+            gate: async () =>
+              isCancelledRef.current ? 'cancelled' : 'continue',
             abortSignal: controller.signal,
             selectedFieldsByModel,
           },

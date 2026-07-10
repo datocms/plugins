@@ -21,6 +21,23 @@ export type FieldOutcome =
   | { status: 'failed'; error: NormalizedProviderError };
 
 /**
+ * Awaited between units of work (before each field, locale, and record).
+ * Resolves `'continue'` to proceed or `'cancelled'` to unwind the run. Unlike
+ * the synchronous boolean predicate it supersedes for the bulk flow, this can
+ * block — which is what makes a mid-run pause possible.
+ */
+export type RunGate = () => Promise<'continue' | 'cancelled'>;
+
+/**
+ * Invoked on a systemic provider error. Pauses the run and resolves `'retry'`
+ * once it may resume (a user action or an auto-retry countdown), or
+ * `'cancelled'` to unwind the run.
+ */
+export type SystemicHandler = (
+  err: NormalizedProviderError,
+) => Promise<'retry' | 'cancelled'>;
+
+/**
  * Default timeout for API calls in milliseconds (2 minutes).
  * EDGE-002: Prevents requests from hanging indefinitely.
  */

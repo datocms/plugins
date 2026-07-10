@@ -11,6 +11,7 @@ import { formatLocaleWithCode } from '../localeUtils';
 import { isFieldIncludedInSelection } from './BulkTranslationHelpers';
 import {
   formatErrorForUser,
+  isSystemicError,
   type NormalizedProviderError,
   normalizeProviderError,
 } from './ProviderErrors';
@@ -32,7 +33,12 @@ import {
   hasTranslatableSourceValue,
   shouldProcessField,
 } from './TranslationCore';
-import type { FieldOutcome, TranslationProvider } from './types';
+import type {
+  FieldOutcome,
+  RunGate,
+  SystemicHandler,
+  TranslationProvider,
+} from './types';
 import { type WriteClaim, verifyPersistedWrite } from './verifyPersistedWrite';
 
 /**
@@ -337,8 +343,18 @@ export function summarizeReferenceCopies(
  */
 export type TranslateBatchOptions = {
   onProgress?: (update: ProgressUpdate) => void;
-  /** Returns true if user has requested cancellation. Matches CancellationOptions convention. */
-  checkCancellation?: () => boolean;
+  /**
+   * Awaited between records, locales, and fields. Resolving `'cancelled'`
+   * unwinds the run; resolving `'continue'` (or being omitted) proceeds. Async
+   * so a paused run can block here until the user resumes or stops.
+   */
+  gate?: RunGate;
+  /**
+   * Invoked when a systemic provider error is hit (rate limit, auth, quota,
+   * network). Pauses the run and resolves once it may resume, or cancels.
+   * When omitted, systemic errors fail the field like any other error.
+   */
+  onSystemic?: SystemicHandler;
   abortSignal?: AbortSignal;
   /**
    * Optional per-model allowlist of field api_keys. When set, fields whose
@@ -435,6 +451,51 @@ export const summarizeLocaleOutcomes = (
     .join('; ');
 
   return { hasDeadLocale: true, statusText };
+};
+
+/** Sentinel thrown to unwind the run when the user cancels from a pause. */
+export const RUN_CANCELLED = { cancelled: true } as const;
+
+/** Retries a content-scoped failure this many times before giving up. */
+const CONTENT_RETRY_LIMIT = 2;
+
+/**
+ * Runs one translation attempt, handling systemic errors by pausing the whole
+ * run and content errors by retrying the field a bounded number of times.
+ *
+ * Stays deliberately pure: the rate-limit retry budget and the backoff wait
+ * live in the pause handler (the modal owns the countdown UI). This helper
+ * simply retries whenever the handler resolves `'retry'`.
+ *
+ * @param attempt - Performs one translation; must reject with a normalized error.
+ * @param handlers - Run-control callbacks.
+ * @param handlers.onSystemic - Pauses the run; resolves when it may resume.
+ * @returns The translated value.
+ * @throws The normalized error once content retries are exhausted.
+ * @throws {typeof RUN_CANCELLED} When the user cancels from the pause screen.
+ */
+export const translateWithSystemicRetry = async <T>(
+  attempt: () => Promise<T>,
+  handlers: { onSystemic: SystemicHandler },
+): Promise<T> => {
+  let contentRetries = 0;
+
+  for (;;) {
+    try {
+      // biome-ignore lint/performance/noAwaitInLoops: a retry loop is inherently sequential — each attempt must await the previous one's outcome.
+      return await attempt();
+    } catch (raw) {
+      const err = raw as NormalizedProviderError;
+
+      if (isSystemicError(err)) {
+        if ((await handlers.onSystemic(err)) === 'cancelled') throw RUN_CANCELLED;
+        continue; // the handler already waited; try the same field again
+      }
+
+      if (contentRetries >= CONTENT_RETRY_LIMIT) throw err;
+      contentRetries += 1;
+    }
+  }
 };
 
 /**
@@ -693,6 +754,10 @@ export async function translateAndUpdateRecords(
      * Extracted so the per-locale `.reduce` chain stays lint-clean.
      */
     async function translateForLocale(toLocale: string): Promise<void> {
+      // Between-locale gate: a cancel (or a still-paused run) unwinds here via
+      // RUN_CANCELLED, caught by processRecord and reported as 'cancelled'.
+      if ((await options.gate?.()) === 'cancelled') throw RUN_CANCELLED;
+
       updateProgress({
         recordIndex,
         recordId: record.id,
@@ -714,7 +779,8 @@ export async function translateAndUpdateRecords(
         ctx.environment,
         {
           abortSignal: options.abortSignal,
-          checkCancellation: options.checkCancellation,
+          gate: options.gate,
+          onSystemic: options.onSystemic,
           selectedFieldsByModel: options.selectedFieldsByModel,
         },
         schemaRepository,
@@ -940,7 +1006,7 @@ export async function translateAndUpdateRecords(
     const recordUpdatedAt = (record as { meta?: { updated_at?: string } }).meta
       ?.updated_at;
 
-    if (options.checkCancellation?.()) {
+    if ((await options.gate?.()) === 'cancelled') {
       updateProgress({
         recordIndex,
         recordId: record.id,
@@ -996,6 +1062,23 @@ export async function translateAndUpdateRecords(
         itemTypeId,
       );
     } catch (error) {
+      // A mid-record cancel (from any between-unit gate or a cancelled pause)
+      // unwinds as RUN_CANCELLED. Report it as a cancellation and stop the run
+      // rather than mislabelling it a translation failure.
+      if (error === RUN_CANCELLED) {
+        updateProgress({
+          recordIndex,
+          recordId: record.id,
+          status: 'error',
+          message: `Translation cancelled for "${recordLabel}" (#${record.id}).`,
+          statusText: 'Cancelled',
+          recordLabel,
+          itemTypeId,
+          updatedAt: recordUpdatedAt,
+        });
+        return 'cancelled';
+      }
+
       const friendlyMessage = getFriendlyDatoErrorMessage(error, record.id);
       const norm = normalizeProviderError(error, provider.vendor);
       const formattedMessage = formatErrorForUser(norm);
@@ -1174,7 +1257,10 @@ export async function buildTranslatedUpdatePayload(
   environment: string,
   opts: {
     abortSignal?: AbortSignal;
-    checkCancellation?: () => boolean;
+    /** Awaited before each field; resolving `'cancelled'` unwinds via RUN_CANCELLED. */
+    gate?: RunGate;
+    /** Pauses the run on a systemic error; when omitted, systemic errors fail the field. */
+    onSystemic?: SystemicHandler;
     selectedFieldsByModel?: SelectedFieldsByModel;
   } = {},
   schemaRepository?: SchemaRepository,
@@ -1247,30 +1333,48 @@ export async function buildTranslatedUpdatePayload(
       return { status: 'untranslatable' };
     }
 
+    // One provider call for this field, normalizing on failure so the retry
+    // helper (and this function's catch) always see a NormalizedProviderError.
+    // Between-unit cancellation is governed by the gate in the loop above, so
+    // only `abortSignal` is threaded here for in-flight request cancellation.
+    const attempt = async (): Promise<unknown> => {
+      try {
+        return await translateFieldValue(
+          sourceValue,
+          pluginParams,
+          toLocale,
+          fromLocale,
+          fieldType,
+          provider,
+          fieldTypePrompt,
+          accessToken,
+          fieldTypeDictionary[field].id,
+          environment,
+          {
+            abortSignal: opts.abortSignal,
+          },
+          recordContext,
+          schemaRepository,
+          {
+            fieldApiKey: field,
+            ...(cmaBaseUrl ? { cmaBaseUrl } : {}),
+            onQcFlag: (flag) => recordQcFlag(flag, field),
+          },
+        );
+      } catch (error) {
+        throw normalizeProviderError(error, provider.vendor);
+      }
+    };
+
     try {
-      const translatedValue = await translateFieldValue(
-        sourceValue,
-        pluginParams,
-        toLocale,
-        fromLocale,
-        fieldType,
-        provider,
-        fieldTypePrompt,
-        accessToken,
-        fieldTypeDictionary[field].id,
-        environment,
-        {
-          abortSignal: opts.abortSignal,
-          checkCancellation: opts.checkCancellation,
-        },
-        recordContext,
-        schemaRepository,
-        {
-          fieldApiKey: field,
-          ...(cmaBaseUrl ? { cmaBaseUrl } : {}),
-          onQcFlag: (flag) => recordQcFlag(flag, field),
-        },
-      );
+      // With a systemic handler, systemic errors pause the whole run and content
+      // errors retry a bounded number of times; without one (until the pause
+      // machine is wired in), a failed call falls straight through to `failed`.
+      const translatedValue = opts.onSystemic
+        ? await translateWithSystemicRetry(attempt, {
+            onSystemic: opts.onSystemic,
+          })
+        : await attempt();
 
       // Schema-aware guard: a value over the field's length validator WILL be
       // rejected by the CMA. Flag it (error-tier) so the record surfaces as a
@@ -1285,7 +1389,10 @@ export async function buildTranslatedUpdatePayload(
 
       return { status: 'translated', value: translatedValue };
     } catch (error) {
-      const norm = normalizeProviderError(error, provider.vendor);
+      // A cancelled pause unwinds the whole run — never a per-field failure.
+      if (error === RUN_CANCELLED) throw error;
+      // `attempt` already normalized; the retry helper rethrows that same shape.
+      const norm = error as NormalizedProviderError;
       console.error(
         `Error translating field ${field} → ${toLocale} for record ${record.id}: ${formatErrorForUser(norm)}`,
       );
@@ -1300,6 +1407,10 @@ export async function buildTranslatedUpdatePayload(
   await translatableFields.reduce(
     (chain, field) =>
       chain.then(async () => {
+        // Between-field gate: a cancel unwinds via RUN_CANCELLED, caught by
+        // processRecord and reported as a cancellation.
+        if ((await opts.gate?.()) === 'cancelled') throw RUN_CANCELLED;
+
         const outcome = await translateField(field);
         outcomes.set(field, outcome);
 
