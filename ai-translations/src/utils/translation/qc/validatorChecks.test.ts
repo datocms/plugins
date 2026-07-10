@@ -121,20 +121,29 @@ describe('checkFieldLength', () => {
     ).toBeNull();
   });
 
-  it('does not flag an empty value against min/eq (blank fields are exempt)', () => {
-    // DatoCMS applies `length` only to non-blank values, so an empty translation
-    // of an optional field must not be reported as a length failure — that would
-    // be a false positive the max-only check never produced.
+  it('flags a blank value against min/eq (DatoCMS 422s it even without `required`)', () => {
+    // Empirically verified against the real CMA (forked sandbox): a `length.min`
+    // or `length.eq` validator rejects a blank value with VALIDATION_LENGTH, and
+    // `length` is enforced INDEPENDENTLY of `required` (a blank value on a
+    // required+min field returns BOTH VALIDATION_LENGTH and VALIDATION_REQUIRED).
+    // So a blank translation on a min/eq field WILL fail the save — flag it.
     expect(
       checkFieldLength({
         value: '',
         validators: { length: { min: 10 } } as unknown as FieldValidators,
-      }),
-    ).toBeNull();
+      })?.checkId,
+    ).toBe('length-validator');
     expect(
       checkFieldLength({
         value: '',
         validators: { length: { eq: 5 } } as unknown as FieldValidators,
+      })?.checkId,
+    ).toBe('length-validator');
+    // A blank value trivially satisfies a max-only ceiling, so it is NOT flagged.
+    expect(
+      checkFieldLength({
+        value: '',
+        validators: { length: { max: 5 } } as unknown as FieldValidators,
       }),
     ).toBeNull();
   });

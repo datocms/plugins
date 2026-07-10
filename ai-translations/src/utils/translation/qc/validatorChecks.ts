@@ -46,10 +46,11 @@ export function checkFieldLength(args: {
 }): QcFlag | null {
   const { value, validators, fieldPath, locale } = args;
   if (typeof value !== 'string') return null;
-  // DatoCMS applies `length` only to non-blank values (an optional field left
-  // empty is valid regardless of min/eq); flagging a blank value would be a
-  // false positive. Emptiness for a *required* field is a separate concern.
-  if (value === '') return null;
+  // NB: do NOT exempt a blank value. DatoCMS enforces `length` independently of
+  // `required` — a blank value is rejected with VALIDATION_LENGTH by a `min`/`eq`
+  // validator (empirically verified against the CMA), so a blank translation on
+  // such a field WILL 422 on save and must be flagged. (A `max`-only validator is
+  // unaffected: 0 characters trivially satisfies it.)
 
   const length = lengthValidator(validators);
   if (length === null) return null;
