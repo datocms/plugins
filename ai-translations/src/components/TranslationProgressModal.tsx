@@ -11,6 +11,12 @@ import {
 import { buildRecordEditorUrl } from '../utils/recordUrl';
 import { createSchemaRepository } from '../utils/schemaRepository';
 import { LocaleChip } from './BulkTranslations/LocaleChip';
+import { PausePanel } from './BulkTranslations/PausePanel';
+import {
+  createPauseController,
+  type PauseController,
+  type RunStatus,
+} from './BulkTranslations/pauseController';
 import { ProgressRow } from './BulkTranslations/ProgressRow';
 import { summarizeBulkProgress } from './BulkTranslations/progressSummary';
 import {
@@ -81,15 +87,38 @@ export default function TranslationProgressModal({
     selectedFieldsByModel,
   } = parameters;
   const [progress, setProgress] = useState<ProgressUpdate[]>([]);
-  const [isCompleted, setIsCompleted] = useState(false);
-  // Cancellation is read from inside a long-running async loop, so it must be a
-  // ref: a state value would be captured stale in the once-only effect closure
-  // (the `gate` callback would forever read its mount-time `false`).
+  // The run's lifecycle state drives the pause screen, the footer buttons, and
+  // (Task 9) Export gating. Starts `running`: the translation kicks off on mount.
+  const [runStatus, setRunStatus] = useState<RunStatus>({ kind: 'running' });
+  // Cancellation is read from inside a long-running async loop and a sync
+  // callback, so it must be a ref: a state value would be captured stale in the
+  // once-only effect closure. The controller owns the authoritative flag; this
+  // mirror lets `addProgressUpdate` drop updates that arrive after a cancel.
   const isCancelledRef = useRef(false);
-  const [isProcessing, setIsProcessing] = useState(false);
   const [hasFatalError, setHasFatalError] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const updatesRef = useRef<HTMLDivElement | null>(null);
+
+  // The pause machine — one instance per modal. `onStatus` drives `runStatus`
+  // so the PausePanel can render; the same controller is passed into the run as
+  // its `gate` and `onSystemic`, so pausing and cancelling share one source of
+  // truth. Created lazily via a ref guard so it survives re-renders.
+  const controllerRef = useRef<PauseController | null>(null);
+  if (!controllerRef.current) {
+    controllerRef.current = createPauseController({
+      onStatus: (status) => {
+        if (status.kind === 'cancelled') isCancelledRef.current = true;
+        setRunStatus(status);
+      },
+    });
+  }
+  const controller = controllerRef.current;
+
+  const isCompleted = runStatus.kind === 'completed';
+  // "Processing" means the run is underway but not terminal — a pause counts,
+  // since the work will resume rather than stop.
+  const isProcessing =
+    runStatus.kind === 'running' || runStatus.kind === 'paused';
 
   // Use a ref to track if we've started the translation process
   const hasStartedTranslation = useRef(false);
@@ -101,6 +130,15 @@ export default function TranslationProgressModal({
     // and the loop is unwinding, so committing more state is wasted (and would
     // warn about setting state on an unmounting component).
     if (isCancelledRef.current) return;
+    // A record that finished successfully means the provider is healthy again,
+    // so reset the rate-limit auto-retry budget (an early 429 shouldn't keep the
+    // pacer primed for the rest of a now-healthy run).
+    if (
+      update.status === 'completed' ||
+      update.status === 'completed-with-warnings'
+    ) {
+      controllerRef.current?.onSuccess();
+    }
     setProgress((prev) => {
       // Filter out previous updates for the same record and create a new array
       const filteredUpdates = prev.filter(
@@ -119,7 +157,9 @@ export default function TranslationProgressModal({
       if (!isMounted || hasStartedTranslation.current) return;
 
       hasStartedTranslation.current = true;
-      setIsProcessing(true);
+      // Read the pause machine off the ref inside the effect so it isn't a hook
+      // dependency (the instance is stable for the modal's life anyway).
+      const pauseController = controllerRef.current;
 
       try {
         const client = buildDatoCMSClient(
@@ -139,8 +179,8 @@ export default function TranslationProgressModal({
         };
 
         // Prepare AbortController for in-flight cancellations
-        const controller = new AbortController();
-        abortRef.current = controller;
+        const abortController = new AbortController();
+        abortRef.current = abortController;
 
         await translateAndUpdateRecords(
           records,
@@ -154,29 +194,31 @@ export default function TranslationProgressModal({
           accessToken,
           {
             onProgress: addProgressUpdate,
-            // Between-unit run gate. The full pause machine (systemic-error
-            // handling, countdown) is layered on separately; here it only
-            // relays the existing cancel flag through the async seam.
-            gate: async () =>
-              isCancelledRef.current ? 'cancelled' : 'continue',
-            abortSignal: controller.signal,
+            // The pause machine is the run's between-unit gate and its
+            // systemic-error handler: `gate` unwinds the run on cancel, while
+            // `onSystemic` pauses on a rate limit/auth/quota/network error and
+            // resumes (or cancels) once the user or the countdown decides.
+            gate: pauseController?.gate,
+            onSystemic: pauseController?.handleSystemic,
+            abortSignal: abortController.signal,
             selectedFieldsByModel,
           },
           schemaRepository,
         );
 
-        // Clear the processing flag on the happy path too. The completion
-        // effect below only fires when every record reports back; if fewer
-        // records come back than requested (e.g. some were deleted between
-        // selection and fetch) that effect never runs, and without this the
-        // Close button would stay disabled forever.
+        // Mark the run terminal on the happy path too. The completion effect
+        // below only fires when every record reports back; if fewer records come
+        // back than requested (e.g. some were deleted between selection and
+        // fetch) that effect never runs, and without this the Close button would
+        // stay disabled forever. A cancel already reached its terminal state, so
+        // never override it.
         if (isMounted) {
-          setIsProcessing(false);
+          setRunStatus((s) => (s.kind === 'cancelled' ? s : { kind: 'completed' }));
         }
       } catch (error) {
         if (isMounted) {
           setHasFatalError(true);
-          setIsProcessing(false);
+          setRunStatus((s) => (s.kind === 'cancelled' ? s : { kind: 'completed' }));
           const failureMessage = `Translation failed: ${getTranslationErrorMessage(
             error,
             pluginParams.vendor,
@@ -260,11 +302,11 @@ export default function TranslationProgressModal({
     );
   };
 
-  // Make sure to set completed state when all records are processed
+  // Make sure to mark the run completed when all records are processed. A cancel
+  // is already terminal, so never override it here.
   useEffect(() => {
     if (completedCount >= totalRecords && totalRecords > 0) {
-      setIsCompleted(true);
-      setIsProcessing(false);
+      setRunStatus((s) => (s.kind === 'cancelled' ? s : { kind: 'completed' }));
     }
   }, [completedCount, totalRecords]);
 
@@ -287,7 +329,10 @@ export default function TranslationProgressModal({
   };
 
   const handleCancel = () => {
-    isCancelledRef.current = true;
+    // Route through the controller so a pending pause (manual wait or countdown)
+    // unwinds via RUN_CANCELLED; it also mirrors the cancel into isCancelledRef
+    // and flips runStatus to 'cancelled'.
+    controller.cancel();
     // Abort in-flight requests to stop streaming immediately
     abortRef.current?.abort();
     ctx.resolve({ completed: false, canceled: true });
@@ -327,6 +372,14 @@ export default function TranslationProgressModal({
             />
           </div>
         </div>
+
+        {runStatus.kind === 'paused' && (
+          <PausePanel
+            status={runStatus}
+            onResume={controller.resume}
+            onCancel={handleCancel}
+          />
+        )}
 
         {/* Progress list */}
         <div
@@ -370,7 +423,7 @@ export default function TranslationProgressModal({
               Export CSV
             </Button>
           )}
-          {!isCompleted && isProcessing && (
+          {runStatus.kind === 'running' && (
             <Button
               type="button"
               buttonType="negative"

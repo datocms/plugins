@@ -237,6 +237,47 @@ a.TranslationProgressModal__record-link {
   padding-top: var(--spacing-m);
   border-top: 1px solid var(--color--border);
 }
+
+/* Mid-run pause screen: systemic error, optional auto-retry countdown, controls */
+.TranslationProgressModal__pause {
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  background-color: var(--color--warning-soft--surface);
+  border: 1px solid var(--color--warning-soft--border);
+  color: var(--color--warning-soft--ink);
+  border-radius: 6px;
+  text-align: left;
+  font-size: var(--font-size-s);
+}
+
+.TranslationProgressModal__pause-title {
+  margin: 0 0 6px 0;
+  font-weight: var(--font-weight-bold);
+}
+
+.TranslationProgressModal__pause-message {
+  margin: 0 0 6px 0;
+}
+
+.TranslationProgressModal__pause-hint {
+  margin: 0 0 6px 0;
+  color: var(--color--ink-subtle);
+}
+
+.TranslationProgressModal__pause-countdown {
+  margin: 0 0 6px 0;
+  font-weight: var(--font-weight-bold);
+}
+
+.TranslationProgressModal__pause-warning {
+  margin: 0 0 10px 0;
+  color: var(--color--ink-subtle);
+}
+
+.TranslationProgressModal__pause-actions {
+  display: flex;
+  gap: var(--spacing-m);
+}
 /*
  * TranslationProgressModal.css
  * Styles for the bulk translation progress modal UI.

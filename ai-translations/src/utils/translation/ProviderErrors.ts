@@ -28,6 +28,13 @@ export type NormalizedProviderError = {
   source: ErrorSource;
   message: string;
   hint?: string;
+  /**
+   * Milliseconds the provider asked us to wait, threaded from
+   * `ProviderError.retryAfterMs` (parsed from a `Retry-After` header). Usually
+   * `undefined`: browser callers can only read the header when the server sets
+   * `Access-Control-Expose-Headers`, so the pause machine must not depend on it.
+   */
+  retryAfterMs?: number;
 };
 
 const SOURCE_LABEL_ENTRIES: Array<[ErrorSource, string]> = [
@@ -647,15 +654,15 @@ function normalizeProviderQuotaModelNetworkError(
 }
 
 /**
- * Normalizes provider-specific errors to a compact, user-friendly shape, with
- * special handling for common authentication, quota, rate-limit and model
- * errors. Includes targeted hints where we can determine a likely fix.
+ * Derives the code/message/hint shape from a raw provider or DatoCMS error.
+ * The exported `normalizeProviderError` wraps this to additionally thread any
+ * `Retry-After` hint the adapter captured.
  *
  * @param err - Raw error thrown from a provider client or fetch call.
  * @param vendor - Provider id for vendor-specific mappings.
  * @returns A normalized error with `code`, `message`, and optional `hint`.
  */
-export function normalizeProviderError(
+function deriveNormalizedError(
   err: unknown,
   vendor: 'openai' | 'google' | 'anthropic' | 'deepl',
 ): NormalizedProviderError {
@@ -690,6 +697,42 @@ export function normalizeProviderError(
     code: 'unknown',
     message,
   };
+}
+
+/**
+ * Reads the `retryAfterMs` a provider adapter parsed from a `Retry-After`
+ * header onto a `ProviderError`. Returns `undefined` for any other error shape,
+ * which callers treat as "no hint" and fall back to exponential backoff.
+ */
+function readRetryAfterMs(err: unknown): number | undefined {
+  if (err !== null && typeof err === 'object') {
+    const value = (err as { retryAfterMs?: unknown }).retryAfterMs;
+    if (typeof value === 'number') return value;
+  }
+  return undefined;
+}
+
+/**
+ * Normalizes provider-specific errors to a compact, user-friendly shape, with
+ * special handling for common authentication, quota, rate-limit and model
+ * errors. Includes targeted hints where we can determine a likely fix, and
+ * threads any `Retry-After` the adapter captured so the pause machine can honor
+ * it as an optimization over blind backoff.
+ *
+ * @param err - Raw error thrown from a provider client or fetch call.
+ * @param vendor - Provider id for vendor-specific mappings.
+ * @returns A normalized error with `code`, `message`, optional `hint`, and any
+ *   `retryAfterMs` hint.
+ */
+export function normalizeProviderError(
+  err: unknown,
+  vendor: 'openai' | 'google' | 'anthropic' | 'deepl',
+): NormalizedProviderError {
+  const normalized = deriveNormalizedError(err, vendor);
+  const retryAfterMs = readRetryAfterMs(err);
+  return retryAfterMs === undefined
+    ? normalized
+    : { ...normalized, retryAfterMs };
 }
 
 /**
