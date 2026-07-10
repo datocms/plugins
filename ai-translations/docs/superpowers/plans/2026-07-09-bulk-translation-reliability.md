@@ -19,7 +19,11 @@
 - Retry budget for `rate_limit`: **3 auto-retries**, then pause with manual resume.
 - Content-scoped retry budget: **2 retries**, then fail the field *and* its record.
 - Cancel copy, verbatim: *stopping does not undo the records already translated; they will be re-translated on the next bulk run.*
-- Run `npm run lint` and `npx tsc -b --noEmit` before every commit. Unit tests: `npm test`.
+- **Unit tests are colocated** as `Foo.test.ts` beside `Foo.ts`. There are no `__tests__/` directories, and `vitest.config.ts` includes exactly `src/**/*.{test,spec}.{ts,tsx}`. Playwright specs live under `e2e/` and are excluded from that glob.
+- Verification gate, run from `ai-translations/` before every commit:
+  `npm run lint && npx tsc -b --force --noEmit && npm test`
+  (`--force` defeats the incremental build cache, which otherwise makes `tsc -b` a no-op and hides type errors.)
+- **Baseline is green: 695 tests across 37 files, `tsc` clean.** Any failure you see in a pre-existing test is something you caused. Never edit or delete an existing test to make it pass — fix your change instead, or stop and report.
 
 **Spec:** `docs/superpowers/specs/2026-07-09-bulk-translation-reliability-design.md`
 
@@ -50,7 +54,7 @@ Task order is dependency order. Tasks 1–3 touch disjoint files and may run in 
 
 **Files:**
 - Modify: `src/utils/translation/ProviderErrors.ts`
-- Test: `src/utils/translation/__tests__/ProviderErrors.classification.test.ts`
+- Test: `src/utils/translation/ProviderErrors.classification.test.ts`
 
 **Interfaces:**
 - Consumes: `NormalizedProviderError` (already exported, `ProviderErrors.ts:18`).
@@ -62,8 +66,8 @@ A *systemic* error means the next provider call will fail the same way, so conti
 
 ```ts
 import { describe, expect, it } from 'vitest';
-import { isSystemicError } from '../ProviderErrors';
-import type { NormalizedProviderError } from '../ProviderErrors';
+import { isSystemicError } from './ProviderErrors';
+import type { NormalizedProviderError } from './ProviderErrors';
 
 const err = (code: NormalizedProviderError['code']): NormalizedProviderError => ({
   code,
@@ -86,7 +90,7 @@ describe('isSystemicError', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npx vitest run src/utils/translation/__tests__/ProviderErrors.classification.test.ts`
+Run: `npx vitest run src/utils/translation/ProviderErrors.classification.test.ts`
 Expected: FAIL — `isSystemicError is not a function`.
 
 - [ ] **Step 3: Implement**
@@ -115,14 +119,14 @@ export const isSystemicError = (err: NormalizedProviderError): boolean =>
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npx vitest run src/utils/translation/__tests__/ProviderErrors.classification.test.ts`
+Run: `npx vitest run src/utils/translation/ProviderErrors.classification.test.ts`
 Expected: PASS, 8 assertions.
 
 - [ ] **Step 5: Lint, typecheck, commit**
 
 ```bash
 npm run lint && npx tsc -b --noEmit
-git add src/utils/translation/ProviderErrors.ts src/utils/translation/__tests__/ProviderErrors.classification.test.ts
+git add src/utils/translation/ProviderErrors.ts src/utils/translation/ProviderErrors.classification.test.ts
 git commit -m "feat(errors): classify provider errors as systemic vs content-scoped"
 ```
 
@@ -134,7 +138,7 @@ git commit -m "feat(errors): classify provider errors as systemic vs content-sco
 - Create: `src/utils/translation/retryAfter.ts`
 - Modify: `src/utils/translation/types.ts:187-205` (`ProviderError`)
 - Modify: `src/utils/translation/providers/OpenAIProvider.ts`, `AnthropicProvider.ts`, `DeepLProvider.ts`, `GeminiProvider.ts`
-- Test: `src/utils/translation/__tests__/retryAfter.test.ts`
+- Test: `src/utils/translation/retryAfter.test.ts`
 
 **Interfaces:**
 - Produces:
@@ -148,7 +152,7 @@ git commit -m "feat(errors): classify provider errors as systemic vs content-sco
 
 ```ts
 import { describe, expect, it } from 'vitest';
-import { parseRetryAfter, retryAfterFromHeaders } from '../retryAfter';
+import { parseRetryAfter, retryAfterFromHeaders } from './retryAfter';
 
 const NOW = Date.parse('2015-10-21T07:28:00Z');
 
@@ -181,7 +185,7 @@ describe('retryAfterFromHeaders', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npx vitest run src/utils/translation/__tests__/retryAfter.test.ts`
+Run: `npx vitest run src/utils/translation/retryAfter.test.ts`
 Expected: FAIL — cannot resolve `../retryAfter`.
 
 - [ ] **Step 3: Implement `retryAfter.ts`**
@@ -241,7 +245,7 @@ export const retryAfterFromHeaders = (
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npx vitest run src/utils/translation/__tests__/retryAfter.test.ts`
+Run: `npx vitest run src/utils/translation/retryAfter.test.ts`
 Expected: PASS, 11 assertions.
 
 - [ ] **Step 5: Extend `ProviderError`**
@@ -291,7 +295,7 @@ For each adapter, at every `throw new ProviderError(...)` site that follows a no
 
 ```bash
 npm run lint && npx tsc -b --noEmit && npm test
-git add src/utils/translation/retryAfter.ts src/utils/translation/types.ts src/utils/translation/providers src/utils/translation/__tests__/retryAfter.test.ts
+git add src/utils/translation/retryAfter.ts src/utils/translation/types.ts src/utils/translation/providers src/utils/translation/retryAfter.test.ts
 git commit -m "feat(providers): capture Retry-After into ProviderError"
 ```
 
@@ -301,7 +305,7 @@ git commit -m "feat(providers): capture Retry-After into ProviderError"
 
 **Files:**
 - Modify: `src/utils/translation/TranslationCore.ts`
-- Test: `src/utils/translation/__tests__/retryPacing.test.ts`
+- Test: `src/utils/translation/retryPacing.test.ts`
 
 **Interfaces:**
 - Consumes: `calculateRateLimitBackoff` (`TranslationCore.ts:142`), `ProviderError` (Task 2).
@@ -318,7 +322,7 @@ The pacer doubles `gapMs` on each rate limit (capped at `PACER_MAX_GAP_MS = 10_0
 
 ```ts
 import { describe, expect, it } from 'vitest';
-import { computeRetryDelay, createPacer } from '../TranslationCore';
+import { computeRetryDelay, createPacer } from './TranslationCore';
 
 const noJitter = () => 0;
 
@@ -392,7 +396,7 @@ describe('createPacer', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npx vitest run src/utils/translation/__tests__/retryPacing.test.ts`
+Run: `npx vitest run src/utils/translation/retryPacing.test.ts`
 Expected: FAIL — `computeRetryDelay is not a function`.
 
 - [ ] **Step 3: Implement in `TranslationCore.ts`**
@@ -469,14 +473,14 @@ export const createPacer = (initialGapMs: number): Pacer => {
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `npx vitest run src/utils/translation/__tests__/retryPacing.test.ts`
+Run: `npx vitest run src/utils/translation/retryPacing.test.ts`
 Expected: PASS, 11 assertions.
 
 - [ ] **Step 5: Verify, commit**
 
 ```bash
 npm run lint && npx tsc -b --noEmit && npm test
-git add src/utils/translation/TranslationCore.ts src/utils/translation/__tests__/retryPacing.test.ts
+git add src/utils/translation/TranslationCore.ts src/utils/translation/retryPacing.test.ts
 git commit -m "feat(core): Retry-After-aware delay and adaptive pacer"
 ```
 
@@ -487,7 +491,7 @@ git commit -m "feat(core): Retry-After-aware delay and adaptive pacer"
 **Files:**
 - Modify: `src/utils/translation/ItemsDropdownUtils.ts` (`buildTranslatedUpdatePayload`, ~lines 1020-1210)
 - Modify: `src/utils/translation/types.ts` (add `FieldOutcome`)
-- Test: `src/utils/translation/__tests__/fieldOutcome.test.ts`
+- Test: `src/utils/translation/fieldOutcome.test.ts`
 
 **Interfaces:**
 - Consumes: `NormalizedProviderError`, `isSystemicError` (Task 1).
@@ -510,8 +514,8 @@ This is the pin for the reported bug. Extract the fallback decision into a pure,
 
 ```ts
 import { describe, expect, it } from 'vitest';
-import { shouldApplyLocaleSyncFallback } from '../ItemsDropdownUtils';
-import type { FieldOutcome } from '../types';
+import { shouldApplyLocaleSyncFallback } from './ItemsDropdownUtils';
+import type { FieldOutcome } from './types';
 
 const failed: FieldOutcome = {
   status: 'failed',
@@ -535,7 +539,7 @@ describe('shouldApplyLocaleSyncFallback', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npx vitest run src/utils/translation/__tests__/fieldOutcome.test.ts`
+Run: `npx vitest run src/utils/translation/fieldOutcome.test.ts`
 Expected: FAIL — `shouldApplyLocaleSyncFallback` is not exported.
 
 - [ ] **Step 3: Add `FieldOutcome` to `types.ts` and the helper to `ItemsDropdownUtils.ts`**
@@ -585,14 +589,14 @@ Preserve the `checkFieldLength` QC call (line 1133) and `recordQcFlag` wiring ex
 
 - [ ] **Step 5: Run tests**
 
-Run: `npx vitest run src/utils/translation/__tests__/fieldOutcome.test.ts && npm test`
+Run: `npx vitest run src/utils/translation/fieldOutcome.test.ts && npm test`
 Expected: PASS. All pre-existing tests still green.
 
 - [ ] **Step 6: Verify, commit**
 
 ```bash
 npm run lint && npx tsc -b --noEmit
-git add src/utils/translation/ItemsDropdownUtils.ts src/utils/translation/types.ts src/utils/translation/__tests__/fieldOutcome.test.ts
+git add src/utils/translation/ItemsDropdownUtils.ts src/utils/translation/types.ts src/utils/translation/fieldOutcome.test.ts
 git commit -m "fix(bulk): never write null into a locale whose translation failed"
 ```
 
@@ -602,7 +606,7 @@ git commit -m "fix(bulk): never write null into a locale whose translation faile
 
 **Files:**
 - Modify: `src/utils/translation/ItemsDropdownUtils.ts` (`translateAndSaveRecord` ~600-700, `reportTranslationResult` ~700-790)
-- Test: `src/utils/translation/__tests__/localeOutcome.test.ts`
+- Test: `src/utils/translation/localeOutcome.test.ts`
 
 **Interfaces:**
 - Consumes: `failedFields` from Task 4.
@@ -624,8 +628,8 @@ Today `reportTranslationResult` sums `translatedFieldCount` across **all** local
 
 ```ts
 import { describe, expect, it } from 'vitest';
-import { summarizeLocaleOutcomes } from '../ItemsDropdownUtils';
-import type { LocaleOutcome } from '../ItemsDropdownUtils';
+import { summarizeLocaleOutcomes } from './ItemsDropdownUtils';
+import type { LocaleOutcome } from './ItemsDropdownUtils';
 
 const err = { code: 'rate_limit', source: 'provider', message: 'Rate limit reached.' } as const;
 
@@ -661,7 +665,7 @@ describe('summarizeLocaleOutcomes', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npx vitest run src/utils/translation/__tests__/localeOutcome.test.ts`
+Run: `npx vitest run src/utils/translation/localeOutcome.test.ts`
 Expected: FAIL — `summarizeLocaleOutcomes` not exported.
 
 - [ ] **Step 3: Implement**
@@ -731,7 +735,7 @@ Expected: PASS.
 
 ```bash
 npm run lint && npx tsc -b --noEmit
-git add src/utils/translation/ItemsDropdownUtils.ts src/utils/translation/__tests__/localeOutcome.test.ts
+git add src/utils/translation/ItemsDropdownUtils.ts src/utils/translation/localeOutcome.test.ts
 git commit -m "fix(bulk): account for failures per (record, locale) not per record"
 ```
 
@@ -742,7 +746,7 @@ git commit -m "fix(bulk): account for failures per (record, locale) not per reco
 **Files:**
 - Create: `src/utils/translation/verifyPersistedWrite.ts`
 - Modify: `src/utils/translation/ItemsDropdownUtils.ts:667-671` (the `client.items.update` call)
-- Test: `src/utils/translation/__tests__/verifyPersistedWrite.test.ts`
+- Test: `src/utils/translation/verifyPersistedWrite.test.ts`
 
 **Interfaces:**
 - Produces:
@@ -763,7 +767,7 @@ git commit -m "fix(bulk): account for failures per (record, locale) not per reco
 
 ```ts
 import { describe, expect, it } from 'vitest';
-import { verifyPersistedWrite } from '../verifyPersistedWrite';
+import { verifyPersistedWrite } from './verifyPersistedWrite';
 
 describe('verifyPersistedWrite', () => {
   it('passes when every claim persisted', () => {
@@ -823,7 +827,7 @@ describe('verifyPersistedWrite', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npx vitest run src/utils/translation/__tests__/verifyPersistedWrite.test.ts`
+Run: `npx vitest run src/utils/translation/verifyPersistedWrite.test.ts`
 Expected: FAIL — cannot resolve `../verifyPersistedWrite`.
 
 - [ ] **Step 3: Implement**
@@ -917,7 +921,7 @@ Expected: PASS, including the 8 new assertions.
 
 ```bash
 npm run lint && npx tsc -b --noEmit
-git add src/utils/translation/verifyPersistedWrite.ts src/utils/translation/ItemsDropdownUtils.ts src/utils/translation/__tests__/verifyPersistedWrite.test.ts
+git add src/utils/translation/verifyPersistedWrite.ts src/utils/translation/ItemsDropdownUtils.ts src/utils/translation/verifyPersistedWrite.test.ts
 git commit -m "feat(bulk): verify the CMA persisted every claimed translation"
 ```
 
@@ -929,7 +933,7 @@ git commit -m "feat(bulk): verify the CMA persisted every claimed translation"
 - Modify: `src/utils/translation/types.ts:166` (`checkCancellation`)
 - Modify: `src/utils/translation/ItemsDropdownUtils.ts:339,629,813,1033,1119`
 - Modify: `src/components/TranslationProgressModal.tsx:157`
-- Test: `src/utils/translation/__tests__/runGate.test.ts`
+- Test: `src/utils/translation/runGate.test.ts`
 
 **Interfaces:**
 - Produces: `export type RunGate = () => Promise<'continue' | 'cancelled'>;`
@@ -945,8 +949,8 @@ Extract the retry loop as a pure, injectable function:
 
 ```ts
 import { describe, expect, it, vi } from 'vitest';
-import { translateWithSystemicRetry } from '../ItemsDropdownUtils';
-import type { NormalizedProviderError } from '../ProviderErrors';
+import { translateWithSystemicRetry } from './ItemsDropdownUtils';
+import type { NormalizedProviderError } from './ProviderErrors';
 
 const rateLimit: NormalizedProviderError = {
   code: 'rate_limit', source: 'provider', message: 'Rate limit reached.',
@@ -997,7 +1001,7 @@ Note: `attempt` here already rejects with a *normalized* error, so the helper do
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npx vitest run src/utils/translation/__tests__/runGate.test.ts`
+Run: `npx vitest run src/utils/translation/runGate.test.ts`
 Expected: FAIL — `translateWithSystemicRetry` not exported.
 
 - [ ] **Step 3: Implement `RunGate`, `SystemicHandler`, `translateWithSystemicRetry`**
@@ -1081,7 +1085,7 @@ Expected: PASS.
 
 ```bash
 npm run lint && npx tsc -b --noEmit
-git add src/utils/translation src/components/TranslationProgressModal.tsx src/utils/translation/__tests__/runGate.test.ts
+git add src/utils/translation src/components/TranslationProgressModal.tsx src/utils/translation/runGate.test.ts
 git commit -m "feat(bulk): async RunGate seam replacing sync checkCancellation"
 ```
 
@@ -1092,7 +1096,7 @@ git commit -m "feat(bulk): async RunGate seam replacing sync checkCancellation"
 **Files:**
 - Modify: `src/components/TranslationProgressModal.tsx`
 - Create: `src/components/BulkTranslations/PausePanel.tsx`
-- Test: `src/components/BulkTranslations/__tests__/pauseController.test.ts`
+- Test: `src/components/BulkTranslations/pauseController.test.ts`
 
 **Interfaces:**
 - Consumes: `NormalizedProviderError`, `isSystemicError`, `computeRetryDelay`, `RunGate`, `SystemicHandler`.
@@ -1122,8 +1126,8 @@ Extract the controller from React so it is testable without rendering:
 
 ```ts
 import { describe, expect, it, vi } from 'vitest';
-import { createPauseController } from '../pauseController';
-import type { NormalizedProviderError } from '../../../utils/translation/ProviderErrors';
+import { createPauseController } from './pauseController';
+import type { NormalizedProviderError } from '../../utils/translation/ProviderErrors';
 
 const rateLimit: NormalizedProviderError = { code: 'rate_limit', source: 'provider', message: 'x' };
 const authErr: NormalizedProviderError = { code: 'auth', source: 'provider', message: 'x' };
@@ -1180,7 +1184,7 @@ describe('createPauseController', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npx vitest run src/components/BulkTranslations/__tests__/pauseController.test.ts`
+Run: `npx vitest run src/components/BulkTranslations/pauseController.test.ts`
 Expected: FAIL — cannot resolve `../pauseController`.
 
 - [ ] **Step 3: Implement `src/components/BulkTranslations/pauseController.ts`**
@@ -1231,7 +1235,7 @@ git commit -m "feat(bulk): pause/resume on systemic errors with rate-limit count
 
 **Files:**
 - Modify: `src/components/TranslationProgressModal.tsx:358-368`
-- Test: `src/components/BulkTranslations/__tests__/exportGating.test.ts`
+- Test: `src/components/BulkTranslations/exportGating.test.ts`
 
 **Interfaces:**
 - Consumes: `RunStatus` (Task 8).
@@ -1243,8 +1247,8 @@ Export is enabled only when the run is **terminal** — `completed` or `cancelle
 
 ```ts
 import { describe, expect, it } from 'vitest';
-import { isExportEnabled } from '../exportGating';
-import type { RunStatus } from '../pauseController';
+import { isExportEnabled } from './exportGating';
+import type { RunStatus } from './pauseController';
 
 const err = { code: 'rate_limit', source: 'provider', message: 'x' } as const;
 
@@ -1264,7 +1268,7 @@ describe('isExportEnabled', () => {
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `npx vitest run src/components/BulkTranslations/__tests__/exportGating.test.ts`
+Run: `npx vitest run src/components/BulkTranslations/exportGating.test.ts`
 Expected: FAIL — cannot resolve `../exportGating`.
 
 - [ ] **Step 3: Implement**
