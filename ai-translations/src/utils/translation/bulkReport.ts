@@ -9,7 +9,11 @@
  * and the UI is a thin renderer over them.
  */
 
-import type { ProgressStatus, ProgressUpdate } from './ItemsDropdownUtils';
+import {
+  type ProgressStatus,
+  type ProgressUpdate,
+  QC_WARNING_PREFIXES,
+} from './ItemsDropdownUtils';
 
 /** One exportable line of the bulk report. */
 export type BulkReportRow = {
@@ -103,10 +107,16 @@ const referenceCopyRows = (
   }));
 
 /**
- * One row per free-text warning, skipping the consolidated reference-copy
- * warning (already represented by structured referenceCopyRows). These carry
- * the real reason for a "completed with warnings" record whose only signal is a
- * warning string (e.g. a skipped field after a rate limit).
+ * One row per genuine free-text warning. Two families of mirrored warnings are
+ * dropped because each is already represented structurally:
+ *  - the consolidated reference-copy line (see referenceCopyRows), and
+ *  - the per-QC-flag lines recordQcFlag mirrors from `qcFlags` (see qcFlagRows),
+ *    which would otherwise double every QC flag as a second, warning-severity
+ *    row and inflate the "N issues" count.
+ *
+ * The severity follows the record's status: a free-text warning on a record that
+ * FAILED (e.g. "Field X was skipped: dead locale") is a failure, not a warning,
+ * so it must not be styled/exported as a mere warning.
  */
 const warningRows = (
   update: ProgressUpdate,
@@ -114,11 +124,14 @@ const warningRows = (
 ): BulkReportRow[] =>
   (update.warnings ?? [])
     .filter((warning) => !warning.startsWith(REFERENCE_COPY_WARNING_PREFIX))
+    .filter(
+      (warning) => !QC_WARNING_PREFIXES.some((prefix) => warning.startsWith(prefix)),
+    )
     .map((warning) => ({
       ...common,
       fieldPath: '',
       locale: '',
-      severity: 'warning',
+      severity: update.status === 'error' ? 'error' : 'warning',
       checkId: 'warning',
       reason: warning,
     }));

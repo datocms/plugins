@@ -11,7 +11,14 @@ const TRUNCATION_MARKERS = new Set(['length', 'max_tokens', 'MAX_TOKENS']);
 /**
  * Flags when the model returned a different number of array elements than were
  * sent. The output is still repaired positionally upstream, but a mismatch
- * means content was padded with source text or dropped.
+ * means content may have been padded with source text or dropped.
+ *
+ * This is `warning`-tier: the repair produces a schema-valid value and the
+ * mismatch is a *suspicion* of incompleteness (routine for multi-leaf inline
+ * content), not a certain corruption. Escalating it to a record failure
+ * misreported correctly-saved records as failed. A segment that actually
+ * reverted to its untranslated source is reported separately by the
+ * `source-fallback` check.
  */
 export function checkLengthMismatch(args: {
   expected: number;
@@ -23,7 +30,7 @@ export function checkLengthMismatch(args: {
   if (received === expected) return null;
   return {
     checkId: 'length-mismatch',
-    severity: 'error',
+    severity: 'warning',
     fieldPath,
     locale,
     message: `Model returned ${received} segment(s) for ${expected} sent; output was repaired and may be incomplete.`,

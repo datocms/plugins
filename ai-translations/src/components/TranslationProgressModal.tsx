@@ -8,6 +8,7 @@ import {
   downloadCsv,
   toCsv,
 } from '../utils/csvExport';
+import { formatLocalDateStamp } from '../utils/localDateStamp';
 import { buildRecordEditorUrl } from '../utils/recordUrl';
 import { createSchemaRepository } from '../utils/schemaRepository';
 import { LocaleChip } from './BulkTranslations/LocaleChip';
@@ -298,7 +299,9 @@ export default function TranslationProgressModal({
       buildUrl: buildRecordUrl,
     });
     downloadCsv(
-      `ai-translations-report-${new Date().toISOString().slice(0, 10)}.csv`,
+      // Local calendar date, not the UTC slice, so the filename matches the day
+      // the viewer ran the export rather than drifting a day near midnight.
+      `ai-translations-report-${formatLocalDateStamp(new Date())}.csv`,
       toCsv(headers, rows),
     );
   };
@@ -336,7 +339,10 @@ export default function TranslationProgressModal({
     controller.cancel();
     // Abort in-flight requests to stop streaming immediately
     abortRef.current?.abort();
-    ctx.resolve({ completed: false, canceled: true });
+    // Pass `progress` (like handleClose does) so the page can still build the
+    // durable report of the records processed before the cancel — otherwise the
+    // partial "which records failed and why" report is silently discarded.
+    ctx.resolve({ completed: false, canceled: true, progress });
   };
 
   return (

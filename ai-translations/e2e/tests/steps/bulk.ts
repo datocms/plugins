@@ -121,26 +121,32 @@ export const parseReport = (
  * progress modal to finish, and return the parsed per-run report. Bounded to one
  * model + one locale to keep real-provider runtime sane.
  */
-export const runBulkTranslation = async (
+/** Options accepted by {@link startBulkRun} (the run-start subset of {@link runBulkTranslation}). */
+export interface StartBulkRunOptions {
+  modelCode: string;
+  toLocale: string;
+  vendor: string;
+  /** Source locale code; default: the select's initial value (first locale). */
+  fromLocale?: string;
+  /**
+   * Narrow the model's field selection to exactly these api_keys (default:
+   * every translatable field). Relies on ModelFieldPicker's narrowing rule —
+   * picking a specific field while "All fields" is active replaces the
+   * selection with just that field; further picks add to it.
+   */
+  onlyFields?: string[];
+}
+
+/**
+ * Drives the bulk page up to and INCLUDING confirming the run, returning the
+ * progress-modal frame — WITHOUT waiting for completion. The caller decides
+ * whether to wait for Close (a run that completes) or to assert a mid-run pause
+ * (a systemic error). `runBulkTranslation` is the wait-for-Close wrapper.
+ */
+export const startBulkRun = async (
   page: Page,
-  opts: {
-    modelCode: string;
-    toLocale: string;
-    vendor: string;
-    /** Source locale code; default: the select's initial value (first locale). */
-    fromLocale?: string;
-    /** Progress-modal completion budget; default 5 min. The DeepL lane translates
-     * EVERY editor (incl. structured/rich text), so heavy models need longer. */
-    closeTimeout?: number;
-    /**
-     * Narrow the model's field selection to exactly these api_keys (default:
-     * every translatable field). Relies on ModelFieldPicker's narrowing rule —
-     * picking a specific field while "All fields" is active replaces the
-     * selection with just that field; further picks add to it.
-     */
-    onlyFields?: string[];
-  },
-): Promise<BulkReport> => {
+  opts: StartBulkRunOptions,
+): Promise<Frame> => {
   const { vendor } = opts;
   const frame = bulkFrame(page);
 
@@ -177,13 +183,27 @@ export const runBulkTranslation = async (
   const confirmFrame = await frameWithButton(page, /^Translate /);
   await confirmFrame.getByRole('button', { name: /^Translate / }).click();
 
-  // Progress modal (its own iframe): Close enables only once the run completes.
+  // Progress modal (its own iframe).
+  return frameWithButton(page, /^(Close|Please wait)/);
+};
+
+export const runBulkTranslation = async (
+  page: Page,
+  opts: StartBulkRunOptions & {
+    /** Progress-modal completion budget; default 5 min. The DeepL lane translates
+     * EVERY editor (incl. structured/rich text), so heavy models need longer. */
+    closeTimeout?: number;
+  },
+): Promise<BulkReport> => {
+  const { vendor } = opts;
+  const progressFrame = await startBulkRun(page, opts);
+
+  // Close enables only once the run completes.
   const closeTimeout = opts.closeTimeout ?? TIMEOUTS.five_min;
   note(
     vendor,
     `bulk run in progress — waiting for the progress modal to finish (up to ${Math.round(closeTimeout / 60_000)} min)…`,
   );
-  const progressFrame = await frameWithButton(page, /^(Close|Please wait)/);
   const close = progressFrame.getByRole('button', { name: 'Close', exact: true });
   await expect(close).toBeEnabled({ timeout: closeTimeout });
 

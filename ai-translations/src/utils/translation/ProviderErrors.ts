@@ -38,6 +38,31 @@ export type NormalizedProviderError = {
   retryAfterMs?: number;
 };
 
+/**
+ * An `Error` that carries the already-normalized provider error alongside the
+ * human-readable message. Throwing this (instead of a bare `Error`) across a
+ * translation boundary keeps the structured `code`/`source`/`retryAfterMs`
+ * intact: a second `normalizeProviderError` pass recovers them verbatim rather
+ * than re-deriving `'unknown'` from a friendly message that no longer contains
+ * any of the raw keywords. That distinction is load-bearing — only a preserved
+ * `auth`/`rate_limit`/`quota`/`network` code lets the bulk run PAUSE instead of
+ * silently failing every field.
+ */
+export class NormalizedError extends Error {
+  readonly normalized: NormalizedProviderError;
+
+  constructor(normalized: NormalizedProviderError, options?: ErrorOptions) {
+    super(formatErrorForUser(normalized), options);
+    this.name = 'NormalizedError';
+    this.normalized = normalized;
+  }
+}
+
+/** Type guard: an `Error` that already carries a {@link NormalizedProviderError}. */
+export function isNormalizedError(err: unknown): err is NormalizedError {
+  return err instanceof NormalizedError;
+}
+
 const SOURCE_LABEL_ENTRIES: Array<[ErrorSource, string]> = [
   ['provider', 'Translation provider error'],
   ['datocms', 'DatoCMS error'],
@@ -234,7 +259,9 @@ function formatDatoCMSCodeSuffix(codes: string[]): string {
 function describeValidatorCode(code: string | undefined): string {
   switch (code) {
     case 'VALIDATION_LENGTH':
-      return 'exceeds its allowed length';
+      // The CMA does not tell us which bound was violated (min/max/eq), so the
+      // message must not assert a direction it cannot know.
+      return 'has a length outside the allowed range';
     case 'VALIDATION_REQUIRED':
       return 'is required but the translation is empty';
     case 'VALIDATION_FORMAT':
@@ -746,6 +773,11 @@ export function normalizeProviderError(
   err: unknown,
   vendor: 'openai' | 'google' | 'anthropic' | 'deepl',
 ): NormalizedProviderError {
+  // Already normalized upstream (e.g. rethrown by translateArray): return the
+  // preserved shape verbatim so its code/source/retryAfterMs survive the second
+  // pass instead of collapsing to 'unknown'.
+  if (isNormalizedError(err)) return err.normalized;
+
   const normalized = deriveNormalizedError(err, vendor);
   const retryAfterMs = readRetryAfterMs(err);
   return retryAfterMs === undefined
@@ -794,8 +826,12 @@ export function handleTranslationError(
     source: normalized.source,
     hint: normalized.hint,
   });
-  // Include hint in thrown error for consistent user-facing messages
-  throw new Error(formatErrorForUser(normalized), { cause: error });
+  // Preserve the structured error across this boundary: a bare Error would drop
+  // the code so a downstream re-normalization sees only the friendly message and
+  // collapses 'auth'/'rate_limit'/etc. to 'unknown', disabling the run's pause.
+  throw isNormalizedError(error)
+    ? error
+    : new NormalizedError(normalized, { cause: error });
 }
 
 /**

@@ -16,6 +16,7 @@ export type QcSeverity = 'error' | 'warning';
  */
 export type QcCheckId =
   | 'length-mismatch'
+  | 'source-fallback'
   | 'placeholder-loss'
   | 'truncated'
   | 'html-structure'
@@ -23,6 +24,7 @@ export type QcCheckId =
   | 'no-op'
   | 'length-ratio'
   | 'length-validator'
+  | 'seo-truncated'
   | 'json-validity';
 
 /** A single completeness finding for one field/locale (optionally one segment). */

@@ -192,6 +192,8 @@ the `parseReport` regex in lockstep, or every bulk test silently reads zeros.
   dashboard navigation.
 - **Stage-3 seeding is not idempotent** — see the seed section. Re-running
   `3-records.mjs` duplicates records.
+- **DeepL fault injection must target the CORS proxy, not `*.deepl.com`.** DeepL is the only vendor that routes through the DatoCMS CORS proxy (`cors-proxy.datocms.com/?url=<encoded deepl url>`, see `DeepLProvider`), so its real request host is the proxy — the `deepl.com` string only appears URL-encoded in the query. `PROVIDER_HOST_PATTERNS.deepl` is therefore `**/cors-proxy.datocms.com/**`; a `*.deepl.com` pattern silently matches nothing, so every injected 429/401/400 misses, the run translates for real, and every pause/content-error assertion fails with the run "completed" instead of paused. If you add a proxied vendor, fault its proxy host. The chat vendors (OpenAI/Anthropic/Google) go direct to their own hosts.
+- **A dead provider key PAUSES the bulk run (auth is systemic), it does not fail every record.** The broken-key test asserts the pause panel + reason, then cancels — it uses `startBulkRun` (start without waiting for Close), because a paused run never enables Close. `runBulkTranslation` is the wait-for-Close wrapper; reach for `startBulkRun` whenever a run is expected to pause rather than complete.
 - **Provider scoping via blanked keys** relies on dotenv not overriding set env vars.
 - **Anthropic is a free-tier lane and can fail for non-code reasons** — e.g. an
   `HTTP 400 "credit balance is too low"`. The plugin correctly reports every record as

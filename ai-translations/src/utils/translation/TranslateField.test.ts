@@ -273,6 +273,91 @@ describe('TranslateField', () => {
     );
   });
 
+  it('skips a top-level field that is excluded (returns the source untouched)', async () => {
+    vi.mocked(translateDefaultFieldValue).mockResolvedValue('SHOULD NOT APPEAR');
+
+    const result = await translateFieldValue(
+      'Hello',
+      { ...pluginParams, apiKeysToBeExcludedFromThisPlugin: ['field-subtitle'] },
+      'it',
+      'en',
+      'single_line',
+      provider,
+      '',
+      'api-token',
+      'field-subtitle',
+      'main',
+    );
+
+    expect(result).toBe('Hello');
+    expect(translateDefaultFieldValue).not.toHaveBeenCalled();
+  });
+
+  it('skips a nested block field excluded by field id (as the config UI stores it)', async () => {
+    // The customer case: exclude a field that lives INSIDE a block. The engine
+    // recurses into the block and must honor the exclusion by the nested field's
+    // id — leaving its content untranslated and never calling the provider.
+    vi.mocked(translateArray).mockResolvedValue(['Clicca qui']);
+
+    const result = (await translateFieldValue(
+      [
+        {
+          id: 'wrapper-id',
+          blockModelId: 'block-model-1',
+          content: [
+            {
+              type: 'paragraph',
+              children: [{ type: 'span', value: 'Click here' }],
+            },
+          ],
+        },
+      ],
+      { ...pluginParams, apiKeysToBeExcludedFromThisPlugin: ['field-content'] },
+      'it',
+      'en',
+      'rich_text',
+      provider,
+      '',
+      'api-token',
+      'field-rich',
+      'main',
+    )) as Array<{ content: Array<{ children: Array<{ value: string }> }> }>;
+
+    expect(translateArray).not.toHaveBeenCalled();
+    expect(result[0].content[0].children[0].value).toBe('Click here');
+  });
+
+  it('skips a nested block field excluded by api_key', async () => {
+    vi.mocked(translateArray).mockResolvedValue(['Clicca qui']);
+
+    const result = (await translateFieldValue(
+      [
+        {
+          id: 'wrapper-id',
+          blockModelId: 'block-model-1',
+          content: [
+            {
+              type: 'paragraph',
+              children: [{ type: 'span', value: 'Click here' }],
+            },
+          ],
+        },
+      ],
+      { ...pluginParams, apiKeysToBeExcludedFromThisPlugin: ['content'] },
+      'it',
+      'en',
+      'rich_text',
+      provider,
+      '',
+      'api-token',
+      'field-rich',
+      'main',
+    )) as Array<{ content: Array<{ children: Array<{ value: string }> }> }>;
+
+    expect(translateArray).not.toHaveBeenCalled();
+    expect(result[0].content[0].children[0].value).toBe('Click here');
+  });
+
   it('logs block payloads and per-field diagnostics when debugging is enabled', async () => {
     const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
     vi.mocked(translateArray).mockResolvedValue(['Clicca qui']);

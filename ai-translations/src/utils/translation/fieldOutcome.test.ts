@@ -8,8 +8,8 @@ const failed: FieldOutcome = {
 };
 
 describe('shouldApplyLocaleSyncFallback', () => {
-  it('never fills a field whose provider call failed', () =>
-    expect(shouldApplyLocaleSyncFallback(failed)).toBe(false));
+  it('treats a failed field as a fallback candidate (a new locale must stay consistent — the caller preserves any existing value)', () =>
+    expect(shouldApplyLocaleSyncFallback(failed)).toBe(true));
 
   it('fills an untranslatable field', () =>
     expect(shouldApplyLocaleSyncFallback({ status: 'untranslatable' })).toBe(true));

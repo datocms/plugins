@@ -1,8 +1,17 @@
+/*
+ * Styled entirely with the semantic --color--* Canvas tokens (injected by the
+ * DatoCMS dashboard) so the report tracks the user's light/dark theme, per
+ * ai-translations/AGENTS.md. No legacy --base-body-color/--accent-color tokens
+ * and no hardcoded hex fallbacks — those pinned the panel to a light palette and
+ * rendered white-on-dark in the dashboard's dark theme.
+ */
+
 .report {
-  margin-top: var(--spacing-l, 16px);
-  border: 1px solid var(--border-color, #e0e0e0);
+  margin-top: var(--spacing-l);
+  border: 1px solid var(--color--border);
   border-radius: 8px;
-  background: var(--light-color, #fff);
+  background: var(--color--surface);
+  color: var(--color--ink);
   overflow: hidden;
 }
 
@@ -10,39 +19,40 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: var(--spacing-m, 12px);
+  gap: var(--spacing-m);
   flex-wrap: wrap;
-  padding: var(--spacing-m, 12px) var(--spacing-l, 16px);
-  border-bottom: 1px solid var(--border-color, #e0e0e0);
+  padding: var(--spacing-m) var(--spacing-l);
+  border-bottom: 1px solid var(--color--border);
 }
 
 .title {
-  font-weight: 600;
-  font-size: var(--font-size-m, 14px);
-  color: var(--base-body-color, inherit);
+  font-weight: var(--font-weight-bold);
+  font-size: var(--font-size-m);
+  color: var(--color--ink);
 }
 
 .actions {
   display: flex;
-  gap: var(--spacing-s, 8px);
+  gap: var(--spacing-s);
   flex-wrap: wrap;
 }
 
 .btn,
 .btnGhost {
   font: inherit;
-  font-size: var(--font-size-s, 13px);
+  font-size: var(--font-size-s);
   padding: 4px 10px;
   border-radius: 6px;
   cursor: pointer;
-  border: 1px solid var(--border-color, #d0d0d0);
-  background: var(--lighter-color, #f6f6f6);
-  color: var(--base-body-color, inherit);
+  border: 1px solid var(--color--border);
+  background: var(--color--surface-muted);
+  color: var(--color--ink);
 }
 
 .btn:hover,
 .btnGhost:hover {
-  background: var(--light-color, #ececec);
+  background: var(--color--surface-raised);
+  border-color: var(--color--border-hover);
 }
 
 .btnGhost {
@@ -57,22 +67,23 @@
 .table {
   width: 100%;
   border-collapse: collapse;
-  font-size: var(--font-size-s, 13px);
+  font-size: var(--font-size-s);
+  color: var(--color--ink);
 }
 
 .table th,
 .table td {
   text-align: left;
   padding: 6px 10px;
-  border-bottom: 1px solid var(--border-color, #eee);
+  border-bottom: 1px solid var(--color--border);
   vertical-align: top;
 }
 
 .table th {
   position: sticky;
   top: 0;
-  background: var(--lighter-color, #fafafa);
-  font-weight: 600;
+  background: var(--color--surface-muted);
+  font-weight: var(--font-weight-bold);
   white-space: nowrap;
 }
 
@@ -87,8 +98,8 @@
 }
 
 .recordLink {
-  color: var(--accent-color, #1a73e8);
-  font-weight: 600;
+  color: var(--color--ink-primary);
+  font-weight: var(--font-weight-bold);
   text-decoration: none;
 }
 
@@ -97,20 +108,20 @@
 }
 
 .recordLabel {
-  font-weight: 600;
+  font-weight: var(--font-weight-bold);
 }
 
 .recordId {
-  font-size: var(--font-size-xs, 11px);
-  color: var(--light-body-color, #888);
+  font-size: var(--font-size-xs);
+  color: var(--color--ink-subtle);
 }
 
 .rowError td:nth-child(4) {
-  color: var(--alert-color, #c0392b);
-  font-weight: 600;
+  color: var(--color--ink-danger);
+  font-weight: var(--font-weight-bold);
 }
 
 .rowWarning td:nth-child(4) {
-  color: var(--warning-color, #b7791f);
-  font-weight: 600;
+  color: var(--color--ink-warning);
+  font-weight: var(--font-weight-bold);
 }

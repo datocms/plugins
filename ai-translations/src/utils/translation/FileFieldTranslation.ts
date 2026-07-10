@@ -61,6 +61,12 @@ async function fetchUploadDefaultMetadata(
         uploadId,
         error,
       });
+      // Evict on failure so a transient 429/network error doesn't disable
+      // alt/title enrichment for this upload for the rest of the modal session.
+      // A *successful* lookup that finds no metadata stays cached (resolves
+      // undefined); only a genuine error clears the entry so a later record can
+      // retry — mirroring blockFieldsCache's eviction-on-error.
+      uploadDefaultMetadataCache.delete(cacheKey);
       return undefined;
     }
   })();

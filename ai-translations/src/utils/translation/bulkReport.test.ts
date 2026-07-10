@@ -225,6 +225,54 @@ describe('buildBulkReportRows', () => {
     expect(rows.map((r) => r.checkId)).toEqual(['no-op', 'warning']);
   });
 
+  it('reports a free-text warning on an errored record with error severity', () => {
+    // A dead locale fails the record but its only report signal is a free-text
+    // skip warning (provider failures emit no QcFlag). It must read as an error,
+    // not a warning, in both the styled table and the exported Severity column.
+    const progress: ProgressUpdate[] = [
+      {
+        recordIndex: 0,
+        recordId: '20',
+        status: 'error',
+        message: 'Translated "X" (#20) with failures — fr: 0/1 fields translated.',
+        warnings: ['Field "title" to French [fr] was skipped: provider failed.'],
+      },
+    ];
+    const rows = buildBulkReportRows(progress);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].severity).toBe('error');
+    expect(rows[0].reason).toContain('was skipped');
+  });
+
+  it('does not double-count a QC flag mirrored into the warnings list', () => {
+    // recordQcFlag pushes each QC flag into BOTH qcFlags and warnings (for the
+    // live tooltip). The report must render it once (as the structured qcFlag
+    // row), not twice, so the "N issues" header is not inflated.
+    const progress: ProgressUpdate[] = [
+      {
+        recordIndex: 0,
+        recordId: '21',
+        status: 'error',
+        message: 'Translated "Y" (#21) but 1 value may be incomplete.',
+        qcFlags: [
+          {
+            checkId: 'truncated',
+            severity: 'error',
+            fieldPath: 'body',
+            locale: 'fr',
+            message: 'Provider cut the response off.',
+          },
+        ],
+        warnings: [
+          'Translation issue — "body" → French [fr]: Provider cut the response off.',
+        ],
+      },
+    ];
+    const rows = buildBulkReportRows(progress);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].checkId).toBe('truncated');
+  });
+
   it('populates recordTitle and editUrl from the label and the URL builder', () => {
     const progress: ProgressUpdate[] = [
       {

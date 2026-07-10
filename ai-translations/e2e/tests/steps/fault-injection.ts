@@ -11,7 +11,13 @@ export const PROVIDER_HOST_PATTERNS: Record<Vendor, string> = {
   openai: '**/api.openai.com/**',
   google: '**/generativelanguage.googleapis.com/**',
   anthropic: '**/api.anthropic.com/**',
-  deepl: '**/*.deepl.com/**',
+  // DeepL is the ONLY vendor that goes through the DatoCMS CORS proxy
+  // (`cors-proxy.datocms.com/?url=<encoded deepl url>`, see DeepLProvider), so
+  // its real request host is the proxy — never `*.deepl.com`. Matching
+  // `*.deepl.com` (the encoded target only appears in the query string, after
+  // an encoded `%2F`, so the glob never matched) silently disabled every DeepL
+  // fault: the run translated for real and the pause/content-error tests failed.
+  deepl: '**/cors-proxy.datocms.com/**',
 };
 
 /** Glob pattern for the DatoCMS Content Management API host. */
@@ -113,8 +119,14 @@ export const injectRateLimit = async (
     const headers: Record<string, string> = {
       'content-type': 'application/json',
     };
-    if (retryAfterSeconds !== undefined)
+    if (retryAfterSeconds !== undefined) {
       headers['retry-after'] = String(retryAfterSeconds);
+      // The provider host is cross-origin (the CORS proxy), so the browser only
+      // hands `retry-after` to JS when the response opts it in — without this the
+      // adapter can't read the hint and falls back to blind backoff, and the
+      // "Retry-After is honored" timing assertion fails.
+      headers['access-control-expose-headers'] = 'retry-after';
+    }
 
     await route.fulfill({
       status: 429,

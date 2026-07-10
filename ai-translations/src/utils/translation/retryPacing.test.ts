@@ -7,7 +7,14 @@ describe('computeRetryDelay', () => {
   it('prefers an explicit Retry-After hint', () =>
     expect(computeRetryDelay(5_000, 1, noJitter)).toBe(5_000));
 
-  it('honors Retry-After: 0', () => expect(computeRetryDelay(0, 3, noJitter)).toBe(0));
+  it('treats Retry-After: 0 as no usable hint and backs off instead', () => {
+    // A literal `Retry-After: 0`, or a past HTTP-date clamped to 0, is not an
+    // actionable wait: retrying instantly would hammer the still-limited
+    // endpoint. Fall back to exponential backoff for the attempt.
+    const backoff = computeRetryDelay(undefined, 3, noJitter);
+    expect(computeRetryDelay(0, 3, noJitter)).toBe(backoff);
+    expect(computeRetryDelay(0, 3, noJitter)).toBeGreaterThan(0);
+  });
 
   it('falls back to exponential backoff when no hint exists', () => {
     const first = computeRetryDelay(undefined, 1, noJitter);

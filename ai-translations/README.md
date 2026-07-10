@@ -106,7 +106,7 @@ Bulk translation is built to fail loudly rather than quietly corrupt your conten
 
 - **Rate limits pause the run.** When a provider returns a rate-limit error, the run retries automatically up to three times with exponential backoff (honoring the provider's `Retry-After` hint when it is readable). The progress modal shows a countdown — _"Retrying automatically in Ns…"_ — during the wait. If all three retries are exhausted, the run pauses and waits for you to click **Resume**.
 - **Auth and quota errors pause immediately.** These need a human to fix an API key or billing, so there is no auto-retry or countdown — the run pauses at once and enables **Resume** so you can retry after resolving the problem.
-- **A failed field is never overwritten with an empty value.** If a field's translation fails, that field is left out of the write entirely and the target locale keeps whatever it already had. The plugin distinguishes "we couldn't translate this" (a failure — never written) from "this field has nothing to translate" (which may still receive a locale-sync fallback).
+- **A failed field never corrupts existing content, and one field's failure doesn't sink the whole record.** If a field's translation fails and that locale already had a value, the existing value is preserved — never overwritten with an empty one. When translating into a brand-new locale, the failed field is left empty (and flagged for review) so the record's other fields still translate and save, instead of the whole record being rejected. The plugin distinguishes "we couldn't translate this" (a failure) from "this field has nothing to translate".
 - **A record with any failed field is reported as failed**, and its status names the affected locale (for example, _French [fr]: 1/3 fields translated_), so a healthy locale can never mask a wholly-dead sibling.
 - **Export is available only once the run finishes or is stopped.** It is deliberately disabled while the run is active or paused, because a mid-run CSV would look like a finished report while omitting everything after the pause point.
 - **Cancelling does not roll back records already written.** Stopping the run leaves the records translated so far in place; they will be re-translated on the next bulk run.
@@ -151,7 +151,7 @@ In the plugin's "Exclusion Rules" section you can suppress translation actions a
 
 - **Models**: Choose models to exclude from translations
 - **Roles**: Choose roles to hide all plugins functions from
-- **Fields**: Choose individual fields that should be excluded, even when their model is included
+- **Fields**: Choose individual fields that should be excluded, even when their model is included — including fields **inside blocks** (listed as "_field_ (_Block_ block)"), so you can leave one nested field untranslated while the rest of the block is translated. The field list is populated for every AI vendor.
 
 ## Translation Quality Checks
 
@@ -159,15 +159,16 @@ The plugin verifies each AI translation for completeness and surfaces anything t
 
 It checks for:
 
-- **Dropped or truncated content** — a response with the wrong number of segments, a model that hit its output-token limit, or a multi-block HTML field the model split apart. These are repaired where possible (e.g. an over-split HTML field is rejoined) and flagged.
+- **Dropped or truncated content** — a response with the wrong number of segments, an individual segment that came back untranslated (left as its source text), a model that hit its output-token limit, or a multi-block HTML field the model split apart. These are repaired where possible (e.g. an over-split HTML field is rejoined, a missing slot keeps the source) and flagged.
 - **Lost placeholders** — `{{var}}`, `{var}`, `%s`, `:slug`, and ICU tokens that disappear in translation.
 - **Structural drift** — HTML or Markdown whose block structure (paragraphs, headings, lists, links) no longer matches the source.
 - **Likely non-translations** — output identical to the source, or far shorter than expected.
+- **Over-long values** — a value past a field's `length` validator (which DatoCMS would reject on save), and a translated SEO title/description past the recommended length that the plugin trims to fit — flagged so the cut is never silent.
 
 Where you see the results:
 
 - **Single field / whole record** (sidebar and field dropdown): after translating, a short summary appears — a blocking alert when content may be incomplete, a notice for softer warnings — so you can review before saving.
-- **Bulk**: a record with a content-corrupting issue (truncation, a lost placeholder, a wrong-length or structurally-drifted value) is marked as a **failure**, while a record with only softer suspicions (a likely non-translation, an unusually short value) — or one whose only change was copying linked-record references into the new locale (see [Linked records and warnings](#linked-records-and-warnings)) — is marked **"completed with warnings"**, both distinct from clean successes, in the progress modal. The counters split into successful / with warnings / failed, and every record (with its status and reason) is available in the after-run review list and the **Export CSV** report.
+- **Bulk**: a record with a content-corrupting issue (a truncated response, a lost placeholder, a structurally-drifted value, or a value that overflows a field's length limit) is marked as a **failure**, while a record with only softer suspicions (a wrong-length response, a segment that came back untranslated, a likely non-translation, an unusually short value, or a trimmed SEO title) — or one whose only change was copying linked-record references into the new locale (see [Linked records and warnings](#linked-records-and-warnings)) — is marked **"completed with warnings"**, both distinct from clean successes, in the progress modal. The counters split into successful / with warnings / failed, and every record (with its status and reason) is available in the after-run review list and the **Export CSV** report.
 
 The checks are advisory and never block your work; they highlight fields worth a human glance.
 

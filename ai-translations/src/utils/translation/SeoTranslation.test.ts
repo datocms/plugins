@@ -6,6 +6,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import { withExpectedError } from '../testing/withExpectedError';
+import type { QcFlag } from './qc/types';
 import { type SeoObject, translateSeoFieldValue } from './SeoTranslation';
 import type { TranslationProvider } from './types';
 
@@ -227,6 +228,70 @@ describe('SeoTranslation', () => {
         // 60 - 3 (ellipsis offset) = 57 chars + "..."
         expect(result.title?.length).toBeLessThanOrEqual(60);
         expect(result.title?.endsWith('...')).toBe(true);
+      });
+
+      it('emits a QC warning when the translated title is truncated', async () => {
+        // Truncation is a real modification the editor should know about — the
+        // "repairs are flagged, never silent" invariant. It stays warning-tier
+        // (an SEO recommendation, not a hard CMA validator).
+        const longTitle = 'A'.repeat(70);
+        vi.mocked(translateArray).mockResolvedValue([longTitle, 'Description']);
+        const flags: QcFlag[] = [];
+
+        const result = await translateSeoFieldValue(
+          { title: 'Original', description: 'Description' },
+          mockPluginParams,
+          'de',
+          'en',
+          mockProvider,
+          '',
+          undefined,
+          '',
+          (flag) => flags.push(flag),
+        );
+
+        expect(result.title?.endsWith('...')).toBe(true);
+        const flag = flags.find((f) => f.checkId === 'seo-truncated');
+        expect(flag?.severity).toBe('warning');
+      });
+
+      it('emits a QC warning when the translated description is truncated', async () => {
+        const longDesc = 'B'.repeat(180);
+        vi.mocked(translateArray).mockResolvedValue(['Title', longDesc]);
+        const flags: QcFlag[] = [];
+
+        await translateSeoFieldValue(
+          { title: 'Title', description: 'Description' },
+          mockPluginParams,
+          'de',
+          'en',
+          mockProvider,
+          '',
+          undefined,
+          '',
+          (flag) => flags.push(flag),
+        );
+
+        expect(flags.some((f) => f.checkId === 'seo-truncated')).toBe(true);
+      });
+
+      it('does not emit a truncation warning when nothing is truncated', async () => {
+        vi.mocked(translateArray).mockResolvedValue(['Short', 'Also short']);
+        const flags: QcFlag[] = [];
+
+        await translateSeoFieldValue(
+          { title: 'Title', description: 'Desc' },
+          mockPluginParams,
+          'de',
+          'en',
+          mockProvider,
+          '',
+          undefined,
+          '',
+          (flag) => flags.push(flag),
+        );
+
+        expect(flags.some((f) => f.checkId === 'seo-truncated')).toBe(false);
       });
 
       it('should not truncate title under 60 characters', async () => {

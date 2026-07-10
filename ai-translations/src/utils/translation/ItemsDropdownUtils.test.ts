@@ -4,6 +4,7 @@ import { withExpectedError } from '../testing/withExpectedError';
 import {
   buildTranslatedUpdatePayload,
   type DatoCMSRecordFromAPI,
+  deriveRecordLabel,
   type ProgressUpdate,
   shouldTranslateField,
   stripBlockIds,
@@ -58,6 +59,36 @@ describe('ItemsDropdownUtils', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  describe('deriveRecordLabel', () => {
+    it('truncates by code points so an emoji is never split into a lone surrogate', () => {
+      // The emoji straddles UTF-16 index 76/77, so a raw slice(0, 77) keeps the
+      // high surrogate and drops its pair — a lone surrogate. 83 code points > 80
+      // forces truncation.
+      const title = `${'a'.repeat(76)}😀${'b'.repeat(6)}`;
+      const labelRecord: DatoCMSRecordFromAPI = {
+        id: 'r1',
+        item_type: { id: 't1' },
+        title: { en: title },
+      };
+
+      const label = deriveRecordLabel(labelRecord, 'en');
+
+      expect(label.endsWith('…')).toBe(true);
+      // The whole emoji survives, and there is no unpaired surrogate.
+      expect(label).toContain('😀');
+      expect(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(label)).toBe(false);
+    });
+
+    it('leaves a short title untouched', () => {
+      const labelRecord: DatoCMSRecordFromAPI = {
+        id: 'r2',
+        item_type: { id: 't1' },
+        title: { en: 'Short title' },
+      };
+      expect(deriveRecordLabel(labelRecord, 'en')).toBe('Short title');
+    });
   });
 
   describe('shouldTranslateField', () => {
@@ -222,10 +253,19 @@ describe('ItemsDropdownUtils', () => {
         de: 'Hallo',
         it: 'Ciao',
       });
-      // Core corruption fix: a field whose translation FAILED is left out of
-      // the payload entirely, so its target locale keeps whatever it had — it
-      // is never overwritten with null. A failed translation is not an empty one.
-      expect(result.payload).not.toHaveProperty('slug');
+      // The record has no `it` yet, so `it` is a NEW locale. DatoCMS's Locale
+      // Sync Rule requires EVERY localized field to carry a newly-added locale
+      // or the whole items.update is rejected (VALIDATION_INVALID_LOCALES),
+      // losing the successfully-translated siblings too. So a FAILED field is
+      // filled with the locale-sync fallback (null for an optional field) — there
+      // is no existing `it` value to overwrite, so this is NOT the null-overwrite
+      // bug (an existing value is still preserved — see the next test).
+      expect(result.payload.slug).toEqual({
+        en: 'hello-world',
+        de: 'hallo-welt',
+        it: null,
+      });
+      // It is still recorded as a failure (reported, and it fails the record).
       expect(result.failedFields).toEqual([
         {
           field: 'slug',
@@ -235,6 +275,38 @@ describe('ItemsDropdownUtils', () => {
       expect(result.warnings).toContain(
         'Field "slug" to Italian [it] was skipped: Plugin error: Translated slug is empty after normalization.',
       );
+    });
+
+    it('preserves an EXISTING target-locale value when a field fails (never overwrites with null)', async () => {
+      // The real null-guard: the target locale ALREADY has a value, and the
+      // re-translation fails. That existing value must be kept, never nulled.
+      vi.mocked(translateFieldValue).mockRejectedValue(
+        new Error('provider exploded'),
+      );
+
+      const recordWithItSlug: DatoCMSRecordFromAPI = {
+        id: 'record-2',
+        item_type: { id: 'item-type-1' },
+        slug: { en: 'hello-world', it: 'ciao-mondo-esistente' },
+      };
+
+      const result = await withExpectedError('field failure with existing it', () =>
+        buildTranslatedUpdatePayload(
+          recordWithItSlug,
+          'en',
+          'it',
+          { slug: { editor: 'slug', id: 'field-slug', isLocalized: true } },
+          provider,
+          { ...pluginParams, translationFields: ['slug'] },
+          'access-token',
+          'main',
+        ),
+      );
+
+      // slug failed; its existing it value must be untouched (not in payload,
+      // and definitely not overwritten with null).
+      expect(result.payload).not.toHaveProperty('slug');
+      expect(result.failedFields.map((f) => f.field)).toEqual(['slug']);
     });
 
     it('counts an error-severity QC flag while still translating the field', async () => {
@@ -292,6 +364,39 @@ describe('ItemsDropdownUtils', () => {
 
       expect(result.errorCount).toBe(0);
       expect(result.warnings.length).toBeGreaterThan(0);
+    });
+
+    it('threads a checkCancellation that throws once the abort signal fires', async () => {
+      // The bulk flow's mid-field (block-level) cancellation seam:
+      // runWithConcurrency stops launching further block tasks when
+      // streamCallbacks.checkCancellation throws, and that predicate must be
+      // derived from the run's abortSignal (previously it was dropped entirely).
+      const abort = new AbortController();
+      let captured: (() => void) | undefined;
+      vi.mocked(translateFieldValue).mockImplementation(async (...args) => {
+        const streamCallbacks = args[10] as
+          | { checkCancellation?: () => void }
+          | undefined;
+        captured = streamCallbacks?.checkCancellation;
+        return 'Ciao';
+      });
+
+      await buildTranslatedUpdatePayload(
+        record,
+        'en',
+        'it',
+        fieldTypeDictionary,
+        provider,
+        { ...pluginParams, translationFields: ['single_line'] },
+        'access-token',
+        'main',
+        { abortSignal: abort.signal },
+      );
+
+      expect(captured).toBeTypeOf('function');
+      expect(() => captured?.()).not.toThrow();
+      abort.abort();
+      expect(() => captured?.()).toThrow();
     });
 
     it('flags an error when a translated value overflows the field length validator', async () => {
@@ -883,6 +988,45 @@ describe('ItemsDropdownUtils', () => {
       expect(finalUpdate?.translatedFieldIds).toContain('field-title');
       expect(finalUpdate?.copiedLinkFieldApiKeys).toContain('related');
       expect(finalUpdate?.copiedLinkFieldIds).toContain('field-related');
+    });
+
+    it('does not save a record cancelled after its fields translate (pre-save gate)', async () => {
+      // Mid-field cancellation can leave a partial field marked `translated`;
+      // without a gate check right before the write, that partial value would be
+      // persisted if the cancel lands on the last field of the last locale.
+      let fieldTranslated = false;
+      vi.mocked(translateFieldValue).mockImplementation(async () => {
+        fieldTranslated = true;
+        return 'Ciao';
+      });
+      const update = vi.fn().mockResolvedValue({ meta: {} });
+      // biome-ignore lint/suspicious/noExplicitAny: minimal CMA client stub
+      const client = { items: { update } } as any;
+      const updates: ProgressUpdate[] = [];
+      // 'continue' until the field has translated, then 'cancelled' — so only the
+      // gate consulted immediately before the CMA write observes the cancel.
+      const gate = vi.fn(
+        async (): Promise<'continue' | 'cancelled'> =>
+          fieldTranslated ? 'cancelled' : 'continue',
+      );
+
+      await translateAndUpdateRecords(
+        [{ id: 'r1', item_type: { id: 'm1' }, title: { en: 'Hello' } }],
+        client,
+        provider,
+        'en',
+        ['it'],
+        vi.fn().mockResolvedValue({
+          title: { editor: 'single_line', id: 'field-title', isLocalized: true },
+        }),
+        pluginParams,
+        { alert: vi.fn(), environment: 'main' },
+        'access-token',
+        { onProgress: (u) => updates.push(u), gate },
+      );
+
+      expect(update).not.toHaveBeenCalled();
+      expect(updates.at(-1)?.statusText).toBe('Cancelled');
     });
 
     it('paces the run through a run-scoped adaptive pacer that widens after a rate limit', async () => {

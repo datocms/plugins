@@ -185,6 +185,52 @@ describe('FileFieldTranslation', () => {
     });
   });
 
+  it('retries the upload lookup after a transient failure (does not cache the error)', async () => {
+    vi.mocked(translateArray).mockImplementation(
+      async (_provider, _params, values) =>
+        (values as string[]).map((v) => `${v} IT`),
+    );
+
+    // A distinct upload id so the module-level cache can't collide with the
+    // sibling enrichment test.
+    const fileValue = { upload_id: 'upl_evict', metadata: { custom: 'Meta EN' } };
+
+    // First lookup fails transiently: enrichment is skipped and the failure
+    // must NOT be cached.
+    mockUploadsFind.mockRejectedValueOnce(new Error('429 Too Many Requests'));
+    await translateFileFieldValue(
+      fileValue,
+      mockPluginParams,
+      'it',
+      'en',
+      mockProvider,
+      'token-123',
+      'main',
+    );
+    expect(mockUploadsFind).toHaveBeenCalledTimes(1);
+
+    // The metadata becomes retrievable moments later; a subsequent record must
+    // refetch it rather than read a cached `undefined` from the failed attempt.
+    mockUploadsFind.mockResolvedValueOnce({
+      default_field_metadata: {
+        en: { alt: 'Alt default', title: 'Title default' },
+      },
+    });
+    const result = (await translateFileFieldValue(
+      fileValue,
+      mockPluginParams,
+      'it',
+      'en',
+      mockProvider,
+      'token-123',
+      'main',
+    )) as Record<string, unknown>;
+
+    expect(mockUploadsFind).toHaveBeenCalledTimes(2);
+    expect(result.alt).toBe('Alt default IT');
+    expect(result.title).toBe('Title default IT');
+  });
+
   it('falls back to upload default metadata when alt/title are missing', async () => {
     vi.mocked(translateArray).mockResolvedValue([
       'Alt IT',

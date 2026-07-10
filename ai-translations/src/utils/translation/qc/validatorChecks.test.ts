@@ -67,7 +67,7 @@ describe('checkFieldLength', () => {
     ).toBeNull();
   });
 
-  it('treats an `eq` length validator as an upper bound', () => {
+  it('flags an `eq` length validator when the value is longer than eq', () => {
     const flag = checkFieldLength({
       value: 'toolong',
       validators: { length: { eq: 3 } } as unknown as FieldValidators,
@@ -75,11 +75,66 @@ describe('checkFieldLength', () => {
     expect(flag?.checkId).toBe('length-validator');
   });
 
-  it('does not flag when only a `min` is set (under-length is not this check)', () => {
+  it('flags an `eq` length validator when the value is shorter than eq', () => {
+    // `eq` is an exact constraint: too-short is a 422 just like too-long.
+    const flag = checkFieldLength({
+      value: 'ab',
+      validators: { length: { eq: 3 } } as unknown as FieldValidators,
+    });
+    expect(flag?.checkId).toBe('length-validator');
+  });
+
+  it('returns null when the value is exactly `eq` characters', () => {
     expect(
       checkFieldLength({
-        value: 'a',
+        value: 'abc',
+        validators: { length: { eq: 3 } } as unknown as FieldValidators,
+      }),
+    ).toBeNull();
+  });
+
+  it('flags a value under the `min` length (DatoCMS will 422 it)', () => {
+    // A translation shorter than length.min is rejected on save exactly like an
+    // over-max one; the proactive check must name it before the opaque 422.
+    const flag = checkFieldLength({
+      value: 'a',
+      validators: { length: { min: 10 } } as unknown as FieldValidators,
+      fieldPath: 'summary',
+      locale: 'fr',
+    });
+    expect(flag).toMatchObject({
+      checkId: 'length-validator',
+      severity: 'error',
+      fieldPath: 'summary',
+      locale: 'fr',
+    });
+    expect(flag?.message).toContain('1');
+    expect(flag?.message).toContain('10');
+  });
+
+  it('returns null at exactly the `min` length (boundary)', () => {
+    expect(
+      checkFieldLength({
+        value: '1234567890',
         validators: { length: { min: 10 } } as unknown as FieldValidators,
+      }),
+    ).toBeNull();
+  });
+
+  it('does not flag an empty value against min/eq (blank fields are exempt)', () => {
+    // DatoCMS applies `length` only to non-blank values, so an empty translation
+    // of an optional field must not be reported as a length failure — that would
+    // be a false positive the max-only check never produced.
+    expect(
+      checkFieldLength({
+        value: '',
+        validators: { length: { min: 10 } } as unknown as FieldValidators,
+      }),
+    ).toBeNull();
+    expect(
+      checkFieldLength({
+        value: '',
+        validators: { length: { eq: 5 } } as unknown as FieldValidators,
       }),
     ).toBeNull();
   });

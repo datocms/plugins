@@ -10,7 +10,10 @@ describe('checkLengthMismatch', () => {
     expect(checkLengthMismatch({ expected: 3, received: 3 })).toBeNull();
   });
 
-  it('flags an error when the model returned a different element count', () => {
+  it('flags a warning when the model returned a different element count', () => {
+    // A count mismatch is a suspicion the positionally-repaired output may be
+    // incomplete — not a certain corruption — so it is warning-tier and does
+    // not, on its own, fail the record in the bulk flow.
     const flag = checkLengthMismatch({
       expected: 1,
       received: 2,
@@ -19,7 +22,7 @@ describe('checkLengthMismatch', () => {
     });
     expect(flag).toMatchObject({
       checkId: 'length-mismatch',
-      severity: 'error',
+      severity: 'warning',
       fieldPath: 'body',
       locale: 'nl',
     });

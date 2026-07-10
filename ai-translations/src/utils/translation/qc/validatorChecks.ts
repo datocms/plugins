@@ -1,12 +1,13 @@
 /**
  * Schema-aware QC check: compares a translated value against the DatoCMS field
  * validators that the CMA will enforce on save. Unlike the heuristic checks,
- * this is a hard, deterministic constraint — a value over `length.max` WILL be
- * rejected with a 422 — so it is `error`-tier.
+ * this is a hard, deterministic constraint — a value that violates `length`
+ * (over `max`, under `min`, or not exactly `eq`) WILL be rejected with a 422 —
+ * so it is `error`-tier.
  *
  * Surfacing it as a QC flag (rather than silently truncating, which the card
- * explicitly warns against) lets the user see exactly which field/locale grew
- * too long and fix it, instead of the translation "silently failing and
+ * explicitly warns against) lets the user see exactly which field/locale is out
+ * of bounds and fix it, instead of the translation "silently failing and
  * truncating the record".
  */
 
@@ -16,23 +17,26 @@ import type { QcFlag } from './types';
 /** Narrowed shape of the string-length validator we care about. */
 type LengthValidator = { min?: number; eq?: number; max?: number };
 
-/** Extracts the effective character ceiling (`max`, else `eq`) if any. */
-function lengthCeiling(validators: FieldValidators | undefined): number | null {
+/** Extracts the string-length validator object, if any. */
+function lengthValidator(
+  validators: FieldValidators | undefined,
+): LengthValidator | null {
   if (!validators || typeof validators !== 'object') return null;
   const length = (validators as Record<string, unknown>).length as
     | LengthValidator
     | undefined;
   if (!length || typeof length !== 'object') return null;
-  if (typeof length.max === 'number') return length.max;
-  if (typeof length.eq === 'number') return length.eq;
-  return null;
+  return length;
 }
 
 /**
- * Flags when a translated string is longer than the field's `length.max`/`eq`
- * validator allows. DatoCMS counts Unicode characters, so length is measured in
- * code points (`[...str].length`), not UTF-16 units. Non-string values and
- * fields without a length ceiling are ignored.
+ * Flags when a translated string violates the field's `length` validator in any
+ * direction the CMA enforces: over `max`, under `min`, or not exactly `eq`. A
+ * `min`-only field whose translation comes back too short 422s on save just as
+ * surely as an over-max one, so all three bounds are checked. DatoCMS counts
+ * Unicode characters, so length is measured in code points (`[...str].length`),
+ * not UTF-16 units. Non-string values and fields without a length validator are
+ * ignored.
  */
 export function checkFieldLength(args: {
   value: unknown;
@@ -42,18 +46,37 @@ export function checkFieldLength(args: {
 }): QcFlag | null {
   const { value, validators, fieldPath, locale } = args;
   if (typeof value !== 'string') return null;
+  // DatoCMS applies `length` only to non-blank values (an optional field left
+  // empty is valid regardless of min/eq); flagging a blank value would be a
+  // false positive. Emptiness for a *required* field is a separate concern.
+  if (value === '') return null;
 
-  const ceiling = lengthCeiling(validators);
-  if (ceiling === null) return null;
+  const length = lengthValidator(validators);
+  if (length === null) return null;
 
-  const length = [...value].length;
-  if (length <= ceiling) return null;
-
-  return {
+  const count = [...value].length;
+  const flag = (message: string): QcFlag => ({
     checkId: 'length-validator',
     severity: 'error',
     fieldPath,
     locale,
-    message: `Translation is ${length} characters but the field allows at most ${ceiling}; DatoCMS will reject the save until it is shortened.`,
-  };
+    message,
+  });
+
+  if (typeof length.eq === 'number' && count !== length.eq) {
+    return flag(
+      `Translation is ${count} characters but the field requires exactly ${length.eq}; DatoCMS will reject the save until it matches.`,
+    );
+  }
+  if (typeof length.max === 'number' && count > length.max) {
+    return flag(
+      `Translation is ${count} characters but the field allows at most ${length.max}; DatoCMS will reject the save until it is shortened.`,
+    );
+  }
+  if (typeof length.min === 'number' && count < length.min) {
+    return flag(
+      `Translation is ${count} characters but the field requires at least ${length.min}; DatoCMS will reject the save until it is lengthened.`,
+    );
+  }
+  return null;
 }

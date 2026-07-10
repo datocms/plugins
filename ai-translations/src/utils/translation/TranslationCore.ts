@@ -197,6 +197,11 @@ const JITTER_FRACTION = 0.25;
  * exponential fallback must be correct on its own. Jitter is added in both
  * cases so that several waiters released from one limit do not re-collide.
  *
+ * A parsed hint of `0` — a literal `Retry-After: 0`, or a past HTTP-date that
+ * `parseRetryAfter` clamped to `0` — is deliberately NOT honored: retrying with
+ * no delay would hammer the still-limited endpoint and burn the retry budget.
+ * Only a strictly positive hint short-circuits the exponential fallback.
+ *
  * @param retryAfterMs - Provider hint, or `undefined` when unreadable.
  * @param attempt - 1-based retry attempt.
  * @param jitter - Returns a value in `[0, 1)`. Injected for testability.
@@ -207,7 +212,9 @@ export const computeRetryDelay = (
   attempt: number,
   jitter: () => number = Math.random,
 ): number => {
-  const base = retryAfterMs ?? calculateRateLimitBackoff(attempt);
+  const usableHint =
+    retryAfterMs !== undefined && retryAfterMs > 0 ? retryAfterMs : undefined;
+  const base = usableHint ?? calculateRateLimitBackoff(attempt);
   return Math.round(base + base * JITTER_FRACTION * jitter());
 };
 

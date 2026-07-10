@@ -230,22 +230,23 @@ export default class DeepLProvider implements TranslationProvider {
   }
 
   /**
-   * Fallback single-string translation implemented in terms of the array API.
+   * Not supported for DeepL. The vendor-agnostic `translateArray` utility always
+   * routes DeepL through its native {@link translateArray} (which carries the
+   * target locale), never this generic single-prompt method. This signature has
+   * no target-locale parameter, so any implementation would have to hardcode one
+   * — previously `EN`, which silently produced English output for every other
+   * target. Failing loudly prevents that latent wrong-language bug if a future
+   * caller ever routes DeepL through the chat path.
    *
-   * @param prompt - Text to translate.
-   * @param _options - Optional abort signal (unused).
-   * @returns Translated text in English.
+   * @throws Always — use {@link translateArray} instead.
    */
   async completeText(
-    prompt: string,
-    options?: StreamOptions,
+    _prompt: string,
+    _options?: StreamOptions,
   ): Promise<string> {
-    // Fallback single-string translation via DeepL
-    const arr = await this.translateArray([prompt], {
-      targetLang: 'EN',
-      debug: options?.debug,
-    });
-    return arr[0] || '';
+    throw new Error(
+      'DeepLProvider.completeText is not supported: DeepL translates via translateArray(), which carries the target locale.',
+    );
   }
 
   /**

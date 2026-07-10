@@ -493,71 +493,25 @@ describe('DeepLProvider', () => {
   });
 
   describe('completeText', () => {
-    it('should translate single text to English', async () => {
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            translations: [{ text: 'Hello' }],
-          }),
-      });
-
-      const result = await provider.completeText('Hallo');
-
-      expect(result).toBe('Hello');
-    });
-
-    it('should call API even for empty prompt and return result', async () => {
-      // DeepL completeText always calls translateArray, even for empty prompts
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            translations: [{ text: '' }],
-          }),
-      });
-
-      const result = await provider.completeText('');
-      expect(result).toBe('');
-      expect(mockFetch).toHaveBeenCalled();
+    it('throws rather than silently translating to a hardcoded language', async () => {
+      // The generic single-prompt path cannot carry a target locale, so honoring
+      // it would translate every target to a fixed language (was EN). DeepL must
+      // be used via translateArray(); completeText fails loudly instead.
+      await expect(provider.completeText('Hallo')).rejects.toThrow(
+        /not supported/i,
+      );
+      expect(mockFetch).not.toHaveBeenCalled();
     });
   });
 
   describe('streamText', () => {
-    it('should yield single result', async () => {
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            translations: [{ text: 'Hello' }],
-          }),
-      });
-
-      const chunks: string[] = [];
-      for await (const chunk of provider.streamText('Hallo')) {
-        chunks.push(chunk);
-      }
-
-      expect(chunks).toEqual(['Hello']);
-    });
-
-    it('should yield original when API returns empty translations', async () => {
-      // When translations array is empty, translateArray falls back to original
-      mockFetch.mockResolvedValue({
-        ok: true,
-        json: () =>
-          Promise.resolve({
-            translations: [],
-          }),
-      });
-
-      const chunks: string[] = [];
-      for await (const chunk of provider.streamText('Hallo')) {
-        chunks.push(chunk);
-      }
-
-      // Falls back to original text when no translation is returned
-      expect(chunks).toEqual(['Hallo']);
+    it('throws (it delegates to the unsupported completeText)', async () => {
+      await expect(async () => {
+        for await (const _chunk of provider.streamText('Hallo')) {
+          // no-op: the first pull rejects before yielding.
+        }
+      }).rejects.toThrow(/not supported/i);
+      expect(mockFetch).not.toHaveBeenCalled();
     });
   });
 });

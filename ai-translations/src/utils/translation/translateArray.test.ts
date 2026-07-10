@@ -5,6 +5,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
+import { isSystemicError, normalizeProviderError } from './ProviderErrors';
 import type { QcFlag } from './qc/types';
 import { tokenize, translateArray } from './translateArray';
 import type { TranslationProvider } from './types';
@@ -594,6 +595,31 @@ describe('translateArray.ts', () => {
       });
     });
 
+    describe('error normalization boundary', () => {
+      it('keeps a 401 classified as systemic "auth" after being re-thrown', async () => {
+        // Regression: translateArray used to rethrow a bare Error carrying only
+        // the friendly message, so a downstream re-normalization saw no status
+        // and no auth keywords and collapsed 'auth' → 'unknown' — which is not
+        // systemic, so the bulk run failed every field instead of pausing.
+        const authError = Object.assign(new Error('Unauthorized'), {
+          status: 401,
+        });
+        vi.mocked(mockProvider.completeText).mockRejectedValue(authError);
+
+        const caught = await translateArray(
+          mockProvider,
+          mockPluginParams,
+          ['Hello'],
+          'en',
+          'de',
+        ).catch((error) => error);
+
+        const norm = normalizeProviderError(caught, 'openai');
+        expect(norm.code).toBe('auth');
+        expect(isSystemicError(norm)).toBe(true);
+      });
+    });
+
     describe('QC flags', () => {
       it('emits a length-mismatch flag when the model over-splits a single segment', async () => {
         vi.mocked(mockProvider.completeText).mockResolvedValue('["a","b"]');
@@ -604,6 +630,29 @@ describe('translateArray.ts', () => {
         });
 
         expect(flags.some((f) => f.checkId === 'length-mismatch')).toBe(true);
+      });
+
+      it('emits a source-fallback warning when a matched-length element reverts to source', async () => {
+        // Length matches (3 in / 3 out) so no length-mismatch fires, but the
+        // middle element is JSON null: positional repair keeps the untranslated
+        // source for that slot, which must be surfaced rather than silent.
+        vi.mocked(mockProvider.completeText).mockResolvedValue(
+          '["Hallo", null, "Welt"]',
+        );
+        const flags: QcFlag[] = [];
+
+        await translateArray(
+          mockProvider,
+          mockPluginParams,
+          ['Hello', 'Goodbye', 'World'],
+          'en',
+          'de',
+          { onQcFlag: (f) => flags.push(f) },
+        );
+
+        const flag = flags.find((f) => f.checkId === 'source-fallback');
+        expect(flag?.severity).toBe('warning');
+        expect(flags.some((f) => f.checkId === 'length-mismatch')).toBe(false);
       });
 
       it('emits no flags on a clean, length-matched response', async () => {
@@ -660,6 +709,32 @@ describe('translateArray.ts', () => {
         );
 
         expect(flags.some((f) => f.checkId === 'truncated')).toBe(true);
+      });
+
+      it('suppresses source-fallback when the field is already flagged truncated', async () => {
+        // A truncated response leaves the tail source-padded; `truncated` already
+        // condemns the field, so the `source-fallback` count is redundant noise.
+        const metaProvider: TranslationProvider = {
+          vendor: 'openai',
+          streamText: vi.fn(),
+          completeText: vi.fn(),
+          completeTextWithMeta: vi
+            .fn()
+            .mockResolvedValue({ text: '["Hallo"]', finishReason: 'length' }),
+        };
+        const flags: QcFlag[] = [];
+
+        await translateArray(
+          metaProvider,
+          mockPluginParams,
+          ['Hello', 'World'],
+          'en',
+          'de',
+          { onQcFlag: (f) => flags.push(f) },
+        );
+
+        expect(flags.some((f) => f.checkId === 'truncated')).toBe(true);
+        expect(flags.some((f) => f.checkId === 'source-fallback')).toBe(false);
       });
 
       it('emits an html-structure flag when a block is dropped (isHTML)', async () => {

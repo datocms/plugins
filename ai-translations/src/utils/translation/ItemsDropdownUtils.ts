@@ -61,6 +61,24 @@ export type DatoCMSRecordFromAPI = {
   [key: string]: unknown;
 };
 
+/**
+ * Human label prefixing each QC flag that {@link buildTranslatedUpdatePayload}
+ * mirrors into the per-record `warnings` list for the live progress tooltip.
+ * `error`-severity flags read "Translation issue"; the rest read "Note".
+ */
+const QC_WARNING_ERROR_LABEL = 'Translation issue';
+const QC_WARNING_NOTE_LABEL = 'Note';
+
+/**
+ * Prefixes of the mirrored QC warning lines above. The bulk report already emits
+ * a structured `qcFlags` row for each of these, so it drops the free-text mirror
+ * to avoid reporting (and counting) the same defect twice.
+ */
+export const QC_WARNING_PREFIXES = [
+  `${QC_WARNING_ERROR_LABEL} —`,
+  `${QC_WARNING_NOTE_LABEL} —`,
+];
+
 /** Candidate field names used to derive a human-readable record label. */
 const RECORD_LABEL_CANDIDATES = [
   'title',
@@ -130,7 +148,7 @@ function coerceFieldValueToString(
  * @param preferredLocale - Locale code to prefer when selecting a localized value.
  * @returns A concise label usable in progress messages and alerts.
  */
-function deriveRecordLabel(
+export function deriveRecordLabel(
   record: DatoCMSRecordFromAPI,
   preferredLocale: string,
 ): string {
@@ -139,7 +157,11 @@ function deriveRecordLabel(
       const s = coerceFieldValueToString(record[key], preferredLocale);
       if (s?.trim()) {
         const trimmed = s.trim();
-        return trimmed.length > 80 ? `${trimmed.slice(0, 77)}…` : trimmed;
+        // Truncate by Unicode code points, not UTF-16 units: a raw `slice(0, 77)`
+        // can cut an emoji/astral character mid-surrogate-pair, leaving a lone
+        // surrogate in every progress message, modal row, and CSV title cell.
+        const chars = [...trimmed];
+        return chars.length > 80 ? `${chars.slice(0, 77).join('')}…` : trimmed;
       }
     }
   }
@@ -872,6 +894,13 @@ export async function translateAndUpdateRecords(
     const recordMeta = (record as { meta?: { updated_at?: string } }).meta;
     let updatedAt = recordMeta?.updated_at;
     if (Object.keys(mergedPayload).length > 0) {
+      // Final gate before the write: the between-field/locale gates cannot fire
+      // after the last field of the last locale, so a cancel that landed mid-way
+      // through that field (stopping its block translations early, leaving a
+      // partial value) would otherwise be persisted here. Unwind instead of
+      // saving partial content.
+      if ((await options.gate?.()) === 'cancelled') throw RUN_CANCELLED;
+
       updateProgress({
         recordIndex,
         recordId: record.id,
@@ -1252,18 +1281,25 @@ function countReferences(value: unknown): number {
  *   record references over (used to warn the editor and count updates).
  */
 /**
- * Decides whether a field may receive a locale-sync fallback value.
+ * Decides whether a localized field is a CANDIDATE for the locale-sync fallback
+ * — i.e. anything that was not successfully translated (a `translated` field is
+ * already in the payload).
  *
- * A field whose provider call FAILED must be left out of the payload entirely,
- * so the target locale keeps whatever it had. Only fields we genuinely cannot
- * translate (or never attempted) get filled.
+ * This intentionally INCLUDES `failed` fields. DatoCMS's Locale Sync Rule
+ * requires every localized field to carry a newly-added locale, or the whole
+ * `items.update` is rejected with `VALIDATION_INVALID_LOCALES` — losing the
+ * record's successfully-translated siblings too. So a failed field must still be
+ * filled when the target locale is NEW. The null-guard (never overwrite an
+ * EXISTING target value with null because a provider errored) is preserved by
+ * the caller's `existingTargetKey` check, which skips any field whose target
+ * locale already holds a value.
  *
  * @param outcome - The field's outcome, or `undefined` if it was never attempted.
- * @returns True when the fallback may write a value.
+ * @returns True when the field may receive a fallback for a not-yet-present locale.
  */
 export const shouldApplyLocaleSyncFallback = (
   outcome: FieldOutcome | undefined,
-): boolean => outcome === undefined || outcome.status === 'untranslatable';
+): boolean => outcome?.status !== 'translated';
 
 function resolveLocaleSyncFallback(
   meta: FieldTypeDictionary[string],
@@ -1365,7 +1401,7 @@ export async function buildTranslatedUpdatePayload(
       locale: flag.locale ?? toLocale,
     });
     warnings.push(
-      `${flag.severity === 'error' ? 'Translation issue' : 'Note'} — "${flag.fieldPath ?? field}" → ${formatLocaleWithCode(
+      `${flag.severity === 'error' ? QC_WARNING_ERROR_LABEL : QC_WARNING_NOTE_LABEL} — "${flag.fieldPath ?? field}" → ${formatLocaleWithCode(
         flag.locale ?? toLocale,
       )}: ${flag.message}`,
     );
@@ -1389,9 +1425,11 @@ export async function buildTranslatedUpdatePayload(
 
   /**
    * Translates one field and reports its {@link FieldOutcome}. It deliberately
-   * does NOT mutate the payload: a `failed` field must stay out of the payload
-   * so its target locale is never overwritten with `null`, and only the caller
-   * can tell `failed` from `untranslatable`. Length QC still runs on success.
+   * does NOT mutate the payload — the caller decides what to write from the
+   * outcome: a `translated` value is written; a `failed` field is never written
+   * OVER an existing target value (the null-guard), but is still filled with the
+   * locale-sync fallback for a NEW locale so DatoCMS's Locale Sync Rule holds
+   * (see the locale-sync loop below). Length QC still runs on success.
    */
   async function translateField(field: string): Promise<FieldOutcome> {
     const sourceValue = getExactSourceValue(
@@ -1408,8 +1446,12 @@ export async function buildTranslatedUpdatePayload(
 
     // One provider call for this field, normalizing on failure so the retry
     // helper (and this function's catch) always see a NormalizedProviderError.
-    // Between-unit cancellation is governed by the gate in the loop above, so
-    // only `abortSignal` is threaded here for in-flight request cancellation.
+    // The between-unit gate only fires between whole fields/locales/records, so
+    // a `checkCancellation` derived from the abort signal is also threaded here:
+    // it is what lets the block-level concurrency runner (runWithConcurrency)
+    // stop launching further block translations mid-field when the user cancels.
+    // runWithConcurrency cancels on a THROW (it ignores the boolean return), so
+    // this throws when aborted and otherwise reports "not cancelled".
     const attempt = async (): Promise<unknown> => {
       try {
         return await translateFieldValue(
@@ -1425,6 +1467,14 @@ export async function buildTranslatedUpdatePayload(
           environment,
           {
             abortSignal: opts.abortSignal,
+            checkCancellation: opts.abortSignal
+              ? () => {
+                  if (opts.abortSignal?.aborted) {
+                    throw new Error('Bulk translation cancelled');
+                  }
+                  return false;
+                }
+              : undefined,
           },
           recordContext,
           schemaRepository,
@@ -1510,19 +1560,23 @@ export async function buildTranslatedUpdatePayload(
     Promise.resolve(),
   );
 
-  // Locale-sync rule: every localized field must carry a value for the
-  // target locale. For fields we didn't translate, fill the gap from the
-  // source value (or null for optional non-required fields). For required
-  // block fields, copy source blocks with their ids stripped so the CMA
-  // creates fresh block instances.
+  // DatoCMS Locale Sync Rule: when a locale is ADDED to a record, EVERY
+  // localized field must carry it, or the whole items.update is rejected with
+  // VALIDATION_INVALID_LOCALES (losing the translated siblings too). So every
+  // localized field that isn't already translated is filled here from the source
+  // (or null for optional non-required fields; required block fields copy source
+  // blocks with ids stripped so the CMA creates fresh instances).
   for (const [field, meta] of Object.entries(fieldTypeDictionary)) {
     if (!meta.isLocalized) continue;
-    // A `failed` field is excluded here so its target locale keeps whatever it
-    // had; a `translated` field is already in the payload. Only untranslatable
-    // or never-attempted fields fall through to the fallback.
+    // A `translated` field is already in the payload. `failed`, `untranslatable`,
+    // and never-attempted fields fall through — INCLUDING `failed`, so a new
+    // locale stays consistent (Locale Sync Rule).
     if (!shouldApplyLocaleSyncFallback(outcomes.get(field))) continue;
 
     const fieldData = (record[field] as Record<string, unknown>) ?? {};
+    // The null-guard: if the target locale ALREADY has a value, never touch it —
+    // a failed re-translation must not overwrite existing content with null. Only
+    // a NEW (not-yet-present) target locale receives the fallback below.
     const existingTargetKey = findExactLocaleKey(fieldData, toLocale);
     if (existingTargetKey !== undefined) continue;
 

@@ -47,3 +47,6 @@ cma-example.json
 /e2e/.auth/
 /e2e/test-results/
 /e2e/playwright-report/
+
+# Ad-hoc scratch scripts (never commit — may contain tokens)
+scratch_*

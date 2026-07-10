@@ -132,6 +132,15 @@ export async function translateSeoFieldValue(
       logger.info(
         `SEO title exceeds ${SEO_TITLE_MAX_LENGTH} character limit (${translatedTitle.length}). Truncating...`,
       );
+      // Flag the cut: silently trimming an SEO title (possibly mid-word) while
+      // reporting the record as a clean success is exactly the silent repair the
+      // QC invariant forbids. Warning-tier — it's an SEO recommendation, not a
+      // hard CMA validator.
+      onQcFlag?.({
+        checkId: 'seo-truncated',
+        severity: 'warning',
+        message: `The translated SEO title was longer than ${SEO_TITLE_MAX_LENGTH} characters and was truncated — review it.`,
+      });
       translatedTitle = `${translatedTitle.substring(0, SEO_TITLE_MAX_LENGTH - ELLIPSIS_OFFSET)}...`;
     }
 
@@ -140,6 +149,11 @@ export async function translateSeoFieldValue(
       logger.info(
         `SEO description exceeds ${SEO_DESCRIPTION_MAX_LENGTH} character limit (${translatedDescription.length}). Truncating...`,
       );
+      onQcFlag?.({
+        checkId: 'seo-truncated',
+        severity: 'warning',
+        message: `The translated SEO description was longer than ${SEO_DESCRIPTION_MAX_LENGTH} characters and was truncated — review it.`,
+      });
       translatedDescription = `${translatedDescription.substring(0, SEO_DESCRIPTION_MAX_LENGTH - ELLIPSIS_OFFSET)}...`;
     }
 

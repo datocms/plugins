@@ -19,7 +19,12 @@ import {
 } from './steps/assert-record';
 import { recordOutcome } from './setup/outcomes';
 import { step } from './setup/log';
-import { bulkPageUrl, frameWithButton, runBulkTranslation } from './steps/bulk';
+import {
+  bulkPageUrl,
+  frameWithButton,
+  runBulkTranslation,
+  startBulkRun,
+} from './steps/bulk';
 import {
   fieldMenuEntries,
   runItemsDropdownTranslation,
@@ -1268,6 +1273,78 @@ test.describe('AI Translations', () => {
     });
   });
 
+  test('config screen: the field-exclusion picker resolves model and block fields', async ({
+    page,
+  }) => {
+    // Regression for the customer report: the "Fields to be excluded from
+    // translation" list was empty for non-OpenAI vendors (it was gated on the
+    // OpenAI key even though the list is DatoCMS schema), so nothing — including
+    // fields inside blocks — could be excluded. Asserted on the DeepL lane
+    // precisely because it is NOT OpenAI.
+    //
+    // Rather than fight the react-select/switch chrome, we pre-exclude a real
+    // BLOCK field via CMA: that flips `hasExclusionRules` so the section
+    // auto-reveals, and the picker must RESOLVE that id to its
+    // "<name> (<Block> block)" label. The pre-fix empty list would instead
+    // render "undefined (undefined)".
+    const { vendor, envName } = meta();
+    test.skip(vendor !== 'deepl', 'exclusion-picker population asserted on the DeepL lane');
+    test.setTimeout(TIMEOUTS.five_min);
+
+    const client = cmaClient(envName);
+    const original = await getPluginParams(envName);
+    try {
+      const blockFieldId = await step(vendor, 'pick a field inside a block (CMA)', async () => {
+        const itemTypes = await client.itemTypes.list();
+        const block = itemTypes.find((it) => it.modular_block);
+        expect(block, 'the seed must have at least one block model').toBeTruthy();
+        const fields = await client.fields.list(block!.id);
+        expect(fields.length, 'the block must expose at least one field').toBeGreaterThan(0);
+        return fields[0].id;
+      });
+
+      await step(vendor, 'exclude that block field so the section auto-reveals', () =>
+        setPluginParams(envName, {
+          ...original,
+          apiKeysToBeExcludedFromThisPlugin: [blockFieldId],
+        }),
+      );
+
+      await step(vendor, "open the plugin's settings screen", async () => {
+        const pluginId = await resolvePluginId();
+        await page.goto(
+          `https://${PROJECT_SUBDOMAIN()}.admin.datocms.com/environments/${envName}` +
+            `/configuration/plugins/${pluginId}/edit`,
+          { waitUntil: 'domcontentloaded' },
+        );
+        await page.waitForTimeout(3000);
+      });
+
+      const config = await step(vendor, 'locate the config frame (Save button present)', () =>
+        frameWithButton(page, /^Save/),
+      );
+
+      await step(
+        vendor,
+        'the excluded block field resolves to its "<name> (<Block> block)" label',
+        async () => {
+          // The block field's label proves the list loaded AND enumerated blocks.
+          await expect(
+            config.getByText(/ block\)/).first(),
+            'a block field must resolve in the exclusion picker (regressed for non-OpenAI vendors)',
+          ).toBeVisible({ timeout: TIMEOUTS.thirty_sec });
+          // And it must not render the empty-list placeholder.
+          await expect(
+            config.getByText('undefined (undefined)'),
+            'the exclusion field list must not be empty',
+          ).toHaveCount(0);
+        },
+      );
+    } finally {
+      await setPluginParams(envName, original);
+    }
+  });
+
   test('gating: plugin params control which surfaces render', async ({ page }) => {
     const { vendor, envName } = meta();
     test.skip(vendor !== 'deepl', 'surface gating is provider-independent — asserted on the DeepL lane');
@@ -1473,13 +1550,16 @@ test.describe('AI Translations', () => {
     }
   });
 
-  test('bulk run with a broken provider key fails every record with the stated reason', async ({ page }) => {
+  test('bulk run with a broken provider key pauses and states the auth reason', async ({ page }) => {
     const { vendor, envName } = meta();
-    // Auth is rejected before any translation happens, so this costs nothing
-    // and is fully deterministic — it proves the per-record failure REPORTING
-    // (the support card's core ask) under a total-provider-outage.
-    test.skip(vendor !== 'deepl', 'provider-failure reporting asserted on the DeepL lane');
-    test.setTimeout(TIMEOUTS.five_min + TIMEOUTS.three_min);
+    // Auth is a SYSTEMIC error: an invalid key pauses the run immediately
+    // (before any items.update) and surfaces the reason on the pause panel so
+    // the user can fix the key and resume — it does not silently fail every
+    // record. (The earlier "fails every record" behaviour was the auth→unknown
+    // demotion bug that dropped the status code across the throw boundary; a
+    // paused-then-cancelled run writes nothing.)
+    test.skip(vendor !== 'deepl', 'provider-failure handling asserted on the DeepL lane');
+    test.setTimeout(TIMEOUTS.five_min);
 
     const original = await getPluginParams(envName);
     try {
@@ -1492,18 +1572,28 @@ test.describe('AI Translations', () => {
         await page.waitForTimeout(3000);
       });
 
-      const report = await step(vendor, 'run bulk translation (product → fr) against the dead key', () =>
-        runBulkTranslation(page, { modelCode: 'product', toLocale: 'fr', vendor }),
+      const frame = await step(vendor, 'start the run against the dead key', () =>
+        startBulkRun(page, { modelCode: 'product', toLocale: 'fr', vendor }),
       );
 
-      // Every record must fail — and each failure must STATE the auth reason
-      // in the exported report, not silently vanish.
-      expect(report.total, report.summary).toBe(3);
-      expect(report.errors, `every record must fail on a dead key\n${report.summary}`).toBe(3);
-      expect(
-        report.csv.toLowerCase(),
-        'the CSV must carry the authorization failure reason',
-      ).toMatch(/auth|api key|invalid|credential|forbidden|401|403/);
+      await step(vendor, 'the run pauses and states the auth reason', async () => {
+        const pause = frame.locator('.TranslationProgressModal__pause');
+        await expect(
+          pause,
+          'an invalid key is systemic auth → the run must PAUSE, not complete',
+        ).toBeVisible({ timeout: TIMEOUTS.one_min });
+        await expect(
+          pause,
+          'the pause must state the auth/credentials reason',
+        ).toContainText(/api key|auth|endpoint|credential|invalid/i);
+      });
+
+      await step(vendor, 'cancel from the pause to end the run cleanly', async () => {
+        await frame
+          .locator('.TranslationProgressModal__pause')
+          .getByRole('button', { name: 'Cancel' })
+          .click();
+      });
     } finally {
       await setPluginParams(envName, original);
     }

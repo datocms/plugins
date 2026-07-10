@@ -11,7 +11,8 @@ import { resolveGlossaryId } from './DeepLGlossary';
 import { isFormalitySupported, mapDatoToDeepL } from './DeepLMap';
 import { recoverJsonArray } from './jsonArrayRecovery';
 import {
-  formatErrorForUser,
+  NormalizedError,
+  isNormalizedError,
   normalizeProviderError,
 } from './ProviderErrors';
 import {
@@ -333,10 +334,27 @@ function reconcileArrayLength(args: {
     received: arr.length,
   });
   if (lengthFlag) args.onQcFlag?.(lengthFlag);
-  return originalSegments.map((seg, i) => {
+
+  // Positional repair: any slot whose model output is missing or non-string
+  // (a null/number element, or a short array) keeps the untranslated SOURCE.
+  // That silent source fallback is exactly what AGENTS.md forbids, so count the
+  // reverted slots and surface them — even when the array length matched and no
+  // length-mismatch flag fired (a valid-length array with one null element).
+  let sourceFallbacks = 0;
+  const repaired = originalSegments.map((seg, i) => {
     const v = arr[i];
-    return typeof v === 'string' ? v : String(seg ?? '');
+    if (typeof v === 'string') return v;
+    sourceFallbacks += 1;
+    return String(seg ?? '');
   });
+  if (sourceFallbacks > 0) {
+    args.onQcFlag?.({
+      checkId: 'source-fallback',
+      severity: 'warning',
+      message: `${sourceFallbacks} of ${originalSegments.length} segment(s) came back untranslated and kept the source text — review this field.`,
+    });
+  }
+  return repaired;
 }
 
 function parseTranslationResponse(
@@ -459,23 +477,36 @@ function runQcContentChecks(args: {
  */
 function suppressRedundantFlags(flags: QcFlag[]): QcFlag[] {
   const errorSegments = new Set<number>();
-  let hasFieldWideError = false;
+  let hasFieldWideSuppressor = false;
   for (const flag of flags) {
-    if (flag.severity !== 'error') continue;
-    if (flag.segmentIndex === undefined) hasFieldWideError = true;
-    else errorSegments.add(flag.segmentIndex);
+    if (flag.segmentIndex === undefined) {
+      // A field-wide error, or a field-wide length-mismatch (warning-tier but a
+      // stronger, deterministic signal than the loose ratio heuristic), already
+      // explains a short/dropped output — so it suppresses length-ratio.
+      if (flag.severity === 'error' || flag.checkId === 'length-mismatch') {
+        hasFieldWideSuppressor = true;
+      }
+    } else if (flag.severity === 'error') {
+      errorSegments.add(flag.segmentIndex);
+    }
   }
   const hasTruncated = flags.some((flag) => flag.checkId === 'truncated');
 
   return flags.filter((flag) => {
     if (flag.checkId === 'length-ratio') {
-      if (hasFieldWideError) return false;
+      if (hasFieldWideSuppressor) return false;
       return !(
         flag.segmentIndex !== undefined && errorSegments.has(flag.segmentIndex)
       );
     }
     if (flag.checkId === 'no-op' && flag.segmentIndex === undefined) {
       return !hasTruncated;
+    }
+    // A truncated response source-pads its cut-off tail, so `source-fallback`
+    // (which counts those reverted slots) is fully explained by `truncated` and
+    // would just be a redundant second row on the same field.
+    if (flag.checkId === 'source-fallback' && hasTruncated) {
+      return false;
     }
     return true;
   });
@@ -812,8 +843,12 @@ export async function translateArray(
 
     return finalSegments;
   } catch (error) {
+    // Preserve an already-normalized error untouched; otherwise normalize and
+    // rethrow as a NormalizedError so the structured code (notably `auth`)
+    // survives the boundary instead of collapsing to `unknown` downstream —
+    // which would keep the bulk run from pausing on invalid credentials.
+    if (isNormalizedError(error)) throw error;
     const norm = normalizeProviderError(error, provider.vendor);
-    // ERR-002: Preserve original error context in the cause chain
-    throw new Error(formatErrorForUser(norm), { cause: error });
+    throw new NormalizedError(norm, { cause: error });
   }
 }

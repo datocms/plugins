@@ -30,6 +30,7 @@ import { listRelevantOpenAIModels } from '../../utils/translation/OpenAIModels';
 import s from '../styles.module.css';
 import { translateFieldTypes } from './configConstants';
 import ExclusionRulesSection from './ExclusionRulesSection';
+import { buildFieldListEntries, mergeUniqueFields } from './fieldExclusionList';
 import { useExclusionRules } from './hooks/useExclusionRules';
 import { useFeatureToggles } from './hooks/useFeatureToggles';
 // PERF-003: Custom hooks for grouped state management
@@ -236,16 +237,6 @@ async function loadClaudeModels(
  * @param newFields - Newly fetched fields to merge in.
  * @returns The merged field list with no duplicate IDs.
  */
-function mergeUniqueFields(
-  prevFields: { id: string; name: string; model: string }[],
-  newFields: { id: string; name: string; model: string }[],
-): { id: string; name: string; model: string }[] {
-  const existingIds = new Set(prevFields.map((field) => field.id));
-  const uniqueNewFields = newFields.filter(
-    (field) => !existingIds.has(field.id),
-  );
-  return [...prevFields, ...uniqueNewFields];
-}
 
 /**
  * Loads and registers all fields from a single item type into the field list state.
@@ -266,14 +257,10 @@ function loadFieldsForItemType(
     .loadItemTypeFields(itemTypeID)
     .then((fields) => {
       setListOfFields((prevFields) => {
-        const itemType = ctx.itemTypes[itemTypeID];
-        const isBlock = itemType?.attributes.modular_block;
-        const modelName = itemType?.attributes.name;
-        const newFields = fields.map((field) => ({
-          id: field.id,
-          name: field.attributes.label,
-          model: isBlock ? `${modelName} block` : (modelName ?? ''),
-        }));
+        const newFields = buildFieldListEntries(
+          fields,
+          ctx.itemTypes[itemTypeID],
+        );
         return mergeUniqueFields(prevFields, newFields);
       });
     })
@@ -712,12 +699,17 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     latestGptModel.current = gptModel;
   }, [gptModel]);
 
+  // Load the schema field list that backs the "Fields to be excluded" picker.
+  // This is DatoCMS schema (every model AND block item type) — entirely
+  // vendor-agnostic — so it must NOT be gated on the OpenAI key/vendor. Gating
+  // it left the exclusion dropdown empty for DeepL/Gemini/Anthropic users (and
+  // OpenAI users whose key wasn't in this field), so nothing — including block
+  // fields — could be excluded.
   useEffect(() => {
-    if (vendor !== 'openai' || !apiKey) return;
     for (const itemTypeID in ctx.itemTypes) {
       loadFieldsForItemType(itemTypeID, ctx, setListOfFields);
     }
-  }, [ctx, apiKey, vendor]);
+  }, [ctx]);
 
   useEffect(() => {
     modelListRequestId.current += 1;
