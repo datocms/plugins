@@ -13,10 +13,11 @@
  *   - `defaultFieldSelection` / `pruneFieldSelection` — manage the per-model
  *     field selection map as the user adds and removes models.
  *
- * After Start, the page opens the existing TranslationProgressModal once
- * per target locale, sequentially. Each modal receives the per-model field
- * allowlist and the cmaBaseUrl so the translation flow only touches the
- * fields the user explicitly opted into.
+ * After Start, the page opens a single TranslationProgressModal for the
+ * whole job: every record is translated into all target locales and saved
+ * in one CMA write per record. The modal receives the per-model field
+ * allowlist so the translation flow only touches the fields the user
+ * explicitly opted into.
  */
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import { Button, Canvas, SelectField, Spinner } from 'datocms-react-ui';

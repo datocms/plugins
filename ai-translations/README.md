@@ -100,6 +100,17 @@ Whenever this happens, the record's row in the bulk progress modal is flagged wi
 
 The modal also has an **Export CSV** button that downloads a per-record report — status (success/warning/failure), the CMA update timestamp, record ID, title, edit URL, source and target locales, the field IDs (and api keys) that were translated, the link-field IDs whose references were copied without translation, and a notes column with the warnings — handy for auditing a large run or handing follow-up work to an editor.
 
+### Reliability
+
+Bulk translation is built to fail loudly rather than quietly corrupt your content:
+
+- **Rate limits pause the run.** When a provider returns a rate-limit error, the run retries automatically up to three times with exponential backoff (honoring the provider's `Retry-After` hint when it is readable). The progress modal shows a countdown — _"Retrying automatically in Ns…"_ — during the wait. If all three retries are exhausted, the run pauses and waits for you to click **Resume**.
+- **Auth and quota errors pause immediately.** These need a human to fix an API key or billing, so there is no auto-retry or countdown — the run pauses at once and enables **Resume** so you can retry after resolving the problem.
+- **A failed field is never overwritten with an empty value.** If a field's translation fails, that field is left out of the write entirely and the target locale keeps whatever it already had. The plugin distinguishes "we couldn't translate this" (a failure — never written) from "this field has nothing to translate" (which may still receive a locale-sync fallback).
+- **A record with any failed field is reported as failed**, and its status names the affected locale (for example, _French [fr]: 1/3 fields translated_), so a healthy locale can never mask a wholly-dead sibling.
+- **Export is available only once the run finishes or is stopped.** It is deliberately disabled while the run is active or paused, because a mid-run CSV would look like a finished report while omitting everything after the pause point.
+- **Cancelling does not roll back records already written.** Stopping the run leaves the records translated so far in place; they will be re-translated on the next bulk run.
+
 ## Contextual Translations
 
 The plugin now supports context-aware translations through the `{recordContext}` placeholder:
