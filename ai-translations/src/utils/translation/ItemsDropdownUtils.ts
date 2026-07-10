@@ -30,6 +30,10 @@ import {
 // no specific ctx type required here; we accept a minimal ctx shape
 import { generateRecordContext, translateFieldValue } from './TranslateField';
 import {
+  type Pacer,
+  createPacer,
+  delay,
+  getRequestSpacingMs,
   hasTranslatableSourceValue,
   shouldProcessField,
 } from './TranslationCore';
@@ -357,6 +361,12 @@ export type TranslateBatchOptions = {
   onSystemic?: SystemicHandler;
   abortSignal?: AbortSignal;
   /**
+   * Waits `ms` before each provider call, driving the adaptive pacer. Defaults
+   * to a real `setTimeout`-based delay; injected only so tests never wait on
+   * real time while still exercising the run's pacing.
+   */
+  sleep?: (ms: number) => Promise<void>;
+  /**
    * Optional per-model allowlist of field api_keys. When set, fields whose
    * api_key is not listed for the record's model are skipped (their target
    * locale falls back to the standard locale-sync rules below). When omitted,
@@ -463,32 +473,75 @@ const CONTENT_RETRY_LIMIT = 2;
  * Runs one translation attempt, handling systemic errors by pausing the whole
  * run and content errors by retrying the field a bounded number of times.
  *
- * Stays deliberately pure: the rate-limit retry budget and the backoff wait
- * live in the pause handler (the modal owns the countdown UI). This helper
- * simply retries whenever the handler resolves `'retry'`.
+ * Stays deliberately pure about the pause UI: the rate-limit retry budget and
+ * the backoff countdown live in the pause handler (the modal owns them). This
+ * helper simply retries whenever the handler resolves `'retry'`.
+ *
+ * When a {@link Pacer} is supplied it is consulted before every provider call —
+ * awaiting its current gap, widening it on each rate limit, and relaxing it
+ * after a run of healthy calls. That proactive spacing is what stops a single
+ * throttled locale from dragging every subsequent call into the same limit;
+ * the reactive pause only kicks in once a 429 has already landed.
  *
  * @param attempt - Performs one translation; must reject with a normalized error.
- * @param handlers - Run-control callbacks.
+ * @param handlers - Run-control callbacks and the optional adaptive pacer.
  * @param handlers.onSystemic - Pauses the run; resolves when it may resume.
+ * @param handlers.pacer - Run-scoped inter-request pacer; omitted disables spacing.
+ * @param handlers.sleep - Waits `ms`; injected so tests never wait on real time.
  * @returns The translated value.
  * @throws The normalized error once content retries are exhausted.
  * @throws {typeof RUN_CANCELLED} When the user cancels from the pause screen.
  */
+/**
+ * Awaits the pacer's current inter-request gap before a provider call. A gap of
+ * zero (or no pacer) is a no-op. Extracted so the retry loop stays lint-clean.
+ */
+const awaitPacerGap = async (
+  pacer: Pacer | undefined,
+  sleep: (ms: number) => Promise<void>,
+): Promise<void> => {
+  if (!pacer) return;
+  const gap = pacer.gapMs();
+  if (gap > 0) await sleep(gap);
+};
+
+/**
+ * Widens the steady-state gap after a rate limit so the retry — and every later
+ * call — backs off, rather than hammering the same limit at the old cadence.
+ * Only `rate_limit` widens: waiting out an `auth`/`quota` error never clears it.
+ */
+const widenPacerOnRateLimit = (
+  pacer: Pacer | undefined,
+  err: NormalizedProviderError,
+): void => {
+  if (pacer && err.code === 'rate_limit') pacer.onRateLimit();
+};
+
 export const translateWithSystemicRetry = async <T>(
   attempt: () => Promise<T>,
-  handlers: { onSystemic: SystemicHandler },
+  handlers: {
+    onSystemic: SystemicHandler;
+    pacer?: Pacer;
+    sleep?: (ms: number) => Promise<void>;
+  },
 ): Promise<T> => {
+  const { onSystemic, pacer, sleep = delay } = handlers;
   let contentRetries = 0;
 
   for (;;) {
+    // biome-ignore lint/performance/noAwaitInLoops: pacing is inherently sequential — each call must be spaced from the previous one.
+    await awaitPacerGap(pacer, sleep);
+
     try {
-      // biome-ignore lint/performance/noAwaitInLoops: a retry loop is inherently sequential — each attempt must await the previous one's outcome.
-      return await attempt();
+      const value = await attempt();
+      pacer?.onSuccess();
+      return value;
     } catch (raw) {
       const err = raw as NormalizedProviderError;
 
       if (isSystemicError(err)) {
-        if ((await handlers.onSystemic(err)) === 'cancelled') throw RUN_CANCELLED;
+        widenPacerOnRateLimit(pacer, err);
+        if ((await onSystemic(err)) === 'cancelled') throw RUN_CANCELLED;
         continue; // the handler already waited; try the same field again
       }
 
@@ -692,6 +745,12 @@ export async function translateAndUpdateRecords(
   options: TranslateBatchOptions = {},
   schemaRepository?: SchemaRepository,
 ): Promise<void> {
+  // One adaptive pacer for the whole run: a shared inter-request gap that
+  // widens on each rate limit and relaxes after a healthy streak, so one
+  // throttled locale cannot drag every subsequent locale and record into the
+  // same limit. Seeded from the vendor's baseline spacing.
+  const pacer = createPacer(getRequestSpacingMs(pluginParams));
+
   const updateProgress = (u: ProgressUpdate) => {
     // Normalize legacy in-progress message that included the word "fields"
     if (u.status === 'processing' && typeof u.message === 'string') {
@@ -781,6 +840,8 @@ export async function translateAndUpdateRecords(
           abortSignal: options.abortSignal,
           gate: options.gate,
           onSystemic: options.onSystemic,
+          pacer,
+          sleep: options.sleep,
           selectedFieldsByModel: options.selectedFieldsByModel,
         },
         schemaRepository,
@@ -1261,6 +1322,10 @@ export async function buildTranslatedUpdatePayload(
     gate?: RunGate;
     /** Pauses the run on a systemic error; when omitted, systemic errors fail the field. */
     onSystemic?: SystemicHandler;
+    /** Run-scoped adaptive pacer; spaces and throttles provider calls. */
+    pacer?: Pacer;
+    /** Waits `ms` before each provider call; injected for deterministic tests. */
+    sleep?: (ms: number) => Promise<void>;
     selectedFieldsByModel?: SelectedFieldsByModel;
   } = {},
   schemaRepository?: SchemaRepository,
@@ -1373,6 +1438,8 @@ export async function buildTranslatedUpdatePayload(
       const translatedValue = opts.onSystemic
         ? await translateWithSystemicRetry(attempt, {
             onSystemic: opts.onSystemic,
+            pacer: opts.pacer,
+            sleep: opts.sleep,
           })
         : await attempt();
 

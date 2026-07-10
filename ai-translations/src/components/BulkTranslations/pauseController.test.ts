@@ -53,13 +53,31 @@ describe('createPauseController', () => {
     await expect(pending).resolves.toBe('cancelled');
   });
 
-  it('resets the rate-limit budget after a success', async () => {
+  it('re-arms the auto-retry budget after a success once it has been exhausted', async () => {
     const sleep = vi.fn().mockResolvedValue(undefined);
     const c = createPauseController({ sleep, onStatus: vi.fn() });
+
+    // Burn the entire budget: three auto-retries, three sleeps.
     await c.handleSystemic(rateLimit);
+    await c.handleSystemic(rateLimit);
+    await c.handleSystemic(rateLimit);
+    expect(sleep).toHaveBeenCalledTimes(3);
+
+    // Budget exhausted: the next rate limit pauses manually — no fourth sleep.
+    const exhausted = c.handleSystemic(rateLimit);
+    expect(sleep).toHaveBeenCalledTimes(3);
+    c.resume();
+    await expect(exhausted).resolves.toBe('retry');
+
+    // A healthy record must re-arm the budget…
     c.onSuccess();
-    await c.handleSystemic(rateLimit);
-    await c.handleSystemic(rateLimit);
-    expect(sleep).toHaveBeenCalledTimes(3); // budget was reset, none exhausted
+
+    // …so the very next rate limit auto-retries again — a fourth sleep, invoked
+    // synchronously on the auto-retry path before its first await. Without the
+    // reset in onSuccess this stays a manual pause and never sleeps, so the
+    // assertion below is what actually pins the re-arm behavior.
+    const rearmed = c.handleSystemic(rateLimit);
+    expect(sleep).toHaveBeenCalledTimes(4);
+    await expect(rearmed).resolves.toBe('retry');
   });
 });

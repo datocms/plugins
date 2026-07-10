@@ -850,6 +850,63 @@ describe('ItemsDropdownUtils', () => {
       expect(finalUpdate?.copiedLinkFieldIds).toContain('field-related');
     });
 
+    it('paces the run through a run-scoped adaptive pacer that widens after a rate limit', async () => {
+      // The first provider call 429s; the systemic handler resumes; the retry
+      // then succeeds. This exercises the whole wiring chain — createPacer being
+      // instantiated in the run and threaded down to the provider-call seam.
+      vi.mocked(translateFieldValue)
+        .mockRejectedValueOnce(
+          Object.assign(new Error('Rate limit exceeded'), { status: 429 }),
+        )
+        .mockResolvedValue('Ciao');
+
+      const sleeps: number[] = [];
+      const sleep = vi.fn(async (ms: number) => {
+        sleeps.push(ms);
+      });
+
+      const update = vi
+        .fn()
+        .mockImplementation(
+          async (_id: string, payload: Record<string, unknown>) => ({
+            ...payload,
+            meta: { updated_at: '2026-07-08T21:00:00.000Z' },
+          }),
+        );
+      // biome-ignore lint/suspicious/noExplicitAny: minimal CMA client stub
+      const client = { items: { update } } as any;
+
+      const records: DatoCMSRecordFromAPI[] = [
+        { id: 'r1', item_type: { id: 'm1' }, title: { en: 'Hello' } },
+      ];
+      const getFieldTypeDictionary = vi.fn().mockResolvedValue({
+        title: { editor: 'single_line', id: 'field-title', isLocalized: true },
+      });
+
+      await translateAndUpdateRecords(
+        records,
+        client,
+        provider,
+        'en',
+        ['it'],
+        getFieldTypeDictionary,
+        pluginParams,
+        { alert: vi.fn(), environment: 'main' },
+        'access-token',
+        {
+          onProgress: vi.fn(),
+          onSystemic: async () => 'retry',
+          sleep,
+        },
+      );
+
+      // Baseline gap for openai is 50ms; after the 429 the pacer doubles it to
+      // 100ms. Both waits firing proves the run consults an adaptive pacer that
+      // widens — the reactive pause alone would leave `sleeps` empty.
+      expect(sleeps).toEqual([50, 100]);
+      expect(translateFieldValue).toHaveBeenCalledTimes(2);
+    });
+
     // The merge seam: master's report pipeline (reference copies →
     // completed-with-warnings) and the QC branch's error escalation (design §6b)
     // both feed the per-record status. These assert their interaction end-to-end
