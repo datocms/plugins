@@ -5,7 +5,10 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
-import { translateFileFieldValue } from './FileFieldTranslation';
+import {
+  readUploadDefaultAltTitle,
+  translateFileFieldValue,
+} from './FileFieldTranslation';
 import type { TranslationProvider } from './types';
 
 vi.mock('./translateArray', () => ({
@@ -281,5 +284,103 @@ describe('FileFieldTranslation', () => {
         custom: 'Meta IT',
       },
     });
+  });
+
+  it('reads upload default metadata in the new field-first shape (non-localized focal points)', async () => {
+    // The "non-localized focal points" update (opt-in; default for projects
+    // created after 2026-06-11) reshaped default_field_metadata from LOCALE-first
+    // ({ en: { alt, title, focal_point } }) to FIELD-first
+    // ({ alt: { en, it }, title: { en, it }, focal_point: { x, y } }), pulling the
+    // single focal point out of the per-locale blocks. Both shapes exist in live
+    // projects, so enrichment must read either. See:
+    // https://www.datocms.com/product-updates/non-localized-focal-points
+    vi.mocked(translateArray).mockResolvedValue([
+      'Alt IT',
+      'Title IT',
+      'Meta IT',
+    ]);
+    mockUploadsFind.mockResolvedValue({
+      default_field_metadata: {
+        alt: { en: 'Alt EN default', it: '' },
+        title: { en: 'Title EN default', it: '' },
+        custom_data: { en: {}, it: {} },
+        focal_point: { x: 0.1, y: 0.2 },
+      },
+    });
+
+    // Fresh upload id so the module-level metadata cache can't collide with the
+    // locale-first fallback test above.
+    const fileValue = {
+      upload_id: 'upl_fieldfirst',
+      metadata: { custom: 'Meta EN' },
+    };
+
+    const result = await translateFileFieldValue(
+      fileValue,
+      mockPluginParams,
+      'it',
+      'en',
+      mockProvider,
+      'token-123',
+      'main',
+    );
+
+    expect(translateArray).toHaveBeenCalledWith(
+      mockProvider,
+      mockPluginParams,
+      ['Alt EN default', 'Title EN default', 'Meta EN'],
+      'en',
+      'it',
+      { isHTML: false, recordContext: '', qcAtomicSegments: true },
+    );
+
+    expect(result).toEqual({
+      ...fileValue,
+      alt: 'Alt IT',
+      title: 'Title IT',
+      metadata: { custom: 'Meta IT' },
+    });
+  });
+});
+
+describe('readUploadDefaultAltTitle', () => {
+  it('reads the legacy locale-first shape', () => {
+    expect(
+      readUploadDefaultAltTitle(
+        { en: { alt: 'Alt EN', title: 'Title EN' }, it: { alt: 'Alt IT' } },
+        'en',
+      ),
+    ).toEqual({ alt: 'Alt EN', title: 'Title EN' });
+  });
+
+  it('reads the field-first shape (non-localized focal points)', () => {
+    expect(
+      readUploadDefaultAltTitle(
+        {
+          alt: { en: 'Alt EN', it: 'Alt IT' },
+          title: { en: 'Title EN', it: 'Title IT' },
+          focal_point: { x: 0.1, y: 0.2 },
+        },
+        'en',
+      ),
+    ).toEqual({ alt: 'Alt EN', title: 'Title EN' });
+  });
+
+  it('treats blank/missing values as undefined in both shapes', () => {
+    expect(
+      readUploadDefaultAltTitle({ en: { alt: '   ', title: undefined } }, 'en'),
+    ).toEqual({ alt: undefined, title: undefined });
+    expect(
+      readUploadDefaultAltTitle({ alt: { en: '' }, title: {} }, 'en'),
+    ).toEqual({ alt: undefined, title: undefined });
+  });
+
+  it('returns undefined when the source locale is absent in either shape', () => {
+    expect(
+      readUploadDefaultAltTitle({ it: { alt: 'Alt IT' } }, 'en'),
+    ).toEqual({ alt: undefined, title: undefined });
+    expect(
+      readUploadDefaultAltTitle({ alt: { it: 'Alt IT' } }, 'en'),
+    ).toEqual({ alt: undefined, title: undefined });
   });
 });

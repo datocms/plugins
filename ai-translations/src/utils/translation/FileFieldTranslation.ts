@@ -194,6 +194,58 @@ function pickNonEmpty(primary?: string, fallback?: string): string | undefined {
 }
 
 /**
+ * Reads the source-locale `alt`/`title` out of an upload's
+ * `default_field_metadata`, tolerating BOTH shapes the CMA returns:
+ *
+ * - Legacy LOCALE-first: `{ en: { alt, title, custom_data, focal_point }, it: {…} }`
+ * - FIELD-first ("non-localized focal points" update — opt-in, and the default
+ *   for projects created after 2026-06-11): `{ alt: { en, it }, title: { en, it },
+ *   custom_data: { en, it }, focal_point: { x, y } }`, which lifts the single
+ *   focal point out of the per-locale blocks.
+ *   See https://www.datocms.com/product-updates/non-localized-focal-points
+ *
+ * Detection is unambiguous: a locale code (`en`) never collides with a metadata
+ * field name (`alt`/`title`/`focal_point`), so a top-level key matching the
+ * source locale means locale-first; otherwise we read the per-field locale maps.
+ * Only trimmed, non-empty strings are returned — a missing/blank/non-string value
+ * yields `undefined` so the caller keeps whatever source it already had.
+ */
+export function readUploadDefaultAltTitle(
+  defaultMetadata: Record<string, unknown>,
+  fromLocale: string,
+): { alt: string | undefined; title: string | undefined } {
+  const nonEmptyString = (value: unknown): string | undefined =>
+    typeof value === 'string' && value.trim() ? value : undefined;
+
+  // Legacy locale-first: default_field_metadata[locale] = { alt, title, … }
+  const localeKey = findExactLocaleKey(defaultMetadata, fromLocale);
+  if (localeKey) {
+    const block = defaultMetadata[localeKey];
+    if (block && typeof block === 'object') {
+      const record = block as Record<string, unknown>;
+      return {
+        alt: nonEmptyString(record.alt),
+        title: nonEmptyString(record.title),
+      };
+    }
+  }
+
+  // Field-first: default_field_metadata[field] = { locale: value }
+  const readFieldLocale = (fieldKey: string): string | undefined => {
+    const localeMap = defaultMetadata[fieldKey];
+    if (!localeMap || typeof localeMap !== 'object') return undefined;
+    const key = findExactLocaleKey(
+      localeMap as Record<string, unknown>,
+      fromLocale,
+    );
+    return key
+      ? nonEmptyString((localeMap as Record<string, unknown>)[key])
+      : undefined;
+  };
+  return { alt: readFieldLocale('alt'), title: readFieldLocale('title') };
+}
+
+/**
  * Enriches alt/title sources by fetching the upload's default field metadata
  * when either value is missing.
  *
@@ -225,29 +277,15 @@ async function enrichFromUploadDefaults(
   );
   if (!defaultMetadata) return { altSource, titleSource };
 
-  const localeKey = findExactLocaleKey(
+  const { alt, title } = readUploadDefaultAltTitle(
     defaultMetadata as Record<string, unknown>,
     fromLocale,
   );
-  const localeMetadata = localeKey ? defaultMetadata[localeKey] : undefined;
-  if (!localeMetadata || typeof localeMetadata !== 'object') {
-    return { altSource, titleSource };
-  }
 
-  const enrichedAlt =
-    !altSource &&
-    typeof localeMetadata.alt === 'string' &&
-    localeMetadata.alt.trim()
-      ? localeMetadata.alt
-      : altSource;
-  const enrichedTitle =
-    !titleSource &&
-    typeof localeMetadata.title === 'string' &&
-    localeMetadata.title.trim()
-      ? localeMetadata.title
-      : titleSource;
-
-  return { altSource: enrichedAlt, titleSource: enrichedTitle };
+  return {
+    altSource: !altSource && alt ? alt : altSource,
+    titleSource: !titleSource && title ? title : titleSource,
+  };
 }
 
 /**
