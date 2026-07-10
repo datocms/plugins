@@ -401,6 +401,41 @@ export interface BuildTranslatedUpdatePayloadResult {
   failedFields: { field: string; error: NormalizedProviderError }[];
 }
 
+/** Per-locale roll-up of what a record's translation actually achieved. */
+export type LocaleOutcome = {
+  locale: string;
+  translated: string[];
+  failed: { field: string; error: NormalizedProviderError }[];
+};
+
+/**
+ * Rolls per-locale outcomes into a record-level verdict.
+ *
+ * Any locale with a failure marks the record as failed. Summing translated
+ * counts across locales — as the old per-record accounting did — lets a healthy
+ * locale mask a wholly-dead sibling.
+ *
+ * @param outcomes - One entry per target locale.
+ * @returns Whether to fail the record, and a status line naming the locales.
+ */
+export const summarizeLocaleOutcomes = (
+  outcomes: LocaleOutcome[],
+): { hasDeadLocale: boolean; statusText: string | undefined } => {
+  const damaged = outcomes.filter((o) => o.failed.length > 0);
+  if (damaged.length === 0) {
+    return { hasDeadLocale: false, statusText: undefined };
+  }
+
+  const statusText = damaged
+    .map((o) => {
+      const total = o.translated.length + o.failed.length;
+      return `${formatLocaleWithCode(o.locale)}: ${o.translated.length}/${total} fields translated`;
+    })
+    .join('; ');
+
+  return { hasDeadLocale: true, statusText };
+};
+
 /**
  * Per-record outcome aggregated across all target locales, with field lists
  * resolved to both api_keys and ids and the CMA write timestamp captured.
@@ -412,7 +447,46 @@ export interface RecordTranslationOutcome
   copiedLinkFieldApiKeys: string[];
   copiedLinkFieldIds: string[];
   updatedAt?: string;
+  /**
+   * Per-locale roll-up of what actually translated versus failed. Consumed by
+   * `summarizeLocaleOutcomes` so one dead locale fails the record instead of
+   * being masked by a healthy sibling's field count.
+   */
+  localeOutcomes: LocaleOutcome[];
 }
+
+/**
+ * Picks the completion message and status label for a record that finished
+ * without failures: AI-translated fields, only copied references, or nothing
+ * eligible to translate at all.
+ *
+ * @param outcome - The record's aggregated outcome.
+ * @param recordLabel - Human-readable record label.
+ * @param recordId - Record identifier.
+ * @returns The completion `message` and `statusText` copy.
+ */
+const resolveCompletionCopy = (
+  outcome: RecordTranslationOutcome,
+  recordLabel: string,
+  recordId: string,
+): { completionMessage: string; statusText: string } => {
+  if (outcome.translatedFieldCount > 0) {
+    return {
+      completionMessage: `Translated "${recordLabel}" (#${recordId}).`,
+      statusText: 'Translated',
+    };
+  }
+  if (outcome.referenceFieldsCopied > 0) {
+    return {
+      completionMessage: `Copied linked records into new locales for "${recordLabel}" (#${recordId}).`,
+      statusText: 'Copied linked records into new locales',
+    };
+  }
+  return {
+    completionMessage: `No eligible fields to translate for "${recordLabel}" (#${recordId}).`,
+    statusText: 'No eligible fields to translate',
+  };
+};
 
 /**
  * Safely extracts error candidates from various error object shapes.
@@ -608,6 +682,7 @@ export async function translateAndUpdateRecords(
       field: string;
       error: NormalizedProviderError;
     }[] = [];
+    const localeOutcomes: LocaleOutcome[] = [];
     let totalTranslatedFields = 0;
     let totalReferenceFieldsCopied = 0;
     let totalErrorCount = 0;
@@ -651,6 +726,11 @@ export async function translateAndUpdateRecords(
       aggregatedTranslatedFields.push(...localeResult.translatedFields);
       aggregatedQcFlags.push(...localeResult.qcFlags);
       aggregatedFailedFields.push(...localeResult.failedFields);
+      localeOutcomes.push({
+        locale: toLocale,
+        translated: localeResult.translatedFields,
+        failed: localeResult.failedFields,
+      });
       totalTranslatedFields += localeResult.translatedFieldCount;
       totalReferenceFieldsCopied += localeResult.referenceFieldsCopied;
       totalErrorCount += localeResult.errorCount;
@@ -699,6 +779,7 @@ export async function translateAndUpdateRecords(
       errorCount: totalErrorCount,
       qcFlags: aggregatedQcFlags,
       failedFields: aggregatedFailedFields,
+      localeOutcomes,
       translatedFieldApiKeys,
       translatedFieldIds: toFieldIds(translatedFieldApiKeys),
       copiedLinkFieldApiKeys,
@@ -754,6 +835,25 @@ export async function translateAndUpdateRecords(
     const updatedFieldCount =
       outcome.translatedFieldCount + outcome.referenceFieldsCopied;
 
+    // Per-(record, locale) accounting: a locale with any failed field fails the
+    // whole record, so a healthy sibling locale can no longer mask a wholly-dead
+    // one behind a summed field count. Content-scoped failures land here too,
+    // since every failed field is recorded in some locale's `failed[]`.
+    const { hasDeadLocale, statusText: localeStatus } = summarizeLocaleOutcomes(
+      outcome.localeOutcomes,
+    );
+    if (hasDeadLocale) {
+      updateProgress({
+        recordIndex,
+        recordId,
+        status: 'error',
+        message: `Translated "${recordLabel}" (#${recordId}) with failures — ${localeStatus}.`,
+        statusText: localeStatus,
+        ...reportFields,
+      });
+      return 'continue';
+    }
+
     if (updatedFieldCount === 0 && outcome.warnings.length > 0) {
       updateProgress({
         recordIndex,
@@ -782,18 +882,11 @@ export async function translateAndUpdateRecords(
       return 'continue';
     }
 
-    let completionMessage: string;
-    let statusText: string;
-    if (outcome.translatedFieldCount > 0) {
-      completionMessage = `Translated "${recordLabel}" (#${recordId}).`;
-      statusText = 'Translated';
-    } else if (outcome.referenceFieldsCopied > 0) {
-      completionMessage = `Copied linked records into new locales for "${recordLabel}" (#${recordId}).`;
-      statusText = 'Copied linked records into new locales';
-    } else {
-      completionMessage = `No eligible fields to translate for "${recordLabel}" (#${recordId}).`;
-      statusText = 'No eligible fields to translate';
-    }
+    const { completionMessage, statusText } = resolveCompletionCopy(
+      outcome,
+      recordLabel,
+      recordId,
+    );
     updateProgress({
       recordIndex,
       recordId,
