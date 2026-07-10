@@ -33,6 +33,7 @@ import {
   shouldProcessField,
 } from './TranslationCore';
 import type { FieldOutcome, TranslationProvider } from './types';
+import { type WriteClaim, verifyPersistedWrite } from './verifyPersistedWrite';
 
 /**
  * Optional per-model allowlist of field api_keys that the user explicitly
@@ -760,8 +761,30 @@ export async function translateAndUpdateRecords(
       const updated = (await client.items.update(
         record.id,
         mergedPayload,
-      )) as { meta?: { updated_at?: string } };
+      )) as Record<string, unknown> & { meta?: { updated_at?: string } };
       updatedAt = updated?.meta?.updated_at ?? updatedAt;
+
+      // Structural read-back: every field we marked `translated` must come back
+      // present, non-null, and non-empty. A claim the CMA silently dropped is
+      // demoted from `translated` to `failed` so the record fails the run.
+      const claims: WriteClaim[] = localeOutcomes.flatMap((outcome) =>
+        outcome.translated.map((field) => ({ field, locale: outcome.locale })),
+      );
+      for (const mismatch of verifyPersistedWrite(updated, claims)) {
+        const message = `Field "${mismatch.field}" to ${formatLocaleWithCode(
+          mismatch.locale,
+        )} was reported translated but came back ${mismatch.reason} from the CMA.`;
+        aggregatedWarnings.push(message);
+        const outcome = localeOutcomes.find((o) => o.locale === mismatch.locale);
+        if (!outcome) continue;
+        outcome.translated = outcome.translated.filter(
+          (field) => field !== mismatch.field,
+        );
+        outcome.failed.push({
+          field: mismatch.field,
+          error: { code: 'datocms', source: 'datocms', message },
+        });
+      }
     }
 
     const translatedFieldApiKeys = [...new Set(aggregatedTranslatedFields)];

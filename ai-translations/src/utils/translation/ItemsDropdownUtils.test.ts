@@ -784,7 +784,12 @@ describe('ItemsDropdownUtils', () => {
       const updates: ProgressUpdate[] = [];
       const update = vi
         .fn()
-        .mockResolvedValue({ meta: { updated_at: '2026-07-08T21:00:00.000Z' } });
+        .mockImplementation(
+          async (_id: string, payload: Record<string, unknown>) => ({
+            ...payload,
+            meta: { updated_at: '2026-07-08T21:00:00.000Z' },
+          }),
+        );
       // biome-ignore lint/suspicious/noExplicitAny: minimal CMA client stub for the test
       const client = { items: { update } } as any;
 
@@ -856,7 +861,12 @@ describe('ItemsDropdownUtils', () => {
       const updates: ProgressUpdate[] = [];
       const update = vi
         .fn()
-        .mockResolvedValue({ meta: { updated_at: '2026-07-08T21:00:00.000Z' } });
+        .mockImplementation(
+          async (_id: string, payload: Record<string, unknown>) => ({
+            ...payload,
+            meta: { updated_at: '2026-07-08T21:00:00.000Z' },
+          }),
+        );
       // biome-ignore lint/suspicious/noExplicitAny: minimal CMA client stub
       const client = { items: { update } } as any;
       await translateAndUpdateRecords(
