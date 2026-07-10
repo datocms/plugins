@@ -7,6 +7,7 @@ import {
   buildFieldTypeDictionaryFromRepo,
   type SchemaRepository,
 } from '../schemaRepository';
+import { segmentGraphemes } from '../graphemes';
 import { formatLocaleWithCode } from '../localeUtils';
 import { isFieldIncludedInSelection } from './BulkTranslationHelpers';
 import {
@@ -157,10 +158,11 @@ export function deriveRecordLabel(
       const s = coerceFieldValueToString(record[key], preferredLocale);
       if (s?.trim()) {
         const trimmed = s.trim();
-        // Truncate by Unicode code points, not UTF-16 units: a raw `slice(0, 77)`
-        // can cut an emoji/astral character mid-surrogate-pair, leaving a lone
-        // surrogate in every progress message, modal row, and CSV title cell.
-        const chars = [...trimmed];
+        // Truncate by GRAPHEME CLUSTER, not UTF-16 units or bare code points: a
+        // raw `slice(0, 77)` can cut an emoji mid-surrogate (a lone surrogate) or
+        // split a ZWJ/flag cluster mid-glyph in every progress message, modal row,
+        // and CSV title cell.
+        const chars = segmentGraphemes(trimmed);
         return chars.length > 80 ? `${chars.slice(0, 77).join('')}…` : trimmed;
       }
     }

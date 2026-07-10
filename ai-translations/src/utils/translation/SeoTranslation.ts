@@ -14,6 +14,7 @@
 
 import locale from 'locale-codes';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
+import { segmentGraphemes, truncateToGraphemes } from '../graphemes';
 import { createLogger } from '../logging/Logger';
 import { handleTranslationError } from './ProviderErrors';
 import type { OnQcFlag } from './qc/types';
@@ -128,7 +129,12 @@ export async function translateSeoFieldValue(
     const result: SeoObject = { ...fieldValue };
 
     let translatedTitle = titleT || sourceTitle;
-    if (translatedTitle.length > SEO_TITLE_MAX_LENGTH) {
+    // Measure and cut by GRAPHEME CLUSTER, not UTF-16 `.length`/`.substring`:
+    // a raw substring can split an emoji mid-surrogate and PERSIST a lone
+    // surrogate (mojibake) to the SEO field, and `.length` over-counts astral
+    // characters so an emoji-bearing title within the real limit gets trimmed
+    // needlessly.
+    if (segmentGraphemes(translatedTitle).length > SEO_TITLE_MAX_LENGTH) {
       logger.info(
         `SEO title exceeds ${SEO_TITLE_MAX_LENGTH} character limit (${translatedTitle.length}). Truncating...`,
       );
@@ -141,11 +147,17 @@ export async function translateSeoFieldValue(
         severity: 'warning',
         message: `The translated SEO title was longer than ${SEO_TITLE_MAX_LENGTH} characters and was truncated — review it.`,
       });
-      translatedTitle = `${translatedTitle.substring(0, SEO_TITLE_MAX_LENGTH - ELLIPSIS_OFFSET)}...`;
+      translatedTitle = truncateToGraphemes(
+        translatedTitle,
+        SEO_TITLE_MAX_LENGTH - ELLIPSIS_OFFSET,
+        '...',
+      );
     }
 
     let translatedDescription = descT || sourceDescription;
-    if (translatedDescription.length > SEO_DESCRIPTION_MAX_LENGTH) {
+    if (
+      segmentGraphemes(translatedDescription).length > SEO_DESCRIPTION_MAX_LENGTH
+    ) {
       logger.info(
         `SEO description exceeds ${SEO_DESCRIPTION_MAX_LENGTH} character limit (${translatedDescription.length}). Truncating...`,
       );
@@ -154,7 +166,11 @@ export async function translateSeoFieldValue(
         severity: 'warning',
         message: `The translated SEO description was longer than ${SEO_DESCRIPTION_MAX_LENGTH} characters and was truncated — review it.`,
       });
-      translatedDescription = `${translatedDescription.substring(0, SEO_DESCRIPTION_MAX_LENGTH - ELLIPSIS_OFFSET)}...`;
+      translatedDescription = truncateToGraphemes(
+        translatedDescription,
+        SEO_DESCRIPTION_MAX_LENGTH - ELLIPSIS_OFFSET,
+        '...',
+      );
     }
 
     result.title = translatedTitle;

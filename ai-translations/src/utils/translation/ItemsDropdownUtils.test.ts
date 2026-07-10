@@ -81,6 +81,29 @@ describe('ItemsDropdownUtils', () => {
       expect(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(label)).toBe(false);
     });
 
+    it('keeps a multi-code-point grapheme cluster (flag emoji) whole when truncating', () => {
+      // A regional-indicator flag is TWO code points; a raw code-point slice(0, 77)
+      // can cut between them, leaving a lone half-flag. Grapheme-aware slicing
+      // keeps the cluster intact. 84 code points (> 80) forces truncation with the
+      // flag straddling the 76/77 boundary.
+      const title = `${'a'.repeat(76)}🇺🇸${'b'.repeat(6)}`;
+      const labelRecord: DatoCMSRecordFromAPI = {
+        id: 'r3',
+        item_type: { id: 't1' },
+        title: { en: title },
+      };
+
+      const label = deriveRecordLabel(labelRecord, 'en');
+
+      expect(label.endsWith('…')).toBe(true);
+      // The whole flag survives — not a lone regional indicator (half a flag).
+      expect(label).toContain('🇺🇸');
+      const regionalIndicators = [...label].filter((c) =>
+        /\p{Regional_Indicator}/u.test(c),
+      );
+      expect(regionalIndicators.length % 2).toBe(0);
+    });
+
     it('leaves a short title untouched', () => {
       const labelRecord: DatoCMSRecordFromAPI = {
         id: 'r2',

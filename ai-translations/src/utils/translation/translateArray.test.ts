@@ -655,6 +655,75 @@ describe('translateArray.ts', () => {
         expect(flags.some((f) => f.checkId === 'length-mismatch')).toBe(false);
       });
 
+      it('does not flag a source-fallback for an empty source slot returned as null', async () => {
+        // The middle SOURCE segment is empty (''), which a model legitimately
+        // echoes as null. Reverting an empty slot to its (empty) source loses no
+        // translation, so it must NOT raise a spurious "review this field".
+        vi.mocked(mockProvider.completeText).mockResolvedValue(
+          '["Hallo", null, "Welt"]',
+        );
+        const flags: QcFlag[] = [];
+
+        await translateArray(
+          mockProvider,
+          mockPluginParams,
+          ['Hello', '', 'World'],
+          'en',
+          'de',
+          { onQcFlag: (f) => flags.push(f) },
+        );
+
+        expect(flags.some((f) => f.checkId === 'source-fallback')).toBe(false);
+      });
+
+      it('suppresses source-fallback when a field-wide length-mismatch already explains it', async () => {
+        // A short array (2 in, 1 out) fires length-mismatch AND reverts the
+        // missing tail slot to source. Both describe the same incompleteness, so
+        // only the stronger length-mismatch should surface — not a second row.
+        vi.mocked(mockProvider.completeText).mockResolvedValue('["Hallo"]');
+        const flags: QcFlag[] = [];
+
+        await translateArray(
+          mockProvider,
+          mockPluginParams,
+          ['Hello', 'World'],
+          'en',
+          'de',
+          { onQcFlag: (f) => flags.push(f) },
+        );
+
+        expect(flags.some((f) => f.checkId === 'length-mismatch')).toBe(true);
+        expect(flags.some((f) => f.checkId === 'source-fallback')).toBe(false);
+      });
+
+      it('coalesces per-chunk source-fallbacks into one flag with the field total', async () => {
+        // A 30-segment field is translated in two chat chunks (25 + 5). Each chunk
+        // returns a same-length array whose FIRST element is null (a genuine
+        // revert of a non-empty source), so without coalescing the field would
+        // surface two flags — "1 of 25" and "1 of 5" — neither denominator being
+        // the field's real 30. It must be one flag: "2 of 30".
+        vi.mocked(mockProvider.completeText).mockImplementation(
+          async (prompt: string) => {
+            const chunk = JSON.parse(
+              prompt.slice(prompt.lastIndexOf('[')),
+            ) as string[];
+            const out = chunk.map((s, i) => (i === 0 ? null : `${s}-de`));
+            return JSON.stringify(out);
+          },
+        );
+        const sources = Array.from({ length: 30 }, (_, i) => `seg${i}`);
+        const flags: QcFlag[] = [];
+
+        await translateArray(mockProvider, mockPluginParams, sources, 'en', 'de', {
+          onQcFlag: (f) => flags.push(f),
+        });
+
+        const fallbacks = flags.filter((f) => f.checkId === 'source-fallback');
+        expect(fallbacks).toHaveLength(1);
+        expect(fallbacks[0].message).toContain('2 of 30');
+        expect(flags.some((f) => f.checkId === 'length-mismatch')).toBe(false);
+      });
+
       it('emits no flags on a clean, length-matched response', async () => {
         vi.mocked(mockProvider.completeText).mockResolvedValue('["a","b"]');
         const flags: QcFlag[] = [];

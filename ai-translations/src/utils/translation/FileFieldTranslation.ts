@@ -31,6 +31,15 @@ const uploadDefaultMetadataCache = new Map<
   Promise<UploadDefaultFieldMetadata | undefined>
 >();
 
+/**
+ * Clears the module-level upload default-metadata cache. Exposed for test
+ * isolation (each test starts from an empty cache) and as a hook to invalidate
+ * stale metadata after a credential/environment change.
+ */
+export function resetUploadDefaultMetadataCache(): void {
+  uploadDefaultMetadataCache.clear();
+}
+
 async function fetchUploadDefaultMetadata(
   uploadId: string,
   apiToken: string,

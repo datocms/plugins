@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import {
   readUploadDefaultAltTitle,
+  resetUploadDefaultMetadataCache,
   translateFileFieldValue,
 } from './FileFieldTranslation';
 import type { TranslationProvider } from './types';
@@ -46,6 +47,10 @@ describe('FileFieldTranslation', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockUploadsFind.mockReset();
+    // Clear the module-level metadata cache so a resolved promise from an earlier
+    // test can't satisfy a later lookup — otherwise isolation would silently rest
+    // on every test hand-picking a unique upload_id.
+    resetUploadDefaultMetadataCache();
     mockProvider = {
       vendor: 'openai',
       streamText: vi.fn(),

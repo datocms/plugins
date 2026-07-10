@@ -340,17 +340,24 @@ function reconcileArrayLength(args: {
   // That silent source fallback is exactly what AGENTS.md forbids, so count the
   // reverted slots and surface them — even when the array length matched and no
   // length-mismatch flag fired (a valid-length array with one null element).
+  // A slot whose SOURCE is blank is exempt: echoing "" back as null loses no
+  // translation, so it must not raise a spurious "review this field".
   let sourceFallbacks = 0;
   const repaired = originalSegments.map((seg, i) => {
     const v = arr[i];
     if (typeof v === 'string') return v;
-    sourceFallbacks += 1;
-    return String(seg ?? '');
+    const source = String(seg ?? '');
+    if (source.trim() !== '') sourceFallbacks += 1;
+    return source;
   });
   if (sourceFallbacks > 0) {
+    // `count` carries the per-chunk tally; translateArray coalesces the
+    // per-chunk flags into one field-wide flag with the real field total, so the
+    // denominator here (this chunk's length) is provisional and gets restated.
     args.onQcFlag?.({
       checkId: 'source-fallback',
       severity: 'warning',
+      count: sourceFallbacks,
       message: `${sourceFallbacks} of ${originalSegments.length} segment(s) came back untranslated and kept the source text — review this field.`,
     });
   }
@@ -502,14 +509,51 @@ function suppressRedundantFlags(flags: QcFlag[]): QcFlag[] {
     if (flag.checkId === 'no-op' && flag.segmentIndex === undefined) {
       return !hasTruncated;
     }
-    // A truncated response source-pads its cut-off tail, so `source-fallback`
-    // (which counts those reverted slots) is fully explained by `truncated` and
-    // would just be a redundant second row on the same field.
-    if (flag.checkId === 'source-fallback' && hasTruncated) {
+    // A field-wide suppressor already explains the reverted slots that
+    // `source-fallback` counts, so the fallback would just be a redundant second
+    // row on the same field: a `truncated` response source-pads its cut-off tail,
+    // and a field-wide `length-mismatch` (or any field-wide error) accounts for a
+    // short/dropped output the tail reverted from.
+    if (
+      flag.checkId === 'source-fallback' &&
+      (hasTruncated || hasFieldWideSuppressor)
+    ) {
       return false;
     }
     return true;
   });
+}
+
+/**
+ * Coalesces the per-chunk `source-fallback` flags a chunked chat translation
+ * emits into a single field-wide flag. Chunks are translated and parsed
+ * independently, each reporting only its own reverted slots against its own chunk
+ * length, so a long field left as-is would surface several rows whose
+ * "N of <chunk-size>" denominator misstates the field's true segment count. This
+ * sums the per-chunk `count`s and restates them against `totalSegments`.
+ */
+export function coalesceSourceFallbackFlags(
+  flags: QcFlag[],
+  totalSegments: number,
+): QcFlag[] {
+  const fallbacks = flags.filter((flag) => flag.checkId === 'source-fallback');
+  // Restate even a lone fallback: on a chunked field its denominator is the chunk
+  // size, not the field total, so a single "1 of 25" on a 30-segment field is
+  // still wrong. On a non-chunked field totalSegments equals the chunk length, so
+  // this is a harmless no-op.
+  if (fallbacks.length === 0) return flags;
+
+  const reverted = fallbacks.reduce((sum, flag) => sum + (flag.count ?? 1), 0);
+  const coalesced: QcFlag = {
+    checkId: 'source-fallback',
+    severity: 'warning',
+    count: reverted,
+    message: `${reverted} of ${totalSegments} segment(s) came back untranslated and kept the source text — review this field.`,
+  };
+  return [
+    ...flags.filter((flag) => flag.checkId !== 'source-fallback'),
+    coalesced,
+  ];
 }
 
 /**
@@ -837,7 +881,12 @@ export async function translateArray(
         isMarkdown: kind === 'markdown',
         atomicSegments: opts.qcAtomicSegments === true,
       });
-      const emitted = suppressRedundantFlags([...qcFlags, ...contentFlags]);
+      const emitted = suppressRedundantFlags(
+        coalesceSourceFallbackFlags(
+          [...qcFlags, ...contentFlags],
+          segments.length,
+        ),
+      );
       for (const flag of emitted) opts.onQcFlag(flag);
     }
 

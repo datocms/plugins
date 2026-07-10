@@ -294,6 +294,30 @@ describe('SeoTranslation', () => {
         expect(flags.some((f) => f.checkId === 'seo-truncated')).toBe(false);
       });
 
+      it('does not split an emoji into a lone surrogate when truncating (persisted content)', async () => {
+        // The truncation boundary (57) lands on an emoji whose UTF-16 surrogate
+        // pair a raw substring(0, 57) would split — persisting a lone surrogate
+        // (mojibake) to the saved SEO title. Grapheme-aware slicing keeps it whole.
+        const emojiTitle = `${'a'.repeat(56)}😀${'a'.repeat(12)}`;
+        vi.mocked(translateArray).mockResolvedValue([emojiTitle, 'Description']);
+
+        const result = await translateSeoFieldValue(
+          { title: 'Original', description: 'Description' },
+          mockPluginParams,
+          'de',
+          'en',
+          mockProvider,
+          '',
+        );
+
+        expect(result.title?.endsWith('...')).toBe(true);
+        expect(result.title).toContain('😀');
+        // No unpaired UTF-16 surrogate leaked into the persisted value.
+        const loneSurrogate =
+          /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/;
+        expect(loneSurrogate.test(result.title ?? '')).toBe(false);
+      });
+
       it('should not truncate title under 60 characters', async () => {
         const shortTitle = 'Short Title';
         vi.mocked(translateArray).mockResolvedValue([

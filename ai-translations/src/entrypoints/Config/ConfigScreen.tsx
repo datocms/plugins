@@ -669,6 +669,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   const [isModelListLoading, setIsModelListLoading] = useState(false);
   const modelListRequestId = useRef(0);
   const latestGptModel = useRef(gptModel);
+  const fieldListLoaded = useRef(false);
 
   // Holds all possible GPT models fetched from the OpenAI API
   const [listOfModels, setListOfModels] = useState<string[]>([
@@ -705,8 +706,18 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   // it left the exclusion dropdown empty for DeepL/Gemini/Anthropic users (and
   // OpenAI users whose key wasn't in this field), so nothing — including block
   // fields — could be excluded.
+  //
+  // Load ONCE, though: the SDK hands us a fresh `ctx` on every re-render (theme
+  // toggle, token refresh, parent state), and depending on `[ctx]` alone would
+  // re-issue a `loadItemTypeFields` CMA call for every model and block each time
+  // — a burst of schema reads that can hit rate limits on a large project. The
+  // schema is stable for the session, so a ref-guard runs the load a single time
+  // once `ctx.itemTypes` is populated.
   useEffect(() => {
-    for (const itemTypeID in ctx.itemTypes) {
+    const itemTypeIDs = Object.keys(ctx.itemTypes);
+    if (fieldListLoaded.current || itemTypeIDs.length === 0) return;
+    fieldListLoaded.current = true;
+    for (const itemTypeID of itemTypeIDs) {
       loadFieldsForItemType(itemTypeID, ctx, setListOfFields);
     }
   }, [ctx]);

@@ -37,6 +37,12 @@ export type QcFlag = {
   locale?: string;
   /** Index within a multi-segment value, when applicable. */
   segmentIndex?: number;
+  /**
+   * How many segments a field-wide aggregate flag covers (e.g. the number of
+   * reverted slots behind a `source-fallback`). Summed when per-chunk flags for
+   * the same field are coalesced into one. Undefined for single-segment flags.
+   */
+  count?: number;
   /** Human-facing, normalized message. */
   message: string;
 };
