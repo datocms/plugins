@@ -200,6 +200,7 @@ the `parseReport` regex in lockstep, or every bulk test silently reads zeros.
   failed with the reason (that's the feature), so the bulk test still passes; a lane
   that fails *all* records usually means credits/rate-limit on that key, not a bug.
   Probe a provider key directly (a one-off `fetch` to the provider) to distinguish.
+- **The Google/Gemini lane can hit a REAL rate limit mid-`runBulkTranslation`.** Its one un-faulted bulk test, `bulk: produces a per-record outcome report` (`:112`), drives a full `product → es` run through `runBulkTranslation`, which waits ≤5 min for **Close** to enable. On the free Gemini key the live API can 429 partway through (_"Rate limit reached … Reduce request rate or increase quota in Google Cloud console"_), and the plugin correctly PAUSES (Resume/Cancel, "Please wait…") — so Close never enables and the wrapper times out. Same environmental class as the Anthropic note above: **not a code bug** (the pause IS the feature, separately asserted by `bulk-reliability.spec`), just quota. If only `google` fails `:112` while the other lanes pass it, suspect the quota, not a regression; re-run the lane after the free-tier window resets, or probe the key directly.
 - **Record editor links** need `ctx.site.attributes.internal_domain` +
   `ctx.isEnvironmentPrimary` (`buildRecordEditorUrl`) — the plugin iframe origin is not
   the admin origin.
