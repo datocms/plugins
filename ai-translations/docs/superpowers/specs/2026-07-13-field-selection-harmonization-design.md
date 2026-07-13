@@ -1,7 +1,17 @@
 # Field Selection Harmonization — Design
 
+> **⚠️ SUPERSEDED by [`2026-07-13-field-selection-investigation.md`](./2026-07-13-field-selection-investigation.md).**
+>
+> This spec was written before the platform research. Its §3 treats the sidebar's
+> `frameless_single_block` decomposition as a permanent quirk to route around
+> (`framelessParentKey ?? fieldApiKey`). That diagnosis is **wrong**: the decomposition is
+> an obsolete workaround for a 2025 engine limitation that was fixed in Feb 2026, it does
+> not match how DatoCMS models the field, and it silently loses translations. Do not
+> implement §3 as written. §1 (kill the "All fields" sentinel) and §2 (inline collapsed
+> picker in the sidebar) remain valid.
+
 **Date:** 2026-07-13
-**Status:** Approved, pending implementation plan
+**Status:** Superseded — see above
 **Scope:** `ai-translations` plugin — `ModelFieldPicker` (shared) and the single-record sidebar
 
 ## Problem
