@@ -81,15 +81,23 @@ We have a whole branch handling the shape the backend refuses to store.
 
 ### Why the code looks like this — and it's a good reason
 
-This isn't carelessness. In June 2025 a user filed an issue upstream: frameless blocks render *no field header*, so there's no kebab menu, so **there is no translate button at all** — the block was simply untranslatable. Marcelo fixed it, and wrote down exactly what he was doing:
+This isn't carelessness. Frameless blocks render *no field header*, so there's no kebab menu, so **there was no translate button at all** — the block was simply untranslatable. Two users reported it. Marcelo fixed it, and wrote down exactly what he was doing:
 
 > *"now you should be able to translate the fields inside the block just like if there where no block at all (but not the whole block at once unfortunately)"*
+> — [issue #5](https://github.com/marcelofinamorvieira/datocms-plugin-ai-translations/issues/5), 2025-10-24
 
-That parenthetical is the entire design. And **it was correct at the time** — the engine genuinely could not translate a frameless block as a unit back then; it would have fed the whole block to the AI as if it were a paragraph of prose.
+That parenthetical is the entire design. And **it was correct at the time** — the engine genuinely could not translate a frameless block as a unit back then; `modularContentVariations` was `['framed_single_block']` and the engine's switch had no frameless case, so a whole block would have fallen through to `default:` and been fed to the AI as if it were prose.
 
-Then, in February 2026, a refactor added proper frameless support to the engine — which is what the bulk path uses today. It did not touch the sidebar's workaround. The commit message is, in full: *"Refactor ai-translations."*
+| When | What | Link |
+| --- | --- | --- |
+| 2025-06-10 | Issue #5 — *"there is no translate button that is visible, which makes it untranslatable"* | [#5](https://github.com/marcelofinamorvieira/datocms-plugin-ai-translations/issues/5) |
+| 2025-11-20 | Issue #11 — record-level translation still skips frameless fields | [#11](https://github.com/marcelofinamorvieira/datocms-plugin-ai-translations/issues/11) |
+| 2025-11-20 | **`3e78bbb` — the workaround.** One file (`translateRecordFields.ts`, +121/−31): skip the frameless parent, hoist its sub-fields, write leaf paths. Shipped as v2.2.1. | [3e78bbb](https://github.com/marcelofinamorvieira/datocms-plugin-ai-translations/commit/3e78bbb2c074b1e5a6f39a76f1406ce0fd4223a6) |
+| 2026-02-25 | **`5381127` — the proper fix.** Adds `frameless_single_block` to `modularContentVariations` *and* to the engine switch, plus `translateFramelessSingleBlockValue`. The engine can now translate the block whole. Commit body: empty. Subject: *"Refactor ai-translations."* | [plugins#134](https://github.com/datocms/plugins/pull/134) |
 
-**The workaround outlived the problem it solved by five months, and nothing in any commit, PR, or ticket noticed.** We checked: no README, no changelog, no design doc, no Basecamp thread. The only surviving explanation is that one sentence in a GitHub issue.
+**The supersession was never noticed.** `5381127` also touched `translateRecordFields.ts` — and *improved* the workaround, adding a `framelessParentsByItemType` lookup map to make the sub-field hunt faster. The same commit built the proper fix and invested in the thing the proper fix made unnecessary. Nobody was choosing to keep both roads; nobody saw there were two.
+
+**Is the workaround dead code? No — and that's the problem.** Dead code is harmless. This runs on *every* sidebar translation. It is **obsolete, not dead**: the constraint that justified it vanished in February 2026, but it kept executing, and it is the direct cause of all three bugs below. We now ship **two implementations of the same feature** — bulk/kebab/nested go through the engine ✅, the sidebar goes through the workaround ❌ — and we've been maintaining the wrong one for nearly five months. Nothing in any commit, PR, changelog, or Basecamp thread records this. The only surviving explanation of *any* of it is that one sentence in issue #5.
 
 ### What that costs us — three real bugs
 
@@ -273,5 +281,5 @@ Those are two different people, two different questions, two different lifespans
 | A whole-block write at the parent path **works** | `cms/.../useFormFields.ts:110-133` registers `hero.en`, not its leaves; `setFieldValue` is a pass-through to Formik `setIn` |
 | Bug #1 (silent null) | `cms/src/utils/prepareItemPayload.ts:343-347` — a block with no `itemTypeId` serialises to `null` |
 | Bugs #2 and #3 | `translateRecordFields.ts:728` returns before `shouldProcessField` at `:735`; both confirmed with repros against `e2e/seed/1-schema.mjs:125-127,188-191` |
-| Original rationale | Upstream `marcelofinamorvieira/datocms-plugin-ai-translations` issues #5 and #11; commit `3e78bbb`. Obsoleted by `5381127` |
+| Original rationale | Upstream issues [#5](https://github.com/marcelofinamorvieira/datocms-plugin-ai-translations/issues/5) + [#11](https://github.com/marcelofinamorvieira/datocms-plugin-ai-translations/issues/11); workaround commit [`3e78bbb`](https://github.com/marcelofinamorvieira/datocms-plugin-ai-translations/commit/3e78bbb2c074b1e5a6f39a76f1406ce0fd4223a6) (2025-11-20, v2.2.1). Obsoleted by `5381127` (2026-02-25) in [datocms/plugins#134](https://github.com/datocms/plugins/pull/134) — which also *improved* the workaround in the same commit, never noticing it had made it redundant |
 | No rationale was ever recorded for the rest | No README/changelog/PR/Basecamp coverage. Basecamp swept 7,836 records across 21 projects — clean negative (caveat: Basecamp search is broken; Slack not swept) |
