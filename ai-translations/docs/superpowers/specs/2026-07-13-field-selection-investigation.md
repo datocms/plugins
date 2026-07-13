@@ -99,19 +99,55 @@ That parenthetical is the entire design. And **it was correct at the time** — 
 
 **Is the workaround dead code? No — and that's the problem.** Dead code is harmless. This runs on *every* sidebar translation. It is **obsolete, not dead**: the constraint that justified it vanished in February 2026, but it kept executing, and it is the direct cause of all three bugs below. We now ship **two implementations of the same feature** — bulk/kebab/nested go through the engine ✅, the sidebar goes through the workaround ❌ — and we've been maintaining the wrong one for nearly five months. Nothing in any commit, PR, changelog, or Basecamp thread records this. The only surviving explanation of *any* of it is that one sentence in issue #5.
 
-### What that costs us — three real bugs
+### Crucial: "frameless" is a *rendering decision*, not a field property
 
-All three were independently verified by adversarial review, with step-by-step repros against our own E2E seed schema.
+The plugin and the CMS **disagree about what frameless means**, and this is where the damage comes from.
+
+- **The plugin** decides frameless from one static attribute: `appearance.editor === 'frameless_single_block'`.
+- **The CMS** decides at render time, from *four* things (`cms/.../RichContent/FramelessSingleBlock.tsx:89-95`):
+
+```tsx
+if (
+  hasErrors ||                                    // ← ANY live validation error → framed
+  blockModelIds(props.field).length !== 1 ||      // ← must allow exactly ONE block model
+  !props.field.attributes.validators.required     // ← must have a `required` validator
+) {
+  return <SingleBlock {...props} />;              // ← silently falls back to the FRAMED renderer
+}
+```
+
+So a field can be **frameless to the plugin and framed to the CMS**. The backend enforces none of these preconditions — the CMS just warns and falls back.
+
+**When it renders framed**, the parent field has a normal header with a kebab menu → the plugin's dropdown offers "Translate to" on the whole block. **When it renders truly frameless**, the parent field is *invisible* — no label, no kebab, nothing. The block's fields look like ordinary fields on the record, and the field holding them cannot be seen or acted on at all.
+
+**That is precisely why Marcelo's workaround exists, and why part of it must stay forever.** For the *field-dropdown* pathway, translating a frameless block as a unit isn't hard — it's **impossible**, because DatoCMS renders no menu to hang the action on. Per-sub-field is the only option there will ever be.
+
+**But the sidebar never touches a kebab.** It reads `ctx.fields` and writes through `setFieldValue`; rendering mode is irrelevant to it. Issue #11 was about record-level translation, and it got the dropdown's strategy copied into it only because, in Nov 2025, the engine had no alternative.
+
+| Pathway | Decompose the block? | Why |
+| --- | --- | --- |
+| **Field dropdown** | **Yes — permanently** | DatoCMS renders no parent kebab. Platform-forced. Cannot be fixed. |
+| **Sidebar** | **No** | Nothing forces it. The engine has handled whole blocks since Feb 2026. |
+| **Bulk** | No — already correct | — |
+
+### What that costs us — three bugs
+
+Bugs 2 and 3 were independently verified by adversarial review with step-by-step repros. Bug 1 is traced in code but **not yet reproduced against a live record** — see the caveat.
 
 | # | Bug | Severity |
 | --- | --- | --- |
-| 1 | **Sidebar silently discards frameless-block translations** into a locale where the block doesn't exist yet. It writes the translated text into a half-built block with no type marker; on save, the CMS sees a malformed block and stores `null`. The translation vanishes. This is the *normal* path — it's what happens when you translate into a new language. | 🔴 **Data loss** |
-| 2 | **Excluding a frameless block in Settings does nothing in the sidebar.** The admin's blocklist is silently ignored. (Bulk honours it correctly.) | 🟠 Setting ignored |
-| 3 | **Unchecking "Modular Content" in Settings doesn't stop the sidebar** translating frameless blocks either. (Bulk honours it correctly.) | 🟠 Setting ignored |
+| 1 | **Sidebar can silently discard frameless-block translations.** It writes translated text into a block that has no type marker; on save the CMS sees a malformed block and stores `null`. No error, no warning. | 🔴 **Data loss — scope narrower than first thought, see below** |
+| 2 | **Excluding a frameless block in Settings does nothing in the sidebar.** The admin's blocklist is silently ignored. (Bulk honours it.) | 🟠 Setting ignored |
+| 3 | **Unchecking "Modular Content" in Settings doesn't stop the sidebar** translating frameless blocks either. (Bulk honours it.) | 🟠 Setting ignored |
 
-There's a bitter irony in #1: the decomposition was almost certainly done *defensively*, to avoid writing a malformed block. Writing the leaves individually lands in **the exact same trap**, from the other side. The workaround and the hazard are the same bug.
+**Scope of bug 1 — be precise:**
 
-**All three disappear if the sidebar does what the bulk path already does:** treat the block as one unit and let the engine handle it. That also deletes ~120 lines of machinery whose only purpose was to support the workaround.
+- **Confirmed reachable:** a field declared `frameless_single_block` **without** `required`. The CMS renders it framed, the field is nullable, so the target locale's block can be `null` — and the plugin still decomposes, because it only checks the editor name. **This is exactly the configuration our own E2E seed creates**, and the CMA permits anyone to create it.
+- **Unverified:** true frameless (with `required`). `required` may guarantee the target block always exists, which would make the bug unreachable there. We do not know. Do not assert it either way without a test.
+
+There's a bitter irony in bug 1: the decomposition was almost certainly done *defensively*, to avoid writing a malformed block. Writing the leaves individually lands in **the exact same trap**, from the other side.
+
+**All three disappear if the sidebar does what bulk already does** — hand the block to the engine as one unit. And the real prize isn't the ~120 deleted lines: **the plugin stops needing the concept of "frameless" at all.** It becomes an ordinary `single_block`. No preconditions to replicate, no live error state to track, no plugin-vs-CMS disagreement to keep in sync. The only place frameless can still matter is the dropdown — and there we don't detect it either; DatoCMS decides for us by simply not rendering a kebab.
 
 ---
 
@@ -253,7 +289,8 @@ Those are two different people, two different questions, two different lifespans
 
 **The work, in priority order:**
 
-1. **Fix the silent data loss.** Make the sidebar translate frameless blocks as a unit, exactly like bulk does. Kills bugs #1, #2, and #3 together, deletes ~120 lines, and aligns us with what the backend actually models. *(Prove it with an E2E test first — I've verified it in code, not yet against a live record.)*
+0. **Fix the E2E seed — nothing can be proven until this is done.** `e2e/seed/1-schema.mjs:188-191` declares `inline_note` frameless but omits `required`, so the CMS has been rendering it **framed** all along. **Every "frameless" assertion in our suite has been testing the framed renderer.** The seed needs *both* fixtures: a true frameless field (`required` + exactly one block model) and the misconfigured one (frameless editor, no `required`) — they are different CMS code paths and different bugs.
+1. **Fix the silent data loss.** Make the sidebar translate frameless blocks as a unit, exactly like bulk does. Kills bugs #1, #2, and #3 together, deletes ~120 lines, removes the *concept* of frameless from the plugin, and aligns us with what the backend actually models. Keep the decomposition in the **field dropdown** — that one is platform-forced and permanent. *(Prove bug #1 with an E2E test first, on the fixed seed.)*
 2. **Fix the picker.** Kill the "All fields" chip; show every field as its own removable chip; add a plain "Select all" button for when someone clears the box. This is the bug we came in for.
 3. **Give the sidebar a field picker**, collapsed by default, using the same widget as bulk.
 4. **Make "exclude" mean one thing** (§3): don't clobber existing target-language block content; only fall back to source text when we're creating a block from scratch.

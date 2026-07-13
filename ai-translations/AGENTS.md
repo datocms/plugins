@@ -19,6 +19,8 @@ Vite + React + TypeScript DatoCMS plugin that translates localized content throu
 
 Run from `ai-translations/`: `npm run dev` / `build` / `lint` / `lint:fix` (Biome, not ESLint) / `test` / `test:watch` / `coverage`.
 
+Need a real project to click around in? `npm run test:e2e:manual [-- <vendor>]` forks a throwaway env from the E2E project, pins the plugin to a provider, and opens it in your browser; `npm run test:e2e:manual:cleanup` reclaims the sandboxes. Details in [`e2e/AGENTS.md`](e2e/AGENTS.md).
+
 ## Coding Style
 
 - Keep provider-specific code in `src/utils/translation/providers/`; route selection through `ProviderFactory.ts`.
@@ -71,6 +73,23 @@ An optimization, never a precondition — browsers can't read the header without
 
 ### File/gallery fields
 Translate `alt`/`title` (plus extra string metadata); when blank on the field value, `FileFieldTranslation.ts` enriches from the upload's `default_field_metadata`. That structure has **two live shapes** and `readUploadDefaultAltTitle` must read both: legacy locale-first `{ en: { alt, title, focal_point } }` and field-first `{ alt: { en, it }, focal_point: { x, y } }` (from the [non-localized focal points](https://www.datocms.com/product-updates/non-localized-focal-points) update — default for projects created after 2026-06-11). Detection keys on whether a top-level key matches the source locale; locale codes never collide with `alt`/`title`/`focal_point`. Reading only one shape silently disables enrichment on half the projects in the wild.
+
+### Frameless single blocks — a rendering mode, not a field type
+`frameless_single_block` is an **`appearance.editor`** on the `single_block` field type, not a field type of its own. The stored value, validators, and CMA payload are byte-identical to `framed_single_block` — verified in `datocms/api` (`lib/dato/field_type.rb`, `lib/dato/editor.rb`; `Dato::Editor::FramelessSingleBlock` is an empty class) and against live schema. **Any data-layer branch on framed-vs-frameless is branching on a CSS choice.**
+
+Worse, "frameless" isn't even stable. The CMS decides at *render time* (`cms/src/components/sub/RichContent/FramelessSingleBlock.tsx:89-95`) and silently falls back to the framed renderer unless **all** of: `validators.required` is present, exactly one block model is allowed, and there is no live validation error. The backend enforces none of this. So a field can be **frameless in the schema and framed on screen** — and a frameless field flips *back* to framed the moment it has an error.
+
+Consequences, in order of importance:
+
+- **Never detect frameless to decide how to translate.** Treat `single_block` uniformly and let `translateFieldValue` recurse (`case 'frameless_single_block'` has routed to `translateBlockValue` since commit `5381127`, Feb 2026). This is what the bulk/CMA path does, and it's why bulk is correct.
+- **The one place it legitimately matters is the field dropdown** (`main.tsx`), and even there you don't detect it: in true frameless mode DatoCMS renders *no field header and no kebab* for the parent, so `fieldDropdownActions` can only ever fire on the block's **sub-fields**. Translating such a block as a unit from the dropdown is impossible, permanently. That is what upstream issue #5 was about and why the per-sub-field path exists.
+- **`translateRecordFields.ts` (the sidebar) still decomposes frameless blocks** — skipping the parent at `:728`, hoisting sub-fields, writing leaf paths like `hero.it.headline`. That was correct in Nov 2025 (the engine had no frameless case) and has been **obsolete since Feb 2026**. It is obsolete, not dead: it runs on every sidebar translation, it makes the sidebar ignore both the exclusion list and the field-type allowlist, and a leaf write into a not-yet-materialised block produces a block with no `itemTypeId`, which `cms/src/utils/prepareItemPayload.ts:343-347` serialises to **`null`** — silently discarding the translation. See `docs/superpowers/specs/2026-07-13-field-selection-investigation.md`.
+- A whole-block write at the parent path **is** honoured — `ctx.setFieldValue` is a pass-through to Formik `setIn`, and the form registers `hero.en` (the parent), not the leaves. It must be in *form* shape (`{ itemId, itemTypeId, ...subValues }`), not CMA shape; a malformed object is serialised to `null` with no error.
+
+### Block sub-fields are never localized
+DatoCMS **rejects `localized: true` on any field of a `modular_block` item type with a 422** — `datocms/api/app/models/field.rb:167,235-242`, an unconditional validation (`modular_block` is immutable after creation, so there is no back door). Per-locale block content comes from the **container** field being localized: each locale holds its own independent block instances with distinct IDs. Docs: *"Block fields per se cannot be localized"* (`content-modelling/blocks.md`); the DatoCMS skills file it under "Platform rules, not preferences".
+
+So `localized: false` on a block sub-field does **not** mean "untranslatable" — it's the normal case, and the value is translated directly. `filterTranslatableFields` may filter on `localized` only because it lists **top-level** model fields, where the check is correct; pushing that filter into blocks would silently drop every block field. `processBlockFields` correctly applies no `localized` gate. The `isLocalizedField` branch at `TranslateField.ts:935` is **dead code** — it handles a shape the API 422s.
 
 ### Link/Links (reference) fields
 Never translated — references are shared across locales. The locale-sync fallback in `buildTranslatedUpdatePayload` (`ItemsDropdownUtils.ts`) shallow-copies source references into new locales (linked records are not followed or re-translated). This also satisfies min-count `size` validators, which links/gallery fields use *instead of* `required` — detect via `hasMinItemsValidator`/`isReferenceField` in `SharedFieldUtils.ts`, keyed on validators, not editor names. Each copy is recorded as a structured `ReferenceCopy` and consolidated via `summarizeReferenceCopies`; a reference-copy-only record still counts as an update and surfaces as `completed-with-warnings`. When QC flags and reference copies both apply, `error`-severity QC flags win.

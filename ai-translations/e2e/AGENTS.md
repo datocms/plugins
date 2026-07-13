@@ -41,6 +41,21 @@ OPENAI= GEMINI= CLAUDE= npx playwright test --project=deepl -g "bulk:"
 deterministic, and it exercises setup + bulk + per-record end to end. Prove the
 harness on DeepL first, then widen to the matrix.
 
+**Manual sandbox** (`e2e/manual/`) — a forked env to click around in by hand, not
+a test lane:
+
+```bash
+npm run test:e2e:manual              # first provider with a key in .env.testing
+npm run test:e2e:manual -- deepl     # pin the sandbox to one vendor
+npm run test:e2e:manual:cleanup      # list every sandbox, destroy on confirm
+```
+
+It reuses the suite's own `forkAll` + `configureEnvForProvider`, starts Vite if
+:5173 is idle (reuses it otherwise), and opens the browser at the env's content
+editor — printing the plugin-settings URL alongside, since the config screen is
+where exclusions live. Nothing tears the env down: it is meant to outlive the
+process, and `Ctrl-C` only stops Vite. See the sweep exemption below.
+
 ## Prerequisites (`.env.testing` at the package root)
 
 Loaded by `tests/setup/env.ts` via dotenv; `requireEnv()` fails fast, naming every
@@ -89,6 +104,15 @@ missing var at once.
   orphans disappear on the next run. To drop fresh orphans now, list `environments`
   via the CMA token and `environments.destroy` the `e2e-*` ones (always sandbox
   forks, safe to delete). Never destroy `main`.
+- **Manual sandboxes are exempt from the sweep, by name.** They are
+  `manual-e2e-<unix-seconds>`, not `e2e-manual-*` — the sweep matches on
+  `startsWith('e2e-')`, so the `manual-` prefix is what keeps a hand-made sandbox
+  from vanishing mid-session when someone else starts a suite run. Do not "tidy"
+  that prefix into `e2e-manual-*`; it would put every manual env back in the
+  sweep's blast radius. `manual-env.ts` owns the prefix and the `isManualEnv`
+  predicate; the only thing that destroys them is `test:e2e:manual:cleanup`, which
+  always prints the full list and waits for an explicit `y`. That printed list is
+  the safeguard — never add a `--force`/`--yes` flag that skips it.
 
 ## The seed (`e2e/seed/`) — the fork source
 
@@ -120,6 +144,34 @@ records (A1–A7, P1–P3) each populate two locales, leaving the rest empty for
 suite to translate into. `seed-manifest.json` lists each record's `sourceLocales` +
 `emptyTargetLocales`; the suite iterates it (`steps/assert-record.ts` →
 `loadManifest`, `findRecord`).
+
+> ### ⚠️ `article.inline_note` is NOT actually frameless — the suite has never tested a frameless block
+>
+> `1-schema.mjs:188-191` declares `inline_note` with the frameless editor but **no
+> `required` validator**. The CMS only renders a single block frameless when **all** of
+> these hold (`cms/src/components/sub/RichContent/FramelessSingleBlock.tsx:89-95`):
+> `validators.required` is present, exactly one block model is allowed, and there is no
+> live validation error. Otherwise it **silently falls back to the framed renderer** —
+> which is what has been happening. The backend enforces none of this; the schema editor
+> merely warns.
+>
+> Consequences, if you are writing or debugging block tests:
+> - Every "frameless" assertion in this suite has been exercising the **framed** renderer.
+>   Framed shows a field header with a kebab (so the plugin's *parent-field* "Translate to"
+>   dropdown is reachable). **True frameless shows no header and no kebab at all** — the
+>   parent field is invisible, and only the sub-fields have kebabs. We have been testing a
+>   dropdown action that real frameless users can never reach.
+> - The plugin decides "frameless" from `appearance.editor` alone, so it takes the
+>   decomposition path (`translateRecordFields.ts:728`) **even while the CMS renders the
+>   field framed**. That mismatch is the suspected home of a silent data-loss bug — a leaf
+>   write into a not-yet-materialised block yields a block with no `itemTypeId`, which
+>   `prepareItemPayload.ts:343-347` serialises to `null`.
+> - Fixing this needs **two** fixtures, not one: a *true* frameless field (`required` +
+>   exactly one block model) **and** the misconfigured one (frameless editor, no
+>   `required`). They are different CMS code paths and different bugs. Keep the existing
+>   field as the misconfigured case; add a new one for true frameless.
+>
+> Background: `docs/superpowers/specs/2026-07-13-field-selection-investigation.md`.
 
 ## Steps & the UI contract (`tests/steps/`)
 
