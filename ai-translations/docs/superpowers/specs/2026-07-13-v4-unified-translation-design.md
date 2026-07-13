@@ -186,7 +186,7 @@ Crawl the field tree **once per model** (schema, cached). It produces:
 
 | Entry point | Behaviour |
 | --- | --- |
-| **Field kebab** | **Stays direct.** `Translate to → [locale]` / `Translate from → [locale]`. Two clicks. Plus a new **`Translate with options…`** that opens the unified modal pre-scoped to that field. Also the deliberate-override path for structural divergence. |
+| **Field kebab** | **Stays direct, and stays minimal.** `Translate to → [locale]` / `Translate from → [locale]`. Two clicks, existing locales only. No modal, no options entry — the kebab's whole value is that it asks nothing. It is also the deliberate-override path for structural divergence (§4). |
 | **Sidebar** | The panel's button opens the **unified modal**, scoped to this record, all fields pre-selected. The run uses the **form sink** — values are staged, the editor reviews and Saves. Afterwards the panel shows the run summary with clickable field links (`scrollToField`). |
 | **Bulk (records table)** | Unified modal, scoped to the selected records. CMA sink. |
 | **Bulk (settings page)** | Unified modal, plus model selection. CMA sink. |
@@ -195,16 +195,25 @@ Crawl the field tree **once per model** (schema, cached). It produces:
 
 Every path shares: the same picker, the same pre-flight, the same QC flags, the same progress rows, the same report. **Only the sink differs.**
 
-### Locale scope differs by context — and must
+### Locale scope — the record path CAN add locales
 
-The form has a fixed set of locales (`ctx.formValues.internalLocales`). `setFieldValue` cannot *add* one — writing `title.it` to a record that has no `it` locale does not register it. So:
+A plugin **can** add a locale to the open record. `setFieldValue` is documented as *"changes a specific path of the `formValues` object"*, and **`internalLocales` is a path in `formValues`**:
+
+```ts
+await ctx.setFieldValue('internalLocales', [...internalLocales, 'it']);
+```
+
+`prepareItemPayload.ts:397` derives the save payload's locale set directly from `currentValues.internalLocales`, so this takes effect on Save. (The SDK also adds a locale as an *undocumented side effect* of `scrollToField(path, locale)` — `useItemFormAdditionalMethods.tsx:104-110` — but that also switches the visible tab and scrolls, which we don't want mid-run. Prefer the explicit path write.)
+
+**Consequence:** once the record path can add a locale, it inherits the same obligation as bulk — **every localized field must carry the new locale** or the save is rejected (`VALIDATION_INVALID_LOCALES`, and `VALIDATION_REQUIRED` per-locale for required fields). So the **locale-sync fallback must run in the form path too.** The unified engine gives us that for free; today's sidebar does not have it, which is a latent bug the moment anyone adds a locale.
 
 | Context | Target locales offered |
 | --- | --- |
-| **Record** (kebab, sidebar) | **only the record's existing locales.** No new locales. *(This is already today's behaviour — not a regression.)* |
-| **Bulk** | any site locale; new locales are **added** via `items.update` + the locale-sync fallback |
+| **Sidebar / unified modal on a record** | **any site locale.** New locales are registered via `internalLocales` and filled by the same locale-sync fallback bulk uses. |
+| **Bulk** | any site locale; new locales added via `items.update` |
+| **Plain field kebab** | **the record's existing locales only** — a *deliberate* choice, not a constraint. Adding a locale obliges every *other* localized field to be filled; that is a record-level operation and has no business hiding behind a single field's dropdown. |
 
-The picker must therefore source its locale list from the context, not from a global. This is the one place the two sinks are genuinely not interchangeable, and it is a platform constraint, not a design choice.
+⚠️ **`internalLocales` is an internal form key.** It is not in the SDK's typed surface, and we would be relying on it being a writable `formValues` path. **Pin it with an E2E test in phase 0** — if DatoCMS ever changes it, we want a red test, not a silent failure.
 
 ---
 
@@ -216,7 +225,7 @@ At the start of every **record** and **bulk** run, re-crawl the schema and find 
 
 This is pure schema arithmetic. It costs nothing and it happens **before a single provider call.**
 
-**The plain kebab is exempt**, and deliberately so: it translates exactly one field, into a locale that already exists, and that field is translatable by definition — the dropdown would not have rendered otherwise. There is no conflict to surface, so there is no dialog. (`Translate with options…` opens the modal and *is* subject to the pre-flight, because it can select more fields.)
+**The field kebab is exempt**, and deliberately so: it translates exactly one field, into a locale the record already has, and that field is translatable by definition — the dropdown would not have rendered otherwise. No locale is added, so no *other* field's requiredness is in play. There is no conflict to surface, so there is no dialog.
 
 ```
   ┌──────────────────────────────────────────────────────────────┐
@@ -357,7 +366,7 @@ This is too large for one implementation plan. Each phase below is independently
 
 | # | Phase | Why here |
 | --- | --- | --- |
-| **0** | **E2E seed + frameless fixtures** (§9.4) | Nothing downstream can be *proven* until the suite can produce a real frameless block. Phase 2 deletes the most-used code path in the plugin; this is the only safety net we'll have. Bug #1's probe lands as `test.fail()`. |
+| **0** | **E2E seed + frameless fixtures** (§9.4) | Nothing downstream can be *proven* until the suite can produce a real frameless block. Phase 2 deletes the most-used code path in the plugin; this is the only safety net we'll have. Bug #1's probe lands as `test.fail()`. **Also pins `internalLocales` as a writable `formValues` path** (§6) — an internal key we're about to depend on. |
 | **1** | **`max_tokens` fix** (§9.1) | Hard-blocks phase 6 — the runaway net would otherwise catch our own bug. Small, isolated, ships alone. |
 | **2** | **One engine** (§2, §3) | Delete `translateRecordFields.ts`; route the record path through the SDK converters + form sink. **Fixes bugs #1, #2, #3.** Phase 0's `test.fail()` should flip to passing — remove the annotation. |
 | **3** | **The exclusion rule** (§4) | Merge-don't-rebuild; required-field ban; positional pairing; skip-and-flag on divergence. Depends on phase 2's single engine. |
