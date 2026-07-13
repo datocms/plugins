@@ -187,13 +187,39 @@ Crawl the field tree **once per model** (schema, cached). It produces:
 | Entry point | Behaviour |
 | --- | --- |
 | **Field kebab** | **Stays direct, and stays minimal.** `Translate to → [locale]` / `Translate from → [locale]`. Two clicks, existing locales only. No modal, no options entry — the kebab's whole value is that it asks nothing. It is also the deliberate-override path for structural divergence (§4). |
-| **Sidebar** | The panel's button opens the **unified modal**, scoped to this record, all fields pre-selected. The run uses the **form sink** — values are staged, the editor reviews and Saves. Afterwards the panel shows the run summary with clickable field links (`scrollToField`). |
+| **Sidebar** | The panel's button opens the **unified modal**, scoped to this record, all fields pre-selected. The run uses the **form sink** — values are staged, the editor reviews and Saves. The modal then closes and the **same report component** renders in the sidebar panel (see below). |
 | **Bulk (records table)** | Unified modal, scoped to the selected records. CMA sink. |
 | **Bulk (settings page)** | Unified modal, plus model selection. CMA sink. |
 
 **The modal is `width: 'fullWidth'`.** Note the SDK ignores the `title` on fullWidth modals — render our own header (record/model context + locale summary).
 
 Every path shares: the same picker, the same pre-flight, the same QC flags, the same progress rows, the same report. **Only the sink differs.**
+
+### One report component, two hosts — not two reports
+
+Both flows emit the **same data**: `ProgressUpdate` rows carrying `qcFlags`, severities, and per-`(record, field, locale)` detail. `buildTranslationReportRows` already produces per-flag CSV rows for both. **There is no second data model, so there must be no second component.**
+
+Exactly two things differ, and both are consequences of the sink — the one divergence we already accepted:
+
+| | Bulk (CMA sink) | Record (form sink) |
+| --- | --- | --- |
+| **"Take me to the problem"** | `buildRecordEditorUrl` → new tab | `ctx.scrollToField(path, locale)` → scrolls the open form |
+| **Rollup** | group by record (1,000 × 10 fields is 10,000 rows otherwise) | one record — skip the grouping, go straight to fields |
+| **Mount point** | inside the progress modal | inside the **sidebar panel**, after the modal closes |
+
+The mount point matters and is easy to miss: in the record flow the summary must **outlive the modal**, because you cannot scroll the form while a modal covers it, and the editor wants the field list *while* reviewing. A React component does not care where it is mounted.
+
+```tsx
+<TranslationReport
+  rows={progress}                                    // identical shape both ways
+  groupBy={records.length > 1 ? 'record' : 'field'}
+  onNavigate={navigate}                              // ← the ONLY sink-specific bit
+/>
+```
+
+Severity counts, QC-flag rendering, the warning tooltip, the empty state, and CSV export are **shared**. Componentize the **row**, not the screen — and even that mostly collapses into the `groupBy` flag. Expanding a bulk record into its field-level flags is an improvement over today's hover-tooltip anyway.
+
+**Why this is a hard rule, not a preference:** this plugin already has two of something that should have been one. The second engine was only *slightly* different when it was written; then the first one gained frameless support and the second never learned about it, and nobody noticed for five months (see the investigation doc). Two report components would drift identically — someone adds a QC severity, updates one, forgets the other. **If the difference isn't in the data, don't fork the component.**
 
 ### Locale scope — the record path CAN add locales
 
