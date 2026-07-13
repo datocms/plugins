@@ -1,9 +1,9 @@
 # AI Translations v4 — Unified Translation Flow
 
-**Date:** 2026-07-13
-**Status:** Approved design — implementation plan pending
-**Scope:** Major version. Touches every entry point, the engine, the config screen, and the E2E seed.
-**Background:** [`2026-07-13-field-selection-investigation.md`](./2026-07-13-field-selection-investigation.md) — the research this rests on.
+**Date:** 2026-07-13 · **Rev 2** (all 14 findings of the adversarial review folded in)
+**Status:** Approved design — implementation plan in progress
+**Scope:** Major version. Every entry point, the engine, the config screen, the E2E seed.
+**Background:** [`2026-07-13-field-selection-investigation.md`](./2026-07-13-field-selection-investigation.md)
 
 ---
 
@@ -11,28 +11,31 @@
 
 > **Translating makes the target language match the source.**
 > **Fields you excluded are left exactly as they are.**
-> **If something required can't be translated, we ask you once, before we start.**
+> **If something can't be filled, we apply the policy you set — and warn you before we start whenever we can see it coming.**
 > **Everything else is a report, never a question.**
 
-If a change can't be justified against those four lines, it doesn't belong in v4.
+Sentence 3 is deliberately weaker than "we ask you once." A provider can blank a required field at run time, which we cannot foresee; there we apply a **pre-set policy** rather than ask. Honesty about that is the point of the sentence.
+
+Sentence 1 has **one declared exception** (§4.4): a Modular Content field whose target structure we cannot unambiguously match is **left untranslated** and reported, rather than guessed at.
 
 ---
 
 ## 1. Why a major version
 
-Five entry points grew independently and now disagree with each other and with the backend.
-
-**The three bugs** (all verified, with repros — see the investigation doc):
-1. The sidebar **silently discards** frameless-block translations into a locale where the block doesn't exist yet.
+**Three bugs** (verified, with repros — see the investigation):
+1. The sidebar **silently discards** frameless-block translations into a locale where the block doesn't exist.
 2. Excluding a frameless block in Settings **does nothing** in the sidebar.
 3. Unchecking "Modular Content" **doesn't stop** the sidebar translating frameless blocks.
 
-**The three incoherences:**
-4. "Exclude" means *skip* for a top-level field but *copy the English text in* for a field inside a block. One checkbox, two incompatible meanings, chosen by nesting depth.
-5. The admin exclusion list keys on field **id**; the run-time picker keys on **api_key** — so a bare `title` in the exclusion list can match `title` on every model and every block.
-6. The "All fields" chip in the picker makes selecting a field **replace** your selection instead of adding to it.
+**Three incoherences:**
+4. "Exclude" means *skip* at top level but *copy the English in* inside a block.
+5. Admin exclusions key on field **id**; the run-time picker keys on **api_key**.
+6. The "All fields" chip makes selecting a field **replace** your selection.
 
-All six share one root: **the plugin has two translation engines that don't agree.** v4 has one.
+**One gap nobody noticed:**
+7. A **true frameless block has no field-level translate action at all.** The parent renders no kebab (the CMS hides it), and sub-fields are gated out by `isLocalized` (`main.tsx:673,678`) — block fields are never localized. Upstream issue #5 was never actually fixed for the dropdown. See §6.2.
+
+All of it shares one root: **the plugin has two translation engines that don't agree.** v4 has one.
 
 ---
 
@@ -40,10 +43,11 @@ All six share one root: **the plugin has two translation engines that don't agre
 
 ```
   RECORD CONTEXT                                   BULK CONTEXT
-  ctx.formValues                                   CMA items.list
+  ctx.formValues                                   CMA items.list (nested: true)
         │ ctx.formValuesToItem()                          │
         ▼                                                 ▼
-  ┌──────────────────────── ONE ENGINE ────────────────────────┐
+  ┌──────── NORMALIZE (JSON:API ⇄ simple client shape) ────────┐
+  ├──────────────────────── ONE ENGINE ────────────────────────┤
   │  field walk · exclusion · merge · QC flags · locale-sync    │
   └────────────────────────────────────────────────────────────┘
         │ ctx.itemToFormValues()                           │
@@ -52,104 +56,146 @@ All six share one root: **the plugin has two translation engines that don't agre
   (staged — user reviews, then Saves)                (committed)
 ```
 
-**`formValuesToItem` / `itemToFormValues` already exist on the item-form ctx.** They are DatoCMS's own form↔CMA converters. Do not hand-roll the conversion: a malformed block object is silently serialised to `null` by `prepareItemPayload.ts:343-347` and the block is **deleted** with no error. That hazard is exactly what made the original author defensive; the SDK solved it and we never noticed.
+**Use the SDK's own converters.** Hand-rolling form↔CMA conversion is how the original author got burned: a block object missing `itemTypeId` is silently serialised to `null` by `prepareItemPayload.ts:343-347` and **the block is deleted, with no error.**
 
-**`translateRecordFields.ts` (964 lines) is deleted.** With it go `resolveIsFieldLocalized`, `searchFramelessParents`, `searchNestedInLocaleBlock`, `buildFramelessParentsByItemType`, and the frameless decomposition.
+### 2.1 Converter fine print — all of it load-bearing
 
-### Why the write path is NOT unified
+- **`itemToFormValues` passes `nestedRecords = []`** (`useItemFormAdditionalMethods.tsx:157-180`). Any block referenced **by id** throws `MissingBlockRecords`. **Never feed it a CMA item fetched without `nested: true`.** One edge case survives even then: a *zero-field* block model inside structured text serialises to a bare id (`prepareItemPayload.ts:77-79`) and the round-trip throws. Guard it.
+- **The CMS wrapper ignores `skipUnchangedFields`** (`useItemFormAdditionalMethods.tsx:146-151` drops the argument). Do not design against the SDK's documented signature.
+- **The two paths speak different item shapes.** The converters emit raw JSON:API (`item.relationships.item_type.data.id`); the bulk path uses the simple client shape (fields at top level). The **adapters own a real normalization layer** — it is not free, and it must be unit-tested in both directions.
 
-The item-form ctx exposes `isFormDirty` and `isSubmitting` but **no reload method**. A CMA write from inside an open record form leaves that form holding stale values with no way to reconcile — the editor's next Save clobbers the translation. So the record context keeps the **form sink**. That also preserves review-before-save, which is a feature, not an accident.
+### 2.2 The write path is NOT unified
 
----
+The item-form ctx exposes `isFormDirty` and `isSubmitting` but **no reload method**. A CMA write from inside an open form leaves it stale with no way to reconcile — the editor's next Save clobbers the translation. The record context keeps the **form sink**, which also preserves review-before-save.
 
-## 3. Frameless single blocks — a view concern, not a data concern
-
-`frameless_single_block` is an **`appearance.editor`** on the `single_block` field type. The stored value is byte-identical to `framed_single_block`. Every place the plugin branches on it at the data layer is branching on a CSS choice.
-
-Worse, the CMS decides framed-vs-frameless **at render time** and silently falls back to framed unless *all* of (`validators.required` present) ∧ (exactly one allowed block model) ∧ (no live validation error). The plugin checks only the editor name — so plugin and CMS can **disagree about whether a field is frameless**, which is where bug #1 lives.
-
-**v4: the engine never asks.** A `single_block` is a `single_block`. `translateFieldValue` already routes `frameless_single_block` → `translateBlockValue` (since `5381127`).
-
-`isRenderedFrameless(field)` survives as a **pure view predicate** — `editor === 'frameless_single_block' && validators.required && blockModelIds.length === 1` — used for exactly three things:
-
-- what the **picker** lists (a frameless block's parent field is invisible to the editor; show its sub-fields instead)
-- where **`scrollToField`** points
-- how a **progress row** is labelled
-
-It touches **zero bytes** of the data path.
-
-**The field dropdown keeps per-sub-field actions.** In true frameless mode DatoCMS renders *no field header and no kebab* on the parent, so `fieldDropdownActions` can only ever fire on sub-fields. That is platform-forced and permanent. It is also the only part of the original workaround that was ever load-bearing.
+**`translateRecordFields.ts` (964 lines) is deleted**, along with `resolveIsFieldLocalized`, `searchFramelessParents`, `searchNestedInLocaleBlock`, `buildFramelessParentsByItemType`.
 
 ---
 
-## 4. Exclusion — one rule, every depth
+## 3. Frameless is a view concern
 
-> **An excluded field:**
+`frameless_single_block` is an `appearance.editor` on the `single_block` field type. Stored value identical to framed. The CMS decides at **render time** and silently falls back to framed unless *all* of: `validators.required` ∧ exactly one allowed block model ∧ no live validation error (`FramelessSingleBlock.tsx:88-94`).
+
+**The engine never asks.** A `single_block` is a `single_block`.
+
+`isRenderedFrameless(field)` survives as a **view predicate only** — `editor === 'frameless_single_block' && validators.required && blockModelIds.length === 1`. It is **deliberately approximate**: it cannot see the CMS's live-error condition, so while a record has validation errors the picker/labels may disagree with the screen. That is acceptable — it touches **zero bytes** of the data path, and an editor's mental model shouldn't flip on a transient error.
+
+### 3.1 Block sub-fields are never localized
+
+DatoCMS **422s** `localized: true` on any field of a `modular_block` item type (`api/app/models/field.rb:167,235-242`, unconditional). Delete the `isLocalizedField` branch in `processBlockFields` (`TranslateField.ts:935`) — it handles a shape the API refuses to store.
+
+`filterTranslatableFields` keeps its `localized` filter **only** because it lists top-level fields. Pushing that filter into blocks would silently drop every block field.
+
+---
+
+## 4. The exclusion rule
+
+> **An excluded (or deselected) field:**
 > 1. **has content in the target already** → left exactly as it is
-> 2. **is optional** → left blank
-> 3. **is required** → **cannot be excluded**
+> 2. **can be blank** → left blank
+> 3. **cannot be blank** → see §4.1
 
-Rule 3 is what makes the other two honest. Banning the exclusion of required fields removes the only case where the plugin would have to say *"sorry, we had to put English in it."* Required fields render **disabled** in both trees: *"required — can't be excluded."*
+### 4.1 "Cannot be blank" ≠ "required"
 
-### Merge, don't rebuild
+**DatoCMS enforces `length` independently of `required`** — this repo already got burned by it (commit `9862c3e`; it's in `AGENTS.md`). And links/gallery fields have **no `required` validator at all**; their minimum is `size`, enforced per-locale.
 
-Today `translateBlockValue` clones the **source** block, strips its ids, translates, and overwrites the target — so an excluded sub-field receives the **source text** and any hand-edited target content is destroyed.
+So the predicate is:
 
-v4 **merges into the existing target block**, preserving its `itemId` and every sub-field we were told not to touch. Where no target block exists (the common case — a new locale), we create it, and rules 2/3 apply naturally.
-
-### Pairing blocks, and when we can't
-
-Correspondence is only needed **where an exclusion lives inside the subtree.** If nothing in a block is excluded, we rebuild it from the source and nobody cares — that *is* "make Italian match English." The pairing logic runs only where an admin has deliberately excluded something inside a block.
-
-| Field type | Pairing |
-| --- | --- |
-| top-level | trivial |
-| `single_block` | trivial — zero-or-one block |
-| `structured_text` | positional |
-| **Modular Content** | **positional, verified by block type** |
-
-When a Modular Content structure has **diverged** (different count, different types, editor reordered the target), we cannot know which target block is which. **We do not guess.** We **skip that field**, flag it, and report it:
-
-> ⚠️ *Page content (it) was left unchanged — its block structure differs from the source.*
-
-Skipping is recoverable; rebuilding is not. Prefer the reversible failure.
-
-**The deliberate override is the field kebab**, which is the one place a prompt is affordable because the user is acting on a single field:
-
-```
-  ┌────────────────────────────────────────────────────┐
-  │  Page content (Italian) has a different block      │
-  │  structure than English — 2 blocks vs 3.           │
-  │  Translating will rebuild it from English and      │
-  │  replace the Italian blocks.                       │
-  │                                                    │
-  │              [ Cancel ]  [ Rebuild from English ]  │
-  └────────────────────────────────────────────────────┘
+```ts
+cannotBeBlank(validators) =
+     isFieldRequired(validators)          // `required`
+  || hasMinItemsValidator(validators)     // `size.min` / `size.eq`  ≥ 1  (links, gallery)
+  || hasMinLength(validators)             // `length.min` / `length.eq` ≥ 1
 ```
 
-**Not in v4:** derived block IDs. DatoCMS now accepts customer-supplied block ids (`api` `b7e466f9b`, 2026-05-04), which would make correspondence survive reordering. It is a real capability and a real follow-on — it is not needed for the rule above, and it carries a migration story. Park it.
+All three helpers exist or are trivial (`SharedFieldUtils.ts`). **Every ban, lock, and pre-flight check in this spec keys on `cannotBeBlank`, never on `required` alone.** The same applies one level down when creating target blocks with excluded sub-fields.
 
-### Block sub-fields are never localized
+### 4.2 The ban is asymmetric — and that's the point
 
-DatoCMS **422s** `localized: true` on any field of a `modular_block` item type (`api/app/models/field.rb:167,235-242` — unconditional). The `isLocalizedField` branch in `processBlockFields` (`TranslateField.ts:935`) handles a shape the API refuses to store. **Delete it.** `filterTranslatableFields` may keep its `localized` filter *only* because it lists top-level fields; pushing that filter into blocks would silently drop every block field.
+| | Question it answers | Cannot-be-blank fields |
+| --- | --- | --- |
+| **Admin config tree** | *"What must **never** be translated?"* | **Locked** 🔒 — *"can't be left empty; can't be excluded"* |
+| **Run-time picker** | *"What do I want to translate **now**?"* | **Selectable** — untick freely |
+
+A permanent exclusion is a promise about **every future locale you will ever add**, so it genuinely cannot be made for a field that must always hold a value. A per-run deselection promises nothing past this run: rule 1 makes it safe for locales that already have content, and the §7 pre-flight catches the only hazardous case (a locale being *added*).
+
+**Locking them in the picker would force-include every such field in every run** — you could not "re-translate just the body" without also paying for, and **overwriting**, a hand-polished target Title.
+
+⚠️ Do not "fix the inconsistency" between the two trees. It is deliberate. Same component, different rules.
+
+### 4.3 Merge, don't rebuild
+
+Today `translateBlockValue` clones the **source** block, strips its ids, translates, and overwrites the target — so an excluded sub-field receives the **source text** and hand-edited target content is destroyed.
+
+v4 **merges into the existing target block**, preserving its `itemId` and every sub-field we were told not to touch. Where no target block exists (the common case — a new locale), we create it and rules 2/3 apply.
+
+### 4.4 Pairing — and the honest limits of it
+
+Correspondence is only *needed* where an exclusion/deselection lives inside the subtree **and** the target already has blocks. On a new locale there is nothing to preserve, so no pairing is required.
+
+**Divergence detection runs unconditionally** (see §4.5). What changes with an exclusion is the *remedy*, not the *detection*.
+
+| Field type | Pairing | Ambiguous when |
+| --- | --- | --- |
+| top-level | trivial | never |
+| `single_block` | zero-or-one block — **but the block *types* must match** | source Hero vs target Quote (multi-model fields) |
+| `structured_text` | positional + type | as below |
+| **Modular Content** | positional + type | **any block type appears more than once in the field** |
+
+**The same-type reorder problem is real and we do not pretend otherwise.** `[Quote A, Quote B]` reordered to `[Quote B′, Quote A′]` has the same count *and* the same type sequence. Positional pairing would marry A's translation to B′'s `itemId` and B′'s preserved excluded sub-fields — **silent content corruption.**
+
+So: **when preservation is required and any block type repeats within the field, correspondence is ambiguous → skip the field and flag it.** We do not guess.
+
+```
+⚠️ Page content (it) was left unchanged — its blocks can't be matched to the
+   source unambiguously (3 Quote blocks). Nothing was overwritten.
+```
+
+This bites only on **re-translating a field that already has blocks, where an exclusion sits inside a repeated block type.** Narrow, and always reversible.
+
+**The permanent fix is parked, not denied.** DatoCMS accepts customer-supplied block ids as of `api` commit `b7e466f9b` (2026-05-04, on master; format-checked only, so deterministic ids pass). Deriving the target block's id from `(source id, locale)` makes correspondence definitional and survives reordering. It carries a migration story (pre-v4 blocks have unrecoverable correspondence). **v4.1.**
+
+### 4.5 Divergence is always detected, never silently rebuilt
+
+Detection runs whether or not an exclusion is present, so behaviour never hinges invisibly on an unrelated admin checkbox:
+
+| | No exclusion in subtree | Exclusion in subtree |
+| --- | --- | --- |
+| Structures match | translate, merge in place | translate, merge, preserve the excluded |
+| **Structures diverged** | **rebuild from source** + `warning` flag *(nothing to preserve)* | **skip the field** + `warning` flag *(we would have to guess)* |
+
+**Declared exception to sentence 1 of the manifesto:** in the skip case, the field's *non-excluded* siblings also go untranslated. The target does **not** match the source, and we say so in the report. That is the price of not guessing; the kebab is the deliberate override (§6.2).
 
 ---
 
 ## 5. Field selection — one tree, two homes
 
-**Build the tree in-house.** ~350 LOC, **1.65 kB gz** JS + 0.77 kB CSS (+0.8% of the 285 kB bundle). Every library on the market (Mantine 23 kB, headless-tree 6.6 kB, react-arborist 34 kB) still leaves us hand-writing the row DOM, the Canvas-token checkbox (`datocms-react-ui` ships none), and disabled-with-reason — which none of them model. The only thing on sale is tri-state propagation: **89 lines.**
+**Build the tree in-house.** ~350 LOC, **1.65 kB gz** JS + 0.77 kB CSS (+0.8% of a 285 kB bundle). `datocms-react-ui` ships **no Checkbox**, so every library still leaves us hand-writing the row DOM, the Canvas-token checkbox, and disabled-with-reason — which **none of them model**. The only thing on sale is tri-state propagation: 89 lines.
 
-Requirements: tri-state checkboxes with parent↔child propagation; **collapsed to top level by default**; disabled nodes carry a reason; styled *only* with `--color--*` semantic tokens (light + dark).
+Requirements: tri-state with parent↔child propagation; **collapsed to top level by default**; disabled nodes carry a reason; `--color--*` tokens only (light + dark).
 
-**Two traps, both mandatory:**
-- **The field graph is cyclic.** A block can allow itself; DatoCMS caps nesting at 5 levels for *content*, not *schema*. Depth cap + visited-set, or the crawl hangs.
-- **Value key = field `id`. Tree/expansion key = path.** One block item type hangs under many parents, so one id legitimately occupies many tree positions. Conflating them produces desynced ghost checkboxes.
+**Two traps, mandatory:**
+- **The field graph is cyclic.** A block can allow itself; DatoCMS caps nesting at 5 for *content*, not *schema*. Depth cap + visited-set, or the crawl hangs.
+- **Value key = field `id`; tree/expansion key = path.** One block item type hangs under many parents. Conflating them gives desynced ghost checkboxes.
 
-### Keying: field `id`, everywhere
+### 5.1 Keying — and the migration the last draft forgot
 
-Admin exclusions **and** per-run selection both key on field **id** (display label + api_key, as today). This kills the api_key collision footgun.
+Admin exclusions **and** per-run selection key on field **`id`** (display label + api_key, as today).
 
-**Consequence, and it must be shown:** a block's sub-field has one id regardless of how many parents embed it, so excluding it applies **wherever that block is used**.
+**But enforcement today accepts ids *with an api_key fallback*** (`isFieldExcluded([id, apiKey, path])`, `main.tsx:195-198`), and installed configs in the wild **contain api_key tokens** — that is exactly where incoherence #5's bare `title` comes from.
+
+- **Drop the fallback with no migration** → those exclusions silently stop matching, and the plugin starts translating fields an admin explicitly banned. **The worst regression this product can ship.**
+- **Keep the fallback** → the collision footgun survives.
+
+So v4 **must migrate**:
+1. On config-screen load, run the schema crawl and resolve every legacy api_key token to a field **id**.
+2. **Unambiguous** (one match) → rewrite the param silently.
+3. **Ambiguous** (`title` matches 4 fields) → surface it: *"`title` matches 4 fields. Which did you mean?"* with checkboxes. Do not guess.
+4. Keep the api_key fallback in **enforcement** until the config has been migrated (a `paramsVersion` flag), then drop it.
+
+### 5.2 Excluding a block sub-field is global to that block
+
+A block's sub-field has **one id** regardless of how many parents embed it. Excluding it applies **wherever that block is used** — this must be shown, not discovered:
 
 ```
   ▾ ☑ Article
@@ -157,28 +203,16 @@ Admin exclusions **and** per-run selection both key on field **id** (display lab
           ▾ ☑ Callout block
               ☑ Title
               ☐ Body       ⓘ excluded wherever Callout is used (3 places)
-      ☑ Title              🔒 required — can't be excluded
+      ☑ Title              🔒 can't be left empty — can't be excluded   [admin tree only]
 ```
 
-### The two homes
+### 5.3 One schema crawl, four consumers
 
-| | Admin config screen | Run-time picker (unified modal) |
-| --- | --- | --- |
-| Question | *"What must **never** be translated?"* | *"What do I want to translate **now**?"* |
-| Lifespan | permanent policy | one run |
-| Audience | admin who knows the schema | editor |
-| Required fields | disabled 🔒 | disabled 🔒 |
-| Admin-excluded fields | — | disabled, *"excluded by admin"* |
+Crawled **once per model, cached per session**. It is cheap but **not free** — `AGENTS.md`'s ConfigScreen load-once rule exists because a `loadItemTypeFields` sweep can hit rate limits. Apply the same discipline.
 
-The **"All fields" sentinel is deleted.** It conflated a display collapse with an input shortcut, which is why picking a field *replaced* your selection. A "Select all" text button in the hint row replaces it — an action, not a menu option.
+Outputs: (1) the picker tree; (2) `cannotBeBlank` nodes; (3) admin-excluded nodes; (4) which block subtrees contain an exclusion.
 
-### One schema crawl, four consumers
-
-Crawl the field tree **once per model** (schema, cached). It produces:
-1. the picker tree,
-2. which nodes are `required` → disabled,
-3. which nodes are admin-excluded → disabled,
-4. **which block subtrees contain any exclusion** → the one bit that tells the merge walk whether it needs to pair blocks at all.
+**The "All fields" sentinel is deleted** — it conflated a display collapse with an input shortcut. A "Select all" text button replaces it: an action, not a menu option.
 
 ---
 
@@ -186,80 +220,80 @@ Crawl the field tree **once per model** (schema, cached). It produces:
 
 | Entry point | Behaviour |
 | --- | --- |
-| **Field kebab** | **Stays direct, and stays minimal.** `Translate to → [locale]` / `Translate from → [locale]`. Two clicks, existing locales only. No modal, no options entry — the kebab's whole value is that it asks nothing. It is also the deliberate-override path for structural divergence (§4). |
-| **Sidebar** | The panel's button opens the **unified modal**, scoped to this record, all fields pre-selected. The run uses the **form sink** — values are staged, the editor reviews and Saves. The modal then closes and the **same report component** renders in the sidebar panel (see below). |
-| **Bulk (records table)** | Unified modal, scoped to the selected records. CMA sink. |
-| **Bulk (settings page)** | Unified modal, plus model selection. CMA sink. |
+| **Field kebab** | Direct and minimal. `Translate to → [locale]` / `Translate from → [locale]`. Two clicks, existing locales only. Also the deliberate override for §4.5 divergence. **New: works on block sub-fields — see §6.2.** |
+| **Sidebar** | Button opens the unified modal (this record, all fields pre-selected). Modal **collects config only** (§6.1). The run executes in the sidebar frame, form sink, and the report renders in the panel. |
+| **Bulk (records table)** | Unified modal, CMA sink. Progress + report in the modal. |
+| **Bulk (settings page)** | Same, plus model selection. |
 
-**The modal is `width: 'fullWidth'`.** Note the SDK ignores the `title` on fullWidth modals — render our own header (record/model context + locale summary).
+### 6.1 The modal cannot run the record translation — `RenderModalCtx` has no form access
 
-Every path shares: the same picker, the same pre-flight, the same QC flags, the same progress rows, the same report. **Only the sink differs.**
+`renderModal.d.ts` gives the modal `parameters` + `resolve` and nothing else. **No `formValues`, no `setFieldValue`, no converters** — those live only on the item-form ctx.
 
-### One report component, two hosts — not two reports
+So for the record path the modal is a **config collector**: it resolves with the chosen config, and the **sidebar** runs the translation and renders progress + report in the panel. (This also satisfies `AGENTS.md`'s no-nested-modals rule — resolve first, then open any follow-up from the top-level handler.)
 
-Both flows emit the **same data**: `ProgressUpdate` rows carrying `qcFlags`, severities, and per-`(record, field, locale)` detail. `buildTranslationReportRows` already produces per-flag CSV rows for both. **There is no second data model, so there must be no second component.**
+Consequence: progress renders in a ~300 px panel, not a fullWidth modal. **Same component, `compact` variant.** A prop, not a fork.
 
-Exactly two things differ, and both are consequences of the sink — the one divergence we already accepted:
+### 6.2 Block sub-field kebab — the gap nobody noticed
 
-| | Bulk (CMA sink) | Record (form sink) |
-| --- | --- | --- |
-| **"Take me to the problem"** | `buildRecordEditorUrl` → new tab | `ctx.scrollToField(path, locale)` → scrolls the open form |
-| **Rollup** | group by record (1,000 × 10 fields is 10,000 rows otherwise) | one record — skip the grouping, go straight to fields |
-| **Mount point** | inside the progress modal | inside the **sidebar panel**, after the modal closes |
+Today: `main.tsx:673` gates every dropdown action on `ctx.field.attributes.localized`, and block sub-fields are **never** localized. So **a true frameless block has no translate affordance anywhere except the sidebar.** Upstream issue #5 was never fixed for the dropdown.
 
-The mount point matters and is easy to miss: in the record flow the summary must **outlive the modal**, because you cannot scroll the form while a modal covers it, and the editor wants the field list *while* reviewing. A React component does not care where it is mounted.
+v4 closes it, **without leaf writes**:
 
-```tsx
-<TranslationReport
-  rows={progress}                                    // identical shape both ways
-  groupBy={records.length > 1 ? 'record' : 'field'}
-  onNavigate={navigate}                              // ← the ONLY sink-specific bit
-/>
-```
+- Gate on `ctx.parentField?.attributes.localized` (which *is* true for the container) instead of `ctx.field.attributes.localized`.
+- **The write is a whole-block merge at the parent path** — read the target block, set the one translated sub-field, write the whole block back at `parent.locale`. **Never a leaf write.** A leaf write into a not-yet-materialised block is precisely bug #1, and it would otherwise survive v4 through this new surface.
+- If the target block does not exist, the action creates it from the source with only the chosen sub-field translated; the rest follow §4's rules 2/3 and are flagged.
 
-Severity counts, QC-flag rendering, the warning tooltip, the empty state, and CSV export are **shared**. Componentize the **row**, not the screen — and even that mostly collapses into the `groupBy` flag. Expanding a bulk record into its field-level flags is an improvement over today's hover-tooltip anyway.
+### 6.3 Locale scope
 
-**Why this is a hard rule, not a preference:** this plugin already has two of something that should have been one. The second engine was only *slightly* different when it was written; then the first one gained frameless support and the second never learned about it, and nobody noticed for five months (see the investigation doc). Two report components would drift identically — someone adds a QC severity, updates one, forgets the other. **If the difference isn't in the data, don't fork the component.**
+`setFieldValue('internalLocales', [...])` **does** register a new locale — `internalLocales` is a `formValues` path, and `prepareItemPayload.ts:397` derives the save payload's locale set from it. (`scrollToField(path, locale)` also adds one as an undocumented side effect, but it switches tabs and scrolls — don't.)
 
-### Locale scope — the record path CAN add locales
+🔴 **`prepareItemPayload.ts:398` then filters that set through `context.localizationScope.locales`, which is permission-derived** (`cms/src/utils/permissions.ts:649-707`). For an editor whose role restricts editable locales, **the locale add and every `field.newLocale` value are silently dropped from the save** — green checkmarks, no error, translation gone. Exactly the silent failure v4 exists to kill.
 
-A plugin **can** add a locale to the open record. `setFieldValue` is documented as *"changes a specific path of the `formValues` object"*, and **`internalLocales` is a path in `formValues`**:
+**Mitigations, all three required:**
+1. **Intersect the offered target locales with the user's scope.** `ctx.currentRole.attributes.positive_item_type_permissions[]` carries `localization_scope: 'all' | 'localized' | 'not_localized'` and `locale` — the editable-locale set is computable client-side.
+2. **Verify the persisted write.** `verifyPersistedWrite.ts` already exists. Use it; flag loudly if a locale didn't land.
+3. **The phase-0 E2E pin must run as a locale-restricted role, not an admin** — an admin run cannot catch this.
 
-```ts
-await ctx.setFieldValue('internalLocales', [...internalLocales, 'it']);
-```
-
-`prepareItemPayload.ts:397` derives the save payload's locale set directly from `currentValues.internalLocales`, so this takes effect on Save. (The SDK also adds a locale as an *undocumented side effect* of `scrollToField(path, locale)` — `useItemFormAdditionalMethods.tsx:104-110` — but that also switches the visible tab and scrolls, which we don't want mid-run. Prefer the explicit path write.)
-
-**Consequence:** once the record path can add a locale, it inherits the same obligation as bulk — **every localized field must carry the new locale** or the save is rejected (`VALIDATION_INVALID_LOCALES`, and `VALIDATION_REQUIRED` per-locale for required fields). So the **locale-sync fallback must run in the form path too.** The unified engine gives us that for free; today's sidebar does not have it, which is a latent bug the moment anyone adds a locale.
+Once a locale can be added, **every localized field must carry it** or the save is rejected. So the **locale-sync fallback must run in the form path too.** Today's sidebar has none — a latent bug the moment anyone widens its locale list.
 
 | Context | Target locales offered |
 | --- | --- |
-| **Sidebar / unified modal on a record** | **any site locale.** New locales are registered via `internalLocales` and filled by the same locale-sync fallback bulk uses. |
-| **Bulk** | any site locale; new locales added via `items.update` |
-| **Plain field kebab** | **the record's existing locales only** — a *deliberate* choice, not a constraint. Adding a locale obliges every *other* localized field to be filled; that is a record-level operation and has no business hiding behind a single field's dropdown. |
+| Sidebar / record modal | any site locale **∩ the user's editable locales** |
+| Bulk | same intersection (the CMA also rejects out-of-scope writes server-side, loudly) |
+| Field kebab | the record's **existing** locales only — deliberate: adding a locale obliges every *other* localized field to be filled, which is a record-level operation |
 
-⚠️ **`internalLocales` is an internal form key.** It is not in the SDK's typed surface, and we would be relying on it being a writable `formValues` path. **Pin it with an E2E test in phase 0** — if DatoCMS ever changes it, we want a red test, not a silent failure.
+### 6.4 One report component, two hosts
+
+Both flows emit the same `ProgressUpdate` rows with the same `qcFlags`; `buildTranslationReportRows` already serves both. **No second data model ⇒ no second component.**
+
+```tsx
+<TranslationReport
+  rows={progress}
+  groupBy={records.length > 1 ? 'record' : 'field'}
+  compact={host === 'sidebar'}
+  onNavigate={navigate}        // ← the ONLY sink-specific bit
+/>
+// bulk:   (row) => window.open(buildRecordEditorUrl(row), '_blank')
+// record: (row) => ctx.scrollToField(row.fieldPath, row.locale)
+```
+
+**If the difference isn't in the data, don't fork the component.** This plugin already has two of something that should have been one; that is how the five-month drift happened.
 
 ---
 
-## 7. The one question we ever ask
+## 7. The pre-flight
 
-At the start of every **record** and **bulk** run, re-crawl the schema and find every **required** field we won't be able to fill:
-- excluded **and** required (config drift: someone added `required` *after* the exclusion was set — the config-time ban is a snapshot, and schemas move)
-- required, but its field type is switched off globally
+Before any provider call, on **record and bulk** runs, cross the schema crawl with **the run's actual selection** and find every field that (a) will **not** be translated — because it is admin-excluded, **deselected in this run**, or its type is switched off — and (b) **`cannotBeBlank`**, and (c) has **no value in a target locale**.
 
-This is pure schema arithmetic. It costs nothing and it happens **before a single provider call.**
-
-**The field kebab is exempt**, and deliberately so: it translates exactly one field, into a locale the record already has, and that field is translatable by definition — the dropdown would not have rendered otherwise. No locale is added, so no *other* field's requiredness is in play. There is no conflict to surface, so there is no dialog.
+Pure schema + snapshot arithmetic. Costs no tokens.
 
 ```
   ┌──────────────────────────────────────────────────────────────┐
-  │  3 required fields can't be translated                       │
+  │  3 fields can't be left empty and won't be translated        │
   │                                                              │
   │  Article → Title            excluded by admin                │
   │  Article → Featured data    JSON translation is turned off   │
-  │  Product → Name             excluded by admin                │
+  │  Product → Tags             deselected in this run (min 1)   │
   │                                                              │
   │  DatoCMS won't save a record with these empty. What should   │
   │  we do where a target language doesn't already have a value? │
@@ -269,46 +303,60 @@ This is pure schema arithmetic. It costs nothing and it happens **before a singl
   └──────────────────────────────────────────────────────────────┘
 ```
 
-- **"Go back"**, not "Cancel" — Cancel is ambiguous (the dialog, or the run?).
-- **"Skip those languages"** — you cannot skip a *required field*; the write 422s. You can only skip the **locale**. The button must say so.
-- **"Use untranslated *English* value"** — resolve the source-language name via `getLocaleName()`. Naming the language is the whole point: it tells you what's about to land in your Italian record.
+- **"Go back"**, not "Cancel" — Cancel is ambiguous.
+- **"Skip those languages"** — you cannot skip a cannot-be-blank *field*; the write 422s. Only the **locale**.
+- **"Use untranslated *English* value"** — resolve via `getLocaleName()`. Naming the language is the point.
 
-### The policy is a setting; the dialog is the override
+**The plain kebab is exempt:** one field, an existing locale, no locale added, so no *other* field's blankability is in play.
 
-A provider can also blank a required field at runtime — **not** pre-flightable. If the policy only lived in a dialog that appears when we detect a *known* conflict, a run with no known conflicts would have **no policy** when a provider blanks, and we'd invent one. That's the magic we're removing.
+### 7.1 The policy is a setting; the dialog is the override
 
-So: **a plugin setting with a default**, surfaced and overridable by the pre-flight dialog when it's about to bite.
+A provider can blank a cannot-be-blank field at run time — **not** foreseeable. If the policy lived only in a dialog shown for *known* conflicts, a clean run would have **no policy** when that happens and we'd invent one.
 
-> **When a required field can't be translated → ▾**
+> **When a field that can't be empty has no translation → ▾**
 > • **Use the untranslated source value** *(default)*
 > • Skip that language
 
-Default **"use the source"** because in the common case it is not a failure at all — a required field is excluded precisely *because* it's a brand name or a product code that must not be translated. Copying it through is the **intent**.
+Default "use the source" because in the common case it is **not a failure**: such a field is excluded precisely *because* it's a brand name or product code. Copying it through is the **intent**.
 
 The report keeps the causes apart:
 
-| Cause | Severity | Report line |
-| --- | --- | --- |
-| Excluded by design | info | *"Title kept in English — excluded from translation."* |
-| Provider returned nothing | warning | *"Title kept in English — the provider returned an empty response."* |
+| Cause | Severity |
+| --- | --- |
+| Excluded/deselected by design | **info** — *"Title kept in English — excluded from translation."* |
+| Provider returned nothing | **warning** — *"Title kept in English — the provider returned an empty response."* |
 
-### Skipping a locale must not fail the record
+### 7.2 "Skip that language" — build it right, or it deletes data
 
-The bulk path builds **one payload across all target locales and writes it in a single `items.update`** (`ItemsDropdownUtils.ts:740`). Today one unsatisfiable locale 422s the **whole record**. v4 **drops the doomed locale's keys from the merged payload** before the write — one update, partial success. (`VALIDATION_INVALID_LOCALES` only fires when a locale is *added* incompletely; omitting it entirely is fine.)
+🔴 **The previous draft's mechanism was wrong and would have destroyed content.**
+
+Every payload entry is the field's **full locale hash** — `{ ...record[field], [toLocale]: value }` (`ItemsDropdownUtils.ts:1545,1601`) — and **the submitted hash is authoritative**. "Strip the doomed locale's keys from the merged payload" therefore:
+
+- **new locale** → harmless (the key wasn't in the snapshot);
+- **existing locale** → **deletes that locale's stored content for every field in the payload.**
+
+An existing locale absolutely can be doomed: a legacy record with a blank cannot-be-blank field in a locale it already has (invisible to a schema-only pre-flight), or a run-time provider blank.
+
+**Correct mechanism — decide before assembling, never strip after:**
+
+1. The skip decision is **per `(record, locale)`**, not per run. In bulk the same target locale is *new* for record A and *existing* for record B.
+2. When locale L is doomed for a record, **never write L's value into that record's payload at all.** The entry stays `{ ...record[field], [otherLocales]: … }` — so L keeps its original value (or its original absence). Nothing is deleted.
+3. A field whose *only* target was L drops out of the payload entirely.
+4. Locale-sync must likewise not add L.
 
 ---
 
-## 8. Nothing content-related ever stops a run
+## 8. What stops a run
 
-Only **auth, quota, and network** pause — the existing behaviour, and correct: every remaining call is guaranteed waste.
+**The plugin never stops a run on its own judgement of content quality.** No heuristic — `no-op` and `length-ratio` fire legitimately on brand names and product catalogs.
 
-**No quality circuit breaker.** `truncated`, `source-fallback`, `no-op`, `length-ratio`, structural divergence — all of them flag, report, and continue. A high truncation rate does not mean the run is dead; it means long fields are failing while short ones succeed. Stopping would throw away real value to prevent a **flagged, visible, overwritable** outcome.
+**Systemic errors stop it** (existing behaviour, correct): auth, quota, network. Every remaining call is guaranteed waste.
 
-And no heuristic may ever stop a run. `no-op` and `length-ratio` fire legitimately on brand names and product catalogs. The plugin does not guess at whether a translation *looks* right.
+**Content problems never stop it by themselves.** `truncated`, `source-fallback`, structural divergence, ambiguous pairing — all flag, report, and continue. A high truncation rate means *long fields* are failing while short ones succeed; stopping would discard real value to prevent a **flagged, visible, overwritable** outcome.
 
-### Runaway failure prevention (new admin setting)
+### 8.1 Runaway failure prevention — and an honest label for it
 
-The residual risk is **money**, not correctness — a broken overnight run can burn ~120,000 provider calls. The answer to a cost problem is a limit **the user sets**, not a guess the plugin makes.
+The residual risk is **money**: a broken overnight run can burn six figures of provider calls.
 
 ```
   Runaway failure prevention                          [ On ▾ ]
@@ -322,12 +370,18 @@ The residual risk is **money**, not correctness — a broken overnight run can b
          product codes. Recommended: leave off.
 ```
 
-- **On by default**, at those numbers. A safety net that ships off protects nobody, and the case it exists for is the unattended run.
-- **Records processed, not elapsed minutes.** Records *are* the spend, and the same number doubles as the statistical minimum that stops a 2-record fluke aborting.
-- **Errors only.** Counting warnings would let a product catalog abort a healthy run — the plugin guessing at quality, laundered through a setting.
-- **Abort, not pause.** A paused overnight job helps nobody; an abort writes the report and stops.
+**Be honest about what this is.** A record's `error` status derives from **error-tier QC flags** — `truncated`, `placeholder-loss`, `html-structure`, `markdown-structure`, `length-validator` — which *are* content checks. So this **is** a content-triggered abort. The distinction that matters is not *content vs systemic*; it is:
 
-**This must not ship before §9.1.** The first thing the net would catch today is our own bug.
+> **The plugin never decides on its own that your content looks wrong. It enforces a threshold *you* set.**
+
+That is a policy, like §7.1 — not magic. The earlier draft's "nothing content-related ever stops a run" was false and is withdrawn.
+
+- **On by default**, at those numbers. A net that ships off protects nobody, and the case it exists for is the unattended run.
+- **Records, not minutes** — but note honestly that **records are not the spend** (50 records of a 100-field model ≠ 50 of a 3-field model). The record count is a **sample-size guard**, not a budget.
+- **Errors only.** Counting warnings would let a product catalog abort a healthy run.
+- **Abort, not pause.** A paused overnight job helps nobody.
+
+⚠️ **Must not ship before §9.1** — the first thing this net would catch today is our own bug.
 
 ---
 
@@ -336,72 +390,74 @@ The residual risk is **money**, not correctness — a broken overnight run can b
 ### 9.1 Fix the `max_tokens` bug 🔴
 
 ```ts
-// AnthropicProvider.ts:45
+// AnthropicProvider.ts:45 — sent at :174
 this.maxOutputTokens = cfg.maxOutputTokens ?? 1024;
-// ProviderFactory.ts:218 — maxOutputTokens is never passed
-provider = new AnthropicProvider({ apiKey: credentials.apiKey, model: credentials.model });
+// ProviderFactory.ts:218 — never passed
+new AnthropicProvider({ apiKey: credentials.apiKey, model: credentials.model });
 ```
 
-Anthropic translations are hard-capped at **1024 output tokens (~750 words)** with no way to change it. Any longer field truncates → `truncated` is **error** severity → **the record fails.** Expose it per-vendor in the config screen with a sane default for the selected model, and audit the other providers for the same omission.
+Anthropic is hard-capped at **1024 output tokens (~750 words)**, unconfigurable. Longer fields truncate → `truncated` is **error** severity → **the record fails.** Gemini and OpenAI leave it undefined (no cap), so Anthropic is uniquely broken. Expose it per-vendor with a model-appropriate default.
 
 ### 9.2 Generalise `length-validator` → deterministic pre-write validation
 
-`checkFieldLength` catches values that DatoCMS's `length` validator would 422. **It should catch everything we can deterministically know will be rejected.**
+`checkFieldLength` catches values DatoCMS's `length` validator would 422. **It should catch everything we can deterministically know will be rejected.**
 
-*Instruction for the implementing agent:* enumerate DatoCMS's field validators and their exact semantics — `format`, `enum`, `number_range`, `date_range`, `slug_format`, `size`, `required_alt_title`, `image_dimensions`, `unique`, … — and implement a check for every one that is **deterministically decidable client-side** from the translated value plus the field's schema. Sources, in order: `~/sites/datocms/api` (`lib/dato/validator/*.rb` is the authoritative list), then the `datocms-cma` skill's `references/schema.md`, then `https://www.datocms.com/docs/llms-full.txt`. Anything **not** deterministically decidable (e.g. `unique`, which needs a query) stays out — a false pre-write failure is worse than a real 422.
+*Instruction for the implementer:* enumerate DatoCMS's validators and implement a check for every one **deterministically decidable client-side** from the translated value + the field's schema. Authoritative source: `~/sites/datocms/api/lib/dato/validator/*.rb`; then the `datocms-cma` skill's `references/schema.md`; then `llms-full.txt`. Anything **not** deterministically decidable (e.g. `unique`, which needs a query) stays out — a false pre-write failure is worse than a real 422.
+
+This feeds `cannotBeBlank` (§4.1) directly.
 
 ### 9.3 Dead code
 
-- `isLocalizedField` branch in `processBlockFields` (block sub-fields can't be localized — 422).
-- `json-validity` in the `QcCheckId` union — declared, never emitted.
+- The `isLocalizedField` branch in `processBlockFields` (`TranslateField.ts:935`) — block sub-fields cannot be localized (422).
+
+*(`json-validity` is **NOT** dead — it is emitted at `JsonFieldTranslation.ts:101` and tested at `:138`. The previous draft was wrong.)*
 
 ### 9.4 E2E — the suite has never tested a frameless block
 
-`e2e/seed/1-schema.mjs` declares `inline_note` frameless with **no `required` validator**, so the CMS has been rendering it **framed** all along. Every "frameless" assertion in the suite tested the framed renderer — including a parent-kebab "Translate to" that real frameless users **can never reach**.
+`e2e/seed/1-schema.mjs` declares `inline_note` frameless with **no `required`**, so the CMS has rendered it **framed** all along. Every "frameless" assertion has been exercising the framed renderer.
 
-**Seed** (WIP, uncommitted — `1-schema.mjs` already carries these edits):
-- `article.inline_note` — kept, relabelled, as the **misconfigured** case (frameless editor, no `required` → renders framed). This is where bug #1 is reachable.
-- New model **`block_variants`**, isolated because a `required` localized single_block forces *every locale of every record of its model* to carry a block:
+**Seed** (WIP, uncommitted — already in the working tree):
+- `article.inline_note` — kept, relabelled, as the **misconfigured** case (frameless editor, no `required` → renders framed). Bug #1 is reachable here.
+- New model **`block_variants`** (isolated: a cannot-be-blank localized single_block forces *every locale of every record of its model* to carry a block):
   - `true_frameless` — `required` + one block model → **renders frameless**
   - `pseudo_frameless` — no `required` → **renders framed** (data-loss case)
   - `framed_control` — framed editor, same nullability → the A/B control
 
-**Empirically established** (throwaway fork, read-only elsewhere): `required` **is** enforced per-locale on write (`VALIDATION_REQUIRED` on `<field>.<locale>`). So a true-frameless field can never have a missing target block — **bug #1 is unreachable there, and reachable only in the misconfigured case.**
+**Empirically established** (throwaway fork): `required` **is** enforced per-locale on write (`VALIDATION_REQUIRED` on `<field>.<locale>`). So a true-frameless field can never have a missing target block — **bug #1 is unreachable there, reachable only in the misconfigured case.**
 
 **Tests:**
-1. **Rendering contract** — `true_frameless` renders with no field header/kebab; `pseudo_frameless` renders framed *despite* declaring the frameless editor. Pins the CMS behaviour; fails loudly if DatoCMS changes it.
-2. **Bug #1 probe** — sidebar-translate into a locale where `pseudo_frameless` is null; assert the block persists. Mark `test.fail()` until §3 lands, so the suite stays green *and* screams when the bug is fixed.
-3. **Control** — same for `framed_control`; must pass today.
-4. **Exclusion semantics** — exclude a block sub-field, translate into a locale that already has content; assert the target value is **preserved**, not overwritten with source text.
+1. **Rendering contract** — `true_frameless` renders with no field header/kebab; `pseudo_frameless` renders framed despite the frameless editor.
+2. **Bug #1 probe** — sidebar-translate into a locale where `pseudo_frameless` is null; assert the block persists. `test.fail()` until the fix lands.
+3. **Control** — same for `framed_control`; passes today.
+4. **Exclusion semantics** — exclude a block sub-field; translate into a locale that already has content; assert the target value is **preserved**.
+5. **`internalLocales` pin** — writing it registers a locale and the save honours it. **Run as a locale-restricted role** (§6.3), not an admin.
+6. **Converter round-trip** — `formValuesToItem` → `itemToFormValues` preserves blocks, block ids, and every field type in the seed. Phase 2 depends on this.
+7. **Same-type reorder** — a Modular field with 2+ same-type blocks, reordered in the target, with an exclusion inside → assert we **skip and flag**, never mispair.
 
 ---
 
 ## 10. Explicitly out of scope
 
-- **Derived block IDs** (§4). Real, useful, separate.
-- **Per-instance block selection** — *"translate this Hero but not that one."* Needs id-based targeting inside arrays; nobody has asked.
-- **Path-scoped exclusion** — *"exclude Callout's body under Structured body but not under Inline note."* Same.
-- **Language detection** (`franc`/`tinyld`) as a QC check. Would catch `en → it` returning French. Real dependency; v4.1.
-- **"Retry failed"** — re-run a bulk job scoped to the failed `(record, locale)` pairs. Genuinely useful; v4.1.
+- **Customer-supplied block IDs** (§4.4) — the permanent fix for same-type reordering. Real, verified, migration-bearing. **v4.1.**
+- **Per-instance block selection**; **path-scoped exclusion** — no demand, new engine plumbing.
+- **Language detection** (`franc`/`tinyld`) as a QC check — real dependency. v4.1.
+- **"Retry failed"** — re-run scoped to failed `(record, locale)` pairs. v4.1.
 
 ---
 
 ## 11. Phasing
 
-This is too large for one implementation plan. Each phase below is independently shippable and independently verifiable; the ordering is dependency-driven, not preference.
-
-| # | Phase | Why here |
+| # | Phase | Notes |
 | --- | --- | --- |
-| **0** | **E2E seed + frameless fixtures** (§9.4) | Nothing downstream can be *proven* until the suite can produce a real frameless block. Phase 2 deletes the most-used code path in the plugin; this is the only safety net we'll have. Bug #1's probe lands as `test.fail()`. **Also pins `internalLocales` as a writable `formValues` path** (§6) — an internal key we're about to depend on. |
-| **1** | **`max_tokens` fix** (§9.1) | Hard-blocks phase 6 — the runaway net would otherwise catch our own bug. Small, isolated, ships alone. |
-| **2** | **One engine** (§2, §3) | Delete `translateRecordFields.ts`; route the record path through the SDK converters + form sink. **Fixes bugs #1, #2, #3.** Phase 0's `test.fail()` should flip to passing — remove the annotation. |
-| **3** | **The exclusion rule** (§4) | Merge-don't-rebuild; required-field ban; positional pairing; skip-and-flag on divergence. Depends on phase 2's single engine. |
-| **4** | **The tree + unified modal** (§5, §6) | Build the tree; unify the modal; switch selection to field `id`; delete the "All fields" sentinel. Depends on phase 3's semantics being settled. |
-| **5** | **Pre-flight + policy setting** (§7) | Needs phase 4's schema crawl and phase 3's required-field ban. |
-| **6** | **Runaway failure prevention** (§8) | Needs phase 1. Independent of everything else. |
-| **7** | **Deterministic pre-write validation** (§9.2) | Pure addition to the QC layer. Can land any time after phase 2; sequenced last because it's research-heavy and blocks nothing. |
+| **0** | **E2E foundations** (§9.4) | Seed fixtures; bug-#1 probe as `test.fail()`; **`internalLocales` pin under a restricted role**; **converter round-trip proof**. Phase 2's safety rests entirely on this. |
+| **1** | **`max_tokens` fix** (§9.1) | Hard-blocks phase 6. Small, isolated. **Shippable now as v3.8** — it fails records today. |
+| **2+3** | **One engine + the exclusion rule** (§2, §3, §4) | **Must ship together.** Today's leaf-writes accidentally *preserve* target blocks; an engine that rebuilds from source (phase 2 alone) would trade bug #1 for a clobber regression on the very same fields. Fixes bugs #1–#3 and incoherence #4. |
+| **4** | **The tree + unified modal + id migration** (§5, §6) | Includes the api_key→id config migration (§5.1) and the block sub-field kebab (§6.2). |
+| **5** | **Pre-flight + policy** (§7) | Needs phase 4's crawl and phase 3's `cannotBeBlank`. |
+| **6** | **Runaway prevention** (§8.1) | Needs phase 1. Otherwise independent. |
+| **7** | **Deterministic pre-write validation** (§9.2) | Research-heavy; blocks nothing. Feeds `cannotBeBlank` retroactively. |
 
-Phases 1 and 6 could ship as a **v3.8 patch** ahead of the v4 work if the `max_tokens` bug is judged urgent — it fails records today.
+Phases 1 and 6 can ship as **v3.8** ahead of v4.
 
 ---
 
@@ -409,8 +465,11 @@ Phases 1 and 6 could ship as a **v3.8 patch** ahead of the v4 work if the `max_t
 
 | Risk | Mitigation |
 | --- | --- |
-| Deleting `translateRecordFields.ts` is a big blast radius on the most-used path | Land §9.4's E2E fixtures **first**; they are the only proof we have that the record path works |
-| `formValuesToItem` / `itemToFormValues` are unexercised by us | Prove them in E2E before relying on them; a malformed block silently nulls with no error |
-| Users may rely on the current clobber-on-retranslate behaviour | Behaviour change — call it out in the release notes |
-| The cyclic field graph can hang the crawl | Depth cap + visited-set, unit-tested against a self-referential block |
-| The runaway-abort net catching our own `max_tokens` bug | §9.1 lands before §8's setting |
+| Deleting `translateRecordFields.ts` is a big blast radius on the most-used path | Phase 0 lands first; phases 2+3 ship together |
+| Converters are unexercised by us; a malformed block **silently nulls** | Phase 0 round-trip proof (§9.4 test 6) + the `nested: true` and zero-field-block guards (§2.1) |
+| Role locale scope silently drops writes | §6.3's three mitigations, incl. a restricted-role E2E |
+| Legacy api_key exclusion tokens stop matching | §5.1 migration with an ambiguity prompt; keep the fallback until migrated |
+| Same-type reordering | §4.4 skip-and-flag; customer-supplied ids in v4.1 |
+| Users relied on clobber-on-retranslate | Behaviour change — release notes |
+| Cyclic field graph hangs the crawl | Depth cap + visited-set, unit-tested against a self-referential block |
+| The runaway net catching our own `max_tokens` bug | §9.1 before §8.1 |
