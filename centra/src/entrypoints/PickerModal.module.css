@@ -1,0 +1,115 @@
+.root {
+  display: flex;
+  min-height: 420px;
+  flex-direction: column;
+  gap: var(--spacing-m);
+}
+
+.searchRow {
+  display: flex;
+  gap: var(--spacing-m);
+  align-items: center;
+}
+
+.searchInput {
+  min-width: 0;
+  flex: 1;
+}
+
+.selectionSummary {
+  display: flex;
+  gap: var(--spacing-m);
+  align-items: center;
+  justify-content: space-between;
+  min-height: 24px;
+  color: var(--color--ink-subtle);
+  font-size: var(--font-size-s);
+}
+
+.selectionSummary strong {
+  color: var(--color--ink);
+  font-weight: var(--font-weight-bold);
+}
+
+.results {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--spacing-s);
+  max-height: 430px;
+  padding-right: var(--spacing-s);
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.results > * {
+  flex: 0 0 auto;
+}
+
+.loading {
+  position: relative;
+  min-height: 200px;
+}
+
+.empty,
+.error,
+.notice {
+  display: grid;
+  min-height: 180px;
+  padding: var(--spacing-l);
+  place-items: center;
+  border: 1px solid var(--color--border);
+  border-radius: 4px;
+  background: var(--color--surface-muted);
+  text-align: center;
+}
+
+.empty,
+.notice {
+  color: var(--color--ink-subtle);
+}
+
+.error {
+  color: var(--color--danger-soft--ink);
+  border-color: var(--color--danger-soft--border);
+  background: var(--color--danger-soft--surface);
+}
+
+.loadMore {
+  display: flex;
+  justify-content: center;
+  padding: var(--spacing-m) 0;
+}
+
+.footer {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  gap: var(--spacing-m);
+  align-items: center;
+  justify-content: flex-end;
+  margin: var(--spacing-m) calc(-1 * var(--spacing-m))
+    calc(-1 * var(--spacing-m));
+  padding: var(--spacing-m);
+  border-top: 1px solid var(--color--border);
+  background: var(--color--surface-raised);
+}
+
+.footerInfo {
+  margin-right: auto;
+  color: var(--color--ink-subtle);
+  font-size: var(--font-size-xs);
+}
+
+@media (max-width: 600px) {
+  .searchRow,
+  .selectionSummary,
+  .footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .footerInfo {
+    margin-right: 0;
+  }
+}
