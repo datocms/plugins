@@ -6,6 +6,10 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  isSystemicError,
+  normalizeProviderError,
+} from '../utils/translation/ProviderErrors';
 import { StallError, withStallGuard } from './stallGuard';
 
 describe('stallGuard.ts', () => {
@@ -74,5 +78,15 @@ describe('stallGuard.ts', () => {
 
     await expect(p).rejects.toBe(reason);
     expect(innerSignal?.aborted).toBe(true);
+  });
+
+  it('classifies a normalized StallError as a content-tier (non-systemic) failure', () => {
+    // Regression pin: a stall must retry under CONTENT_RETRY_LIMIT, never pause
+    // the whole run. If the StallError message is ever reworded into something
+    // that matches a systemic substring (rate limit / network / auth / quota),
+    // this fails before the misclassification can ship.
+    expect(
+      isSystemicError(normalizeProviderError(new StallError(300000), 'openai')),
+    ).toBe(false);
   });
 });

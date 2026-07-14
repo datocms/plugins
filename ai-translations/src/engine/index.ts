@@ -54,7 +54,7 @@ import type {
   TranslationProvider,
 } from '../utils/translation/types';
 import type { SchemaRepository } from '../utils/schemaRepository';
-import { StallError, withStallGuard } from './stallGuard';
+import { withStallGuard } from './stallGuard';
 
 /**
  * Human label prefixing each QC flag that {@link buildTranslatedUpdatePayload}
@@ -455,14 +455,21 @@ export async function buildTranslatedUpdatePayload(
     // `code: 'unknown'`, which `isSystemicError` does not treat as systemic, so
     // it's retried as a content-tier failure under `CONTENT_RETRY_LIMIT` like
     // any other field-scoped error rather than pausing the whole run.
+    //
+    // Every rejection the guard can surface is normalized here, not just the
+    // `StallError`: when `opts.abortSignal` wins the guard's race the raw reason
+    // is a bare `DOMException`, which must go through the same normalizer so the
+    // retry loop and `formatErrorForUser` always see a `NormalizedProviderError`
+    // (as they did pre-guard, when the abort surfaced through `attemptWith`'s own
+    // try/catch). `normalizeProviderError` short-circuits an existing
+    // `NormalizedError` instance, so re-normalizing here is a safe no-op for the
+    // errors `attemptWith` already normalized.
     const attempt = (): Promise<unknown> =>
       withStallGuard((signal) => attemptWith(signal), {
         timeoutMs: FIELD_TRANSLATION_TIMEOUT_MS,
         parentSignal: opts.abortSignal,
       }).catch((error) => {
-        throw error instanceof StallError
-          ? normalizeProviderError(error, provider.vendor)
-          : error;
+        throw normalizeProviderError(error, provider.vendor);
       });
 
     try {
