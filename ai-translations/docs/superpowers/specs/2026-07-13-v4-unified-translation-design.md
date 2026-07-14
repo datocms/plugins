@@ -11,10 +11,15 @@
 
 > **Translating makes the target language match the source.**
 > **Fields you excluded are left exactly as they are.**
-> **If something can't be filled, we apply the policy you set — and warn you before we start whenever we can see it coming.**
+> **We never invent content — we leave the gap and show you, unless your model refuses to save a gap.**
+> **Where it refuses, we apply the policy you set — and warn you before we start whenever we can see it coming.**
 > **Everything else is a report, never a question.**
 
-Sentence 3 is deliberately weaker than "we ask you once." A provider can blank a required field at run time, which we cannot foresee; there we apply a **pre-set policy** rather than ask. Honesty about that is the point of the sentence.
+Five now, because sentence 3 is load-bearing and was missing. **The plugin fabricates content in exactly one situation** (§4.0): a model that refuses invalid drafts, where the user chose "use the source." The Formik form always accepts a gap; the CMA accepts one whenever the model has `draft_saving_active`. Everywhere else, we leave the gap and report it.
+
+Sentence 4 is deliberately weaker than "we ask you once": a provider can blank a required field at run time, which we cannot foresee, so there we apply a **pre-set policy** rather than ask.
+
+Sentence 1 has **one declared exception** (§4.5): a Modular Content field whose target structure we cannot unambiguously match is **left untranslated** and reported, rather than guessed at.
 
 Sentence 1 has **one declared exception** (§4.4): a Modular Content field whose target structure we cannot unambiguously match is **left untranslated** and reported, rather than guessed at.
 
@@ -93,7 +98,31 @@ DatoCMS **422s** `localized: true` on any field of a `modular_block` item type (
 > **An excluded (or deselected) field:**
 > 1. **has content in the target already** → left exactly as it is
 > 2. **can be blank** → left blank
-> 3. **cannot be blank** → see §4.1
+> 3. **cannot be blank** → **depends on the sink.** See §4.0.
+
+### 4.0 The rule that shapes everything: **never invent content unless the platform forces you to**
+
+Where can a gap be left?
+
+| | Can hold an invalid record? |
+| --- | --- |
+| **The Formik form** (kebab, sidebar) | **Always.** Nothing is persisted until Save; the CMS surfaces every gap inline and blocks the save. |
+| **The CMA** — model with `draft_mode_active` **∧** `draft_saving_active` | **Yes.** `allows_saving_invalid_drafts?` (`api/app/models/item_type.rb:277-281`); `Item::Update` **catches** `InvalidButPersistableRecordError` and persists the record flagged invalid (`update.rb:348-352`; same in `create.rb:108`). Schema: *"Whether draft records can be saved without satisfying the validations."* An invalid draft **cannot be published** until fixed. |
+| **The CMA** — any other model | **No.** 422. `required_on_publish?` is `false` by default (`base_validator.rb:21`); **only `Unique` defers to publish** (`unique.rb:12`). `skip_validations` exists only on `Item::Publish`. Empirically confirmed: `items.update` with `{en: <block>, fr: null}` on a required field → **422 `VALIDATION_REQUIRED`**. |
+
+⚠️ **`draft_saving_active` defaults to `false`** (`item_type/upsert.rb:58`) and **must be false for block models** — but the check is on the **top-container item type** (the record's model), so a record with draft-saving on saves invalid *including its blocks*. The plugin reads both flags off `ctx.itemTypes[id].attributes` (both are serialised — `item_type_serializer.rb:5`).
+
+So rule 3 becomes:
+
+| Sink | A `cannotBeBlank` field with no translation |
+| --- | --- |
+| **Form** | **Leave it blank.** The CMS shows the error; Save is blocked until the editor acts. **We never invent content.** |
+| **CMA, draft-saving model** | **Leave it blank** — the record persists as an **invalid draft**, unpublishable until fixed. Reported. *(Chosen via §7's third option.)* |
+| **CMA, strict model** | **Must** be filled or the write 422s. Only here does §7's policy apply: *use the untranslated source*, or *skip that language*. |
+
+> **The plugin fabricates content in exactly one situation: a model that refuses invalid drafts, where the user chose "use the source."** Everywhere else it leaves the gap and says so.
+
+To keep the form path convenient without making it magical, the **report offers a one-click affordance**: *"3 fields were left empty because they're excluded from translation. **[Fill them with the English text]**"* — opt-in, visible, reversible. The editor chooses; the plugin doesn't.
 
 ### 4.1 "Cannot be blank" ≠ "required"
 
@@ -110,18 +139,30 @@ cannotBeBlank(validators) =
 
 All three helpers exist or are trivial (`SharedFieldUtils.ts`). **Every ban, lock, and pre-flight check in this spec keys on `cannotBeBlank`, never on `required` alone.** The same applies one level down when creating target blocks with excluded sub-fields.
 
-### 4.2 The ban is asymmetric — and that's the point
+### 4.2 ⚠️ REVERSED: `cannotBeBlank` fields are **excludable**. Do not ban them.
 
-| | Question it answers | Cannot-be-blank fields |
+**An earlier draft banned excluding `cannotBeBlank` fields in the admin tree. That was wrong, and it blocked the single most legitimate use of exclusion.**
+
+A brand name. A product code. An SKU. A model name. These are the fields an admin most wants to say *"never translate this"* about — **and they are almost always `required`.** Banning their exclusion means the plugin translates "Nike Air Max" into Italian forever, with no way to stop it.
+
+The ban's original rationale was *"it removes the case where the plugin has to say sorry, we had to put English in it."* But for a brand name **that is not an apology — it is the intent.** There is nothing to be sorry about.
+
+| | Question it answers | `cannotBeBlank` fields |
 | --- | --- | --- |
-| **Admin config tree** | *"What must **never** be translated?"* | **Locked** 🔒 — *"can't be left empty; can't be excluded"* |
+| **Admin config tree** | *"What must **never** be translated?"* | **Excludable**, with an inline consequence hint |
 | **Run-time picker** | *"What do I want to translate **now**?"* | **Selectable** — untick freely |
 
-A permanent exclusion is a promise about **every future locale you will ever add**, so it genuinely cannot be made for a field that must always hold a value. A per-run deselection promises nothing past this run: rule 1 makes it safe for locales that already have content, and the §7 pre-flight catches the only hazardous case (a locale being *added*).
+The admin tree **informs** rather than prohibits:
 
-**Locking them in the picker would force-include every such field in every run** — you could not "re-translate just the body" without also paying for, and **overwriting**, a hand-polished target Title.
+```
+  ☐ Title    ⓘ This field can't be left empty. Excluding it means new languages
+              will receive the untranslated source text. That's usually what you
+              want for brand names and product codes.
+```
 
-⚠️ Do not "fix the inconsistency" between the two trees. It is deliberate. Same component, different rules.
+Locking them in the **picker** would additionally force-include every such field in every run — you could not "re-translate just the body" without also paying for, and **overwriting**, a hand-polished target Title.
+
+So: **both trees allow it.** The consequence is explained at config time, surfaced again by the §7 pre-flight before any spend, and reported afterwards.
 
 ### 4.3 Merge, don't rebuild
 
@@ -256,24 +297,17 @@ Consequence today: **a true frameless block has no translate affordance anywhere
 
 Read the target block, set the one translated sub-field, write **the whole block** back at that path. **Never a leaf write** — a leaf write into a not-yet-materialised block *is* bug #1, and it would otherwise survive v4 through this brand-new surface.
 
-3. 🔴 **The sub-field action NEVER creates a block. Offer it only when the target block already exists.**
+3. **The action MAY create the target block — and leaves its invalid siblings empty.**
 
-**A block is validated as a unit.** Each sub-field carries its own validators (`propsForBlockField.tsx:62`), and the block's payload is validated together. So if the Italian Callout does not exist and the user clicks *"Translate to → Italian"* on its optional `title`, materialising the block would force us to fill **every `cannotBeBlank` sibling** — with untranslated source text. **One click on an optional field would silently create a whole Italian block, mostly in English.** That is precisely the magic v4 exists to delete.
+A block is validated as a unit: each sub-field carries its own validators (`propsForBlockField.tsx:62`) and the payload validates together. So creating an Italian Callout to hold one translated `title` leaves its required `body` empty.
 
-It also **breaks the kebab's pre-flight exemption** (§7), which rests on *"no other field's blankability is in play."* True only while the kebab cannot create anything.
+**In the form, that is fine — and it is the right answer** (§4.0). We write `{ itemTypeId, title: 'Titolo' }` into `inline_note.it`, leave `body` empty, and **the CMS's own validation surfaces it inline and blocks Save.** We do *not* fabricate an English `body`. Nothing is persisted; nothing is hidden.
 
-Therefore:
+Then **`ctx.scrollToField(fieldPath, targetLocale)`** — which switches the locale tab *and* scrolls — lands the editor directly on the new block with its errors highlighted. They asked for an Italian title; they get an Italian title and an unmissable TODO.
 
-| Target block | Behaviour |
-| --- | --- |
-| **exists** | merge the one translated sub-field into it. Every sibling keeps its current value — which already validated, because the block saved. Nothing new is at risk; only the translated field needs checking (`checkFieldLength`, §9.2). |
-| **does not exist** | **the action is not offered.** Block *creation* is a field-level operation. |
-
-Creating the target block stays with the field-level surfaces: the **parent field's kebab** for framed/modular (translates the whole field, blocks included — exists today), and the **record flow** for frameless (whose parent has no kebab, by CMS design).
+> Nice confirmation from the platform: `FramelessSingleBlock.tsx:89` renders **framed** whenever `hasErrors`. The freshly-created, still-invalid Italian block therefore appears **with its block chrome and a red required field** — not as a bare inline input. The CMS is already designed for this moment.
 
 *"Translate from"* is always safe: it merges into the **current** locale's block, which exists by definition — the user is looking at it.
-
-> **The safe unit of a write is the unit of validation.** A block is validated whole, so a single-sub-field action can never be the thing that creates one. Merging into an existing block is safe precisely because that block already proved it validates.
 
 This is **not a frameless special case** — every block sub-field, at every depth, gets the same treatment. Framed blocks gain per-sub-field translation too (today they can only be translated whole, via the parent kebab).
 
@@ -288,7 +322,11 @@ This is **not a frameless special case** — every block sub-field, at every dep
 2. **Verify the persisted write.** `verifyPersistedWrite.ts` already exists. Use it; flag loudly if a locale didn't land.
 3. **The phase-0 E2E pin must run as a locale-restricted role, not an admin** — an admin run cannot catch this.
 
-Once a locale can be added, **every localized field must carry it** or the save is rejected. So the **locale-sync fallback must run in the form path too.** Today's sidebar has none — a latent bug the moment anyone widens its locale list.
+**The form path needs NO locale-sync fallback.** `repeatForLocales` (`prepareItemPayload.ts:89-107`) emits a key for **every** locale in `internalLocales`, whether or not the form holds a value — missing values simply serialise to `null`. So adding a locale in the form automatically gives every localized field that locale; `cannotBeBlank` ones then fail validation **visibly, in the form, before Save** (§4.0). That is the desired behaviour, not a bug to paper over.
+
+*(An earlier draft claimed the fallback "must run in the form path too." It must not — and doesn't need to.)*
+
+Locale-sync remains **CMA-only**, where a missing key really does 422.
 
 | Context | Target locales offered |
 | --- | --- |
@@ -315,41 +353,46 @@ Both flows emit the same `ProgressUpdate` rows with the same `qcFlags`; `buildTr
 
 ---
 
-## 7. The pre-flight
+## 7. The pre-flight — **bulk only**
 
-Before any provider call, on **record and bulk** runs, cross the schema crawl with **the run's actual selection** and find every field that (a) will **not** be translated — because it is admin-excluded, **deselected in this run**, or its type is switched off — and (b) **`cannotBeBlank`**, and (c) has **no value in a target locale**.
+**The record path has no pre-flight and asks nothing.** It writes to a draft form, so it never has to invent content (§4.0): a `cannotBeBlank` field with no translation is simply left empty, the CMS flags it, and Save is blocked until the editor acts. There is no policy question to ask, because there is no fabrication to authorise.
+
+**The bulk path must ask**, because the CMA rejects an invalid record outright and there is no draft to fall back on.
+
+Before any provider call, cross the schema crawl with **the run's actual selection** and find every field that (a) will **not** be translated — admin-excluded, **deselected in this run**, or its type switched off — and (b) is **`cannotBeBlank`**, and (c) has **no value in a target locale**.
 
 Pure schema + snapshot arithmetic. Costs no tokens.
 
 ```
-  ┌──────────────────────────────────────────────────────────────┐
-  │  3 fields can't be left empty and won't be translated        │
-  │                                                              │
-  │  Article → Title            excluded by admin                │
-  │  Article → Featured data    JSON translation is turned off   │
-  │  Product → Tags             deselected in this run (min 1)   │
-  │                                                              │
-  │  DatoCMS won't save a record with these empty. What should   │
-  │  we do where a target language doesn't already have a value? │
-  │                                                              │
-  │  [ Go back ]  [ Skip those languages ]                       │
-  │                        [ Use untranslated English value ]    │
-  └──────────────────────────────────────────────────────────────┘
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │  3 fields can't be left empty and won't be translated                │
+  │                                                                      │
+  │  Article → Title            excluded by admin                        │
+  │  Article → Featured data    JSON translation is turned off           │
+  │  Product → Tags             deselected in this run (min 1)           │
+  │                                                                      │
+  │  What should we do where a target language has no value yet?         │
+  │                                                                      │
+  │  [ Go back ]  [ Leave them empty ]  [ Skip those languages ]         │
+  │                                [ Use untranslated English value ]    │
+  └──────────────────────────────────────────────────────────────────────┘
 ```
 
-- **"Go back"**, not "Cancel" — Cancel is ambiguous.
-- **"Skip those languages"** — you cannot skip a cannot-be-blank *field*; the write 422s. Only the **locale**.
-- **"Use untranslated *English* value"** — resolve via `getLocaleName()`. Naming the language is the point.
-
-**The plain kebab is exempt** — but only because §6.2 makes the exemption *true*: it touches one field, in a locale the record already has, adds no locale, and (for a block sub-field) **merges into a block that already exists**, so it creates nothing. No *other* field's blankability is in play. The moment a kebab action could **create** a block or a locale, that exemption would be unsound and the pre-flight would have to apply — which is exactly why §6.2 forbids it.
+- **"Go back"**, not "Cancel" — Cancel is ambiguous (the dialog, or the run?).
+- **"Leave them empty"** — the record saves as an **invalid draft**, unpublishable until someone fills the gap. **Offered only when *every* affected model has `draft_mode_active ∧ draft_saving_active`** (§4.0). Otherwise it renders **disabled**, with the reason: *"Article doesn't allow saving invalid drafts."* This is the bulk equivalent of what the form does, and it is the option that invents nothing.
+- **"Skip those languages"** — you cannot skip a cannot-be-blank *field* on a strict model; the write 422s. Only the **locale**.
+- **"Use untranslated *English* value"** — resolve via `getLocaleName()`. Naming the language is the point: it tells you what is about to land in your Italian record.
 
 ### 7.1 The policy is a setting; the dialog is the override
 
 A provider can blank a cannot-be-blank field at run time — **not** foreseeable. If the policy lived only in a dialog shown for *known* conflicts, a clean run would have **no policy** when that happens and we'd invent one.
 
 > **When a field that can't be empty has no translation → ▾**
-> • **Use the untranslated source value** *(default)*
+> • **Leave it empty** *(default where the model allows invalid drafts)*
+> • **Use the untranslated source value** *(default otherwise)*
 > • Skip that language
+
+The default is **the option that invents the least** and that the model actually permits. On a draft-saving model that is "leave it empty" — identical to what the record path does, and the record is simply unpublishable until fixed. On a strict model that option doesn't exist, so the default falls back to "use the source."
 
 Default "use the source" because in the common case it is **not a failure**: such a field is excluded precisely *because* it's a brand name or product code. Copying it through is the **intent**.
 
