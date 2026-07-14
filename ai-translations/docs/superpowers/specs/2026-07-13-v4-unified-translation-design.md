@@ -256,7 +256,24 @@ Consequence today: **a true frameless block has no translate affordance anywhere
 
 Read the target block, set the one translated sub-field, write **the whole block** back at that path. **Never a leaf write** — a leaf write into a not-yet-materialised block *is* bug #1, and it would otherwise survive v4 through this brand-new surface.
 
-3. If the target block does not exist, the action creates it from the source with only the chosen sub-field translated; the rest follow §4's rules 2/3 and are flagged.
+3. 🔴 **The sub-field action NEVER creates a block. Offer it only when the target block already exists.**
+
+**A block is validated as a unit.** Each sub-field carries its own validators (`propsForBlockField.tsx:62`), and the block's payload is validated together. So if the Italian Callout does not exist and the user clicks *"Translate to → Italian"* on its optional `title`, materialising the block would force us to fill **every `cannotBeBlank` sibling** — with untranslated source text. **One click on an optional field would silently create a whole Italian block, mostly in English.** That is precisely the magic v4 exists to delete.
+
+It also **breaks the kebab's pre-flight exemption** (§7), which rests on *"no other field's blankability is in play."* True only while the kebab cannot create anything.
+
+Therefore:
+
+| Target block | Behaviour |
+| --- | --- |
+| **exists** | merge the one translated sub-field into it. Every sibling keeps its current value — which already validated, because the block saved. Nothing new is at risk; only the translated field needs checking (`checkFieldLength`, §9.2). |
+| **does not exist** | **the action is not offered.** Block *creation* is a field-level operation. |
+
+Creating the target block stays with the field-level surfaces: the **parent field's kebab** for framed/modular (translates the whole field, blocks included — exists today), and the **record flow** for frameless (whose parent has no kebab, by CMS design).
+
+*"Translate from"* is always safe: it merges into the **current** locale's block, which exists by definition — the user is looking at it.
+
+> **The safe unit of a write is the unit of validation.** A block is validated whole, so a single-sub-field action can never be the thing that creates one. Merging into an existing block is safe precisely because that block already proved it validates.
 
 This is **not a frameless special case** — every block sub-field, at every depth, gets the same treatment. Framed blocks gain per-sub-field translation too (today they can only be translated whole, via the parent kebab).
 
@@ -324,7 +341,7 @@ Pure schema + snapshot arithmetic. Costs no tokens.
 - **"Skip those languages"** — you cannot skip a cannot-be-blank *field*; the write 422s. Only the **locale**.
 - **"Use untranslated *English* value"** — resolve via `getLocaleName()`. Naming the language is the point.
 
-**The plain kebab is exempt:** one field, an existing locale, no locale added, so no *other* field's blankability is in play.
+**The plain kebab is exempt** — but only because §6.2 makes the exemption *true*: it touches one field, in a locale the record already has, adds no locale, and (for a block sub-field) **merges into a block that already exists**, so it creates nothing. No *other* field's blankability is in play. The moment a kebab action could **create** a block or a locale, that exemption would be unsound and the pre-flight would have to apply — which is exactly why §6.2 forbids it.
 
 ### 7.1 The policy is a setting; the dialog is the override
 
