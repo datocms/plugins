@@ -406,7 +406,7 @@ Pure schema + snapshot arithmetic. Costs no tokens.
 - **"Go back"**, not "Cancel" — Cancel is ambiguous (the dialog, or the run?).
 - **"Leave them empty"** — the record saves as an **invalid draft**, unpublishable until someone fills the gap. **Offered only when *every* affected model has `draft_mode_active ∧ draft_saving_active`** (§4.0). Otherwise it renders **disabled**, with the reason: *"Article doesn't allow saving invalid drafts."* This is the bulk equivalent of what the form does, and it is the option that invents nothing.
 - **"Skip those languages"** — you cannot skip a cannot-be-blank *field* on a strict model; the write 422s. Only the **locale**.
-- **"Use untranslated *English* value"** — resolve via `getLocaleName()`. Naming the language is the point: it tells you what is about to land in your Italian record.
+- **"Copy the *English* value in"** — resolve the language name via `getLocaleName()`. Naming the language is the point: it tells you what is about to land in your Italian record. **This is the per-run counterpart of §4.2's "Always copy from source" list** — identical behavior, chosen for one run instead of permanently — and the UI copy must make that kinship recognizable. It fills only target languages that have no value yet (condition (c)); it is one choice for all affected fields in the run, deliberately not a per-field matrix.
 
 ### 7.1 The policy is a setting; the dialog is the override
 
