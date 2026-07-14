@@ -14,7 +14,7 @@
 
 Phases 2–7 are **not planned yet** — six §9.5 decisions gate them (the §4.2 ban reversal, Modular-Content type-pairing scope, streaming-UX replacement, throughput mode, fill-with-source affordance, customer-block-ids timing). Planning them now would bake in answers the stakeholder hasn't given. Also deferred out of this plan, with reasons:
 
-- **§9.4 test 7 (same-type reorder → skip-and-flag):** asserts v4 engine semantics that don't exist yet and can't be expressed against v3's UI. Write it inside phase 2+3.
+- **§9.4 test 7 (same-type reorder):** **deleted by spec rev 5** — there is no pairing to get wrong and no skip remedy to assert; reordered target blocks are simply overwritten (§4.3). The overwrite contract is covered by Task 6's pin.
 - **§9.4 test 8's UI half ("Leave them empty" option):** phase-5 UI. Its **schema half** (the draft-saving model) and the **platform pin** it rests on ARE in this plan (Tasks 2, 4).
 
 ## Global Constraints
@@ -468,9 +468,9 @@ git commit -m "test(e2e): frameless rendering contract + bug-#1 probe (test.fail
 
 ---
 
-### Task 6: Exclusion-preservation pin (§9.4 test 4, `test.fail()`)
+### Task 6: Exclusion-contract pin (§9.4 test 4, `test.fail()`) — rev 5 semantics
 
-v3 writes the SOURCE text into an excluded block sub-field and clobbers hand-edited target content (spec §4.3 / incoherence #4). Pin the correct v4 behavior now.
+v3 writes the SOURCE text into an excluded block sub-field (spec §4.3 history / incoherence #4). **Spec rev 5's contract (§4.2/§4.3): the rebuilt target block leaves an excluded (optional) sub-field EMPTY** — not source text (v3's bug), not the old target value (rev ≤4's merge, removed). Pin that now.
 
 **Files:**
 - Modify: `e2e/tests/frameless-pins.spec.ts` (append)
@@ -481,8 +481,8 @@ v3 writes the SOURCE text into an excluded block sub-field and clobbers hand-edi
 - [ ] **Step 1: Write the test**
 
 ```ts
-  test('exclusion pin: an excluded block sub-field preserves existing target content', async ({ page }) => {
-    test.fail(); // v3 copies the SOURCE into excluded sub-fields inside blocks (§4.3). Phase 2+3 flips this.
+  test('exclusion pin: an excluded block sub-field is left EMPTY in the rebuilt target block', async ({ page }) => {
+    test.fail(); // v3 copies the SOURCE into excluded sub-fields inside blocks. Rev-5 contract: empty (§4.3). Phase 2+3 flips this.
     test.setTimeout(TIMEOUTS.twelve_min);
     const { vendor, envName } = meta();
     const BV_CONTROL = findRecord(manifest, BLOCK_VARIANTS, 'BV Control');
@@ -497,7 +497,6 @@ v3 writes the SOURCE text into an excluded block sub-field and clobbers hand-edi
     const bodyField = calloutFields.find((f) => f.api_key === 'body');
     if (!bodyField) throw new Error('callout.body missing from seed');
 
-    const before = await getLocaleValue(envName, BV_CONTROL.id, 'it', 'true_frameless');
     await client.plugins.update(pluginId, {
       parameters: {
         ...params,
@@ -514,11 +513,13 @@ v3 writes the SOURCE text into an excluded block sub-field and clobbers hand-edi
       const save = await saveRecord(page, vendor);
       expect(save.status, save.fieldErrors.join('; ')).toBe(200);
 
-      // The excluded sub-field's it content must be byte-identical to before.
+      // Rev-5 contract (§4.3): the target block is rebuilt from the translated
+      // source, and the excluded optional sub-field is left EMPTY — neither the
+      // English source text (v3's bug) nor the old Italian value survives.
       const after = await getLocaleValue(envName, BV_CONTROL.id, 'it', 'true_frameless');
       const bodyOf = (v: unknown) => (v as { attributes?: { body?: string } })?.attributes?.body
         ?? (v as { body?: string })?.body;
-      expect(bodyOf(after), 'excluded callout.body (it) must be preserved').toBe(bodyOf(before));
+      expect(bodyOf(after) ?? null, 'excluded callout.body (it) must be empty in the rebuilt block').toBeNull();
     } finally {
       await client.plugins.update(pluginId, { parameters: params }); // restore
     }
@@ -776,7 +777,7 @@ git commit -m "docs(e2e): phase-0 fixtures, pins inventory, restricted-role prov
 
 ## Self-Review Notes
 
-- **Spec coverage (§9.4):** seed items → Tasks 1–3; test 1 → Task 5; test 2 → Task 5 (`test.fail`); test 3 → Task 5; test 4 → Task 6 (`test.fail`); test 5 → Task 8; test 6 → Task 7; test 7 → explicitly deferred to phase 2+3 (header); test 8 → schema+platform halves in Tasks 2/4, UI half deferred to phase 5 (header). Feasibility constraints (§9.4 bottom): `test.fail()`×teardown → Task 5 step 1; second auth context → Task 8; in-browser round-trip → Task 7.
+- **Spec coverage (§9.4):** seed items → Tasks 1–3; test 1 → Task 5; test 2 → Task 5 (`test.fail`); test 3 → Task 5; test 4 → Task 6 (`test.fail`); test 5 → Task 8; test 6 → Task 7; test 7 → deleted by spec rev 5 (header); test 8 → schema+platform halves in Tasks 2/4, UI half deferred to phase 5 (header). Feasibility constraints (§9.4 bottom): `test.fail()`×teardown → Task 5 step 1; second auth context → Task 8; in-browser round-trip → Task 7.
 - **Placeholder scan:** Task 8 step 3 leaves the pin body abbreviated by design — its helpers and assertions are fully specified in the surrounding text and identical to Task 5's shown code; the two CMA assertions are given exactly. Everything else carries complete code or an exact command.
 - **Type consistency:** helper names (`openRecord`, `translateRecordViaSidebar`, `saveRecord`, `getLocaleValue`, `loadManifest`, `findRecord`, `cmaClient`, `resolvePluginId`, `loginAndSaveState`, `openTranslationPanel`) were verified against the current tree before writing; each task that touches an unverified detail (block value shape, `findRecord` signature, frame-evaluate idiom, role rule shape, `meta.is_valid`) carries an explicit ⚠ resolve-don't-assume instruction.
 - **Safety:** the single shared-project write is confined to Task 3 step 2, after review, in documented order; record scripts are additive and marker-idempotent; platform pins clean up their scratch records.

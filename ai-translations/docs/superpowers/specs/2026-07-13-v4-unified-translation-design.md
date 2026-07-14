@@ -1,6 +1,6 @@
 # AI Translations v4 — Unified Translation Flow
 
-**Date:** 2026-07-13 · **Rev 4** (2026-07-14 pm: stakeholder decisions folded in — ALL cross-language block matching removed (§4.4); the progress modal becomes the single report surface, sidebar reduced to launcher + status line (§6.1/§6.4); fill-with-source affordance cut to v4.1 (§10); engine gains a true bounded-parallel mode (§2.3); customer-block-id mechanics verified against the API source (§4.4). Rev 3 earlier the same day: second adversarial review, §2.3 re-homing inventory, §6.2/§6.4 corrections.)
+**Date:** 2026-07-13 · **Rev 5** (2026-07-14, second stakeholder round: **always-overwrite** replaces every remaining match/merge/skip behavior (§4.3); admin config split into two explicit lists — "Exclude" (optional fields only) and "Always copy from source" (§4.2); the derived-block-id scheme **rejected** as brittle (§4.4); block sub-field kebab narrowed to single-slot chains (§6.2). Rev 4: modal as single report surface, bounded-parallel engine mode, fill-with-source cut. Rev 3: second adversarial review, §2.3 re-homing inventory.)
 **Status:** Approved design — implementation plan in progress
 **Scope:** Major version. Every entry point, the engine, the config screen, the E2E seed.
 **Background:** [`2026-07-13-field-selection-investigation.md`](./2026-07-13-field-selection-investigation.md)
@@ -9,17 +9,17 @@
 
 ## The plugin, in five sentences
 
-> **Translating makes the target language match the source.**
-> **Fields you excluded are left exactly as they are.**
+> **Translating makes the target language match the source — existing target content is overwritten.**
+> **Fields you excluded are never given machine output; fields you marked "copy from source" get the original text.**
 > **We never invent content — we leave the gap and show you, unless your model refuses to save a gap.**
 > **Where it refuses, we apply the policy you set — and warn you before we start whenever we can see it coming.**
 > **Everything else is a report, never a question.**
 
-Sentence 3 is load-bearing. **The plugin fabricates content in exactly one situation** (§4.0): a model that refuses invalid drafts, where the user chose "use the source." The Formik form always accepts a gap; the CMA accepts one whenever the model has `draft_saving_active`. Everywhere else, we leave the gap and report it.
+Sentence 1 is now unconditional (rev 5): no matching, no merging, no skip-and-flag — the target is rebuilt from the translated source, and the record's **version history** is the undo (§4.3).
+
+Sentence 3 is load-bearing. **The plugin fabricates content in exactly one situation** (§4.0): a model that refuses invalid drafts, where the user chose "use the source." The Formik form always accepts a gap; the CMA accepts one whenever the model has `draft_saving_active`. (Copying a *"copy from source"* field is not fabrication — it is the admin's explicit instruction.)
 
 Sentence 4 is deliberately weaker than "we ask you once": a provider can blank a required field at run time, which we cannot foresee, so there we apply a **pre-set policy** rather than ask.
-
-Sentence 1 has **one declared exception** (§4.5): a field whose existing target blocks we cannot unambiguously match to the source is **left untranslated** and reported, rather than guessed at.
 
 ---
 
@@ -51,7 +51,7 @@ All of it shares one root: **the plugin has two translation engines that don't a
         ▼                                                 ▼
   ┌──────── NORMALIZE (JSON:API ⇄ simple client shape) ────────┐
   ├──────────────────────── ONE ENGINE ────────────────────────┤
-  │  field walk · exclusion · merge · QC flags · locale-sync    │
+  │  field walk · exclusion · overwrite · QC flags · locale-sync │
   └────────────────────────────────────────────────────────────┘
         │ ctx.itemToFormValues()                           │
         ▼                                                  ▼
@@ -106,12 +106,19 @@ DatoCMS **422s** `localized: true` on any field of a `modular_block` item type (
 
 ---
 
-## 4. The exclusion rule
+## 4. The exclusion rule — two explicit lists, one overwrite policy
 
-> **An excluded (or deselected) field:**
-> 1. **has content in the target already** → left exactly as it is
-> 2. **can be blank** → left blank
-> 3. **cannot be blank** → **depends on the sink.** See §4.0.
+Rev 5 (stakeholder design): the single overloaded "exclude" list is replaced by **two explicit admin lists** (§4.2), and every conditional behavior collapses into **always overwrite** (§4.3):
+
+> **An "Exclude" field** *(only fields that can be blank are eligible — §4.2)*:
+> - **top level** → never written; the target keeps whatever it has
+> - **sub-field inside a rebuilt block** → left **empty** in the new block (it is optional by construction, so empty is always valid)
+>
+> **An "Always copy from source" field** *(any field, including required)*:
+> - gets the **source value, verbatim**, wherever the run touches it — top level and inside rebuilt blocks alike
+>
+> **A field deselected for this run** (run-time picker, or its type toggled off):
+> - not written; the target keeps whatever it has. If a **new locale** forces a value anyway (`cannotBeBlank`, §4.1), §7's policy applies — this is now the *only* gap the pre-flight has to ask about.
 
 ### 4.0 The rule that shapes everything: **never invent content unless the platform forces you to**
 
@@ -127,7 +134,7 @@ Where can a gap be left?
 
 ⚠️ **"Invalid" has a floor even in draft-saving mode.** `InvalidButPersistableRecordError` is raised only when *every* error is a `PersistableApiError` (`validate.rb:294`), and seven validators are `always_enforced?` — the block/link **structural** validators (`rich_text_blocks`, `single_block_blocks`, `structured_text_blocks`, `structured_text_inline_blocks`, `structured_text_links`, `item_item_type`, `items_item_type`). A draft-saving model accepts a *blank* required field; it never accepts a structurally broken block or link payload. Blank-value gaps are always persistable; malformed block assembly never is.
 
-So rule 3 becomes:
+So the remaining gap case — a `cannotBeBlank` field left without a value (deselected on a new locale, or a run-time provider blank) — resolves per sink:
 
 | Sink | A `cannotBeBlank` field with no translation |
 | --- | --- |
@@ -154,71 +161,43 @@ cannotBeBlank(validators) =
 
 `isFieldRequired` and `hasMinItemsValidator` exist in `SharedFieldUtils.ts` today; **`hasMinLength` must be added** (mirror `hasMinItemsValidator` over `validators.length`). The predicate is **complete**: in the Rails source, `length` literally delegates to `Size.call` (nil → size 0 → fails `min/eq ≥ 1` independently of `required`), and every other validator fast-returns valid on a blank value (`format`, `enum`, `slug_format` all do). **Every ban, lock, and pre-flight check in this spec keys on `cannotBeBlank`, never on `required` alone.** The same applies one level down when creating target blocks with excluded sub-fields.
 
-### 4.2 ⚠️ REVERSED: `cannotBeBlank` fields are **excludable**. Do not ban them.
+### 4.2 Two explicit lists — the stakeholder design that dissolved the ban debate
 
-**An earlier draft banned excluding `cannotBeBlank` fields in the admin tree. That was wrong, and it blocked the single most legitimate use of exclusion.**
+Earlier revisions fought over whether required fields may be *excluded* (excluding one forces the plugin to put source text in, which one side called invention and the other called intent). **Rev 5 (stakeholder, 2026-07-14): stop overloading one list — make each behavior its own explicit setting:**
 
-A brand name. A product code. An SKU. A model name. These are the fields an admin most wants to say *"never translate this"* about — **and they are almost always `required`.** Banning their exclusion means the plugin translates "Nike Air Max" into Italian forever, with no way to stop it.
-
-The ban's original rationale was *"it removes the case where the plugin has to say sorry, we had to put English in it."* But for a brand name **that is not an apology — it is the intent.** There is nothing to be sorry about.
-
-| | Question it answers | `cannotBeBlank` fields |
+| Admin list | Who is eligible | What it means, everywhere |
 | --- | --- | --- |
-| **Admin config tree** | *"What must **never** be translated?"* | **Excludable**, with an inline consequence hint |
-| **Run-time picker** | *"What do I want to translate **now**?"* | **Selectable** — untick freely |
+| **"Exclude from translation"** | **only fields that can be blank** (¬`cannotBeBlank`, §4.1) | never given machine output: top-level → untouched; inside a rebuilt block → empty |
+| **"Always copy from source"** | **any field**, including required | target gets the source value verbatim — the brand-name/SKU/product-code intent, stated as itself |
 
-The admin tree **informs** rather than prohibits:
-
-```
-  ☐ Title    ⓘ This field can't be left empty. Excluding it means new languages
-              will receive the untranslated source text. That's usually what you
-              want for brand names and product codes.
-```
-
-Locking them in the **picker** would additionally force-include every such field in every run — you could not "re-translate just the body" without also paying for, and **overwriting**, a hand-polished target Title.
-
-So: **both trees allow it.** The consequence is explained at config time, surfaced again by the §7 pre-flight before any spend, and reported afterwards.
-
-### 4.3 Merge, don't rebuild — where pairing is defined
-
-Today `translateBlockValue` clones the **source** block, strips its ids, translates, and overwrites the target — so an excluded sub-field receives the **source text** and hand-edited target content is destroyed. (Worse: the early-return for an excluded or type-disabled sub-field returns the clone *verbatim*, so blocks nested **inside** that sub-field keep their **source block ids** in the target locale — a block id referenced from two locales is invalid, risking a 422 or block reassignment on save. Two defects, one root.)
-
-v4 **merges into the existing target block only where the target is definitionally known** — a `single_block` slot or an explicit kebab path (§4.4 rules 3–4) — preserving its `itemId` and every sub-field we were told not to touch. Block lists are never merged: they rebuild or skip (§4.4 rules 1–2). Where no target block exists (the common case — a new locale), we create it and rules 2/3 apply.
-
-### 4.4 No matching, ever
-
-> **Stakeholder decisions (2026-07-14): no positional diff, and no cross-language block matching of any kind — "minimize the magic; fail loud and fast."** An earlier revision paired blocks "positionally + by type"; rev 3 kept an order-independent type-keyed match for Modular Content; **both are gone.** The plugin never tries to figure out which target block corresponds to which source block.
-
-The whole rule set, in plain words:
-
-1. **Blocks in a list (`Modular Content`, `structured_text`) are never matched across languages.** Re-translating such a field always **rebuilds** the target from the translated source — fresh block instances, exactly mirroring the source. That is manifesto sentence 1 doing its job, not a divergence; no flag.
-2. **Exception — fail loud:** if an **exclusion/deselection lives inside** that field's subtree **and the target already has content**, rebuilding would either destroy what the exclusion protects or copy source text into it. We refuse: **skip the field, flag it, touch nothing.**
+The exclude picker **disables** `cannotBeBlank` fields with an inline pointer:
 
 ```
-⚠️ Page content (it) was left unchanged — you excluded "Callout → Body" and its
-   existing Italian blocks can't be safely rebuilt around that. Nothing was overwritten.
+  ☒ Title (required)   ⓘ Required fields can't be excluded — they'd be left
+                          empty and the record couldn't save. Use "Always copy
+                          from source" instead.
 ```
 
-3. **A `single_block` field is not matching** — it has exactly one slot, so "which block?" has only one possible answer. When the target slot holds a block of the same type, we merge into it (preserving its `itemId` and excluded sub-fields); a different type is treated like rule 2 (no exclusion inside → rebuild; exclusion inside → skip + flag). *Reviewer's interpretation of "remove all matching," flagged for veto: the single slot involves no correspondence guessing, and killing it would break exclusion-preservation inside frameless blocks — the flagship §1 use case. If you want rebuild-always here too, delete this rule and rule 2 governs.*
-4. **The §6.2 kebab is likewise not matching**: the editor points at one concrete block path; the merge target is definitionally known.
+A field may sit on at most one list; the config screen enforces it. The **run-time picker** is unchanged — any field, required or not, can be deselected for a run (*"What do I want to translate now?"*), with §7 covering the one gap that can create (new locale × `cannotBeBlank`).
 
-On a new locale there is nothing to preserve, so none of this bites — blocks are created fresh and rules 2/3 of §4 apply to excluded sub-fields.
+**Migration from the v3 single list** (folds into §5.1's token migration): a legacy excluded field that is `cannotBeBlank` moves to **"Always copy from source"** — which is what v3 actually did to it on new locales (the locale-sync fallback copied the source); a legacy excluded field that can be blank stays **excluded**. Behavior-preserving, no prompt needed beyond §5.1's ambiguity cases.
 
-**Why matching died — the same-type reorder problem, generalized.** `[Quote A, Quote B]` reordered to `[Quote B′, Quote A′]` defeats position *and* type signatures; every heuristic short of identity mis-pairs some real edit, and a mis-pair is **silent content corruption** married to the wrong `itemId`. Identity is the only honest signal, and today blocks have none that spans locales.
+### 4.3 Always overwrite
 
-**The identity fix is real and verified, timing pending (§9.5 q2).** Block ids can never be *shared* across locales — every block is a record with an environment-globally-unique id (`persist_and_replace_ids.rb` rejects an id already in use). But DatoCMS accepts **customer-supplied ids for new blocks** (`api` commit `b7e466f9b`, 2026-05-04, on master), and the format check is purely structural — `rfc4122_random_base64_uuid?` verifies 16 bytes + version-4 nibble + RFC 4122 variant bits, nothing about actual randomness (`lib/public_id.rb:100-110`). So the plugin can *derive* the target block's id deterministically — hash `(source block id, target locale)` into a v4-shaped UUID — and correlation becomes **computation, not matching**: given any source block, the id its Italian sibling *must* have is calculable, and rule 2's skip only remains for blocks that predate the scheme (their random ids carry no derivation — the migration story). Whether this ships in v4 or v4.1 is the open stakeholder call.
+> **Stakeholder decision (2026-07-14, second round): translating a field always overwrites its target value with the translation of the source. No matching. No merging. No skip-and-flag. The record's version history is the undo.**
 
-### 4.5 One decision table, no hidden modes
+For every translated field, of every type, in every flow:
 
-The remedy never hinges invisibly on an unrelated admin checkbox — the same table runs for every block-bearing field:
+- The target value is **rebuilt from the translated source** — for block-bearing fields, fresh block instances exactly mirroring the source structure. Whatever the target held before is replaced.
+- **"Always copy from source" sub-fields** in the rebuilt blocks get the source value verbatim. **Excluded sub-fields** are left empty (they are optional by construction — §4.2). Nothing from the *old* target blocks survives; an editor who needs it back uses the record's **version history**, which captures nested block content with each item version.
+- There is **no divergence remedy** because divergence no longer exists as a concept: the source structure *is* the target structure after every run.
+- *Optional, only-if-cheap* (stakeholder: "at most… only if easy"): the run already holds the old target value, so comparing block-type counts before overwriting is a cheap diff — when they differ, add an **info-tier** report line: *"Page content (it) had a different block structure; it was replaced to match the source."* No behavior hangs on it; drop it if it complicates anything.
 
-| | No exclusion in subtree | Exclusion in subtree **and** target has content |
-| --- | --- | --- |
-| **Block lists** (Modular Content, `structured_text`) | **rebuild from translated source** — the normal mode, no flag | **skip the field** + `warning` flag *(we would have to guess)* |
-| **`single_block`**, same type in the slot | translate, merge in place | translate, merge, preserve the excluded |
-| **`single_block`**, different type in the slot | **rebuild** + `warning` flag *(the editor's target-side choice was discarded)* | **skip the field** + `warning` flag |
+This kills two v3 defects with one rule stated once: the "exclude means copy-the-English-in inside a block" incoherence (excluded sub-fields are now empty, copy-from-source is its own explicit list) and the nested source-block-id leak (rebuilt blocks are always fresh instances — ids stripped at every level, no verbatim-clone early-returns).
 
-**Declared exception to sentence 1 of the manifesto:** in the skip cases, the field's *non-excluded* siblings also go untranslated. The target does **not** match the source, and we say so in the report. That is the price of not guessing; the kebab is the deliberate override (§6.2).
+### 4.4 History — how matching died (audit trail)
+
+Kept so nobody re-treads this path. Rev 2 paired blocks *positionally + by type* → rejected: the same-type reorder problem (`[Quote A, Quote B]` → `[B′, A′]` defeats position and type signatures; every heuristic short of identity mis-pairs some real edit — silent corruption). Rev 3 kept order-independent type-keyed matching → rejected: still magic. Rev 4 kept only a single-slot merge and skip-and-flag remedies → rejected: still a merge system to reason about. A **derived-block-id scheme** was verified feasible against the API source (ids are environment-globally unique, but customer-supplied ids for new blocks are format-checked only — `lib/public_id.rb:100-110` — so a v4-shaped UUID hashed from `(source id, locale)` would pass, making correlation computable) → **rejected by the stakeholder: "I don't want to overload the ID field with metadata; it's too brittle."** Final state: rev 5's §4.3, always overwrite.
 
 ---
 
@@ -249,18 +228,19 @@ So v4 migrates — same mechanism, honestly labelled as defensive normalization 
 3. **Ambiguous** (`title` matches 4 fields) → surface it: *"`title` matches 4 fields. Which did you mean?"* with checkboxes. Do not guess.
 4. Keep the api_key fallback in **enforcement** until the config has been migrated (a `paramsVersion` flag), then drop it.
 
-### 5.2 Excluding a block sub-field is global to that block
+### 5.2 A block sub-field's list membership is global to that block
 
-A block's sub-field has **one id** regardless of how many parents embed it. Excluding it applies **wherever that block is used** — this must be shown, not discovered:
+Both admin lists (§4.2) key on field **id**, and a block's sub-field has **one id** regardless of how many parents embed it. Putting it on either list applies **wherever that block is used** — this must be shown, not discovered:
 
 ```
   ▾ ☑ Article
       ▾ ☑ Structured body
           ▾ ☑ Callout block
               ☑ Title
-              ☐ Body       ⓘ excluded wherever Callout is used (3 places)
-      ☐ Title              ⓘ can't be left empty — excluding it means new
-                             languages get the untranslated source text (§4.2)
+              ☐ Body       ⓘ excluded wherever Callout is used (3 places);
+                             left empty in newly translated blocks (§4.3)
+      ☒ Title (required)   ⓘ can't be excluded — use "Always copy from
+                             source" (§4.2)
 ```
 
 Two enforcement holes in the current engine that v4's single choke point must close, not inherit:
@@ -272,7 +252,7 @@ Two enforcement holes in the current engine that v4's single choke point must cl
 
 Crawled **once per model, cached per session**. It is cheap but **not free** — `AGENTS.md`'s ConfigScreen load-once rule exists because a `loadItemTypeFields` sweep can hit rate limits. Apply the same discipline.
 
-Outputs: (1) the picker tree; (2) `cannotBeBlank` nodes; (3) admin-excluded nodes; (4) which block subtrees contain an exclusion.
+Outputs: (1) the picker tree (instantiated for the run-time picker and both §4.2 admin lists); (2) `cannotBeBlank` nodes (disabled in the exclude picker; feed the §7 pre-flight); (3) excluded nodes; (4) copy-from-source nodes.
 
 **The "All fields" sentinel is deleted** — it conflated a display collapse with an input shortcut. A "Select all" text button replaces it: an action, not a menu option.
 
@@ -282,7 +262,7 @@ Outputs: (1) the picker tree; (2) `cannotBeBlank` nodes; (3) admin-excluded node
 
 | Entry point | Behaviour |
 | --- | --- |
-| **Field kebab** | Direct and minimal. `Translate to → [locale]` / `Translate from → [locale]`. Two clicks, existing locales only. Also the deliberate override for §4.5 divergence. **New: works on block sub-fields — see §6.2.** |
+| **Field kebab** | Direct and minimal. `Translate to → [locale]` / `Translate from → [locale]`. Two clicks, existing locales only. **New: works on block sub-fields inside single-block containers — see §6.2 for the (narrow) scope.** |
 | **Sidebar** | **A dumb launcher + one status line.** Button opens the unified modal (this record, all fields pre-selected); the config resolves, the run executes in the sidebar frame (form sink — §6.1), and **progress + report render in the progress modal**, the single source of truth for every flow (§6.4). The panel shows only a status line afterwards. |
 | **Bulk (records table)** | Unified modal, CMA sink. Progress + report in the modal. |
 | **Bulk (settings page)** | Same, plus model selection. |
@@ -318,36 +298,38 @@ This deletes rev 3's ~300 px compact-layout problem wholesale: no inline-expanda
 
 **The v4 rule therefore cannot key on `ctx.field`/`ctx.parentField` identity at all. Resolve `ctx.fieldPath` against the schema** — walk its segments from the top-level field — and derive everything (the owning block, the sub-field, the localized gate, ST ancestry) from that resolution. It is the only signal the CMS reports correctly on every kebab class.
 
-**And one class is suppressed outright: any sub-field with a `structured_text` ancestor gets no translate actions (`return []`).** Three independent reasons, each sufficient:
+**Rev 5 narrows the feature to where a cross-locale target is *derivable without matching*: sub-fields whose entire container chain is `single_block`.** A single-slot container has exactly one possible counterpart per locale — `inline_note.it` *is* the Italian sibling of `inline_note.en`, no guessing. A Modular Content path carries an **index** (`content_blocks.en.0`), and "the block at index 0 in Italian" is positional correspondence — banned (§4.3/§4.4). Structured text is worse still. So:
+
+**Suppressed outright (`return []`): any sub-field with a `rich_text` (Modular Content) or `structured_text` ancestor.** For MC the reason is the banned positional index. For ST, three independent reasons, each sufficient:
 - ST block kebabs mount inside `HijackFormik` (`cms/…/SlateInput/elements/Block/HijackFormik.tsx`), whose `setFieldValue` override converts writes to Slate `set_node` ops — a whole-block write at the block path computes an empty first-level key and **silently corrupts the node**. (Its `startsWith(prefix)` test also captures numeric-prefix siblings: a write near `content.en.1` can hit `content.en.10.…`.)
-- The value at an ST block path is a **Slate node** (`{type, blockModelId, id, children, …fields}`), not the `{itemId, itemTypeId, …}` shape the whole-block merge writes.
-- The path's index segment is a Slate *document child* index, and each locale's ST value is an independent document with different blocks — "same path, swap the locale segment" targets an unrelated or nonexistent node in the target locale. **No cross-locale write target is derivable from the fieldPath.**
+- The value at an ST block path is a **Slate node** (`{type, blockModelId, id, children, …fields}`), not the `{itemId, itemTypeId, …}` shape a block write needs.
+- Each locale's ST value is an independent document with different blocks — no cross-locale write target is derivable from the fieldPath.
 
-Leaf writes *within the current locale* do work under `HijackFormik`, so a same-locale feature is possible later; v4 suppresses and documents.
+Those sub-fields are still translated — via their **parent field's** kebab, the sidebar, or bulk, all of which overwrite the whole container (§4.3).
 
-Consequence today: **a true frameless block has no translate affordance anywhere except the sidebar**, and no block sub-field can be *correctly* translated on its own. (One cosmetic nuance: when no provider is configured, the "configure credentials" dropdown item bypasses every gate and shows even on block sub-fields.)
+Consequence today (pre-v4): **a true frameless block has no translate affordance anywhere except the sidebar**, and no block sub-field can be *correctly* translated on its own. (One cosmetic nuance: when no provider is configured, the "configure credentials" dropdown item bypasses every gate and shows even on block sub-fields.)
 
-**v4 closes it uniformly (ST excepted, above), with no leaf writes:**
+**v4's mechanics for the allowed (single-slot-chain) kebabs — no leaf writes, no merging:**
 
-1. **Gate on the schema-resolved top-level field's `localized`** — the top-level container is where the locale key lives. (`parentField`, where the CMS populates it, resolves to the top-level field, not the immediate block — `parentFieldId: parentExtra.parentFieldId || parentExtra.fieldId` — which corroborates the gate but, per the above, cannot be trusted to be present.)
-2. **The write is a whole-block merge at the *block's* path**, which is **`ctx.fieldPath` minus its last segment**:
+1. **Gate by resolving `ctx.fieldPath` against the schema** (per the above, `ctx.field`/`parentField` cannot be trusted): top-level field localized ∧ every container on the path is `single_block`.
+2. **The write is a whole-block write at the block's path** — `ctx.fieldPath` minus its last segment, with the locale segment swapped for the target:
 
-| | Sub-field `fieldPath` | Block path to write |
+| | Sub-field `fieldPath` | Block path written |
 | --- | --- | --- |
-| Frameless single block | `inline_note.en.title` | `inline_note.en` |
-| Modular content | `content_blocks.en.0.heading` | `content_blocks.en.0` |
-| Block in a block | `content_blocks.en.0.cards.1.label` | `content_blocks.en.0.cards.1` |
-| Structured text at any depth | `content.en.5.heading` | **no write — actions suppressed** |
+| Frameless/framed single block | `inline_note.en.title` | `inline_note.<target>` |
+| Single block in a single block | `spotlight.en.inner.caption` | `spotlight.<target>.inner` |
+| Modular content at any depth | `content_blocks.en.0.heading` | **none — actions suppressed** |
+| Structured text at any depth | `content.en.5.heading` | **none — actions suppressed** |
 
-(`LightFieldArray.tsx:85` builds array items as `${name}.${index}` — dot notation; `BlockFields.tsx:72` appends `.${api_key}`; a non-localized top-level container has no locale segment — `content_blocks.0.heading` — which the schema resolution handles naturally.)
+(`BlockFields.tsx:72` appends `.${api_key}`; a non-localized top-level container has no locale segment, which the schema resolution handles naturally.)
 
-Read the target block, set the one translated sub-field, write **the whole block** back at that path. **Never a leaf write** — a leaf write into a not-yet-materialised block *is* bug #1, and it would otherwise survive v4 through this brand-new surface.
+To be precise about what this write is — because rev ≤4 called it a "merge" and it is not one: the plugin reads the object currently sitting at the target path, **sets the one translated property, and writes the whole object back**. That is how any form edit of one property works; nothing is matched, and nothing cross-locale is reconciled. The whole-object write (rather than a leaf write) exists for exactly one reason: **a leaf write into a not-yet-materialised block *is* bug #1**, and it would otherwise survive v4 through this brand-new surface.
 
-**Precondition (cross-reference §6.3, deliberately load-bearing):** the whole-block write persists only if the target locale is in `formValues.internalLocales` **∩** the user's `localizationScope`. The kebab offers **existing locales only**, which satisfies the first half by construction; the permission half still needs §6.3's mitigations.
+**Precondition (cross-reference §6.3, deliberately load-bearing):** the write persists only if the target locale is in `formValues.internalLocales` **∩** the user's `localizationScope`. The kebab offers **existing locales only**, which satisfies the first half by construction; the permission half still needs §6.3's mitigations.
 
 3. **The action MAY create the target block — and leaves its invalid siblings empty.**
 
-A block is validated as a unit: each sub-field carries its own validators (`propsForBlockField.tsx:62`) and the payload validates together. So creating an Italian Callout to hold one translated `title` leaves its required `body` empty.
+A block is validated as a unit: each sub-field carries its own validators (`propsForBlockField.tsx:62`) and the payload validates together. So creating an Italian Callout to hold one translated `title` leaves its required `body` empty *(unless `body` is on the copy-from-source list — then it gets the source text, §4.2)*.
 
 **In the form, that is fine — and it is the right answer** (§4.0). We write `{ itemTypeId, title: 'Titolo' }` into `inline_note.it`, leave `body` empty, and **the CMS's own validation surfaces it inline and blocks Save.** We do *not* fabricate an English `body`. Nothing is persisted; nothing is hidden.
 
@@ -355,9 +337,9 @@ Then **`ctx.scrollToField(fieldPath, targetLocale)`** — which switches the loc
 
 > Nice confirmation from the platform: `FramelessSingleBlock.tsx:89` renders **framed** whenever `hasErrors`. The freshly-created, still-invalid Italian block therefore appears **with its block chrome and a red required field** — not as a bare inline input. The CMS is already designed for this moment.
 
-*"Translate from"* is always safe: it merges into the **current** locale's block, which exists by definition — the user is looking at it.
+*"Translate from"* is always safe: it writes into the **current** locale's block, which exists by definition — the user is looking at it.
 
-This is **not a frameless special case** — every block sub-field, at every depth, gets the same treatment, with one carve-out stated once and enforced everywhere: structured-text ancestry suppresses the actions. Framed blocks gain per-sub-field translation too (today they can only be translated whole, via the parent kebab).
+The narrowed scope still closes §1's gap 7 exactly: the fields this feature exists for — frameless single blocks — are single-slot by definition. Framed single blocks gain per-sub-field translation too.
 
 ### 6.3 Locale scope
 
@@ -402,7 +384,7 @@ What remains to build:
 
 **The bulk path must ask**, because the CMA rejects an invalid record outright and there is no draft to fall back on.
 
-Before any provider call, cross the schema crawl with **the run's actual selection** and find every field that (a) will **not** be translated — admin-excluded, **deselected in this run**, or its type switched off — and (b) is **`cannotBeBlank`**, and (c) has **no value in a target locale**.
+Before any provider call, cross the schema crawl with **the run's actual selection** and find every field that (a) will **not** be translated — **deselected in this run**, or its type switched off — and (b) is **`cannotBeBlank`**, and (c) has **no value in a target locale**. *(Rev 5: admin config can no longer create this gap — excluded fields are optional by construction, and copy-from-source fields always have a defined value. Only run-time choices and run-time provider blanks remain — §4.2.)*
 
 Pure schema + snapshot arithmetic. Costs no tokens.
 
@@ -562,10 +544,10 @@ This feeds `cannotBeBlank` (§4.1) directly.
 1. **Rendering contract** — `true_frameless` renders with no field header/kebab; `pseudo_frameless` renders framed despite the frameless editor.
 2. **Bug #1 probe** — sidebar-translate into a locale where `pseudo_frameless` is null; assert the block persists. `test.fail()` until the fix lands.
 3. **Control** — same for `framed_control`; passes today.
-4. **Exclusion semantics** — exclude a block sub-field; translate into a locale that already has content; assert the target value is **preserved**.
+4. **Exclusion semantics (rev 5 contract)** — exclude an optional block sub-field; translate into a locale that already has content; assert the rebuilt target block leaves that sub-field **empty** (not source text — the v3 bug; not the old target value — rev ≤4's merge, now dead). Companion assertion: a **copy-from-source** sub-field ends with the source value verbatim (§4.2/§4.3).
 5. **`internalLocales` pin** — writing it registers a locale and the save honours it. **Run as a locale-restricted role** (§6.3), not an admin.
 6. **Converter round-trip** — `formValuesToItem` → `itemToFormValues` preserves blocks, block ids, and every field type in the seed. Phase 2 depends on this.
-7. **Same-type reorder** — a Modular field with 2+ same-type blocks, reordered in the target, with an exclusion inside → assert we **skip and flag**, never mispair (§4.4: repeated types are unpairable by definition now).
+7. ~~Same-type reorder~~ — **deleted in rev 5**: there is no pairing to get wrong and no skip remedy to assert; reordered target blocks are simply overwritten (§4.3). The overwrite itself is covered by test 4.
 8. **`draft_saving_active`** — the seed needs **two** models: one strict (default) and one with `draft_mode_active ∧ draft_saving_active`. Assert that on the draft-saving model, a bulk run with "Leave them empty" **persists an invalid, unpublishable draft**; and that on the strict model the option is **disabled** and the write would 422 (§4.0, §7). ⚠️ **The uncommitted seed edits do not include this model yet** — it is missing work, not done work.
 
 **Three feasibility constraints the plan must design around, not discover:**
@@ -575,24 +557,27 @@ This feeds `cannotBeBlank` (§4.1) directly.
 
 ---
 
-## 9.5 Open questions — status after the 2026-07-14 stakeholder round
+## 9.5 Open questions — status after the second stakeholder round (2026-07-14)
 
-**Still needing a human decision:**
+**Every question is now decided.** One reviewer interpretation remains open to veto:
 
-1. **§4.2's ban reversal.** Plainly: the current proposal lets admins mark *any* field — including required ones — as "never translate"; when such a field then needs a value in a new language, the source text is copied in (per §7's policy). The alternative (the originally-approved rule) forbids marking required fields never-translate, so the plugin always translates them — meaning a required brand-name field gets machine-translated forever. Reviewer's recommendation: adopt the proposal (allow it, with the config-time consequence hint). Awaiting the stakeholder's plain yes/no.
-2. **Customer-supplied block ids: v4 or v4.1?** Mechanics verified against the API source (§4.4): ids can never be shared across locales, but the plugin can *derive* each target block's id from `(source id, locale)` as a v4-shaped UUID the format check accepts — correlation becomes computation, and §4.4's fail-loud skip would remain only for pre-scheme blocks. Pulling it into v4 shrinks the skip case dramatically; deferring keeps v4 smaller.
-3. **§4.4 rule 3 (single-slot merge) — reviewer's interpretation, open to veto.** "Remove all matching" was applied to block *lists*; the single-block slot merge was kept because one slot involves no correspondence guessing and killing it breaks exclusion-preservation inside frameless blocks. Veto ⇒ delete rule 3; rebuild-or-skip governs everywhere.
+- **§6.2's kebab write is a read-modify-write of the block at a definitionally-known path** (read the target block, set the one translated property, write the object back). This is not cross-locale matching — it is how any form edit of one property works — but it is the last thing in the spec that superficially resembles "merge." Veto ⇒ drop the block sub-field kebab feature entirely (its scope is already narrowed to single-slot chains); §1's gap 7 would then be covered by the sidebar only.
 
-**Decided by the stakeholder, 2026-07-14:**
+**Decided by the stakeholder (second round, 2026-07-14):**
 
-- ~~Block matching~~ — **none, anywhere** ("minimize the magic; fail loud and fast"): lists always rebuild-or-skip (§4.4).
+- ~~§4.2 ban debate~~ — **dissolved by the two-list design**: "Exclude" accepts only optional fields; "Always copy from source" accepts any field and states the brand-name intent explicitly (§4.2).
+- ~~Block correlation / customer-supplied ids~~ — **rejected outright** ("don't overload the ID field with metadata; too brittle"). No matching of any kind; **always overwrite**; version history is the undo (§4.3, §4.4).
+- ~~Match/merge remnants (single-slot merge, skip-and-flag)~~ — **removed**; §4.3's always-overwrite is the single policy.
+
+**Decided by the stakeholder (first round, 2026-07-14):**
+
 - ~~Sidebar streaming UX~~ — **dead**; the progress modal is the single progress/report surface, the sidebar a launcher + status line (§6.1, §6.4, §2.3 item 5).
 - ~~Fill-with-source affordance~~ — **cut from v4**; v4.1 candidate (§4.0, §10).
 - ~~Throughput~~ — **build the true bounded-parallel mode** in the engine, per-provider, reusing the existing rate-limit logic (§2.3 item 3).
 
 **Resolved by the rev 3 review:**
 
-- ~~Structured-text merge semantics~~ — mooted: never paired or merged (§4.4).
+- ~~Structured-text merge semantics~~ — mooted: never paired or merged.
 - ~~Cancellation/concurrency audit~~ — done; obligations in §2.3.
 - ~~`compact` report viability~~ — superseded twice over: the claim was refuted, then the second host itself was removed (§6.4).
 
@@ -600,7 +585,7 @@ This feeds `cannotBeBlank` (§4.1) directly.
 
 ## 10. Explicitly out of scope
 
-- **Customer-supplied block IDs** (§4.4) — the identity fix that turns block correlation into computation. Real, verified. **Timing is §9.5 question 2 — v4 or v4.1.**
+- **Customer-supplied block IDs** — **rejected**, not deferred (stakeholder, 2026-07-14: too brittle to overload ids with metadata). The mechanics stay documented in §4.4's audit trail so nobody re-proposes it uninformed.
 - **"Fill with source" one-click affordance** on the record path (§4.0) — cut from v4 by stakeholder decision (2026-07-14). v4.1 candidate.
 - **Per-instance block selection**; **path-scoped exclusion** — no demand, new engine plumbing.
 - **Language detection** (`franc`/`tinyld`) as a QC check — real dependency. v4.1.
@@ -637,9 +622,8 @@ Phases 1 and 6 can ship as **v3.8** ahead of v4.
 | Role locale scope silently drops writes | §6.3's three mitigations, incl. a restricted-role E2E |
 | **Concurrent edits silently reverted by the stale full-hash spread** | §7.2: send `meta.current_version`; surface `STALE_ITEM_VERSION` as a per-record failure |
 | **Kebab ctx misreports identity on container sub-fields; ST-embedded writes corrupt Slate nodes** | §6.2: schema-resolve `fieldPath`, never trust `ctx.field`/`parentField` for identity; suppress ST-embedded actions |
-| Legacy/hand-edited api_key exclusion tokens stop matching | §5.1 migration with an ambiguity prompt; keep the fallback until migrated |
-| Same-type reordering | §4.4: repeated types are unpairable — skip-and-flag; customer-supplied ids in v4.1 |
-| Users relied on clobber-on-retranslate | Behaviour change — release notes |
+| Legacy/hand-edited api_key exclusion tokens stop matching | §5.1 migration with an ambiguity prompt (now also splitting the legacy list per §4.2); keep the fallback until migrated |
+| Users relied on v3's accidental target-block preservation (sidebar leaf-writes) | §4.3 makes overwrite the *stated* contract — release notes + the optional structure-changed info line; version history is the recovery path |
 | Cyclic field graph hangs the crawl | Depth cap + visited-set, unit-tested against a self-referential block |
 | The runaway net catching our own `max_tokens` bug | §9.1 before §8.1 |
 | Report/CSV selectors are a pinned E2E contract | §6.4: keep selectors & stats format, or migrate `bulk.ts` in the same PR |
