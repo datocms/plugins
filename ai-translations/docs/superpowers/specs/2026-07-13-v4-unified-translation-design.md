@@ -233,15 +233,32 @@ So for the record path the modal is a **config collector**: it resolves with the
 
 Consequence: progress renders in a ~300 px panel, not a fullWidth modal. **Same component, `compact` variant.** A prop, not a fork.
 
-### 6.2 Block sub-field kebab — the gap nobody noticed
+### 6.2 Block sub-field kebab — the platform offers it; we decline it
 
-Today: `main.tsx:673` gates every dropdown action on `ctx.field.attributes.localized`, and block sub-fields are **never** localized. So **a true frameless block has no translate affordance anywhere except the sidebar.** Upstream issue #5 was never fixed for the dropdown.
+**The SDK exposes this today, at every depth.** `cms/src/utils/propsForBlockField.tsx:49-52` builds a `FieldExtra` for every field inside every block — `block.blockModelId`, `parentFieldId`, `fieldId` — and calls `buildRenderLabelDropdown({ fieldPath: name })`; `DropdownMenu.tsx:42` broadcasts `fieldDropdownActions` with `field`, `parentField`, and `blockModel` populated. Framed, frameless, nested — all of it.
 
-v4 closes it, **without leaf writes**:
+**We decline it.** `main.tsx:673` gates every action on `ctx.field.attributes.localized`, which is **always false** for a block sub-field (§3.1's 422 rule). We return `[]`, so no items render. A self-inflicted gate, not a platform limit — upstream issue #5 was fixable in `main.tsx` the whole time.
 
-- Gate on `ctx.parentField?.attributes.localized` (which *is* true for the container) instead of `ctx.field.attributes.localized`.
-- **The write is a whole-block merge at the parent path** — read the target block, set the one translated sub-field, write the whole block back at `parent.locale`. **Never a leaf write.** A leaf write into a not-yet-materialised block is precisely bug #1, and it would otherwise survive v4 through this new surface.
-- If the target block does not exist, the action creates it from the source with only the chosen sub-field translated; the rest follow §4's rules 2/3 and are flagged.
+Consequence today: **a true frameless block has no translate affordance anywhere except the sidebar**, and *no* block sub-field can be translated on its own.
+
+**v4 closes it uniformly, with no leaf writes:**
+
+1. **Gate on `ctx.parentField?.attributes.localized`** — the top-level container *is* localized. (Note `parentField` walks all the way to the **top-level** field, not the immediate block: `parentFieldId: parentExtra.parentFieldId || parentExtra.fieldId`. Correct for the `localized` gate; **useless for deriving a write path** — see below.)
+2. **The write is a whole-block merge at the *block's* path**, which is **`ctx.fieldPath` minus its last segment**:
+
+| | Sub-field `fieldPath` | Block path to write |
+| --- | --- | --- |
+| Frameless single block | `inline_note.en.title` | `inline_note.en` |
+| Modular content | `content_blocks.en.0.heading` | `content_blocks.en.0` |
+| Block in a block | `content_blocks.en.0.cards.1.label` | `content_blocks.en.0.cards.1` |
+
+(`LightFieldArray.tsx:85` builds array items as `${name}.${index}` — dot notation; `BlockFields.tsx:72` appends `.${api_key}`.)
+
+Read the target block, set the one translated sub-field, write **the whole block** back at that path. **Never a leaf write** — a leaf write into a not-yet-materialised block *is* bug #1, and it would otherwise survive v4 through this brand-new surface.
+
+3. If the target block does not exist, the action creates it from the source with only the chosen sub-field translated; the rest follow §4's rules 2/3 and are flagged.
+
+This is **not a frameless special case** — every block sub-field, at every depth, gets the same treatment. Framed blocks gain per-sub-field translation too (today they can only be translated whole, via the parent kebab).
 
 ### 6.3 Locale scope
 
