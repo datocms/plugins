@@ -17,7 +17,10 @@ import 'tinymce/models/dom';
 import 'tinymce/themes/silver';
 import 'tinymce/skins/ui/oxide/skin';
 import 'tinymce/skins/ui/oxide/content';
+import 'tinymce/skins/ui/oxide-dark/skin';
+import 'tinymce/skins/ui/oxide-dark/content';
 import 'tinymce/skins/content/default/content';
+import 'tinymce/skins/content/dark/content';
 import 'tinymce/plugins/image';
 import 'tinymce/plugins/advlist';
 import 'tinymce/plugins/code';
@@ -158,6 +161,8 @@ export default function FieldExtension({ ctx }: Props) {
 
   const [value, setValue] = useState(externalValue || '');
   const expectedValue = useRef<string | null>(null);
+  const editorContainerRef = useRef<HTMLDivElement>(null);
+  const isDarkMode = ctx.colorScheme === 'dark';
 
   useEffect(() => {
     log('BEFORE resetExpectedValue', {
@@ -214,37 +219,58 @@ export default function FieldExtension({ ctx }: Props) {
 
   const initialize = (editor: Editor) => {
     registerEditorImageButtons(editor, ctx);
+
+    const updateFrameHeight = () => {
+      requestAnimationFrame(() => {
+        const canvas = editorContainerRef.current?.parentElement;
+        if (!canvas) return;
+
+        ctx.updateHeight(Math.ceil(canvas.getBoundingClientRect().height));
+      });
+    };
+
+    editor.on('init ResizeEditor', updateFrameHeight);
+    editor.on('remove', () => {
+      editor.off('init ResizeEditor', updateFrameHeight);
+    });
   };
 
   return (
-    <Canvas ctx={ctx}>
-      <ReactEditor
-        disabled={ctx.disabled}
-        licenseKey="gpl"
-        init={{
-          plugins: 'image advlist code emoticons link lists table autoresize',
-          toolbar:
-            'undo redo | formatselect | ' +
-            'bold italic backcolor | link customimage |' +
-            'alignleft aligncenter ' +
-            'alignright alignjustify | bullist numlist outdent indent | ' +
-            'removeformat | emoticons',
-          content_style:
-            'body { font-family:Helvetica,Arial,sans-serif; font-size:16px }',
-          setup: initialize,
-          autoresize_bottom_margin: 10,
-          paste_data_images: true,
-          async images_upload_handler(blobInfo, progress) {
-            try {
-              return await uploadBlobToClient(ctx, blobInfo, progress);
-            } catch (_e) {
-              throw new Error('Could not upload image');
-            }
-          },
-        }}
-        value={value}
-        onEditorChange={handleChange}
-      />
+    <Canvas ctx={ctx} noAutoResizer>
+      <div ref={editorContainerRef}>
+        <ReactEditor
+          key={ctx.colorScheme}
+          disabled={ctx.disabled}
+          licenseKey="gpl"
+          init={{
+            plugins: 'image advlist code emoticons link lists table autoresize',
+            toolbar:
+              'undo redo | formatselect | ' +
+              'bold italic backcolor | link customimage |' +
+              'alignleft aligncenter ' +
+              'alignright alignjustify | bullist numlist outdent indent | ' +
+              'removeformat | emoticons',
+            skin: isDarkMode ? 'oxide-dark' : 'oxide',
+            content_css: isDarkMode ? 'dark' : 'default',
+            content_style:
+              'body { font-family:Helvetica,Arial,sans-serif; font-size:16px }',
+            setup: initialize,
+            autoresize_bottom_margin: 10,
+            paste_data_images: true,
+            promotion: false,
+            branding: false,
+            async images_upload_handler(blobInfo, progress) {
+              try {
+                return await uploadBlobToClient(ctx, blobInfo, progress);
+              } catch (_e) {
+                throw new Error('Could not upload image');
+              }
+            },
+          }}
+          value={value}
+          onEditorChange={handleChange}
+        />
+      </div>
     </Canvas>
   );
 }
