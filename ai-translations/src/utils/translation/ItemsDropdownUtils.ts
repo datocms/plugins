@@ -10,6 +10,7 @@ import {
   buildTranslatedUpdatePayload,
   mergeLocalePayloadInto,
 } from '../../engine';
+import { createSlotScheduler } from '../../engine/slotScheduler';
 import {
   buildFieldTypeDictionaryFromRepo,
   type SchemaRepository,
@@ -29,6 +30,7 @@ import {
 } from './SharedFieldUtils';
 import {
   createPacer,
+  getMaxConcurrency,
   getRequestSpacingMs,
 } from './TranslationCore';
 import type { RunGate, SystemicHandler, TranslationProvider } from './types';
@@ -682,6 +684,20 @@ export async function translateAndUpdateRecords(
   // same limit. Seeded from the vendor's baseline spacing.
   const pacer = createPacer(getRequestSpacingMs(pluginParams));
 
+  // One AIMD scheduler for the whole run, created next to the pacer and shared
+  // across every (record, locale) unit. Sharing it caps field-level concurrency
+  // per unit — bulk translation processes records/locales sequentially, so the
+  // cap can never be multiplied by the record count (spec §2.3-3). The scheduler
+  // owns field-launch spacing and concurrency adaptation; the pacer stays the
+  // sole owner of adaptive per-call backoff (it widens on rate limits and decays
+  // on success — a role the scheduler does not replicate), so the two are not in
+  // conflict.
+  const scheduler = createSlotScheduler({
+    maxConcurrency: getMaxConcurrency(pluginParams),
+    spacingMs: getRequestSpacingMs(pluginParams),
+    sleep: options.sleep,
+  });
+
   const updateProgress = (u: ProgressUpdate) => {
     // Normalize legacy in-progress message that included the word "fields"
     if (u.status === 'processing' && typeof u.message === 'string') {
@@ -756,6 +772,7 @@ export async function translateAndUpdateRecords(
           gate: options.gate,
           onSystemic: options.onSystemic,
           pacer,
+          scheduler,
           sleep: options.sleep,
           selectedFieldsByModel: options.selectedFieldsByModel,
         },

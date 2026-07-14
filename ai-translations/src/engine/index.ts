@@ -45,6 +45,7 @@ import {
   type Pacer,
   delay,
   hasTranslatableSourceValue,
+  isRateLimitError,
   shouldProcessField,
 } from '../utils/translation/TranslationCore';
 import type {
@@ -54,6 +55,7 @@ import type {
   TranslationProvider,
 } from '../utils/translation/types';
 import type { SchemaRepository } from '../utils/schemaRepository';
+import type { SlotScheduler } from './slotScheduler';
 import { withStallGuard } from './stallGuard';
 
 /**
@@ -310,6 +312,44 @@ function resolveLocaleSyncFallback(
  * @param schemaRepository - Optional SchemaRepository for cached schema lookups.
  * @returns Partial payload for client.items.update.
  */
+/**
+ * Runs the per-field jobs for one `(record, locale)` unit. With a scheduler it
+ * parallelizes the fields under the run's shared adaptive concurrency cap;
+ * without one it falls back to a sequential chain, preserving the pre-scheduler
+ * behavior that direct callers (and the existing unit tests) rely on.
+ *
+ * A cancelled gate makes a job throw `RUN_CANCELLED`. The sequential chain
+ * propagates it directly; the scheduler captures it as a settled rejection, so
+ * it is re-surfaced here — either way the run unwinds identically and
+ * `processRecord` reports the cancellation.
+ */
+const dispatchFieldJobs = async (
+  fields: string[],
+  runField: (field: string) => Promise<void>,
+  opts: { scheduler?: SlotScheduler; abortSignal?: AbortSignal },
+): Promise<void> => {
+  if (!opts.scheduler) {
+    await fields.reduce(
+      (chain, field) => chain.then(() => runField(field)),
+      Promise.resolve(),
+    );
+    return;
+  }
+
+  const settled = await opts.scheduler.run(
+    fields.map((field) => () => runField(field)),
+    {
+      isRateLimitError,
+      checkCancellation: () => opts.abortSignal?.aborted ?? false,
+    },
+  );
+  for (const result of settled) {
+    if (result.status === 'rejected' && result.reason === RUN_CANCELLED) {
+      throw RUN_CANCELLED;
+    }
+  }
+};
+
 export async function buildTranslatedUpdatePayload(
   record: DatoCMSRecordFromAPI,
   fromLocale: string,
@@ -327,6 +367,12 @@ export async function buildTranslatedUpdatePayload(
     onSystemic?: SystemicHandler;
     /** Run-scoped adaptive pacer; spaces and throttles provider calls. */
     pacer?: Pacer;
+    /**
+     * Run-scoped AIMD scheduler that parallelizes this record-locale's fields
+     * under an adaptive concurrency cap. When omitted the fields run
+     * sequentially (preserving the pre-scheduler behavior direct callers rely on).
+     */
+    scheduler?: SlotScheduler;
     /** Waits `ms` before each provider call; injected for deterministic tests. */
     sleep?: (ms: number) => Promise<void>;
     selectedFieldsByModel?: SelectedFieldsByModel;
@@ -508,40 +554,44 @@ export async function buildTranslatedUpdatePayload(
     }
   }
 
-  // Process fields sequentially using reduce to avoid await-in-loop. Only a
-  // `translated` outcome writes the payload; a `failed` outcome records a
-  // warning but leaves the field absent, so the target locale is untouched.
+  // Only a `translated` outcome writes the payload; a `failed` outcome records a
+  // warning but leaves the field absent, so the target locale is untouched. Each
+  // field's payload/counter writes happen inside its own completion — they touch
+  // disjoint `payload[field]` keys and the accounting is push-only (array pushes
+  // and synchronous counter bumps with no await gap), so running fields in
+  // parallel introduces no shared-state race.
   const outcomes = new Map<string, FieldOutcome>();
-  await translatableFields.reduce(
-    (chain, field) =>
-      chain.then(async () => {
-        // Between-field gate: a cancel unwinds via RUN_CANCELLED, caught by
-        // processRecord and reported as a cancellation.
-        if ((await opts.gate?.()) === 'cancelled') throw RUN_CANCELLED;
 
-        const outcome = await translateField(field);
-        outcomes.set(field, outcome);
+  const runField = async (field: string): Promise<void> => {
+    // Between-field gate: a cancel unwinds via RUN_CANCELLED, caught by
+    // processRecord and reported as a cancellation. Preserved per field exactly
+    // as the sequential reduce had it, so a parallel batch honors cancellation
+    // at every field boundary too.
+    if ((await opts.gate?.()) === 'cancelled') throw RUN_CANCELLED;
 
-        if (outcome.status === 'translated') {
-          updatePayload[field] = {
-            ...((record[field] as Record<string, unknown>) || {}),
-            [toLocale]: outcome.value,
-          };
-          translatedFieldCount += 1;
-          translatedFields.push(field);
-          return;
-        }
+    const outcome = await translateField(field);
+    outcomes.set(field, outcome);
 
-        if (outcome.status === 'failed') {
-          const formattedMessage = formatErrorForUser(outcome.error);
-          const suffix = formattedMessage.endsWith('.') ? '' : '.';
-          warnings.push(
-            `Field "${field}" to ${formatLocaleWithCode(toLocale)} was skipped: ${formattedMessage}${suffix}`,
-          );
-        }
-      }),
-    Promise.resolve(),
-  );
+    if (outcome.status === 'translated') {
+      updatePayload[field] = {
+        ...((record[field] as Record<string, unknown>) || {}),
+        [toLocale]: outcome.value,
+      };
+      translatedFieldCount += 1;
+      translatedFields.push(field);
+      return;
+    }
+
+    if (outcome.status === 'failed') {
+      const formattedMessage = formatErrorForUser(outcome.error);
+      const suffix = formattedMessage.endsWith('.') ? '' : '.';
+      warnings.push(
+        `Field "${field}" to ${formatLocaleWithCode(toLocale)} was skipped: ${formattedMessage}${suffix}`,
+      );
+    }
+  };
+
+  await dispatchFieldJobs(translatableFields, runField, opts);
 
   // DatoCMS Locale Sync Rule: when a locale is ADDED to a record, EVERY
   // localized field must carry it, or the whole items.update is rejected with
