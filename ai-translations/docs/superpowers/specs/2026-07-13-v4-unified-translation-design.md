@@ -244,7 +244,8 @@ A block's sub-field has **one id** regardless of how many parents embed it. Excl
           ▾ ☑ Callout block
               ☑ Title
               ☐ Body       ⓘ excluded wherever Callout is used (3 places)
-      ☑ Title              🔒 can't be left empty — can't be excluded   [admin tree only]
+      ☐ Title              ⓘ can't be left empty — excluding it means new
+                             languages get the untranslated source text (§4.2)
 ```
 
 ### 5.3 One schema crawl, four consumers
@@ -510,6 +511,18 @@ This feeds `cannotBeBlank` (§4.1) directly.
 5. **`internalLocales` pin** — writing it registers a locale and the save honours it. **Run as a locale-restricted role** (§6.3), not an admin.
 6. **Converter round-trip** — `formValuesToItem` → `itemToFormValues` preserves blocks, block ids, and every field type in the seed. Phase 2 depends on this.
 7. **Same-type reorder** — a Modular field with 2+ same-type blocks, reordered in the target, with an exclusion inside → assert we **skip and flag**, never mispair.
+8. **`draft_saving_active`** — the seed needs **two** models: one strict (default) and one with `draft_mode_active ∧ draft_saving_active`. Assert that on the draft-saving model, a bulk run with "Leave them empty" **persists an invalid, unpublishable draft**; and that on the strict model the option is **disabled** and the write would 422 (§4.0, §7).
+
+---
+
+## 9.5 Known-open questions (for the reviewer)
+
+1. **§4.2's ban reversal** was made on the author's judgement *after* the stakeholder had approved the ban. It needs a second opinion: is allowing exclusion of `cannotBeBlank` fields (with an inline consequence hint) right?
+2. **§4.4's ambiguity rule** — "skip when any block type repeats and preservation is required" — is conservative. Is it *too* conservative in a project full of repeated Card blocks? Would pulling customer-supplied block ids (`b7e466f9b`) forward into v4 be better than deferring to v4.1?
+3. **§4.3 merge for `structured_text`** is under-specified. Blocks live inside a DAST document tree; "positional" may not be coherent there. **This has never been reviewed.**
+4. **Cancellation/concurrency.** `translateRecordFields.ts` (deleted by phase 2) carries an adaptive AIMD scheduler and an `AbortController`. Does the bulk engine offer equivalent cancellation for the record path? **What is lost has never been audited.**
+5. **The `compact` `TranslationReport`** in a ~300 px sidebar — viable, or hand-waving?
+6. **Should the record path also offer the "fill with source" one-click affordance** (§4.0), or is that scope creep?
 
 ---
 
@@ -530,7 +543,7 @@ This feeds `cannotBeBlank` (§4.1) directly.
 | **1** | **`max_tokens` fix** (§9.1) | Hard-blocks phase 6. Small, isolated. **Shippable now as v3.8** — it fails records today. |
 | **2+3** | **One engine + the exclusion rule** (§2, §3, §4) | **Must ship together.** Today's leaf-writes accidentally *preserve* target blocks; an engine that rebuilds from source (phase 2 alone) would trade bug #1 for a clobber regression on the very same fields. Fixes bugs #1–#3 and incoherence #4. |
 | **4** | **The tree + unified modal + id migration** (§5, §6) | Includes the api_key→id config migration (§5.1) and the block sub-field kebab (§6.2). |
-| **5** | **Pre-flight + policy** (§7) | Needs phase 4's crawl and phase 3's `cannotBeBlank`. |
+| **5** | **Pre-flight + policy** (§7) — **bulk only** | Needs phase 4's crawl and phase 3's `cannotBeBlank`. Includes the `draft_saving_active` branch (§4.0) and the "Leave them empty" option. |
 | **6** | **Runaway prevention** (§8.1) | Needs phase 1. Otherwise independent. |
 | **7** | **Deterministic pre-write validation** (§9.2) | Research-heavy; blocks nothing. Feeds `cannotBeBlank` retroactively. |
 
