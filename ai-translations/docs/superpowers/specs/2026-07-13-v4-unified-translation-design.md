@@ -1,6 +1,6 @@
 # AI Translations v4 — Unified Translation Flow
 
-**Date:** 2026-07-13 · **Rev 3** (2026-07-14: second adversarial review — every load-bearing claim re-verified against plugin/CMS/API source; positional pairing removed per stakeholder directive; §2.3 re-homing inventory added; §6.2 and §6.4 substantially corrected)
+**Date:** 2026-07-13 · **Rev 4** (2026-07-14 pm: stakeholder decisions folded in — ALL cross-language block matching removed (§4.4); the progress modal becomes the single report surface, sidebar reduced to launcher + status line (§6.1/§6.4); fill-with-source affordance cut to v4.1 (§10); engine gains a true bounded-parallel mode (§2.3); customer-block-id mechanics verified against the API source (§4.4). Rev 3 earlier the same day: second adversarial review, §2.3 re-homing inventory, §6.2/§6.4 corrections.)
 **Status:** Approved design — implementation plan in progress
 **Scope:** Major version. Every entry point, the engine, the config screen, the E2E seed.
 **Background:** [`2026-07-13-field-selection-investigation.md`](./2026-07-13-field-selection-investigation.md)
@@ -79,9 +79,9 @@ The record path being deleted is not just a field walk; it carries run-control m
 
 1. **🔴 Wire `onSystemic` (a `PauseController`), or lose everything at once.** The bulk engine's pacing *and* retry are conditional plumbing: `opts.onSystemic ? translateWithSystemicRetry(...) : await attempt()` (`ItemsDropdownUtils.ts:1498-1504`). A caller that omits it gets a bare attempt — **no pacer gap, no systemic pause, no 429 retry, no content retries**. Today only `TranslationProgressModal.tsx:203-205` wires it. The sidebar reroute MUST.
 2. **Cancellation is dual; port both halves.** The record path pairs a useRef-polled `checkCancellation` (gating the scheduler and each job at four checkpoints, incl. a **post-translate, pre-form-write discard point** at `translateRecordFields.ts:228-230`) with an `AbortController` that kills in-flight streams. The bulk engine's `RunGate` is finer between units (records/locales/fields/pre-CMA-write) but the **form sink must keep an equivalent discard point: never write a value whose translation completed after cancel.** Cancel semantics shift, intentionally: bulk's pre-write gate means cancel = nothing persisted for the current record; the form sink writes per field, so cancel mid-record leaves earlier fields staged in the (unsaved) form — matching today's sidebar.
-3. **Throughput regresses; decide, don't discover.** The record path runs 2–6 concurrent field-locale jobs (AIMD: +1 slot per 3 successes, halve on 429, floor 1); the bulk engine is strictly sequential over records → locales → fields, paced by an adaptive inter-request gap. A 20-field × 3-locale record goes from ~10 waves to 60 sequential calls. Either accept and document the slowdown, or add a bounded-parallel field mode to the engine for the single-record sink. *(The bulk pacer adapts delay, not parallelism — equivalent while sequential, restate if a parallel mode is added.)*
+3. **Throughput — DECIDED (stakeholder, 2026-07-14): the engine gains a true bounded-parallel mode, for every flow.** Port the record path's AIMD concurrency scheduler into the unified engine as its provider-call executor: per-vendor slot cap from the existing `getMaxConcurrency` tiers, +1 slot per 3 consecutive successes, halve on 429 (floor 1), the existing inter-launch spacing, `Retry-After` honored, and the `PauseController` pausing *all* slots on a systemic error — the existing rate-limit logic, recomposed around slots instead of a single lane. **Parallelism applies at the field-translation (provider-call) level within a `(record, locale)` unit; records and locales stay ordered** — per-(record, locale) accounting, locale-sync, payload assembly, the §7.2 skip decisions, the runaway guard, and pause semantics are all built on that ordering, and reworking them for cross-record parallelism buys little (the deleted path's parallelism was per-field too). One shared scheduler per run, so bulk cannot multiply concurrency by record count. *(The old pacer's adapt-the-gap behavior becomes the spacing component of the scheduler; the code comment "sequential per-locale to keep within provider rate-limit budgets" describes the design this item replaces.)*
 4. **The stall guard exists only in the deleted file.** `translateFieldWithTimeout` races each field call against 300 s so a hung provider call frees its slot. The bulk engine has **none** — sequential means one hung call blocks the entire run forever, and the between-unit gates never fire while the await is pending. Re-home the timeout into the shared attempt path, and tie it to an `AbortController` so the stalled request actually dies (today's `Promise.race` orphans it).
-5. **Per-field progress has no channel in the bulk engine.** The sidebar's chat-bubble UX (per field-locale start/complete/error, 33 ms-throttled streaming previews, click-to-scroll via `fieldPath`/`baseFieldPath`) has no equivalent: bulk emits record-granular `ProgressUpdate`s and passes no `onStream` sink. Either extend the engine's options with per-field callbacks, or declare the streaming chat-bubble UX dead and replace it with record-level progress. **Human decision — see §9.5.**
+5. **Per-field streaming — DECIDED (stakeholder, 2026-07-14): the chat-bubble streaming UX is dead.** The sidebar becomes a launcher + status line; progress and the report live in the modal (§6.1/§6.4). No `onStream` channel is ported. The engine's existing per-field *outcomes* (`failedFields`, `qcFlags` in the payload result) are all the record-path report adapter needs; click-to-scroll survives as a report-row action signalled back to the sidebar frame (§6.4).
 6. **Keep the rAF yield.** The record path awaits `requestAnimationFrame` between translation completion and `ctx.setFieldValue` so up to six concurrent writes don't jank the form. The form sink re-introduces write bursts into the engine's flow; carry the yield (or batch the writes).
 7. **The form sink consumes some of the payload machinery and must bypass the rest.** Consume: translated payload, `qcFlags`, failed-field outcomes. Bypass: **locale-sync fallback** (a CMA-write concept — §6.3 shows the form needs none; running it would write fallback nulls into a live form) and **`verifyPersistedWrite`** (there is no persisted write until the user saves — see §6.3 for what form-side verification means instead).
 8. **Retry semantics change visibly.** Raw-429 handling goes from 10 silent exponential retries to 3 auto-retries + a manual pause screen (a UX change to document, arguably an upgrade); content-error retries (2×) are gained; the sidebar's two hard-abort fatal errors (DeepL wrong endpoint, OpenAI unverified-stream) normalize to `auth` → systemic → **pausable and resumable** instead of run-killing. Strict improvements, but only with item 1 wired.
@@ -137,7 +137,7 @@ So rule 3 becomes:
 
 > **The plugin fabricates content in exactly one situation: a model that refuses invalid drafts, where the user chose "use the source."** Everywhere else it leaves the gap and says so.
 
-To keep the form path convenient without making it magical, the **report offers a one-click affordance**: *"3 fields were left empty because they're excluded from translation. **[Fill them with the English text]**"* — opt-in, visible, reversible. The editor chooses; the plugin doesn't.
+*(Rev 4: the one-click "fill them with the English text" report affordance for the form path was **cut from v4** — stakeholder decision, 2026-07-14. The gap + the CMS's own inline errors are the whole story; the convenience button is a v4.1 candidate, §10.)*
 
 ### 4.1 "Cannot be blank" ≠ "required"
 
@@ -183,50 +183,42 @@ So: **both trees allow it.** The consequence is explained at config time, surfac
 
 Today `translateBlockValue` clones the **source** block, strips its ids, translates, and overwrites the target — so an excluded sub-field receives the **source text** and hand-edited target content is destroyed. (Worse: the early-return for an excluded or type-disabled sub-field returns the clone *verbatim*, so blocks nested **inside** that sub-field keep their **source block ids** in the target locale — a block id referenced from two locales is invalid, risking a 422 or block reassignment on save. Two defects, one root.)
 
-v4 **merges into the existing target block wherever pairing is defined (§4.4)**, preserving its `itemId` and every sub-field we were told not to touch. Where no target block exists (the common case — a new locale), we create it and rules 2/3 apply.
+v4 **merges into the existing target block only where the target is definitionally known** — a `single_block` slot or an explicit kebab path (§4.4 rules 3–4) — preserving its `itemId` and every sub-field we were told not to touch. Block lists are never merged: they rebuild or skip (§4.4 rules 1–2). Where no target block exists (the common case — a new locale), we create it and rules 2/3 apply.
 
-### 4.4 Pairing — minimal, and never positional
+### 4.4 No matching, ever
 
-> **Stakeholder directive (2026-07-14): the plugin will never do any sort of positional diff.** An earlier revision paired `structured_text` and Modular Content blocks "positionally + by type"; all of that is removed. What remains is only pairing that is *definitional* — no ordering assumptions anywhere.
->
-> *Scope note (reviewer's judgment, flagged for confirmation): the directive named structured text; it has been applied to **all** positional pairing. Type-keyed matching for Modular Content (below) is retained because it is order-independent — if even that is unwanted, delete the Modular Content row and its remedy becomes §4.5's rebuild-or-skip in every case.*
+> **Stakeholder decisions (2026-07-14): no positional diff, and no cross-language block matching of any kind — "minimize the magic; fail loud and fast."** An earlier revision paired blocks "positionally + by type"; rev 3 kept an order-independent type-keyed match for Modular Content; **both are gone.** The plugin never tries to figure out which target block corresponds to which source block.
 
-Correspondence is only *needed* where an exclusion/deselection lives inside the subtree **and** the target already has blocks. On a new locale there is nothing to preserve, so no pairing is required.
+The whole rule set, in plain words:
 
-**Divergence detection runs unconditionally** (see §4.5). What changes with an exclusion is the *remedy*, not the *detection*.
-
-| Field type | Pairing | Unpairable when |
-| --- | --- | --- |
-| top-level | trivial (locale key) | never |
-| `single_block` | zero-or-one block — **and the block *types* must match** | source Hero vs target Quote (multi-model fields) |
-| **Modular Content** | **by block type, order-independent** — only when every block type present is unique on both sides | **any block type appears more than once on either side**, or the type sets differ |
-| `structured_text` | **never paired.** Always rebuilt from the translated source; nothing in an existing target document is matched or preserved | always — by design |
-
-**Why positional pairing died — the same-type reorder problem.** `[Quote A, Quote B]` reordered to `[Quote B′, Quote A′]` has the same count *and* the same type sequence. Positional pairing would marry A's translation to B′'s `itemId` and B′'s preserved excluded sub-fields — **silent content corruption**, invisible in any report. No ordering heuristic can see it. So we don't order-match, ever.
-
-When pairing is undefined, §4.5's remedies apply. For the case that matters — an exclusion inside the subtree and existing target content — that means **skip the field and flag it**:
+1. **Blocks in a list (`Modular Content`, `structured_text`) are never matched across languages.** Re-translating such a field always **rebuilds** the target from the translated source — fresh block instances, exactly mirroring the source. That is manifesto sentence 1 doing its job, not a divergence; no flag.
+2. **Exception — fail loud:** if an **exclusion/deselection lives inside** that field's subtree **and the target already has content**, rebuilding would either destroy what the exclusion protects or copy source text into it. We refuse: **skip the field, flag it, touch nothing.**
 
 ```
-⚠️ Page content (it) was left unchanged — its blocks can't be matched to the
-   source unambiguously (3 Quote blocks). Nothing was overwritten.
+⚠️ Page content (it) was left unchanged — you excluded "Callout → Body" and its
+   existing Italian blocks can't be safely rebuilt around that. Nothing was overwritten.
 ```
 
-This bites only on **re-translating a field that already has blocks, where an exclusion sits inside the unpairable part.** For structured text this is *every* re-translation with an exclusion inside and target content present — the honest price of never guessing at document structure. Narrow elsewhere, and always reversible.
+3. **A `single_block` field is not matching** — it has exactly one slot, so "which block?" has only one possible answer. When the target slot holds a block of the same type, we merge into it (preserving its `itemId` and excluded sub-fields); a different type is treated like rule 2 (no exclusion inside → rebuild; exclusion inside → skip + flag). *Reviewer's interpretation of "remove all matching," flagged for veto: the single slot involves no correspondence guessing, and killing it would break exclusion-preservation inside frameless blocks — the flagship §1 use case. If you want rebuild-always here too, delete this rule and rule 2 governs.*
+4. **The §6.2 kebab is likewise not matching**: the editor points at one concrete block path; the merge target is definitionally known.
 
-**The permanent fix is parked, not denied.** DatoCMS accepts customer-supplied block ids as of `api` commit `b7e466f9b` (2026-05-04, on master; ids are format-checked via `valid_serialized_public_id_for_new_entity?`, so deterministic ids pass). Deriving the target block's id from `(source id, locale)` makes correspondence definitional without any ordering assumption. It carries a migration story (pre-v4 blocks have unrecoverable correspondence). **v4.1.**
+On a new locale there is nothing to preserve, so none of this bites — blocks are created fresh and rules 2/3 of §4 apply to excluded sub-fields.
 
-### 4.5 Divergence is always detected, never silently rebuilt
+**Why matching died — the same-type reorder problem, generalized.** `[Quote A, Quote B]` reordered to `[Quote B′, Quote A′]` defeats position *and* type signatures; every heuristic short of identity mis-pairs some real edit, and a mis-pair is **silent content corruption** married to the wrong `itemId`. Identity is the only honest signal, and today blocks have none that spans locales.
 
-Detection runs whether or not an exclusion is present, so behaviour never hinges invisibly on an unrelated admin checkbox:
+**The identity fix is real and verified, timing pending (§9.5 q2).** Block ids can never be *shared* across locales — every block is a record with an environment-globally-unique id (`persist_and_replace_ids.rb` rejects an id already in use). But DatoCMS accepts **customer-supplied ids for new blocks** (`api` commit `b7e466f9b`, 2026-05-04, on master), and the format check is purely structural — `rfc4122_random_base64_uuid?` verifies 16 bytes + version-4 nibble + RFC 4122 variant bits, nothing about actual randomness (`lib/public_id.rb:100-110`). So the plugin can *derive* the target block's id deterministically — hash `(source block id, target locale)` into a v4-shaped UUID — and correlation becomes **computation, not matching**: given any source block, the id its Italian sibling *must* have is calculable, and rule 2's skip only remains for blocks that predate the scheme (their random ids carry no derivation — the migration story). Whether this ships in v4 or v4.1 is the open stakeholder call.
 
-| | No exclusion in subtree | Exclusion in subtree |
+### 4.5 One decision table, no hidden modes
+
+The remedy never hinges invisibly on an unrelated admin checkbox — the same table runs for every block-bearing field:
+
+| | No exclusion in subtree | Exclusion in subtree **and** target has content |
 | --- | --- | --- |
-| Pairing defined & complete (§4.4) | translate, merge in place | translate, merge, preserve the excluded |
-| **Unpairable** (diverged, ambiguous, or `structured_text` with target content) | **rebuild from translated source**, plus a `warning` flag when a *pairable* type diverged *(nothing we were told to preserve)* | **skip the field** + `warning` flag *(we would have to guess)* |
+| **Block lists** (Modular Content, `structured_text`) | **rebuild from translated source** — the normal mode, no flag | **skip the field** + `warning` flag *(we would have to guess)* |
+| **`single_block`**, same type in the slot | translate, merge in place | translate, merge, preserve the excluded |
+| **`single_block`**, different type in the slot | **rebuild** + `warning` flag *(the editor's target-side choice was discarded)* | **skip the field** + `warning` flag |
 
-For `structured_text` the left column is simply its normal mode: the target document is always rebuilt from the translated source, and that carries **no flag** — a rebuilt structured text is not a divergence, it's the contract. The rebuild `warning` exists for pairable types only, where a diverged structure means the editor's target-side arrangement was discarded.
-
-**Declared exception to sentence 1 of the manifesto:** in the skip case, the field's *non-excluded* siblings also go untranslated. The target does **not** match the source, and we say so in the report. That is the price of not guessing; the kebab is the deliberate override (§6.2).
+**Declared exception to sentence 1 of the manifesto:** in the skip cases, the field's *non-excluded* siblings also go untranslated. The target does **not** match the source, and we say so in the report. That is the price of not guessing; the kebab is the deliberate override (§6.2).
 
 ---
 
@@ -291,7 +283,7 @@ Outputs: (1) the picker tree; (2) `cannotBeBlank` nodes; (3) admin-excluded node
 | Entry point | Behaviour |
 | --- | --- |
 | **Field kebab** | Direct and minimal. `Translate to → [locale]` / `Translate from → [locale]`. Two clicks, existing locales only. Also the deliberate override for §4.5 divergence. **New: works on block sub-fields — see §6.2.** |
-| **Sidebar** | Button opens the unified modal (this record, all fields pre-selected). Modal **collects config only** (§6.1). The run executes in the sidebar frame, form sink, and the report renders in the panel. |
+| **Sidebar** | **A dumb launcher + one status line.** Button opens the unified modal (this record, all fields pre-selected); the config resolves, the run executes in the sidebar frame (form sink — §6.1), and **progress + report render in the progress modal**, the single source of truth for every flow (§6.4). The panel shows only a status line afterwards. |
 | **Bulk (records table)** | Unified modal, CMA sink. Progress + report in the modal. |
 | **Bulk (settings page)** | Same, plus model selection. |
 
@@ -299,9 +291,18 @@ Outputs: (1) the picker tree; (2) `cannotBeBlank` nodes; (3) admin-excluded node
 
 `renderModal.d.ts` gives the modal `parameters` + `resolve` and nothing else. **No `formValues`, no `setFieldValue`, no converters** — those live only on the item-form ctx.
 
-So for the record path the modal is a **config collector**: it resolves with the chosen config, and the **sidebar** runs the translation and renders progress + report in the panel. (This also satisfies `AGENTS.md`'s no-nested-modals rule — resolve first, then open any follow-up from the top-level handler.)
+So the **run** must execute in the sidebar frame — that constraint is physics. But **displaying** progress needs no form access, so it does not follow that the report must live in the panel. Stakeholder decision (2026-07-14): **the progress modal is the single progress/report surface for every flow; the sidebar is a dumb launcher.**
 
-Consequence: progress renders in a ~300–350 px panel (the CMS sidebar column: min 300, default 350, user-resizable; a *panel* cannot set its own width — `preferredWidth` exists only for full `itemFormSidebars`). What renders there is the shared presentational report with a record-path adapter — **see §6.4 for why "same component, `compact` prop" was wrong.**
+The record-path sequence:
+
+1. Sidebar button → config modal (config collector, resolves with the choices — satisfying `AGENTS.md`'s no-nested-modals rule: resolve first, open the next thing from the top-level handler).
+2. Sidebar starts the run against the form sink and opens the **progress modal**.
+3. The sidebar streams progress into the modal over a **`BroadcastChannel`** — both iframes load the same plugin origin, and the CMS renders plugin frames **unsandboxed** (`PluginFrame.tsx:889-896`, no `sandbox` attribute), so the channel works. The modal displays; it never touches the run.
+4. The panel afterwards holds one status line — *"Translated 1 record (15 fields × 3 locales)"*, or *"Completed with warnings — see report"* / *"Failed — see report"* with a button that reopens the report modal from the retained run data.
+
+Closing the progress modal does **not** cancel the run (the run lives in the sidebar); cancel lives in the modal UI but signals over the same channel. Navigating away from the record kills the run exactly as it does today — the status line is not a promise of persistence.
+
+This deletes rev 3's ~300 px compact-layout problem wholesale: no inline-expandable tooltip rework, no stacked footers — the report renders at modal width everywhere.
 
 ### 6.2 Block sub-field kebab — the platform offers it; today we *mostly* decline it
 
@@ -381,21 +382,17 @@ Locale-sync remains **CMA-only**, where a missing key really does 422.
 | Bulk | same intersection (the CMA also rejects out-of-scope writes server-side, loudly) |
 | Field kebab | the record's **existing** locales only — deliberate: adding a locale obliges every *other* localized field to be filled, which is a record-level operation |
 
-### 6.4 One report *core*, two hosts, two adapters
+### 6.4 One report surface — the modal — fed by two adapters
 
-**Correction — the previous revision's premise was false on every axis it rested on.** "Both flows emit the same `ProgressUpdate` rows" — the record path emits per-field `QcFlag`s, not `ProgressUpdate`s. "`buildTranslationReportRows` already serves both" — it serves only the progress modal's Export CSV; the sidebar consumes nothing from it, and the settings page's durable report uses a *different, structurally incompatible* builder (`bulkReport.ts`, per-issue rows vs record-level rows — the same run already exports two different stories depending on the button). And `TranslationProgressModal` is not reusable-with-a-prop: its mount effect **runs the entire bulk job**, it's typed to `RenderModalCtx`, and it calls `ctx.resolve()`.
+**History, kept for the audit trail.** Rev 2 claimed "same component, `compact` prop" — refuted (the record path emits per-field `QcFlag`s, not `ProgressUpdate`s; `buildTranslationReportRows` serves only the modal's CSV export while the settings page uses a second, incompatible builder in `bulkReport.ts`; and `TranslationProgressModal`'s mount effect *runs the whole bulk job*, typed to `RenderModalCtx`). Rev 3 answered with a presentational core rendered in two hosts, including a ~300 px compact sidebar layout. **Rev 4 (stakeholder decision): there is only one host.** The modal is the source of truth for progress and reports in every flow; nothing report-shaped renders in the panel.
 
-So:
+What remains to build:
 
-- **Extract a presentational `TranslationReport`** — stats line, row list, export — consuming one **canonical row model**. Reconciling the two existing builders into that model is part of this work, not incidental: pick per-issue rows as canonical (they carry `record/field/locale/severity/checkId/reason`; record-level CSV rows are derivable by grouping, the reverse is not).
-- **Two adapters feed it:** bulk `ProgressUpdate[]`; record-path per-field outcomes + `QcFlag[]`. Orchestration — the translation run, pause controller, `ctx.resolve()` lifecycle — stays in the hosts.
-- `onNavigate` remains the sink-specific bit: bulk `window.open(recordEditorUrl)`, record `ctx.scrollToField(fieldPath, locale)`.
-
-**Fitting ~300 px is a layout problem with two known breakages, not hand-waving** (resolves §9.5.5): the warning tooltip is `position: fixed` at hover-measured coordinates — fixed positioning cannot escape the plugin iframe, and a sidebar panel iframe hugs its content, so the tooltip clips at the iframe edge → replace with an **inline expandable row** in the compact layout. The three-button footer overflows 300 px → stack. Stats line, chips, and progress bar reflow fine. (Neither existing host is fullWidth, incidentally — both open the modal at width `'l'`, and the component self-caps at 760 px.)
+- **Split `TranslationProgressModal` into orchestration and display.** Today the modal runs the bulk job itself. In v4 it must also display a run it does *not* own (the sidebar's form-sink run, streamed over the §6.1 `BroadcastChannel`). So: a presentational `TranslationReport` (stats line, row list, export) fed by a run-source abstraction — "my own bulk run" or "a remote channel."
+- **One canonical row model.** Reconciling the two existing builders is part of this work, not incidental: pick per-issue rows as canonical (they carry `record/field/locale/severity/checkId/reason`; record-level CSV rows are derivable by grouping, the reverse is not). The engine already emits per-field outcomes and `QcFlag`s in its payload results — the record adapter consumes those; **no streaming-preview channel is needed** (§2.3 item 5).
+- `onNavigate` remains the sink-specific bit: bulk `window.open(recordEditorUrl)`; record-path rows signal the sidebar over the channel to `ctx.scrollToField(fieldPath, locale)` (the modal itself has no form access).
 
 **Pinned E2E contract:** `e2e/tests/steps/bulk.ts` regex-parses `.TranslationProgressModal__progress-text` ("of N records"), `.TranslationProgressModal__stats` ("X successful, Y with warnings, Z failed"), `a.TranslationProgressModal__record-link`, the /export csv/i button, and exact-name "Close" gating. Keep those selectors and formats, or migrate the step file **in the same PR**.
-
-**If the difference isn't in the data, don't fork the component** still stands — as the reason the *core* is shared. The adapters exist precisely because today the difference IS in the data.
 
 ---
 
@@ -578,28 +575,33 @@ This feeds `cannotBeBlank` (§4.1) directly.
 
 ---
 
-## 9.5 Open questions — status after the 2026-07-14 review
+## 9.5 Open questions — status after the 2026-07-14 stakeholder round
 
-**Needing a human decision:**
+**Still needing a human decision:**
 
-1. **§4.2's ban reversal** was made on the author's judgement *after* the stakeholder had approved the ban. It needs a second opinion: is allowing exclusion of `cannotBeBlank` fields (with an inline consequence hint) right? *(Still open — deliberately not resolved by this review.)*
-2. **§4.4's unpairable rule** — skip when block types repeat (and always, for structured text with an exclusion inside and target content). Too conservative in a project full of repeated Card blocks? Would pulling customer-supplied block ids (`b7e466f9b`) forward into v4 be better than deferring to v4.1?
-3. **§4.4's retained type-keyed Modular Content pairing** is the reviewer's judgment call on the scope of the "no positional diff" directive (the directive named structured text; it was applied to all *positional* pairing, keeping only order-independent matching). Confirm or delete the Modular Content row.
-4. **The sidebar's streaming chat-bubble UX** (§2.3 item 5): extend the engine with per-field progress callbacks, or replace the sidebar's per-field streaming UI with record-level progress? This is the largest *visible* UX consequence of the engine unification.
-5. **Should the record path also offer the "fill with source" one-click affordance** (§4.0), or is that scope creep?
-6. **§2.3 item 3, throughput:** accept the sequential slowdown on the record path, or fund a bounded-parallel field mode in the engine?
+1. **§4.2's ban reversal.** Plainly: the current proposal lets admins mark *any* field — including required ones — as "never translate"; when such a field then needs a value in a new language, the source text is copied in (per §7's policy). The alternative (the originally-approved rule) forbids marking required fields never-translate, so the plugin always translates them — meaning a required brand-name field gets machine-translated forever. Reviewer's recommendation: adopt the proposal (allow it, with the config-time consequence hint). Awaiting the stakeholder's plain yes/no.
+2. **Customer-supplied block ids: v4 or v4.1?** Mechanics verified against the API source (§4.4): ids can never be shared across locales, but the plugin can *derive* each target block's id from `(source id, locale)` as a v4-shaped UUID the format check accepts — correlation becomes computation, and §4.4's fail-loud skip would remain only for pre-scheme blocks. Pulling it into v4 shrinks the skip case dramatically; deferring keeps v4 smaller.
+3. **§4.4 rule 3 (single-slot merge) — reviewer's interpretation, open to veto.** "Remove all matching" was applied to block *lists*; the single-block slot merge was kept because one slot involves no correspondence guessing and killing it breaks exclusion-preservation inside frameless blocks. Veto ⇒ delete rule 3; rebuild-or-skip governs everywhere.
 
-**Resolved by this review:**
+**Decided by the stakeholder, 2026-07-14:**
 
-- ~~§4.3/§4.4 structured-text merge semantics~~ — mooted by the stakeholder directive: structured text is never paired or merged (§4.4).
-- ~~Cancellation/concurrency audit~~ — done; findings and obligations in §2.3.
-- ~~`compact` report viability~~ — the "one component, one prop" claim was refuted; the workable design (presentational core + adapters, inline-expandable warnings at panel width) is §6.4.
+- ~~Block matching~~ — **none, anywhere** ("minimize the magic; fail loud and fast"): lists always rebuild-or-skip (§4.4).
+- ~~Sidebar streaming UX~~ — **dead**; the progress modal is the single progress/report surface, the sidebar a launcher + status line (§6.1, §6.4, §2.3 item 5).
+- ~~Fill-with-source affordance~~ — **cut from v4**; v4.1 candidate (§4.0, §10).
+- ~~Throughput~~ — **build the true bounded-parallel mode** in the engine, per-provider, reusing the existing rate-limit logic (§2.3 item 3).
+
+**Resolved by the rev 3 review:**
+
+- ~~Structured-text merge semantics~~ — mooted: never paired or merged (§4.4).
+- ~~Cancellation/concurrency audit~~ — done; obligations in §2.3.
+- ~~`compact` report viability~~ — superseded twice over: the claim was refuted, then the second host itself was removed (§6.4).
 
 ---
 
 ## 10. Explicitly out of scope
 
-- **Customer-supplied block IDs** (§4.4) — the permanent fix for same-type reordering. Real, verified, migration-bearing. **v4.1.**
+- **Customer-supplied block IDs** (§4.4) — the identity fix that turns block correlation into computation. Real, verified. **Timing is §9.5 question 2 — v4 or v4.1.**
+- **"Fill with source" one-click affordance** on the record path (§4.0) — cut from v4 by stakeholder decision (2026-07-14). v4.1 candidate.
 - **Per-instance block selection**; **path-scoped exclusion** — no demand, new engine plumbing.
 - **Language detection** (`franc`/`tinyld`) as a QC check — real dependency. v4.1.
 - **"Retry failed"** — re-run scoped to failed `(record, locale)` pairs. v4.1.
@@ -612,8 +614,8 @@ This feeds `cannotBeBlank` (§4.1) directly.
 | --- | --- | --- |
 | **0** | **E2E foundations** (§9.4) | Seed fixtures **including the missing draft-saving model**; bug-#1 probe as `test.fail()`; **`internalLocales` pin under a restricted role** (needs a second auth context); **converter round-trip proof** (needs an in-browser harness). Phase 2's safety rests entirely on this. |
 | **1** | **`max_tokens` fix** (§9.1) | Hard-blocks phase 6. Small, isolated. **Shippable now as v3.8** — it fails records today. Fix the factory for Anthropic *and* Gemini in one pass. |
-| **2+3** | **One engine + the exclusion rule** (§2, §3, §4) | **Must ship together.** Today's leaf-writes accidentally *preserve* target blocks; an engine that rebuilds from source (phase 2 alone) would trade bug #1 for a clobber regression on the very same fields. Fixes bugs #1–#3 and incoherence #4. **The §2.3 re-homing inventory is this phase's checklist** — `onSystemic` wiring, dual cancellation with a form-sink discard point, the stall timeout, the rAF yield, and the throughput decision are acceptance criteria, not nice-to-haves. |
-| **4** | **The tree + unified modal + id migration** (§5, §6) | Includes the api_key→id config migration (§5.1) and the block sub-field kebab (§6.2). |
+| **2+3** | **One engine + the exclusion rule** (§2, §3, §4) | **Must ship together.** Today's leaf-writes accidentally *preserve* target blocks; an engine that rebuilds from source (phase 2 alone) would trade bug #1 for a clobber regression on the very same fields. Fixes bugs #1–#3 and incoherence #4. **The §2.3 re-homing inventory is this phase's checklist** — `onSystemic` wiring, dual cancellation with a form-sink discard point, the stall timeout, the rAF yield, and the **bounded-parallel scheduler (§2.3 item 3, decided)** are acceptance criteria, not nice-to-haves. |
+| **4** | **The tree + unified modal + id migration** (§5, §6) | Includes the api_key→id config migration (§5.1), the block sub-field kebab (§6.2), and the **sidebar→modal progress channel + status line** (§6.1/§6.4). |
 | **5** | **Pre-flight + policy** (§7) — **bulk only** | Needs phase 4's crawl and phase 3's `cannotBeBlank`. Includes the `draft_saving_active` branch (§4.0) and the "Leave them empty" option. |
 | **6** | **Runaway prevention** (§8.1) | Needs phase 1. Otherwise independent. |
 | **7** | **Deterministic pre-write validation** (§9.2) | Research-heavy; blocks nothing. Feeds `cannotBeBlank` retroactively. |
@@ -629,7 +631,8 @@ Phases 1 and 6 can ship as **v3.8** ahead of v4.
 | Deleting `translateRecordFields.ts` is a big blast radius on the most-used path | Phase 0 lands first; phases 2+3 ship together; §2.3 is the re-homing checklist |
 | **Sidebar reroute lands in the engine's degraded no-`onSystemic` branch — no pacing, no retry, silently** | §2.3 item 1: wiring a `PauseController` is an acceptance criterion of phase 2 |
 | **A hung provider call blocks a sequential run forever** | §2.3 item 4: re-home the stall timeout, tied to an `AbortController` |
-| Record-path throughput regresses (concurrent → sequential) | §2.3 item 3 / §9.5 question 6 — decided, not discovered |
+| The bounded-parallel scheduler mis-composes with pause/skip/runaway accounting | §2.3 item 3: parallelism confined to field level within a (record, locale) unit; ordering-dependent machinery untouched |
+| The sidebar→modal `BroadcastChannel` breaks if the CMS ever sandboxes plugin iframes | §6.1: verified unsandboxed today (`PluginFrame.tsx:889`); add an E2E pin with the phase-4 work; degrade to the panel status line if the channel dies |
 | Converters are unexercised by us; a malformed block **silently nulls** | Phase 0 round-trip proof (§9.4 test 6) + the `nested: true` and zero-field-block guards (§2.1) |
 | Role locale scope silently drops writes | §6.3's three mitigations, incl. a restricted-role E2E |
 | **Concurrent edits silently reverted by the stale full-hash spread** | §7.2: send `meta.current_version`; surface `STALE_ITEM_VERSION` as a per-record failure |
