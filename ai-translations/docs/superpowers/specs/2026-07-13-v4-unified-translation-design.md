@@ -1,6 +1,6 @@
 # AI Translations v4 — Unified Translation Flow
 
-**Date:** 2026-07-13 · **Rev 5** (2026-07-14, second stakeholder round: **always-overwrite** replaces every remaining match/merge/skip behavior (§4.3); admin config split into two explicit lists — "Exclude" (optional fields only) and "Always copy from source" (§4.2); the derived-block-id scheme **rejected** as brittle (§4.4); block sub-field kebab narrowed to single-slot chains (§6.2). Rev 4: modal as single report surface, bounded-parallel engine mode, fill-with-source cut. Rev 3: second adversarial review, §2.3 re-homing inventory.)
+**Date:** 2026-07-13 · **Rev 6** (2026-07-14, third stakeholder round: the run picker adopts the admin panel's explicit-bucket model — translate / skip (optional only) / copy from source — which **deletes the pre-flight dialog for known conflicts** (§7); suppressed block sub-field kebabs now show a **disabled explainer** instead of nothing (§6.2); kebab feature confirmed kept. Rev 5: always-overwrite, two admin lists, block-id scheme rejected. Rev 4: modal as single report surface, bounded-parallel engine mode. Rev 3: second adversarial review, §2.3 re-homing inventory.)
 **Status:** Approved design — implementation plan in progress
 **Scope:** Major version. Every entry point, the engine, the config screen, the E2E seed.
 **Background:** [`2026-07-13-field-selection-investigation.md`](./2026-07-13-field-selection-investigation.md)
@@ -117,8 +117,13 @@ Rev 5 (stakeholder design): the single overloaded "exclude" list is replaced by 
 > **An "Always copy from source" field** *(any field, including required)*:
 > - gets the **source value, verbatim**, wherever the run touches it — top level and inside rebuilt blocks alike
 >
-> **A field deselected for this run** (run-time picker, or its type toggled off):
-> - not written; the target keeps whatever it has. If a **new locale** forces a value anyway (`cannotBeBlank`, §4.1), §7's policy applies — this is now the *only* gap the pre-flight has to ask about.
+> **A field skipped for this run** *(run-time picker — only optional fields are eligible, §7)*:
+> - not written; the target keeps whatever it has
+>
+> **A field copied for this run** *(run-time picker — any field)*:
+> - source value verbatim, exactly like the admin list, for this run only
+>
+> Required fields are always either **translated** or **copied** — no run can be configured into an undefined outcome. The only residual gap is a **run-time provider blank**, covered by §7.1's pre-set policy.
 
 ### 4.0 The rule that shapes everything: **never invent content unless the platform forces you to**
 
@@ -134,12 +139,12 @@ Where can a gap be left?
 
 ⚠️ **"Invalid" has a floor even in draft-saving mode.** `InvalidButPersistableRecordError` is raised only when *every* error is a `PersistableApiError` (`validate.rb:294`), and seven validators are `always_enforced?` — the block/link **structural** validators (`rich_text_blocks`, `single_block_blocks`, `structured_text_blocks`, `structured_text_inline_blocks`, `structured_text_links`, `item_item_type`, `items_item_type`). A draft-saving model accepts a *blank* required field; it never accepts a structurally broken block or link payload. Blank-value gaps are always persistable; malformed block assembly never is.
 
-So the remaining gap case — a `cannotBeBlank` field left without a value (deselected on a new locale, or a run-time provider blank) — resolves per sink:
+So the remaining gap case — a `cannotBeBlank` field left without a value, which after rev 6 can only mean a **run-time provider blank** (§7.1) — resolves per sink:
 
 | Sink | A `cannotBeBlank` field with no translation |
 | --- | --- |
 | **Form** | **Leave it blank.** The CMS shows the error; Save is blocked until the editor acts. **We never invent content.** |
-| **CMA, draft-saving model** | **Leave it blank** — the record persists as an **invalid draft**, unpublishable until fixed. Reported. *(Chosen via §7's third option.)* |
+| **CMA, draft-saving model** | **Leave it blank** — the record persists as an **invalid draft**, unpublishable until fixed. Reported. *(§7.1's runtime policy, the default on such models.)* |
 | **CMA, strict model** | **Must** be filled or the write 422s. Only here does §7's policy apply: *use the untranslated source*, or *skip that language*. |
 
 > **The plugin fabricates content in exactly one situation: a model that refuses invalid drafts, where the user chose "use the source."** Everywhere else it leaves the gap and says so.
@@ -159,7 +164,7 @@ cannotBeBlank(validators) =
   || hasMinLength(validators)             // `length.min` / `length.eq` ≥ 1
 ```
 
-`isFieldRequired` and `hasMinItemsValidator` exist in `SharedFieldUtils.ts` today; **`hasMinLength` must be added** (mirror `hasMinItemsValidator` over `validators.length`). The predicate is **complete**: in the Rails source, `length` literally delegates to `Size.call` (nil → size 0 → fails `min/eq ≥ 1` independently of `required`), and every other validator fast-returns valid on a blank value (`format`, `enum`, `slug_format` all do). **Every ban, lock, and pre-flight check in this spec keys on `cannotBeBlank`, never on `required` alone.** The same applies one level down when creating target blocks with excluded sub-fields.
+`isFieldRequired` and `hasMinItemsValidator` exist in `SharedFieldUtils.ts` today; **`hasMinLength` must be added** (mirror `hasMinItemsValidator` over `validators.length`). The predicate is **complete**: in the Rails source, `length` literally delegates to `Size.call` (nil → size 0 → fails `min/eq ≥ 1` independently of `required`), and every other validator fast-returns valid on a blank value (`format`, `enum`, `slug_format` all do). **Every ban, lock, and bucket-eligibility check in this spec keys on `cannotBeBlank`, never on `required` alone.** The same applies one level down when creating target blocks with excluded sub-fields.
 
 ### 4.2 Two explicit lists — the stakeholder design that dissolved the ban debate
 
@@ -178,7 +183,7 @@ The exclude picker **disables** `cannotBeBlank` fields with an inline pointer:
                           from source" instead.
 ```
 
-A field may sit on at most one list; the config screen enforces it. The **run-time picker** is unchanged — any field, required or not, can be deselected for a run (*"What do I want to translate now?"*), with §7 covering the one gap that can create (new locale × `cannotBeBlank`).
+A field may sit on at most one list; the config screen enforces it. The **run-time picker mirrors the same explicit model** (rev 6, §7): three buckets — translate / skip / copy from source — with the same eligibility rule (required fields cannot be skipped), so a run can never be configured into an undefined outcome.
 
 **Migration from the v3 single list** (folds into §5.1's token migration): a legacy excluded field that is `cannotBeBlank` moves to **"Always copy from source"** — which is what v3 actually did to it on new locales (the locale-sync fallback copied the source); a legacy excluded field that can be blank stays **excluded**. Behavior-preserving, no prompt needed beyond §5.1's ambiguity cases.
 
@@ -252,7 +257,7 @@ Two enforcement holes in the current engine that v4's single choke point must cl
 
 Crawled **once per model, cached per session**. It is cheap but **not free** — `AGENTS.md`'s ConfigScreen load-once rule exists because a `loadItemTypeFields` sweep can hit rate limits. Apply the same discipline.
 
-Outputs: (1) the picker tree (instantiated for the run-time picker and both §4.2 admin lists); (2) `cannotBeBlank` nodes (disabled in the exclude picker; feed the §7 pre-flight); (3) excluded nodes; (4) copy-from-source nodes.
+Outputs: (1) the picker tree (instantiated for the run-time picker's three buckets and both §4.2 admin lists); (2) `cannotBeBlank` nodes (disabled in the exclude picker and in the run picker's skip bucket); (3) excluded nodes; (4) copy-from-source nodes.
 
 **The "All fields" sentinel is deleted** — it conflated a display collapse with an input shortcut. A "Select all" text button replaces it: an action, not a menu option.
 
@@ -300,7 +305,14 @@ This deletes rev 3's ~300 px compact-layout problem wholesale: no inline-expanda
 
 **Rev 5 narrows the feature to where a cross-locale target is *derivable without matching*: sub-fields whose entire container chain is `single_block`.** A single-slot container has exactly one possible counterpart per locale — `inline_note.it` *is* the Italian sibling of `inline_note.en`, no guessing. A Modular Content path carries an **index** (`content_blocks.en.0`), and "the block at index 0 in Italian" is positional correspondence — banned (§4.3/§4.4). Structured text is worse still. So:
 
-**Suppressed outright (`return []`): any sub-field with a `rich_text` (Modular Content) or `structured_text` ancestor.** For MC the reason is the banned positional index. For ST, three independent reasons, each sufficient:
+**Any sub-field with a `rich_text` (Modular Content) or `structured_text` ancestor gets no *working* translate actions — but not silence.** Stakeholder decision (2026-07-14, third round): show one **disabled** menu item (`DropdownAction.disabled: true`, `shared.d.ts:29`) so the editor learns *why* instead of wondering where the action went:
+
+```
+⋮  ⃠ Can't AI-translate a single field inside a multi-block parent —
+     translate the whole "Page content" field instead.
+```
+
+(Name the actual parent field; it is the thing the editor should go click.) For MC the underlying reason is the banned positional index. For ST, three independent reasons, each sufficient:
 - ST block kebabs mount inside `HijackFormik` (`cms/…/SlateInput/elements/Block/HijackFormik.tsx`), whose `setFieldValue` override converts writes to Slate `set_node` ops — a whole-block write at the block path computes an empty first-level key and **silently corrupts the node**. (Its `startsWith(prefix)` test also captures numeric-prefix siblings: a write near `content.en.1` can hit `content.en.10.…`.)
 - The value at an ST block path is a **Slate node** (`{type, blockModelId, id, children, …fields}`), not the `{itemId, itemTypeId, …}` shape a block write needs.
 - Each locale's ST value is an independent document with different blocks — no cross-locale write target is derivable from the fieldPath.
@@ -318,8 +330,8 @@ Consequence today (pre-v4): **a true frameless block has no translate affordance
 | --- | --- | --- |
 | Frameless/framed single block | `inline_note.en.title` | `inline_note.<target>` |
 | Single block in a single block | `spotlight.en.inner.caption` | `spotlight.<target>.inner` |
-| Modular content at any depth | `content_blocks.en.0.heading` | **none — actions suppressed** |
-| Structured text at any depth | `content.en.5.heading` | **none — actions suppressed** |
+| Modular content at any depth | `content_blocks.en.0.heading` | **none — disabled explainer shown** |
+| Structured text at any depth | `content.en.5.heading` | **none — disabled explainer shown** |
 
 (`BlockFields.tsx:72` appends `.${api_key}`; a non-localized top-level container has no locale segment, which the schema resolution handles naturally.)
 
@@ -378,39 +390,25 @@ What remains to build:
 
 ---
 
-## 7. The pre-flight — **bulk only**
+## 7. The run picker makes every fate explicit — the pre-flight dialog is deleted
 
-**The record path has no pre-flight and asks nothing.** It writes to a draft form, so it never has to invent content (§4.0): a `cannotBeBlank` field with no translation is simply left empty, the CMS flags it, and Save is blocked until the editor acts. There is no policy question to ask, because there is no fabrication to authorise.
+> **Stakeholder decision (2026-07-14, third round): the run-time picker mirrors the admin panel's explicit model.** Three buckets, every translatable field in exactly one:
+>
+> | Bucket | Eligible fields | Default |
+> | --- | --- | --- |
+> | **Translate** | any | **everything** — same behavior as today |
+> | **Skip** *(this run)* | **optional fields only** (¬`cannotBeBlank`) | admin-excluded fields, pre-seeded and locked (*"set by admin in Settings"*) |
+> | **Copy from `<source language>`** *(this run)* | any | admin copy-from-source fields, pre-seeded and locked |
+>
+> Trying to skip a required field is impossible — the skip bucket disables it with the same hint the admin picker uses (§4.2). Fields whose *type* is switched off in Settings are pre-bucketed too — **skip** when optional, **copy** when `cannotBeBlank` — so they are visible in the picker rather than silently absent.
 
-**The bulk path must ask**, because the CMA rejects an invalid record outright and there is no draft to fall back on.
+**Consequence: the pre-flight conflict dialog is gone.** Earlier revisions needed a "3 fields can't be left empty and won't be translated — what should we do?" interstitial, because a single deselect-list allowed configurations with undefined outcomes. With explicit buckets, **no run can be configured into an undefined outcome**: required fields are always translated or copied, optional skipped fields may legitimately stay empty everywhere, and copy always has a value. Nothing is left to ask; the run starts when the editor confirms the picker. (The bucket rules are pure schema arithmetic — the same `cannotBeBlank` predicate from §4.1, computed by the §5.3 crawl. Costs no tokens.)
 
-Before any provider call, cross the schema crawl with **the run's actual selection** and find every field that (a) will **not** be translated — **deselected in this run**, or its type switched off — and (b) is **`cannotBeBlank`**, and (c) has **no value in a target locale**. *(Rev 5: admin config can no longer create this gap — excluded fields are optional by construction, and copy-from-source fields always have a defined value. Only run-time choices and run-time provider blanks remain — §4.2.)*
+**The record path asks nothing either**, as before: it writes to a draft form, so even a gap is acceptable — the CMS flags it and blocks Save until the editor acts (§4.0).
 
-Pure schema + snapshot arithmetic. Costs no tokens.
+### 7.1 The runtime policy — the one gap no picker can prevent
 
-```
-  ┌──────────────────────────────────────────────────────────────────────┐
-  │  3 fields can't be left empty and won't be translated                │
-  │                                                                      │
-  │  Article → Title            excluded by admin                        │
-  │  Article → Featured data    JSON translation is turned off           │
-  │  Product → Tags             deselected in this run (min 1)           │
-  │                                                                      │
-  │  What should we do where a target language has no value yet?         │
-  │                                                                      │
-  │  [ Go back ]  [ Leave them empty ]  [ Skip those languages ]         │
-  │                                [ Use untranslated English value ]    │
-  └──────────────────────────────────────────────────────────────────────┘
-```
-
-- **"Go back"**, not "Cancel" — Cancel is ambiguous (the dialog, or the run?).
-- **"Leave them empty"** — the record saves as an **invalid draft**, unpublishable until someone fills the gap. **Offered only when *every* affected model has `draft_mode_active ∧ draft_saving_active`** (§4.0). Otherwise it renders **disabled**, with the reason: *"Article doesn't allow saving invalid drafts."* This is the bulk equivalent of what the form does, and it is the option that invents nothing.
-- **"Skip those languages"** — you cannot skip a cannot-be-blank *field* on a strict model; the write 422s. Only the **locale**.
-- **"Copy the *English* value in"** — resolve the language name via `getLocaleName()`. Naming the language is the point: it tells you what is about to land in your Italian record. **This is the per-run counterpart of §4.2's "Always copy from source" list** — identical behavior, chosen for one run instead of permanently — and the UI copy must make that kinship recognizable. It fills only target languages that have no value yet (condition (c)); it is one choice for all affected fields in the run, deliberately not a per-field matrix.
-
-### 7.1 The policy is a setting; the dialog is the override
-
-A provider can blank a cannot-be-blank field at run time — **not** foreseeable. If the policy lived only in a dialog shown for *known* conflicts, a clean run would have **no policy** when that happens and we'd invent one.
+A provider can return a blank for a cannot-be-blank field at run time — **not** foreseeable by any pre-run arithmetic. That is now the *only* way a gap can arise, and it needs a **pre-set policy**, not a mid-run question:
 
 > **When a field that can't be empty has no translation → ▾**
 > • **Leave it empty** *(default where the model allows invalid drafts)*
@@ -419,14 +417,14 @@ A provider can blank a cannot-be-blank field at run time — **not** foreseeable
 
 The default is **the option that invents the least** and that the model actually permits. On a draft-saving model that is "leave it empty" — identical to what the record path does, and the record is simply unpublishable until fixed. On a strict model that option doesn't exist, so the default falls back to "use the source."
 
-Default "use the source" because in the common case it is **not a failure**: such a field is excluded precisely *because* it's a brand name or product code. Copying it through is the **intent**.
+On a strict model "use the source" is the least-bad default: the record stays saveable, the English text is visible (not a mystery gap), and the report says exactly what happened. Unlike the copy *bucket*, this **is** a degraded outcome — the editor asked for a translation and didn't get one — so it is never silent.
 
 The report keeps the causes apart:
 
 | Cause | Severity |
 | --- | --- |
-| Excluded/deselected by design | **info** — *"Title kept in English — excluded from translation."* |
-| Provider returned nothing | **warning** — *"Title kept in English — the provider returned an empty response."* |
+| Skipped or copied **by design** (admin list or run bucket) | **info** — *"Title kept in English — set to copy from source."* |
+| Provider returned nothing (§7.1 policy applied) | **warning** — *"Title kept in English — the provider returned an empty response."* |
 
 ### 7.2 "Skip that language" — build it right, or it deletes data
 
@@ -437,7 +435,7 @@ Every payload entry is the field's **full locale hash** — `{ ...record[field],
 - payload carries **every localized field** (the new-locale case, where locale-sync fills all fields) → the stripped locale is **silently deleted record-wide**;
 - payload is **partial** (all targets already existed) → the whole update **422s with `INVALID_LOCALES`** ("removing a locale requires all localized fields present"), losing every translated sibling in that write.
 
-An existing locale absolutely can be doomed: a legacy record with a blank cannot-be-blank field in a locale it already has (invisible to a schema-only pre-flight), or a run-time provider blank.
+An existing locale absolutely can be doomed: a legacy record with a blank cannot-be-blank field in a locale it already has (no pre-run arithmetic can see record contents), or a run-time provider blank triggering §7.1's "skip that language" policy.
 
 **Correct mechanism — decide before assembling, never strip after:**
 
@@ -548,7 +546,7 @@ This feeds `cannotBeBlank` (§4.1) directly.
 5. **`internalLocales` pin** — writing it registers a locale and the save honours it. **Run as a locale-restricted role** (§6.3), not an admin.
 6. **Converter round-trip** — `formValuesToItem` → `itemToFormValues` preserves blocks, block ids, and every field type in the seed. Phase 2 depends on this.
 7. ~~Same-type reorder~~ — **deleted in rev 5**: there is no pairing to get wrong and no skip remedy to assert; reordered target blocks are simply overwritten (§4.3). The overwrite itself is covered by test 4.
-8. **`draft_saving_active`** — the seed needs **two** models: one strict (default) and one with `draft_mode_active ∧ draft_saving_active`. Assert that on the draft-saving model, a bulk run with "Leave them empty" **persists an invalid, unpublishable draft**; and that on the strict model the option is **disabled** and the write would 422 (§4.0, §7). ⚠️ **The uncommitted seed edits do not include this model yet** — it is missing work, not done work.
+8. **`draft_saving_active`** — the seed needs **two** models: one strict (default) and one with `draft_mode_active ∧ draft_saving_active`. Assert that on the draft-saving model, §7.1's **"Leave it empty" runtime policy** persists an invalid, unpublishable draft when a provider blank hits a required field (drive the blank via the fault-injection lane); and that on the strict model that policy option is unavailable and the fallback applies (§4.0, §7.1). ⚠️ **The uncommitted seed edits do not include this model yet** — it is missing work, not done work.
 
 **Three feasibility constraints the plan must design around, not discover:**
 - **Test 5's restricted role collides with the suite's single-login architecture** (one dashboard session, one `storageState`). It needs a second authenticated context — a second storageState (or an API-token-scoped path where dashboard login isn't required) — and the E2E docs' teardown/ordering rules apply to it too.
@@ -557,11 +555,12 @@ This feeds `cannotBeBlank` (§4.1) directly.
 
 ---
 
-## 9.5 Open questions — status after the second stakeholder round (2026-07-14)
+## 9.5 Open questions — none
 
-**Every question is now decided.** One reviewer interpretation remains open to veto:
+**Every question is decided; nothing is open.** Final round (2026-07-14, third):
 
-- **§6.2's kebab write is a read-modify-write of the block at a definitionally-known path** (read the target block, set the one translated property, write the object back). This is not cross-locale matching — it is how any form edit of one property works — but it is the last thing in the spec that superficially resembles "merge." Veto ⇒ drop the block sub-field kebab feature entirely (its scope is already narrowed to single-slot chains); §1's gap 7 would then be covered by the sidebar only.
+- ~~Kebab keep/drop veto~~ — **kept**: the read-modify-write at a definitionally-known path was explained and accepted; additionally, sub-fields inside multi-block parents show a **disabled explainer** instead of nothing (§6.2).
+- ~~Run-time picker shape~~ — **adopts the admin panel's explicit-bucket model** (translate / skip / copy from source, default translate-everything), which **deletes the pre-flight conflict dialog** (§7).
 
 **Decided by the stakeholder (second round, 2026-07-14):**
 
@@ -601,7 +600,7 @@ This feeds `cannotBeBlank` (§4.1) directly.
 | **1** | **`max_tokens` fix** (§9.1) | Hard-blocks phase 6. Small, isolated. **Shippable now as v3.8** — it fails records today. Fix the factory for Anthropic *and* Gemini in one pass. |
 | **2+3** | **One engine + the exclusion rule** (§2, §3, §4) | **Must ship together.** Today's leaf-writes accidentally *preserve* target blocks; an engine that rebuilds from source (phase 2 alone) would trade bug #1 for a clobber regression on the very same fields. Fixes bugs #1–#3 and incoherence #4. **The §2.3 re-homing inventory is this phase's checklist** — `onSystemic` wiring, dual cancellation with a form-sink discard point, the stall timeout, the rAF yield, and the **bounded-parallel scheduler (§2.3 item 3, decided)** are acceptance criteria, not nice-to-haves. |
 | **4** | **The tree + unified modal + id migration** (§5, §6) | Includes the api_key→id config migration (§5.1), the block sub-field kebab (§6.2), and the **sidebar→modal progress channel + status line** (§6.1/§6.4). |
-| **5** | **Pre-flight + policy** (§7) — **bulk only** | Needs phase 4's crawl and phase 3's `cannotBeBlank`. Includes the `draft_saving_active` branch (§4.0) and the "Leave them empty" option. |
+| **5** | **Run-picker buckets + runtime policy** (§7) | Needs phase 4's crawl and phase 3's `cannotBeBlank`. Three buckets with eligibility validation (no pre-flight dialog to build); §7.1's runtime-blank policy incl. the `draft_saving_active` branch (§4.0). |
 | **6** | **Runaway prevention** (§8.1) | Needs phase 1. Otherwise independent. |
 | **7** | **Deterministic pre-write validation** (§9.2) | Research-heavy; blocks nothing. Feeds `cannotBeBlank` retroactively. |
 
