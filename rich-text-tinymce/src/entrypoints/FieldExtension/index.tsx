@@ -13,8 +13,11 @@ import imgixThumbUrl from '../../utils/imgixThumbUrl';
 ).tinymce = tinymce;
 
 import 'tinymce/icons/default';
+import 'tinymce/models/dom';
 import 'tinymce/themes/silver';
-import 'tinymce/skins/ui/oxide/skin.css';
+import 'tinymce/skins/ui/oxide/skin';
+import 'tinymce/skins/ui/oxide/content';
+import 'tinymce/skins/content/default/content';
 import 'tinymce/plugins/image';
 import 'tinymce/plugins/advlist';
 import 'tinymce/plugins/code';
@@ -217,6 +220,7 @@ export default function FieldExtension({ ctx }: Props) {
     <Canvas ctx={ctx}>
       <ReactEditor
         disabled={ctx.disabled}
+        licenseKey="gpl"
         init={{
           plugins: 'image advlist code emoticons link lists table autoresize',
           toolbar:
