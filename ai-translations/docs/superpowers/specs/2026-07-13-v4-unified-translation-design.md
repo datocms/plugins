@@ -1,6 +1,6 @@
 # AI Translations v4 — Unified Translation Flow
 
-**Date:** 2026-07-13 · **Rev 6** (2026-07-14, third stakeholder round: the run picker adopts the admin panel's explicit-bucket model — translate / skip (optional only) / copy from source — which **deletes the pre-flight dialog for known conflicts** (§7); suppressed block sub-field kebabs now show a **disabled explainer** instead of nothing (§6.2); kebab feature confirmed kept. Rev 5: always-overwrite, two admin lists, block-id scheme rejected. Rev 4: modal as single report surface, bounded-parallel engine mode. Rev 3: second adversarial review, §2.3 re-homing inventory.)
+**Date:** 2026-07-13 · **Rev 7** (2026-07-14: the **"All locales" sentinel dies alongside "All fields"** — every selector shows explicit chips with an "x/y selected" count and a Select-all action (§5.3). Rev 6: explicit run-picker buckets delete the pre-flight dialog; disabled kebab explainer. Rev 5: always-overwrite, two admin lists, block-id scheme rejected. Rev 4: modal as single report surface, bounded-parallel engine mode. Rev 3: second adversarial review, §2.3 re-homing inventory.)
 **Status:** Approved design — implementation plan in progress
 **Scope:** Major version. Every entry point, the engine, the config screen, the E2E seed.
 **Background:** [`2026-07-13-field-selection-investigation.md`](./2026-07-13-field-selection-investigation.md)
@@ -33,7 +33,7 @@ Sentence 4 is deliberately weaker than "we ask you once": a provider can blank a
 **Three incoherences:**
 4. "Exclude" means *skip* at top level but *copy the English in* inside a block.
 5. Admin exclusions key on field **id**; the run-time picker keys on **api_key**.
-6. The "All fields" chip makes selecting a field **replace** your selection.
+6. The "All fields" chip makes selecting a field **replace** your selection — and the "All locales" chip has the identical bug (`AITranslationsPickerModal.tsx:236-243`).
 
 **One gap nobody noticed:**
 7. A **true frameless block has no *working* field-level translate action.** The parent renders no kebab (the CMS hides it), and scalar sub-fields are gated out by `isLocalized` (`main.tsx:673,678`) — block fields are never localized. (Container sub-fields are the mis-scoped exception: their kebab *does* show actions, against a misreported ctx — §6.2.) Upstream issue #5 was never actually fixed for the dropdown.
@@ -259,7 +259,16 @@ Crawled **once per model, cached per session**. It is cheap but **not free** —
 
 Outputs: (1) the picker tree (instantiated for the run-time picker's three buckets and both §4.2 admin lists); (2) `cannotBeBlank` nodes (disabled in the exclude picker and in the run picker's skip bucket); (3) excluded nodes; (4) copy-from-source nodes.
 
-**The "All fields" sentinel is deleted** — it conflated a display collapse with an input shortcut. A "Select all" text button replaces it: an action, not a menu option.
+**No sentinels, anywhere** *(stakeholder, 2026-07-14: "less magic, more explicit")*. Both magic pills die:
+
+- **"All fields"** (`ALL_FIELDS_VALUE`, `ModelFieldPicker.tsx`) — deleted, as established by the harmonization design.
+- **"All locales"** (`ALL_LOCALES_VALUE = '__all__'`, `BulkTranslationHelpers.ts:20`; expanded by `resolveTargetLocales` :144-152; rendered as `ALL_LOCALES_OPTION` in `AITranslationsPickerModal.tsx:90` and `AIBulkTranslationsPage.tsx`) — deleted too. It has the **identical narrowing bug**: with "All locales" active, picking one more locale strips the pill and keeps only the new pick (`AITranslationsPickerModal.tsx:236-243`) — reaching for *"also Italian"* lands on *"only Italian"*.
+
+**Every selector — fields and locales, both admin lists, the run picker's buckets, the bulk target-locale selects, the sidebar's target chips — gets the same three affordances:** explicit chips for every selected member, an **"x/y selected"** count, and a **"Select all"** text button shown only while the selection is partial (an action, not a menu option — that separation is what stops the bug growing back). Defaults are unchanged: bulk target locales still default to every locale except the source, which is what the pill used to resolve to; the count line (*"11/11 selected"*) makes that legible instead of magical. The sidebar already lists concrete chips (no sentinel) — it gains the count + Select-all for consistency.
+
+One survivor, deliberately: the field kebab's **"Translate to → All locales" menu entry** stays. A menu is made of actions, and a one-click labeled action cannot silently narrow anything — it is exactly the action-vs-option separation this section enforces.
+
+E2E note: `e2e/tests/steps/bulk.ts` drives the sentinel click-sequences for both pickers — migrate those steps in the same PR that deletes the sentinels.
 
 ---
 
@@ -599,7 +608,7 @@ This feeds `cannotBeBlank` (§4.1) directly.
 | **0** | **E2E foundations** (§9.4) | Seed fixtures **including the missing draft-saving model**; bug-#1 probe as `test.fail()`; **`internalLocales` pin under a restricted role** (needs a second auth context); **converter round-trip proof** (needs an in-browser harness). Phase 2's safety rests entirely on this. |
 | **1** | **`max_tokens` fix** (§9.1) | Hard-blocks phase 6. Small, isolated. **Shippable now as v3.8** — it fails records today. Fix the factory for Anthropic *and* Gemini in one pass. |
 | **2+3** | **One engine + the exclusion rule** (§2, §3, §4) | **Must ship together.** Today's leaf-writes accidentally *preserve* target blocks; an engine that rebuilds from source (phase 2 alone) would trade bug #1 for a clobber regression on the very same fields. Fixes bugs #1–#3 and incoherence #4. **The §2.3 re-homing inventory is this phase's checklist** — `onSystemic` wiring, dual cancellation with a form-sink discard point, the stall timeout, the rAF yield, and the **bounded-parallel scheduler (§2.3 item 3, decided)** are acceptance criteria, not nice-to-haves. |
-| **4** | **The tree + unified modal + id migration** (§5, §6) | Includes the api_key→id config migration (§5.1), the block sub-field kebab (§6.2), and the **sidebar→modal progress channel + status line** (§6.1/§6.4). |
+| **4** | **The tree + unified modal + id migration** (§5, §6) | Includes the api_key→id config migration (§5.1), the block sub-field kebab (§6.2), the **sidebar→modal progress channel + status line** (§6.1/§6.4), and **both sentinel deletions + uniform selector affordances** (§5.3, incl. the `bulk.ts` step migration). |
 | **5** | **Run-picker buckets + runtime policy** (§7) | Needs phase 4's crawl and phase 3's `cannotBeBlank`. Three buckets with eligibility validation (no pre-flight dialog to build); §7.1's runtime-blank policy incl. the `draft_saving_active` branch (§4.0). |
 | **6** | **Runaway prevention** (§8.1) | Needs phase 1. Otherwise independent. |
 | **7** | **Deterministic pre-write validation** (§9.2) | Research-heavy; blocks nothing. Feeds `cannotBeBlank` retroactively. |
