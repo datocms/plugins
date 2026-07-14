@@ -11,6 +11,7 @@
  * `ItemsDropdownUtils.ts` and calls back into this module per locale.
  */
 import type { ctxParamsType } from '../entrypoints/Config/ConfigScreen';
+import { FIELD_TRANSLATION_TIMEOUT_MS } from '../utils/constants';
 import { formatLocaleWithCode } from '../utils/localeUtils';
 import { isFieldIncludedInSelection } from '../utils/translation/BulkTranslationHelpers';
 import type {
@@ -53,6 +54,7 @@ import type {
   TranslationProvider,
 } from '../utils/translation/types';
 import type { SchemaRepository } from '../utils/schemaRepository';
+import { StallError, withStallGuard } from './stallGuard';
 
 /**
  * Human label prefixing each QC flag that {@link buildTranslatedUpdatePayload}
@@ -404,12 +406,13 @@ export async function buildTranslatedUpdatePayload(
     // One provider call for this field, normalizing on failure so the retry
     // helper (and this function's catch) always see a NormalizedProviderError.
     // The between-unit gate only fires between whole fields/locales/records, so
-    // a `checkCancellation` derived from the abort signal is also threaded here:
-    // it is what lets the block-level concurrency runner (runWithConcurrency)
-    // stop launching further block translations mid-field when the user cancels.
-    // runWithConcurrency cancels on a THROW (it ignores the boolean return), so
-    // this throws when aborted and otherwise reports "not cancelled".
-    const attempt = async (): Promise<unknown> => {
+    // a `checkCancellation` derived from the guard's own signal is also threaded
+    // here: it is what lets the block-level concurrency runner (runWithConcurrency)
+    // stop launching further block translations mid-field when the user cancels
+    // OR when the stall guard below aborts. runWithConcurrency cancels on a THROW
+    // (it ignores the boolean return), so this throws when aborted and otherwise
+    // reports "not cancelled".
+    const attemptWith = async (signal: AbortSignal): Promise<unknown> => {
       try {
         return await translateFieldValue(
           sourceValue,
@@ -423,15 +426,13 @@ export async function buildTranslatedUpdatePayload(
           fieldTypeDictionary[field].id,
           environment,
           {
-            abortSignal: opts.abortSignal,
-            checkCancellation: opts.abortSignal
-              ? () => {
-                  if (opts.abortSignal?.aborted) {
-                    throw new Error('Bulk translation cancelled');
-                  }
-                  return false;
-                }
-              : undefined,
+            abortSignal: signal,
+            checkCancellation: () => {
+              if (signal.aborted) {
+                throw new Error('Bulk translation cancelled');
+              }
+              return false;
+            },
           },
           recordContext,
           schemaRepository,
@@ -445,6 +446,24 @@ export async function buildTranslatedUpdatePayload(
         throw normalizeProviderError(error, provider.vendor);
       }
     };
+
+    // Guards every provider attempt with a per-call stall timeout: a hung call
+    // aborts its own signal (chained from `opts.abortSignal`) so the underlying
+    // fetch actually dies and this field's slot frees up, instead of blocking
+    // the run forever. Both call paths below — the systemic-retry loop and the
+    // bare fallback — call `attempt`, so both are guarded. A stall normalizes to
+    // `code: 'unknown'`, which `isSystemicError` does not treat as systemic, so
+    // it's retried as a content-tier failure under `CONTENT_RETRY_LIMIT` like
+    // any other field-scoped error rather than pausing the whole run.
+    const attempt = (): Promise<unknown> =>
+      withStallGuard((signal) => attemptWith(signal), {
+        timeoutMs: FIELD_TRANSLATION_TIMEOUT_MS,
+        parentSignal: opts.abortSignal,
+      }).catch((error) => {
+        throw error instanceof StallError
+          ? normalizeProviderError(error, provider.vendor)
+          : error;
+      });
 
     try {
       // With a systemic handler, systemic errors pause the whole run and content
