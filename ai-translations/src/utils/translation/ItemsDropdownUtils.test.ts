@@ -952,6 +952,238 @@ describe('ItemsDropdownUtils', () => {
         body: ['it'],
       });
     });
+
+    describe('copy-from-source fate (spec §4.2/§4.3)', () => {
+      it('copies a top-level scalar on the copy list verbatim, overwriting an existing target value, without calling the provider', async () => {
+        const recordWithItTitle: DatoCMSRecordFromAPI = {
+          id: 'record-copy-1',
+          item_type: { id: 'item-type-1' },
+          title: { en: 'Hello', de: 'Hallo', it: 'Preexisting' },
+          slug: { en: 'hello-world' },
+        };
+
+        const result = await buildTranslatedUpdatePayload(
+          recordWithItTitle,
+          'en',
+          'it',
+          {
+            title: {
+              editor: 'single_line',
+              id: 'field-title',
+              isLocalized: true,
+            },
+            slug: { editor: 'slug', id: 'field-slug', isLocalized: true },
+          },
+          provider,
+          {
+            ...pluginParams,
+            translationFields: ['single_line'],
+            fieldsToCopyFromSource: ['field-title'],
+          },
+          'access-token',
+          'main',
+        );
+
+        // Verbatim source, overwriting the pre-existing `it` value (§4.3 always
+        // overwrites — NOT null-guarded like the locale-sync fallback).
+        expect(result.payload.title).toEqual({
+          en: 'Hello',
+          de: 'Hallo',
+          it: 'Hello',
+        });
+        // Never sent to the provider.
+        expect(translateFieldValue).not.toHaveBeenCalled();
+        // Copying is not translating.
+        expect(result.translatedFieldCount).toBe(0);
+      });
+
+      it('copies a block-bearing field on the copy list with block ids stripped for fresh instances', async () => {
+        const bodyWithBlocks = {
+          en: [
+            {
+              type: 'item',
+              id: 'block-1',
+              attributes: { title: 'Hello' },
+              relationships: {
+                item_type: { data: { id: 'model-1', type: 'item_type' } },
+              },
+            },
+          ],
+          de: [
+            {
+              type: 'item',
+              id: 'block-2',
+              attributes: { title: 'Hallo' },
+              relationships: {
+                item_type: { data: { id: 'model-1', type: 'item_type' } },
+              },
+            },
+          ],
+        };
+        const recordWithBlocks: DatoCMSRecordFromAPI = {
+          ...record,
+          body: bodyWithBlocks,
+        };
+
+        const result = await buildTranslatedUpdatePayload(
+          recordWithBlocks,
+          'en',
+          'it',
+          fieldTypeDictionary,
+          provider,
+          {
+            ...pluginParams,
+            translationFields: ['single_line'],
+            fieldsToCopyFromSource: ['field-body'],
+          },
+          'access-token',
+          'main',
+        );
+
+        // Source blocks with ids stripped so the CMA mints fresh instances.
+        expect(result.payload.body).toEqual({
+          en: bodyWithBlocks.en,
+          de: bodyWithBlocks.de,
+          it: [
+            {
+              type: 'item',
+              attributes: { title: 'Hello' },
+              relationships: {
+                item_type: { data: { id: 'model-1', type: 'item_type' } },
+              },
+            },
+          ],
+        });
+      });
+
+      it('leaves an excluded top-level field to the null locale-sync fallback, never copied verbatim', async () => {
+        const result = await buildTranslatedUpdatePayload(
+          record,
+          'en',
+          'it',
+          fieldTypeDictionary,
+          provider,
+          {
+            ...pluginParams,
+            translationFields: ['single_line'],
+            apiKeysToBeExcludedFromThisPlugin: ['field-title'],
+          },
+          'access-token',
+          'main',
+        );
+
+        // Excluded + optional → null fallback (unchanged), NOT the source value.
+        expect(result.payload.title).toEqual({
+          en: 'Hello',
+          de: 'Hallo',
+          it: null,
+        });
+      });
+
+      it('still translates a normal field on neither list', async () => {
+        vi.mocked(translateFieldValue).mockResolvedValue('Ciao');
+
+        const result = await buildTranslatedUpdatePayload(
+          record,
+          'en',
+          'it',
+          fieldTypeDictionary,
+          provider,
+          { ...pluginParams, translationFields: ['single_line'] },
+          'access-token',
+          'main',
+        );
+
+        expect(result.payload.title).toEqual({
+          en: 'Hello',
+          de: 'Hallo',
+          it: 'Ciao',
+        });
+        expect(result.translatedFieldCount).toBeGreaterThan(0);
+      });
+
+      it('threads a copied field toLocale into writtenLocales so the form sink stages it', async () => {
+        const result = await buildTranslatedUpdatePayload(
+          record,
+          'en',
+          'it',
+          fieldTypeDictionary,
+          provider,
+          {
+            ...pluginParams,
+            translationFields: ['single_line'],
+            fieldsToCopyFromSource: ['field-title'],
+          },
+          'access-token',
+          'main',
+        );
+
+        expect(result.writtenLocales.title).toEqual(['it']);
+      });
+
+      it('copies a required (cannotBeBlank) field on the copy list verbatim, never leaving it blank', async () => {
+        const dictRequiredTitle = {
+          title: {
+            editor: 'single_line',
+            id: 'field-title',
+            isLocalized: true,
+            validators: { required: {} },
+          },
+        };
+        const recordRequired: DatoCMSRecordFromAPI = {
+          id: 'record-copy-required',
+          item_type: { id: 'item-type-1' },
+          title: { en: 'Hello', de: 'Hallo' },
+        };
+
+        const result = await buildTranslatedUpdatePayload(
+          recordRequired,
+          'en',
+          'it',
+          dictRequiredTitle,
+          provider,
+          { ...pluginParams, fieldsToCopyFromSource: ['field-title'] },
+          'access-token',
+          'main',
+        );
+
+        expect(result.payload.title).toEqual({
+          en: 'Hello',
+          de: 'Hallo',
+          it: 'Hello',
+        });
+        expect(translateFieldValue).not.toHaveBeenCalled();
+      });
+
+      it('records an info-tier "copied-from-source" QC flag for a copied field (not silent)', async () => {
+        const result = await buildTranslatedUpdatePayload(
+          record,
+          'en',
+          'it',
+          fieldTypeDictionary,
+          provider,
+          {
+            ...pluginParams,
+            translationFields: ['single_line'],
+            fieldsToCopyFromSource: ['field-title'],
+          },
+          'access-token',
+          'main',
+        );
+
+        const flag = result.qcFlags.find(
+          (f) => f.checkId === 'copied-from-source',
+        );
+        expect(flag).toMatchObject({
+          checkId: 'copied-from-source',
+          severity: 'info',
+          fieldPath: 'title',
+          locale: 'it',
+        });
+        // An info-tier flag never escalates the record to a failure.
+        expect(result.errorCount).toBe(0);
+      });
+    });
   });
 
   describe('translateAndUpdateRecords', () => {

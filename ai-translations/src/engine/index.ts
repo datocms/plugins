@@ -58,6 +58,7 @@ import type {
   TranslationProvider,
 } from '../utils/translation/types';
 import type { SchemaRepository } from '../utils/schemaRepository';
+import { type FieldFate, resolveFieldFate } from './fieldFate';
 import { type SlotScheduler, createSlotScheduler } from './slotScheduler';
 import { withStallGuard } from './stallGuard';
 
@@ -263,7 +264,8 @@ function countReferences(value: unknown): number {
  */
 export const shouldApplyLocaleSyncFallback = (
   outcome: FieldOutcome | undefined,
-): boolean => outcome?.status !== 'translated';
+): boolean =>
+  outcome?.status !== 'translated' && outcome?.status !== 'copied';
 
 function resolveLocaleSyncFallback(
   meta: FieldTypeDictionary[string],
@@ -354,6 +356,51 @@ const dispatchFieldJobs = async (
   }
 };
 
+/**
+ * Resolves the rev-7 fate (§4.2/§4.3) of every localized TOP-LEVEL field on a
+ * record, keyed by api_key. Extracted so {@link buildTranslatedUpdatePayload}
+ * stays under the cognitive-complexity budget; block sub-field fates are
+ * resolved separately in `TranslateField.ts`.
+ */
+const resolveTopLevelFieldFates = (
+  record: DatoCMSRecordFromAPI,
+  fieldTypeDictionary: FieldTypeDictionary,
+  pluginParams: ctxParamsType,
+): Map<string, FieldFate> =>
+  new Map(
+    Object.keys(record)
+      .filter((field) => fieldTypeDictionary[field]?.isLocalized)
+      .map((field) => {
+        const fieldMeta = fieldTypeDictionary[field];
+        return [
+          field,
+          resolveFieldFate({
+            fieldId: fieldMeta.id,
+            fieldApiKey: field,
+            validators: fieldMeta.validators ?? {},
+            excludedTokens: pluginParams.apiKeysToBeExcludedFromThisPlugin,
+            copyTokens: pluginParams.fieldsToCopyFromSource ?? [],
+          }),
+        ];
+      }),
+  );
+
+/**
+ * Resolves the value a copy-from-source field writes into the target locale: the
+ * source-locale value verbatim, with block ids stripped for block-bearing
+ * editors so the CMA mints fresh instances (spec §4.2/§4.3).
+ */
+const resolveCopyFromSourceValue = (
+  meta: FieldTypeDictionary[string],
+  fieldData: Record<string, unknown>,
+  fromLocale: string,
+): unknown => {
+  const sourceValue = getExactSourceValue(fieldData, fromLocale);
+  return BLOCK_EDITOR_TYPES.has(meta.editor)
+    ? stripBlockIds(sourceValue)
+    : sourceValue;
+};
+
 export async function buildTranslatedUpdatePayload(
   record: DatoCMSRecordFromAPI,
   fromLocale: string,
@@ -435,11 +482,25 @@ export async function buildTranslatedUpdatePayload(
     );
   }
 
-  // Collect the fields that need translation before the async loop
-  const translatableFields = Object.keys(record).filter((field) => {
-    const fieldMeta = fieldTypeDictionary[field];
-    return (
-      fieldMeta?.isLocalized &&
+  // Resolve each localized top-level field's fate once (spec §4.2). A `copy`
+  // field is written verbatim from source below and never reaches the provider;
+  // a `translate` field still has to clear the type/allowlist/source-value gate
+  // in `shouldTranslateField`; an `exclude` field is left to the locale-sync
+  // fallback exactly as before. This routes the top-level path through the same
+  // two-list resolution that already governs block sub-fields (§4.2/§4.3).
+  const fieldFates = resolveTopLevelFieldFates(
+    record,
+    fieldTypeDictionary,
+    pluginParams,
+  );
+  const localizedTopLevelFields = [...fieldFates.keys()];
+
+  // Collect the fields that need translation before the async loop. A
+  // `translate`-fated field that is not translatable by type (or fails the
+  // allowlist / has no source value) is still dropped here, exactly as before.
+  const translatableFields = localizedTopLevelFields.filter(
+    (field) =>
+      fieldFates.get(field) === 'translate' &&
       shouldTranslateField(
         field,
         record,
@@ -447,9 +508,12 @@ export async function buildTranslatedUpdatePayload(
         fieldTypeDictionary,
         pluginParams,
         opts.selectedFieldsByModel,
-      )
-    );
-  });
+      ),
+  );
+
+  const copyFields = localizedTopLevelFields.filter(
+    (field) => fieldFates.get(field) === 'copy',
+  );
 
   /**
    * Translates one field and reports its {@link FieldOutcome}. It deliberately
@@ -621,6 +685,37 @@ export async function buildTranslatedUpdatePayload(
   };
 
   await dispatchFieldJobs(translatableFields, runField, opts);
+
+  // Copy-from-source fields (spec §4.2/§4.3): write the source value verbatim
+  // into the target locale and OVERWRITE unconditionally — even a populated
+  // target locale, unlike the null-guarded locale-sync fallback. Block-bearing
+  // fields get their ids stripped so the CMA mints fresh instances. Runs in the
+  // main loop, BEFORE the fallback pass; recording a `copied` outcome makes
+  // `shouldApplyLocaleSyncFallback` treat the field as already handled so the
+  // fallback neither double-writes nor null-guards it. `recordWrittenLocale`
+  // feeds BOTH the bulk `items.update` and the form sink (`payloadToFormWrites`).
+  for (const field of copyFields) {
+    const meta = fieldTypeDictionary[field];
+    const fieldData = (record[field] as Record<string, unknown>) ?? {};
+    const copiedValue = resolveCopyFromSourceValue(meta, fieldData, fromLocale);
+
+    updatePayload[field] = { ...fieldData, [toLocale]: copiedValue };
+    recordWrittenLocale(field, toLocale);
+    outcomes.set(field, { status: 'copied' });
+
+    // Info-tier, by-design notice — a copied field must be reported, never
+    // silently dropped (§7). It does not bump `translatedFieldCount` (it was not
+    // translated) nor `errorCount` (info severity), but is retained in `qcFlags`
+    // and surfaced as a "Note" line in `warnings`.
+    recordQcFlag(
+      {
+        checkId: 'copied-from-source',
+        severity: 'info',
+        message: `Field "${field}" kept from source (set to copy from source).`,
+      },
+      field,
+    );
+  }
 
   // DatoCMS Locale Sync Rule: when a locale is ADDED to a record, EVERY
   // localized field must carry it, or the whole items.update is rejected with

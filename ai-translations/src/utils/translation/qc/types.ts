@@ -7,8 +7,13 @@
  * surfaces them. See docs/superpowers/specs/2026-06-23-translation-qc-design.md.
  */
 
-/** Whether a defect corrupts the stored value (`error`) or is a suspicion (`warning`). */
-export type QcSeverity = 'error' | 'warning';
+/**
+ * Whether a defect corrupts the stored value (`error`), is a suspicion
+ * (`warning`), or is a purely informational, by-design notice (`info`) — e.g. a
+ * field kept verbatim from source because it is on the copy-from-source list
+ * (spec §4.2/§4.3). `info` never escalates the record to a failure.
+ */
+export type QcSeverity = 'error' | 'warning' | 'info';
 
 /**
  * Identifier for each QC check. Phase 1 ships the deterministic three; the rest
@@ -25,7 +30,8 @@ export type QcCheckId =
   | 'length-ratio'
   | 'length-validator'
   | 'seo-truncated'
-  | 'json-validity';
+  | 'json-validity'
+  | 'copied-from-source';
 
 /** A single completeness finding for one field/locale (optionally one segment). */
 export type QcFlag = {

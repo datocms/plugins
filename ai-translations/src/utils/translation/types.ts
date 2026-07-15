@@ -14,9 +14,14 @@ export type VendorId = 'openai' | 'google' | 'anthropic' | 'deepl';
  * The distinction between `untranslatable` and `failed` is load-bearing: only
  * the former may receive a locale-sync fallback. Filling a `failed` field would
  * silently overwrite the target locale with `null` because a provider 429'd.
+ *
+ * `copied` marks a field written verbatim from source by the copy-from-source
+ * fate (spec §4.2/§4.3): like `translated` it already carries the target locale,
+ * so it too is excluded from the locale-sync fallback pass.
  */
 export type FieldOutcome =
   | { status: 'translated'; value: unknown }
+  | { status: 'copied' }
   | { status: 'untranslatable' }
   | { status: 'failed'; error: NormalizedProviderError };
 
