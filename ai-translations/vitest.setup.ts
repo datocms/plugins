@@ -44,6 +44,25 @@ vi.mock('datocms-react-ui', () => {
       formLabelProps?: unknown;
     }) => React.createElement('select', { ...rest }, children),
     Spinner: () => React.createElement('div', { 'data-testid': 'spinner' }),
+    Section: ({
+      title,
+      children,
+      collapsible,
+    }: {
+      title?: React.ReactNode;
+      children?: React.ReactNode;
+      collapsible?: { isOpen: boolean; onToggle: () => void };
+    }) =>
+      React.createElement(
+        'div',
+        { 'data-testid': 'section' },
+        React.createElement(
+          'div',
+          { onClick: collapsible ? collapsible.onToggle : undefined },
+          title,
+        ),
+        children,
+      ),
   };
 });
 
