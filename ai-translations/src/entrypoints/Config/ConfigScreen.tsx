@@ -76,6 +76,7 @@ export type ctxParamsType = {
   modelsToBeExcludedFromThisPlugin: string[]; // List of model API keys to exclude from translation
   rolesToBeExcludedFromThisPlugin: string[]; // List of role IDs to exclude from translation
   apiKeysToBeExcludedFromThisPlugin: string[]; // List of API keys to exclude from translation
+  fieldsToCopyFromSource?: string[]; // List of field identifiers to copy verbatim from the source locale instead of translating (spec §4.2); picker UI ships in phase 4
   enableDebugging: boolean; // Whether to enable detailed console logging for debugging
 };
 
@@ -112,6 +113,14 @@ export function isValidCtxParams(obj: unknown): obj is ctxParamsType {
   if (!Array.isArray(p.modelsToBeExcludedFromThisPlugin)) return false;
   if (!Array.isArray(p.rolesToBeExcludedFromThisPlugin)) return false;
   if (!Array.isArray(p.apiKeysToBeExcludedFromThisPlugin)) return false;
+
+  // Optional array field: valid if absent, but must be a string[] if present
+  if (
+    p.fieldsToCopyFromSource !== undefined &&
+    !Array.isArray(p.fieldsToCopyFromSource)
+  ) {
+    return false;
+  }
 
   // Vendor must be valid if present
   if (

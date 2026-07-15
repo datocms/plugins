@@ -185,6 +185,52 @@ export function hasMinItemsValidator(
 }
 
 /**
+ * Checks whether a field's validators enforce a minimum text length via the
+ * `length` validator (`min` or `eq` >= 1).
+ *
+ * Mirrors {@link hasMinItemsValidator} but over the `length` validator used by
+ * string/text fields, whose "must not be empty" constraint is sometimes
+ * expressed this way instead of via `required`.
+ *
+ * @param validators - The validators object from a field's schema metadata.
+ * @returns True when at least one character is mandatory.
+ */
+export function hasMinLength(
+  validators: FieldValidators | undefined,
+): boolean {
+  if (!validators || typeof validators !== 'object') return false;
+  const length = (validators as Record<string, unknown>).length;
+  if (!length || typeof length !== 'object') return false;
+  const { min, eq } = length as { min?: unknown; eq?: unknown };
+  return (
+    (typeof min === 'number' && min >= 1) || (typeof eq === 'number' && eq >= 1)
+  );
+}
+
+/**
+ * Single predicate every field-fate ban/lock decision keys on (spec §4.1).
+ *
+ * A field "cannot be blank" — and therefore must never be excluded/skipped
+ * outright, only copied from source — when it is `required`, or when its
+ * validators enforce a minimum item count (`size`) or minimum length
+ * (`length`) of at least 1. Callers must never substitute `isFieldRequired`
+ * alone for this check: fields like multi-links, galleries, or length-bound
+ * strings can be non-blankable without ever setting `required`.
+ *
+ * @param validators - The validators object from a field's schema metadata.
+ * @returns True when the field cannot be left blank by any of the above.
+ */
+export function cannotBeBlank(
+  validators: FieldValidators | undefined,
+): boolean {
+  return (
+    isFieldRequired(validators) ||
+    hasMinItemsValidator(validators) ||
+    hasMinLength(validators)
+  );
+}
+
+/**
  * Detects a link / links (record reference) field via its item-type
  * validators (`item_item_type` for single links, `items_item_type` for
  * multiple links). Both are mandatory validators on those field types, so this
