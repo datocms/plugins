@@ -125,17 +125,27 @@ describe('resolveFieldFate', () => {
       resolveFieldFate({
         ...baseArgs,
         copyTokens: ['field-1'],
-        runSkipIds: ['field-1'],
+        runCopyIds: ['field-1'],
       }),
     ).toBe('copy');
   });
 
-  it('a run skip bucket does not affect an admin-copy field even via runSkipIds (locked)', () => {
+  it('a run skip bucket never overrides an admin-copy field (locked)', () => {
     expect(
       resolveFieldFate({
         ...baseArgs,
         copyTokens: ['field-1'],
         runSkipIds: ['field-1'],
+      }),
+    ).toBe('copy');
+  });
+
+  it('auto-splits an excluded field with size.min:1 and no required to copy (multi-link/gallery path)', () => {
+    expect(
+      resolveFieldFate({
+        ...baseArgs,
+        validators: { size: { min: 1 } },
+        excludedTokens: ['field-1'],
       }),
     ).toBe('copy');
   });

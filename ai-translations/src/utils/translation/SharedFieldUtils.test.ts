@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   hasMinItemsValidator,
+  hasMinLength,
   isFieldExcluded,
   isFieldRequired,
   isReferenceField,
@@ -78,6 +79,26 @@ describe('SharedFieldUtils', () => {
       expect(hasMinItemsValidator({ required: {} })).toBe(false);
       expect(hasMinItemsValidator({})).toBe(false);
       expect(hasMinItemsValidator(undefined)).toBe(false);
+    });
+  });
+
+  describe('hasMinLength', () => {
+    it('returns true when length.eq requires an exact non-zero length', () => {
+      expect(hasMinLength({ length: { eq: 3 } })).toBe(true);
+    });
+
+    it('returns true when length.min requires at least one character', () => {
+      expect(hasMinLength({ length: { min: 1 } })).toBe(true);
+    });
+
+    it('returns false when length only caps the maximum or allows zero', () => {
+      expect(hasMinLength({ length: { max: 5 } })).toBe(false);
+      expect(hasMinLength({ length: { min: 0 } })).toBe(false);
+    });
+
+    it('returns false when there is no length validator', () => {
+      expect(hasMinLength({})).toBe(false);
+      expect(hasMinLength(undefined)).toBe(false);
     });
   });
 
