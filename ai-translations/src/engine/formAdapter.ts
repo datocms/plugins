@@ -107,6 +107,21 @@ const isBlockShaped = (
   (value as Record<string, unknown>).type === 'item' &&
   typeof (value as Record<string, unknown>).id === 'string';
 
+/**
+ * A structured_text field's DAST value: `{ schema: 'dast', document: <tree> }`.
+ * Keyed on `schema` (a string) + `document` being present — a localized
+ * wrapper's keys are locale codes with no such shape, so this never matches
+ * one. The `schema` string (always `'dast'`) is a format marker, not a bare
+ * block id, and must not be walked as one.
+ */
+const isDastValue = (
+  value: unknown,
+): value is { schema: string; document: unknown } =>
+  typeof value === 'object' &&
+  value !== null &&
+  typeof (value as Record<string, unknown>).schema === 'string' &&
+  'document' in (value as Record<string, unknown>);
+
 /** Throws the §2.1 bare-block-id error naming `path`. */
 const throwBareBlockId = (id: string, path: string): never => {
   throw new EngineInputError(
@@ -142,11 +157,13 @@ const walkNestedHeuristic = (value: unknown, path: string): void => {
 
 /**
  * Checks one value that occupies a block-bearing position — the value of a
- * `single_block`/`frameless_single_block` field (a lone block object) or of a
- * `rich_text`/`structured_text` field (an array of block objects). Handles the
+ * `single_block`/`frameless_single_block` field (a lone block object), of a
+ * `rich_text` field (an array of block objects), or of a `structured_text`
+ * field (a DAST value `{ schema: 'dast', document }`, walked via `document`
+ * rather than treated as an array or a localized wrapper). Handles the
  * localized wrapper (`{ [locale]: value }`) transparently by recursing into
  * each locale, since a localized wrapper is a plain object that is NOT
- * block-shaped.
+ * block-shaped and NOT a DAST value.
  */
 const checkBlockPosition = (value: unknown, path: string): void => {
   if (value === null || value === undefined) return;
@@ -176,6 +193,14 @@ const checkBlockPosition = (value: unknown, path: string): void => {
     // nested modular content that might itself hide a bare id.
     if (isBlockShaped(value)) {
       walkNestedHeuristic(value, path);
+      return;
+    }
+    // A structured_text (DAST) value: NOT a localized wrapper — its `schema`
+    // marker string must not be recursed into as if it were a locale value.
+    // Any nested blocks live inside `document`, swept by the same heuristic
+    // used for modular content nested inside a block.
+    if (isDastValue(value)) {
+      walkNestedHeuristic(value.document, `${path}.document`);
       return;
     }
     // Otherwise this is a localized wrapper `{ [locale]: <block position> }`.

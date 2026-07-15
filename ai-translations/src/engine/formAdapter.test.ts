@@ -219,6 +219,119 @@ describe('assertNoBareBlockIds', () => {
     );
   });
 
+  it('does not throw for a localized structured_text (DAST) field value', () => {
+    // A structured_text field's value is `{ schema: 'dast', document: <tree> }`
+    // — NOT a block object and NOT an array of blocks. The literal string
+    // 'dast' sitting at `.schema` must never be mistaken for a bare block id.
+    expect(() =>
+      assertNoBareBlockIds(
+        {
+          attributes: {
+            structured_body: {
+              en: {
+                schema: 'dast',
+                document: {
+                  schema: 'dast',
+                  children: [
+                    {
+                      type: 'paragraph',
+                      children: [{ type: 'span', value: 'hi' }],
+                    },
+                  ],
+                },
+              },
+            },
+          },
+          relationships: { item_type: { data: { id: 'item-type-1' } } },
+        },
+        ['structured_body'],
+      ),
+    ).not.toThrow();
+  });
+
+  it('still throws for a genuine bare-id single_block value alongside a structured_text field', () => {
+    // Regression: fixing the structured_text false positive must not blunt
+    // the schema-aware bare-id check for a real single_block hazard.
+    const item = {
+      attributes: {
+        hero: { en: 'zero-field-block-id' },
+      },
+      relationships: { item_type: { data: { id: 'item-type-1' } } },
+    };
+
+    expect(() =>
+      assertNoBareBlockIds(item, ['hero']),
+    ).toThrow(EngineInputError);
+  });
+
+  it('throws when a structured_text document holds a bare id beside a proper block sibling', () => {
+    // Coverage preserved: a genuinely bare block id nested inside a DAST
+    // document (e.g. a zero-field block collapsed inside a `children` array
+    // alongside a well-formed block sibling) must still be flagged.
+    const properBlock = {
+      type: 'item',
+      id: 'block-a',
+      attributes: { text: { en: 'A' } },
+      relationships: { item_type: { data: { id: 'block-model-1' } } },
+    };
+    const item = {
+      attributes: {
+        structured_body: {
+          en: {
+            schema: 'dast',
+            document: {
+              type: 'root',
+              children: [
+                {
+                  type: 'paragraph',
+                  children: [{ type: 'span', value: 'hi' }],
+                },
+                properBlock,
+                'bare-block-id',
+              ],
+            },
+          },
+        },
+      },
+      relationships: { item_type: { data: { id: 'item-type-1' } } },
+    };
+
+    expect(() =>
+      assertNoBareBlockIds(item, ['structured_body']),
+    ).toThrow(EngineInputError);
+    expect(() =>
+      assertNoBareBlockIds(item, ['structured_body']),
+    ).toThrow(/attributes\.structured_body\.en\.document/);
+  });
+
+  it('never flags the DAST schema scalar itself, even when nested blocks are present', () => {
+    const properBlock = {
+      type: 'item',
+      id: 'block-a',
+      attributes: { text: { en: 'A' } },
+      relationships: { item_type: { data: { id: 'block-model-1' } } },
+    };
+    expect(() =>
+      assertNoBareBlockIds(
+        {
+          attributes: {
+            structured_body: {
+              en: {
+                schema: 'dast',
+                document: {
+                  type: 'root',
+                  children: [properBlock],
+                },
+              },
+            },
+          },
+          relationships: { item_type: { data: { id: 'item-type-1' } } },
+        },
+        ['structured_body'],
+      ),
+    ).not.toThrow();
+  });
+
   it('throws EngineInputError naming the indexed path when a modular-content array holds a bare id', () => {
     const properBlock = {
       type: 'item',
