@@ -1,0 +1,171 @@
+/* fieldFateTree.module.css
+   ------------------------
+   Styles for the projectwide field-fate tree (spec §2, §3). Uses the dashboard
+   `--color--*` design tokens so it tracks light/dark themes automatically. */
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── The three-state segmented control ───────────────────────────────── */
+
+.fateControl {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--color--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--color--surface);
+}
+
+.segment {
+  padding: 4px 12px;
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
+  color: var(--color--ink-subtle);
+  cursor: pointer;
+  user-select: none;
+  border-left: 1px solid var(--color--border);
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.segment:first-of-type {
+  border-left: 0;
+}
+
+.segment:hover[data-disabled='false'] {
+  background: var(--color--surface-muted);
+}
+
+.segment[data-checked='true'] {
+  background: var(--color--primary-soft--surface);
+  color: var(--color--primary-soft--ink);
+  font-weight: 600;
+}
+
+.segment[data-disabled='true'] {
+  color: var(--color--ink-subtle);
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Keyboard focus lands on the hidden radio; surface it on the segment. */
+.segment:focus-within {
+  outline: 2px solid var(--color--focus--outline);
+  outline-offset: -2px;
+}
+
+.mixedHint {
+  padding: 0 10px;
+  font-size: var(--font-size-xxs);
+  font-style: italic;
+  color: var(--color--ink-subtle);
+}
+
+/* ── Tree layout ─────────────────────────────────────────────────────── */
+
+.modelSummary {
+  font-size: var(--font-size-xxs);
+  color: var(--color--ink-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 8px 0;
+}
+
+.setAll {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--font-size-xxs);
+  color: var(--color--ink-subtle);
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 0;
+  border-top: 1px solid var(--color--border);
+}
+
+.rowLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.rowName {
+  color: var(--color--ink);
+  font-size: var(--font-size-s);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.apiKeyBadge {
+  font-family: monospace;
+  font-size: var(--font-size-xxs);
+  color: var(--color--ink-subtle);
+  background: var(--color--surface-muted);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.requiredBadge {
+  font-size: var(--font-size-xxs);
+  color: var(--color--ink-subtle);
+}
+
+.scopeNote {
+  font-size: var(--font-size-xxs);
+  color: var(--color--ink-subtle);
+  font-style: italic;
+}
+
+.expandToggle {
+  background: none;
+  border: 0;
+  padding: 0 4px 0 0;
+  cursor: pointer;
+  color: var(--color--ink-subtle);
+  font-size: var(--font-size-s);
+}
+
+.children {
+  margin-left: 18px;
+  border-left: 1px solid var(--color--border);
+  padding-left: 10px;
+}
+
+.footerLine {
+  font-size: var(--font-size-xxs);
+  color: var(--color--ink-subtle);
+  padding: 6px 0 2px;
+  font-style: italic;
+}
+
+.setAllNote {
+  font-size: var(--font-size-xxs);
+  color: var(--color--warning-soft--ink);
+}
