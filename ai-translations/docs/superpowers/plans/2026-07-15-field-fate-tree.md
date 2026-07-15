@@ -1,5 +1,13 @@
 # Field-Fate Tree Implementation Plan
 
+> **STATUS (2026-07-15): IMPLEMENTED.** All 9 tasks landed (commits `0faad60`…`14c2024`).
+> 934 unit/component tests pass, Biome lint clean, `npm run build` clean. Verified at
+> the unit level; **live dashboard verification still recommended** (render the config
+> screen against a real project via the e2e:manual harness) since the ConfigScreen
+> wiring is covered by typecheck + the component/pure suites but not an end-to-end render.
+> Deferred polish (non-blocking): collapse empty/no-translatable models into a single
+> line (spec §5); a label on the per-model filter input; the per-run modal is Phase 5.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace the flat "Fields to be excluded" multi-select (and the never-built copy-from-source picker) on the config screen with a model→field→block **fate tree**: every translatable field carries exactly one of Translate / Copy / Skip, over the two existing plugin-param arrays.
