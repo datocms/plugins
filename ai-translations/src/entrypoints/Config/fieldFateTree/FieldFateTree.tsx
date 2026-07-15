@@ -116,25 +116,45 @@ export default function FieldFateTree({
 }: FieldFateTreeProps) {
   const [openModelId, setOpenModelId] = useState<string | null>(null);
   const [nonDefaultOnly, setNonDefaultOnly] = useState(false);
+  const [modelFilter, setModelFilter] = useState('');
 
-  const visibleModels = nonDefaultOnly
-    ? models.filter((model) =>
-        model.fields
-          .flatMap(flattenLeaves)
-          .some((leaf) => fateOf(leaf, lists) !== 'translate'),
-      )
-    : models;
+  const needle = modelFilter.trim().toLowerCase();
+  const visibleModels = models.filter((model) => {
+    const matchesFilter =
+      !needle ||
+      model.name.toLowerCase().includes(needle) ||
+      model.id.toLowerCase().includes(needle);
+    const hasRule =
+      !nonDefaultOnly ||
+      model.fields
+        .flatMap(flattenLeaves)
+        .some((leaf) => fateOf(leaf, lists) !== 'translate');
+    return matchesFilter && hasRule;
+  });
 
   return (
     <div className={s.tree}>
-      <label className={s.setAll}>
+      <div className={s.toolbar}>
         <input
-          type="checkbox"
-          checked={nonDefaultOnly}
-          onChange={(event) => setNonDefaultOnly(event.target.checked)}
+          type="search"
+          className={s.modelFilter}
+          value={modelFilter}
+          placeholder="Search models by name or ID…"
+          aria-label="Search models by name or ID"
+          onChange={(event) => setModelFilter(event.target.value)}
         />
-        Show only models with a rule
-      </label>
+        <label className={s.setAll}>
+          <input
+            type="checkbox"
+            checked={nonDefaultOnly}
+            onChange={(event) => setNonDefaultOnly(event.target.checked)}
+          />
+          Show only models with a rule
+        </label>
+      </div>
+      {visibleModels.length === 0 && (
+        <div className={s.footerLine}>No models match “{modelFilter}”.</div>
+      )}
       {visibleModels.map((model) => {
         const summary = summarize(
           model.fields.flatMap(flattenLeaves).map((leaf) => fateOf(leaf, lists)),

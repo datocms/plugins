@@ -99,6 +99,23 @@
   color: var(--color--ink-subtle);
 }
 
+.modelFilter {
+  flex: 1 1 auto;
+  max-width: 320px;
+  padding: 5px 10px;
+  font-size: var(--font-size-s);
+  color: var(--color--ink);
+  background: var(--color--surface);
+  border: 1px solid var(--color--border);
+  border-radius: 6px;
+}
+
+.modelFilter:focus {
+  outline: 2px solid var(--color--focus--outline);
+  outline-offset: -1px;
+  border-color: var(--color--focus--border);
+}
+
 .row {
   display: flex;
   align-items: center;

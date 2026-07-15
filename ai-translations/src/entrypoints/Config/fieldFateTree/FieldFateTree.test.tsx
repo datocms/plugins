@@ -13,6 +13,15 @@ const model: FateModelNode = {
   nonTranslatable: [{ label: 'Author' }],
 };
 
+const model2: FateModelNode = {
+  id: 'landing1',
+  name: 'Landing Page',
+  fields: [
+    { id: 'g1', apiKey: 'hero', label: 'Hero', required: false, fieldType: 'single_line' },
+  ],
+  nonTranslatable: [],
+};
+
 const emptyLists = { excludedTokens: [], copyTokens: [] };
 
 const renderTree = (onChange = vi.fn()) => {
@@ -47,5 +56,37 @@ describe('FieldFateTree', () => {
     expect(onChange).toHaveBeenCalledTimes(1);
     const [nextLists] = onChange.mock.calls[0];
     expect([...nextLists.copyTokens].sort()).toEqual(['f1', 'f2']);
+  });
+
+  it('filters models by name', () => {
+    render(
+      <FieldFateTree
+        models={[model, model2]}
+        lists={emptyLists}
+        onChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('Article')).toBeTruthy();
+    expect(screen.getByText('Landing Page')).toBeTruthy();
+    fireEvent.change(screen.getByPlaceholderText(/search models/i), {
+      target: { value: 'landing' },
+    });
+    expect(screen.queryByText('Article')).toBeNull();
+    expect(screen.getByText('Landing Page')).toBeTruthy();
+  });
+
+  it('filters models by id', () => {
+    render(
+      <FieldFateTree
+        models={[model, model2]}
+        lists={emptyLists}
+        onChange={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByPlaceholderText(/search models/i), {
+      target: { value: 'm1' },
+    });
+    expect(screen.getByText('Article')).toBeTruthy();
+    expect(screen.queryByText('Landing Page')).toBeNull();
   });
 });
