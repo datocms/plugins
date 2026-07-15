@@ -34,12 +34,12 @@ import { getPluginParams, setPluginParams } from './steps/plugin-config';
 
 const manifest = loadManifest();
 const ARTICLE = manifest.schema.models.article.id;
-const BLOCK_VARIANTS = manifest.schema.models.block_variants.id;
-// BV Probe and BV Control are both `block_variants` records sharing the same
+const BLOCK_VARIANTS = manifest.schema.models.block_variant.id;
+// BV Probe and BV Control are both `block_variant` records sharing the same
 // [en, it] source-locale set, so `findRecord` can't disambiguate them — use
 // the title-based finder added alongside this spec.
-const BV_PROBE = findRecordByTitle(manifest, 'block_variants', 'BV Probe');
-const BV_CONTROL = findRecordByTitle(manifest, 'block_variants', 'BV Control');
+const BV_PROBE = findRecordByTitle(manifest, 'block_variant', 'BV Probe');
+const BV_CONTROL = findRecordByTitle(manifest, 'block_variant', 'BV Control');
 const A1 = findRecord(manifest, 'article', ['en', 'it']); // kitchen sink
 
 const meta = (): ProjectMeta => test.info().project.metadata as ProjectMeta;
