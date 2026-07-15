@@ -43,6 +43,35 @@
           }
         ]
       },
+      "block_variant": {
+        "id": "X9Ie2O5vRZygrPo41U215Q",
+        "fields": [
+          {
+            "api_key": "framed_control",
+            "editor": "framed_single_block",
+            "field_type": "single_block",
+            "localized": true
+          },
+          {
+            "api_key": "pseudo_frameless",
+            "editor": "frameless_single_block",
+            "field_type": "single_block",
+            "localized": true
+          },
+          {
+            "api_key": "title",
+            "editor": "single_line",
+            "field_type": "string",
+            "localized": true
+          },
+          {
+            "api_key": "true_frameless",
+            "editor": "frameless_single_block",
+            "field_type": "single_block",
+            "localized": true
+          }
+        ]
+      },
       "article": {
         "id": "YTxPjssPRpadR7n7EI2YFg",
         "fields": [
@@ -141,6 +170,23 @@
             "editor": "integer",
             "field_type": "integer",
             "localized": false
+          }
+        ]
+      },
+      "draft_pool": {
+        "id": "Zo3hDR4KSQWk5cD4orVGhA",
+        "fields": [
+          {
+            "api_key": "summary",
+            "editor": "textarea",
+            "field_type": "text",
+            "localized": true
+          },
+          {
+            "api_key": "title",
+            "editor": "single_line",
+            "field_type": "string",
+            "localized": true
           }
         ]
       },
@@ -347,6 +393,69 @@
     }
   },
   "records": [
+    {
+      "id": "BY6xJoe0RoiA1X78HzxJsw",
+      "model": "draft_pool",
+      "title": "DP Valid",
+      "sourceLocales": [
+        "en",
+        "it"
+      ],
+      "emptyTargetLocales": [
+        "es",
+        "pt-BR",
+        "fr",
+        "de",
+        "ru",
+        "ar",
+        "ja",
+        "zh-Hans",
+        "hi",
+        "sw"
+      ]
+    },
+    {
+      "id": "GFW0914XSwuhQRSJ0nAC-A",
+      "model": "block_variant",
+      "title": "BV Control",
+      "sourceLocales": [
+        "en",
+        "it"
+      ],
+      "emptyTargetLocales": [
+        "es",
+        "pt-BR",
+        "fr",
+        "de",
+        "ru",
+        "ar",
+        "ja",
+        "zh-Hans",
+        "hi",
+        "sw"
+      ]
+    },
+    {
+      "id": "cIZsp3w_RXKj-46Yd-w8Fg",
+      "model": "block_variant",
+      "title": "BV Probe",
+      "sourceLocales": [
+        "en",
+        "it"
+      ],
+      "emptyTargetLocales": [
+        "es",
+        "pt-BR",
+        "fr",
+        "de",
+        "ru",
+        "ar",
+        "ja",
+        "zh-Hans",
+        "hi",
+        "sw"
+      ]
+    },
     {
       "id": "AtgIaCaZQESdUiwjagswBQ",
       "model": "catalog_entry",

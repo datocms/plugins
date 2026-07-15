@@ -18,7 +18,7 @@ import { client, section, step } from './lib/config.mjs';
 
 const itemTypes = await client.itemTypes.list();
 const byKey = Object.fromEntries(itemTypes.map((it) => [it.api_key, it]));
-const bv = byKey.block_variants;
+const bv = byKey.block_variant;
 const dp = byKey.draft_pool;
 const callout = byKey.callout;
 if (!bv || !dp || !callout) throw new Error('run 1-schema.mjs first (block_variants/draft_pool/callout missing)');

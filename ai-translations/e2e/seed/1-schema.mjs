@@ -154,7 +154,8 @@ async function main() {
   // own model because a `required` localized single_block forces EVERY locale of EVERY
   // record of its model to carry a block — putting one on `article` would make the
   // locale-sync fallback write null into a new locale and 422 the whole record.
-  const blockVariants = await getOrCreateItemType('block_variants', {
+  // api_key must be SINGULAR — DatoCMS 422s a plural model api_key (VALIDATION_PLURAL).
+  const blockVariants = await getOrCreateItemType('block_variant', {
     name: 'Block Variants',
   });
   await loadFields(article.id);
@@ -348,7 +349,7 @@ async function main() {
   );
 
   section('STAGE 1 complete');
-  console.log('Models:', { article: article.id, product: product.id, catalog_entry: catalog.id, block_variants: blockVariants.id, draft_pool: draftPool.id });
+  console.log('Models:', { article: article.id, product: product.id, catalog_entry: catalog.id, block_variant: blockVariants.id, draft_pool: draftPool.id });
   console.log('Blocks:', blockIds);
   if (fieldFailures.length) {
     section(`⚠ ${fieldFailures.length} FIELD FAILURE(S) — fix appearance/validators and re-run`);
