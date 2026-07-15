@@ -56,5 +56,13 @@ export const TIMEOUTS = {
 /** Numeric project id (account-API/site id) of the E2E project. */
 export const PROJECT_ID = (): string => requireEnv().E2E_PROJECT_ID;
 
+/**
+ * Where the restricted-role user's authenticated session is persisted
+ * (gitignored, mirrors {@link STORAGE_STATE} in global-setup.ts). Only written
+ * when `E2E_RESTRICTED_EMAIL`/`E2E_RESTRICTED_PASSWORD` are set — tests gated
+ * on this file must `test.skip` when those vars are absent.
+ */
+export const RESTRICTED_STORAGE_STATE = 'e2e/.auth/restricted.json';
+
 /** Dashboard subdomain, e.g. `ai-translation-e2e` → `<sub>.admin.datocms.com`. */
 export const PROJECT_SUBDOMAIN = (): string => requireEnv().E2E_PROJECT_SUBDOMAIN;

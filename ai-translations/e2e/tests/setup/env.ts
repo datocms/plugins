@@ -36,6 +36,10 @@ const OPTIONAL = [
   'GEMINI',
   'DEEPL',
   'CLAUDE',
+  // Restricted-role dashboard user (limited locale scope). When absent, the
+  // restricted-role locale-scope test is skipped rather than failing the run.
+  'E2E_RESTRICTED_EMAIL',
+  'E2E_RESTRICTED_PASSWORD',
 ] as const;
 
 type RequiredVar = (typeof REQUIRED)[number];

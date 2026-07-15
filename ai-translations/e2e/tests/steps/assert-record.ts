@@ -55,6 +55,27 @@ export const findRecord = (
   return matches[0];
 };
 
+/**
+ * Find the seeded record matching a model + exact title. Needed when
+ * {@link findRecord}'s (model, sourceLocales) key isn't unique — e.g. BV Probe
+ * and BV Control are both `block_variants` records with the same `[en, it]`
+ * source-locale set, so only the title disambiguates them. Throws if no unique
+ * match exists.
+ */
+export const findRecordByTitle = (
+  manifest: SeedManifest,
+  model: string,
+  title: string,
+): SeedRecord => {
+  const matches = manifest.records.filter((r) => r.model === model && r.title === title);
+  if (matches.length !== 1) {
+    throw new Error(
+      `Expected exactly one ${model} record titled "${title}", found ${matches.length}`,
+    );
+  }
+  return matches[0];
+};
+
 /** Localized fields come back as `{ locale: value }`; pull one locale's value. */
 const localeValue = (raw: unknown, locale: string): unknown =>
   raw && typeof raw === 'object' ? (raw as Record<string, unknown>)[locale] : undefined;

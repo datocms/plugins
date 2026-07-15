@@ -6,7 +6,7 @@ import { dropEnvsIfPresent, sweepStaleEnvs } from './cleanup';
 import { resetOutcomes } from './outcomes';
 import { forkAll } from './fork-environments';
 import { requireEnv } from './env';
-import { RUN_ID } from './constants';
+import { RESTRICTED_STORAGE_STATE, RUN_ID } from './constants';
 import { phase } from './log';
 
 /** Where the shared authenticated session is persisted (gitignored). */
@@ -19,7 +19,8 @@ export const STORAGE_STATE = 'e2e/.auth/state.json';
  *   3. reap stale `e2e-*` envs from earlier runs,
  *   4. fast-fork one sandbox env per active provider (those with a key set),
  *   5. pin each env's plugin to its provider (env-scoped params),
- *   6. log in once and persist the session for every project.
+ *   6. log in once and persist the session for every project,
+ *   7. (optional) log in as the restricted-role user, when configured.
  */
 const globalSetup = async (): Promise<void> => {
   const lanes = PROVIDERS.map((p) => p.vendor).join(', ') || '(none)';
@@ -48,6 +49,19 @@ const globalSetup = async (): Promise<void> => {
   mkdirSync('e2e/.auth', { recursive: true });
   phase('logging in to the project admin and saving the session…');
   await loginAndSaveState(STORAGE_STATE);
+
+  // Optional: a restricted-role dashboard user, used by the locale-scope test
+  // (§9.4-5). Absent credentials are not an error — that test just skips.
+  const env = requireEnv();
+  if (env.E2E_RESTRICTED_EMAIL && env.E2E_RESTRICTED_PASSWORD) {
+    phase('logging in as the restricted-role user and saving its session…');
+    await loginAndSaveState(RESTRICTED_STORAGE_STATE, {
+      email: env.E2E_RESTRICTED_EMAIL,
+      password: env.E2E_RESTRICTED_PASSWORD,
+    });
+  } else {
+    phase('no restricted-role credentials configured — skipping (locale-scope test will skip)');
+  }
 
   phase('setup complete — handing off to the suite');
 };
