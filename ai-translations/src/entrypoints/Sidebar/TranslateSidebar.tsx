@@ -43,6 +43,7 @@ import {
 import { assertNoBareBlockIds } from '../../engine/formAdapter';
 import { writeToForm } from '../../engine/formSink';
 import { buildDatoCMSClient } from '../../utils/clients';
+import { registerConverterRoundtrip } from '../../utils/devConverterRoundtrip';
 import { formatLocaleLabel } from '../../utils/localeUtils';
 import { createSchemaRepository } from '../../utils/schemaRepository';
 import type { DatoCMSRecordFromAPI } from '../../utils/translation/ItemsDropdownUtils';
@@ -355,6 +356,16 @@ export default function TranslateSidebar({ ctx }: PropTypes) {
     }
     return keys;
   }, [ctx.fields, ctx.itemType.id]);
+
+  // Debug-only converter round-trip probe (spec §9.4 test 6): exposes
+  // `window.__aiTranslationsRoundtrip()` on this iframe's window for E2E to
+  // drive. Re-registering on every `ctx` change is harmless — it just
+  // reassigns the window property to close over the latest `formValues`.
+  useEffect(() => {
+    if (pluginParams.enableDebugging) {
+      registerConverterRoundtrip(ctx);
+    }
+  }, [ctx, pluginParams.enableDebugging]);
 
   if (!isProviderConfigured(pluginParams)) {
     return (
