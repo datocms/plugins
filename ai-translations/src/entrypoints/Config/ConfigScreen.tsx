@@ -30,7 +30,13 @@ import { listRelevantOpenAIModels } from '../../utils/translation/OpenAIModels';
 import s from '../styles.module.css';
 import { translateFieldTypes } from './configConstants';
 import ExclusionRulesSection from './ExclusionRulesSection';
-import { buildFieldListEntries, mergeUniqueFields } from './fieldExclusionList';
+import FieldFateTree from './fieldFateTree/FieldFateTree';
+import { buildModelsFromSchema } from './fieldFateTree/buildTree';
+import type {
+  LoadedField,
+  LoadedItemType,
+} from './fieldFateTree/buildTree';
+import type { FateLists } from './fieldFateTree/types';
 import { useExclusionRules } from './hooks/useExclusionRules';
 import { useFeatureToggles } from './hooks/useFeatureToggles';
 // PERF-003: Custom hooks for grouped state management
@@ -258,19 +264,19 @@ async function loadClaudeModels(
 function loadFieldsForItemType(
   itemTypeID: string,
   ctx: RenderConfigScreenCtx,
-  setListOfFields: React.Dispatch<
-    React.SetStateAction<{ id: string; name: string; model: string }[]>
+  setRawFieldsByItemType: React.Dispatch<
+    React.SetStateAction<Map<string, LoadedField[]>>
   >,
 ): void {
   ctx
     .loadItemTypeFields(itemTypeID)
     .then((fields) => {
-      setListOfFields((prevFields) => {
-        const newFields = buildFieldListEntries(
-          fields,
-          ctx.itemTypes[itemTypeID],
-        );
-        return mergeUniqueFields(prevFields, newFields);
+      // Cache the raw fields (field_type + validators + api_key) that back the
+      // projectwide fate tree, keyed by item type.
+      setRawFieldsByItemType((prev) => {
+        const next = new Map(prev);
+        next.set(itemTypeID, fields as unknown as LoadedField[]);
+        return next;
       });
     })
     .catch((error) => {
@@ -365,6 +371,7 @@ function isDefaultConfiguration(
   modelsToBeExcluded: string[],
   rolesToBeExcluded: string[],
   apiKeysToBeExcluded: string[],
+  fieldsToCopyFromSource: string[],
 ): boolean {
   return (
     [...translationFields].sort().join(',') ===
@@ -374,7 +381,8 @@ function isDefaultConfiguration(
     prompt === defaultPrompt &&
     modelsToBeExcluded.length === 0 &&
     rolesToBeExcluded.length === 0 &&
-    apiKeysToBeExcluded.length === 0
+    apiKeysToBeExcluded.length === 0 &&
+    fieldsToCopyFromSource.length === 0
   );
 }
 
@@ -441,6 +449,7 @@ type CheckFormDirtyArgs = {
   modelsToBeExcluded: string[];
   rolesToBeExcluded: string[];
   apiKeysToBeExcluded: string[];
+  fieldsToCopyFromSource: string[];
   pluginParams: ctxParamsType;
   normalizeList: (list?: string[]) => string;
 };
@@ -480,6 +489,7 @@ function checkFormDirty(args: CheckFormDirtyArgs): boolean {
     modelsToBeExcluded,
     rolesToBeExcluded,
     apiKeysToBeExcluded,
+    fieldsToCopyFromSource,
     pluginParams,
     normalizeList,
   } = args;
@@ -527,7 +537,9 @@ function checkFormDirty(args: CheckFormDirtyArgs): boolean {
     [...rolesToBeExcluded].sort().join(',') !==
       normalizeList(pluginParams.rolesToBeExcludedFromThisPlugin) ||
     [...apiKeysToBeExcluded].sort().join(',') !==
-      normalizeList(pluginParams.apiKeysToBeExcludedFromThisPlugin);
+      normalizeList(pluginParams.apiKeysToBeExcludedFromThisPlugin) ||
+    [...fieldsToCopyFromSource].sort().join(',') !==
+      normalizeList(pluginParams.fieldsToCopyFromSource);
 
   return isVendorDirty || isDeepLDirty || isFeaturesDirty || isExclusionsDirty;
 }
@@ -692,13 +704,50 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     'Insert a valid Anthropic API Key',
   ]);
 
-  const [listOfFields, setListOfFields] = useState<
-    {
-      id: string;
-      name: string;
-      model: string;
-    }[]
-  >([]);
+  // Raw fields per item type (field_type + validators + api_key), backing the
+  // projectwide fate tree. Populated by the same load-once schema crawl.
+  const [rawFieldsByItemType, setRawFieldsByItemType] = useState<
+    Map<string, LoadedField[]>
+  >(new Map());
+
+  // Copy-from-source list (Copy fate). The exclude list lives in the exclusion
+  // hook as `apiKeysToBeExcluded`; together they are the tree's two token lists.
+  const [fieldsToCopyFromSource, setFieldsToCopyFromSource] = useState<string[]>(
+    pluginParams.fieldsToCopyFromSource ?? [],
+  );
+
+  // The fate tree's model→field→block structure, derived from the crawl.
+  const fateModels = useMemo(() => {
+    const itemTypes = Object.values(ctx.itemTypes)
+      .filter((it): it is NonNullable<typeof it> => Boolean(it))
+      .map((it) => ({
+        id: it.id,
+        attributes: {
+          name: it.attributes.name ?? it.id,
+          modular_block: it.attributes.modular_block,
+        },
+      }));
+    return buildModelsFromSchema(
+      itemTypes as LoadedItemType[],
+      rawFieldsByItemType,
+    );
+  }, [ctx.itemTypes, rawFieldsByItemType]);
+
+  const fateLists: FateLists = useMemo(
+    () => ({
+      excludedTokens: apiKeysToBeExcluded,
+      copyTokens: fieldsToCopyFromSource,
+    }),
+    [apiKeysToBeExcluded, fieldsToCopyFromSource],
+  );
+
+  const handleFateChange = useCallback(
+    (next: FateLists) => {
+      setApiKeysToBeExcluded(next.excludedTokens);
+      setFieldsToCopyFromSource(next.copyTokens);
+    },
+    [setApiKeysToBeExcluded],
+  );
 
   /**
    * When the user updates or removes the API key, we refetch the model list.
@@ -727,7 +776,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     if (fieldListLoaded.current || itemTypeIDs.length === 0) return;
     fieldListLoaded.current = true;
     for (const itemTypeID of itemTypeIDs) {
-      loadFieldsForItemType(itemTypeID, ctx, setListOfFields);
+      loadFieldsForItemType(itemTypeID, ctx, setRawFieldsByItemType);
     }
   }, [ctx]);
 
@@ -841,6 +890,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         modelsToBeExcluded,
         rolesToBeExcluded,
         apiKeysToBeExcluded,
+        fieldsToCopyFromSource,
         pluginParams,
         normalizeList,
       }),
@@ -868,6 +918,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       modelsToBeExcluded,
       rolesToBeExcluded,
       apiKeysToBeExcluded,
+      fieldsToCopyFromSource,
       enableDebugging,
       normalizeList,
       pluginParams,
@@ -919,6 +970,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       modelsToBeExcluded,
       rolesToBeExcluded,
       apiKeysToBeExcluded,
+      fieldsToCopyFromSource,
     );
 
   return (
@@ -1118,7 +1170,27 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           </div>
         </FieldGroup>
 
-        {/* Exclusion rules section */}
+        {/* Projectwide translation rules — per-field Translate / Copy / Skip. */}
+        <FieldGroup>
+          <div className={s.dropdownLabel} style={{ fontWeight: 'bold' }}>
+            Projectwide translation rules
+          </div>
+          <div
+            style={{ fontSize: 'var(--font-size-s)', marginBottom: '8px' }}
+          >
+            Set a default fate for every field: <strong>Translate</strong> (send
+            to the AI), <strong>Copy</strong> (keep the source value verbatim —
+            brand names, SKUs), or <strong>Skip</strong> (leave empty; optional
+            fields only). Fields with no rule are translated.
+          </div>
+          <FieldFateTree
+            models={fateModels}
+            lists={fateLists}
+            onChange={handleFateChange}
+          />
+        </FieldGroup>
+
+        {/* Exclusion rules section — where the plugin appears (models/roles). */}
         <ExclusionRulesSection
             showExclusionRules={showExclusionRules}
             setShowExclusionRules={setShowExclusionRules}
@@ -1127,11 +1199,8 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
             setModelsToBeExcluded={setModelsToBeExcluded}
             rolesToBeExcluded={rolesToBeExcluded}
             setRolesToBeExcluded={setRolesToBeExcluded}
-            apiKeysToBeExcluded={apiKeysToBeExcluded}
-            setApiKeysToBeExcluded={setApiKeysToBeExcluded}
             availableModels={availableModels}
             roles={roles}
-            listOfFields={listOfFields}
         />
       </Section>
       </div>
@@ -1161,6 +1230,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
                 setModelsToBeExcluded([]);
                 setRolesToBeExcluded([]);
                 setApiKeysToBeExcluded([]);
+                setFieldsToCopyFromSource([]);
                 ctx.notice(
                     '<h1>Plugin options restored to defaults</h1>\n<p>Save to apply changes</p>',
                 );
@@ -1200,6 +1270,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
                       modelsToBeExcludedFromThisPlugin: modelsToBeExcluded,
                       rolesToBeExcludedFromThisPlugin: rolesToBeExcluded,
                       apiKeysToBeExcludedFromThisPlugin: apiKeysToBeExcluded,
+                      fieldsToCopyFromSource,
                       enableDebugging,
                     },
                     setIsLoading,

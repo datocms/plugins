@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { blockTypeIdsOf, buildModelNode } from './buildTree';
+import {
+  blockTypeIdsOf,
+  buildModelNode,
+  buildModelsFromSchema,
+} from './buildTree';
 import type { LoadedField, LoadedItemType } from './buildTree';
 
 const field = (
@@ -163,5 +167,28 @@ describe('buildModelNode', () => {
     ]);
     const node = buildModelNode(itemType('m1', 'Article'), fields, new Map());
     expect(node.fields[0].required).toBe(true);
+  });
+});
+
+describe('buildModelsFromSchema', () => {
+  it('builds a node per top-level model and excludes block item types', () => {
+    const itemTypes = [
+      itemType('m1', 'Article'),
+      itemType('b1', 'Callout', true),
+    ];
+    const fields = new Map<string, LoadedField[]>([
+      [
+        'm1',
+        [
+          field('f1', 'body', 'rich_text', {
+            rich_text_blocks: { item_types: ['b1'] },
+          }),
+        ],
+      ],
+      ['b1', [field('bf1', 'heading', 'single_line')]],
+    ]);
+    const models = buildModelsFromSchema(itemTypes, fields);
+    expect(models.map((m) => m.name)).toEqual(['Article']);
+    expect(models[0].fields[0].children?.[0].apiKey).toBe('heading');
   });
 });

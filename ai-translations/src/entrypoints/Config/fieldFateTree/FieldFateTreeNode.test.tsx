@@ -78,6 +78,25 @@ describe('FieldFateTreeNode', () => {
     expect(note).toMatch(/required/i);
   });
 
+  it('resolves a legacy exclude token on a block sub-field to Skip (no data loss)', () => {
+    // Regression guard vs the old flat picker: a block sub-field id stored in
+    // the exclude list must still render as Skip once its block is expanded.
+    render(
+      <FieldFateTreeNode
+        node={block('body', [leaf('bf1', 'caption')])}
+        lists={{ excludedTokens: ['bf1'], copyTokens: [] }}
+        onChange={() => {}}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /expand/i }));
+    // Both the block rollup and the expanded sub-field read Skip.
+    const skipRadios = screen.getAllByRole('radio', {
+      name: /skip/i,
+    }) as HTMLInputElement[];
+    expect(skipRadios.length).toBe(2);
+    expect(skipRadios.every((radio) => radio.checked)).toBe(true);
+  });
+
   it('shows the global-scope note on a non-default block sub-field', () => {
     render(
       <FieldFateTreeNode

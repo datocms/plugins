@@ -73,12 +73,11 @@ export const setFate = (
  * Tallies a list of resolved fates. The result always sums to the input length
  * — there is no "unassigned" bucket.
  */
-export const summarize = (fates: FieldFate[]): FateSummary =>
-  fates.reduce<FateSummary>((acc, fate) => ({ ...acc, [fate]: acc[fate] + 1 }), {
-    translate: 0,
-    copy: 0,
-    skip: 0,
-  });
+export const summarize = (fates: FieldFate[]): FateSummary => {
+  const counts: FateSummary = { translate: 0, copy: 0, skip: 0 };
+  for (const fate of fates) counts[fate] += 1;
+  return counts;
+};
 
 /**
  * Rolls a block's descendant fates up to a single value for the parent row: the

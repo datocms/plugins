@@ -54,14 +54,43 @@ export const blockTypeIdsOf = (validators: Record<string, unknown>): string[] =>
 const MAX_DEPTH = 5;
 
 const isTranslatableType = (fieldType: string): boolean =>
-  Object.prototype.hasOwnProperty.call(translateFieldTypes, fieldType);
+  Object.hasOwn(translateFieldTypes, fieldType);
 
 /**
- * Builds a leaf-or-block node for one field. Block containers recurse into their
- * block types; `ancestry` is the chain of block-type ids currently being
- * expanded (per-path cycle guard — the same block under sibling fields still
- * expands, only a self-cycle stops). Returns `null` for a field that is neither
- * translatable nor a block container with translatable descendants.
+ * Recurses into a block-container field's block types and returns the built
+ * sub-field nodes. `ancestry` is the chain of block-type ids currently being
+ * expanded — a per-path cycle guard, so the same block under sibling fields
+ * still expands while a self-cycle stops.
+ */
+const buildBlockChildren = (
+  blockTypeIds: string[],
+  fieldsByItemType: Map<string, LoadedField[]>,
+  itemTypesById: Map<string, LoadedItemType>,
+  ancestry: ReadonlySet<string>,
+  depth: number,
+): FateFieldNode[] => {
+  const children: FateFieldNode[] = [];
+  for (const blockTypeId of blockTypeIds) {
+    if (ancestry.has(blockTypeId)) continue; // cycle — stop this path
+    const nextAncestry = new Set(ancestry).add(blockTypeId);
+    for (const blockField of fieldsByItemType.get(blockTypeId) ?? []) {
+      const child = buildFieldNode(
+        blockField,
+        fieldsByItemType,
+        itemTypesById,
+        nextAncestry,
+        depth + 1,
+      );
+      if (child) children.push(child);
+    }
+  }
+  return children;
+};
+
+/**
+ * Builds a leaf-or-block node for one field. A block container with at least
+ * one translatable descendant becomes a parent node; one with none, or a plain
+ * non-translatable field, returns `null` (dropped to the model footer).
  */
 const buildFieldNode = (
   field: LoadedField,
@@ -80,31 +109,18 @@ const buildFieldNode = (
   };
 
   const blockTypeIds = blockTypeIdsOf(attributes.validators);
-  const canRecurse = depth < MAX_DEPTH;
-  if (blockTypeIds.length > 0 && canRecurse) {
-    const children: FateFieldNode[] = [];
-    for (const blockTypeId of blockTypeIds) {
-      if (ancestry.has(blockTypeId)) continue; // cycle — stop this path
-      const nextAncestry = new Set(ancestry).add(blockTypeId);
-      const blockFields = fieldsByItemType.get(blockTypeId) ?? [];
-      for (const blockField of blockFields) {
-        const child = buildFieldNode(
-          blockField,
-          fieldsByItemType,
-          itemTypesById,
-          nextAncestry,
-          depth + 1,
-        );
-        if (child) children.push(child);
-      }
-    }
-    if (children.length > 0) return { ...base, children };
-    // A block container with no translatable descendants is not worth a row.
-    return null;
+  if (blockTypeIds.length > 0 && depth < MAX_DEPTH) {
+    const children = buildBlockChildren(
+      blockTypeIds,
+      fieldsByItemType,
+      itemTypesById,
+      ancestry,
+      depth,
+    );
+    return children.length > 0 ? { ...base, children } : null;
   }
 
-  if (isTranslatableType(attributes.field_type)) return base;
-  return null;
+  return isTranslatableType(attributes.field_type) ? base : null;
 };
 
 /**
@@ -140,4 +156,22 @@ export const buildModelNode = (
     fields,
     nonTranslatable,
   };
+};
+
+/**
+ * Builds the fate tree for every top-level model (item types that are not
+ * modular blocks — blocks appear nested under the fields that embed them).
+ *
+ * @param itemTypes - All item types (models and blocks).
+ * @param fieldsByItemType - All loaded fields keyed by item-type id.
+ * @returns One model node per top-level model.
+ */
+export const buildModelsFromSchema = (
+  itemTypes: LoadedItemType[],
+  fieldsByItemType: Map<string, LoadedField[]>,
+): FateModelNode[] => {
+  const itemTypesById = new Map(itemTypes.map((it) => [it.id, it]));
+  return itemTypes
+    .filter((it) => it.attributes.modular_block !== true)
+    .map((it) => buildModelNode(it, fieldsByItemType, itemTypesById));
 };

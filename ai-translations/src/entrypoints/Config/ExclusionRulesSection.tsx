@@ -17,12 +17,6 @@ export interface Role {
   name: string;
 }
 
-export interface Field {
-  id: string;
-  name: string;
-  model: string;
-}
-
 export interface ExclusionRulesSectionProps {
   showExclusionRules: boolean;
   setShowExclusionRules: (value: boolean) => void;
@@ -31,11 +25,8 @@ export interface ExclusionRulesSectionProps {
   setModelsToBeExcluded: (value: string[]) => void;
   rolesToBeExcluded: string[];
   setRolesToBeExcluded: (value: string[]) => void;
-  apiKeysToBeExcluded: string[];
-  setApiKeysToBeExcluded: (value: string[]) => void;
   availableModels: AvailableModel[];
   roles: Role[];
-  listOfFields: Field[];
 }
 
 export default function ExclusionRulesSection({
@@ -46,11 +37,8 @@ export default function ExclusionRulesSection({
   setModelsToBeExcluded,
   rolesToBeExcluded,
   setRolesToBeExcluded,
-  apiKeysToBeExcluded,
-  setApiKeysToBeExcluded,
   availableModels,
   roles,
-  listOfFields,
 }: ExclusionRulesSectionProps) {
   return (
     <>
@@ -123,30 +111,6 @@ export default function ExclusionRulesSection({
               onChange={(newValue) => {
                 const selectedRoles = newValue.map((v) => v.value);
                 setRolesToBeExcluded(selectedRoles);
-              }}
-            />
-            <SelectField
-              name="apiKeysToBeExcludedFromTranslation"
-              id="apiKeysToBeExcludedFromTranslation"
-              label="Fields to be excluded from translation"
-              value={apiKeysToBeExcluded.map((apiKey) => ({
-                label: `${
-                  listOfFields.find((field) => field.id === apiKey)?.name
-                } (${
-                  listOfFields.find((field) => field.id === apiKey)?.model
-                })`,
-                value: apiKey,
-              }))}
-              selectInputProps={{
-                isMulti: true,
-                options: listOfFields.map((field) => ({
-                  label: `${field.name} (${field.model})`,
-                  value: field.id,
-                })),
-              }}
-              onChange={(newValue) => {
-                const selectedApiKeys = newValue.map((v) => v.value);
-                setApiKeysToBeExcluded(selectedApiKeys);
               }}
             />
           </FieldGroup>
