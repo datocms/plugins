@@ -74,3 +74,42 @@ export const summarize = (fates: FieldFate[]): FateSummary =>
     copy: 0,
     skip: 0,
   });
+
+/**
+ * Rolls a block's descendant fates up to a single value for the parent row: the
+ * shared fate when all agree, `'mixed'` when they diverge, `'translate'` when
+ * empty (spec §3.2). The parent fate is never stored — always derived.
+ */
+export const rollup = (fates: FieldFate[]): FieldFate | 'mixed' => {
+  if (fates.length === 0) return 'translate';
+  const [first] = fates;
+  return fates.every((fate) => fate === first) ? first : 'mixed';
+};
+
+/**
+ * Stamps every leaf to `fate`, respecting the required carve-out: a required
+ * leaf that would become `skip` is left at `translate` instead and counted in
+ * `keptRequired` so the caller can report it (spec §3.2, §5). Immutable.
+ *
+ * @param leaves - The descendant leaf fields to stamp.
+ * @param fate - The fate to cascade.
+ * @param lists - The current token arrays.
+ * @returns The new lists and how many required leaves were kept out of skip.
+ */
+export const cascadeFate = (
+  leaves: FateNodeRef[],
+  fate: FieldFate,
+  lists: FateLists,
+): { lists: FateLists; keptRequired: number } => {
+  let next = lists;
+  let keptRequired = 0;
+  for (const leaf of leaves) {
+    if (fate === 'skip' && leaf.required) {
+      next = setFate(leaf.id, leaf.apiKey, 'translate', next);
+      keptRequired += 1;
+    } else {
+      next = setFate(leaf.id, leaf.apiKey, fate, next);
+    }
+  }
+  return { lists: next, keptRequired };
+};

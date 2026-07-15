@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fateOf, setFate, summarize } from './fate';
+import { cascadeFate, fateOf, rollup, setFate, summarize } from './fate';
 import type { FateLists } from './types';
 
 const lists = (excludedTokens: string[] = [], copyTokens: string[] = []): FateLists => ({
@@ -78,5 +78,30 @@ describe('summarize', () => {
       copy: 1,
       skip: 1,
     });
+  });
+});
+
+describe('rollup', () => {
+  it('returns the shared fate when all agree', () => {
+    expect(rollup(['copy', 'copy'])).toBe('copy');
+  });
+  it('returns translate for an empty set', () => {
+    expect(rollup([])).toBe('translate');
+  });
+  it('returns mixed when fates differ', () => {
+    expect(rollup(['translate', 'copy'])).toBe('mixed');
+  });
+});
+
+describe('cascadeFate', () => {
+  const leaf = (id: string, required = false) => ({ id, apiKey: id, required });
+  it('stamps every leaf to the chosen fate', () => {
+    const { lists: next } = cascadeFate([leaf('a'), leaf('b')], 'copy', lists());
+    expect([...next.copyTokens].sort()).toEqual(['a', 'b']);
+  });
+  it('keeps required leaves out of skip and counts them', () => {
+    const res = cascadeFate([leaf('a'), leaf('b', true)], 'skip', lists());
+    expect(res.lists.excludedTokens).toEqual(['a']);
+    expect(res.keptRequired).toBe(1);
   });
 });
