@@ -17,13 +17,26 @@ const applyWrite = (
   formValues[apiKey] = { ...existing, [locale]: value };
 };
 
+/**
+ * Drains the microtask queue so any pending `.then`/`await` continuations run
+ * before we assert. `setTimeout(0)` yields a macrotask tick, which flushes all
+ * currently-queued microtasks.
+ */
+const flushMicrotasks = (): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, 0));
+
 describe('writeToForm', () => {
   let rafSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
+    // Default mock: resolve the frame ASYNCHRONOUSLY (on a microtask) rather
+    // than invoking the callback inline. This keeps `await nextFrame()` a real
+    // suspension point so the simple tests exercise the same control flow the
+    // ordering test scrutinizes, while still always resolving so they can just
+    // `await writeToForm(...)`. The ordering test installs its own manual queue.
     rafSpy = vi.spyOn(globalThis, 'requestAnimationFrame').mockImplementation(
       (cb: FrameRequestCallback) => {
-        cb(0);
+        queueMicrotask(() => cb(0));
         return 0;
       },
     );
@@ -33,7 +46,22 @@ describe('writeToForm', () => {
     rafSpy.mockRestore();
   });
 
-  it('awaits requestAnimationFrame once per write (§2.3-6)', async () => {
+  it('gates each write behind an awaited requestAnimationFrame (§2.3-6)', async () => {
+    // A NON-synchronous, manually-drained rAF mock — this is what proves the
+    // await. A synchronous (immediate-invoke) mock cannot distinguish
+    // `await nextFrame()` from a dropped await, because ctx.setFieldValue is
+    // itself async and its own await already yields a microtask each iteration.
+    // Here the sink can only advance when we release a frame.
+    const pendingFrames: FrameRequestCallback[] = [];
+    rafSpy.mockImplementation((cb: FrameRequestCallback) => {
+      pendingFrames.push(cb);
+      return pendingFrames.length;
+    });
+    const flushFrame = (): void => {
+      const cb = pendingFrames.shift();
+      if (cb) cb(0);
+    };
+
     const formValues: Record<string, unknown> = {};
     const setFieldValue = vi.fn(async (path: string, value: unknown) => {
       applyWrite(formValues, path, value);
@@ -44,15 +72,35 @@ describe('writeToForm', () => {
       { fieldPath: 'title.fr', locale: 'fr', value: 'Bonjour' },
     ];
 
-    const result = await writeToForm({
+    // Kick off the sink but DON'T await it yet — the loop should immediately
+    // block on the first, un-flushed rAF.
+    const done = writeToForm({
       writes,
       ctx: { setFieldValue, formValues },
       isCancelled: () => false,
     });
 
-    expect(rafSpy).toHaveBeenCalledTimes(writes.length);
-    expect(setFieldValue).toHaveBeenCalledTimes(writes.length);
+    // Let every already-queued microtask settle. If `await nextFrame()` were
+    // dropped, the first setFieldValue would already have fired by now.
+    await flushMicrotasks();
+    expect(rafSpy).toHaveBeenCalledTimes(1);
+    expect(setFieldValue).not.toHaveBeenCalled();
+
+    // Release one frame → exactly one write lands, then the loop blocks on the
+    // next frame. Repeat per write, proving the 1:1 gate.
+    for (let i = 0; i < writes.length; i += 1) {
+      flushFrame();
+      // biome-ignore lint/performance/noAwaitInLoops: sequential by design — release one frame, settle, then assert before releasing the next.
+      await flushMicrotasks();
+      expect(setFieldValue).toHaveBeenCalledTimes(i + 1);
+      // After the last write the loop exits; before that it's parked on the
+      // NEXT frame it already requested.
+      expect(rafSpy).toHaveBeenCalledTimes(Math.min(i + 2, writes.length));
+    }
+
+    const result = await done;
     expect(result).toEqual({ written: 3, discarded: 0, verifiedMissing: [] });
+    expect(pendingFrames).toHaveLength(0);
   });
 
   it('discards every remaining write the instant isCancelled() flips true (§2.3-2)', async () => {
@@ -66,26 +114,21 @@ describe('writeToForm', () => {
       { fieldPath: 'title.fr', locale: 'fr', value: 'Bonjour' },
       { fieldPath: 'title.es', locale: 'es', value: 'Hola' },
     ];
-    // Cancel flips true right after the 2nd write has landed.
-    let calls = 0;
-    const isCancelled = () => {
-      return calls >= 2;
-    };
-    const wrappedSetFieldValue = vi.fn(async (path: string, value: unknown) => {
-      calls += 1;
-      applyWrite(formValues, path, value);
-    });
+    // Cancel flips true once the 2nd write has landed; the 3rd and 4th must be
+    // discarded, never written.
+    const isCancelled = () => setFieldValue.mock.calls.length >= 2;
 
     const result = await writeToForm({
       writes,
-      ctx: { setFieldValue: wrappedSetFieldValue, formValues },
+      ctx: { setFieldValue, formValues },
       isCancelled,
     });
 
-    expect(wrappedSetFieldValue).toHaveBeenCalledTimes(2);
+    expect(setFieldValue).toHaveBeenCalledTimes(2);
+    expect(setFieldValue).not.toHaveBeenCalledWith('title.fr', 'Bonjour');
+    expect(setFieldValue).not.toHaveBeenCalledWith('title.es', 'Hola');
     expect(result.written).toBe(2);
     expect(result.discarded).toBe(2);
-    expect(setFieldValue).not.toHaveBeenCalled(); // unused mock, sanity no-op
   });
 
   it('never calls setFieldValue once already cancelled before the first write', async () => {
