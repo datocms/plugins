@@ -46,6 +46,7 @@ import type { ExecuteFieldDropdownActionCtx } from 'datocms-plugin-sdk';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import { modularContentVariations } from '../../entrypoints/Config/configConstants';
 import { fieldPrompt } from '../../prompts/FieldPrompts';
+import { resolveFieldFate } from '../../engine/fieldFate';
 import { createLogger, type Logger } from '../logging/Logger';
 import {
   type BlockFieldMeta,
@@ -218,24 +219,64 @@ function deepCloneValue<T>(value: T): T {
 }
 
 /**
- * Removes only wrapper-level identifiers from a block payload.
- *
- * @param block - The block payload to sanitize.
- * @returns A cloned block with wrapper identifiers removed.
+ * Marker keys that identify an object as a DatoCMS block wrapper (as opposed to
+ * a DAST inline node like a `link` whose `id` names a meta attribute, which must
+ * be preserved). Any one marker is sufficient.
  */
-function stripBlockWrapperIdentifiers(block: DatoCMSBlock): DatoCMSBlock {
-  const clonedBlock = deepCloneValue(block);
-  const wrapper = clonedBlock as Record<string, unknown>;
+const BLOCK_MARKER_KEYS = [
+  'blockModelId',
+  'itemTypeId',
+  'attributes',
+  'relationships',
+  'item',
+] as const;
 
-  delete wrapper.id;
-  delete wrapper.itemId;
+/**
+ * Detects whether a plain object is a DatoCMS block wrapper across the several
+ * payload shapes the plugin handles (nested CMA `{ type: 'item', … }`, the
+ * flattened `{ blockModelId, … }` form, and `item`-nested variants).
+ */
+function isBlockNode(obj: Record<string, unknown>): boolean {
+  return obj.type === 'item' || BLOCK_MARKER_KEYS.some((key) => key in obj);
+}
 
-  if (wrapper.item && typeof wrapper.item === 'object') {
-    delete (wrapper.item as Record<string, unknown>).id;
-    delete (wrapper.item as Record<string, unknown>).itemId;
+/**
+ * Recursively strips block-wrapper identifiers (`id`/`itemId`) at every nesting
+ * level so a value can be rebuilt as fresh block instances (spec §4.3). The walk
+ * is block-aware: identifiers are removed only from block wrappers, so DAST inline
+ * ids (e.g. a `link` node's `id` meta key) and relationship ids (`item_type`)
+ * survive untouched.
+ *
+ * @param value - The value to sanitize (cloned; the input is not mutated).
+ * @returns A deep clone with block identifiers removed at every depth.
+ */
+function deepStripBlockIdentifiers<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((entry) => deepStripBlockIdentifiers(entry)) as T;
   }
 
-  return clonedBlock;
+  if (value && typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    const stripHere = isBlockNode(obj);
+    return Object.fromEntries(
+      Object.entries(obj)
+        .filter(([key]) => !(stripHere && (key === 'id' || key === 'itemId')))
+        .map(([key, entry]) => [key, deepStripBlockIdentifiers(entry)]),
+    ) as T;
+  }
+
+  return value;
+}
+
+/**
+ * Removes block-wrapper identifiers from a block payload, recursively at every
+ * nesting level (spec §4.3 — rebuilt blocks are always fresh instances).
+ *
+ * @param block - The block payload to sanitize.
+ * @returns A cloned block with block identifiers stripped at every depth.
+ */
+function stripBlockWrapperIdentifiers(block: DatoCMSBlock): DatoCMSBlock {
+  return deepStripBlockIdentifiers(block);
 }
 
 /**
@@ -768,7 +809,7 @@ async function translateFramelessSingleBlockValue(
   const cleanedValue = deepCloneValue(fieldValue) as Record<string, unknown>;
   delete cleanedValue.id;
   delete cleanedValue.itemId;
-  await processBlockFields(cleanedValue, nestedFieldTypes, ctx);
+  await processBlockFields(cleanedValue, nestedFieldTypes, blockModelId, ctx);
   return cleanedValue;
 }
 
@@ -841,21 +882,39 @@ function resolveFieldValueForTranslation(
 }
 
 /**
- * Translates a single block field value using the appropriate strategy.
+ * Translates a single block sub-field value, applying its rev-7 fate (§4.2/§4.3)
+ * before any editor-specific routing.
  *
- * @param field - The field API key.
- * @param fieldMeta - Metadata for the field (editor, id, etc.).
- * @param valueToTranslate - The value to translate.
+ * The fate check is deliberately hoisted above the frameless-single-block branch:
+ * an `exclude`-fated sub-field yields `null` (left empty in the rebuilt block) and
+ * a `copy`-fated one yields the source value verbatim (block ids stripped at every
+ * depth), regardless of its editor. Only `translate`-fated sub-fields reach the
+ * editor-specific translators.
+ *
+ * @param field - The sub-field API key.
+ * @param fieldMeta - Metadata for the sub-field (editor, id, validators, etc.).
+ * @param valueToTranslate - The source value to translate/copy.
  * @param ctx - Processing context with translation configuration.
- * @returns The translated value.
+ * @returns The resolved value for the target locale slot.
  */
 async function translateBlockFieldValue(
   field: string,
-  fieldMeta: BlockFieldMeta | undefined,
+  fieldMeta: BlockFieldMeta,
   valueToTranslate: unknown,
   ctx: BlockFieldProcessingContext,
 ): Promise<unknown> {
-  const fieldEditor = fieldMeta?.editor || 'text';
+  const fate = resolveFieldFate({
+    fieldId: fieldMeta.id,
+    fieldApiKey: field,
+    validators: fieldMeta.validators ?? {},
+    excludedTokens: ctx.pluginParams.apiKeysToBeExcludedFromThisPlugin,
+    copyTokens: ctx.pluginParams.fieldsToCopyFromSource ?? [],
+  });
+
+  if (fate === 'exclude') return null;
+  if (fate === 'copy') return deepStripBlockIdentifiers(valueToTranslate);
+
+  const fieldEditor = fieldMeta.editor || 'text';
 
   if (fieldEditor === 'frameless_single_block') {
     return translateFramelessSingleBlockValue(valueToTranslate, fieldMeta, ctx);
@@ -874,7 +933,7 @@ async function translateBlockFieldValue(
     ctx.provider,
     nestedPrompt,
     ctx.apiToken,
-    fieldMeta?.id || '',
+    fieldMeta.id,
     ctx.environment,
     ctx.streamCallbacks,
     ctx.recordContext,
@@ -892,12 +951,14 @@ async function translateBlockFieldValue(
  *
  * @param source - The source object containing fields to translate.
  * @param fieldTypeDictionary - Dictionary mapping field API keys to their editor type and ID.
+ * @param blockModelId - Model ID of the block being processed, used for error context.
  * @param ctx - Processing context containing all translation configuration.
  * @returns Resolves when all fields in the block have been translated.
  */
 async function processBlockFields(
   source: Record<string, unknown>,
   fieldTypeDictionary: Record<string, BlockFieldMeta>,
+  blockModelId: string,
   ctx: BlockFieldProcessingContext,
 ): Promise<void> {
   // Collect translatable fields (skip metadata fields)
@@ -932,8 +993,18 @@ async function processBlockFields(
       ctx.streamCallbacks?.onStream?.(`Translating block field: ${field}...`);
 
       const fieldMeta = fieldTypeDictionary[field];
-      const isLocalizedField = fieldMeta?.localized === true;
-      const fieldEditor = fieldMeta?.editor || 'text';
+      if (!fieldMeta) {
+        // The engine always has the block schema; a non-metadata sub-field
+        // absent from the dictionary is an upstream bug. Silently matching on
+        // api_key alone (the old `fieldId: ''` fallback) would defeat §5.1's
+        // id-keyed fate enforcement, so fail loudly instead.
+        throw new Error(
+          `Block sub-field "${field}" is missing from the schema of block ` +
+            `model "${blockModelId}"; cannot resolve its translation fate.`,
+        );
+      }
+      const isLocalizedField = fieldMeta.localized === true;
+      const fieldEditor = fieldMeta.editor || 'text';
 
       ctx.logger.info('Block field source payload', {
         fieldKey: field,
@@ -1206,6 +1277,7 @@ async function translateBlockValue(
     await processBlockFields(
       sourceObject,
       effectiveFieldTypes,
+      blockModelId,
       processingContext,
     );
     logger.info('Block processing completed', {

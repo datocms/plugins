@@ -26,9 +26,29 @@ vi.mock('./translateArray', () => ({
   translateArray: vi.fn(),
 }));
 
+import { buildClient } from '@datocms/cma-client-browser';
 import { translateDefaultFieldValue } from './DefaultTranslation';
 import { translateFieldValue } from './TranslateField';
 import { translateArray } from './translateArray';
+
+/**
+ * Recursively collects every `id`/`itemId` key found at any depth of a value,
+ * so a test can assert a rebuilt block payload leaks zero block identifiers.
+ */
+function collectIdentifierKeys(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.flatMap(collectIdentifierKeys);
+  }
+  if (value && typeof value === 'object') {
+    return Object.entries(value as Record<string, unknown>).flatMap(
+      ([key, entry]) =>
+        key === 'id' || key === 'itemId'
+          ? [key, ...collectIdentifierKeys(entry)]
+          : collectIdentifierKeys(entry),
+    );
+  }
+  return [];
+}
 
 type LogPayload = {
   message: string;
@@ -293,10 +313,11 @@ describe('TranslateField', () => {
     expect(translateDefaultFieldValue).not.toHaveBeenCalled();
   });
 
-  it('skips a nested block field excluded by field id (as the config UI stores it)', async () => {
-    // The customer case: exclude a field that lives INSIDE a block. The engine
-    // recurses into the block and must honor the exclusion by the nested field's
-    // id — leaving its content untranslated and never calling the provider.
+  it('empties a nested block field excluded by field id (rev-7: exclude means null)', async () => {
+    // The customer case: exclude a field that lives INSIDE a block. Rev-7 (§4.3)
+    // rebuilds blocks fresh from the source and leaves excluded sub-fields empty
+    // — the rebuilt block carries null, never the source value, and the provider
+    // is never called.
     vi.mocked(translateArray).mockResolvedValue(['Clicca qui']);
 
     const result = (await translateFieldValue(
@@ -321,13 +342,13 @@ describe('TranslateField', () => {
       'api-token',
       'field-rich',
       'main',
-    )) as Array<{ content: Array<{ children: Array<{ value: string }> }> }>;
+    )) as Array<{ content: unknown }>;
 
     expect(translateArray).not.toHaveBeenCalled();
-    expect(result[0].content[0].children[0].value).toBe('Click here');
+    expect(result[0].content).toBeNull();
   });
 
-  it('skips a nested block field excluded by api_key', async () => {
+  it('empties a nested block field excluded by api_key (rev-7: exclude means null)', async () => {
     vi.mocked(translateArray).mockResolvedValue(['Clicca qui']);
 
     const result = (await translateFieldValue(
@@ -352,10 +373,192 @@ describe('TranslateField', () => {
       'api-token',
       'field-rich',
       'main',
-    )) as Array<{ content: Array<{ children: Array<{ value: string }> }> }>;
+    )) as Array<{ content: unknown }>;
 
     expect(translateArray).not.toHaveBeenCalled();
-    expect(result[0].content[0].children[0].value).toBe('Click here');
+    expect(result[0].content).toBeNull();
+  });
+
+  it('copies a nested block sub-field verbatim when its fate is copy-from-source', async () => {
+    // §4.2/§4.3: a copy-from-source sub-field is written with the source value
+    // verbatim — the provider is never invoked for it.
+    vi.mocked(translateArray).mockResolvedValue(['SHOULD NOT APPEAR']);
+
+    const sourceContent = [
+      {
+        type: 'paragraph',
+        children: [{ type: 'span', value: 'Brand X' }],
+      },
+    ];
+
+    const result = (await translateFieldValue(
+      [
+        {
+          id: 'wrapper-id',
+          blockModelId: 'block-model-1',
+          content: sourceContent,
+        },
+      ],
+      { ...pluginParams, fieldsToCopyFromSource: ['content'] },
+      'it',
+      'en',
+      'rich_text',
+      provider,
+      '',
+      'api-token',
+      'field-rich',
+      'main',
+    )) as Array<{ content: unknown }>;
+
+    expect(translateArray).not.toHaveBeenCalled();
+    expect(result[0].content).toEqual(sourceContent);
+  });
+
+  it('strips block ids recursively from a copy-fate modular-content sub-field', async () => {
+    // §4.3: rebuilt blocks are always fresh instances — a copied modular-content
+    // value must leak zero block identifiers at any nesting depth.
+    const nestedModularContent = [
+      {
+        id: 'block-1',
+        itemId: 'item-1',
+        blockModelId: 'nested-model',
+        heading: 'A',
+        children: [
+          {
+            id: 'block-2',
+            itemId: 'item-2',
+            blockModelId: 'deeper-model',
+            heading: 'B',
+          },
+        ],
+      },
+    ];
+
+    const result = (await translateFieldValue(
+      [
+        {
+          id: 'wrapper-id',
+          blockModelId: 'block-model-1',
+          content: nestedModularContent,
+        },
+      ],
+      { ...pluginParams, fieldsToCopyFromSource: ['content'] },
+      'it',
+      'en',
+      'rich_text',
+      provider,
+      '',
+      'api-token',
+      'field-rich',
+      'main',
+    )) as Array<{ content: unknown }>;
+
+    expect(collectIdentifierKeys(result[0].content)).toEqual([]);
+  });
+
+  it('resolves sub-field fate before editor routing (excluded frameless → null)', async () => {
+    // A frameless_single_block sub-field with fate exclude must resolve to null
+    // like any other field — the fate check runs before frameless routing.
+    vi.mocked(buildClient).mockReturnValueOnce({
+      fields: {
+        list: vi.fn(async () => [
+          {
+            api_key: 'hero',
+            appearance: { editor: 'frameless_single_block' },
+            id: 'field-hero',
+            localized: false,
+            validators: {
+              single_block_blocks: { item_types: ['nested-model'] },
+            },
+          },
+        ]),
+      },
+    } as never);
+
+    const result = (await translateFieldValue(
+      [
+        {
+          id: 'wrapper-id',
+          blockModelId: 'frameless-block-model',
+          hero: {
+            id: 'nested-id',
+            blockModelId: 'nested-model',
+            heading: 'Hi',
+          },
+        },
+      ],
+      { ...pluginParams, apiKeysToBeExcludedFromThisPlugin: ['hero'] },
+      'it',
+      'en',
+      'rich_text',
+      provider,
+      '',
+      'api-token',
+      'field-rich',
+      'main',
+    )) as Array<{ hero: unknown }>;
+
+    expect(result[0].hero).toBeNull();
+  });
+
+  it('throws naming the block model and api_key for a sub-field missing from the schema', async () => {
+    await expect(
+      translateFieldValue(
+        [
+          {
+            id: 'wrapper-id',
+            blockModelId: 'block-model-1',
+            mystery: 'x',
+            content: [
+              {
+                type: 'paragraph',
+                children: [{ type: 'span', value: 'Hi' }],
+              },
+            ],
+          },
+        ],
+        pluginParams,
+        'it',
+        'en',
+        'rich_text',
+        provider,
+        '',
+        'api-token',
+        'field-rich',
+        'main',
+      ),
+    ).rejects.toThrow(/mystery[\s\S]*block-model-1/);
+  });
+
+  it('still translates a translate-fate nested sub-field (regression guard)', async () => {
+    vi.mocked(translateArray).mockResolvedValue(['Ciao']);
+
+    const result = (await translateFieldValue(
+      [
+        {
+          id: 'wrapper-id',
+          blockModelId: 'block-model-1',
+          content: [
+            {
+              type: 'paragraph',
+              children: [{ type: 'span', value: 'Hello' }],
+            },
+          ],
+        },
+      ],
+      pluginParams,
+      'it',
+      'en',
+      'rich_text',
+      provider,
+      '',
+      'api-token',
+      'field-rich',
+      'main',
+    )) as Array<{ content: Array<{ children: Array<{ value: string }> }> }>;
+
+    expect(translateArray).toHaveBeenCalled();
+    expect(result[0].content[0].children[0].value).toBe('Ciao');
   });
 
   it('logs block payloads and per-field diagnostics when debugging is enabled', async () => {
