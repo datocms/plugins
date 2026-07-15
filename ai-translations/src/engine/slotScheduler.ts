@@ -4,8 +4,8 @@
  * `(record, locale)` unit.
  *
  * The control loop is a straight port of the additive-increase /
- * multiplicative-decrease scheduler that used to live inline in
- * `translateRecordFields.ts` — same counters, same halving arithmetic — but
+ * multiplicative-decrease scheduler that used to live inline in the record
+ * path — same counters, same halving arithmetic — but
  * deliberately THINNER: it only *reorders* work. On a rate-limit error it halves
  * concurrency and requeues that job at the tail; it does NOT own backoff timing,
  * a retry budget, or a retry cap. Those stay in `translateWithSystemicRetry`,

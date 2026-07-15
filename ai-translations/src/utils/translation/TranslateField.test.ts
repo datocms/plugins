@@ -594,13 +594,13 @@ describe('TranslateField', () => {
     expect(messages).toEqual(
       expect.arrayContaining([
         'Block payload before processing',
-        'Block field source payload',
+        'Block field translation input',
         'Block field translated payload',
         'Block translation completed',
       ]),
     );
     const sourcePayload = payloads.find(
-      (payload) => payload.message === 'Block field source payload',
+      (payload) => payload.message === 'Block field translation input',
     );
     const sourceData = sourcePayload?.data as {
       fieldKey: string;

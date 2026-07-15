@@ -18,10 +18,10 @@
  *    - Requires `ExecuteFieldDropdownActionCtx` from the plugin SDK
  *    - Handles form values, streaming UI updates, and provider resolution
  *
- * 2. **`translateFieldValueDirect()`** (named export)
+ * 2. **`translateFieldValue()`** (named export)
  *    - Context-free entry point for CMA-based flows and testing
  *    - No dependency on DatoCMS plugin SDK context
- *    - Used by `ItemsDropdownUtils.ts` for bulk/modal translation
+ *    - Used by the engine (`engine/index.ts`) for bulk/modal and sidebar runs
  *    - Can be tested without mocking the full DatoCMS context
  *
  * Both entry points ultimately delegate to `translateFieldValue()` which
@@ -61,12 +61,9 @@ import { handleTranslationError } from './ProviderErrors';
 import { getProvider } from './ProviderFactory';
 import { type SeoObject, translateSeoFieldValue } from './SeoTranslation';
 import {
-  findExactLocaleKey,
-  getExactSourceValue,
   isFieldExcluded,
   isFieldTranslatable,
   normalizeTranslatedSlug,
-  prepareFieldTypePrompt,
 } from './SharedFieldUtils';
 import { translateStructuredTextValue } from './StructuredTextTranslation';
 import type { StreamCallbacks, TranslationProvider } from './types';
@@ -755,20 +752,6 @@ function getSingleBlockModelId(validators: unknown): string | undefined {
 }
 
 /**
- * Resolves the exact-cased locale key in a localized map, falling back to the provided locale.
- *
- * @param obj - Localized value map keyed by locale codes
- * @param locale - Requested locale code
- * @returns The exact matching key from `obj`, or the input locale when no exact match exists
- */
-function resolveLocaleKey(
-  obj: Record<string, unknown>,
-  locale: string,
-): string {
-  return findExactLocaleKey(obj, locale) ?? locale;
-}
-
-/**
  * Translates a frameless single block value by translating its nested fields.
  *
  * @param fieldValue - Raw field value that should contain a frameless block object
@@ -819,66 +802,6 @@ async function translateFramelessSingleBlockValue(
 interface TranslatedFieldResult {
   field: string;
   value: unknown;
-}
-
-/**
- * Extracts the value to translate from a (possibly localized) field entry,
- * and returns the localized container and target locale key when applicable.
- *
- * @param rawValue - The raw value stored in the source object for this field.
- * @param isLocalizedField - Whether the field has per-locale values.
- * @param fromLocale - Source locale to extract the value from.
- * @param toLocale - Target locale to write the translated value to.
- * @returns Object describing the value to translate and how to write it back.
- */
-function resolveFieldValueForTranslation(
-  rawValue: unknown,
-  isLocalizedField: boolean,
-  fromLocale: string,
-  toLocale: string,
-): {
-  valueToTranslate: unknown;
-  localizedContainer: Record<string, unknown> | null;
-  targetLocaleKey: string | null;
-  skip: boolean;
-} {
-  if (
-    !isLocalizedField ||
-    !rawValue ||
-    typeof rawValue !== 'object' ||
-    Array.isArray(rawValue)
-  ) {
-    return {
-      valueToTranslate: rawValue,
-      localizedContainer: null,
-      targetLocaleKey: null,
-      skip: false,
-    };
-  }
-
-  const sourceValue = getExactSourceValue(
-    rawValue as Record<string, unknown>,
-    fromLocale,
-  );
-
-  if (sourceValue === undefined || sourceValue === null || sourceValue === '') {
-    return {
-      valueToTranslate: rawValue,
-      localizedContainer: null,
-      targetLocaleKey: null,
-      skip: true,
-    };
-  }
-
-  const localizedContainer = { ...(rawValue as Record<string, unknown>) };
-  const targetLocaleKey = resolveLocaleKey(localizedContainer, toLocale);
-
-  return {
-    valueToTranslate: sourceValue,
-    localizedContainer,
-    targetLocaleKey,
-    skip: false,
-  };
 }
 
 /**
@@ -1003,78 +926,33 @@ async function processBlockFields(
             `model "${blockModelId}"; cannot resolve its translation fate.`,
         );
       }
-      const isLocalizedField = fieldMeta.localized === true;
       const fieldEditor = fieldMeta.editor || 'text';
 
-      ctx.logger.info('Block field source payload', {
+      // §3.1: block sub-fields are NEVER localized — DatoCMS 422s `localized`
+      // on any field of a modular_block item type — so the sub-field value is
+      // always the direct value, never a per-locale container. There is no
+      // locale extraction or write-back here; the fate check + editor routing in
+      // translateBlockFieldValue operate on the raw value directly.
+      ctx.logger.info('Block field translation input', {
         fieldKey: field,
         fieldId: fieldMeta?.id,
         editor: fieldEditor,
-        localized: isLocalizedField,
         fromLocale: ctx.fromLocale,
         toLocale: ctx.toLocale,
         value: source[field],
       });
 
-      const resolved = resolveFieldValueForTranslation(
-        source[field],
-        isLocalizedField,
-        ctx.fromLocale,
-        ctx.toLocale,
-      );
-
-      if (resolved.skip) {
-        ctx.logger.info('Block field skipped', {
-          fieldKey: field,
-          fieldId: fieldMeta?.id,
-          editor: fieldEditor,
-          localized: isLocalizedField,
-          reason: 'missing-source-locale-value',
-          fromLocale: ctx.fromLocale,
-          toLocale: ctx.toLocale,
-          value: source[field],
-        });
-        return { field, value: source[field] };
-      }
-
-      ctx.logger.info('Block field translation input', {
-        fieldKey: field,
-        fieldId: fieldMeta?.id,
-        editor: fieldEditor,
-        localized: isLocalizedField,
-        fromLocale: ctx.fromLocale,
-        toLocale: ctx.toLocale,
-        value: resolved.valueToTranslate,
-      });
-
       const translatedValue = await translateBlockFieldValue(
         field,
         fieldMeta,
-        resolved.valueToTranslate,
+        source[field],
         ctx,
       );
-
-      if (resolved.localizedContainer && resolved.targetLocaleKey) {
-        resolved.localizedContainer[resolved.targetLocaleKey] = translatedValue;
-        ctx.logger.info('Block field translated payload', {
-          fieldKey: field,
-          fieldId: fieldMeta?.id,
-          editor: fieldEditor,
-          localized: isLocalizedField,
-          targetLocaleKey: resolved.targetLocaleKey,
-          fromLocale: ctx.fromLocale,
-          toLocale: ctx.toLocale,
-          translatedValue,
-          writtenValue: resolved.localizedContainer,
-        });
-        return { field, value: resolved.localizedContainer };
-      }
 
       ctx.logger.info('Block field translated payload', {
         fieldKey: field,
         fieldId: fieldMeta?.id,
         editor: fieldEditor,
-        localized: isLocalizedField,
         fromLocale: ctx.fromLocale,
         toLocale: ctx.toLocale,
         translatedValue,
@@ -1306,61 +1184,6 @@ async function translateBlockValue(
 }
 
 /**
- * Context-free entry point for translating a field value.
- *
- * This function can be used without a DatoCMS plugin context, making it suitable
- * for CMA-based flows (like bulk translation via `ItemsDropdownUtils.ts`) and
- * for unit testing translation logic without mocking the full SDK context.
- *
- * @param fieldValue - The field value to translate.
- * @param pluginParams - Plugin configuration parameters.
- * @param toLocale - Target locale code.
- * @param fromLocale - Source locale code.
- * @param fieldType - The DatoCMS field type (e.g., 'single_line', 'structured_text').
- * @param apiToken - DatoCMS API token for any required CMA calls.
- * @param fieldId - ID of the field being translated (for exclusion checking).
- * @param environment - Dato environment slug.
- * @param streamCallbacks - Optional callbacks for streaming translations.
- * @param recordContext - Optional context about the record being translated.
- * @param schemaRepository - Optional SchemaRepository for cached schema lookups.
- * @returns The translated field value.
- */
-export async function translateFieldValueDirect(
-  fieldValue: unknown,
-  pluginParams: ctxParamsType,
-  toLocale: string,
-  fromLocale: string,
-  fieldType: string,
-  apiToken: string,
-  fieldId: string | undefined,
-  environment: string,
-  streamCallbacks?: StreamCallbacks,
-  recordContext = '',
-  schemaRepository?: SchemaRepository,
-  cmaBaseUrl?: string,
-): Promise<unknown> {
-  const provider = getProvider(pluginParams);
-  const fieldTypePrompt = prepareFieldTypePrompt(fieldType);
-
-  return translateFieldValue(
-    fieldValue,
-    pluginParams,
-    toLocale,
-    fromLocale,
-    fieldType,
-    provider,
-    fieldTypePrompt,
-    apiToken,
-    fieldId,
-    environment,
-    streamCallbacks,
-    recordContext,
-    schemaRepository,
-    cmaBaseUrl ? { cmaBaseUrl } : {},
-  );
-}
-
-/**
  * Main entry point for translating a field value from one locale to another.
  *
  * This function is the primary interface called by the DatoCMS plugin UI
@@ -1370,7 +1193,7 @@ export async function translateFieldValueDirect(
  * - Generates record context from form values
  * - Handles streaming UI updates
  *
- * For CMA-based flows or testing, use `translateFieldValueDirect()` instead.
+ * For CMA-based flows or testing, use `translateFieldValue()` instead.
  *
  * @param fieldValue - The field value to translate
  * @param ctx - DatoCMS plugin context (provides access token and form values)

@@ -52,13 +52,13 @@
   flex-direction: column;
 }
 
-.bubbleButton {
-  background: none;
-  border: none;
-  padding: 0;
+.statusLine {
   width: 100%;
-  cursor: pointer;
-  text-align: left;
+  padding: var(--spacing-m) 0;
+  text-align: center;
+  font-size: var(--font-size-m);
+  color: var(--base-body-color);
+  min-height: 1.5em;
 }
 
 .successBanner {

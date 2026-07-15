@@ -6,7 +6,8 @@
  * to enable reuse across different DatoCMS plugin entry points.
  *
  * See also:
- * - translateRecordFields.ts: Form context, uses ctx.setFieldValue()
+ * - engine/index.ts + engine/formSink.ts: Form (sidebar) context, stages values
+ *   via ctx.setFieldValue()
  * - ItemsDropdownUtils.ts: CMA context, builds update payloads
  */
 

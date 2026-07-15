@@ -1,11 +1,10 @@
 /**
  * Per-call timeout guard tied to an `AbortController`.
  *
- * Replaces the deleted `Promise.race` timeout in
- * `translateRecordFields.ts:325-374`, which raced a translation promise
- * against an unrelated timeout promise but never aborted the in-flight
- * call — the underlying fetch kept running (and kept a scheduler slot
- * or rate-limit budget occupied) even after the race had already
+ * Replaces the record path's former `Promise.race` timeout, which raced a
+ * translation promise against an unrelated timeout promise but never aborted
+ * the in-flight call — the underlying fetch kept running (and kept a scheduler
+ * slot or rate-limit budget occupied) even after the race had already
  * "timed out". This guard aborts its own controller on timeout so the
  * call actually dies.
  */

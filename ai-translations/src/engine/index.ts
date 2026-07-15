@@ -43,7 +43,10 @@ import {
 } from '../utils/translation/TranslateField';
 import {
   type Pacer,
+  createPacer,
   delay,
+  getMaxConcurrency,
+  getRequestSpacingMs,
   hasTranslatableSourceValue,
   isRateLimitError,
   shouldProcessField,
@@ -55,7 +58,7 @@ import type {
   TranslationProvider,
 } from '../utils/translation/types';
 import type { SchemaRepository } from '../utils/schemaRepository';
-import type { SlotScheduler } from './slotScheduler';
+import { type SlotScheduler, createSlotScheduler } from './slotScheduler';
 import { withStallGuard } from './stallGuard';
 
 /**
@@ -297,8 +300,9 @@ function resolveLocaleSyncFallback(
  *
  * Context: table/bulk actions using CMA records (client.items.*).
  *
- * See also: `translateRecordFields` in `src/utils/translateRecordFields.ts`,
- * which runs in the item form context and writes via `ctx.setFieldValue(...)`.
+ * See also: `translateRecordUnits` (below) with the form sink
+ * (`src/engine/formSink.ts`), the record (sidebar) path that reuses this same
+ * builder but stages values via `ctx.setFieldValue(...)` (locale-sync off).
  *
  * @param record - CMA record to read source values from.
  * @param fromLocale - Source locale key.
@@ -376,6 +380,15 @@ export async function buildTranslatedUpdatePayload(
     /** Waits `ms` before each provider call; injected for deterministic tests. */
     sleep?: (ms: number) => Promise<void>;
     selectedFieldsByModel?: SelectedFieldsByModel;
+    /**
+     * Runs the DatoCMS locale-sync fallback pass (spec §2.3-7). Defaults to
+     * `true` for the CMA/bulk path, where every localized field of a newly
+     * added locale MUST carry a value or `items.update` 422s. The form (sidebar)
+     * path passes `false`: it stages values into an OPEN form with no CMA write,
+     * so a fallback would only re-stage untouched/fallback-null locales the user
+     * never asked to translate.
+     */
+    applyLocaleSync?: boolean;
   } = {},
   schemaRepository?: SchemaRepository,
   cmaBaseUrl?: string,
@@ -610,7 +623,13 @@ export async function buildTranslatedUpdatePayload(
   // localized field that isn't already translated is filled here from the source
   // (or null for optional non-required fields; required block fields copy source
   // blocks with ids stripped so the CMA creates fresh instances).
-  for (const [field, meta] of Object.entries(fieldTypeDictionary)) {
+  //
+  // The form (sidebar) path opts out (§2.3-7): it stages into an open form, not
+  // a CMA update, so there is no Locale Sync Rule to satisfy and a fallback
+  // would only push fallback nulls/originals into locales the user never touched.
+  for (const [field, meta] of opts.applyLocaleSync === false
+    ? []
+    : Object.entries(fieldTypeDictionary)) {
     if (!meta.isLocalized) continue;
     // A `translated` field is already in the payload. `failed`, `untranslatable`,
     // and never-attempted fields fall through — INCLUDING `failed`, so a new
@@ -725,11 +744,36 @@ export function shouldTranslateField(
   return true;
 }
 
+/** Per-locale options accepted by {@link buildTranslatedUpdatePayload}. */
+type BuildPayloadOptions = NonNullable<
+  Parameters<typeof buildTranslatedUpdatePayload>[8]
+>;
+
+/**
+ * Run-control options for {@link translateRecordUnits} (the sidebar's
+ * single-record run).
+ *
+ * `onSystemic` is REQUIRED here — deliberately stricter than
+ * {@link BuildPayloadOptions}, where it is optional (§2.3-1). Omitting it does
+ * not fail loudly; it silently collapses the whole reliability layer to a bare
+ * provider attempt: no adaptive pacer gap, no 429 auto-retry, no systemic
+ * pause/resume, no content retries. Making it a compile error to leave out is
+ * the type-level half of that acceptance criterion; the caller wires it to a
+ * `PauseController`.
+ */
+export type TranslateRecordUnitsOptions = Omit<
+  BuildPayloadOptions,
+  'onSystemic'
+> & {
+  onSystemic: SystemicHandler;
+};
+
 /**
  * Deps threaded through {@link translateRecordUnits}. Mirrors the exact
  * parameters {@link buildTranslatedUpdatePayload} already takes per locale —
- * grouped into one object so later tasks (scheduler, stall guard, field
- * fates) can widen this shape without touching the call site.
+ * grouped into one object. `options` is required (not optional) so `onSystemic`
+ * cannot be dropped; a scheduler/pacer are created per call when absent so a
+ * single record run still gets bounded parallelism (§2.3-3).
  */
 export type TranslateRecordUnitsDeps = {
   provider: TranslationProvider;
@@ -739,7 +783,7 @@ export type TranslateRecordUnitsDeps = {
   fromLocale: string;
   accessToken: string;
   environment: string;
-  options?: Parameters<typeof buildTranslatedUpdatePayload>[8];
+  options: TranslateRecordUnitsOptions;
   schemaRepository?: SchemaRepository;
   cmaBaseUrl?: string;
 };
@@ -782,8 +826,31 @@ export const translateRecordUnits = async (
   let referenceFieldsCopied = 0;
   let errorCount = 0;
 
+  // One scheduler + pacer for the whole record run. A single record maps to a
+  // single scheduler (§2.3-3), so field-level concurrency is bounded per
+  // (record, locale) unit and never multiplied. Both are reused across every
+  // target locale below. Callers may inject their own (tests do); otherwise we
+  // derive the caps from the vendor tier exactly as the bulk orchestrator does.
+  const scheduler =
+    deps.options.scheduler ??
+    createSlotScheduler({
+      maxConcurrency: getMaxConcurrency(deps.pluginParams),
+      spacingMs: getRequestSpacingMs(deps.pluginParams),
+      sleep: deps.options.sleep,
+    });
+  const pacer =
+    deps.options.pacer ?? createPacer(getRequestSpacingMs(deps.pluginParams));
+  const options: BuildPayloadOptions = { ...deps.options, scheduler, pacer };
+
   for (const toLocale of toLocales) {
-    // biome-ignore lint/performance/noAwaitInLoops: per-locale translation is sequential — each locale's payload merges before the next one starts.
+    // Per-locale gate check (Task 1 carry-forward): a locale with zero
+    // translatable fields still honors cancellation, matching how the bulk
+    // orchestrator's `translateForLocale` gates before each locale. Without it,
+    // cancelling during an all-skipped locale would go unobserved until the
+    // between-field gate of the next non-empty locale.
+    // biome-ignore lint/performance/noAwaitInLoops: per-locale work is sequential — the gate must resolve and each locale's payload must merge before the next starts.
+    if ((await deps.options.gate?.()) === 'cancelled') throw RUN_CANCELLED;
+
     const localeResult = await buildTranslatedUpdatePayload(
       record,
       deps.fromLocale,
@@ -793,7 +860,7 @@ export const translateRecordUnits = async (
       deps.pluginParams,
       deps.accessToken,
       deps.environment,
-      deps.options,
+      options,
       deps.schemaRepository,
       deps.cmaBaseUrl,
     );
