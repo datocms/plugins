@@ -904,6 +904,54 @@ describe('ItemsDropdownUtils', () => {
       expect(result.warnings).toEqual([]);
       expect(result.referenceFieldsCopied).toBe(0);
     });
+
+    it('returns writtenLocales containing exactly the translated toLocale for every translated field', async () => {
+      vi.mocked(translateFieldValue).mockResolvedValue('Ciao');
+
+      const result = await buildTranslatedUpdatePayload(
+        record,
+        'en',
+        'it',
+        fieldTypeDictionary,
+        provider,
+        pluginParams,
+        'access-token',
+        'main',
+      );
+
+      expect(result.writtenLocales).toEqual({
+        title: ['it'],
+        slug: ['it'],
+        body: ['it'],
+      });
+    });
+
+    it('also threads the locale-sync fallback toLocale into writtenLocales', async () => {
+      vi.mocked(translateFieldValue).mockResolvedValue('Ciao');
+
+      // Only `title` is translated; `slug` and `body` fall back to the
+      // locale-sync null fill for the new `it` locale (per the Locale Sync
+      // Rule test above). Both write kinds must surface in `writtenLocales`
+      // so the form sink can stage every newly-added locale — see the §2.1
+      // caveat in `formAdapter.ts` about the record path not (yet)
+      // distinguishing the two.
+      const result = await buildTranslatedUpdatePayload(
+        record,
+        'en',
+        'it',
+        fieldTypeDictionary,
+        provider,
+        { ...pluginParams, translationFields: ['single_line'] },
+        'access-token',
+        'main',
+      );
+
+      expect(result.writtenLocales).toEqual({
+        title: ['it'],
+        slug: ['it'],
+        body: ['it'],
+      });
+    });
   });
 
   describe('translateAndUpdateRecords', () => {

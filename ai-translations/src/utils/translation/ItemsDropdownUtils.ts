@@ -447,6 +447,18 @@ export interface BuildTranslatedUpdatePayloadResult {
    * the record instead of masking the loss behind a healthy sibling locale.
    */
   failedFields: { field: string; error: NormalizedProviderError }[];
+  /**
+   * Locales this build newly wrote into each field's payload entry — the
+   * translated `toLocale` and (when it fired) the locale-sync fallback
+   * `toLocale`, keyed by field `api_key`. Threaded out rather than
+   * reconstructed by diffing values so the form adapter's
+   * `payloadToFormWrites` (spec §2.1) can tell a newly-written locale from a
+   * spread-in original one without guessing. Both the translated write
+   * (§2.1's main loop) and the locale-sync fallback write land here
+   * undistinguished — see `formAdapter.ts` for the form-sink caveat this
+   * implies.
+   */
+  writtenLocales: Record<string, string[]>;
 }
 
 /** Per-locale roll-up of what a record's translation actually achieved. */
@@ -736,6 +748,7 @@ export async function translateAndUpdateRecords(
       error: NormalizedProviderError;
     }[] = [];
     const localeOutcomes: LocaleOutcome[] = [];
+    const aggregatedWrittenLocales: Record<string, string[]> = {};
     let totalReferenceFieldsCopied = 0;
     let totalErrorCount = 0;
 
@@ -792,6 +805,14 @@ export async function translateAndUpdateRecords(
       });
       totalReferenceFieldsCopied += localeResult.referenceFieldsCopied;
       totalErrorCount += localeResult.errorCount;
+      for (const [field, locales] of Object.entries(
+        localeResult.writtenLocales,
+      )) {
+        aggregatedWrittenLocales[field] = [
+          ...(aggregatedWrittenLocales[field] ?? []),
+          ...locales,
+        ];
+      }
     }
 
     // Sequential per-locale to keep within provider rate-limit budgets and
@@ -878,6 +899,7 @@ export async function translateAndUpdateRecords(
       errorCount: totalErrorCount,
       qcFlags: aggregatedQcFlags,
       failedFields: aggregatedFailedFields,
+      writtenLocales: aggregatedWrittenLocales,
       localeOutcomes,
       translatedFieldApiKeys,
       translatedFieldIds: toFieldIds(translatedFieldApiKeys),

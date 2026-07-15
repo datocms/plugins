@@ -385,9 +385,19 @@ export async function buildTranslatedUpdatePayload(
   const referenceCopies: ReferenceCopy[] = [];
   const translatedFields: string[] = [];
   const qcFlags: QcFlag[] = [];
+  const writtenLocales: Record<string, string[]> = {};
   let translatedFieldCount = 0;
   let referenceFieldsCopied = 0;
   let errorCount = 0;
+
+  /**
+   * Records that `field` got a new value for `locale` this build (translated
+   * or locale-sync fallback) — the raw material `payloadToFormWrites` (§2.1)
+   * uses to tell a newly-written locale from a spread-in original one.
+   */
+  function recordWrittenLocale(field: string, locale: string): void {
+    writtenLocales[field] = [...(writtenLocales[field] ?? []), locale];
+  }
 
   const recordContext = generateRecordContext(record, fromLocale);
 
@@ -577,6 +587,7 @@ export async function buildTranslatedUpdatePayload(
         ...((record[field] as Record<string, unknown>) || {}),
         [toLocale]: outcome.value,
       };
+      recordWrittenLocale(field, toLocale);
       translatedFieldCount += 1;
       translatedFields.push(field);
       return;
@@ -633,6 +644,7 @@ export async function buildTranslatedUpdatePayload(
       ...fieldData,
       [toLocale]: fallbackValue,
     };
+    recordWrittenLocale(field, toLocale);
   }
 
   const failedFields = [...outcomes].flatMap(([field, outcome]) =>
@@ -649,6 +661,7 @@ export async function buildTranslatedUpdatePayload(
     errorCount,
     qcFlags,
     failedFields,
+    writtenLocales,
   };
 }
 
@@ -764,6 +777,7 @@ export const translateRecordUnits = async (
   const translatedFields: string[] = [];
   const qcFlags: QcFlag[] = [];
   const failedFields: { field: string; error: NormalizedProviderError }[] = [];
+  const writtenLocales: Record<string, string[]> = {};
   let translatedFieldCount = 0;
   let referenceFieldsCopied = 0;
   let errorCount = 0;
@@ -793,6 +807,11 @@ export const translateRecordUnits = async (
     translatedFieldCount += localeResult.translatedFieldCount;
     referenceFieldsCopied += localeResult.referenceFieldsCopied;
     errorCount += localeResult.errorCount;
+    for (const [field, locales] of Object.entries(
+      localeResult.writtenLocales,
+    )) {
+      writtenLocales[field] = [...(writtenLocales[field] ?? []), ...locales];
+    }
   }
 
   return {
@@ -805,5 +824,6 @@ export const translateRecordUnits = async (
     errorCount,
     qcFlags,
     failedFields,
+    writtenLocales,
   };
 };
