@@ -26,3 +26,27 @@ export interface FateSummary {
   copy: number;
   skip: number;
 }
+
+/**
+ * One node in the fate tree. A leaf field has no `children`; a block-container
+ * field carries its (recursively built) sub-field nodes and its own row is a
+ * computed rollup, never stored (spec §3.2).
+ */
+export interface FateFieldNode {
+  id: string;
+  apiKey: string;
+  label: string;
+  required: boolean;
+  fieldType: string;
+  /** Present when this field embeds blocks — its translatable sub-field nodes. */
+  children?: FateFieldNode[];
+}
+
+/** A model (or top-level item type) and its translatable field tree. */
+export interface FateModelNode {
+  id: string;
+  name: string;
+  fields: FateFieldNode[];
+  /** Fields the translatable filter removed — shown as a per-model footer. */
+  nonTranslatable: { label: string }[];
+}
