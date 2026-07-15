@@ -411,6 +411,14 @@ export interface BuildTranslatedUpdatePayloadResult {
    * updated".
    */
   referenceFieldsCopied: number;
+  /**
+   * Count of localized top-level fields written verbatim from the source locale
+   * by the copy-from-source fate (spec §4.2/§4.3). Like {@link referenceFieldsCopied}
+   * it counts a real write that did NOT go through translation, so the record's
+   * updated-field total must include it — otherwise a record whose only write is
+   * a copy field is misreported as "No fields were updated".
+   */
+  copiedFieldCount: number;
   /** API keys of the fields that were AI-translated (for the CSV report). */
   translatedFields: string[];
   /**
@@ -540,6 +548,12 @@ const resolveCompletionCopy = (
     return {
       completionMessage: `Copied linked records into new locales for "${recordLabel}" (#${recordId}).`,
       statusText: 'Copied linked records into new locales',
+    };
+  }
+  if (outcome.copiedFieldCount > 0) {
+    return {
+      completionMessage: `Copied fields from source for "${recordLabel}" (#${recordId}).`,
+      statusText: 'Copied from source',
     };
   }
   return {
@@ -799,6 +813,7 @@ export async function translateAndUpdateRecords(
     const localeOutcomes: LocaleOutcome[] = [];
     const aggregatedWrittenLocales: Record<string, string[]> = {};
     let totalReferenceFieldsCopied = 0;
+    let totalCopiedFieldCount = 0;
     let totalErrorCount = 0;
 
     /**
@@ -853,6 +868,7 @@ export async function translateAndUpdateRecords(
         failed: [...localeResult.failedFields],
       });
       totalReferenceFieldsCopied += localeResult.referenceFieldsCopied;
+      totalCopiedFieldCount += localeResult.copiedFieldCount;
       totalErrorCount += localeResult.errorCount;
       for (const [field, locales] of Object.entries(
         localeResult.writtenLocales,
@@ -944,6 +960,7 @@ export async function translateAndUpdateRecords(
       payload: mergedPayload,
       translatedFieldCount: totalTranslatedFields,
       referenceFieldsCopied: totalReferenceFieldsCopied,
+      copiedFieldCount: totalCopiedFieldCount,
       translatedFields: survivingTranslatedFields,
       referenceCopies: aggregatedReferenceCopies,
       warnings: aggregatedWarnings,
@@ -1001,11 +1018,14 @@ export async function translateAndUpdateRecords(
       qcFlags: outcome.qcFlags,
     };
 
-    // Copied references count as a real update: the record was written even
-    // when no field was AI-translated. Only treat it as an error when nothing
-    // at all was written yet failures were raised (i.e. every field failed).
+    // Copied references AND copy-from-source fields count as real updates: the
+    // record was written even when no field was AI-translated. Only treat it as
+    // an error when nothing at all was written yet failures were raised (i.e.
+    // every field failed).
     const updatedFieldCount =
-      outcome.translatedFieldCount + outcome.referenceFieldsCopied;
+      outcome.translatedFieldCount +
+      outcome.referenceFieldsCopied +
+      outcome.copiedFieldCount;
 
     // Per-(record, locale) accounting: a locale with any failed field fails the
     // whole record, so a healthy sibling locale can no longer mask a wholly-dead

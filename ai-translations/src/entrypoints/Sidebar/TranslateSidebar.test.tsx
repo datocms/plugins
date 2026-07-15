@@ -80,6 +80,7 @@ const emptyResult: RecordUnitsResult = {
   payload: { title: { it: 'Ciao' } },
   translatedFieldCount: 1,
   referenceFieldsCopied: 0,
+  copiedFieldCount: 0,
   translatedFields: ['title'],
   referenceCopies: [],
   warnings: [],

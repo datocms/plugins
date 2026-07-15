@@ -401,6 +401,80 @@ const resolveCopyFromSourceValue = (
     : sourceValue;
 };
 
+/**
+ * Writes the copy-from-source fields (spec §4.2/§4.3) into `updatePayload`:
+ * each field's source value verbatim into `toLocale`, OVERWRITING unconditionally
+ * (unlike the null-guarded locale-sync fallback). Block-bearing editors get ids
+ * stripped so the CMA mints fresh instances. Runs BEFORE the fallback pass, and
+ * records a `copied` outcome so the fallback treats the field as handled.
+ *
+ * A field whose source locale is absent resolves to `undefined`; it is skipped
+ * (not written, no `copied` outcome) so the caller's locale-sync fallback fills
+ * it correctly for a new locale rather than writing an undefined value that
+ * would drop on serialize and risk `VALIDATION_INVALID_LOCALES`.
+ *
+ * Extracted from {@link buildTranslatedUpdatePayload} to keep it under the
+ * cognitive-complexity budget. Mutates the caller's `updatePayload` / `outcomes`
+ * and fires its `recordWrittenLocale` / `recordQcFlag` sinks.
+ *
+ * @returns The number of fields actually copied (for the updated-field tally).
+ */
+const applyCopyFromSourceFields = (args: {
+  copyFields: string[];
+  record: DatoCMSRecordFromAPI;
+  fromLocale: string;
+  toLocale: string;
+  fieldTypeDictionary: FieldTypeDictionary;
+  updatePayload: Record<string, Record<string, unknown>>;
+  outcomes: Map<string, FieldOutcome>;
+  recordWrittenLocale: (field: string, locale: string) => void;
+  recordQcFlag: (flag: QcFlag, field: string) => void;
+}): number => {
+  const {
+    copyFields,
+    record,
+    fromLocale,
+    toLocale,
+    fieldTypeDictionary,
+    updatePayload,
+    outcomes,
+    recordWrittenLocale,
+    recordQcFlag,
+  } = args;
+
+  let copiedFieldCount = 0;
+  for (const field of copyFields) {
+    const meta = fieldTypeDictionary[field];
+    const fieldData = (record[field] as Record<string, unknown>) ?? {};
+    const copiedValue = resolveCopyFromSourceValue(meta, fieldData, fromLocale);
+
+    // An absent source locale yields `undefined`. Writing it would drop the key
+    // on serialize AND, marked `copied`, suppress the locale-sync fallback — so a
+    // newly-added locale could miss this field (VALIDATION_INVALID_LOCALES). Leave
+    // it for the fallback pass, which fills a new locale correctly.
+    if (copiedValue === undefined) continue;
+
+    updatePayload[field] = { ...fieldData, [toLocale]: copiedValue };
+    recordWrittenLocale(field, toLocale);
+    outcomes.set(field, { status: 'copied' });
+    copiedFieldCount += 1;
+
+    // Info-tier, by-design notice — a copied field must be reported, never
+    // silently dropped (§7). It bumps neither `translatedFieldCount` (it was not
+    // translated) nor `errorCount` (info severity), but is retained in `qcFlags`
+    // and surfaced as a "Note" line in `warnings`.
+    recordQcFlag(
+      {
+        checkId: 'copied-from-source',
+        severity: 'info',
+        message: `Field "${field}" kept from source (set to copy from source).`,
+      },
+      field,
+    );
+  }
+  return copiedFieldCount;
+};
+
 export async function buildTranslatedUpdatePayload(
   record: DatoCMSRecordFromAPI,
   fromLocale: string,
@@ -448,6 +522,7 @@ export async function buildTranslatedUpdatePayload(
   const writtenLocales: Record<string, string[]> = {};
   let translatedFieldCount = 0;
   let referenceFieldsCopied = 0;
+  let copiedFieldCount = 0;
   let errorCount = 0;
 
   /**
@@ -686,36 +761,23 @@ export async function buildTranslatedUpdatePayload(
 
   await dispatchFieldJobs(translatableFields, runField, opts);
 
-  // Copy-from-source fields (spec §4.2/§4.3): write the source value verbatim
-  // into the target locale and OVERWRITE unconditionally — even a populated
-  // target locale, unlike the null-guarded locale-sync fallback. Block-bearing
-  // fields get their ids stripped so the CMA mints fresh instances. Runs in the
-  // main loop, BEFORE the fallback pass; recording a `copied` outcome makes
-  // `shouldApplyLocaleSyncFallback` treat the field as already handled so the
-  // fallback neither double-writes nor null-guards it. `recordWrittenLocale`
-  // feeds BOTH the bulk `items.update` and the form sink (`payloadToFormWrites`).
-  for (const field of copyFields) {
-    const meta = fieldTypeDictionary[field];
-    const fieldData = (record[field] as Record<string, unknown>) ?? {};
-    const copiedValue = resolveCopyFromSourceValue(meta, fieldData, fromLocale);
-
-    updatePayload[field] = { ...fieldData, [toLocale]: copiedValue };
-    recordWrittenLocale(field, toLocale);
-    outcomes.set(field, { status: 'copied' });
-
-    // Info-tier, by-design notice — a copied field must be reported, never
-    // silently dropped (§7). It does not bump `translatedFieldCount` (it was not
-    // translated) nor `errorCount` (info severity), but is retained in `qcFlags`
-    // and surfaced as a "Note" line in `warnings`.
-    recordQcFlag(
-      {
-        checkId: 'copied-from-source',
-        severity: 'info',
-        message: `Field "${field}" kept from source (set to copy from source).`,
-      },
-      field,
-    );
-  }
+  // Copy-from-source fields (spec §4.2/§4.3): source value verbatim into the
+  // target locale, OVERWRITING unconditionally (unlike the null-guarded fallback).
+  // Runs BEFORE the fallback pass; the recorded `copied` outcome makes
+  // `shouldApplyLocaleSyncFallback` treat the field as handled so the fallback
+  // neither double-writes nor null-guards it. `recordWrittenLocale` feeds BOTH the
+  // bulk `items.update` and the form sink (`payloadToFormWrites`).
+  copiedFieldCount = applyCopyFromSourceFields({
+    copyFields,
+    record,
+    fromLocale,
+    toLocale,
+    fieldTypeDictionary,
+    updatePayload,
+    outcomes,
+    recordWrittenLocale,
+    recordQcFlag,
+  });
 
   // DatoCMS Locale Sync Rule: when a locale is ADDED to a record, EVERY
   // localized field must carry it, or the whole items.update is rejected with
@@ -774,6 +836,7 @@ export async function buildTranslatedUpdatePayload(
     payload: updatePayload,
     translatedFieldCount,
     referenceFieldsCopied,
+    copiedFieldCount,
     translatedFields,
     referenceCopies,
     warnings,
@@ -924,6 +987,7 @@ export const translateRecordUnits = async (
   const writtenLocales: Record<string, string[]> = {};
   let translatedFieldCount = 0;
   let referenceFieldsCopied = 0;
+  let copiedFieldCount = 0;
   let errorCount = 0;
 
   // One scheduler + pacer for the whole record run. A single record maps to a
@@ -973,6 +1037,7 @@ export const translateRecordUnits = async (
     translatedFields.push(...localeResult.translatedFields);
     translatedFieldCount += localeResult.translatedFieldCount;
     referenceFieldsCopied += localeResult.referenceFieldsCopied;
+    copiedFieldCount += localeResult.copiedFieldCount;
     errorCount += localeResult.errorCount;
     for (const [field, locales] of Object.entries(
       localeResult.writtenLocales,
@@ -985,6 +1050,7 @@ export const translateRecordUnits = async (
     payload,
     translatedFieldCount,
     referenceFieldsCopied,
+    copiedFieldCount,
     translatedFields,
     referenceCopies,
     warnings,

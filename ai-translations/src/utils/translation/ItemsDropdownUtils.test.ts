@@ -1183,6 +1183,64 @@ describe('ItemsDropdownUtils', () => {
         // An info-tier flag never escalates the record to a failure.
         expect(result.errorCount).toBe(0);
       });
+
+      it('falls through to the locale-sync fallback when a copy field has an empty source locale (no undefined write)', async () => {
+        // `brand` is on the copy list but has no value in the source locale
+        // (`en`). A verbatim copy would write `undefined` — dropped on serialize
+        // AND, marked `copied`, it would suppress the fallback, so the new locale
+        // could miss the field (VALIDATION_INVALID_LOCALES). The copy path must
+        // instead leave it for the null locale-sync fallback.
+        const dictBrand = {
+          brand: { editor: 'single_line', id: 'field-brand', isLocalized: true },
+        };
+        const recordEmptySource: DatoCMSRecordFromAPI = {
+          id: 'record-copy-empty',
+          item_type: { id: 'item-type-1' },
+          brand: { de: 'Acme' },
+        };
+
+        const result = await buildTranslatedUpdatePayload(
+          recordEmptySource,
+          'en',
+          'it',
+          dictBrand,
+          provider,
+          { ...pluginParams, fieldsToCopyFromSource: ['field-brand'] },
+          'access-token',
+          'main',
+        );
+
+        // Optional field, empty source → null fallback for the new locale. No
+        // `undefined` value, no verbatim copy.
+        expect(result.payload.brand).toEqual({ de: 'Acme', it: null });
+        // It was NOT copied — no copy flag, no copied tally.
+        expect(
+          result.qcFlags.find((f) => f.checkId === 'copied-from-source'),
+        ).toBeUndefined();
+        expect(result.copiedFieldCount).toBe(0);
+        // The fallback still records the newly-written locale.
+        expect(result.writtenLocales.brand).toEqual(['it']);
+      });
+
+      it('counts a copied field in copiedFieldCount (surfaced for the updated-field tally)', async () => {
+        const result = await buildTranslatedUpdatePayload(
+          record,
+          'en',
+          'it',
+          fieldTypeDictionary,
+          provider,
+          {
+            ...pluginParams,
+            translationFields: ['single_line'],
+            fieldsToCopyFromSource: ['field-title'],
+          },
+          'access-token',
+          'main',
+        );
+
+        expect(result.copiedFieldCount).toBe(1);
+        expect(result.translatedFieldCount).toBe(0);
+      });
     });
   });
 
@@ -1291,6 +1349,54 @@ describe('ItemsDropdownUtils', () => {
       expect(finalUpdate?.translatedFieldIds).toContain('field-title');
       expect(finalUpdate?.copiedLinkFieldApiKeys).toContain('related');
       expect(finalUpdate?.copiedLinkFieldIds).toContain('field-related');
+    });
+
+    it('reports a copy-only record as a success (not "No fields were updated")', async () => {
+      // The record's only localized write this run is a copy-from-source field.
+      // It is in NEITHER the translated nor the reference-copy tally, so without
+      // `copiedFieldCount` in the updated-field total it would hit the
+      // `updatedFieldCount === 0 && warnings > 0` guard and be misreported as a
+      // hard "No fields were updated" error — even though the copied value WAS
+      // persisted.
+      const updates: ProgressUpdate[] = [];
+      const update = vi
+        .fn()
+        .mockImplementation(
+          async (_id: string, payload: Record<string, unknown>) => ({
+            ...payload,
+            meta: { updated_at: '2026-07-08T21:00:00.000Z' },
+          }),
+        );
+      // biome-ignore lint/suspicious/noExplicitAny: minimal CMA client stub
+      const client = { items: { update } } as any;
+
+      await translateAndUpdateRecords(
+        [{ id: 'r1', item_type: { id: 'm1' }, brand: { en: 'Acme' } }],
+        client,
+        provider,
+        'en',
+        ['it'],
+        vi.fn().mockResolvedValue({
+          brand: { editor: 'single_line', id: 'field-brand', isLocalized: true },
+        }),
+        { ...pluginParams, fieldsToCopyFromSource: ['field-brand'] },
+        { alert: vi.fn(), environment: 'main' },
+        'access-token',
+        { onProgress: (u) => updates.push(u) },
+      );
+
+      const finalUpdate = updates.filter((u) => u.recordId === 'r1').at(-1);
+      // A written record — must NOT be reported as a failure.
+      expect(finalUpdate?.status).not.toBe('error');
+      expect(finalUpdate?.statusText).not.toMatch(/no fields were updated/i);
+      // The provider was never called — the field was copied, not translated.
+      expect(translateFieldValue).not.toHaveBeenCalled();
+      // The copied value reached the CMA write verbatim.
+      const writtenPayload = update.mock.calls[0]?.[1] as Record<
+        string,
+        Record<string, unknown>
+      >;
+      expect(writtenPayload.brand).toEqual({ en: 'Acme', it: 'Acme' });
     });
 
     it('does not save a record cancelled after its fields translate (pre-save gate)', async () => {
