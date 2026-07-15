@@ -99,46 +99,125 @@ const isBlockShaped = (
   (value as Record<string, unknown>).type === 'item' &&
   typeof (value as Record<string, unknown>).id === 'string';
 
-/** Renders a walked path (keys and array indices) as `a.b[0].c`. */
-const formatPath = (path: Array<string | number>): string =>
-  path.reduce<string>((rendered, segment) => {
-    if (typeof segment === 'number') return `${rendered}[${segment}]`;
-    return rendered === '' ? segment : `${rendered}.${segment}`;
-  }, '');
+/** Throws the §2.1 bare-block-id error naming `path`. */
+const throwBareBlockId = (id: string, path: string): never => {
+  throw new EngineInputError(
+    `Bare block id "${id}" found at "${path}" where a block object was expected. ` +
+      'A zero-field block model serialises to a bare id and cannot round-trip through itemToFormValues (spec §2.1).',
+  );
+};
 
 /**
- * Guard from §2.1: walks `item` looking for an array that mixes a proper
- * block object with a bare id string — the shape a zero-field block model
- * collapses to. Detection is array-scoped (a bare string is only flagged
- * when a block-shaped sibling proves the array holds blocks), so ordinary
- * string arrays/fields elsewhere in the item are never false-flagged.
- *
- * @param item - Any value reachable from a `ctx.formValuesToItem` result
- * (or a subtree of one) to check before handing it to `itemToFormValues`.
- * @throws {EngineInputError} Naming the JSON path of the offending bare id.
+ * Nested safety-net walk: within any array, flag a bare string that sits
+ * beside a block-shaped sibling (a zero-field block collapsed inside modular
+ * content nested one or more levels below a top-level block field). Purely
+ * additional to the schema-aware pass — it needs no schema because a
+ * block-shaped sibling proves the array holds blocks.
  */
-export const assertNoBareBlockIds = (item: unknown): void => {
-  const walk = (value: unknown, path: Array<string | number>): void => {
-    if (Array.isArray(value)) {
-      const hasBlockSibling = value.some(isBlockShaped);
-      value.forEach((entry, index) => {
-        if (hasBlockSibling && typeof entry === 'string') {
-          throw new EngineInputError(
-            `Bare block id "${entry}" found at "${formatPath([...path, index])}" where a block object was expected. ` +
-              'A zero-field block model serialises to a bare id and cannot round-trip through itemToFormValues (spec §2.1).',
-          );
-        }
-        walk(entry, [...path, index]);
-      });
+const walkNestedHeuristic = (value: unknown, path: string): void => {
+  if (Array.isArray(value)) {
+    const hasBlockSibling = value.some(isBlockShaped);
+    value.forEach((entry, index) => {
+      if (hasBlockSibling && typeof entry === 'string') {
+        throwBareBlockId(entry, `${path}[${index}]`);
+      }
+      walkNestedHeuristic(entry, `${path}[${index}]`);
+    });
+    return;
+  }
+  if (value !== null && typeof value === 'object') {
+    for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
+      walkNestedHeuristic(val, path === '' ? key : `${path}.${key}`);
+    }
+  }
+};
+
+/**
+ * Checks one value that occupies a block-bearing position — the value of a
+ * `single_block`/`frameless_single_block` field (a lone block object) or of a
+ * `rich_text`/`structured_text` field (an array of block objects). Handles the
+ * localized wrapper (`{ [locale]: value }`) transparently by recursing into
+ * each locale, since a localized wrapper is a plain object that is NOT
+ * block-shaped.
+ */
+const checkBlockPosition = (value: unknown, path: string): void => {
+  if (value === null || value === undefined) return;
+
+  // A bare id string sitting directly in a block position is the §2.1 hazard:
+  // a zero-field single_block collapsed to just its id.
+  if (typeof value === 'string') {
+    throwBareBlockId(value, path);
+    return;
+  }
+
+  // Modular content / rich text: every element must be a block object. A
+  // block-bearing field's array never legitimately holds a bare string.
+  if (Array.isArray(value)) {
+    value.forEach((entry, index) => {
+      if (typeof entry === 'string') {
+        throwBareBlockId(entry, `${path}[${index}]`);
+      }
+      // Recurse into the block's own sub-values for nested modular content.
+      walkNestedHeuristic(entry, `${path}[${index}]`);
+    });
+    return;
+  }
+
+  if (typeof value === 'object') {
+    // A well-formed single_block value: recurse into its sub-values for any
+    // nested modular content that might itself hide a bare id.
+    if (isBlockShaped(value)) {
+      walkNestedHeuristic(value, path);
       return;
     }
-
-    if (value !== null && typeof value === 'object') {
-      for (const [key, val] of Object.entries(value as Record<string, unknown>)) {
-        walk(val, [...path, key]);
-      }
+    // Otherwise this is a localized wrapper `{ [locale]: <block position> }`.
+    for (const [locale, inner] of Object.entries(
+      value as Record<string, unknown>,
+    )) {
+      checkBlockPosition(inner, `${path}.${locale}`);
     }
-  };
+  }
+};
 
-  walk(item, []);
+/**
+ * Guard from §2.1: a block model with **zero fields** serialises to a bare id
+ * string instead of `{ type: 'item', id, attributes, relationships }`, and
+ * `ctx.itemToFormValues` throws uncontrolled on it. This asserts, ahead of the
+ * SDK converter, that no block-bearing field holds such a bare id — throwing a
+ * message that names the JSON path so the sidebar can surface it.
+ *
+ * The check is **schema-aware**: without knowing which fields carry blocks,
+ * `hero: "abc123"` (a bare block id) is indistinguishable from
+ * `external_id: "abc123"` (a scalar string), so the caller must supply the set
+ * of block-bearing top-level field api_keys. There are therefore no false
+ * positives on scalar string fields — they are simply not in the set.
+ *
+ * **Caller usage (Task 8, the sidebar).** Compute `blockBearingFieldApiKeys`
+ * from `ctx.fields`: the api_keys of every field whose editor/field type is
+ * `single_block` / `frameless_single_block` / `rich_text` / `structured_text`.
+ * Pass the JSON:API item from `ctx.formValuesToItem` and that set, before ever
+ * handing the item to `ctx.itemToFormValues`.
+ *
+ * Both localized (`{ [locale]: value }`) and non-localized field values are
+ * handled; nested modular content inside a block is additionally swept by a
+ * schema-free sibling heuristic.
+ *
+ * @param item - The JSON:API item (its `attributes` are inspected).
+ * @param blockBearingFieldApiKeys - Top-level api_keys whose fields carry
+ * blocks (single_block/frameless_single_block/rich_text/structured_text).
+ * @throws {EngineInputError} Naming the JSON path of the offending bare id.
+ */
+export const assertNoBareBlockIds = (
+  item: { attributes: Record<string, unknown>; [key: string]: unknown },
+  blockBearingFieldApiKeys: ReadonlySet<string> | string[],
+): void => {
+  const blockFields = Array.isArray(blockBearingFieldApiKeys)
+    ? new Set(blockBearingFieldApiKeys)
+    : blockBearingFieldApiKeys;
+
+  const attributes = item.attributes ?? {};
+  for (const apiKey of blockFields) {
+    if (!(apiKey in attributes)) continue;
+    checkBlockPosition(attributes[apiKey], `attributes.${apiKey}`);
+  }
 };
