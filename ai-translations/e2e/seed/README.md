@@ -66,8 +66,11 @@ node 2-uploads.mjs          # assets (writes uploads.json)
 node 3-records.mjs          # the 8 core records (reads uploads.json)
 node 3b-coverage-records.mjs # +A6 (non-Latin source) +A7 (partial target) + A5 top-up (idempotent)
 node 3c-catalog-records.mjs # catalog_entry records for reference-copy + length-validator paths (idempotent)
+node 3d-block-variants-records.mjs # block_variants + draft_pool records (additive, idempotent)
 node 4-verify.mjs           # coverage report + assertions
 node 5-manifest.mjs         # writes seed-manifest.json for the E2E suite
+node 6-platform-pins.mjs    # CMA platform pins for §4.0 — safe to re-run
+node 7-restricted-role.mjs  # e2e-restricted-it role (+ optional invitation) — safe to re-run
 ```
 
 The CMA token is read from `../.env.testing` (`E2E_PROJECT_CMA_TOKEN`). Stages

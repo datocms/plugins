@@ -150,9 +150,17 @@ async function main() {
   const catalog = await getOrCreateItemType('catalog_entry', {
     name: 'Catalog Entry',
   });
+  // block_variants isolates the framed/frameless RENDERING contract. It lives on its
+  // own model because a `required` localized single_block forces EVERY locale of EVERY
+  // record of its model to carry a block — putting one on `article` would make the
+  // locale-sync fallback write null into a new locale and 422 the whole record.
+  const blockVariants = await getOrCreateItemType('block_variants', {
+    name: 'Block Variants',
+  });
   await loadFields(article.id);
   await loadFields(product.id);
   await loadFields(catalog.id);
+  await loadFields(blockVariants.id);
 
   // 5a. Article fields — every translatable editor + negatives
   section('Article fields');
@@ -185,8 +193,14 @@ async function main() {
     field_type: 'single_block', label: 'Spotlight (single, framed)', localized: true,
     appearance: framedBlock, validators: { single_block_blocks: { item_types: [blockIds.hero] } },
   });
+  // ⚠ NOT actually frameless. The frameless editor only takes effect when the field
+  // ALSO has a `required` validator (plus exactly one allowed block model and no live
+  // error) — otherwise the CMS silently falls back to the FRAMED renderer. This field
+  // has no `required`, so it renders FRAMED. Kept deliberately in that state: it is the
+  // "misconfigured frameless" case, and `block_variants` below covers it properly.
+  // See e2e/AGENTS.md and docs/superpowers/specs/2026-07-13-field-selection-investigation.md.
   await field(article.id, 'inline_note', {
-    field_type: 'single_block', label: 'Inline note (single, frameless)', localized: true,
+    field_type: 'single_block', label: 'Inline note (frameless editor, no required → renders FRAMED)', localized: true,
     appearance: framelessBlock, validators: { single_block_blocks: { item_types: [blockIds.callout] } },
   });
   await field(article.id, 'cover_image', fileF('Cover image'));
@@ -259,8 +273,82 @@ async function main() {
     client.itemTypes.update(catalog.id, { title_field: { id: catalogTitle.id, type: 'field' } }),
   );
 
+  // 5d. Block-variant fields — the framed/frameless RENDERING contract.
+  //
+  // "Frameless" is not a field type; it is an appearance.editor on `single_block`, and
+  // the CMS only honors it when ALL of these hold (FramelessSingleBlock.tsx:89-95):
+  //   1. the field has a `required` validator
+  //   2. exactly ONE block model is allowed
+  //   3. the field has no live validation error
+  // Otherwise it SILENTLY renders the framed editor instead. The backend enforces none
+  // of this, so a field can be frameless in the schema and framed on screen — which is
+  // where the plugin's sidebar loses translations (it decides "frameless" from the
+  // editor name alone, then leaf-writes into a block that may not exist).
+  //
+  // The three fields below differ ONLY in that contract; every other attribute matches,
+  // so a test can A/B them against each other.
+  section('Block-variant fields');
+  const bvTitle = await field(blockVariants.id, 'title', {
+    ...single('Title'),
+    validators: { required: {} },
+  });
+  // (1) TRUE frameless: required + exactly one block model ⇒ the CMS renders it with NO
+  //     field header and NO kebab. `required` also guarantees every locale carries a
+  //     block, which is what makes this case SAFE from the leaf-write null bug.
+  await field(blockVariants.id, 'true_frameless', {
+    field_type: 'single_block', label: 'True frameless (required → renders FRAMELESS)', localized: true,
+    appearance: framelessBlock,
+    validators: { required: {}, single_block_blocks: { item_types: [blockIds.callout] } },
+  });
+  // (2) PSEUDO frameless: frameless editor, NO required ⇒ silently renders FRAMED. The
+  //     field is nullable per-locale, so the target block can be absent — and the plugin
+  //     still decomposes it. This is the data-loss case.
+  await field(blockVariants.id, 'pseudo_frameless', {
+    field_type: 'single_block', label: 'Pseudo frameless (no required → renders FRAMED)', localized: true,
+    appearance: framelessBlock,
+    validators: { single_block_blocks: { item_types: [blockIds.callout] } },
+  });
+  // (3) CONTROL: same block model, same nullability as (2), but the framed editor — so
+  //     the plugin does NOT decompose it and writes the whole block. Proves the bug is
+  //     the decomposition, not the null target locale.
+  await field(blockVariants.id, 'framed_control', {
+    field_type: 'single_block', label: 'Framed control (framed editor → renders FRAMED)', localized: true,
+    appearance: framedBlock,
+    validators: { single_block_blocks: { item_types: [blockIds.callout] } },
+  });
+  if (bvTitle) await step('block_variants.title_field wiring', () =>
+    client.itemTypes.update(blockVariants.id, { title_field: { id: bvTitle.id, type: 'field' } }),
+  );
+
+  // 5e. Draft-saving model — §4.0/§9.4-8. draft_mode_active ∧ draft_saving_active
+  // makes the CMA persist INVALID drafts (blank required fields) instead of 422ing.
+  // The strict control is `article` (default flags). Only the schema half lives in
+  // phase 0; the bulk "Leave them empty" UI test arrives with spec phase 5.
+  section('Draft-saving model');
+  const draftPool = await getOrCreateItemType('draft_pool', {
+    name: 'Draft Pool',
+    draft_mode_active: true,
+    draft_saving_active: true,
+  });
+  // ⚠ getOrCreateItemType skips existing models, so if draft_pool ever pre-exists
+  // without the flags (e.g. created by hand) it would NOT be updated above.
+  if (!draftPool.draft_mode_active || !draftPool.draft_saving_active) {
+    await step('draft_pool flags sync', () =>
+      client.itemTypes.update(draftPool.id, { draft_mode_active: true, draft_saving_active: true }),
+    );
+  }
+  await loadFields(draftPool.id);
+  const dpTitle = await field(draftPool.id, 'title', {
+    ...single('Title'),
+    validators: { required: {} },
+  });
+  await field(draftPool.id, 'summary', txt('Summary'));
+  if (dpTitle) await step('draft_pool.title_field wiring', () =>
+    client.itemTypes.update(draftPool.id, { title_field: { id: dpTitle.id, type: 'field' } }),
+  );
+
   section('STAGE 1 complete');
-  console.log('Models:', { article: article.id, product: product.id, catalog_entry: catalog.id });
+  console.log('Models:', { article: article.id, product: product.id, catalog_entry: catalog.id, block_variants: blockVariants.id, draft_pool: draftPool.id });
   console.log('Blocks:', blockIds);
   if (fieldFailures.length) {
     section(`⚠ ${fieldFailures.length} FIELD FAILURE(S) — fix appearance/validators and re-run`);
