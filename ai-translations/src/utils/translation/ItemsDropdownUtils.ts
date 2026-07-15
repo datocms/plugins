@@ -654,6 +654,55 @@ function getFriendlyDatoErrorMessage(
 }
 
 /**
+ * DatoCMS's optimistic-locking rejection code (spec §7.2): the CMA returns this
+ * on a `PUT /items/:id` when the submitted `meta.current_version` no longer
+ * matches the record's current version on the server — i.e. someone else
+ * edited the record after this run fetched it.
+ */
+const STALE_ITEM_VERSION_CODE = 'STALE_ITEM_VERSION';
+
+/**
+ * Detects a DatoCMS `STALE_ITEM_VERSION` 422 by walking the same
+ * `response.body.data[].attributes.code` shape the CMA client's `ApiError`
+ * exposes (see `@datocms/rest-client-utils`'s `ApiError#errors`), rather than
+ * string-matching the error message.
+ *
+ * @param error - The error thrown by `client.items.update`.
+ * @returns Whether the error is a stale-version optimistic-locking conflict.
+ */
+function isStaleItemVersionError(error: unknown): boolean {
+  if (error === null || typeof error !== 'object') return false;
+  const data = (error as { response?: { body?: { data?: unknown } } }).response
+    ?.body?.data;
+  if (!Array.isArray(data)) return false;
+  return data.some((entry) => {
+    if (entry === null || typeof entry !== 'object') return false;
+    const attributes = (entry as { attributes?: { code?: unknown } })
+      .attributes;
+    return attributes?.code === STALE_ITEM_VERSION_CODE;
+  });
+}
+
+/**
+ * Builds the `client.items.update` request body: the translated field payload,
+ * plus `meta.current_version` when the fetched record carries one — enabling
+ * DatoCMS's optimistic-locking guard (spec §7.2) so a concurrent edit landing
+ * mid-run 422s instead of being silently overwritten.
+ *
+ * @param mergedPayload - The translated field values keyed by api_key.
+ * @param currentVersion - The record's `current_version` at fetch time, if known.
+ * @returns The request body to pass to `client.items.update`.
+ */
+function buildRecordUpdateBody(
+  mergedPayload: Record<string, Record<string, unknown>>,
+  currentVersion: string | undefined,
+): Record<string, unknown> {
+  return currentVersion
+    ? { ...mergedPayload, meta: { current_version: currentVersion } }
+    : { ...mergedPayload };
+}
+
+/**
  * Translates and updates a list of records using CMA, reporting progress
  * via callbacks and supporting cancellation.
  *
@@ -824,7 +873,9 @@ export async function translateAndUpdateRecords(
 
     // Timestamp for the CSV report: the write's fresh `updated_at` when we
     // touched the record, otherwise the record's existing timestamp.
-    const recordMeta = (record as { meta?: { updated_at?: string } }).meta;
+    const recordMeta = (
+      record as { meta?: { updated_at?: string; current_version?: string } }
+    ).meta;
     let updatedAt = recordMeta?.updated_at;
     if (Object.keys(mergedPayload).length > 0) {
       // Final gate before the write: the between-field/locale gates cannot fire
@@ -845,7 +896,7 @@ export async function translateAndUpdateRecords(
       });
       const updated = (await client.items.update(
         record.id,
-        mergedPayload,
+        buildRecordUpdateBody(mergedPayload, recordMeta?.current_version),
       )) as Record<string, unknown> & { meta?: { updated_at?: string } };
       updatedAt = updated?.meta?.updated_at ?? updatedAt;
 
@@ -1023,6 +1074,81 @@ export async function translateAndUpdateRecords(
   }
 
   /**
+   * Reports a `STALE_ITEM_VERSION` optimistic-locking conflict (spec §7.2): a
+   * concurrent edit changed the record after this run fetched it, so DatoCMS
+   * rejected the write rather than it being silently reverted. Marks the
+   * record `error` and lets the run continue to the next one.
+   */
+  function reportStaleItemVersionConflict(
+    recordIndex: number,
+    recordId: string,
+    recordLabel: string,
+    itemTypeId: string,
+    recordUpdatedAt: string | undefined,
+  ): 'continue' {
+    const message = `Record "${recordLabel}" (#${recordId}) changed while translating — re-run it.`;
+    console.error(`Error translating record ${recordId}:`, message);
+    updateProgress({
+      recordIndex,
+      recordId,
+      status: 'error',
+      message,
+      statusText: 'Record changed while translating — re-run it',
+      recordLabel,
+      itemTypeId,
+      updatedAt: recordUpdatedAt,
+      warnings: [message],
+    });
+    return 'continue';
+  }
+
+  /**
+   * Reports a `processRecord` failure (anything but a `RUN_CANCELLED` unwind,
+   * which the caller handles separately before the translate/save even starts).
+   * Distinguishes a `STALE_ITEM_VERSION` optimistic-locking conflict (spec
+   * §7.2) from every other error, which keeps its existing generic handling.
+   * Always returns `'continue'` so the run proceeds to the next record.
+   */
+  function reportRecordFailure(
+    error: unknown,
+    recordIndex: number,
+    record: DatoCMSRecordFromAPI,
+    recordLabel: string,
+    itemTypeId: string,
+    recordUpdatedAt: string | undefined,
+  ): 'continue' {
+    if (isStaleItemVersionError(error)) {
+      return reportStaleItemVersionConflict(
+        recordIndex,
+        record.id,
+        recordLabel,
+        itemTypeId,
+        recordUpdatedAt,
+      );
+    }
+
+    const friendlyMessage = getFriendlyDatoErrorMessage(error, record.id);
+    const norm = normalizeProviderError(error, provider.vendor);
+    const formattedMessage = formatErrorForUser(norm);
+    const rawMessage = error instanceof Error ? error.message : String(error);
+    console.error(`Error translating record ${record.id}:`, rawMessage);
+    updateProgress({
+      recordIndex,
+      recordId: record.id,
+      status: 'error',
+      message:
+        friendlyMessage ??
+        `Failed "${recordLabel}" (#${record.id}): ${formattedMessage}`,
+      statusText: 'Failed',
+      recordLabel,
+      itemTypeId,
+      updatedAt: recordUpdatedAt,
+      warnings: [friendlyMessage ?? formattedMessage],
+    });
+    return 'continue';
+  }
+
+  /**
    * Translates and saves a single record.
    * Returns `'cancelled'` when cancellation was detected, `'continue'` to skip
    * to the next record, or `'done'` on success.
@@ -1111,25 +1237,14 @@ export async function translateAndUpdateRecords(
         return 'cancelled';
       }
 
-      const friendlyMessage = getFriendlyDatoErrorMessage(error, record.id);
-      const norm = normalizeProviderError(error, provider.vendor);
-      const formattedMessage = formatErrorForUser(norm);
-      const rawMessage = error instanceof Error ? error.message : String(error);
-      console.error(`Error translating record ${record.id}:`, rawMessage);
-      updateProgress({
+      return reportRecordFailure(
+        error,
         recordIndex,
-        recordId: record.id,
-        status: 'error',
-        message:
-          friendlyMessage ??
-          `Failed "${recordLabel}" (#${record.id}): ${formattedMessage}`,
-        statusText: 'Failed',
+        record,
         recordLabel,
         itemTypeId,
-        updatedAt: recordUpdatedAt,
-        warnings: [friendlyMessage ?? formattedMessage],
-      });
-      return 'continue';
+        recordUpdatedAt,
+      );
     }
   }
 

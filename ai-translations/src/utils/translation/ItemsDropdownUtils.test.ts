@@ -1327,6 +1327,134 @@ describe('ItemsDropdownUtils', () => {
         finalUpdate?.qcFlags?.some((f) => f.checkId === 'length-validator'),
       ).toBe(true);
     });
+
+    describe('optimistic locking (spec §7.2)', () => {
+      /** Shape of a real `@datocms/rest-client-utils` `ApiError` 422 body. */
+      const staleItemVersionError = {
+        request: {
+          url: 'https://site-api.datocms.com/items/r1',
+          method: 'PUT',
+          headers: {},
+        },
+        response: {
+          status: 422,
+          statusText: 'Unprocessable Entity',
+          headers: {},
+          body: {
+            data: [
+              {
+                id: 'err',
+                type: 'api_error',
+                attributes: {
+                  code: 'STALE_ITEM_VERSION',
+                  details: {},
+                  doc_url: 'https://www.datocms.com',
+                },
+              },
+            ],
+          },
+        },
+      };
+
+      it("sends the fetched record's meta.current_version on the update call", async () => {
+        vi.mocked(translateFieldValue).mockResolvedValue('Ciao');
+        const update = vi
+          .fn()
+          .mockImplementation(
+            async (_id: string, payload: Record<string, unknown>) => ({
+              ...payload,
+              meta: { updated_at: '2026-07-08T21:00:00.000Z' },
+            }),
+          );
+        // biome-ignore lint/suspicious/noExplicitAny: minimal CMA client stub
+        const client = { items: { update } } as any;
+
+        const records: DatoCMSRecordFromAPI[] = [
+          {
+            id: 'r1',
+            item_type: { id: 'm1' },
+            title: { en: 'Hello' },
+            meta: { current_version: 'version-abc' },
+          },
+        ];
+
+        await translateAndUpdateRecords(
+          records,
+          client,
+          provider,
+          'en',
+          ['it'],
+          vi.fn().mockResolvedValue({
+            title: { editor: 'single_line', id: 'field-title', isLocalized: true },
+          }),
+          pluginParams,
+          { alert: vi.fn(), environment: 'main' },
+          'access-token',
+          {},
+        );
+
+        expect(update).toHaveBeenCalledTimes(1);
+        const [, body] = update.mock.calls[0] as [string, Record<string, unknown>];
+        expect(body.meta).toEqual({ current_version: 'version-abc' });
+      });
+
+      it('marks a STALE_ITEM_VERSION conflict as a per-record error and continues the run', async () => {
+        vi.mocked(translateFieldValue).mockResolvedValue('Ciao');
+        const update = vi
+          .fn()
+          .mockRejectedValueOnce(staleItemVersionError)
+          .mockImplementation(
+            async (_id: string, payload: Record<string, unknown>) => ({
+              ...payload,
+              meta: { updated_at: '2026-07-08T21:00:00.000Z' },
+            }),
+          );
+        // biome-ignore lint/suspicious/noExplicitAny: minimal CMA client stub
+        const client = { items: { update } } as any;
+
+        const records: DatoCMSRecordFromAPI[] = [
+          {
+            id: 'r1',
+            item_type: { id: 'm1' },
+            title: { en: 'Hello' },
+            meta: { current_version: 'v1' },
+          },
+          {
+            id: 'r2',
+            item_type: { id: 'm1' },
+            title: { en: 'Hello' },
+            meta: { current_version: 'v2' },
+          },
+        ];
+
+        const updates: ProgressUpdate[] = [];
+        await withExpectedError('STALE_ITEM_VERSION mid-run conflict', () =>
+          translateAndUpdateRecords(
+            records,
+            client,
+            provider,
+            'en',
+            ['it'],
+            vi.fn().mockResolvedValue({
+              title: { editor: 'single_line', id: 'field-title', isLocalized: true },
+            }),
+            pluginParams,
+            { alert: vi.fn(), environment: 'main' },
+            'access-token',
+            { onProgress: (u) => updates.push(u) },
+          ),
+        );
+
+        const r1Final = updates.filter((u) => u.recordId === 'r1').at(-1);
+        expect(r1Final?.status).toBe('error');
+        expect(r1Final?.statusText).toMatch(/changed while translating/i);
+
+        // The run must continue: the second record is still processed and saved.
+        const r2Final = updates.filter((u) => u.recordId === 'r2').at(-1);
+        expect(r2Final?.status).toBe('completed');
+        expect(update).toHaveBeenCalledTimes(2);
+      });
+    });
   });
 
   describe('summarizeReferenceCopies', () => {
