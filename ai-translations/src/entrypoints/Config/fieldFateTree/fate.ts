@@ -7,7 +7,12 @@
  */
 
 import { isFieldExcluded } from '../../../utils/translation/SharedFieldUtils';
-import type { FateLists, FateSummary, FieldFate } from './types';
+import type {
+  FateFieldNode,
+  FateLists,
+  FateSummary,
+  FieldFate,
+} from './types';
 
 /** Minimal identity a fate decision needs. */
 export interface FateNodeRef {
@@ -113,3 +118,10 @@ export const cascadeFate = (
   }
   return { lists: next, keptRequired };
 };
+
+/**
+ * Flattens a node to its leaf (childless) descendants — the fields a block's
+ * cascade and rollup operate over. A leaf returns itself.
+ */
+export const flattenLeaves = (node: FateFieldNode): FateFieldNode[] =>
+  node.children ? node.children.flatMap(flattenLeaves) : [node];
