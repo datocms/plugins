@@ -80,6 +80,37 @@ describe('stallGuard.ts', () => {
     expect(innerSignal?.aborted).toBe(true);
   });
 
+  it('detaches its parent-abort listener after a normal resolve (no per-attempt leak)', async () => {
+    // Bulk threads one run-scoped signal through every field attempt, so a
+    // listener left attached on each resolve accumulates O(attempts). Drive the
+    // guard many times against a SINGLE signal and assert every 'abort' listener
+    // it added was removed — net zero, whatever the underlying listener store.
+    const controller = new AbortController();
+    const { signal } = controller;
+    const addSpy = vi.spyOn(signal, 'addEventListener');
+    const removeSpy = vi.spyOn(signal, 'removeEventListener');
+
+    const run = (_signal: AbortSignal) =>
+      new Promise<number>((resolve) => {
+        setTimeout(() => resolve(1), 10);
+      });
+
+    for (let i = 0; i < 50; i += 1) {
+      const p = withStallGuard(run, { timeoutMs: 1000, parentSignal: signal });
+      // biome-ignore lint/performance/noAwaitInLoops: each attempt must fully settle (advance timers, resolve) before the next, to observe listeners attaching and detaching one at a time.
+      await vi.advanceTimersByTimeAsync(10);
+      await expect(p).resolves.toBe(1);
+    }
+
+    const added = addSpy.mock.calls.filter(([type]) => type === 'abort');
+    const removed = removeSpy.mock.calls.filter(([type]) => type === 'abort');
+    expect(added.length).toBe(50);
+    // Every added handler was passed to removeEventListener (net zero listeners).
+    for (const [, handler] of added) {
+      expect(removed).toContainEqual(['abort', handler]);
+    }
+  });
+
   it('classifies a normalized StallError as a content-tier (non-systemic) failure', () => {
     // Regression pin: a stall must retry under CONTENT_RETRY_LIMIT, never pause
     // the whole run. If the StallError message is ever reworded into something

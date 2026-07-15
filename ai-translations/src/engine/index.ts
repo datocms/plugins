@@ -496,8 +496,13 @@ export async function buildTranslatedUpdatePayload(
           environment,
           {
             abortSignal: signal,
+            // Throws on EITHER a stall (the guard aborts its own `signal`) or a
+            // user cancel. The user-cancel check reads `opts.abortSignal`
+            // directly rather than relying on it having propagated into `signal`:
+            // the guard detaches its parent-abort listener once the call settles,
+            // so the durable parent signal is the source of truth for cancellation.
             checkCancellation: () => {
-              if (signal.aborted) {
+              if (signal.aborted || opts.abortSignal?.aborted) {
                 throw new Error('Bulk translation cancelled');
               }
               return false;

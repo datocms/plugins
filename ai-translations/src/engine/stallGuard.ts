@@ -38,6 +38,11 @@ export const withStallGuard = <T>(
   const controller = new AbortController();
   const { timeoutMs, parentSignal } = opts;
   let timer: ReturnType<typeof setTimeout>;
+  // Captured at function scope so `finally` can detach it: bulk threads ONE
+  // run-scoped `parentSignal` through every field attempt, so a listener left
+  // attached on each normal resolve would accumulate O(attempts) on that single
+  // signal (and eventually trip Node's MaxListeners warning) until the run ends.
+  let onParentAbort: (() => void) | undefined;
 
   const stallTimeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
@@ -48,15 +53,20 @@ export const withStallGuard = <T>(
   });
 
   const parentAbort = new Promise<never>((_, reject) => {
-    const onAbort = () => {
+    onParentAbort = () => {
       controller.abort(parentSignal?.reason);
       reject(parentSignal?.reason);
     };
-    if (parentSignal?.aborted) onAbort();
-    else parentSignal?.addEventListener('abort', onAbort, { once: true });
+    if (parentSignal?.aborted) onParentAbort();
+    else parentSignal?.addEventListener('abort', onParentAbort, { once: true });
   });
 
   return Promise.race([run(controller.signal), stallTimeout, parentAbort]).finally(
-    () => clearTimeout(timer),
+    () => {
+      clearTimeout(timer);
+      // `once: true` self-removes a listener that already fired; removing again
+      // (or when it never fired) is a harmless no-op that prevents the leak.
+      if (onParentAbort) parentSignal?.removeEventListener('abort', onParentAbort);
+    },
   );
 };
