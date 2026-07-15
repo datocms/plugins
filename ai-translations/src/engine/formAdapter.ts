@@ -51,39 +51,47 @@ export const itemToSimpleShape = (
 });
 
 /**
- * Engine payload (per-field locale hashes) → per-(fieldPath, value) form
- * writes, restricted to newly-translated locales.
+ * Converted FORM-shape values (from `ctx.itemToFormValues`) → per-(fieldPath,
+ * value) form writes, restricted to the locales the engine newly wrote.
  *
- * The payload keeps every locale's value per field (including the
- * spread-in original locales the payload builder carries forward for
- * locale-sync bookkeeping — see `buildTranslatedUpdatePayload`'s
- * `{ ...fieldData, [toLocale]: value }` spreads). Writing all of them back
- * into a live form would silently re-stage untouched locales the user never
- * asked to touch. `writtenLocales` is threaded straight out of the engine
- * (which fields/locales it actually wrote this build) rather than
- * reconstructed by diffing values, so the guard can't be fooled by a
- * translation that happens to match the original text.
+ * The record write path (spec §2) MUST run the engine's CMA-shape payload back
+ * through `ctx.itemToFormValues` before staging: a block value in CMA shape has
+ * no top-level `itemTypeId`, so the CMS serialises it to `null` at Save
+ * (nulling required blocks → 422). This reads each value from the CONVERTED
+ * form values — where blocks now carry their `itemTypeId` — instead of from the
+ * raw payload, closing that data-loss hole.
  *
- * @param payload - `{ apiKey: { locale: value } }`, as returned by
- * `buildTranslatedUpdatePayload`/`translateRecordUnits`.
- * @param writtenLocales - `{ apiKey: string[] }` — the locales this build
- * newly wrote for that field. A locale present in `payload[field]` but
- * absent from `writtenLocales[field]` is skipped.
+ * Iteration is driven by `writtenLocales` (which fields/locales the engine
+ * actually wrote this build, threaded straight out of the engine rather than
+ * reconstructed by diffing values), so the spread-in original locales the
+ * converted form values still carry are never re-staged into the live form.
+ *
+ * @param formValues - Converted form values `{ apiKey: { locale: value } }`,
+ * as returned by `ctx.itemToFormValues` on the engine-merged item.
+ * @param writtenLocales - `{ apiKey: string[] }` — the locales this build newly
+ * wrote for that field. A field/locale absent here is never emitted.
  * @returns One write per (field, newLocale), `fieldPath` dot-joined as
  * `` `${apiKey}.${locale}` ``.
  */
-export const payloadToFormWrites = (
-  payload: Record<string, Record<string, unknown>>,
+export const formShapeToFormWrites = (
+  formValues: Record<string, unknown>,
   writtenLocales: Record<string, string[]>,
 ): Array<{ fieldPath: string; locale: string; value: unknown }> => {
   const writes: Array<{ fieldPath: string; locale: string; value: unknown }> =
     [];
 
-  for (const [field, localeValues] of Object.entries(payload)) {
-    const newLocales = new Set(writtenLocales[field] ?? []);
-    for (const [locale, value] of Object.entries(localeValues)) {
-      if (!newLocales.has(locale)) continue;
-      writes.push({ fieldPath: `${field}.${locale}`, locale, value });
+  for (const [field, locales] of Object.entries(writtenLocales)) {
+    const localeValues = formValues[field] as
+      | Record<string, unknown>
+      | undefined;
+    if (!localeValues) continue;
+    for (const locale of locales) {
+      if (!(locale in localeValues)) continue;
+      writes.push({
+        fieldPath: `${field}.${locale}`,
+        locale,
+        value: localeValues[locale],
+      });
     }
   }
 

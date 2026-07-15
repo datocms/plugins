@@ -33,16 +33,10 @@ vi.mock('../../engine', async (importOriginal) => {
   };
 });
 
-vi.mock('../../engine/formAdapter', () => ({
-  itemToSimpleShape: (item: { attributes: Record<string, unknown> }) => ({
-    itemTypeId: 'model-1',
-    fields: item.attributes,
-  }),
-  payloadToFormWrites: () => [
-    { fieldPath: 'title.it', locale: 'it', value: 'Ciao' },
-  ],
-  assertNoBareBlockIds: vi.fn(),
-}));
+// formAdapter is left UNMOCKED on purpose: the block-shape regression this
+// suite guards against lives in the real `itemToFormValues → formShapeToFormWrites`
+// hand-off, so mocking it away would reintroduce the exact blind spot that let
+// the "blocks nulled on save" bug ship.
 
 vi.mock('../../engine/formSink', () => ({
   writeToForm: (...args: unknown[]) => writeToForm(...args),
@@ -132,6 +126,13 @@ describe('TranslateSidebar', () => {
       attributes: { title: { en: 'Hello' } },
       relationships: { item_type: { data: { id: 'model-1' } } },
     })),
+    // Scalar default: form shape == attributes. Overridden per-test for blocks,
+    // whose form shape genuinely differs from the CMA payload shape.
+    itemToFormValues: vi.fn(
+      async (item: { attributes: Record<string, unknown> }) => ({
+        ...item.attributes,
+      }),
+    ),
     setFieldValue: vi.fn(async () => {}),
     notice: vi.fn(),
     alert: vi.fn(),
@@ -225,6 +226,54 @@ describe('TranslateSidebar', () => {
         expect.stringContaining('may be incomplete'),
       );
     });
+  });
+
+  it('stages block fields in FORM shape via itemToFormValues, not the raw CMA payload', async () => {
+    // The engine returns a block in CMA/simple shape: NO top-level itemTypeId.
+    // Staged as-is, the CMS serialises it to null at Save (the shipped bug).
+    const cmaBlock = {
+      type: 'item',
+      attributes: { label: 'Ciao blocco' },
+      relationships: { item_type: { data: { id: 'block-model' } } },
+    };
+    // itemToFormValues yields the correct FORM shape: itemTypeId hoisted up.
+    const formBlock = { itemTypeId: 'block-model', label: 'Ciao blocco' };
+
+    translateRecordUnits.mockResolvedValue({
+      ...emptyResult,
+      payload: { hero: { en: cmaBlock, it: cmaBlock } },
+      translatedFields: ['hero'],
+      writtenLocales: { hero: ['it'] },
+    });
+
+    const itemToFormValues = vi.fn(async () => ({ hero: { it: formBlock } }));
+    const ctx = asCtx({ ...baseCtx, itemToFormValues });
+
+    render(<TranslateSidebar ctx={ctx} />);
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Translate all fields' }),
+    );
+
+    await waitFor(() => {
+      expect(writeToForm).toHaveBeenCalled();
+    });
+
+    // The engine payload must be re-converted before staging.
+    expect(itemToFormValues).toHaveBeenCalled();
+
+    const writes = writeToForm.mock.calls[0]?.[0]?.writes as Array<{
+      fieldPath: string;
+      value: unknown;
+    }>;
+    const heroWrite = writes.find((w) => w.fieldPath === 'hero.it');
+
+    // The value staged into the form must be the FORM-shape block (came through
+    // itemToFormValues), never the raw CMA-shape payload block that nulls at Save.
+    expect(heroWrite?.value).toBe(formBlock);
+    expect(heroWrite?.value).not.toBe(cmaBlock);
+    // writtenLocales gating: en (spread-in original) is never staged.
+    expect(writes.some((w) => w.fieldPath === 'hero.en')).toBe(false);
   });
 });
 

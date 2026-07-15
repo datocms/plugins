@@ -37,8 +37,8 @@ import {
 } from '../../engine';
 import {
   type JsonApiItem,
+  formShapeToFormWrites,
   itemToSimpleShape,
-  payloadToFormWrites,
 } from '../../engine/formAdapter';
 import { assertNoBareBlockIds } from '../../engine/formAdapter';
 import { writeToForm } from '../../engine/formSink';
@@ -216,9 +216,25 @@ async function stageTranslationsToForm(args: {
     options,
   });
 
-  // Stage the translated payload into the open form. writtenLocales gates the
-  // writes to only the locales this run actually produced (§2.1).
-  const writes = payloadToFormWrites(result.payload, result.writtenLocales);
+  // §2 mandatory re-conversion before staging. The engine's `result.payload`
+  // is CMA/simple-shape (`{ field: { locale: value } }`); a block value there
+  // has no top-level `itemTypeId` and the CMS serialises it to null at Save.
+  // Merge the translated per-locale values back onto the JSON:API item, then
+  // run it through `ctx.itemToFormValues` so blocks regain their form shape
+  // (`{ itemTypeId, ...subValues }`). The engine's rebuilt blocks are full
+  // objects (ids stripped), so the converter has no bare-id block to choke on.
+  const translatedItem = {
+    ...item,
+    attributes: { ...item.attributes, ...result.payload },
+  };
+  const formShape = (await ctx.itemToFormValues(
+    translatedItem as Parameters<typeof ctx.itemToFormValues>[0],
+  )) as Record<string, unknown>;
+
+  // Stage the CONVERTED form-shape values into the open form. writtenLocales
+  // gates the writes to only the (field, locale) pairs this run produced (§2.1),
+  // so untouched locales the converted item still carries are never re-staged.
+  const writes = formShapeToFormWrites(formShape, result.writtenLocales);
   const sinkResult = await writeToForm({ writes, ctx, isCancelled });
 
   return { kind: 'done', result, sinkResult };

@@ -8,8 +8,8 @@ import { describe, expect, it } from 'vitest';
 import {
   assertNoBareBlockIds,
   EngineInputError,
+  formShapeToFormWrites,
   itemToSimpleShape,
-  payloadToFormWrites,
 } from './formAdapter';
 
 describe('itemToSimpleShape', () => {
@@ -242,30 +242,38 @@ describe('assertNoBareBlockIds', () => {
   });
 });
 
-describe('payloadToFormWrites', () => {
+describe('formShapeToFormWrites', () => {
   it('emits one write per (field, newLocale) with dot-joined field paths', () => {
-    const payload = {
+    // Converted form-shape values (from `ctx.itemToFormValues`): a block value
+    // here carries its top-level `itemTypeId`, unlike the raw CMA payload.
+    const formValues = {
       title: { en: 'Hello', it: 'Ciao' },
-      slug: { en: 'hello-world', it: 'ciao-mondo' },
+      hero: {
+        en: { itemTypeId: 'b1', label: 'Hero' },
+        it: { itemTypeId: 'b1', label: 'Eroe' },
+      },
     };
-    const writtenLocales = { title: ['it'], slug: ['it'] };
+    const writtenLocales = { title: ['it'], hero: ['it'] };
 
-    expect(payloadToFormWrites(payload, writtenLocales)).toEqual([
+    expect(formShapeToFormWrites(formValues, writtenLocales)).toEqual([
       { fieldPath: 'title.it', locale: 'it', value: 'Ciao' },
-      { fieldPath: 'slug.it', locale: 'it', value: 'ciao-mondo' },
+      {
+        fieldPath: 'hero.it',
+        locale: 'it',
+        value: { itemTypeId: 'b1', label: 'Eroe' },
+      },
     ]);
   });
 
   it('skips a locale not listed in writtenLocales (spread-in original, untouched)', () => {
-    // `en` here is the spread-in original value the payload builder carries
-    // forward for locale-sync bookkeeping — it must never be written back
-    // into the live form.
-    const payload = {
+    // `en`/`de` here are the original values the converted item still carries —
+    // they must never be written back into the live form.
+    const formValues = {
       title: { en: 'Hello', de: 'Hallo', it: 'Ciao' },
     };
     const writtenLocales = { title: ['it'] };
 
-    const writes = payloadToFormWrites(payload, writtenLocales);
+    const writes = formShapeToFormWrites(formValues, writtenLocales);
 
     expect(writes).toEqual([{ fieldPath: 'title.it', locale: 'it', value: 'Ciao' }]);
     expect(writes.some((w) => w.locale === 'en')).toBe(false);
@@ -273,7 +281,17 @@ describe('payloadToFormWrites', () => {
   });
 
   it('emits nothing for a field absent from writtenLocales', () => {
-    const payload = { title: { en: 'Hello', it: 'Ciao' } };
-    expect(payloadToFormWrites(payload, {})).toEqual([]);
+    const formValues = { title: { en: 'Hello', it: 'Ciao' } };
+    expect(formShapeToFormWrites(formValues, {})).toEqual([]);
+  });
+
+  it('skips a written locale missing from the converted form values', () => {
+    // Defensive: writtenLocales names a locale the converter did not emit.
+    const formValues = { title: { it: 'Ciao' } };
+    const writtenLocales = { title: ['it', 'de'] };
+
+    expect(formShapeToFormWrites(formValues, writtenLocales)).toEqual([
+      { fieldPath: 'title.it', locale: 'it', value: 'Ciao' },
+    ]);
   });
 });
