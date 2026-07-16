@@ -1,3 +1,42 @@
-.form {
-  margin-bottom: 1rem;
+.intro {
+  margin: 0 0 var(--spacing-l);
+  color: var(--color--ink-subtle);
+  font-size: var(--font-size-m);
+  line-height: 1.5;
+}
+
+.readOnlyNotice,
+.externalChangeNotice {
+  margin-bottom: var(--spacing-l);
+  padding: var(--spacing-m);
+  border: 1px solid var(--color--warning-soft--border);
+  border-radius: 4px;
+  background: var(--color--warning-soft--surface);
+  color: var(--color--warning-soft--ink);
+}
+
+.externalChangeNotice {
+  display: flex;
+  gap: var(--spacing-m);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.fieldHelp,
+.sectionHelp {
+  color: var(--color--ink-subtle);
+  font-size: var(--font-size-s);
+  line-height: 1.45;
+}
+
+.fieldHelp {
+  margin: var(--spacing-s) 0 0;
+}
+
+.sectionHelp {
+  margin: 0 0 var(--spacing-l);
+}
+
+.fieldHelp a {
+  color: var(--color--ink-link);
 }

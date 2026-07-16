@@ -42,13 +42,13 @@ connect({
         id: GENERATE_MISSING_ALTS_ACTION_ID,
         label: 'Generate missing alt texts',
         icon: 'magic',
-        disabled: !hasValue,
+        disabled: !hasValue || ctx.disabled,
       },
       {
         id: REGENERATE_ALL_ALTS_ACTION_ID,
-        label: 'Generate Alt Texts',
+        label: 'Regenerate all alt texts',
         icon: 'images',
-        disabled: !hasValue,
+        disabled: !hasValue || ctx.disabled,
       },
     ];
   },

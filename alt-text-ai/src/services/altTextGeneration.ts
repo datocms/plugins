@@ -4,20 +4,41 @@ import type {
   FileFieldValue,
 } from 'datocms-plugin-sdk';
 import get from 'lodash/get';
+import {
+  activeProviderValidationError,
+  normalizePluginConfiguration,
+  type PluginConfiguration,
+  PROVIDER_LABELS,
+} from '../config';
+import { createAltTextProvider } from '../providers/factory';
+import type {
+  AltTextProvider,
+  AltTextProviderConfig,
+} from '../providers/types';
 
-const ALT_TEXT_API_URL = 'https://alttext.ai/api/v1/images';
-const IMGIX_FORMAT = 'jpeg';
+const IMGIX_FORMAT = 'jpg';
+const IMGIX_QUALITY = '80';
+const IMGIX_FIT = 'max';
 const IMGIX_WIDTH = '1024';
-const DATO_CLIENT_NAME = 'datocms';
+const IMGIX_HEIGHT = '1024';
+const GALLERY_CONCURRENCY = 3;
+const GENERATION_TIMEOUT_MS = 60_000;
+const GENERATION_TOAST_DURATION_MS = 5_000;
+const OPENAI_MAX_OUTPUT_TOKENS = 1_000;
+const GEMINI_MAX_OUTPUT_TOKENS = 1_000;
+const MAX_DISPLAYED_ERRORS = 8;
 const UNKNOWN_ERROR = 'Unknown error';
 
 export type AltGenerationMode = 'missing-only' | 'overwrite-all';
 
-type AltTextApiResponse = {
-  alt_text?: string;
-  error_code?: string;
-  errors?: { base?: string[] };
+type GenerationTarget = {
+  asset: FileFieldValue;
+  index: number;
 };
+
+export type SettledResult<T> =
+  | { status: 'fulfilled'; value: T }
+  | { status: 'rejected'; reason: unknown };
 
 function getErrorMessage(error: unknown): string {
   return error instanceof Error
@@ -25,45 +46,64 @@ function getErrorMessage(error: unknown): string {
     : String(error ?? UNKNOWN_ERROR);
 }
 
-function formatAltTextErrorMessage(result: AltTextApiResponse): string {
-  const errorCode = result.error_code ?? 'unknown_error';
-  const baseMessage = result.errors?.base?.[0];
+function shouldOmitOpenAITokenLimit(model: string): boolean {
+  const normalized = model.toLowerCase();
+  const baseModel = normalized.startsWith('ft:')
+    ? (normalized.split(':')[1] ?? '')
+    : normalized;
 
-  return baseMessage ? `${errorCode}: ${baseMessage}` : errorCode;
+  return (
+    /-pro(?:[.-]|$)/.test(baseModel) || /^o[1-9](?:[.-]|$)/.test(baseModel)
+  );
 }
 
-function transformImageUrl(url: string): string {
-  const transformedUrl = new URL(url);
-  transformedUrl.searchParams.set('fm', IMGIX_FORMAT);
-  transformedUrl.searchParams.set('w', IMGIX_WIDTH);
-  return transformedUrl.toString();
-}
-
-function parseApiKey(ctx: ExecuteFieldDropdownActionCtx): string | null {
-  const apiKey = ctx.plugin.attributes.parameters.apiKey;
-  if (typeof apiKey !== 'string' || apiKey.trim() === '') {
-    return null;
+function providerConfig(
+  configuration: PluginConfiguration,
+): AltTextProviderConfig {
+  switch (configuration.provider) {
+    case 'alttext-ai':
+      return {
+        provider: 'alttext-ai',
+        apiKey: configuration.altTextAiApiKey,
+      };
+    case 'openai':
+      return {
+        provider: 'openai',
+        apiKey: configuration.openAiApiKey,
+        model: configuration.openAiModel,
+        ...(shouldOmitOpenAITokenLimit(configuration.openAiModel)
+          ? {}
+          : { maxOutputTokens: OPENAI_MAX_OUTPUT_TOKENS }),
+      };
+    case 'anthropic':
+      return {
+        provider: 'anthropic',
+        apiKey: configuration.anthropicApiKey,
+        model: configuration.anthropicModel,
+        maxOutputTokens: 300,
+      };
+    case 'gemini':
+      return {
+        provider: 'gemini',
+        apiKey: configuration.geminiApiKey,
+        model: configuration.geminiModel,
+        maxOutputTokens: GEMINI_MAX_OUTPUT_TOKENS,
+      };
   }
-
-  return apiKey.trim();
 }
 
 function hasAltText(alt: string | null): boolean {
   return typeof alt === 'string' && alt.trim().length > 0;
 }
 
-function shouldProcessAsset(
+export function shouldProcessAsset(
   asset: FileFieldValue,
   mode: AltGenerationMode,
 ): boolean {
-  if (mode === 'overwrite-all') {
-    return true;
-  }
-
-  return !hasAltText(asset.alt);
+  return mode === 'overwrite-all' || !hasAltText(asset.alt);
 }
 
-function isFileFieldValue(value: unknown): value is FileFieldValue {
+export function isFileFieldValue(value: unknown): value is FileFieldValue {
   return (
     typeof value === 'object' &&
     value !== null &&
@@ -89,66 +129,123 @@ export function hasGeneratableFieldValue(value: unknown): boolean {
   return isFileFieldValueArray(value) && value.length > 0;
 }
 
-async function fetchAlt(
-  apiKey: string,
-  client: Client,
-  asset: FileFieldValue,
-  locale: string,
-): Promise<AltTextApiResponse> {
-  const { url } = await client.uploads.find(asset.upload_id);
+export function transformImageUrl(url: string): string {
+  const transformedUrl = new URL(url);
+  transformedUrl.searchParams.set('fm', IMGIX_FORMAT);
+  transformedUrl.searchParams.set('q', IMGIX_QUALITY);
+  transformedUrl.searchParams.set('fit', IMGIX_FIT);
+  transformedUrl.searchParams.set('w', IMGIX_WIDTH);
+  transformedUrl.searchParams.set('h', IMGIX_HEIGHT);
+  return transformedUrl.toString();
+}
 
-  // Use Imgix to keep payload format and size under control for AltText.ai.
-  const response = await fetch(ALT_TEXT_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-API-Key': apiKey,
-      'X-Client': DATO_CLIENT_NAME,
-    },
-    body: JSON.stringify({
-      image: {
-        url: transformImageUrl(url),
-        asset_id: `dato-${asset.upload_id}`,
-      },
-      lang: locale,
-    }),
+/**
+ * Maps work with stable result ordering while limiting simultaneous requests.
+ * A single rejected item does not stop the remaining gallery assets.
+ */
+export async function mapSettledWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<R>,
+): Promise<SettledResult<R>[]> {
+  if (items.length === 0) {
+    return [];
+  }
+
+  const workerCount = Math.max(1, Math.min(concurrency, items.length));
+  const results = new Array<SettledResult<R>>(items.length);
+  let nextIndex = 0;
+
+  const worker = async (): Promise<void> => {
+    const index = nextIndex;
+    nextIndex += 1;
+    if (index >= items.length) {
+      return;
+    }
+
+    try {
+      results[index] = {
+        status: 'fulfilled',
+        value: await mapper(items[index], index),
+      };
+    } catch (reason) {
+      results[index] = { status: 'rejected', reason };
+    }
+
+    await worker();
+  };
+
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
+  return results;
+}
+
+async function generateAltForAsset(
+  asset: FileFieldValue,
+  provider: AltTextProvider,
+  client: Client,
+  configuration: PluginConfiguration,
+  locale: string,
+): Promise<string> {
+  const abortController = new AbortController();
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error('Alt text generation timed out after 60 seconds.'));
+      abortController.abort();
+    }, GENERATION_TIMEOUT_MS);
   });
 
-  let result: AltTextApiResponse | undefined;
+  const generation = (async () => {
+    const upload = await client.uploads.find(asset.upload_id);
+
+    if (!upload.is_image) {
+      throw new Error(`Asset ${asset.upload_id} is not an image.`);
+    }
+
+    return provider.generate({
+      imageUrl: transformImageUrl(upload.url),
+      assetId: asset.upload_id,
+      locale,
+      filename: upload.filename,
+      promptTemplate: configuration.prompt,
+      signal: abortController.signal,
+    });
+  })();
+
   try {
-    result = (await response.json()) as AltTextApiResponse;
-  } catch {
-    // Ignore parsing errors and map them into a normalized error.
+    return await Promise.race([generation, timeout]);
+  } finally {
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
+
+function formatErrorSummary(messages: string[]): string {
+  const visibleMessages = messages.slice(0, MAX_DISPLAYED_ERRORS);
+  const remainingCount = messages.length - visibleMessages.length;
+
+  if (remainingCount > 0) {
+    visibleMessages.push(`…and ${remainingCount} more error(s).`);
   }
 
-  if (!response.ok) {
-    return {
-      error_code: `http_${response.status}`,
-      errors: {
-        base: [
-          result?.errors?.base?.[0] ||
-            result?.error_code ||
-            response.statusText ||
-            'Request failed',
-        ],
-      },
-    };
-  }
+  return `Alt text generation errors:\n${visibleMessages.join('\n')}`;
+}
 
-  if (!result) {
-    return {
-      error_code: 'invalid_response',
-      errors: { base: ['Could not parse AltText.ai response'] },
-    };
-  }
-
-  return result;
+function showGenerationStarted(ctx: ExecuteFieldDropdownActionCtx): void {
+  void ctx.customToast({
+    type: 'warning',
+    message: 'Generating alts, this can take some time…',
+    dismissOnPageChange: true,
+    dismissAfterTimeout: GENERATION_TOAST_DURATION_MS,
+  });
 }
 
 async function generateSingleAlt(
   asset: FileFieldValue,
-  apiKey: string,
+  provider: AltTextProvider,
   client: Client,
+  configuration: PluginConfiguration,
   ctx: ExecuteFieldDropdownActionCtx,
   mode: AltGenerationMode,
 ) {
@@ -157,77 +254,82 @@ async function generateSingleAlt(
     return;
   }
 
-  const result = await fetchAlt(apiKey, client, asset, ctx.locale);
+  showGenerationStarted(ctx);
 
-  if (result.error_code) {
-    await ctx.alert(
-      `Error fetching alt text: ${formatAltTextErrorMessage(result)}`,
+  try {
+    const alt = await generateAltForAsset(
+      asset,
+      provider,
+      client,
+      configuration,
+      ctx.locale,
     );
-    return;
+    await ctx.setFieldValue(ctx.fieldPath, { ...asset, alt });
+    await ctx.notice(
+      `Alt text generated with ${PROVIDER_LABELS[configuration.provider]}.`,
+    );
+  } catch (error) {
+    await ctx.alert(`Could not generate alt text: ${getErrorMessage(error)}`);
   }
-
-  await ctx.setFieldValue(ctx.fieldPath, {
-    ...asset,
-    alt: result.alt_text ?? asset.alt,
-  });
 }
 
 async function generateGalleryAlts(
   assets: FileFieldValue[],
-  apiKey: string,
+  provider: AltTextProvider,
   client: Client,
+  configuration: PluginConfiguration,
   ctx: ExecuteFieldDropdownActionCtx,
   mode: AltGenerationMode,
 ) {
-  const assetsToProcess = assets
-    .map((asset, index) => ({ asset, index }))
-    .filter(({ asset }) => shouldProcessAsset(asset, mode));
+  const targets: GenerationTarget[] = [];
+  for (const [index, asset] of assets.entries()) {
+    if (shouldProcessAsset(asset, mode)) {
+      targets.push({ asset, index });
+    }
+  }
 
-  if (assetsToProcess.length === 0) {
+  if (targets.length === 0) {
     await ctx.notice('No assets need alt text generation.');
     return;
   }
 
-  const results = await Promise.allSettled(
-    assetsToProcess.map(({ asset }) =>
-      fetchAlt(apiKey, client, asset, ctx.locale),
-    ),
+  showGenerationStarted(ctx);
+
+  const results = await mapSettledWithConcurrency(
+    targets,
+    GALLERY_CONCURRENCY,
+    ({ asset }) =>
+      generateAltForAsset(asset, provider, client, configuration, ctx.locale),
   );
 
-  let hasAtLeastOneSuccessfulUpdate = false;
   const updatedAssets = [...assets];
   const errorMessages: string[] = [];
+  let updatedCount = 0;
 
-  assetsToProcess.forEach(({ asset, index }, resultIndex) => {
-    const outcome = results[resultIndex];
-    if (outcome.status === 'rejected') {
+  for (const [resultIndex, result] of results.entries()) {
+    const { asset, index } = targets[resultIndex];
+    if (result.status === 'rejected') {
       errorMessages.push(
-        `Image ${asset.upload_id}: request_failed: ${getErrorMessage(outcome.reason)}`,
+        `${asset.upload_id}: ${getErrorMessage(result.reason)}`,
       );
-      return;
+      continue;
     }
 
-    const result = outcome.value;
-    if (result.error_code) {
-      errorMessages.push(
-        `Image ${asset.upload_id}: ${formatAltTextErrorMessage(result)}`,
-      );
-      return;
-    }
-
-    updatedAssets[index] = {
-      ...asset,
-      alt: result.alt_text ?? asset.alt,
-    };
-    hasAtLeastOneSuccessfulUpdate = true;
-  });
-
-  if (errorMessages.length > 0) {
-    await ctx.alert(`Alt text errors:\n${errorMessages.join('\n')}`);
+    updatedAssets[index] = { ...asset, alt: result.value };
+    updatedCount += 1;
   }
 
-  if (hasAtLeastOneSuccessfulUpdate) {
+  if (updatedCount > 0) {
     await ctx.setFieldValue(ctx.fieldPath, updatedAssets);
+    await ctx.notice(
+      `${updatedCount} alt text${updatedCount === 1 ? '' : 's'} generated with ${
+        PROVIDER_LABELS[configuration.provider]
+      }.`,
+    );
+  }
+
+  if (errorMessages.length > 0) {
+    await ctx.alert(formatErrorSummary(errorMessages));
   }
 }
 
@@ -235,17 +337,25 @@ export async function runAltGenerationForField(
   ctx: ExecuteFieldDropdownActionCtx,
   mode: AltGenerationMode,
 ) {
+  if (ctx.disabled) {
+    await ctx.notice('This field is read-only.');
+    return;
+  }
+
   if (!ctx.currentUserAccessToken) {
     await ctx.alert(
-      'This plugin needs the currentUserAccessToken to function. Please give it that permission and try again.',
+      'This plugin needs the currentUserAccessToken permission to load asset URLs. Grant the permission and try again.',
     );
     return;
   }
 
-  const apiKey = parseApiKey(ctx);
-  if (!apiKey) {
+  const configuration = normalizePluginConfiguration(
+    ctx.plugin.attributes.parameters,
+  );
+  const configurationError = activeProviderValidationError(configuration);
+  if (configurationError) {
     await ctx.alert(
-      'Please configure your AltText.ai API key in the plugin settings.',
+      `${configurationError} Configure the provider in the plugin settings.`,
     );
     return;
   }
@@ -256,28 +366,55 @@ export async function runAltGenerationForField(
     return;
   }
 
+  let didDisableField = false;
+
   try {
+    await ctx.disableField(ctx.fieldPath, true);
+    didDisableField = true;
     const client = buildClient({
       apiToken: ctx.currentUserAccessToken,
       environment: ctx.environment,
       baseUrl: ctx.cmaBaseUrl,
     });
+    const provider = createAltTextProvider(providerConfig(configuration));
 
     if (isFileFieldValueArray(currentFieldValue)) {
-      await generateGalleryAlts(currentFieldValue, apiKey, client, ctx, mode);
+      await generateGalleryAlts(
+        currentFieldValue,
+        provider,
+        client,
+        configuration,
+        ctx,
+        mode,
+      );
       return;
     }
 
     if (isFileFieldValue(currentFieldValue)) {
-      await generateSingleAlt(currentFieldValue, apiKey, client, ctx, mode);
+      await generateSingleAlt(
+        currentFieldValue,
+        provider,
+        client,
+        configuration,
+        ctx,
+        mode,
+      );
       return;
     }
 
     await ctx.notice('No asset selected in this field.');
   } catch (error) {
-    console.error(error);
+    console.error('Unexpected alt text generation error:', error);
     await ctx.alert(
       `Unexpected error while generating alt text: ${getErrorMessage(error)}`,
     );
+  } finally {
+    if (didDisableField) {
+      try {
+        await ctx.disableField(ctx.fieldPath, false);
+      } catch (error) {
+        console.error('Could not re-enable the asset field:', error);
+      }
+    }
   }
 }
