@@ -31,7 +31,12 @@ export type QcCheckId =
   | 'length-validator'
   | 'seo-truncated'
   | 'json-validity'
-  | 'copied-from-source';
+  | 'copied-from-source'
+  // plan/apply conformance additions (spec §5):
+  | 'cannot-be-blank'
+  | 'block-structure'
+  | 'segment-alignment'
+  | 'paragraph-count';
 
 /** A single completeness finding for one field/locale (optionally one segment). */
 export type QcFlag = {
