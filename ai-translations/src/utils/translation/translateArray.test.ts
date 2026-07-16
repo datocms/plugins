@@ -807,13 +807,16 @@ describe('translateArray.ts', () => {
       });
 
       it('emits an html-structure flag when a block is dropped (isHTML)', async () => {
+        // A dropped *structural* block (heading) is an error. A dropped
+        // paragraph is a `paragraph-count` warning, not html-structure —
+        // paragraph reflow is a legitimate translation move (see qc/structuralChecks).
         vi.mocked(mockProvider.completeText).mockResolvedValue('["<p>x</p>"]');
         const flags: QcFlag[] = [];
 
         await translateArray(
           mockProvider,
           mockPluginParams,
-          ['<p>a</p><p>b</p>'],
+          ['<h2>a</h2><p>b</p>'],
           'en',
           'de',
           { isHTML: true, onQcFlag: (f) => flags.push(f) },
