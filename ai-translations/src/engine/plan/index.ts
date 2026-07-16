@@ -1,6 +1,12 @@
 export * from './types';
+export * from './buildPlanTypes';
 export { conform, unitKey } from './conform';
 export { reasonCodeFor } from './reasonCode';
 export { checkCannotBeBlank } from './checks/cannotBeBlank';
 export { checkSegmentAlignment } from './checks/segmentAlignment';
 export { blockSignatureOf, checkBlockStructure } from './checks/blockStructure';
+export { buildPlan } from './buildPlan';
+export { buildRecordLocaleUnit } from './buildUnit';
+export { buildCell } from './buildCell';
+export { existingLocalesOf } from './existingLocales';
+export { lengthBoundsOf } from './lengthBounds';
