@@ -5,64 +5,71 @@ import { AdvancedSettings } from '../config/AdvancedSettings';
 import {
   deriveStepStatuses,
   type SetupStepId,
+  type StepStatus,
 } from '../config/deriveStepStatuses';
+import { InstallationSection } from '../config/InstallationSection';
 import { readEnabledCadences } from '../config/pluginParams';
+import { StatusBox } from '../config/StatusBox';
 import { StatusOverview } from '../config/StatusOverview';
 import { StepConnect } from '../config/StepConnect';
+import { StepDeploy } from '../config/StepDeploy';
 import { StepSchedule } from '../config/StepSchedule';
-import { StepSection } from '../config/StepSection';
 import { StepSecret } from '../config/StepSecret';
+import { StepSection } from '../config/StepSection';
 import { StepTimeline } from '../config/StepTimeline';
 import { useBackupsConfig } from '../config/useBackupsConfig';
 import { getCadenceLabel } from '../utils/backupSchedule';
+import styles from './ConfigScreen.module.css';
 
-/**
- * Thin orchestrator for the config wizard. Reads the saved plugin parameters as
- * the single source of truth, derives per-step statuses, and renders the gated
- * accordion (steps 1–3) plus the always-visible Status overview and Advanced
- * settings. All state and side effects live in {@link useBackupsConfig}; there
- * is no global Save button — each step commits its own change.
- */
+type CurrentFocus = {
+  step: SetupStepId | null;
+  status: StepStatus | null;
+};
+
+/** Four-step setup wizard plus the operational backup status. */
 export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   const config = useBackupsConfig(ctx);
   const { params } = config;
   const statuses = deriveStepStatuses(params);
   const { currentStep } = statuses;
+  const currentStatus = currentStep ? statuses[currentStep] : null;
+  const isSetupComplete = currentStep === null;
 
-  // Multi-open accordion: track an open-step Set instead of a single expanded
-  // step. Toggling one step is purely additive and never collapses another, so
-  // clicking [Edit] on a lower step can't shift a higher one out from under the
-  // viewport (the old single-`expandedStep` model caused that scroll-jump CLS).
-  // We deliberately keep the custom StepSection (numbered card + status badge)
-  // rather than the SDK collapsible Section; the multi-open model is the fix.
+  // Automatically focus only the active step. The Set remains multi-open so a
+  // user can reopen completed steps without collapsing the active one or
+  // causing the scroll jump produced by a single-open accordion.
   const [openSteps, setOpenSteps] = useState<Set<SetupStepId>>(
     () => new Set(currentStep ? [currentStep] : []),
   );
-  const previousCurrentStepRef = useRef(currentStep);
+  const [isInstallationExpanded, setIsInstallationExpanded] = useState(false);
+  const previousFocusRef = useRef<CurrentFocus>({
+    step: currentStep,
+    status: currentStatus,
+  });
+  const previousSetupCompleteRef = useRef(isSetupComplete);
+
   useEffect(() => {
-    const previous = previousCurrentStepRef.current;
-    if (previous === currentStep) {
-      return;
-    }
-    previousCurrentStepRef.current = currentStep;
-
-    // Right after the secret is saved (secret → connect) with nothing deployed
-    // yet, keep step 1's deploy callout visible AND reveal step 2 so the user
-    // can paste their deployed URL without losing the deploy menu.
-    const justSavedSecretBeforeDeploy =
-      previous === 'secret' && currentStep === 'connect' && !config.savedUrl;
-    if (justSavedSecretBeforeDeploy) {
-      setOpenSteps(new Set<SetupStepId>(['secret', 'connect']));
+    const previous = previousFocusRef.current;
+    if (previous.step === currentStep && previous.status === currentStatus) {
       return;
     }
 
-    // On any other current-step change, focus the accordion on the new step.
+    previousFocusRef.current = { step: currentStep, status: currentStatus };
     setOpenSteps(new Set<SetupStepId>(currentStep ? [currentStep] : []));
-  }, [currentStep, config.savedUrl]);
+  }, [currentStatus, currentStep]);
 
-  const toggleStep = (step: SetupStepId) =>
-    setOpenSteps((prev) => {
-      const next = new Set(prev);
+  useEffect(() => {
+    const wasSetupComplete = previousSetupCompleteRef.current;
+    previousSetupCompleteRef.current = isSetupComplete;
+
+    if (!wasSetupComplete && isSetupComplete) {
+      setIsInstallationExpanded(false);
+    }
+  }, [isSetupComplete]);
+
+  const toggleStep = (step: SetupStepId) => {
+    setOpenSteps((previous) => {
+      const next = new Set(previous);
       if (next.has(step)) {
         next.delete(step);
       } else {
@@ -70,67 +77,103 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       }
       return next;
     });
+  };
 
   const enabledCadences = readEnabledCadences(params);
-  const secretSummary = 'Secret saved.';
-  const connectSummary = config.savedUrl
-    ? `Connected to ${config.savedUrl}`
-    : 'Connected.';
-  const scheduleSummary = `Backups: ${enabledCadences
-    .map(getCadenceLabel)
-    .join(', ')}`;
+  const scheduleSummary = enabledCadences.map(getCadenceLabel).join(', ');
+
+  const setupFlow = (
+    <>
+      {!config.canEdit && (
+        <StatusBox
+          variant="neutral"
+          style={{ marginBottom: 'var(--spacing-l)' }}
+        >
+          You can review this setup, but your role cannot change plugin
+          settings.
+        </StatusBox>
+      )}
+
+      <StepTimeline statuses={statuses} />
+
+      <StepSection
+        stepNumber={1}
+        title="Create a secret"
+        description="Generate the shared secret used by this plugin and the backup service."
+        status={statuses.secret}
+        isExpanded={openSteps.has('secret')}
+        onToggle={() => toggleStep('secret')}
+        summary="Secret saved."
+      >
+        <StepSecret config={config} />
+      </StepSection>
+
+      <StepSection
+        stepNumber={2}
+        title="Deploy the backup service"
+        description="Add the required environment variables, deploy the service, and save its public URL."
+        status={statuses.deploy}
+        isExpanded={openSteps.has('deploy')}
+        onToggle={() => toggleStep('deploy')}
+        summary={config.savedUrl || 'Deployment URL saved.'}
+      >
+        <StepDeploy config={config} />
+      </StepSection>
+
+      <StepSection
+        stepNumber={3}
+        title="Test the connection"
+        description="Verify that the deployed service is reachable and uses the same shared secret."
+        status={statuses.connect}
+        isExpanded={openSteps.has('connect')}
+        onToggle={() => toggleStep('connect')}
+        summary="Connection verified."
+      >
+        <StepConnect config={config} />
+      </StepSection>
+
+      <StepSection
+        stepNumber={4}
+        title="Choose a backup schedule"
+        description="Select which automatic backup environments the service should maintain."
+        status={statuses.schedule}
+        isExpanded={openSteps.has('schedule')}
+        onToggle={() => toggleStep('schedule')}
+        summary={scheduleSummary}
+      >
+        <StepSchedule
+          config={config}
+          onFinish={() => setIsInstallationExpanded(false)}
+        />
+      </StepSection>
+    </>
+  );
 
   return (
     <Canvas ctx={ctx}>
-      <div style={{ maxWidth: '760px', margin: '0 auto' }}>
-        <StepTimeline statuses={statuses} />
-
-        <StepSection
-          stepNumber={1}
-          title="Auth secret & deploy"
-          description="Create a shared secret the plugin and your deployed function use to authenticate, then deploy the scheduler."
-          status={statuses.secret}
-          isExpanded={openSteps.has('secret')}
-          onToggle={() => toggleStep('secret')}
-          summary={secretSummary}
-        >
-          <StepSecret config={config} />
-        </StepSection>
-
-        <StepSection
-          stepNumber={2}
-          title="Connect & test"
-          description="Tell the plugin where your function is deployed and verify it responds and authenticates."
-          status={statuses.connect}
-          isExpanded={openSteps.has('connect')}
-          onToggle={() => toggleStep('connect')}
-          summary={connectSummary}
-        >
-          <StepConnect config={config} />
-        </StepSection>
-
-        <StepSection
-          stepNumber={3}
-          title="Backup cadence"
-          description="Choose how often backups run. The scheduler runs once daily and creates the sandbox backups you enable."
-          status={statuses.schedule}
-          isExpanded={openSteps.has('schedule')}
-          onToggle={() => toggleStep('schedule')}
-          summary={scheduleSummary}
-        >
-          <StepSchedule config={config} />
-        </StepSection>
+      <main className={styles.wrapper}>
+        {isSetupComplete ? (
+          <InstallationSection
+            isOpen={isInstallationExpanded}
+            onOpenChange={setIsInstallationExpanded}
+          >
+            {setupFlow}
+          </InstallationSection>
+        ) : (
+          setupFlow
+        )}
 
         <StatusOverview
           config={config}
-          isConfiguredAndReady={currentStep === null}
+          isConfiguredAndReady={isSetupComplete}
         />
 
         <AdvancedSettings
+          canEdit={config.canEdit}
           debugEnabled={config.debugEnabled}
           onToggleDebug={config.saveDebug}
         />
-      </div>
+      </main>
     </Canvas>
   );
 }

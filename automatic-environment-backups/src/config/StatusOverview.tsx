@@ -1,72 +1,16 @@
 import { Button, Spinner } from 'datocms-react-ui';
-import type { CSSProperties } from 'react';
 import type { BackupOverviewRow } from '../types/types';
-import { getCadenceLabel, normalizeBackupScheduleConfig } from '../utils/backupSchedule';
-import { buildBackupOverviewRows } from '../utils/buildBackupOverviewRows';
 import {
-  buildStatusChecklist,
-  type ChecklistItem,
-  type ChecklistStatus,
-} from './deriveStepStatuses';
+  getCadenceLabel,
+  normalizeBackupScheduleConfig,
+} from '../utils/backupSchedule';
+import { buildBackupOverviewRows } from '../utils/buildBackupOverviewRows';
+import { hasStoredBackupSchedule } from './pluginParams';
 import { StatusBox } from './StatusBox';
+import styles from './StatusOverview.module.css';
 import type { BackupsConfig } from './useBackupsConfig';
 
-const CHECKLIST_MARK: Record<ChecklistStatus, { symbol: string; color: string }> =
-  {
-    ok: { symbol: '✓', color: 'var(--color--success-soft--ink)' },
-    error: { symbol: '✕', color: 'var(--color--danger-soft--ink)' },
-    warn: { symbol: '!', color: 'var(--color--warning-soft--ink)' },
-    pending: { symbol: '•', color: 'var(--color--ink-subtle)' },
-  };
-
-const rowStyle: CSSProperties = {
-  border: '1px solid var(--color--border)',
-  borderRadius: '6px',
-  padding: 'var(--spacing-m)',
-  background: 'var(--color--surface)',
-  display: 'grid',
-  gridTemplateColumns: 'minmax(0, 1fr) auto',
-  columnGap: 'var(--spacing-m)',
-  alignItems: 'center',
-};
-
-const rowInfoStyle: CSSProperties = {
-  margin: 0,
-  fontSize: 'var(--font-size-s)',
-};
-
-const ChecklistRow = ({ item }: { item: ChecklistItem }) => {
-  const mark = CHECKLIST_MARK[item.status];
-  return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'baseline',
-        gap: 'var(--spacing-s)',
-        fontSize: 'var(--font-size-s)',
-      }}
-    >
-      <span aria-hidden="true" style={{ color: mark.color, fontWeight: 700 }}>
-        {mark.symbol}
-      </span>
-      <span>
-        <strong>{item.label}</strong>
-        {item.detail && (
-          <span style={{ color: 'var(--color--ink-subtle)' }}>
-            {' '}
-            — {item.detail}
-          </span>
-        )}
-      </span>
-    </div>
-  );
-};
-
-/**
- * Section 4 — always-visible, read-only overview. Renders the live checklist,
- * per-cadence backup rows with [Backup now], and a summary banner. Deliberately
- * redundant with the per-step errors so a broken setup is impossible to miss.
- */
+/** Compact operational view shown once a backup schedule has been saved. */
 export const StatusOverview = ({
   config,
   isConfiguredAndReady,
@@ -77,6 +21,7 @@ export const StatusOverview = ({
   const {
     params,
     projectTimezone,
+    isConnected,
     lambdaBackupStatus,
     availableEnvironmentIds,
     overviewError,
@@ -87,7 +32,10 @@ export const StatusOverview = ({
     onOpenEnvironments,
   } = config;
 
-  const checklist = buildStatusChecklist(params, lambdaBackupStatus);
+  if (!hasStoredBackupSchedule(params)) {
+    return null;
+  }
+
   const scheduleConfig = normalizeBackupScheduleConfig({
     value: params?.backupSchedule,
     timezoneFallback: projectTimezone,
@@ -99,118 +47,79 @@ export const StatusOverview = ({
   });
 
   return (
-    <section
-      style={{
-        border: '1px solid var(--color--border)',
-        borderRadius: '6px',
-        background: 'var(--color--surface)',
-        padding: 'var(--spacing-l)',
-        marginBottom: 'var(--spacing-l)',
-        textAlign: 'left',
-      }}
-    >
-      <h2
-        style={{
-          marginTop: 0,
-          marginBottom: 'var(--spacing-s)',
-          fontSize: 'var(--font-size-l)',
-        }}
-      >
-        Status overview
-      </h2>
+    <section className={styles.section}>
+      <h2 className={styles.title}>Backup status</h2>
 
       <StatusBox
         variant={isConfiguredAndReady ? 'success' : 'warning'}
         style={{ marginBottom: 'var(--spacing-m)' }}
       >
         {isConfiguredAndReady
-          ? 'Configured and ready — backups run daily at 02:05 UTC. You can leave this screen.'
-          : 'Needs attention — see the highlighted step above.'}
+          ? 'Automatic backups are active. The service checks the schedule daily at 02:05 UTC.'
+          : 'Setup needs attention. Fix the highlighted step above.'}
       </StatusBox>
 
-      <div
-        style={{
-          display: 'grid',
-          gap: 'var(--spacing-s)',
-          marginBottom: 'var(--spacing-l)',
-        }}
-      >
-        {checklist.map((item) => (
-          <ChecklistRow key={item.id} item={item} />
-        ))}
-      </div>
-
-      {isLoadingOverview && (
-        <StatusBox variant="neutral" style={{ marginBottom: 'var(--spacing-m)' }}>
-          <span
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 'var(--spacing-s)',
-            }}
-          >
+      {isConnected && isLoadingOverview && (
+        <StatusBox
+          variant="neutral"
+          style={{ marginBottom: 'var(--spacing-m)' }}
+        >
+          <span className={styles.spinnerRow}>
             <Spinner size={20} />
             Loading backup status…
           </span>
         </StatusBox>
       )}
 
-      {overviewError && (
+      {isConnected && overviewError && (
         <StatusBox variant="error" style={{ marginBottom: 'var(--spacing-m)' }}>
           {overviewError}
         </StatusBox>
       )}
 
-      <div style={{ display: 'grid', gap: 'var(--spacing-s)' }}>
-        {overviewRows.map((row) => {
-          const isRowLoading = backupNowInFlightCadence === row.scope;
-          const isRowDisabled =
-            !canBackupNow || backupNowInFlightCadence !== null;
+      {isConnected && lambdaBackupStatus && (
+        <div className={styles.rows}>
+          {overviewRows.map((row) => {
+            const isRowLoading = backupNowInFlightCadence === row.scope;
+            const isRowDisabled =
+              !canBackupNow || backupNowInFlightCadence !== null;
 
-          return (
-            <div key={`overview-${row.scope}`} style={rowStyle}>
-              <div style={{ minWidth: 0 }}>
-                <h3
-                  style={{
-                    margin: '0 0 var(--spacing-s)',
-                    fontSize: 'var(--font-size-m)',
-                  }}
-                >
-                  {getCadenceLabel(row.scope)}
-                </h3>
-                <p style={rowInfoStyle}>
-                  <strong>Last backup:</strong> {row.lastBackup}
-                </p>
-                <p style={rowInfoStyle}>
-                  <strong>Next backup:</strong> {row.nextBackup}
-                </p>
-                <p style={rowInfoStyle}>
-                  <strong>Environment:</strong>{' '}
-                  {row.environmentLinked ? (
-                    <a
-                      href="/project_settings/environments"
-                      onClick={(event) => {
-                        event.preventDefault();
-                        void onOpenEnvironments();
-                      }}
-                    >
-                      {row.environmentName}
-                    </a>
-                  ) : (
-                    row.environmentName
-                  )}
-                </p>
-                {row.environmentStatusNote && (
-                  <p style={rowInfoStyle}>
-                    <strong>Status:</strong> {row.environmentStatusNote}
+            return (
+              <div key={`overview-${row.scope}`} className={styles.row}>
+                <div className={styles.rowInfo}>
+                  <h3>{getCadenceLabel(row.scope)}</h3>
+                  <p>
+                    <strong>Last:</strong> {row.lastBackup}
                   </p>
-                )}
-              </div>
-              <div style={{ alignSelf: 'center', minWidth: '140px' }}>
+                  <p>
+                    <strong>Next:</strong> {row.nextBackup}
+                  </p>
+                  <p>
+                    <strong>Environment:</strong>{' '}
+                    {row.environmentLinked ? (
+                      <a
+                        href="/project_settings/environments"
+                        onClick={(event) => {
+                          event.preventDefault();
+                          void onOpenEnvironments();
+                        }}
+                      >
+                        {row.environmentName}
+                      </a>
+                    ) : (
+                      row.environmentName
+                    )}
+                  </p>
+                  {row.environmentStatusNote && (
+                    <p>
+                      <strong>Status:</strong> {row.environmentStatusNote}
+                    </p>
+                  )}
+                </div>
+
                 <Button
                   buttonType="muted"
                   buttonSize="s"
-                  fullWidth
                   onClick={() => {
                     void backupNow(row.scope);
                   }}
@@ -220,10 +129,10 @@ export const StatusOverview = ({
                   {isRowLoading ? 'Backing up…' : 'Backup now'}
                 </Button>
               </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 };

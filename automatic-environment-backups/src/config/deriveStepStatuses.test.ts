@@ -1,10 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type {
   BackupScheduleConfig,
-  LambdaBackupStatus,
   LambdaConnectionState,
 } from '../types/types';
-import { buildStatusChecklist, deriveStepStatuses } from './deriveStepStatuses';
+import { deriveStepStatuses } from './deriveStepStatuses';
 
 const connected: LambdaConnectionState = {
   status: 'connected',
@@ -59,15 +58,32 @@ describe('deriveStepStatuses', () => {
   it('fresh install: secret is current, later steps disabled', () => {
     expect(deriveStepStatuses(freshInstall)).toEqual({
       secret: 'current',
+      deploy: 'disabled',
       connect: 'disabled',
       schedule: 'disabled',
       currentStep: 'secret',
     });
   });
 
-  it('secret saved: connect becomes current, schedule still disabled', () => {
+  it('secret saved: deploy becomes current, later steps stay disabled', () => {
     expect(deriveStepStatuses(secretOnly)).toEqual({
       secret: 'ok',
+      deploy: 'current',
+      connect: 'disabled',
+      schedule: 'disabled',
+      currentStep: 'deploy',
+    });
+  });
+
+  it('deployment URL saved: connect becomes current', () => {
+    expect(
+      deriveStepStatuses({
+        lambdaAuthSecret: 'a-real-secret',
+        deploymentURL: 'https://x',
+      }),
+    ).toEqual({
+      secret: 'ok',
+      deploy: 'ok',
       connect: 'current',
       schedule: 'disabled',
       currentStep: 'connect',
@@ -77,6 +93,7 @@ describe('deriveStepStatuses', () => {
   it('failed ping: connect is error and is the current focus', () => {
     expect(deriveStepStatuses(connectionFailed)).toEqual({
       secret: 'ok',
+      deploy: 'ok',
       connect: 'error',
       schedule: 'disabled',
       currentStep: 'connect',
@@ -86,6 +103,7 @@ describe('deriveStepStatuses', () => {
   it('connected without a saved schedule: schedule is current', () => {
     expect(deriveStepStatuses(connectedNoSchedule)).toEqual({
       secret: 'ok',
+      deploy: 'ok',
       connect: 'ok',
       schedule: 'current',
       currentStep: 'schedule',
@@ -95,6 +113,7 @@ describe('deriveStepStatuses', () => {
   it('fully configured: everything ok, no current step', () => {
     expect(deriveStepStatuses(fullyConfigured)).toEqual({
       secret: 'ok',
+      deploy: 'ok',
       connect: 'ok',
       schedule: 'ok',
       currentStep: null,
@@ -106,61 +125,5 @@ describe('deriveStepStatuses', () => {
     expect(statuses.connect).toBe('error');
     expect(statuses.schedule).toBe('disabled');
     expect(statuses.currentStep).toBe('connect');
-  });
-});
-
-describe('buildStatusChecklist', () => {
-  it('fresh install: everything pending', () => {
-    const items = buildStatusChecklist(freshInstall);
-    expect(items.map((item) => [item.id, item.status])).toEqual([
-      ['secret', 'pending'],
-      ['connection', 'pending'],
-      ['cadence', 'pending'],
-      ['environments', 'pending'],
-    ]);
-  });
-
-  it('warns when the secret is still the example default', () => {
-    const items = buildStatusChecklist({
-      lambdaAuthSecret: 'superSecretToken',
-    });
-    const secret = items.find((item) => item.id === 'secret');
-    expect(secret?.status).toBe('warn');
-  });
-
-  it('surfaces the connection error message redundantly', () => {
-    const connection = buildStatusChecklist(connectionFailed).find(
-      (item) => item.id === 'connection',
-    );
-    expect(connection?.status).toBe('error');
-    expect(connection?.detail).toContain('401');
-  });
-
-  it('reports created environments once a backup status is available', () => {
-    const backupStatus = {
-      scheduler: { provider: 'netlify', cadence: 'daily' },
-      slots: {
-        daily: {
-          scope: 'daily',
-          executionMode: 'lambda_cron',
-          lastBackupAt: '2026-06-29T02:05:00.000Z',
-          nextBackupAt: '2026-06-30T02:05:00.000Z',
-        },
-        weekly: {
-          scope: 'weekly',
-          executionMode: 'lambda_cron',
-          lastBackupAt: null,
-          nextBackupAt: '2026-07-05T02:05:00.000Z',
-        },
-      },
-      checkedAt: '2026-06-30T00:00:00.000Z',
-    } as LambdaBackupStatus;
-
-    const environments = buildStatusChecklist(
-      fullyConfigured,
-      backupStatus,
-    ).find((item) => item.id === 'environments');
-    expect(environments?.status).toBe('pending');
-    expect(environments?.detail).toContain('1 of 2');
   });
 });

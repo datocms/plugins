@@ -11,9 +11,11 @@ const switchNoHintGapStyle = {
  * change (consistent with the per-step save model — no global Save button).
  */
 export const AdvancedSettings = ({
+  canEdit,
   debugEnabled,
   onToggleDebug,
 }: {
+  canEdit: boolean;
   debugEnabled: boolean;
   onToggleDebug: (enabled: boolean) => void;
 }) => {
@@ -36,20 +38,14 @@ export const AdvancedSettings = ({
             hint="When enabled, plugin events and requests are logged to the browser console."
             value={debugEnabled}
             onChange={onToggleDebug}
+            switchInputProps={{
+              id: 'debug',
+              name: 'debug',
+              value: debugEnabled,
+              disabled: !canEdit,
+            }}
           />
         </div>
-        <p
-          style={{
-            margin: 0,
-            color: 'var(--color--ink-subtle)',
-            fontSize: 'var(--font-size-xs)',
-          }}
-        >
-          Backups are created by the scheduled serverless function you deploy:
-          it runs once a day (02:05 UTC) and clones your primary environment
-          into sandbox backups. This plugin only configures and monitors that
-          function — nothing runs from your browser.
-        </p>
       </Section>
     </Form>
   );

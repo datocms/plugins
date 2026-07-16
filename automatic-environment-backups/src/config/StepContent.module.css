@@ -1,0 +1,142 @@
+.fieldRow {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--spacing-s);
+}
+
+.grow {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.compactField {
+  display: flex;
+  flex-direction: column;
+}
+
+.compactField > label {
+  margin-bottom: 4px;
+}
+
+.compactField > input ~ * {
+  margin-top: 4px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  flex-wrap: wrap;
+}
+
+.stepFooter {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+}
+
+.stepFooterSecondary {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+  flex-wrap: wrap;
+}
+
+.stepFooterPrimary {
+  margin-left: auto;
+}
+
+.connectionResultRow {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-s);
+}
+
+.instructions {
+  margin: 0;
+  padding-left: 1.25rem;
+  color: var(--color--ink-subtle);
+  font-size: var(--font-size-s);
+  line-height: 1.5;
+}
+
+.instructions li + li {
+  margin-top: var(--spacing-s);
+}
+
+.instructions code,
+.environmentVariables code {
+  overflow-wrap: anywhere;
+}
+
+.environmentVariables {
+  display: grid;
+  padding: var(--spacing-m);
+  border: 1px solid var(--color--border);
+  border-radius: 4px;
+  background: var(--color--surface-muted);
+  font-size: var(--font-size-s);
+}
+
+.environmentVariable {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--spacing-m);
+}
+
+.environmentVariable + .environmentVariable {
+  margin-top: var(--spacing-m);
+  padding-top: var(--spacing-m);
+  border-top: 1px solid var(--color--border-hover);
+}
+
+.environmentVariable p {
+  margin: 2px 0 0;
+  color: var(--color--ink-subtle);
+  line-height: 1.4;
+}
+
+.savedUrl {
+  margin: 0;
+  color: var(--color--ink-subtle);
+  font-size: var(--font-size-s);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.savedUrl strong {
+  color: var(--color--ink);
+  font-weight: var(--font-weight-bold);
+}
+
+@media (max-width: 560px) {
+  .fieldRow,
+  .actions,
+  .connectionResultRow,
+  .stepFooter,
+  .stepFooterSecondary {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .actions > *,
+  .connectionResultRow > *,
+  .stepFooterSecondary > *,
+  .stepFooterPrimary,
+  .stepFooterPrimary > * {
+    width: 100%;
+  }
+
+  .stepFooterPrimary {
+    margin-left: 0;
+  }
+
+  .environmentVariable {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .environmentVariable button {
+    width: 100%;
+  }
+}
