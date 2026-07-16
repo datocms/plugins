@@ -15,7 +15,6 @@ type SegmentArgs = {
 };
 
 const HTML_BLOCK_TAGS = new Set([
-  'p',
   'h1',
   'h2',
   'h3',
@@ -54,25 +53,45 @@ function multisetsEqual(a: Map<string, number>, b: Map<string, number>): boolean
   return true;
 }
 
+/** Counts <p> elements only. Paragraph reflow is a legitimate translation move. */
+function paragraphCount(html: string): number | null {
+  if (typeof DOMParser === 'undefined') return null;
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  return doc.body.querySelectorAll('p').length;
+}
+
 /**
- * Flags when the translated HTML has a different block-level tag multiset than
- * the source (a block was dropped/added/changed). Compares `tagName` only, so
- * inline-emphasis reshuffling and `data-*` attributes never trip it.
+ * Flags a different STRUCTURAL block-tag multiset (heading/list/table/image/…)
+ * as an `error` (a block was dropped/added). A pure `<p>`-count drift is a
+ * `paragraph-count` `warning`: LLMs legitimately merge/split paragraphs across
+ * languages. Inline-emphasis reshuffling never trips either. (spec §5)
  */
 export function checkHtmlStructure(args: SegmentArgs): QcFlag | null {
   const src = blockTagCounts(args.source);
   const tgt = blockTagCounts(args.translated);
-  if (!src || !tgt) return null;
-  if (multisetsEqual(src, tgt)) return null;
-  return {
-    checkId: 'html-structure',
-    severity: 'error',
-    fieldPath: args.fieldPath,
-    locale: args.locale,
-    segmentIndex: args.segmentIndex,
-    message:
-      'Translated HTML has a different block structure than the source — a block may have been dropped or altered.',
-  };
+  if (src && tgt && !multisetsEqual(src, tgt)) {
+    return {
+      checkId: 'html-structure',
+      severity: 'error',
+      fieldPath: args.fieldPath,
+      locale: args.locale,
+      segmentIndex: args.segmentIndex,
+      message: 'Translated HTML has a different block structure than the source — a block may have been dropped or altered.',
+    };
+  }
+  const srcP = paragraphCount(args.source);
+  const tgtP = paragraphCount(args.translated);
+  if (srcP !== null && tgtP !== null && srcP !== tgtP) {
+    return {
+      checkId: 'paragraph-count',
+      severity: 'warning',
+      fieldPath: args.fieldPath,
+      locale: args.locale,
+      segmentIndex: args.segmentIndex,
+      message: 'Translated HTML has a different paragraph count than the source.',
+    };
+  }
+  return null;
 }
 
 const STRUCTURAL_MD_KEYS = new Set([

@@ -16,15 +16,15 @@ describe('checkHtmlStructure', () => {
     ).toBeNull();
   });
 
-  it('flags an error when a block is dropped', () => {
+  it('flags a warning when only paragraph count changes', () => {
     const flag = checkHtmlStructure({
       source: '<p>One</p><p>Two</p>',
       translated: '<p>Een</p>',
       fieldPath: 'body',
     });
     expect(flag).toMatchObject({
-      checkId: 'html-structure',
-      severity: 'error',
+      checkId: 'paragraph-count',
+      severity: 'warning',
       fieldPath: 'body',
     });
   });
@@ -36,6 +36,28 @@ describe('checkHtmlStructure', () => {
         translated: '<p>a b</p>',
       }),
     ).toBeNull();
+  });
+});
+
+describe('checkHtmlStructure paragraph reclassification', () => {
+  it('treats a paragraph-count-only difference as a heuristic warning', () => {
+    const flag = checkHtmlStructure({
+      source: '<p>one</p><p>two</p>',
+      translated: '<p>one two merged</p>',
+    });
+    expect(flag?.checkId).toBe('paragraph-count');
+    expect(flag?.severity).toBe('warning');
+  });
+  it('still errors when a structural block (heading) is lost', () => {
+    const flag = checkHtmlStructure({
+      source: '<h2>Title</h2><p>body</p>',
+      translated: '<p>body</p>',
+    });
+    expect(flag?.checkId).toBe('html-structure');
+    expect(flag?.severity).toBe('error');
+  });
+  it('passes identical structure', () => {
+    expect(checkHtmlStructure({ source: '<p>a</p>', translated: '<p>b</p>' })).toBeNull();
   });
 });
 
