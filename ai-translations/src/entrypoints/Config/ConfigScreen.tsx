@@ -1170,18 +1170,30 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
           </div>
         </FieldGroup>
 
-        {/* Projectwide translation rules — per-field Translate / Copy / Skip. */}
+        {/* Translation policy overrides — per-field Translate / Copy / Skip,
+            applied as locked rules across every workflow (decisions §1). */}
         <FieldGroup>
           <div className={s.dropdownLabel} style={{ fontWeight: 'bold' }}>
-            Projectwide translation rules
+            Translation policy overrides
           </div>
           <div
             style={{ fontSize: 'var(--font-size-s)', marginBottom: '8px' }}
           >
-            Set a default fate for every field: <strong>Translate</strong> (send
-            to the AI), <strong>Copy</strong> (keep the source value verbatim —
-            brand names, SKUs), or <strong>Skip</strong> (leave empty; optional
-            fields only). Fields with no rule are translated.
+            The policy you set here will apply to all workflows, single and
+            bulk. Editors will see these as locked options that they cannot
+            change.
+          </div>
+          <div
+            style={{
+              fontSize: 'var(--font-size-s)',
+              color: 'var(--color--ink-subtle)',
+              marginBottom: '8px',
+            }}
+          >
+            Set a fate for every field: <strong>Translate</strong> (send to the
+            AI), <strong>Copy</strong> (keep the source value verbatim — brand
+            names, SKUs), or <strong>Skip</strong> (leave empty; optional fields
+            only). Fields with no rule are translated.
           </div>
           <FieldFateTree
             models={fateModels}
