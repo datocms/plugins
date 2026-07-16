@@ -16,6 +16,9 @@ const REASON_BY_CHECK: Partial<Record<QcCheckId, ReasonCode>> = {
   'block-structure': 'block-count-mismatch',
   'segment-alignment': 'segment-misalignment',
   'cannot-be-blank': 'required-blank',
+  'locale-preservation': 'locale-would-drop',
+  'locale-completeness': 'locales-incomplete',
+  'block-id-provenance': 'block-id-leak',
 };
 
 /**

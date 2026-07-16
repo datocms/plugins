@@ -11,5 +11,8 @@ describe('reasonCodeFor', () => {
     expect(reasonCodeFor('block-structure')).toBe('block-count-mismatch');
     expect(reasonCodeFor('segment-alignment')).toBe('segment-misalignment');
     expect(reasonCodeFor('cannot-be-blank')).toBe('required-blank');
+    expect(reasonCodeFor('locale-preservation')).toBe('locale-would-drop');
+    expect(reasonCodeFor('locale-completeness')).toBe('locales-incomplete');
+    expect(reasonCodeFor('block-id-provenance')).toBe('block-id-leak');
   });
 });

@@ -36,7 +36,11 @@ export type QcCheckId =
   | 'cannot-be-blank'
   | 'block-structure'
   | 'segment-alignment'
-  | 'paragraph-count';
+  | 'paragraph-count'
+  // plan/apply write-path invariants (spec §5/§9):
+  | 'locale-preservation'
+  | 'locale-completeness'
+  | 'block-id-provenance';
 
 /** A single completeness finding for one field/locale (optionally one segment). */
 export type QcFlag = {
