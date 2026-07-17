@@ -54,7 +54,8 @@ export interface RecordPlan {
   recordId: string;
   itemTypeId: string;
   fromLocale: string;
-  sourceVersion: string;
+  /** `meta.current_version` at plan time; undefined for a record with no version (write omits meta). */
+  sourceVersion?: string;
   allLocalesRequired: boolean;
   units: RecordLocaleUnit[];
 }
