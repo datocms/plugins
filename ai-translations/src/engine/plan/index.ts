@@ -10,6 +10,8 @@ export { checkBlockIdProvenance } from './checks/blockIdProvenance';
 export { assembleRecordPayload } from './assemblePayload';
 export type { WrittenLocalePayload } from './assemblePayload';
 export { checkReconstructedCell } from './checkCell';
+export { collectUnitFlags } from './collectUnitFlags';
+export type { ReconstructedCell } from './collectUnitFlags';
 export { buildPlan } from './buildPlan';
 export { buildRecordLocaleUnit } from './buildUnit';
 export { buildCell } from './buildCell';
