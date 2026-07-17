@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BrowserWrapper } from '../../../components/Browser/BrowserWrapper';
 import { IframeContainer } from '../../../components/Browser/IframeContainer';
 import { Toolbar } from '../../../components/Browser/Toolbar';
+import { EditModeToggle } from '../../../components/Browser/Toolbar/EditModeToggle';
 import { ToolbarSlot } from '../../../components/Browser/Toolbar/ToolbarSlot';
 import type { ViewportSize } from '../../../components/Browser/ViewportCustomizer';
 import { ViewportCustomizer } from '../../../components/Browser/ViewportCustomizer';
@@ -17,11 +18,10 @@ import {
   type Parameters,
   type Viewport,
 } from '../../../types';
+import { normalizePathForVisualEditing } from '../../../utils/normalizePathForVisualEditing';
 import { inspectorUrl } from '../../../utils/urls';
 import { useContentLink } from '../ContentLinkContext';
-import { normalizePathForVisualEditing } from '../normalizePathForVisualEditing';
 import AddressBar from './AddressBar';
-import { EditModeToggle } from './EditModeToggle';
 
 const UI: React.FC = () => {
   const ctx = useCtx<RenderInspectorCtx>();

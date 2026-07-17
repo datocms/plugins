@@ -13,6 +13,7 @@ import { BrowserWrapper } from '../../components/Browser/BrowserWrapper';
 import styles from '../../components/Browser/BrowserWrapper/styles.module.css';
 import { IframeContainer } from '../../components/Browser/IframeContainer';
 import { Toolbar } from '../../components/Browser/Toolbar';
+import { EditModeToggle } from '../../components/Browser/Toolbar/EditModeToggle';
 import { ToolbarButton } from '../../components/Browser/Toolbar/ToolbarButton';
 import { ToolbarSlot } from '../../components/Browser/Toolbar/ToolbarSlot';
 import type { ViewportSize } from '../../components/Browser/ViewportCustomizer';
@@ -26,12 +27,17 @@ import {
   type Viewport,
 } from '../../types';
 import { useStatusByFrontend } from '../../utils/common';
+import { usePersistedSidebarVisualEditing } from '../../utils/persistedSidebarVisualEditing';
 import { usePersistedSidebarWidth } from '../../utils/persistedWidth';
 import {
   extractRedirectFromDraftModePreviewUrl,
   inspectorUrl,
 } from '../../utils/urls';
 import { PreviewLinkSelector } from './PreviewLinkSelector';
+import {
+  linkSupportsVisualEditing,
+  useSidebarContentLink,
+} from './useSidebarContentLink';
 
 type PropTypes = {
   ctx: RenderItemFormSidebarCtx;
@@ -72,6 +78,24 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
   >();
 
   usePersistedSidebarWidth(ctx.site);
+
+  const [editModeEnabled, setEditModeEnabled] =
+    usePersistedSidebarVisualEditing(ctx.site);
+
+  const { iframeRef } = useSidebarContentLink(ctx, editModeEnabled);
+
+  const currentFrontend = currentPreviewLink
+    ? frontends.find((f) => f.name === currentPreviewLink.frontendName)
+    : undefined;
+
+  const currentLinkSupportsVisualEditing = linkSupportsVisualEditing(
+    currentPreviewLink,
+    currentFrontend,
+  );
+
+  const editModeTooltip = currentLinkSupportsVisualEditing
+    ? 'Click elements in the preview to open their record editor'
+    : "This preview link's frontend doesn't support visual editing";
 
   const allPreviewLinksWithFrontend = useMemo(() => {
     if (!statusByFrontend) return [];
@@ -194,6 +218,14 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
                     </ButtonGroupButton>
                   </ButtonGroup>
                 </ToolbarSlot>
+                <ToolbarSlot withLeftBorder>
+                  <EditModeToggle
+                    value={editModeEnabled}
+                    disabled={!currentLinkSupportsVisualEditing}
+                    tooltip={editModeTooltip}
+                    onChange={setEditModeEnabled}
+                  />
+                </ToolbarSlot>
               </>
             )}
           </Toolbar>
@@ -210,6 +242,9 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
               <IframeContainer
                 key={`${currentPreviewLink.url}-${reloadCounter}`}
                 src={currentPreviewLink.url}
+                iframeRef={
+                  currentLinkSupportsVisualEditing ? iframeRef : undefined
+                }
                 allow={iframeAllowAttribute}
                 sizing={
                   currentViewport === 'responsive'

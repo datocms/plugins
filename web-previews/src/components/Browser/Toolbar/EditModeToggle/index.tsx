@@ -5,18 +5,21 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from 'datocms-react-ui';
+import type { ReactNode } from 'react';
 import styles from './styles.module.css';
 
 interface EditModeToggleProps {
   value: boolean;
   disabled: boolean;
-  onChange: () => void;
+  onChange: (value: boolean) => void;
+  tooltip?: ReactNode;
 }
 
 export function EditModeToggle({
   value,
   disabled,
   onChange,
+  tooltip,
 }: EditModeToggleProps) {
   return (
     <Tooltip>
@@ -32,7 +35,7 @@ export function EditModeToggle({
         </label>
       </TooltipTrigger>
       <TooltipContent>
-        <HotKey label="Enable edit overlay" hotkey="alt" />
+        {tooltip ?? <HotKey label="Enable edit overlay" hotkey="alt" />}
       </TooltipContent>
     </Tooltip>
   );
