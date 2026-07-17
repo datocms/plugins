@@ -35,6 +35,13 @@ import {
 } from './TranslationCore';
 import type { RunGate, SystemicHandler, TranslationProvider } from './types';
 import { type WriteClaim, verifyPersistedWrite } from './verifyPersistedWrite';
+import { reasonCodeFor, type UnitOutcome } from '../../engine/plan';
+import {
+  createRunState,
+  foldOutcome,
+  policyDigest,
+  type RunState,
+} from '../../engine/report';
 
 /**
  * Payload-build machinery (extracted to `src/engine` — pure move, Task 1 of
@@ -394,6 +401,13 @@ export type TranslateBatchOptions = {
    * every translatable field on each record is processed.
    */
   selectedFieldsByModel?: SelectedFieldsByModel;
+  /**
+   * Invoked once at the end of the run with the accumulated {@link RunState} —
+   * the plan/apply report shape (per (record,locale) outcome). Additive shadow
+   * (integration spec §6 Step 1): the write/report path is unchanged; this
+   * surfaces the new report model so downstream UI can adopt it.
+   */
+  onRunState?: (runState: RunState) => void;
 };
 
 /**
@@ -781,6 +795,48 @@ export async function translateAndUpdateRecords(
     options.onProgress?.(u);
   };
 
+  // Plan/apply report shape, accumulated in shadow (integration spec §6 Step 1):
+  // built alongside the existing write/report with NO behavioral change, and
+  // surfaced via options.onRunState at the end of the run.
+  const uuid = (): string =>
+    globalThis.crypto?.randomUUID?.() ?? `id-${Date.now()}-${records.length}`;
+  const runPolicy = {
+    excludedTokens: pluginParams.apiKeysToBeExcludedFromThisPlugin ?? [],
+    copyTokens: pluginParams.fieldsToCopyFromSource ?? [],
+  };
+  let runState = createRunState({
+    runId: uuid(),
+    deviceId: uuid(), // TODO(step6): a stable per-browser id (IndexedDB)
+    startedAt: Date.now(),
+    operation: 'translate',
+    policyDigest: policyDigest(runPolicy),
+    fromLocale,
+    toLocales,
+  });
+
+  /** Shadow verdict for one locale from the engine's own qcFlags (error ⇒ blocked). */
+  const shadowUnitOutcome = (
+    recordId: string,
+    toLocale: string,
+    qcFlags: QcFlag[],
+    preVersion: string | undefined,
+  ): UnitOutcome => {
+    const errorFlags = qcFlags.filter((f) => f.severity === 'error');
+    const warnFlags = qcFlags.filter((f) => f.severity !== 'error');
+    return {
+      recordId,
+      toLocale,
+      bucket: errorFlags.length > 0 ? 'blocked' : 'written',
+      reasons: errorFlags.map((f) => ({
+        fieldPath: f.fieldPath ?? '',
+        code: reasonCodeFor(f.checkId),
+        message: f.message,
+      })),
+      flags: warnFlags.map((f) => ({ checkId: f.checkId, message: f.message })),
+      preVersion,
+    };
+  };
+
   /**
    * Translates all fields of a record into every target locale, emitting a
    * progress update for each locale ("Translating X to en…", "Translating X
@@ -878,6 +934,19 @@ export async function translateAndUpdateRecords(
           ...locales,
         ];
       }
+
+      // Shadow RunState (additive): record this locale's verdict from the
+      // engine's own qcFlags. The write/report below is unaffected.
+      runState = foldOutcome(
+        runState,
+        shadowUnitOutcome(
+          record.id,
+          toLocale,
+          localeResult.qcFlags,
+          (record as { meta?: { current_version?: string } }).meta?.current_version,
+        ),
+        { now: Date.now() },
+      );
     }
 
     // Sequential per-locale to keep within provider rate-limit budgets and
@@ -1274,6 +1343,9 @@ export async function translateAndUpdateRecords(
     if (previousOutcome === 'cancelled') return 'cancelled';
     return processRecord(record, i);
   }, Promise.resolve<'cancelled' | 'continue' | 'done'>('done'));
+
+  // Surface the accumulated plan/apply report (shadow; §6 Step 1).
+  options.onRunState?.(runState);
 }
 
 /**
