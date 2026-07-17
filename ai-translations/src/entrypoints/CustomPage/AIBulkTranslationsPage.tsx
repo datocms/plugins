@@ -530,7 +530,15 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
                     name="targetLocales"
                     id="targetLocales"
                     label="Target languages"
-                    hint="Pick one or more, or “All other locales”"
+                    // Always show the concrete count so the selection is never a
+                    // surprise — "All other locales" resolves to an explicit N.
+                    hint={
+                      targetLocales.length > 0
+                        ? `${targetLocales.length} language${
+                            targetLocales.length === 1 ? '' : 's'
+                          } will be translated`
+                        : 'Pick one or more, or “All other locales”'
+                    }
                     value={targetLocaleOptions}
                     selectInputProps={{
                       isMulti: true,
