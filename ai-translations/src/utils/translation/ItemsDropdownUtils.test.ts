@@ -1529,9 +1529,10 @@ describe('ItemsDropdownUtils', () => {
       return updates.filter((u) => u.recordId === record.id).at(-1);
     };
 
-    it('escalates an error-severity QC flag to status "error" even when the field wrote', async () => {
-      // The field translates and is saved, but the provider truncated it — a
-      // content-corrupting error. It must NOT be counted as a clean success.
+    it('blocks a locale whose translation carries an error-severity QC flag (plan/apply §3)', async () => {
+      // The provider truncated the field — a content-corrupting error. Under the
+      // plan/apply gate this now BLOCKS the locale (the bad value is never
+      // written), and the record surfaces as an error via the failed-locale path.
       vi.mocked(translateFieldValue).mockImplementation(async (...args) => {
         const opts = args[13] as
           | { onQcFlag?: (flag: QcFlag) => void }
@@ -1556,7 +1557,8 @@ describe('ItemsDropdownUtils', () => {
       );
 
       expect(finalUpdate?.status).toBe('error');
-      expect(finalUpdate?.message).toMatch(/may be incomplete/i);
+      // Reported as a failed locale (the truncated value was NOT written), and the
+      // structured qcFlag is retained for the report.
       expect(
         finalUpdate?.qcFlags?.some((f) => f.checkId === 'truncated'),
       ).toBe(true);

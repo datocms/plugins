@@ -17,6 +17,7 @@ export { checkNetNewCell, collectNetNewFlags, SEAM_NET_NEW_CHECK_IDS } from './c
 export { checkLocaleCompleteness } from './checks/localeCompleteness';
 export { checkAssembledBody } from './checkAssembledBody';
 export { toPlanRecord, toPlanFields, toPlanInput, type ApiRecord } from './toPlanInput';
+export { orchestrateRecordOutcome, type EngineLocaleResult } from './orchestrateRecordOutcome';
 export { buildPlan } from './buildPlan';
 export { buildRecordLocaleUnit } from './buildUnit';
 export { buildCell } from './buildCell';

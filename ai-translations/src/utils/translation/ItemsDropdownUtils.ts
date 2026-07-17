@@ -8,7 +8,6 @@ import {
   QC_WARNING_NOTE_LABEL,
   RUN_CANCELLED,
   buildTranslatedUpdatePayload,
-  mergeLocalePayloadInto,
 } from '../../engine';
 import { createSlotScheduler } from '../../engine/slotScheduler';
 import {
@@ -35,7 +34,13 @@ import {
 } from './TranslationCore';
 import type { RunGate, SystemicHandler, TranslationProvider } from './types';
 import { type WriteClaim, verifyPersistedWrite } from './verifyPersistedWrite';
-import { reasonCodeFor, type UnitOutcome } from '../../engine/plan';
+import {
+  type ApiRecord,
+  buildPlan,
+  orchestrateRecordOutcome,
+  toPlanInput,
+  toPlanRecord,
+} from '../../engine/plan';
 import {
   createRunState,
   foldOutcome,
@@ -814,28 +819,6 @@ export async function translateAndUpdateRecords(
     toLocales,
   });
 
-  /** Shadow verdict for one locale from the engine's own qcFlags (error ⇒ blocked). */
-  const shadowUnitOutcome = (
-    recordId: string,
-    toLocale: string,
-    qcFlags: QcFlag[],
-    preVersion: string | undefined,
-  ): UnitOutcome => {
-    const errorFlags = qcFlags.filter((f) => f.severity === 'error');
-    const warnFlags = qcFlags.filter((f) => f.severity !== 'error');
-    return {
-      recordId,
-      toLocale,
-      bucket: errorFlags.length > 0 ? 'blocked' : 'written',
-      reasons: errorFlags.map((f) => ({
-        fieldPath: f.fieldPath ?? '',
-        code: reasonCodeFor(f.checkId),
-        message: f.message,
-      })),
-      flags: warnFlags.map((f) => ({ checkId: f.checkId, message: f.message })),
-      preVersion,
-    };
-  };
 
   /**
    * Translates all fields of a record into every target locale, emitting a
@@ -858,7 +841,6 @@ export async function translateAndUpdateRecords(
         .map((key) => fieldTypeDictionary[key]?.id)
         .filter((id): id is string => Boolean(id));
 
-    const mergedPayload: Record<string, Record<string, unknown>> = {};
     const aggregatedWarnings: string[] = [];
     const aggregatedReferenceCopies: ReferenceCopy[] = [];
     const aggregatedQcFlags: QcFlag[] = [];
@@ -868,6 +850,12 @@ export async function translateAndUpdateRecords(
     }[] = [];
     const localeOutcomes: LocaleOutcome[] = [];
     const aggregatedWrittenLocales: Record<string, string[]> = {};
+    // Per-locale engine results, kept for the plan/apply orchestration (§3): the
+    // conform gate + assembleRecordPayload decide the final write body.
+    const localeResults = new Map<
+      string,
+      { payload: Record<string, Record<string, unknown>>; qcFlags: QcFlag[]; translatedFields: string[] }
+    >();
     let totalReferenceFieldsCopied = 0;
     let totalCopiedFieldCount = 0;
     let totalErrorCount = 0;
@@ -913,16 +901,12 @@ export async function translateAndUpdateRecords(
         ctx.cmaBaseUrl,
       );
 
-      mergeLocalePayloadInto(mergedPayload, localeResult.payload);
       aggregatedWarnings.push(...localeResult.warnings);
       aggregatedReferenceCopies.push(...localeResult.referenceCopies);
       aggregatedQcFlags.push(...localeResult.qcFlags);
       aggregatedFailedFields.push(...localeResult.failedFields);
-      localeOutcomes.push({
-        locale: toLocale,
-        translated: [...localeResult.translatedFields],
-        failed: [...localeResult.failedFields],
-      });
+      // localeOutcomes are rebuilt from the conform verdicts after the loop (§3),
+      // so a Blocked locale reports its reasons as failures.
       totalReferenceFieldsCopied += localeResult.referenceFieldsCopied;
       totalCopiedFieldCount += localeResult.copiedFieldCount;
       totalErrorCount += localeResult.errorCount;
@@ -935,18 +919,11 @@ export async function translateAndUpdateRecords(
         ];
       }
 
-      // Shadow RunState (additive): record this locale's verdict from the
-      // engine's own qcFlags. The write/report below is unaffected.
-      runState = foldOutcome(
-        runState,
-        shadowUnitOutcome(
-          record.id,
-          toLocale,
-          localeResult.qcFlags,
-          (record as { meta?: { current_version?: string } }).meta?.current_version,
-        ),
-        { now: Date.now() },
-      );
+      localeResults.set(toLocale, {
+        payload: localeResult.payload,
+        qcFlags: localeResult.qcFlags,
+        translatedFields: localeResult.translatedFields,
+      });
     }
 
     // Sequential per-locale to keep within provider rate-limit budgets and
@@ -962,7 +939,61 @@ export async function translateAndUpdateRecords(
       record as { meta?: { updated_at?: string; current_version?: string } }
     ).meta;
     let updatedAt = recordMeta?.updated_at;
-    if (Object.keys(mergedPayload).length > 0) {
+
+    // Plan/apply gate (§3): conform the per-locale engine results into the final
+    // write body. A locale carrying an error-tier defect is BLOCKED — omitted
+    // from the body (its existing value preserved, never overwritten with bad
+    // content), and reported as a failure. Written locales are merged into one
+    // items.update body via assembleRecordPayload.
+    const plan = buildPlan(
+      toPlanInput({
+        record: record as unknown as ApiRecord,
+        dictionary: fieldTypeDictionary,
+        allLocalesRequired: false,
+        policy: runPolicy,
+        policyDigest: runState.policyDigest,
+        fromLocale,
+        toLocales,
+      }),
+    );
+    const { body, outcomes } = orchestrateRecordOutcome({
+      plan,
+      record: toPlanRecord(record as unknown as ApiRecord),
+      fromLocale,
+      localeResults,
+    });
+    const recordPlan = plan.records[0];
+
+    // Rebuild per-locale report outcomes from the conform verdicts + fold the
+    // canonical RunState. A Written locale reports its translated fields; a
+    // Blocked locale reports its reasons as failures (so the record surfaces).
+    for (const outcome of outcomes) {
+      if (outcome.bucket === 'written') {
+        localeOutcomes.push({
+          locale: outcome.toLocale,
+          translated: [...(localeResults.get(outcome.toLocale)?.translatedFields ?? [])],
+          failed: [],
+        });
+      } else {
+        const failed = outcome.reasons.map((reason) => ({
+          field: reason.fieldPath || outcome.toLocale,
+          error: {
+            code: 'datocms',
+            source: 'datocms',
+            message: reason.message,
+          } satisfies NormalizedProviderError,
+        }));
+        localeOutcomes.push({ locale: outcome.toLocale, translated: [], failed });
+        aggregatedFailedFields.push(...failed);
+        for (const reason of outcome.reasons) {
+          aggregatedWarnings.push(`${formatLocaleWithCode(outcome.toLocale)}: ${reason.message}`);
+        }
+        totalErrorCount += 1;
+      }
+      runState = foldOutcome(runState, outcome, { now: Date.now() });
+    }
+
+    if (Object.keys(body).length > 0) {
       // Final gate before the write: the between-field/locale gates cannot fire
       // after the last field of the last locale, so a cancel that landed mid-way
       // through that field (stopping its block translations early, leaving a
@@ -981,13 +1012,13 @@ export async function translateAndUpdateRecords(
       });
       const updated = (await client.items.update(
         record.id,
-        buildRecordUpdateBody(mergedPayload, recordMeta?.current_version),
+        buildRecordUpdateBody(body, recordPlan.sourceVersion),
       )) as Record<string, unknown> & { meta?: { updated_at?: string } };
       updatedAt = updated?.meta?.updated_at ?? updatedAt;
 
-      // Structural read-back: every field we marked `translated` must come back
-      // present, non-null, and non-empty. A claim the CMA silently dropped is
-      // demoted from `translated` to `failed` so the record fails the run.
+      // Structural read-back: every field we marked `translated` (Written only)
+      // must come back present. A claim the CMA silently dropped is demoted to
+      // `failed` (written-unverified) so the record fails the run.
       const claims: WriteClaim[] = localeOutcomes.flatMap((outcome) =>
         outcome.translated.map((field) => ({ field, locale: outcome.locale })),
       );
@@ -1026,7 +1057,7 @@ export async function translateAndUpdateRecords(
     ];
 
     return {
-      payload: mergedPayload,
+      payload: body,
       translatedFieldCount: totalTranslatedFields,
       referenceFieldsCopied: totalReferenceFieldsCopied,
       copiedFieldCount: totalCopiedFieldCount,
