@@ -9,6 +9,7 @@ export { checkLocalePreservation } from './checks/localePreservation';
 export { checkBlockIdProvenance } from './checks/blockIdProvenance';
 export { assembleRecordPayload } from './assemblePayload';
 export type { WrittenLocalePayload } from './assemblePayload';
+export { checkReconstructedCell } from './checkCell';
 export { buildPlan } from './buildPlan';
 export { buildRecordLocaleUnit } from './buildUnit';
 export { buildCell } from './buildCell';
