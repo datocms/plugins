@@ -36,3 +36,8 @@ export {
   isPolicyCompatible,
   type ResumeTarget,
 } from './recovery';
+export {
+  serializeRunState,
+  deserializeRunState,
+  type TokenDivergence,
+} from './jsonAdapter';
