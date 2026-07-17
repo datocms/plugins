@@ -1564,6 +1564,32 @@ describe('ItemsDropdownUtils', () => {
       ).toBe(true);
     });
 
+    it('fails the record when one field\'s provider call fails, even if a sibling field succeeds', async () => {
+      // Regression (plan/apply flip review): a provider-FAILED field is not a QC
+      // flag, so conform keeps the locale `written`. The record must still surface
+      // as `error` via the locale's failed-field accounting — not silently pass as
+      // completed-with-warnings.
+      vi.mocked(translateFieldValue).mockImplementation(async (...args) => {
+        if (args[0] === 'FailMe') throw new Error('provider exploded');
+        return 'Ciao';
+      });
+
+      const finalUpdate = await runSingleRecord(
+        {
+          id: 'mixed',
+          item_type: { id: 'm1' },
+          title: { en: 'Hello' },
+          subtitle: { en: 'FailMe' },
+        },
+        {
+          title: { editor: 'single_line', id: 'field-title', isLocalized: true },
+          subtitle: { editor: 'single_line', id: 'field-subtitle', isLocalized: true },
+        },
+      );
+
+      expect(finalUpdate?.status).toBe('error');
+    });
+
     it('lets an error-severity QC flag win over a reference-copy warning (status "error")', async () => {
       // title translates but truncates (error); related is a link field carried
       // over by locale-sync (a warning). The error must win the status, and the
