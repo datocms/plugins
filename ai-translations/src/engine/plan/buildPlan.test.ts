@@ -42,9 +42,9 @@ describe('buildPlan', () => {
     expect(rp.units.find((u) => u.toLocale === 'de')?.isNewLocale).toBe(true);
   });
 
-  it('defaults sourceVersion to empty string when meta is absent', () => {
+  it('omits sourceVersion (undefined, not "") when meta is absent', () => {
     const plan = buildPlan(input({ records: [{ id: '2', itemTypeId: 'article', title: { en: 'x' } }] }));
-    expect(plan.records[0].sourceVersion).toBe('');
+    expect(plan.records[0].sourceVersion).toBeUndefined();
   });
 
   it('yields empty-cell units for an unknown item type without throwing', () => {

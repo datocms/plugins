@@ -39,7 +39,9 @@ export function buildPlan(input: BuildPlanInput): TranslationPlan {
       recordId: record.id,
       itemTypeId: record.itemTypeId,
       fromLocale,
-      sourceVersion: record.meta?.current_version ?? '',
+      // undefined (not '') when the record has no version, so the write omits the
+      // meta block — matching buildRecordUpdateBody's omit-when-absent (integration §4.1).
+      sourceVersion: record.meta?.current_version ?? undefined,
       allLocalesRequired,
       units,
     };
