@@ -57,6 +57,42 @@ describe('orchestrateRecordOutcome', () => {
     expect(body.title.de).not.toBe('Hallo');
   });
 
+  it('writes a NEW locale with its full payload incl. fallback-filled fields (Locale Sync Rule)', () => {
+    // 'fr' is new to the record; its engine payload carries the translated title
+    // AND a fallback-filled brand. A Written new locale must write BOTH.
+    const newLocalePlan: TranslationPlan = {
+      policyDigest: 'x',
+      records: [
+        {
+          recordId: 'r1',
+          itemTypeId: 'a',
+          fromLocale: 'en',
+          sourceVersion: 'v',
+          allLocalesRequired: false,
+          units: [
+            {
+              toLocale: 'fr',
+              isNewLocale: true,
+              cells: [
+                cell({ fieldPath: 'title', toLocale: 'fr', expected: { preservedLocales: ['en'] } }),
+                cell({ fieldPath: 'brand', toLocale: 'fr', expected: { preservedLocales: ['en'] } }),
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    const rec: PlanRecord = { id: 'r1', itemTypeId: 'a', title: { en: 'Hi' }, brand: { en: 'Acme' } };
+    const localeResults = new Map<string, EngineLocaleResult>([
+      ['fr', { payload: { title: { en: 'Hi', fr: 'Salut' }, brand: { en: 'Acme', fr: 'Acme' } }, qcFlags: [], translatedFields: ['title'] }],
+    ]);
+    const { body, outcomes } = orchestrateRecordOutcome({ plan: newLocalePlan, record: rec, fromLocale: 'en', localeResults });
+    expect(outcomes[0].bucket).toBe('written');
+    // BOTH fields carry fr (title translated, brand fallback) — no partial new locale.
+    expect(body.title.fr).toBe('Salut');
+    expect(body.brand.fr).toBe('Acme');
+  });
+
   it('carries an engine warning flag onto a Written unit', () => {
     const localeResults = new Map<string, EngineLocaleResult>([
       ['it', { payload: { title: { en: 'Hi', it: 'Ciao' } }, qcFlags: [{ checkId: 'length-ratio', severity: 'warning', fieldPath: 'title', locale: 'it', message: 'short' }], translatedFields: ['title'] }],
