@@ -30,3 +30,9 @@ export {
   type RunContext,
 } from './runState';
 export { machineTokenForUnit, runUnitFromMachineToken } from './machineToken';
+export {
+  pickLatestRunState,
+  unitsToResume,
+  isPolicyCompatible,
+  type ResumeTarget,
+} from './recovery';
