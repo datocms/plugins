@@ -300,6 +300,12 @@ connect({
     if (!pluginParams.apiKeysToBeExcludedFromThisPlugin) {
       defaults.apiKeysToBeExcludedFromThisPlugin = [];
     }
+    // The v4 two-list policy model: the copy-from-source list is a first-class
+    // list alongside the exclude list. Default it so every install (incl. legacy
+    // ones migrating up) has it; the engine reads it via resolveFieldFate.
+    if (!pluginParams.fieldsToCopyFromSource) {
+      defaults.fieldsToCopyFromSource = [];
+    }
     if (!pluginParams.gptModel) {
       defaults.gptModel = 'gpt-5.4-mini';
     }
