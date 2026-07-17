@@ -16,6 +16,7 @@ export { reconstructTranslatedCells } from './reconstructTranslatedCells';
 export { checkNetNewCell, collectNetNewFlags, SEAM_NET_NEW_CHECK_IDS } from './collectNetNewFlags';
 export { checkLocaleCompleteness } from './checks/localeCompleteness';
 export { checkAssembledBody } from './checkAssembledBody';
+export { toPlanRecord, toPlanFields, toPlanInput, type ApiRecord } from './toPlanInput';
 export { buildPlan } from './buildPlan';
 export { buildRecordLocaleUnit } from './buildUnit';
 export { buildCell } from './buildCell';
