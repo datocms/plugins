@@ -44,6 +44,32 @@ vi.mock('datocms-react-ui', () => {
       formLabelProps?: unknown;
     }) => React.createElement('select', { ...rest }, children),
     Spinner: () => React.createElement('div', { 'data-testid': 'spinner' }),
+    SwitchField: ({
+      label,
+      value,
+      onChange,
+      id,
+      name,
+    }: {
+      label?: React.ReactNode;
+      value?: boolean;
+      onChange?: (value: boolean) => void;
+      id?: string;
+      name?: string;
+    }) =>
+      React.createElement(
+        'label',
+        {},
+        React.createElement('input', {
+          type: 'checkbox',
+          id,
+          name,
+          checked: !!value,
+          onChange: (event: React.ChangeEvent<HTMLInputElement>) =>
+            onChange?.(event.target.checked),
+        }),
+        label,
+      ),
     Section: ({
       title,
       children,

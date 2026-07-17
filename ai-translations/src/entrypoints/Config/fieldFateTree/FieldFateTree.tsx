@@ -8,7 +8,7 @@
  */
 
 import { useMemo, useState } from 'react';
-import { Section } from 'datocms-react-ui';
+import { Section, SwitchField } from 'datocms-react-ui';
 import FieldFateTreeNode from './FieldFateTreeNode';
 import { cascadeFate, fateOf, flattenLeaves, summarize } from './fate';
 import type {
@@ -145,14 +145,13 @@ export default function FieldFateTree({
           aria-label="Search models by name or ID"
           onChange={(event) => setModelFilter(event.target.value)}
         />
-        <label className={s.setAll}>
-          <input
-            type="checkbox"
-            checked={nonDefaultOnly}
-            onChange={(event) => setNonDefaultOnly(event.target.checked)}
-          />
-          Show only models with a rule
-        </label>
+        <SwitchField
+          id="nonDefaultOnly"
+          name="nonDefaultOnly"
+          label="Show only models with a rule"
+          value={nonDefaultOnly}
+          onChange={setNonDefaultOnly}
+        />
       </div>
       {visibleModels.length === 0 && (
         <div className={s.footerLine}>No models match “{modelFilter}”.</div>
