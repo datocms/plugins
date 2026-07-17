@@ -87,6 +87,15 @@ Format and storage compose independently:
 - **Cross-device is additive:** the cloud adapter is just another sink over the same
   canonical shape — build IndexedDB + JSON/CSV first, drop cloud in later, zero
   format change.
+- **The machine token is a cross-format integrity anchor.** The same
+  `v<ver>:base64url(…)` token from §6 is embedded in **every** serialization — the
+  CSV `machine_readable_status` column *and* a per-unit `mrc` field in the JSON
+  (export + cloud). Normally the human/JSON fields and the decoded token encode
+  identical data; the redundancy is ~37 chars/row and buys a cheap, self-validating
+  per-row backup. **Divergence rule:** on import, if a unit's structured fields and
+  its checksum-valid `mrc` token disagree (e.g. a serializer mangled quoting), the
+  token is **authoritative** and the divergence is logged with the row identity —
+  so in-flight JSON/CSV corruption is *traceable to the exact row*, not silent.
 - **Recovery = latest `(runId, updatedAt)` wins** across whichever tiers are present.
 - **No per-cell compression, no msgpack.** Compression is whole-file (cloud tier
   only); at per-cell scale a self-describing codec's type tags dominate.
