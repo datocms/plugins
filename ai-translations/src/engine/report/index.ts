@@ -46,3 +46,4 @@ export {
   type RunStore,
   type RunSummary,
 } from './runStore';
+export { policyDigest } from './policyDigest';
