@@ -854,7 +854,12 @@ export async function translateAndUpdateRecords(
     // conform gate + assembleRecordPayload decide the final write body.
     const localeResults = new Map<
       string,
-      { payload: Record<string, Record<string, unknown>>; qcFlags: QcFlag[]; translatedFields: string[] }
+      {
+        payload: Record<string, Record<string, unknown>>;
+        qcFlags: QcFlag[];
+        translatedFields: string[];
+        failedFields: { field: string; error: NormalizedProviderError }[];
+      }
     >();
     let totalReferenceFieldsCopied = 0;
     let totalCopiedFieldCount = 0;
@@ -923,6 +928,7 @@ export async function translateAndUpdateRecords(
         payload: localeResult.payload,
         qcFlags: localeResult.qcFlags,
         translatedFields: localeResult.translatedFields,
+        failedFields: localeResult.failedFields,
       });
     }
 
@@ -964,15 +970,21 @@ export async function translateAndUpdateRecords(
     });
     const recordPlan = plan.records[0];
 
-    // Rebuild per-locale report outcomes from the conform verdicts + fold the
-    // canonical RunState. A Written locale reports its translated fields; a
-    // Blocked locale reports its reasons as failures (so the record surfaces).
+    // Rebuild per-locale report outcomes from the conform verdicts. A Written
+    // locale reports its translated fields — AND any provider-failed fields, so a
+    // record with a failed field still surfaces as an error (the failure isn't a
+    // QC flag, so conform can't see it). A Blocked locale reports its reasons as
+    // failures. RunState is folded AFTER the write (below), never here, so a
+    // thrown write can't leave a phantom `written` unit in the canonical report.
     for (const outcome of outcomes) {
       if (outcome.bucket === 'written') {
+        const lr = localeResults.get(outcome.toLocale);
         localeOutcomes.push({
           locale: outcome.toLocale,
-          translated: [...(localeResults.get(outcome.toLocale)?.translatedFields ?? [])],
-          failed: [],
+          translated: [...(lr?.translatedFields ?? [])],
+          // failedFields are already in aggregatedFailedFields (translateForLocale);
+          // carrying them here drives summarizeLocaleOutcomes → hasDeadLocale.
+          failed: [...(lr?.failedFields ?? [])],
         });
       } else {
         const failed = outcome.reasons.map((reason) => ({
@@ -990,9 +1002,9 @@ export async function translateAndUpdateRecords(
         }
         totalErrorCount += 1;
       }
-      runState = foldOutcome(runState, outcome, { now: Date.now() });
     }
 
+    const demotedLocales = new Set<string>();
     if (Object.keys(body).length > 0) {
       // Final gate before the write: the between-field/locale gates cannot fire
       // after the last field of the last locale, so a cancel that landed mid-way
@@ -1042,7 +1054,21 @@ export async function translateAndUpdateRecords(
         };
         outcome.failed.push(demotion);
         aggregatedFailedFields.push(demotion);
+        demotedLocales.add(mismatch.locale);
       }
+    }
+
+    // Fold the canonical RunState AFTER the write + verify demotions, so it
+    // reflects what actually persisted (integration review): a written locale
+    // the CMA silently dropped a field from becomes `written-unverified`. A write
+    // that threw never reaches here, so the record is simply absent from RunState
+    // rather than falsely `written`.
+    for (const outcome of outcomes) {
+      const projected =
+        outcome.bucket === 'written' && demotedLocales.has(outcome.toLocale)
+          ? { ...outcome, bucket: 'written-unverified' as const }
+          : outcome;
+      runState = foldOutcome(runState, projected, { now: Date.now() });
     }
 
     // Derived AFTER the read-back demotion, never from a running tally: a field
