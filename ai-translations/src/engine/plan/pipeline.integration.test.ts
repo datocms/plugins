@@ -7,7 +7,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildPlan } from './buildPlan';
 import { collectUnitFlags, type ReconstructedCell } from './collectUnitFlags';
-import { conform, unitKey } from './conform';
+import { conform } from './conform';
 import { assembleRecordPayload, type WrittenLocalePayload } from './assemblePayload';
 import { checkLocalePreservation } from './checks/localePreservation';
 import type { BuildPlanInput, PlanField, PlanRecord } from './buildPlanTypes';
