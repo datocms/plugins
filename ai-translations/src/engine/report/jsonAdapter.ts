@@ -12,6 +12,14 @@ import { decodeMachineCell } from './machineCell';
 /** A unit as it appears in the serialized JSON — structured fields plus the anchor. */
 type SerializedUnit = RunUnitState & { mrc: string };
 
+interface SerializedRecord {
+  recordId: string;
+  sourceVersion?: string;
+  writtenVersion?: string;
+  units: SerializedUnit[];
+}
+type SerializedRunState = Omit<RunState, 'records'> & { records: SerializedRecord[] };
+
 /** Serializes RunState to JSON with a per-unit `mrc` integrity anchor. */
 export function serializeRunState(state: RunState): string {
   return JSON.stringify({
@@ -44,9 +52,7 @@ export function deserializeRunState(
   json: string,
   onDivergence?: (d: TokenDivergence) => void,
 ): RunState {
-  const parsed = JSON.parse(json) as RunState & {
-    records: (Omit<RunState['records'][number], 'units'> & { units: SerializedUnit[] })[];
-  };
+  const parsed = JSON.parse(json) as SerializedRunState;
   if (parsed.schemaVersion !== RUN_SCHEMA_VERSION) {
     throw new Error(`deserializeRunState: unknown schemaVersion ${parsed.schemaVersion}`);
   }
