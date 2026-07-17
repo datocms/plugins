@@ -41,3 +41,8 @@ export {
   deserializeRunState,
   type TokenDivergence,
 } from './jsonAdapter';
+export {
+  createInMemoryRunStore,
+  type RunStore,
+  type RunSummary,
+} from './runStore';
