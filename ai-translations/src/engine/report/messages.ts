@@ -4,7 +4,7 @@
  * artifact stays small and stable when copy changes). One entry per
  * {@link ReasonCode}; the exhaustive map is enforced by the `Record` type.
  */
-import type { ReasonCode } from '../plan/types';
+import type { Bucket, ReasonCode } from '../plan/types';
 
 const REASON_MESSAGES: Record<ReasonCode, string> = {
   'locale-would-drop':
@@ -26,4 +26,16 @@ const REASON_MESSAGES: Record<ReasonCode, string> = {
 /** Human-facing message for a blocked-cell reason code. */
 export function describeReasonCode(code: ReasonCode): string {
   return REASON_MESSAGES[code];
+}
+
+const BUCKET_LABELS: Record<Bucket, string> = {
+  written: 'Written',
+  blocked: 'Blocked',
+  'not-attempted': 'Not attempted',
+  'written-unverified': 'Written (unverified)',
+};
+
+/** Human-facing label for a report bucket. */
+export function describeBucket(bucket: Bucket): string {
+  return BUCKET_LABELS[bucket];
 }

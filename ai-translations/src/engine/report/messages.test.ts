@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { describeReasonCode } from './messages';
-import type { ReasonCode } from '../plan/types';
+import { describeBucket, describeReasonCode } from './messages';
+import type { Bucket, ReasonCode } from '../plan/types';
 
 const ALL_CODES: ReasonCode[] = [
   'locale-would-drop',
@@ -29,5 +29,13 @@ describe('describeReasonCode', () => {
   it('gives distinct messages per code', () => {
     const messages = new Set(ALL_CODES.map(describeReasonCode));
     expect(messages.size).toBe(ALL_CODES.length);
+  });
+});
+
+describe('describeBucket', () => {
+  it('labels every bucket', () => {
+    const buckets: Bucket[] = ['written', 'blocked', 'not-attempted', 'written-unverified'];
+    for (const bucket of buckets) expect(describeBucket(bucket).length).toBeGreaterThan(0);
+    expect(describeBucket('not-attempted')).toBe('Not attempted');
   });
 });
