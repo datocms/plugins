@@ -72,7 +72,7 @@ function ModelBody({ model, lists, onChange }: ModelBodyProps) {
             <button
               key={fate}
               type="button"
-              className={s.expandToggle}
+              className={s.setAllButton}
               onClick={() => setAll(fate)}
             >
               {fate.charAt(0).toUpperCase() + fate.slice(1)}
@@ -80,9 +80,11 @@ function ModelBody({ model, lists, onChange }: ModelBodyProps) {
           ))}
         </span>
         <input
-          type="text"
+          type="search"
+          className={s.modelFilter}
           value={filter}
-          placeholder="filter fields"
+          placeholder="Filter fields…"
+          aria-label="Filter fields"
           onChange={(event) => setFilter(event.target.value)}
         />
       </div>
