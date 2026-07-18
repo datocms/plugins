@@ -6,13 +6,24 @@ import {
 } from './shared';
 
 describe('provider shared helpers', () => {
-  it('expands every prompt placeholder as literal text', () => {
+  it('expands filenames literally and locales unambiguously', () => {
+    const result = expandPromptTemplate('{filename} — {locale} — {filename}', {
+      filename: '$&-hero.jpg',
+      locale: 'pt-BR',
+    });
+
+    expect(result).toContain('$&-hero.jpg');
+    expect(result).toContain('Portuguese');
+    expect(result).toContain('locale code "pt-BR"');
+  });
+
+  it('does not let the Italian locale code read as the English pronoun', () => {
     expect(
-      expandPromptTemplate('{filename} — {locale} — {filename}', {
-        filename: '$&-hero.jpg',
-        locale: 'pt-BR',
+      expandPromptTemplate('Write this in {locale}.', {
+        filename: 'hero.jpg',
+        locale: 'it',
       }),
-    ).toBe('$&-hero.jpg — pt-BR — $&-hero.jpg');
+    ).toBe('Write this in Italian (locale code "it").');
   });
 
   it('uses an accessible default prompt for an empty template', () => {
@@ -23,7 +34,8 @@ describe('provider shared helpers', () => {
 
     expect(result).not.toBe(DEFAULT_ALT_TEXT_PROMPT);
     expect(result).toContain('hero.jpg');
-    expect(result).toContain('in en');
+    expect(result).toContain('English');
+    expect(result).toContain('locale code "en"');
   });
 
   it('removes common model wrappers and normalizes whitespace', () => {

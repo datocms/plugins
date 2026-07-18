@@ -26,6 +26,34 @@ export function joinApiUrl(baseUrl: string, path: string): string {
   return `${baseUrl.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`;
 }
 
+type DisplayNamesConstructor = new (
+  locales: string | string[],
+  options: { type: 'language' },
+) => { of(code: string): string | undefined };
+
+function localePromptValue(locale: string): string {
+  const normalizedLocale = locale.replace(/_/g, '-');
+  const DisplayNames = (
+    Intl as typeof Intl & { DisplayNames?: DisplayNamesConstructor }
+  ).DisplayNames;
+
+  if (DisplayNames) {
+    try {
+      const languageName = new DisplayNames(['en'], {
+        type: 'language',
+      }).of(normalizedLocale);
+
+      if (languageName) {
+        return `${languageName} (locale code "${locale}")`;
+      }
+    } catch {
+      // Fall through to the unambiguous locale-code wording.
+    }
+  }
+
+  return `the language identified by locale code "${locale}"`;
+}
+
 export function expandPromptTemplate(
   promptTemplate: string,
   variables: { locale: string; filename: string },
@@ -33,7 +61,7 @@ export function expandPromptTemplate(
   const template = promptTemplate.trim() || DEFAULT_ALT_TEXT_PROMPT;
 
   return template
-    .replace(/\{locale\}/g, () => variables.locale)
+    .replace(/\{locale\}/g, () => localePromptValue(variables.locale))
     .replace(/\{filename\}/g, () => variables.filename)
     .trim();
 }

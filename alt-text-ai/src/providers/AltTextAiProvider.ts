@@ -41,23 +41,21 @@ function extractLocalizedAltText(
   payload: Record<string, unknown>,
   locale: string,
 ): string {
-  if (typeof payload.alt_text === 'string') {
-    return payload.alt_text;
-  }
-
   const altTexts = asRecord(payload.alt_texts);
-  if (!altTexts) {
-    return '';
+  if (altTexts) {
+    const exact = altTexts[locale];
+    if (typeof exact === 'string') {
+      return exact;
+    }
+
+    const language = locale.split('-')[0];
+    const fallback = language ? altTexts[language] : undefined;
+    if (typeof fallback === 'string') {
+      return fallback;
+    }
   }
 
-  const exact = altTexts[locale];
-  if (typeof exact === 'string') {
-    return exact;
-  }
-
-  const language = locale.split('-')[0];
-  const fallback = language ? altTexts[language] : undefined;
-  return typeof fallback === 'string' ? fallback : '';
+  return typeof payload.alt_text === 'string' ? payload.alt_text : '';
 }
 
 export default class AltTextAiProvider implements AltTextProvider {

@@ -53,6 +53,28 @@ describe('alt text providers', () => {
     expect(body).not.toHaveProperty('gpt_prompt');
   });
 
+  it('prefers the exact AltText.ai locale over the generic response', async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse({
+        alt_text: 'English description',
+        alt_texts: {
+          en: 'English description',
+          'it-IT': 'Descrizione italiana',
+        },
+      }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const provider = createAltTextProvider({
+      provider: 'alttext-ai',
+      apiKey: 'alttext-secret',
+    });
+
+    await expect(provider.generate(input)).resolves.toBe(
+      'Descrizione italiana',
+    );
+  });
+
   it('calls OpenAI Responses with expanded text and a public image URL', async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
       jsonResponse({
@@ -87,13 +109,16 @@ describe('alt text providers', () => {
     expect(body.model).toBe('gpt-5.4-mini');
     expect(body.reasoning).toEqual({ effort: 'none' });
     expect(body.store).toBe(false);
-    expect(body.input[0]?.content).toEqual([
-      {
-        type: 'input_text',
-        text: 'Describe tramonto.jpg in it-IT. Return only alt text.',
-      },
-      { type: 'input_image', image_url: input.imageUrl, detail: 'auto' },
-    ]);
+    expect(body.input[0]?.content[0]).toMatchObject({
+      type: 'input_text',
+      text: expect.stringContaining('Italian'),
+    });
+    expect(body.input[0]?.content[0]?.text).toContain('locale code "it-IT"');
+    expect(body.input[0]?.content[1]).toEqual({
+      type: 'input_image',
+      image_url: input.imageUrl,
+      detail: 'auto',
+    });
   });
 
   it.each([

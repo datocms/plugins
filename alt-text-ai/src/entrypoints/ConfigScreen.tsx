@@ -25,6 +25,8 @@ import { listProviderModels } from '../providers/modelDiscovery';
 import s from './styles.module.css';
 
 const MODEL_DISCOVERY_DELAY_MS = 600;
+const ACTIONS_DOCUMENTATION_URL =
+  'https://github.com/datocms/plugins/tree/master/alt-text-ai#where-to-generate-alt-text';
 
 type Props = {
   ctx: RenderConfigScreenCtx;
@@ -363,6 +365,18 @@ export default function ConfigScreen({ ctx }: Props) {
       <p className={s.intro}>
         Choose the service that will inspect your images and generate localized
         alt text. API requests run directly from the DatoCMS dashboard.
+      </p>
+
+      <p className={s.documentationHint}>
+        Not sure where to find the alt text actions?{' '}
+        <a
+          href={ACTIONS_DOCUMENTATION_URL}
+          target="_blank"
+          rel="noreferrer"
+          aria-label="See where the alt text actions appear in the documentation (opens in a new tab)"
+        >
+          See the illustrated usage guide ↗
+        </a>
       </p>
 
       {!canEdit && (
