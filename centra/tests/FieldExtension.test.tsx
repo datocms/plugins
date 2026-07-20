@@ -169,32 +169,34 @@ describe('FieldExtension', () => {
   });
 
   it('uses native-style add controls and keyboard-accessible drag sorting', async () => {
-    vi.spyOn(CentraClient.prototype, 'hydrateReferences').mockResolvedValue([
-      {
-        status: 'resolved',
-        reference: { displayItemId: 2752 },
-        displayItem: {
-          id: 2752,
-          name: 'Dog Toy',
-          isPrimaryVariant: true,
-          media: [],
-          items: [],
+    const hydrate = vi
+      .spyOn(CentraClient.prototype, 'hydrateReferences')
+      .mockResolvedValue([
+        {
+          status: 'resolved',
+          reference: { displayItemId: 2752 },
+          displayItem: {
+            id: 2752,
+            name: 'Dog Toy',
+            isPrimaryVariant: true,
+            media: [],
+            items: [],
+          },
+          primaryDrift: false,
         },
-        primaryDrift: false,
-      },
-      {
-        status: 'resolved',
-        reference: { displayItemId: 558 },
-        displayItem: {
-          id: 558,
-          name: 'Elina_UK',
-          isPrimaryVariant: true,
-          media: [],
-          items: [],
+        {
+          status: 'resolved',
+          reference: { displayItemId: 558 },
+          displayItem: {
+            id: 558,
+            name: 'Elina_UK',
+            isPrimaryVariant: true,
+            media: [],
+            items: [],
+          },
+          primaryDrift: false,
         },
-        primaryDrift: false,
-      },
-    ]);
+      ]);
     const { ctx, setFieldValue } = createCtx({
       parameters: {
         paramsVersion: '1',
@@ -220,20 +222,21 @@ describe('FieldExtension', () => {
         height: 240,
         toJSON: () => ({}),
       }) as DOMRect;
-    vi.spyOn(
-      HTMLElement.prototype,
-      'getBoundingClientRect',
-    ).mockImplementation(function (this: HTMLElement) {
-      if (this.dataset.testid === 'centra-sortable-reference') {
-        const sortables = Array.from(
-          document.querySelectorAll('[data-testid="centra-sortable-reference"]'),
-        );
-        return rectangle(sortables.indexOf(this) * 220);
-      }
-      return rectangle(0);
-    });
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
+      function (this: HTMLElement) {
+        if (this.dataset.testid === 'centra-sortable-reference') {
+          const sortables = Array.from(
+            document.querySelectorAll(
+              '[data-testid="centra-sortable-reference"]',
+            ),
+          );
+          return rectangle(sortables.indexOf(this) * 220);
+        }
+        return rectangle(0);
+      },
+    );
 
-    render(<FieldExtension ctx={ctx} />);
+    const { rerender } = render(<FieldExtension ctx={ctx} />);
 
     expect(await screen.findByText('Dog Toy')).toBeInTheDocument();
     expect(screen.getByText('Elina_UK')).toBeInTheDocument();
@@ -241,7 +244,7 @@ describe('FieldExtension', () => {
     expect(addButton.querySelector('svg')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Move (up|down)/ })).toBeNull();
 
-    const [first] = screen.getAllByTestId('centra-sortable-reference');
+    const [first, second] = screen.getAllByTestId('centra-sortable-reference');
 
     first.focus();
     fireEvent.keyDown(first, { code: 'Space' });
@@ -264,6 +267,32 @@ describe('FieldExtension', () => {
         ),
       ),
     );
+
+    const optimisticOrder = screen.getAllByTestId('centra-sortable-reference');
+    expect(optimisticOrder).toEqual([second, first]);
+
+    const reorderedValue = JSON.stringify({
+      version: 1,
+      kind: 'primaryProduct',
+      references: [{ displayItemId: 558 }, { displayItemId: 2752 }],
+    });
+    rerender(
+      <FieldExtension
+        ctx={
+          {
+            ...ctx,
+            formValues: { centra_reference: reorderedValue },
+          } as RenderFieldExtensionCtx
+        }
+      />,
+    );
+
+    await act(async () => Promise.resolve());
+    expect(screen.getAllByTestId('centra-sortable-reference')).toEqual([
+      second,
+      first,
+    ]);
+    expect(hydrate).toHaveBeenCalledOnce();
   });
 
   it('shows card-shaped skeletons instead of generic identities during first hydration', async () => {

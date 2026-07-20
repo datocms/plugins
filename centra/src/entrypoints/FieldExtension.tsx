@@ -6,6 +6,7 @@ import {
   TouchSensor,
   type DragEndEvent,
   type DragStartEvent,
+  type DropAnimation,
   useSensor,
   useSensors,
 } from '@dnd-kit/core';
@@ -84,6 +85,16 @@ type HydrationState =
       error: string;
     };
 
+const DROP_ANIMATION: DropAnimation = {
+  duration: 200,
+  easing: 'cubic-bezier(0.55, 0, 0.1, 1)',
+  keyframes: ({ transform: { initial, final } }) => [
+    { transform: CSS.Transform.toString(initial), opacity: 1 },
+    { transform: CSS.Transform.toString(final), opacity: 0 },
+  ],
+  sideEffects: null,
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -96,6 +107,57 @@ function useDeepStableValue<T>(value: T): T {
   }
 
   return valueRef.current;
+}
+
+function haveSameReferenceKeys(
+  left: readonly string[],
+  right: readonly string[],
+): boolean {
+  if (left.length !== right.length) return false;
+  const rightKeys = new Set(right);
+  return (
+    rightKeys.size === right.length && left.every((key) => rightKeys.has(key))
+  );
+}
+
+function arrangeReferences(
+  kind: CentraFieldParametersV1['kind'],
+  references: readonly CentraReference[],
+  orderedKeys: readonly string[] | null,
+): CentraReference[] | null {
+  if (!orderedKeys || orderedKeys.length !== references.length) return null;
+
+  const referencesByKey = new Map(
+    references.map((reference) => [referenceKey(kind, reference), reference]),
+  );
+  if (referencesByKey.size !== references.length) return null;
+
+  const orderedReferences: CentraReference[] = [];
+  for (const key of orderedKeys) {
+    const reference = referencesByKey.get(key);
+    if (!reference) return null;
+    orderedReferences.push(reference);
+  }
+  return orderedReferences;
+}
+
+function useStableReferenceMembership(
+  kind: CentraFieldParametersV1['kind'],
+  references: readonly CentraReference[],
+): readonly CentraReference[] {
+  const keys = references
+    .map((reference) => referenceKey(kind, reference))
+    .sort();
+  const membershipRef = useRef({ kind, keys, references });
+
+  if (
+    membershipRef.current.kind !== kind ||
+    !isEqual(membershipRef.current.keys, keys)
+  ) {
+    membershipRef.current = { kind, keys, references };
+  }
+
+  return membershipRef.current.references;
 }
 
 function validFieldParameters(value: unknown): boolean {
@@ -206,11 +268,7 @@ function emptyLabel(parameters: CentraFieldParametersV1): string {
 
 function PlusIcon() {
   return (
-    <svg
-      className={styles.plusIcon}
-      viewBox="0 0 16 16"
-      aria-hidden="true"
-    >
+    <svg className={styles.plusIcon} viewBox="0 0 16 16" aria-hidden="true">
       <path d="M8 3v10M3 8h10" />
     </svg>
   );
@@ -232,7 +290,7 @@ function SortableReferenceItem({
     isDragging,
   } = useSortable({ id });
   const style: CSSProperties = {
-    transform: CSS.Translate.toString(transform),
+    transform: CSS.Transform.toString(transform),
     transition,
   };
 
@@ -381,6 +439,9 @@ export default function FieldExtension({ ctx }: Props) {
     referenceKeys: [],
   });
   const [activeDragKey, setActiveDragKey] = useState<string | null>(null);
+  const [optimisticReferenceKeys, setOptimisticReferenceKeys] = useState<
+    string[] | null
+  >(null);
   const sensors = useSensors(
     useSensor(MouseSensor, {
       activationConstraint: { distance: 5 },
@@ -393,7 +454,24 @@ export default function FieldExtension({ ctx }: Props) {
     }),
   );
 
-  const references = parsed.ok ? parsed.references : [];
+  const savedReferences = parsed.ok ? parsed.references : [];
+  const savedReferenceKeys = useMemo(
+    () =>
+      savedReferences.map((reference) =>
+        referenceKey(fieldParameters.kind, reference),
+      ),
+    [fieldParameters.kind, savedReferences],
+  );
+  const optimisticReferences = useMemo(
+    () =>
+      arrangeReferences(
+        fieldParameters.kind,
+        savedReferences,
+        optimisticReferenceKeys,
+      ),
+    [fieldParameters.kind, optimisticReferenceKeys, savedReferences],
+  );
+  const references = optimisticReferences ?? savedReferences;
   const currentReferenceKeys = useMemo(
     () =>
       references.map((reference) =>
@@ -401,12 +479,16 @@ export default function FieldExtension({ ctx }: Props) {
       ),
     [fieldParameters.kind, references],
   );
+  const hydrationReferences = useStableReferenceMembership(
+    fieldParameters.kind,
+    savedReferences,
+  );
   const hydratedByKey = useMemo(
     () =>
       new Map(hydration.entries.map(({ key, entry }) => [key, entry] as const)),
     [hydration.entries],
   );
-  const hydrationMatchesReferences = isEqual(
+  const hydrationMatchesReferences = haveSameReferenceKeys(
     hydration.referenceKeys,
     currentReferenceKeys,
   );
@@ -420,10 +502,20 @@ export default function FieldExtension({ ctx }: Props) {
   const activeDragReference = references[activeDragIndex];
 
   useEffect(() => {
+    if (!optimisticReferenceKeys) return;
+    if (
+      isEqual(savedReferenceKeys, optimisticReferenceKeys) ||
+      !optimisticReferences
+    ) {
+      setOptimisticReferenceKeys(null);
+    }
+  }, [optimisticReferenceKeys, optimisticReferences, savedReferenceKeys]);
+
+  useEffect(() => {
     if (
       !fieldParametersValid ||
       !parsed.ok ||
-      parsed.references.length === 0 ||
+      hydrationReferences.length === 0 ||
       !isConnectionComplete(connection)
     ) {
       setHydration({ status: 'idle', entries: [], referenceKeys: [] });
@@ -431,7 +523,7 @@ export default function FieldExtension({ ctx }: Props) {
     }
 
     const controller = new AbortController();
-    const requestedKeys = parsed.references.map((reference) =>
+    const requestedKeys = hydrationReferences.map((reference) =>
       referenceKey(fieldParameters.kind, reference),
     );
     setHydration((current) => ({
@@ -441,7 +533,7 @@ export default function FieldExtension({ ctx }: Props) {
     }));
     void client
       .hydrateReferences({
-        references: parsed.references,
+        references: hydrationReferences,
         kind: fieldParameters.kind,
         signal: controller.signal,
       })
@@ -467,7 +559,14 @@ export default function FieldExtension({ ctx }: Props) {
       });
 
     return () => controller.abort();
-  }, [client, connection, fieldParameters, fieldParametersValid, parsed]);
+  }, [
+    client,
+    connection,
+    fieldParameters.kind,
+    fieldParametersValid,
+    hydrationReferences,
+    parsed.ok,
+  ]);
 
   const persist = async (nextReferences: readonly CentraReference[]) => {
     const document = buildReferenceDocument(fieldParameters, nextReferences);
@@ -550,14 +649,29 @@ export default function FieldExtension({ ctx }: Props) {
   };
 
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
+    const draggedKey = String(active.id);
     setActiveDragKey(null);
     if (!sortingEnabled || !over || active.id === over.id) return;
 
-    const sourceIndex = currentReferenceKeys.indexOf(String(active.id));
+    const sourceIndex = currentReferenceKeys.indexOf(draggedKey);
     const destinationIndex = currentReferenceKeys.indexOf(String(over.id));
     if (sourceIndex < 0 || destinationIndex < 0) return;
 
-    void persist(moveReference(references, sourceIndex, destinationIndex));
+    const nextReferences = moveReference(
+      references,
+      sourceIndex,
+      destinationIndex,
+    );
+    const nextReferenceKeys = nextReferences.map((reference) =>
+      referenceKey(fieldParameters.kind, reference),
+    );
+    setOptimisticReferenceKeys(nextReferenceKeys);
+    void persist(nextReferences).catch(() => {
+      setOptimisticReferenceKeys((current) =>
+        isEqual(current, nextReferenceKeys) ? null : current,
+      );
+      void ctx.alert('The new Centra order could not be saved. Try again.');
+    });
   };
 
   if (ctx.field.attributes.field_type !== 'json') {
@@ -706,16 +820,13 @@ export default function FieldExtension({ ctx }: Props) {
                 </div>
               </SortableContext>
 
-              <DragOverlay>
+              <DragOverlay dropAnimation={DROP_ANIMATION}>
                 {activeDragReference && (
                   <div className={styles.dragOverlay}>
                     <ReferenceEntry
                       reference={activeDragReference}
                       hydrated={hydratedByKey.get(
-                        referenceKey(
-                          fieldParameters.kind,
-                          activeDragReference,
-                        ),
+                        referenceKey(fieldParameters.kind, activeDragReference),
                       )}
                       kind={fieldParameters.kind}
                       disabled

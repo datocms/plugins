@@ -1,6 +1,6 @@
 {
   "name": "datocms-plugin-centra",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Select Centra products, variants, and SKU items from DatoCMS",
   "type": "module",
   "author": "DatoCMS <support@datocms.com>",
