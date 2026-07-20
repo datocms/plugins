@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import type { RenderModalCtx } from 'datocms-plugin-sdk';
 import type { ChangeEvent, ReactNode } from 'react';
@@ -48,8 +49,15 @@ vi.mock('datocms-react-ui', () => ({
   ),
 }));
 
+const scrollIntoView = vi.fn();
+Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+  configurable: true,
+  value: scrollIntoView,
+});
+
 afterEach(() => {
   cleanup();
+  scrollIntoView.mockReset();
   vi.restoreAllMocks();
 });
 
@@ -120,6 +128,30 @@ describe('PickerModal', () => {
     await waitFor(() => expect(setHeight).toHaveBeenCalledWith(730));
   });
 
+  it('shows shape-stable catalog skeletons during the initial request', () => {
+    vi.spyOn(CentraClient.prototype, 'searchDisplayItems').mockImplementation(
+      () =>
+        new Promise(() => {
+          // Deliberately pending so the loading surface can be inspected.
+        }),
+    );
+    const { ctx } = createCtx({
+      paramsVersion: '1',
+      kind: 'variant',
+      cardinality: 'multiple',
+    });
+
+    render(<PickerModal ctx={ctx} />);
+
+    expect(
+      screen.getByRole('status', { name: 'Loading Centra catalog' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Searching…')).toBeInTheDocument();
+    expect(
+      screen.getByRole('group', { name: 'Picker actions' }),
+    ).toBeInTheDocument();
+  });
+
   it('stages a product selection until Apply', async () => {
     const search = vi
       .spyOn(CentraClient.prototype, 'searchDisplayItems')
@@ -136,15 +168,16 @@ describe('PickerModal', () => {
     });
 
     render(<PickerModal ctx={ctx} />);
-    const selectButton = await screen.findByRole('button', { name: 'Select' });
+    const selectButton = await screen.findByRole('button', {
+      name: 'Select Dog Toy',
+    });
     expect(selectButton).toHaveAttribute('aria-pressed', 'false');
     expect(selectButton).not.toHaveAttribute('aria-expanded');
     expect(selectButton).not.toHaveAttribute('aria-controls');
     fireEvent.click(selectButton);
-    expect(screen.getByRole('button', { name: 'Remove' })).toHaveAttribute(
-      'aria-pressed',
-      'true',
-    );
+    expect(
+      screen.getByRole('button', { name: 'Remove Dog Toy' }),
+    ).toHaveAttribute('aria-pressed', 'true');
     expect(resolve).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Apply selection' }));
 
@@ -156,6 +189,39 @@ describe('PickerModal', () => {
         kind: 'primaryProduct',
         page: 1,
       }),
+    );
+  });
+
+  it('selects an exact product variant when its card content is clicked', async () => {
+    const search = vi
+      .spyOn(CentraClient.prototype, 'searchDisplayItems')
+      .mockResolvedValue({
+        items: [displayItem],
+        page: 1,
+        hasMore: false,
+        totalCount: 1,
+      });
+    const { ctx, resolve } = createCtx({
+      paramsVersion: '1',
+      kind: 'variant',
+      cardinality: 'single',
+    });
+
+    render(<PickerModal ctx={ctx} />);
+
+    fireEvent.click(await screen.findByText('Dog Toy'));
+    expect(
+      screen.getByRole('button', { name: 'Remove Dog Toy' }),
+    ).toHaveAttribute('aria-pressed', 'true');
+    expect(resolve).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Apply selection' }));
+
+    expect(resolve).toHaveBeenCalledWith({
+      references: [{ displayItemId: 2752 }],
+    });
+    expect(search).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'variant', page: 1 }),
     );
   });
 
@@ -203,6 +269,9 @@ describe('PickerModal', () => {
     expect(
       document.getElementById('centra-display-item-2752-items'),
     ).toHaveAttribute('hidden');
+    const productArticle = screen.getByRole('article');
+    const closedClassName = productArticle.className;
+    expect(productArticle).toHaveAttribute('data-layout', 'drilldown');
     fireEvent.click(chooseSkuButton);
     const hideSkuButton = screen.getByRole('button', { name: 'Hide SKUs' });
     expect(hideSkuButton).toHaveAttribute('aria-expanded', 'true');
@@ -214,6 +283,8 @@ describe('PickerModal', () => {
     expect(
       document.getElementById('centra-display-item-2752-items'),
     ).not.toHaveAttribute('hidden');
+    expect(productArticle.className).toBe(closedClassName);
+    expect(scrollIntoView).toHaveBeenCalled();
     expect(screen.getByText('Item item-1')).toBeInTheDocument();
     expect(screen.getByText('Item item-2')).toBeInTheDocument();
     const mediumSku = screen.getByRole('button', {
@@ -258,6 +329,91 @@ describe('PickerModal', () => {
       { timeout: 1_500 },
     );
     expect(firstSignal?.aborted).toBe(true);
+  });
+
+  it('keeps pagination in the action footer and appends the next page', async () => {
+    const secondDisplayItem: CentraDisplayItem = {
+      ...displayItem,
+      id: 558,
+      name: 'Elina_UK',
+      productNumber: 'ELINA',
+    };
+    const search = vi
+      .spyOn(CentraClient.prototype, 'searchDisplayItems')
+      .mockImplementation(async ({ page }) =>
+        page === 1
+          ? {
+              items: [displayItem],
+              page: 1,
+              hasMore: true,
+              nextPage: 2,
+              totalCount: 2,
+            }
+          : {
+              items: [secondDisplayItem],
+              page: 2,
+              hasMore: false,
+              totalCount: 2,
+            },
+      );
+    const { ctx } = createCtx({
+      paramsVersion: '1',
+      kind: 'variant',
+      cardinality: 'multiple',
+    });
+
+    render(<PickerModal ctx={ctx} />);
+
+    expect(await screen.findByText('Dog Toy')).toBeInTheDocument();
+    const footer = screen.getByRole('group', { name: 'Picker actions' });
+    const loadMore = within(footer).getByRole('button', { name: 'Load more' });
+    expect(
+      within(footer).getByRole('button', { name: 'Cancel' }),
+    ).toBeVisible();
+    expect(
+      within(footer).getByRole('button', { name: 'Apply selection' }),
+    ).toBeVisible();
+
+    fireEvent.click(loadMore);
+
+    expect(await screen.findByText('Elina_UK')).toBeInTheDocument();
+    expect(screen.getByText('Dog Toy')).toBeInTheDocument();
+    expect(search).toHaveBeenLastCalledWith(
+      expect.objectContaining({ page: 2 }),
+    );
+  });
+
+  it('keeps current results mounted when loading another page fails', async () => {
+    vi.spyOn(CentraClient.prototype, 'searchDisplayItems').mockImplementation(
+      async ({ page }) => {
+        if (page === 1) {
+          return {
+            items: [displayItem],
+            page: 1,
+            hasMore: true,
+            nextPage: 2,
+          };
+        }
+        throw new Error('The next page is temporarily unavailable.');
+      },
+    );
+    const { ctx } = createCtx({
+      paramsVersion: '1',
+      kind: 'variant',
+      cardinality: 'multiple',
+    });
+
+    render(<PickerModal ctx={ctx} />);
+    expect(await screen.findByText('Dog Toy')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
+
+    expect(
+      await screen.findByRole('button', { name: 'Try again' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Dog Toy')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Loading more products failed/),
+    ).toBeInTheDocument();
   });
 
   it('ranks an exact SKU match first inside the selected product', async () => {

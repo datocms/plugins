@@ -53,6 +53,32 @@ The plugin never uses a Centra shared secret, AMS credentials, or a customer-hos
 
 Changing a populated field to an incompatible kind or changing a multi-value field with several references to single cardinality does not discard or reinterpret data. The editor asks for an explicit clear or replacement.
 
+## Editor workflow
+
+### Choose what editors can select
+
+Configure the JSON field for products, exact product variants, or individual SKU/size items.
+
+![Centra field presentation settings in DatoCMS showing product, exact variant, and SKU selection modes](docs/field-settings.jpg)
+
+### Search and select exact variants
+
+Search the live Centra catalog, compare image-backed variants, and stage one or more selections before applying them.
+
+![Centra exact product variant picker showing image-backed Elina UK search results](docs/product-picker.jpg)
+
+### Select a specific SKU or size
+
+Expand a product variant and select the exact Centra Item. Repeated SKU strings remain separate rows with their own size and Item ID.
+
+![Centra SKU picker showing the Elina UK Black variant with size M selected](docs/sku-picker.jpg)
+
+### Work with hydrated references
+
+Saved references are rendered with current Centra images, variant details, and availability while the JSON value keeps only stable IDs.
+
+![DatoCMS field showing hydrated Centra product variants with images and availability states](docs/selected-field.jpg)
+
 ## Stored value contract
 
 The JSON field contains a versioned document. `null` is the only empty value.

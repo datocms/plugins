@@ -1,10 +1,35 @@
+import {
+  DndContext,
+  DragOverlay,
+  KeyboardSensor,
+  MouseSensor,
+  TouchSensor,
+  type DragEndEvent,
+  type DragStartEvent,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import {
+  rectSortingStrategy,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
-import { Button, Canvas, Spinner } from 'datocms-react-ui';
+import { Button, Canvas } from 'datocms-react-ui';
 import get from 'lodash-es/get';
 import isEqual from 'lodash-es/isEqual';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import {
+  type CSSProperties,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import SelectedReferenceRow from '../components/SelectedReferenceRow';
-import { PICKER_MODAL_ID } from '../constants';
+import { PICKER_MODAL_HEIGHT, PICKER_MODAL_ID } from '../constants';
 import {
   CentraClient,
   type CentraDisplayItem,
@@ -36,10 +61,28 @@ type HydratedReference = Awaited<
   ReturnType<CentraClient['hydrateReferences']>
 >[number];
 
+type CachedHydratedReference = {
+  key: string;
+  entry: HydratedReference;
+};
+
 type HydrationState =
-  | { status: 'idle' | 'loading'; entries: HydratedReference[] }
-  | { status: 'success'; entries: HydratedReference[] }
-  | { status: 'error'; entries: HydratedReference[]; error: string };
+  | {
+      status: 'idle' | 'loading';
+      entries: CachedHydratedReference[];
+      referenceKeys: string[];
+    }
+  | {
+      status: 'success';
+      entries: CachedHydratedReference[];
+      referenceKeys: string[];
+    }
+  | {
+      status: 'error';
+      entries: CachedHydratedReference[];
+      referenceKeys: string[];
+      error: string;
+    };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -97,21 +140,31 @@ function itemTitle(item: CentraItem): string {
 }
 
 function displayItemDetail(displayItem: CentraDisplayItem): string[] {
-  return [
-    displayItem.productVariant?.name?.trim(),
-    displayItem.productVariant?.number?.trim(),
-    displayItem.price?.formattedValue,
-  ].filter((part): part is string => Boolean(part));
+  return Array.from(
+    new Set(
+      [
+        displayItem.productVariant?.name?.trim(),
+        displayItem.productVariant?.number?.trim(),
+        displayItem.price?.formattedValue,
+      ].filter((part): part is string => Boolean(part)),
+    ),
+  );
 }
 
-function itemDetail(item: CentraItem): string[] {
+function itemDetail(
+  displayItem: CentraDisplayItem,
+  item: CentraItem,
+): string[] {
+  const label = itemTitle(item);
   const details = [
+    label === item.sku?.trim() ? null : label,
+    displayItem.productVariant?.name?.trim(),
     item.sku ? `SKU ${item.sku}` : null,
-    item.GTIN ? `GTIN ${item.GTIN}` : null,
-    item.stock ? (item.stock.available ? 'Available' : 'Unavailable') : null,
-    item.preorder ? 'Preorder' : null,
+    displayItem.price?.formattedValue,
   ];
-  return details.filter((part): part is string => Boolean(part));
+  return Array.from(
+    new Set(details.filter((part): part is string => Boolean(part))),
+  );
 }
 
 function fallbackIdentity(reference: CentraReference): string {
@@ -139,15 +192,87 @@ function entityLabel(parameters: CentraFieldParametersV1): string {
   return 'product';
 }
 
+function emptyLabel(parameters: CentraFieldParametersV1): string {
+  if (parameters.cardinality === 'single') {
+    if (parameters.kind === 'item') return 'No SKU specified';
+    if (parameters.kind === 'variant') return 'No product variant specified';
+    return 'No product specified';
+  }
+
+  if (parameters.kind === 'item') return 'No SKUs present';
+  if (parameters.kind === 'variant') return 'No product variants present';
+  return 'No products present';
+}
+
+function PlusIcon() {
+  return (
+    <svg
+      className={styles.plusIcon}
+      viewBox="0 0 16 16"
+      aria-hidden="true"
+    >
+      <path d="M8 3v10M3 8h10" />
+    </svg>
+  );
+}
+
+function SortableReferenceItem({
+  id,
+  children,
+}: {
+  id: string;
+  children: ReactNode;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+  const style: CSSProperties = {
+    transform: CSS.Translate.toString(transform),
+    transition,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      className={`${styles.sortableItem} ${
+        isDragging ? styles.sortableItemDragging : ''
+      }`}
+      style={style}
+      data-testid="centra-sortable-reference"
+      {...attributes}
+      {...listeners}
+    >
+      {children}
+    </div>
+  );
+}
+
+function ReferenceEntrySkeleton() {
+  return (
+    <article
+      className={styles.skeletonCard}
+      data-testid="centra-reference-skeleton"
+      aria-label="Loading saved Centra reference"
+    >
+      <div className={styles.skeletonMedia} aria-hidden="true" />
+      <div className={styles.skeletonCaption} aria-hidden="true">
+        <span className={`${styles.skeletonLine} ${styles.skeletonTitle}`} />
+        <span className={`${styles.skeletonLine} ${styles.skeletonDetail}`} />
+      </div>
+    </article>
+  );
+}
+
 type ReferenceEntryProps = {
   reference: CentraReference;
   hydrated?: HydratedReference;
   kind: CentraFieldParametersV1['kind'];
   disabled: boolean;
-  canMoveUp: boolean;
-  canMoveDown: boolean;
-  onMoveUp?: () => void;
-  onMoveDown?: () => void;
   onReplace: () => void;
   onRemove: () => void;
 };
@@ -158,15 +283,42 @@ function unresolvedReason(reason: 'displayItemNotFound' | 'itemNotFound') {
     : 'The saved DisplayItem could not be found. The ID remains unchanged.';
 }
 
+function referenceDetails(
+  displayItem: CentraDisplayItem | undefined,
+  item: CentraItem | undefined,
+): string[] {
+  if (!displayItem) return [];
+  return item ? itemDetail(displayItem, item) : displayItemDetail(displayItem);
+}
+
+function referenceWarning(
+  hydrated: HydratedReference | undefined,
+): string | undefined {
+  if (hydrated?.status === 'resolved' && hydrated.primaryDrift) {
+    return 'This DisplayItem is no longer the primary variant. The saved ID has not changed.';
+  }
+  if (hydrated?.status === 'unresolved') {
+    return unresolvedReason(hydrated.reason);
+  }
+  return undefined;
+}
+
+function referenceStatus(
+  displayItem: CentraDisplayItem | undefined,
+  item: CentraItem | undefined,
+): 'Unavailable' | 'Out of stock' | null {
+  if (displayItem?.available === false) return 'Unavailable';
+  if (item) {
+    return item.stock?.available === false ? 'Out of stock' : null;
+  }
+  return displayItem?.hasStock === false ? 'Out of stock' : null;
+}
+
 function ReferenceEntry({
   reference,
   hydrated,
   kind,
   disabled,
-  canMoveUp,
-  canMoveDown,
-  onMoveUp,
-  onMoveDown,
   onReplace,
   onRemove,
 }: ReferenceEntryProps) {
@@ -174,25 +326,15 @@ function ReferenceEntry({
   const unresolved = hydrated?.status === 'unresolved' ? hydrated : undefined;
   const displayItem = resolved?.displayItem ?? unresolved?.displayItem;
   const item = resolved?.item;
-  let title =
-    kind === 'item' ? 'Unresolved Centra SKU' : 'Unresolved Centra product';
+  let title = kind === 'item' ? 'Centra SKU' : 'Centra product';
 
   if (displayItem) {
     title = productTitle(displayItem);
   }
-  if (item && resolved) {
-    title = `${itemTitle(item)} — ${productTitle(resolved.displayItem)}`;
-  }
 
-  const details = [
-    ...(displayItem ? displayItemDetail(displayItem) : []),
-    ...(item ? itemDetail(item) : []),
-  ];
-  const warning = resolved?.primaryDrift
-    ? 'This DisplayItem is no longer the primary variant. The saved ID has not changed.'
-    : unresolved
-      ? unresolvedReason(unresolved.reason)
-      : undefined;
+  const details = referenceDetails(displayItem, item);
+  const warning = referenceWarning(hydrated);
+  const status = referenceStatus(displayItem, item);
 
   return (
     <SelectedReferenceRow
@@ -200,16 +342,12 @@ function ReferenceEntry({
       identity={fallbackIdentity(reference)}
       detail={details.length > 0 ? details.join(' · ') : null}
       imageUrl={imageUrl(displayItem)}
-      unavailable={
-        displayItem?.available === false || item?.stock?.available === false
-      }
-      unresolved={!hydrated || hydrated.status === 'unresolved'}
+      status={status}
+      preorder={item?.preorder === true}
+      unresolved={hydrated?.status === 'unresolved'}
+      showIdentity={!displayItem}
       warning={warning}
       disabled={disabled}
-      canMoveUp={canMoveUp}
-      canMoveDown={canMoveDown}
-      onMoveUp={onMoveUp}
-      onMoveDown={onMoveDown}
       onReplace={onReplace}
       onRemove={onRemove}
     />
@@ -240,9 +378,46 @@ export default function FieldExtension({ ctx }: Props) {
   const [hydration, setHydration] = useState<HydrationState>({
     status: 'idle',
     entries: [],
+    referenceKeys: [],
   });
+  const [activeDragKey, setActiveDragKey] = useState<string | null>(null);
+  const sensors = useSensors(
+    useSensor(MouseSensor, {
+      activationConstraint: { distance: 5 },
+    }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 250, tolerance: 5 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
 
   const references = parsed.ok ? parsed.references : [];
+  const currentReferenceKeys = useMemo(
+    () =>
+      references.map((reference) =>
+        referenceKey(fieldParameters.kind, reference),
+      ),
+    [fieldParameters.kind, references],
+  );
+  const hydratedByKey = useMemo(
+    () =>
+      new Map(hydration.entries.map(({ key, entry }) => [key, entry] as const)),
+    [hydration.entries],
+  );
+  const hydrationMatchesReferences = isEqual(
+    hydration.referenceKeys,
+    currentReferenceKeys,
+  );
+  const sortingEnabled =
+    fieldParameters.cardinality === 'multiple' &&
+    references.length > 1 &&
+    !ctx.disabled;
+  const activeDragIndex = activeDragKey
+    ? currentReferenceKeys.indexOf(activeDragKey)
+    : -1;
+  const activeDragReference = references[activeDragIndex];
 
   useEffect(() => {
     if (
@@ -251,12 +426,19 @@ export default function FieldExtension({ ctx }: Props) {
       parsed.references.length === 0 ||
       !isConnectionComplete(connection)
     ) {
-      setHydration({ status: 'idle', entries: [] });
+      setHydration({ status: 'idle', entries: [], referenceKeys: [] });
       return;
     }
 
     const controller = new AbortController();
-    setHydration({ status: 'loading', entries: [] });
+    const requestedKeys = parsed.references.map((reference) =>
+      referenceKey(fieldParameters.kind, reference),
+    );
+    setHydration((current) => ({
+      status: 'loading',
+      entries: current.entries,
+      referenceKeys: requestedKeys,
+    }));
     void client
       .hydrateReferences({
         references: parsed.references,
@@ -265,25 +447,27 @@ export default function FieldExtension({ ctx }: Props) {
       })
       .then((entries) => {
         if (controller.signal.aborted) return;
-        setHydration({ status: 'success', entries });
+        setHydration({
+          status: 'success',
+          entries: entries.map((entry) => ({
+            key: referenceKey(fieldParameters.kind, entry.reference),
+            entry,
+          })),
+          referenceKeys: requestedKeys,
+        });
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
-        setHydration({
+        setHydration((current) => ({
           status: 'error',
-          entries: [],
+          entries: current.entries,
+          referenceKeys: requestedKeys,
           error: friendlyError(error),
-        });
+        }));
       });
 
     return () => controller.abort();
-  }, [
-    client,
-    connection,
-    fieldParameters,
-    fieldParametersValid,
-    parsed,
-  ]);
+  }, [client, connection, fieldParameters, fieldParametersValid, parsed]);
 
   const persist = async (nextReferences: readonly CentraReference[]) => {
     const document = buildReferenceDocument(fieldParameters, nextReferences);
@@ -305,7 +489,7 @@ export default function FieldExtension({ ctx }: Props) {
         parameters.cardinality === 'multiple' ? 's' : ''
       }`,
       width: 'xl',
-      initialHeight: 650,
+      initialHeight: PICKER_MODAL_HEIGHT,
       parameters: {
         fieldParameters: parameters,
         references: currentReferences,
@@ -358,6 +542,22 @@ export default function FieldExtension({ ctx }: Props) {
     if (confirmed === 'clear') {
       await ctx.setFieldValue(ctx.fieldPath, null);
     }
+  };
+
+  const handleDragStart = ({ active }: DragStartEvent) => {
+    if (!sortingEnabled) return;
+    setActiveDragKey(String(active.id));
+  };
+
+  const handleDragEnd = ({ active, over }: DragEndEvent) => {
+    setActiveDragKey(null);
+    if (!sortingEnabled || !over || active.id === over.id) return;
+
+    const sourceIndex = currentReferenceKeys.indexOf(String(active.id));
+    const destinationIndex = currentReferenceKeys.indexOf(String(over.id));
+    if (sourceIndex < 0 || destinationIndex < 0) return;
+
+    void persist(moveReference(references, sourceIndex, destinationIndex));
   };
 
   if (ctx.field.attributes.field_type !== 'json') {
@@ -419,32 +619,6 @@ export default function FieldExtension({ ctx }: Props) {
   return (
     <Canvas ctx={ctx}>
       <div className={styles.root}>
-        <div className={styles.header}>
-          <div className={styles.headerText}>
-            <strong>
-              Centra {label}
-              {fieldParameters.cardinality === 'multiple' ? 's' : ''}
-            </strong>
-            <span>Catalog details are loaded live from Centra.</span>
-          </div>
-          {references.length > 0 &&
-            fieldParameters.cardinality === 'multiple' && (
-              <Button
-                buttonSize="s"
-                disabled={ctx.disabled}
-                onClick={() => void openAndPersist()}
-              >
-                Add or edit
-              </Button>
-            )}
-        </div>
-
-        {ctx.disabled && (
-          <div className={styles.disabledHint}>
-            This field is read-only in the current workflow state.
-          </div>
-        )}
-
         {hydration.status === 'error' && (
           <div className={styles.warning} role="alert">
             Live catalog details could not be loaded. Saved IDs remain
@@ -454,58 +628,124 @@ export default function FieldExtension({ ctx }: Props) {
 
         {references.length === 0 ? (
           <div className={styles.empty}>
-            <span>No Centra {label} selected.</span>
-            <Button
-              buttonSize="s"
-              disabled={ctx.disabled}
-              onClick={() => void openAndPersist()}
-            >
-              Select {label}
-            </Button>
+            <div className={styles.emptyLabel}>
+              {emptyLabel(fieldParameters)}
+            </div>
+            <div className={styles.emptyActions}>
+              <Button
+                buttonSize="s"
+                buttonType="muted"
+                leftIcon={<PlusIcon />}
+                disabled={ctx.disabled}
+                onClick={() => void openAndPersist()}
+              >
+                Choose {label}
+              </Button>
+            </div>
           </div>
         ) : (
-          <div className={styles.list}>
-            {references.map((reference, index) => (
-              <ReferenceEntry
-                key={fallbackIdentity(reference)}
-                reference={reference}
-                hydrated={hydration.entries[index]}
-                kind={fieldParameters.kind}
-                disabled={ctx.disabled}
-                canMoveUp={index > 0}
-                canMoveDown={index < references.length - 1}
-                onMoveUp={
-                  fieldParameters.cardinality === 'multiple'
-                    ? () =>
-                        void persist(
-                          moveReference(references, index, index - 1),
-                        )
-                    : undefined
-                }
-                onMoveDown={
-                  fieldParameters.cardinality === 'multiple'
-                    ? () =>
-                        void persist(
-                          moveReference(references, index, index + 1),
-                        )
-                    : undefined
-                }
-                onReplace={() => void replaceAt(index)}
-                onRemove={() =>
-                  void persist(
-                    references.filter(
-                      (_candidate, candidateIndex) => candidateIndex !== index,
-                    ),
-                  )
-                }
-              />
-            ))}
-          </div>
+          <>
+            <DndContext
+              sensors={sensors}
+              onDragStart={handleDragStart}
+              onDragCancel={() => setActiveDragKey(null)}
+              onDragEnd={handleDragEnd}
+            >
+              <SortableContext
+                items={currentReferenceKeys}
+                strategy={rectSortingStrategy}
+              >
+                <div
+                  className={`${styles.list} ${
+                    fieldParameters.cardinality === 'single'
+                      ? styles.single
+                      : ''
+                  }`}
+                  aria-busy={hydration.status === 'loading'}
+                >
+                  {references.map((reference, index) => {
+                    const key = referenceKey(fieldParameters.kind, reference);
+                    const hydrated = hydratedByKey.get(key);
+                    const showSkeleton =
+                      !hydrated &&
+                      (hydration.status === 'idle' ||
+                        hydration.status === 'loading' ||
+                        !hydrationMatchesReferences);
+
+                    const entry = showSkeleton ? (
+                      <ReferenceEntrySkeleton key={`${key}:skeleton`} />
+                    ) : (
+                      <ReferenceEntry
+                        key={`${key}:entry`}
+                        reference={reference}
+                        hydrated={hydrated}
+                        kind={fieldParameters.kind}
+                        disabled={ctx.disabled}
+                        onReplace={() => void replaceAt(index)}
+                        onRemove={() =>
+                          void persist(
+                            references.filter(
+                              (_candidate, candidateIndex) =>
+                                candidateIndex !== index,
+                            ),
+                          )
+                        }
+                      />
+                    );
+
+                    return sortingEnabled ? (
+                      <SortableReferenceItem key={key} id={key}>
+                        {entry}
+                      </SortableReferenceItem>
+                    ) : (
+                      <div key={key} className={styles.referenceItem}>
+                        {entry}
+                      </div>
+                    );
+                  })}
+                </div>
+              </SortableContext>
+
+              <DragOverlay>
+                {activeDragReference && (
+                  <div className={styles.dragOverlay}>
+                    <ReferenceEntry
+                      reference={activeDragReference}
+                      hydrated={hydratedByKey.get(
+                        referenceKey(
+                          fieldParameters.kind,
+                          activeDragReference,
+                        ),
+                      )}
+                      kind={fieldParameters.kind}
+                      disabled
+                      onReplace={() => undefined}
+                      onRemove={() => undefined}
+                    />
+                  </div>
+                )}
+              </DragOverlay>
+            </DndContext>
+
+            {fieldParameters.cardinality === 'multiple' && (
+              <div className={styles.addAction}>
+                <Button
+                  buttonSize="s"
+                  buttonType="muted"
+                  leftIcon={<PlusIcon />}
+                  disabled={ctx.disabled}
+                  onClick={() => void openAndPersist()}
+                >
+                  Add {label}s
+                </Button>
+              </div>
+            )}
+          </>
         )}
 
-        {hydration.status === 'loading' && (
-          <div className={styles.loading} aria-label="Loading Centra details">
-            <Spinner placement="centered" size={30} />
+        {ctx.disabled && (
+          <div className={styles.disabledHint}>
+            This field is read-only in the current workflow state.
           </div>
         )}
       </div>

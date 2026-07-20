@@ -1,13 +1,13 @@
 .row {
   display: grid;
-  grid-template-columns: minmax(120px, 1.2fr) minmax(140px, 1fr) minmax(
+  grid-template-columns: 22px minmax(110px, 0.8fr) minmax(150px, 1.2fr) minmax(
       90px,
       auto
-    ) auto;
+    );
   gap: var(--spacing-m);
   align-items: center;
   width: 100%;
-  padding: 9px var(--spacing-m);
+  padding: 10px var(--spacing-m);
   color: var(--color--ink);
   border: 0;
   border-top: 1px solid var(--color--border);
@@ -16,6 +16,7 @@
   cursor: pointer;
   font: inherit;
   font-size: var(--font-size-s);
+  transition: background-color 0.2s var(--material-ease);
 }
 
 .row:hover {
@@ -36,6 +37,31 @@
 
 .selected:hover {
   background: var(--color--selected--surface-hover);
+}
+
+.selected .itemId,
+.selected .identifiers,
+.selected .status {
+  color: var(--color--selected--ink);
+}
+
+.check {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  box-sizing: border-box;
+  place-items: center;
+  color: var(--color--selected--ink);
+  border: 1px solid var(--color--border-hover);
+  border-radius: 3px;
+  background: var(--color--surface-raised);
+  font-size: var(--font-size-xxs);
+  font-weight: var(--font-weight-bold);
+}
+
+.selected .check {
+  border-color: var(--color--selected--border);
+  background: var(--color--selected--surface);
 }
 
 .main,
@@ -67,22 +93,13 @@
   font-family: var(--monospaced-font-family);
 }
 
-.choice {
-  font-weight: var(--font-weight-bold);
-}
-
 @media (max-width: 720px) {
   .row {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: 22px minmax(0, 1fr);
   }
 
   .identifiers,
   .status {
-    grid-column: 1;
-  }
-
-  .choice {
-    grid-row: 1;
     grid-column: 2;
   }
 }

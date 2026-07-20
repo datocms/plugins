@@ -6,78 +6,114 @@ export type SelectedReferenceRowProps = {
   identity: string;
   detail?: string | null;
   imageUrl?: string | null;
-  unavailable?: boolean;
+  status?: 'Unavailable' | 'Out of stock' | null;
+  preorder?: boolean;
   warning?: string | null;
   unresolved?: boolean;
+  showIdentity?: boolean;
   disabled?: boolean;
-  canMoveUp?: boolean;
-  canMoveDown?: boolean;
-  onMoveUp?: () => void;
-  onMoveDown?: () => void;
   onReplace: () => void;
   onRemove: () => void;
 };
+
+function ReferenceIdentity({
+  identity,
+  unresolved,
+  visible,
+}: {
+  identity: string;
+  unresolved: boolean;
+  visible: boolean;
+}) {
+  if (!visible && !unresolved) return null;
+
+  return (
+    <div
+      className={`${styles.identity} ${
+        unresolved ? styles.identityWarning : ''
+      }`}
+    >
+      {identity}
+    </div>
+  );
+}
 
 export default function SelectedReferenceRow({
   title,
   identity,
   detail,
   imageUrl,
-  unavailable = false,
+  status,
+  preorder = false,
   warning,
   unresolved = false,
+  showIdentity = false,
   disabled = false,
-  canMoveUp = false,
-  canMoveDown = false,
-  onMoveUp,
-  onMoveDown,
   onReplace,
   onRemove,
 }: SelectedReferenceRowProps) {
   return (
-    <article className={`${styles.row} ${unresolved ? styles.unresolved : ''}`}>
-      <div className={styles.media} aria-hidden="true">
-        {imageUrl ? <img src={imageUrl} alt="" /> : <span>Centra</span>}
-      </div>
-      <div className={styles.content}>
-        <div className={styles.title}>{title}</div>
-        <div className={styles.identity}>{identity}</div>
-        {detail && <div className={styles.detail}>{detail}</div>}
-        {unavailable && <div className={styles.warning}>Unavailable</div>}
-        {warning && <div className={styles.warning}>{warning}</div>}
-      </div>
-      <div className={styles.actions}>
-        {onMoveUp && (
-          <Button
-            buttonSize="xxs"
-            disabled={disabled || !canMoveUp}
-            onClick={onMoveUp}
-          >
-            <span aria-hidden="true">↑</span>
-            <span className={styles.srOnly}>Move up</span>
-          </Button>
+    <article
+      className={`${styles.card} ${unresolved ? styles.unresolved : ''} ${
+        disabled ? styles.disabled : ''
+      }`}
+      aria-label={`${title}: ${identity}`}
+    >
+      <div className={styles.media}>
+        {imageUrl ? (
+          <img src={imageUrl} alt="" loading="lazy" />
+        ) : (
+          <span className={styles.noImage} aria-hidden="true">
+            Centra
+          </span>
         )}
-        {onMoveDown && (
-          <Button
-            buttonSize="xxs"
-            disabled={disabled || !canMoveDown}
-            onClick={onMoveDown}
-          >
-            <span aria-hidden="true">↓</span>
-            <span className={styles.srOnly}>Move down</span>
-          </Button>
-        )}
-        <Button buttonSize="xxs" disabled={disabled} onClick={onReplace}>
-          Replace
-        </Button>
-        <Button
-          buttonSize="xxs"
-          buttonType="negative"
-          disabled={disabled}
-          onClick={onRemove}
+
+        <div
+          className={styles.actions}
+          role="group"
+          aria-label={`Actions for ${title}`}
         >
-          Remove
-        </Button>
+          <Button
+            className={styles.actionButton}
+            buttonSize="xxs"
+            buttonType="negative"
+            disabled={disabled}
+            onClick={onRemove}
+          >
+            Remove
+          </Button>
+          <Button
+            className={styles.actionButton}
+            buttonSize="xxs"
+            disabled={disabled}
+            onClick={onReplace}
+          >
+            Replace
+          </Button>
+        </div>
+      </div>
+
+      <div className={styles.caption}>
+        <div className={styles.title} title={title}>
+          {title}
+        </div>
+        {detail && (
+          <div className={styles.detail} title={detail}>
+            {detail}
+          </div>
+        )}
+        <ReferenceIdentity
+          identity={identity}
+          unresolved={unresolved}
+          visible={showIdentity}
+        />
+        {(status || preorder) && (
+          <div className={styles.statuses}>
+            {status && <span>{status}</span>}
+            {preorder && <span>Preorder</span>}
+          </div>
+        )}
+        {warning && <div className={styles.warning}>{warning}</div>}
       </div>
     </article>
   );

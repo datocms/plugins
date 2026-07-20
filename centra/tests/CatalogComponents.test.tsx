@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import CatalogItemRow from '../src/components/CatalogItemRow';
@@ -53,21 +59,25 @@ describe('catalog picker components', () => {
     expect(onAction).toHaveBeenCalledOnce();
   });
 
-  it('exposes product selection actions as toggle buttons', () => {
+  it('uses the complete product card as the selection toggle', () => {
+    const onAction = vi.fn();
+
     render(
       <CatalogProductCard
         title="Dog Toy"
         identity="DisplayItem 2752"
         selected
         actionLabel="Remove"
-        onAction={() => undefined}
+        onAction={onAction}
       />,
     );
 
-    const action = screen.getByRole('button', { name: 'Remove' });
+    const action = screen.getByRole('button', { name: 'Remove Dog Toy' });
     expect(action).toHaveAttribute('aria-pressed', 'true');
     expect(action).not.toHaveAttribute('aria-expanded');
     expect(action).not.toHaveAttribute('aria-controls');
+    fireEvent.click(screen.getByText('Dog Toy'));
+    expect(onAction).toHaveBeenCalledOnce();
   });
 
   it('keeps duplicate SKU rows distinguishable by immutable item ID', () => {
@@ -104,18 +114,21 @@ describe('catalog picker components', () => {
         title="Dog Toy"
         identity="DisplayItem 2752"
         disabled
-        canMoveUp
-        canMoveDown
-        onMoveUp={() => undefined}
-        onMoveDown={() => undefined}
         onReplace={() => undefined}
         onRemove={() => undefined}
       />,
     );
 
-    expect(screen.getByRole('button', { name: 'Move up' })).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Move down' })).toBeDisabled();
+    const actions = screen.getByRole('group', {
+      name: 'Actions for Dog Toy',
+    });
+    expect(
+      within(actions).getAllByRole('button').map((button) => button.textContent),
+    ).toEqual(['Remove', 'Replace']);
     expect(screen.getByRole('button', { name: 'Replace' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Remove' })).toBeDisabled();
+    expect(
+      screen.queryByRole('button', { name: /Move (up|down)/ }),
+    ).not.toBeInTheDocument();
   });
 });

@@ -28,6 +28,9 @@ export default function CatalogItemRow({
       aria-pressed={selected}
       onClick={onSelect}
     >
+      <span className={styles.check} aria-hidden="true">
+        {selected ? '✓' : ''}
+      </span>
       <span className={styles.main}>
         <strong>{title}</strong>
         <span className={styles.itemId}>Item {itemId}</span>
@@ -40,7 +43,6 @@ export default function CatalogItemRow({
         {stockLabel && <span>{stockLabel}</span>}
         {preorder && <span>Preorder</span>}
       </span>
-      <span className={styles.choice}>{selected ? 'Selected' : 'Select'}</span>
     </button>
   );
 }

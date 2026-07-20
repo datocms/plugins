@@ -13,6 +13,7 @@ export type CatalogProductCardProps = {
   actionLabel: string;
   actionExpanded?: boolean;
   actionControls?: string;
+  summaryId?: string;
   onAction: () => void;
   children?: ReactNode;
 };
@@ -48,56 +49,89 @@ export default function CatalogProductCard({
   actionLabel,
   actionExpanded,
   actionControls,
+  summaryId,
   onAction,
   children,
 }: CatalogProductCardProps) {
   const status = availabilityLabel(available, hasStock);
+  const isDrilldown = actionExpanded !== undefined;
+  const summaryContent = (
+    <>
+      <span className={styles.media} aria-hidden="true">
+        {imageUrl ? (
+          <img src={imageUrl} alt="" loading="lazy" />
+        ) : (
+          <span>No image</span>
+        )}
+        {!isDrilldown && (
+          <span className={styles.selectionMark}>{selected ? '✓' : ''}</span>
+        )}
+      </span>
+
+      <span className={styles.content}>
+        <span className={styles.title} title={title}>
+          {title}
+        </span>
+        <span className={styles.identity} title={identity}>
+          {identity}
+        </span>
+        {detail && (
+          <span className={styles.detail} title={detail}>
+            {detail}
+          </span>
+        )}
+        <span className={styles.meta}>
+          {status && (
+            <span
+              className={
+                status === 'Available' ? styles.positive : styles.warning
+              }
+            >
+              {status}
+            </span>
+          )}
+          {price && <span className={styles.price}>{price}</span>}
+        </span>
+      </span>
+    </>
+  );
 
   return (
     <article
-      className={`${styles.card} ${selected ? styles.selected : ''}`}
+      className={`${styles.card} ${selected ? styles.selected : ''} ${
+        isDrilldown ? styles.drilldown : ''
+      }`}
       data-selected={selected || undefined}
+      data-layout={isDrilldown ? 'drilldown' : 'card'}
     >
-      <div className={styles.summary}>
-        <div className={styles.media} aria-hidden="true">
-          {imageUrl ? (
-            <img src={imageUrl} alt="" loading="lazy" />
-          ) : (
-            <span>No image</span>
-          )}
+      {isDrilldown ? (
+        <div id={summaryId} className={styles.summary}>
+          {summaryContent}
+          <button
+            type="button"
+            className={styles.action}
+            aria-expanded={actionExpanded}
+            aria-controls={actionControls}
+            onClick={onAction}
+          >
+            {actionLabel}
+          </button>
         </div>
-
-        <div className={styles.content}>
-          <h3>{title}</h3>
-          <div className={styles.identity}>{identity}</div>
-          {detail && <div className={styles.detail}>{detail}</div>}
-          <div className={styles.meta}>
-            {status && (
-              <span
-                className={
-                  status === 'Available' ? styles.positive : styles.warning
-                }
-              >
-                {status}
-              </span>
-            )}
-            {price && <span className={styles.price}>{price}</span>}
-          </div>
-        </div>
-
+      ) : (
         <button
+          id={summaryId}
           type="button"
-          className={styles.action}
-          aria-pressed={actionExpanded === undefined ? selected : undefined}
-          aria-expanded={actionExpanded}
-          aria-controls={
-            actionExpanded === undefined ? undefined : actionControls
-          }
+          className={`${styles.summary} ${styles.selectionButton}`}
+          aria-label={`${actionLabel} ${title}`}
+          aria-pressed={selected}
           onClick={onAction}
         >
-          {actionLabel}
+          {summaryContent}
+          <span className={styles.actionLabel} aria-hidden="true">
+            {actionLabel}
+          </span>
         </button>
-      </div>
+      )}
       {(children || actionExpanded !== undefined) && (
         <div
           id={actionControls}

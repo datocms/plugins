@@ -1,7 +1,7 @@
 import type { RenderModalCtx } from 'datocms-plugin-sdk';
-import { Button, Canvas, Spinner, TextInput } from 'datocms-react-ui';
+import { Button, Canvas, TextInput } from 'datocms-react-ui';
 import isEqual from 'lodash-es/isEqual';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import CatalogItemRow from '../components/CatalogItemRow';
 import CatalogProductCard from '../components/CatalogProductCard';
 import useDebouncedValue from '../components/useDebouncedValue';
@@ -43,6 +43,33 @@ type SearchState = {
   error?: string;
 };
 
+const INITIAL_CARD_SKELETON_IDS = [
+  'initial-card-1',
+  'initial-card-2',
+  'initial-card-3',
+  'initial-card-4',
+  'initial-card-5',
+  'initial-card-6',
+  'initial-card-7',
+  'initial-card-8',
+];
+const INITIAL_DRILLDOWN_SKELETON_IDS = [
+  'initial-drilldown-1',
+  'initial-drilldown-2',
+  'initial-drilldown-3',
+  'initial-drilldown-4',
+  'initial-drilldown-5',
+];
+const LOAD_MORE_CARD_SKELETON_IDS = [
+  'more-card-1',
+  'more-card-2',
+  'more-card-3',
+];
+const LOAD_MORE_DRILLDOWN_SKELETON_IDS = [
+  'more-drilldown-1',
+  'more-drilldown-2',
+];
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -79,11 +106,9 @@ function productTitle(displayItem: CentraDisplayItem): string {
 }
 
 function productIdentity(displayItem: CentraDisplayItem): string {
-  const parts = displayItem.productNumber
-    ? [`Product ${displayItem.productNumber}`]
-    : [];
-  parts.push(`DisplayItem ${displayItem.id}`);
-  return parts.join(' · ');
+  return displayItem.productNumber
+    ? `Product ${displayItem.productNumber}`
+    : `DisplayItem ${displayItem.id}`;
 }
 
 function productDetail(displayItem: CentraDisplayItem): string | undefined {
@@ -118,10 +143,31 @@ function itemStockLabel(item: CentraItem): string | null {
   return item.stock.available ? 'Available' : 'Unavailable';
 }
 
+function hasExactItemMatch(
+  displayItem: CentraDisplayItem,
+  query: string,
+): boolean {
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  if (normalizedQuery.length === 0) return false;
+
+  return displayItem.items.some(
+    (item) =>
+      item.sku?.toLocaleLowerCase() === normalizedQuery ||
+      item.GTIN?.toLocaleLowerCase() === normalizedQuery,
+  );
+}
+
 function friendlyError(error: unknown): string {
   return error instanceof Error
     ? error.message
     : 'Centra could not load the catalog. Try again.';
+}
+
+function verticalBodyPadding(bodyPadding: readonly number[] | undefined) {
+  if (!bodyPadding || bodyPadding.length === 0) return 0;
+  if (bodyPadding.length === 1) return bodyPadding[0] * 2;
+  if (bodyPadding.length === 2) return bodyPadding[0] * 2;
+  return bodyPadding[0] + bodyPadding[2];
 }
 
 function selectionContains(
@@ -158,6 +204,39 @@ function searchCatalog(
   });
 }
 
+function pickerEntityLabels(kind: CentraFieldParametersV1['kind']): {
+  singular: string;
+  plural: string;
+} {
+  switch (kind) {
+    case 'item':
+      return { singular: 'SKU / size', plural: 'SKUs / sizes' };
+    case 'variant':
+      return { singular: 'product variant', plural: 'product variants' };
+    default:
+      return { singular: 'product', plural: 'products' };
+  }
+}
+
+function CatalogSkeleton({ drilldown }: { drilldown: boolean }) {
+  return (
+    <div
+      className={`${styles.skeletonCard} ${
+        drilldown ? styles.skeletonDrilldown : ''
+      }`}
+      aria-hidden="true"
+    >
+      <div className={styles.skeletonMedia} />
+      <div className={styles.skeletonContent}>
+        <span className={styles.skeletonTitle} />
+        <span className={styles.skeletonLine} />
+        <span className={styles.skeletonShortLine} />
+      </div>
+      <div className={styles.skeletonAction} />
+    </div>
+  );
+}
+
 type ProductResultProps = {
   displayItem: CentraDisplayItem;
   fieldParameters: CentraFieldParametersV1;
@@ -178,6 +257,7 @@ function ProductResult({
   onToggleReference,
 }: ProductResultProps) {
   const itemListId = `centra-display-item-${displayItem.id}-items`;
+  const summaryId = `centra-display-item-${displayItem.id}-summary`;
   const displayReference: CentraReference = {
     displayItemId: displayItem.id,
   };
@@ -203,6 +283,10 @@ function ProductResult({
         Number(right.exact) - Number(left.exact) || left.index - right.index,
     )
     .map(({ item }) => item);
+  const selectedItemCount = selection.filter(
+    (reference) =>
+      'itemId' in reference && reference.displayItemId === displayItem.id,
+  ).length;
 
   return (
     <CatalogProductCard
@@ -217,6 +301,7 @@ function ProductResult({
       actionLabel={actionLabel}
       actionExpanded={fieldParameters.kind === 'item' ? expanded : undefined}
       actionControls={fieldParameters.kind === 'item' ? itemListId : undefined}
+      summaryId={summaryId}
       onAction={() =>
         fieldParameters.kind === 'item'
           ? onToggleExpanded()
@@ -224,7 +309,15 @@ function ProductResult({
       }
     >
       {fieldParameters.kind === 'item' && expanded && (
-        <div>
+        <div className={styles.skuPanel}>
+          <div className={styles.skuHeader}>
+            <strong>SKUs / sizes</strong>
+            <span>
+              {selectedItemCount === 0
+                ? 'Choose one or more rows'
+                : `${selectedItemCount} selected`}
+            </span>
+          </div>
           {displayItem.items.length === 0 ? (
             <div className={styles.notice}>
               This product has no selectable SKU items.
@@ -260,6 +353,195 @@ function ProductResult({
   );
 }
 
+function SearchStatus({
+  pending,
+  search,
+}: {
+  pending: boolean;
+  search: SearchState;
+}) {
+  if (pending) {
+    return <div className={styles.statusRow}>Searching…</div>;
+  }
+
+  if (search.status === 'error') {
+    return (
+      <div className={styles.statusRow}>
+        <span className={styles.statusError} role="alert">
+          {search.error}
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.statusRow} aria-live="polite">
+      {typeof search.totalCount === 'number' ? (
+        `${search.totalCount} matching products`
+      ) : (
+        <span aria-hidden="true">&nbsp;</span>
+      )}
+    </div>
+  );
+}
+
+type PickerResultsProps = {
+  fieldParameters: CentraFieldParametersV1;
+  entityPlural: string;
+  search: SearchState;
+  searchIsPending: boolean;
+  selection: CentraReference[];
+  query: string;
+  expandedDisplayItemId: number | null;
+  isLoadingMore: boolean;
+  onToggleExpanded: (displayItemId: number) => void;
+  onToggleReference: (reference: CentraReference) => void;
+};
+
+function PickerResults({
+  fieldParameters,
+  entityPlural,
+  search,
+  searchIsPending,
+  selection,
+  query,
+  expandedDisplayItemId,
+  isLoadingMore,
+  onToggleExpanded,
+  onToggleReference,
+}: PickerResultsProps) {
+  const drilldown = fieldParameters.kind === 'item';
+  const resultsAreInactive = searchIsPending || search.status === 'error';
+  const initialSkeletonIds = drilldown
+    ? INITIAL_DRILLDOWN_SKELETON_IDS
+    : INITIAL_CARD_SKELETON_IDS;
+  const loadMoreSkeletonIds = drilldown
+    ? LOAD_MORE_DRILLDOWN_SKELETON_IDS
+    : LOAD_MORE_CARD_SKELETON_IDS;
+  const showInitialSkeletons = searchIsPending && search.items.length === 0;
+
+  return (
+    <div
+      className={`${styles.results} ${
+        resultsAreInactive && search.items.length > 0
+          ? styles.resultsRefreshing
+          : ''
+      }`}
+      aria-busy={searchIsPending || isLoadingMore}
+      inert={resultsAreInactive ? true : undefined}
+    >
+      {showInitialSkeletons && (
+        <>
+          <span
+            className={styles.srOnly}
+            role="status"
+            aria-label="Loading Centra catalog"
+          />
+          {initialSkeletonIds.map((id) => (
+            <CatalogSkeleton key={id} drilldown={drilldown} />
+          ))}
+        </>
+      )}
+
+      {!searchIsPending &&
+        search.status === 'error' &&
+        search.items.length === 0 && (
+          <div className={styles.resultsState}>
+            Centra could not load the catalog. Try the search again.
+          </div>
+        )}
+
+      {!searchIsPending &&
+        search.status === 'success' &&
+        search.items.length === 0 && (
+          <div className={styles.resultsState}>
+            No matching {entityPlural} were found.
+          </div>
+        )}
+
+      {search.items.map((displayItem) => (
+        <ProductResult
+          key={displayItem.id}
+          displayItem={displayItem}
+          fieldParameters={fieldParameters}
+          selection={selection}
+          query={query}
+          expanded={expandedDisplayItemId === displayItem.id}
+          onToggleExpanded={() => onToggleExpanded(displayItem.id)}
+          onToggleReference={onToggleReference}
+        />
+      ))}
+
+      {isLoadingMore &&
+        loadMoreSkeletonIds.map((id) => (
+          <CatalogSkeleton key={id} drilldown={drilldown} />
+        ))}
+    </div>
+  );
+}
+
+type PickerFooterProps = {
+  entityLabel: string;
+  entityPlural: string;
+  selectionCount: number;
+  hasMore: boolean;
+  searchIsPending: boolean;
+  isLoadingMore: boolean;
+  loadMoreError: string | null;
+  onLoadMore: () => void;
+  onCancel: () => void;
+  onApply: () => void;
+};
+
+function PickerFooter({
+  entityLabel,
+  entityPlural,
+  selectionCount,
+  hasMore,
+  searchIsPending,
+  isLoadingMore,
+  loadMoreError,
+  onLoadMore,
+  onCancel,
+  onApply,
+}: PickerFooterProps) {
+  const showPagination = hasMore || isLoadingMore || loadMoreError !== null;
+  let paginationLabel = 'Load more';
+  if (isLoadingMore) paginationLabel = 'Loading…';
+  if (loadMoreError) paginationLabel = 'Try again';
+
+  return (
+    <div className={styles.footer} role="group" aria-label="Picker actions">
+      <span className={styles.footerInfo}>
+        <strong>{selectionCount}</strong>{' '}
+        {selectionCount === 1 ? entityLabel : entityPlural} selected
+      </span>
+      <div className={styles.paginationSlot}>
+        {showPagination && (
+          <Button
+            buttonType="muted"
+            disabled={isLoadingMore || searchIsPending}
+            onClick={onLoadMore}
+          >
+            {paginationLabel}
+          </Button>
+        )}
+        {loadMoreError && (
+          <span className={styles.srOnly} role="alert">
+            Loading more products failed: {loadMoreError}
+          </span>
+        )}
+      </div>
+      <Button buttonType="muted" onClick={onCancel}>
+        Cancel
+      </Button>
+      <Button buttonType="primary" onClick={onApply}>
+        Apply selection
+      </Button>
+    </div>
+  );
+}
+
 export default function PickerModal({ ctx }: Props) {
   const stableModalParameters = useDeepStableValue(ctx.parameters);
   const stablePluginParameters = useDeepStableValue(
@@ -292,6 +574,7 @@ export default function PickerModal({ ctx }: Props) {
     number | null
   >(null);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
   const loadMoreController = useRef<AbortController | null>(null);
   const [search, setSearch] = useState<SearchState>({
     status: 'loading',
@@ -314,6 +597,7 @@ export default function PickerModal({ ctx }: Props) {
     loadMoreController.current?.abort();
     loadMoreController.current = null;
     setIsLoadingMore(false);
+    setLoadMoreError(null);
     setQuery(value);
   };
 
@@ -321,13 +605,11 @@ export default function PickerModal({ ctx }: Props) {
     if (!fieldParameters || !isConnectionComplete(connection)) return;
 
     const controller = new AbortController();
-    setSearch({
+    setSearch((current) => ({
+      ...current,
       status: 'loading',
-      items: [],
-      page: 1,
-      hasMore: false,
-    });
-    setExpandedDisplayItemId(null);
+      error: undefined,
+    }));
 
     const request = searchCatalog(client, fieldParameters, {
       query: debouncedQuery,
@@ -346,24 +628,26 @@ export default function PickerModal({ ctx }: Props) {
           nextPage: result.nextPage,
           totalCount: result.totalCount,
         });
+        setLoadMoreError(null);
 
-        if (
-          fieldParameters.kind === 'item' &&
-          debouncedQuery.length > 0 &&
-          result.items[0]
-        ) {
-          setExpandedDisplayItemId(result.items[0].id);
-        }
+        setExpandedDisplayItemId((current) => {
+          if (result.items.some((item) => item.id === current)) return current;
+          if (fieldParameters.kind !== 'item') return null;
+          return (
+            result.items.find((item) => hasExactItemMatch(item, debouncedQuery))
+              ?.id ?? null
+          );
+        });
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
-        setSearch({
+        setSearch((current) => ({
+          ...current,
           status: 'error',
-          items: [],
-          page: 1,
           hasMore: false,
+          nextPage: undefined,
           error: friendlyError(error),
-        });
+        }));
       });
 
     return () => {
@@ -371,6 +655,22 @@ export default function PickerModal({ ctx }: Props) {
       loadMoreController.current?.abort();
     };
   }, [client, connection, debouncedQuery, fieldParameters]);
+
+  useLayoutEffect(() => {
+    if (expandedDisplayItemId === null) return;
+
+    const summary = document.getElementById(
+      `centra-display-item-${expandedDisplayItemId}-summary`,
+    );
+    const itemList = document.getElementById(
+      `centra-display-item-${expandedDisplayItemId}-items`,
+    );
+
+    summary?.scrollIntoView?.({ behavior: 'auto', block: 'nearest' });
+    itemList
+      ?.querySelector('button')
+      ?.scrollIntoView?.({ behavior: 'auto', block: 'nearest' });
+  }, [expandedDisplayItemId]);
 
   if (!modalParameters || !fieldParameters) {
     return (
@@ -417,6 +717,7 @@ export default function PickerModal({ ctx }: Props) {
     const controller = new AbortController();
     loadMoreController.current = controller;
     setIsLoadingMore(true);
+    setLoadMoreError(null);
     try {
       const nextPage = search.nextPage ?? search.page + 1;
       const result = await searchCatalog(client, fieldParameters, {
@@ -443,11 +744,7 @@ export default function PickerModal({ ctx }: Props) {
       }));
     } catch (error) {
       if (controller.signal.aborted) return;
-      setSearch((current) => ({
-        ...current,
-        status: 'error',
-        error: friendlyError(error),
-      }));
+      setLoadMoreError(friendlyError(error));
     } finally {
       if (loadMoreController.current === controller) {
         loadMoreController.current = null;
@@ -463,114 +760,78 @@ export default function PickerModal({ ctx }: Props) {
     ctx.resolve(result);
   };
 
-  const entityLabel =
-    fieldParameters.kind === 'item'
-      ? 'SKU or size'
-      : fieldParameters.kind === 'variant'
-        ? 'product variant'
-        : 'product';
+  const { singular: entityLabel, plural: entityPlural } = pickerEntityLabels(
+    fieldParameters.kind,
+  );
+  const queryIsDebouncing = query.trim() !== debouncedQuery;
+  const searchIsPending = queryIsDebouncing || search.status === 'loading';
+  const toggleExpanded = (displayItemId: number) => {
+    setExpandedDisplayItemId((current) =>
+      current === displayItemId ? null : displayItemId,
+    );
+  };
+  const canvasVerticalPadding = verticalBodyPadding(ctx.bodyPadding);
 
   return (
     <Canvas ctx={ctx} noAutoResizer>
-      <div className={styles.root}>
-        <div className={styles.searchRow}>
-          <TextInput
-            id="centra-search"
-            name="centra-search"
-            type="search"
-            className={styles.searchInput}
-            labelText={`Search Centra ${entityLabel}s`}
-            placeholder={
-              fieldParameters.kind === 'item'
-                ? 'Search products, sizes, SKU, or GTIN…'
-                : 'Search by name or product number…'
-            }
-            value={query}
-            onChange={updateQuery}
-          />
-          <Button
-            buttonSize="s"
-            buttonType="muted"
-            disabled={query.length === 0}
-            onClick={() => updateQuery('')}
-          >
-            Clear
-          </Button>
-        </div>
-
-        <div className={styles.selectionSummary} aria-live="polite">
-          <span>
-            <strong>{selection.length}</strong>{' '}
-            {selection.length === 1 ? entityLabel : `${entityLabel}s`} selected
-          </span>
-          {typeof search.totalCount === 'number' &&
-            search.status === 'success' && (
-              <span>{search.totalCount} matching products</span>
-            )}
-        </div>
-
-        {search.status === 'loading' && (
-          <div className={styles.loading} aria-label="Loading Centra catalog">
-            <Spinner placement="centered" size={42} />
-          </div>
-        )}
-
-        {search.status === 'error' && (
-          <div className={styles.error} role="alert">
-            {search.error}
-          </div>
-        )}
-
-        {search.status === 'success' && search.items.length === 0 && (
-          <div className={styles.empty}>
-            No matching Centra {entityLabel}s were found.
-          </div>
-        )}
-
-        {search.items.length > 0 && (
-          <div className={styles.results}>
-            {search.items.map((displayItem) => (
-              <ProductResult
-                key={displayItem.id}
-                displayItem={displayItem}
-                fieldParameters={fieldParameters}
-                selection={selection}
-                query={debouncedQuery}
-                expanded={expandedDisplayItemId === displayItem.id}
-                onToggleExpanded={() =>
-                  setExpandedDisplayItemId((current) =>
-                    current === displayItem.id ? null : displayItem.id,
-                  )
-                }
-                onToggleReference={toggleReference}
-              />
-            ))}
-          </div>
-        )}
-
-        {search.hasMore && search.status !== 'loading' && (
-          <div className={styles.loadMore}>
+      <div
+        className={styles.root}
+        style={{ height: `calc(100vh - ${canvasVerticalPadding}px)` }}
+      >
+        <div className={styles.header}>
+          <div className={styles.searchRow}>
+            <TextInput
+              id="centra-search"
+              name="centra-search"
+              type="search"
+              className={styles.searchInput}
+              labelText={`Search Centra ${entityPlural}`}
+              placeholder={
+                fieldParameters.kind === 'item'
+                  ? 'Search products, sizes, SKU, or GTIN…'
+                  : 'Search by name or product number…'
+              }
+              value={query}
+              onChange={updateQuery}
+            />
             <Button
+              buttonSize="s"
               buttonType="muted"
-              disabled={isLoadingMore}
-              onClick={() => void loadMore()}
+              disabled={query.length === 0}
+              onClick={() => updateQuery('')}
             >
-              {isLoadingMore ? 'Loading…' : 'Load more'}
+              Clear
             </Button>
           </div>
-        )}
 
-        <div className={styles.footer}>
-          <span className={styles.footerInfo}>
-            Changes are saved only when you apply the selection.
-          </span>
-          <Button buttonType="muted" onClick={() => ctx.resolve(null)}>
-            Cancel
-          </Button>
-          <Button buttonType="primary" onClick={resolveSelection}>
-            Apply selection
-          </Button>
+          <SearchStatus pending={searchIsPending} search={search} />
         </div>
+
+        <PickerResults
+          fieldParameters={fieldParameters}
+          entityPlural={entityPlural}
+          search={search}
+          searchIsPending={searchIsPending}
+          selection={selection}
+          query={debouncedQuery}
+          expandedDisplayItemId={expandedDisplayItemId}
+          isLoadingMore={isLoadingMore}
+          onToggleExpanded={toggleExpanded}
+          onToggleReference={toggleReference}
+        />
+
+        <PickerFooter
+          entityLabel={entityLabel}
+          entityPlural={entityPlural}
+          selectionCount={selection.length}
+          hasMore={search.hasMore}
+          searchIsPending={searchIsPending}
+          isLoadingMore={isLoadingMore}
+          loadMoreError={loadMoreError}
+          onLoadMore={() => void loadMore()}
+          onCancel={() => ctx.resolve(null)}
+          onApply={resolveSelection}
+        />
       </div>
     </Canvas>
   );

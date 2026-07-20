@@ -1,45 +1,63 @@
 .card {
+  min-width: 0;
   overflow: hidden;
   border: 1px solid var(--color--border);
   border-radius: 4px;
   background: var(--color--surface);
   transition:
     border-color 0.2s var(--material-ease),
-    background-color 0.2s var(--material-ease);
+    box-shadow 0.2s var(--material-ease);
 }
 
-.card:hover {
+.card:hover,
+.card:focus-within {
   border-color: var(--color--border-hover);
 }
 
 .selected {
-  color: var(--color--selected--ink);
   border-color: var(--color--selected--border);
-  background: var(--color--selected--surface);
+  box-shadow: inset 0 0 0 2px var(--color--selected--border);
 }
 
-.selected:hover {
-  background: var(--color--selected--surface-hover);
+.selected:hover,
+.selected:focus-within {
+  border-color: var(--color--selected--border);
+}
+
+.drilldown {
+  grid-column: 1 / -1;
 }
 
 .summary {
   display: grid;
-  grid-template-columns: 72px minmax(0, 1fr) auto;
-  gap: var(--spacing-m);
-  align-items: center;
-  min-height: 72px;
-  padding: var(--spacing-m);
+  height: 100%;
+  grid-template-rows: auto 1fr auto;
+}
+
+.selectionButton {
+  width: 100%;
+  padding: 0;
+  color: inherit;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  appearance: none;
+}
+
+.selectionButton:focus-visible {
+  outline: 3px solid var(--color--focus--outline);
+  outline-offset: -3px;
 }
 
 .media {
+  position: relative;
   display: grid;
-  width: 72px;
-  height: 72px;
+  aspect-ratio: 4 / 3;
   overflow: hidden;
   place-items: center;
   color: var(--color--ink-muted);
-  border: 1px solid var(--color--border);
-  border-radius: 3px;
   background: var(--color--surface-muted);
   font-size: var(--font-size-xs);
 }
@@ -50,12 +68,36 @@
   object-fit: contain;
 }
 
-.content {
-  min-width: 0;
+.selectionMark {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: grid;
+  width: 22px;
+  height: 22px;
+  box-sizing: border-box;
+  place-items: center;
+  color: var(--color--selected--ink);
+  border: 1px solid var(--color--border-hover);
+  border-radius: 3px;
+  background: var(--color--surface-raised);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
 }
 
-.content h3 {
-  margin: 0 0 2px;
+.selected .selectionMark {
+  border-color: var(--color--selected--border);
+  background: var(--color--selected--surface);
+}
+
+.content {
+  min-width: 0;
+  padding: 10px var(--spacing-m) var(--spacing-s);
+}
+
+.title {
+  display: block;
+  margin: 0 0 3px;
   overflow: hidden;
   font-size: var(--font-size-m);
   font-weight: var(--font-weight-bold);
@@ -66,23 +108,23 @@
 
 .identity,
 .detail {
+  display: block;
   overflow: hidden;
   color: var(--color--ink-subtle);
-  font-size: var(--font-size-s);
-  line-height: 1.35;
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .identity {
   font-family: var(--monospaced-font-family);
-  font-size: var(--font-size-xs);
 }
 
 .meta {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--spacing-s);
+  gap: var(--spacing-m);
   align-items: center;
   margin-top: var(--spacing-s);
   font-size: var(--font-size-xs);
@@ -90,21 +132,33 @@
 
 .positive,
 .warning {
-  padding: 2px 5px;
-  border: 1px solid;
-  border-radius: 3px;
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.positive::before,
+.warning::before {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  content: "";
 }
 
 .positive {
   color: var(--color--success-soft--ink);
-  border-color: var(--color--success-soft--border);
-  background: var(--color--success-soft--surface);
+}
+
+.positive::before {
+  background: var(--color--success-soft--ink);
 }
 
 .warning {
   color: var(--color--warning-soft--ink);
-  border-color: var(--color--warning-soft--border);
-  background: var(--color--warning-soft--surface);
+}
+
+.warning::before {
+  background: var(--color--warning-soft--ink);
 }
 
 .price {
@@ -112,9 +166,14 @@
   font-weight: var(--font-weight-bold);
 }
 
-.action {
-  min-width: 76px;
-  padding: 7px 10px;
+.action,
+.actionLabel {
+  display: block;
+  width: calc(100% - 2 * var(--spacing-m));
+  box-sizing: border-box;
+  min-height: 32px;
+  margin: var(--spacing-s) var(--spacing-m) var(--spacing-m);
+  padding: 6px 9px;
   color: var(--color--ink);
   border: 1px solid var(--color--border);
   border-radius: 3px;
@@ -122,9 +181,12 @@
   cursor: pointer;
   font: inherit;
   font-size: var(--font-size-s);
+  line-height: normal;
+  text-align: center;
 }
 
-.action:hover {
+.action:hover,
+.selectionButton:hover .actionLabel {
   border-color: var(--color--border-hover);
   background: var(--color--surface-hover);
 }
@@ -135,32 +197,72 @@
   outline-offset: 1px;
 }
 
-.selected .action {
-  color: var(--color--selected--ink);
-  border-color: var(--color--selected--border);
-  background: var(--color--selected--surface);
+.drilldown .summary {
+  height: auto;
+  min-height: 116px;
+  padding: var(--spacing-m);
+  scroll-margin-block: var(--spacing-m);
+  grid-template-columns: 96px minmax(0, 1fr) auto;
+  grid-template-rows: auto;
+  gap: var(--spacing-m);
+  align-items: center;
+}
+
+.drilldown .media {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 3px;
+}
+
+.drilldown .content {
+  padding: 0;
+}
+
+.drilldown .action {
+  width: auto;
+  min-width: 104px;
+  margin: 0;
 }
 
 .children {
-  padding: 0 var(--spacing-m) var(--spacing-m) 96px;
+  padding: 0 var(--spacing-m) var(--spacing-m);
+  border-top: 1px solid var(--color--border);
+  background: var(--color--surface);
 }
 
-@media (max-width: 640px) {
-  .summary {
-    grid-template-columns: 56px minmax(0, 1fr);
+@media (max-width: 700px) {
+  .card:not(.drilldown) .summary {
+    padding: var(--spacing-m);
+    grid-template-columns: 84px minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    gap: var(--spacing-m);
+    align-items: center;
   }
 
-  .media {
-    width: 56px;
-    height: 56px;
+  .card:not(.drilldown) .media {
+    width: 84px;
+    aspect-ratio: 1;
+    border-radius: 3px;
   }
 
-  .action {
+  .card:not(.drilldown) .content {
+    padding: 0;
+  }
+
+  .card:not(.drilldown) .actionLabel {
     grid-column: 1 / -1;
     width: 100%;
+    margin: 0;
   }
 
-  .children {
-    padding-left: var(--spacing-m);
+  .drilldown .summary {
+    grid-template-columns: 76px minmax(0, 1fr);
+    gap: var(--spacing-m);
+    min-height: 0;
+  }
+
+  .drilldown .action {
+    grid-column: 1 / -1;
+    width: 100%;
   }
 }
