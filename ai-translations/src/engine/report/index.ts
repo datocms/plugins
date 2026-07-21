@@ -46,4 +46,5 @@ export {
   type RunStore,
   type RunSummary,
 } from './runStore';
+export { createIndexedDBRunStore } from './indexedDBRunStore';
 export { policyDigest } from './policyDigest';
