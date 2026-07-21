@@ -19,6 +19,7 @@ vi.mock('./TranslateField', () => ({
 
 import { translateFieldValue } from './TranslateField';
 import type { QcFlag } from './qc/types';
+import { ProviderError } from './types';
 
 describe('ItemsDropdownUtils', () => {
   const pluginParams: ctxParamsType = {
@@ -509,6 +510,32 @@ describe('ItemsDropdownUtils', () => {
       );
 
       expect(result.errorCount).toBe(0);
+    });
+
+    it('classifies fatal Yandex credential errors as auth failures (the run-level guard aborts on these)', async () => {
+      vi.mocked(translateFieldValue).mockRejectedValue(
+        new ProviderError('Permission denied', 403, 'yandex'),
+      );
+      const yandexProvider = { ...provider, vendor: 'yandex' as const };
+
+      const result = await buildTranslatedUpdatePayload(
+        record,
+        'en',
+        'it',
+        fieldTypeDictionary,
+        yandexProvider,
+        { ...pluginParams, vendor: 'yandex' },
+        'access-token',
+        'main',
+      );
+
+      // The engine accumulates provider failures per field rather than throwing;
+      // the idempotent 'auth' classification (stable across the engine's double
+      // normalization) is what `translateAndUpdateRecords` keys on to abort the run.
+      expect(result.failedFields.length).toBeGreaterThan(0);
+      expect(result.failedFields.every((f) => f.error.code === 'auth')).toBe(
+        true,
+      );
     });
 
     it('copies source value for required non-block fields, strips IDs for required block fields', async () => {
@@ -1436,6 +1463,49 @@ describe('ItemsDropdownUtils', () => {
 
       expect(update).not.toHaveBeenCalled();
       expect(updates.at(-1)?.statusText).toBe('Cancelled');
+    });
+
+    it('stops the bulk run after a fatal Yandex configuration error', async () => {
+      vi.mocked(translateFieldValue).mockRejectedValue(
+        new ProviderError('Folder ID is invalid', 400, 'yandex'),
+      );
+      const update = vi.fn();
+      // biome-ignore lint/suspicious/noExplicitAny: minimal CMA client stub for the test
+      const client = { items: { update } } as any;
+      const records: DatoCMSRecordFromAPI[] = [
+        {
+          id: 'r1',
+          item_type: { id: 'm1' },
+          title: { en: 'First' },
+        },
+        {
+          id: 'r2',
+          item_type: { id: 'm1' },
+          title: { en: 'Second' },
+        },
+      ];
+      const getFieldTypeDictionary = vi.fn().mockResolvedValue({
+        title: { editor: 'single_line', id: 'field-title', isLocalized: true },
+      });
+      const yandexProvider = { ...provider, vendor: 'yandex' as const };
+
+      await expect(
+        translateAndUpdateRecords(
+          records,
+          client,
+          yandexProvider,
+          'en',
+          ['it'],
+          getFieldTypeDictionary,
+          { ...pluginParams, vendor: 'yandex' },
+          { alert: vi.fn(), environment: 'main' },
+          'access-token',
+        ),
+      ).rejects.toThrow(/Folder ID/i);
+
+      expect(translateFieldValue).toHaveBeenCalledTimes(1);
+      expect(getFieldTypeDictionary).toHaveBeenCalledTimes(1);
+      expect(update).not.toHaveBeenCalled();
     });
 
     it('paces the run through a run-scoped adaptive pacer that widens after a rate limit', async () => {

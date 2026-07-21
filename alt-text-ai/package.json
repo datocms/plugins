@@ -1,16 +1,21 @@
 {
   "name": "datocms-plugin-alt-text-ai",
-  "homepage": "https://github.com/datocms/plugins/blob/addMarceloPlugins/alt-text-ai/README.md",
-  "version": "0.5.15",
+  "homepage": "https://github.com/datocms/plugins/tree/master/alt-text-ai#readme",
+  "version": "0.6.1",
   "author": "DatoCMS <support@datocms.com>",
-  "description": "Generate alt texts for your assets in a single click",
+  "description": "Generate alt text with AltText.ai, OpenAI, Anthropic Claude, or Google Gemini",
   "keywords": [
     "datocms",
     "datocms-plugin",
     "ai",
     "alt",
     "media",
-    "assets"
+    "assets",
+    "accessibility",
+    "openai",
+    "anthropic",
+    "claude",
+    "gemini"
   ],
   "type": "module",
   "datoCmsPlugin": {
@@ -27,7 +32,7 @@
     "docs"
   ],
   "dependencies": {
-    "@datocms/cma-client-browser": "^5.3.0",
+    "@datocms/cma-client-browser": "^5.5.4",
     "datocms-plugin-sdk": "^2.2.2",
     "datocms-react-ui": "^2.2.4",
     "lodash": "^4.17.23",
@@ -38,6 +43,8 @@
     "start": "vite",
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "preview": "vite preview",
     "prepublishOnly": "npm run build"
   },
@@ -48,7 +55,8 @@
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.2.0",
     "typescript": "^5.9.3",
-    "vite": "^7.3.1"
+    "vite": "^7.3.1",
+    "vitest": "^4.0.18"
   },
   "overrides": {
     "datocms-react-ui": {

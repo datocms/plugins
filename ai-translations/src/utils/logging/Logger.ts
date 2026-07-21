@@ -51,6 +51,7 @@ export class Logger {
       pluginParams.googleApiKey,
       pluginParams.anthropicApiKey,
       pluginParams.deeplApiKey,
+      pluginParams.yandexApiKey,
     ].filter((s): s is string => typeof s === 'string' && s.length > 0);
     // Only keep reasonably long secrets to avoid redacting trivial words
     this.secrets = candidates.filter(

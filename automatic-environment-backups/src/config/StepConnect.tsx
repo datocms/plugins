@@ -1,6 +1,8 @@
-import { Button, Spinner, TextField } from 'datocms-react-ui';
+import { Button, Spinner } from 'datocms-react-ui';
 import { useState } from 'react';
 import { StatusBox } from './StatusBox';
+import { StepActionArrow } from './StepActionArrow';
+import styles from './StepContent.module.css';
 import type { BackupsConfig } from './useBackupsConfig';
 
 const spinnerRowStyle = {
@@ -9,21 +11,18 @@ const spinnerRowStyle = {
   gap: 'var(--spacing-s)',
 } as const;
 
-/**
- * Step 2 — point the plugin at the deployed function and verify it responds and
- * authenticates. The single action persists the URL triplet, runs the health
- * ping with the saved secret, and persists the resulting connection state; the
- * `StatusBox` reflects testing / connected / failed with the exact reason.
- */
+const compactSuccessStyle = {
+  flex: '1 1 240px',
+  padding: 'var(--spacing-s) var(--spacing-m)',
+} as const;
+
+/** Step 3 — test the saved deployment URL and shared secret. */
 export const StepConnect = ({ config }: { config: BackupsConfig }) => {
   const {
-    urlInput,
-    setUrlInput,
-    saveAndTestConnection,
-    disconnect,
+    canEdit,
+    testConnection,
     isConnecting,
     isMountChecking,
-    isDisconnecting,
     isConnected,
     connection,
     connectionErrorDetails,
@@ -32,95 +31,101 @@ export const StepConnect = ({ config }: { config: BackupsConfig }) => {
   } = config;
 
   const [showDetails, setShowDetails] = useState(false);
-
   const isTesting = isConnecting || isMountChecking;
-  const hasSavedUrl = savedUrl.trim().length > 0;
   const persistedError =
     !isConnected && connection?.status === 'disconnected'
-      ? connection.errorMessage ??
-        'Last connection check failed. Re-test the connection.'
+      ? (connection.errorMessage ??
+        'The last connection check failed. Test the connection again.')
       : null;
+  const activeErrorSummary =
+    connectionTestError?.summary ??
+    (persistedError ? 'Connection failed' : null);
+  const activeErrorMessage = connectionTestError ? null : persistedError;
+  const activeErrorDetails =
+    connectionTestError?.details ?? connectionErrorDetails;
 
   return (
     <>
-      <TextField
-        name="deploymentURL"
-        id="deploymentURL"
-        label="Deployed function URL"
-        value={urlInput}
-        placeholder="https://backups.example.com/"
-        onChange={setUrlInput}
-      />
+      <p className={styles.savedUrl}>
+        <strong>Deployment:</strong> {savedUrl}
+      </p>
 
-      <div style={{ display: 'flex', gap: 'var(--spacing-s)', flexWrap: 'wrap' }}>
-        <Button
-          buttonType="primary"
-          buttonSize="s"
-          onClick={() => {
-            void saveAndTestConnection();
-          }}
-          disabled={isTesting || isDisconnecting}
-        >
-          {isConnecting ? 'Testing…' : 'Save & test connection'}
-        </Button>
-        {hasSavedUrl && (
+      {!isTesting && isConnected ? (
+        <div className={styles.connectionResultRow}>
+          <StatusBox
+            variant="success"
+            title="Connection verified"
+            style={compactSuccessStyle}
+          />
           <Button
-            buttonType="negative"
+            buttonType="muted"
             buttonSize="s"
             onClick={() => {
-              void disconnect();
+              void testConnection();
             }}
-            disabled={isTesting || isDisconnecting}
+            disabled={!canEdit}
           >
-            {isDisconnecting ? 'Disconnecting…' : 'Disconnect'}
+            Test again
           </Button>
-        )}
-      </div>
-
-      {isTesting ? (
-        <StatusBox variant="neutral">
-          <span style={spinnerRowStyle}>
-            <Spinner size={20} />
-            Testing connection to {urlInput.trim() || 'your function'}…
-          </span>
-        </StatusBox>
-      ) : connectionTestError ? (
-        <StatusBox variant="error" title={connectionTestError.summary}>
-          {connectionTestError.details.length > 0 && (
-            <ul style={{ margin: 0, paddingLeft: '1.2em' }}>
-              {connectionTestError.details.map((detail) => (
-                <li key={detail}>{detail}</li>
-              ))}
-            </ul>
-          )}
-        </StatusBox>
-      ) : isConnected ? (
-        <StatusBox variant="success" title="Connected">
-          The function responds and authenticates.
-        </StatusBox>
-      ) : persistedError && hasSavedUrl ? (
-        <StatusBox variant="error" title="Connection failed">
-          {persistedError}
-          {connectionErrorDetails.length > 0 && (
-            <div style={{ marginTop: 'var(--spacing-s)' }}>
-              <Button
-                buttonType="muted"
-                buttonSize="xs"
-                onClick={() => setShowDetails((current) => !current)}
-              >
-                {showDetails ? 'Hide details' : 'Show details'}
-              </Button>
-              {showDetails && (
-                <ul style={{ margin: 'var(--spacing-s) 0 0', paddingLeft: '1.2em' }}>
-                  {connectionErrorDetails.map((detail) => (
-                    <li key={detail}>{detail}</li>
-                  ))}
-                </ul>
+        </div>
+      ) : (
+        <>
+          {isTesting ? (
+            <StatusBox variant="neutral">
+              <span style={spinnerRowStyle}>
+                <Spinner size={20} />
+                Testing {savedUrl}…
+              </span>
+            </StatusBox>
+          ) : activeErrorSummary ? (
+            <StatusBox variant="error" title={activeErrorSummary}>
+              {activeErrorMessage}
+              {activeErrorDetails.length > 0 && (
+                <div style={{ marginTop: 'var(--spacing-s)' }}>
+                  <Button
+                    buttonType="muted"
+                    buttonSize="xs"
+                    onClick={() => setShowDetails((current) => !current)}
+                  >
+                    {showDetails
+                      ? 'Hide technical details'
+                      : 'Show technical details'}
+                  </Button>
+                  {showDetails && (
+                    <ul
+                      style={{
+                        margin: 'var(--spacing-s) 0 0',
+                        paddingLeft: '1.2em',
+                      }}
+                    >
+                      {activeErrorDetails.map((detail) => (
+                        <li key={detail}>{detail}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               )}
+            </StatusBox>
+          ) : null}
+
+          <div className={styles.stepFooter}>
+            <div className={styles.stepFooterPrimary}>
+              <Button
+                buttonType="primary"
+                buttonSize="s"
+                onClick={() => {
+                  void testConnection();
+                }}
+                disabled={!canEdit || isTesting}
+                leftIcon={isTesting ? <Spinner size={16} /> : undefined}
+                rightIcon={!isTesting ? <StepActionArrow /> : undefined}
+              >
+                {isTesting ? 'Testing…' : 'Verify connection & continue'}
+              </Button>
             </div>
-          )}
-        </StatusBox>
-      ) : null}
+          </div>
+        </>
+      )}
     </>
   );
 };

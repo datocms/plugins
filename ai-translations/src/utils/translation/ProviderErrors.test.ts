@@ -6,8 +6,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Logger } from '../logging/Logger';
 import {
+  type NormalizedError,
   formatErrorForUser,
   handleTranslationError,
+  isFatalProviderError,
+  isNormalizedError,
   normalizeProviderError,
 } from './ProviderErrors';
 import { ProviderError } from './types';
@@ -73,6 +76,58 @@ describe('ProviderErrors.ts', () => {
 
         expect(result.hint).toContain('Google');
       });
+
+      it('provides Yandex service-account guidance for invalid credentials', () => {
+        const result = normalizeProviderError(
+          new ProviderError('Invalid API key', 401, 'yandex'),
+          'yandex',
+        );
+
+        expect(result.code).toBe('auth');
+        expect(result.hint).toContain('ai.translate.user');
+        expect(result.hint).toContain('Folder ID');
+      });
+
+      it('maps Yandex permission errors to actionable authentication failures', () => {
+        const result = normalizeProviderError(
+          new ProviderError('Permission denied', 403, 'yandex'),
+          'yandex',
+        );
+
+        expect(result.code).toBe('auth');
+        expect(result.message).toContain('Yandex Cloud denied access');
+        expect(result.hint).toContain('API key scope');
+      });
+
+      it('maps Yandex Folder ID failures to actionable configuration errors', () => {
+        const result = normalizeProviderError(
+          new ProviderError(
+            'The specified folder ID was not found',
+            400,
+            'yandex',
+          ),
+          'yandex',
+        );
+
+        expect(result.code).toBe('auth');
+        expect(result.message).toContain('Folder ID');
+        expect(result.hint).toContain('service account');
+      });
+
+      it('treats a generic Yandex NOT_FOUND response as a Folder ID failure', () => {
+        const result = normalizeProviderError(
+          new ProviderError(
+            'The requested cloud resource was not found',
+            404,
+            'yandex',
+          ),
+          'yandex',
+        );
+
+        expect(result.code).toBe('auth');
+        expect(result.message).toContain('Folder ID');
+        expect(isFatalProviderError('yandex', result)).toBe(true);
+      });
     });
 
     describe('rate limit errors', () => {
@@ -100,7 +155,13 @@ describe('ProviderErrors.ts', () => {
       });
 
       it('should provide vendor-specific hints for rate limits', () => {
-        const vendors = ['openai', 'google', 'anthropic', 'deepl'] as const;
+        const vendors = [
+          'openai',
+          'google',
+          'anthropic',
+          'deepl',
+          'yandex',
+        ] as const;
         const error = { status: 429 };
 
         for (const vendor of vendors) {
@@ -298,6 +359,19 @@ describe('ProviderErrors.ts', () => {
 
         const google = normalizeProviderError(error, 'google');
         expect(google.hint).toContain('Google');
+
+        const yandex = normalizeProviderError(error, 'yandex');
+        expect(yandex.hint).toContain('Yandex Cloud');
+      });
+
+      it('distinguishes a Yandex quota response from request-rate limiting', () => {
+        const result = normalizeProviderError(
+          new ProviderError('Quota limit exceeded', 429, 'yandex'),
+          'yandex',
+        );
+
+        expect(result.code).toBe('quota');
+        expect(result.hint).toContain('billing');
       });
     });
 
@@ -330,6 +404,19 @@ describe('ProviderErrors.ts', () => {
 
         expect(result.code).toBe('model');
       });
+
+      it('maps the Yandex provider unsupported-target message', () => {
+        const error = new ProviderError(
+          'Yandex Translate does not support the target locale "xx-YY".',
+          400,
+          'yandex',
+        );
+        const result = normalizeProviderError(error, 'yandex');
+
+        expect(result.code).toBe('model');
+        expect(result.message).toContain('target language');
+        expect(result.hint).toContain('Yandex Translate');
+      });
     });
 
     describe('network errors', () => {
@@ -340,6 +427,25 @@ describe('ProviderErrors.ts', () => {
         expect(result.code).toBe('network');
         expect(result.hint).toContain('CORS');
       });
+
+      it.each([
+        [500, 'Internal server error'],
+        [503, 'The service is currently unavailable'],
+        [504, 'Deadline exceeded (request ID: request-123)'],
+      ])(
+        'maps Yandex service status %s to a retryable service error',
+        (status, message) => {
+          const result = normalizeProviderError(
+            new ProviderError(message, status, 'yandex'),
+            'yandex',
+          );
+
+          expect(result.code).toBe('network');
+          expect(result.message).toBe(message);
+          expect(result.hint).toContain('temporarily unavailable');
+          expect(isFatalProviderError('yandex', result)).toBe(false);
+        },
+      );
 
       it('should detect "network" in message', () => {
         const error = new Error('Network error occurred');
@@ -493,6 +599,60 @@ describe('ProviderErrors.ts', () => {
     });
   });
 
+  describe('isFatalProviderError', () => {
+    it('treats Yandex authentication, permission, and folder errors as fatal', () => {
+      const auth = normalizeProviderError(
+        new ProviderError('Invalid API key', 401, 'yandex'),
+        'yandex',
+      );
+      const permission = normalizeProviderError(
+        new ProviderError('Permission denied', 403, 'yandex'),
+        'yandex',
+      );
+      const folder = normalizeProviderError(
+        new ProviderError('Folder ID is invalid', 400, 'yandex'),
+        'yandex',
+      );
+
+      expect(isFatalProviderError('yandex', auth)).toBe(true);
+      expect(isFatalProviderError('yandex', permission)).toBe(true);
+      expect(isFatalProviderError('yandex', folder)).toBe(true);
+    });
+
+    it('keeps Yandex quota, rate-limit, and network errors retryable', () => {
+      const quota = normalizeProviderError(
+        new ProviderError('Quota exceeded', 400, 'yandex'),
+        'yandex',
+      );
+      const rateLimit = normalizeProviderError(
+        new ProviderError('Too many requests', 429, 'yandex'),
+        'yandex',
+      );
+      const network = normalizeProviderError(
+        new ProviderError('Network timeout', 500, 'yandex'),
+        'yandex',
+      );
+
+      expect(isFatalProviderError('yandex', quota)).toBe(false);
+      expect(isFatalProviderError('yandex', rateLimit)).toBe(false);
+      expect(isFatalProviderError('yandex', network)).toBe(false);
+    });
+
+    it('preserves existing fatal DeepL and OpenAI cases', () => {
+      const deepl = normalizeProviderError(
+        new ProviderError('Wrong endpoint', 403, 'deepl'),
+        'deepl',
+      );
+      const openai = normalizeProviderError(
+        new Error('You must be verified to stream this model'),
+        'openai',
+      );
+
+      expect(isFatalProviderError('deepl', deepl)).toBe(true);
+      expect(isFatalProviderError('openai', openai)).toBe(true);
+    });
+  });
+
   describe('handleTranslationError', () => {
     it('should throw an error with normalized message', () => {
       const mockLogger = createMockLogger();
@@ -523,6 +683,29 @@ describe('ProviderErrors.ts', () => {
         handleTranslationError(originalError, 'openai', mockLogger);
       } catch (e) {
         expect((e as Error).cause).toBe(originalError);
+      }
+    });
+
+    it('wraps a provider error as a NormalizedError, preserving code and cause', () => {
+      const mockLogger = createMockLogger();
+      const originalError = new ProviderError(
+        'Permission denied',
+        403,
+        'yandex',
+      );
+
+      expect(() =>
+        handleTranslationError(originalError, 'yandex', mockLogger),
+      ).toThrow();
+      try {
+        handleTranslationError(originalError, 'yandex', mockLogger);
+      } catch (error) {
+        // The unified engine rethrows a structured NormalizedError (carrying the
+        // classified `code`) rather than a raw ProviderError, so a downstream
+        // re-normalization keeps the 'auth' code that drives the pause/abort.
+        expect(isNormalizedError(error)).toBe(true);
+        expect((error as NormalizedError).normalized.code).toBe('auth');
+        expect((error as Error).cause).toBe(originalError);
       }
     });
 

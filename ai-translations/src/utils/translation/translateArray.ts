@@ -1,7 +1,7 @@
 /**
  * Vendor-agnostic utility to translate an array of strings, preserving
  * placeholders and formatting tokens. Uses vendor-specific array APIs when
- * available (DeepL) and falls back to a JSON-array prompting strategy for
+ * available (DeepL and Yandex) and falls back to a JSON-array prompting strategy for
  * chat models (OpenAI, Gemini, Anthropic).
  */
 
@@ -27,7 +27,12 @@ import {
   checkNoOp,
 } from './qc/structuralChecks';
 import type { OnQcFlag, QcFlag } from './qc/types';
-import type { ProviderDebugHooks, TranslationProvider } from './types';
+import {
+  type BatchTranslationOptions,
+  type ProviderDebugHooks,
+  ProviderConfigurationError,
+  type TranslationProvider,
+} from './types';
 
 /**
  * Maximum number of segments to translate in a single API call for chat vendors.
@@ -570,11 +575,114 @@ export function coalesceSourceFallbackFlags(
  * @returns Translated segments with placeholders restored.
  */
 /**
- * Translates an array of protected segments using a provider that supports native
- * batch translation (e.g., DeepL). Maps locale codes and resolves formality/glossary options.
+ * Builds DeepL request options while preserving its existing locale,
+ * formality, formatting, tag, and glossary behavior.
+ */
+function buildDeepLBatchOptions(
+  pluginParams: ctxParamsType,
+  fromLocale: string,
+  toLocale: string,
+  opts: Options,
+  providerDebugHooks: ProviderDebugHooks,
+): BatchTranslationOptions {
+  const target = mapDatoToDeepL(toLocale, 'target');
+  const source = fromLocale ? mapDatoToDeepL(fromLocale, 'source') : undefined;
+  // Explicit per-call formality wins; otherwise the plugin's configured
+  // deeplFormality applies ('default' means "let DeepL decide", i.e. omit).
+  const configuredFormality =
+    pluginParams.deeplFormality && pluginParams.deeplFormality !== 'default'
+      ? pluginParams.deeplFormality
+      : undefined;
+  const requestedFormality = opts.formality ?? configuredFormality;
+  const formality =
+    requestedFormality && isFormalitySupported(target)
+      ? requestedFormality
+      : undefined;
+
+  return {
+    sourceLang: source,
+    targetLang: target,
+    isHTML: !!opts.isHTML,
+    formality,
+    preserveFormatting: pluginParams.deeplPreserveFormatting !== false,
+    // The baseline tag lists protect tokenized placeholders (ph/notranslate)
+    // and keep inline markup intact — the configured deepl*Tags settings
+    // EXTEND them (never replace: dropping ph/notranslate would let DeepL
+    // translate protected placeholder tokens).
+    ignoreTags: mergeTagList(['notranslate', 'ph'], pluginParams.deeplIgnoreTags),
+    nonSplittingTags: mergeTagList(
+      ['a', 'code', 'pre', 'strong', 'em', 'ph', 'notranslate'],
+      pluginParams.deeplNonSplittingTags,
+    ),
+    splittingTags: mergeTagList([], pluginParams.deeplSplittingTags),
+    glossaryId: resolveGlossaryId(pluginParams, fromLocale, toLocale),
+    originalSourceLocale: fromLocale,
+    originalTargetLocale: toLocale,
+    debug: providerDebugHooks,
+  };
+}
+
+/**
+ * Builds Yandex request options. Locale resolution is delegated to the
+ * provider because it validates against Yandex's live language list.
+ */
+function buildYandexBatchOptions(
+  fromLocale: string,
+  toLocale: string,
+  opts: Options,
+  providerDebugHooks: ProviderDebugHooks,
+): BatchTranslationOptions {
+  return {
+    sourceLang: fromLocale || undefined,
+    targetLang: toLocale,
+    isHTML: !!opts.isHTML,
+    originalSourceLocale: fromLocale,
+    originalTargetLocale: toLocale,
+    debug: providerDebugHooks,
+  };
+}
+
+/**
+ * Returns options for a supported native provider. The explicit switch keeps
+ * future native providers from accidentally inheriting DeepL semantics.
+ */
+function buildNativeBatchOptions(
+  provider: TranslationProvider,
+  pluginParams: ctxParamsType,
+  fromLocale: string,
+  toLocale: string,
+  opts: Options,
+  providerDebugHooks: ProviderDebugHooks,
+): BatchTranslationOptions {
+  switch (provider.vendor) {
+    case 'deepl':
+      return buildDeepLBatchOptions(
+        pluginParams,
+        fromLocale,
+        toLocale,
+        opts,
+        providerDebugHooks,
+      );
+    case 'yandex':
+      return buildYandexBatchOptions(
+        fromLocale,
+        toLocale,
+        opts,
+        providerDebugHooks,
+      );
+    default:
+      throw new ProviderConfigurationError(
+        provider.vendor,
+        'Native batch translation is not configured for this provider.',
+      );
+  }
+}
+
+/**
+ * Translates protected segments using a provider with a native batch API.
  *
  * @param provider - Provider with a `translateArray` method.
- * @param pluginParams - Plugin configuration for DeepL-specific settings.
+ * @param pluginParams - Plugin configuration with provider-specific settings.
  * @param protectedSegments - Tokenized (placeholder-safe) text segments.
  * @param fromLocale - Source locale code.
  * @param toLocale - Target locale code.
@@ -592,41 +700,14 @@ async function translateWithNativeBatchProvider(
   logger: Logger,
   providerDebugHooks: ProviderDebugHooks,
 ): Promise<string[]> {
-  const target = mapDatoToDeepL(toLocale, 'target');
-  const source = fromLocale ? mapDatoToDeepL(fromLocale, 'source') : undefined;
-  // Explicit per-call formality wins; otherwise the plugin's configured
-  // deeplFormality applies ('default' means "let DeepL decide", i.e. omit).
-  const configuredFormality =
-    pluginParams?.deeplFormality && pluginParams.deeplFormality !== 'default'
-      ? pluginParams.deeplFormality
-      : undefined;
-  const requestedFormality = opts.formality ?? configuredFormality;
-  const formality =
-    requestedFormality && isFormalitySupported(target)
-      ? requestedFormality
-      : undefined;
-
-  const requestOptions = {
-    sourceLang: source,
-    targetLang: target,
-    isHTML: !!opts.isHTML,
-    formality,
-    preserveFormatting: pluginParams?.deeplPreserveFormatting !== false,
-    // The baseline tag lists protect tokenized placeholders (ph/notranslate)
-    // and keep inline markup intact — the configured deepl*Tags settings
-    // EXTEND them (never replace: dropping ph/notranslate would let DeepL
-    // translate protected placeholder tokens).
-    ignoreTags: mergeTagList(['notranslate', 'ph'], pluginParams?.deeplIgnoreTags),
-    nonSplittingTags: mergeTagList(
-      ['a', 'code', 'pre', 'strong', 'em', 'ph', 'notranslate'],
-      pluginParams?.deeplNonSplittingTags,
-    ),
-    splittingTags: mergeTagList([], pluginParams?.deeplSplittingTags),
-    glossaryId: resolveGlossaryId(pluginParams, fromLocale, toLocale),
-    originalSourceLocale: fromLocale,
-    originalTargetLocale: toLocale,
-    debug: providerDebugHooks,
-  };
+  const requestOptions = buildNativeBatchOptions(
+    provider,
+    pluginParams,
+    fromLocale,
+    toLocale,
+    opts,
+    providerDebugHooks,
+  );
 
   logger.logRequest('Native batch translation request', {
     provider: provider.vendor,
@@ -819,7 +900,7 @@ export async function translateArray(
   try {
     let out: string[];
 
-    // Use native batch translation if provider supports it (e.g., DeepL)
+    // Use native batch translation if the provider supports it.
     if (provider.translateArray) {
       const nativeProvider = provider as Required<
         Pick<TranslationProvider, 'translateArray'>

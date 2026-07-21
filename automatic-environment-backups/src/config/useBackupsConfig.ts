@@ -28,6 +28,7 @@ import {
   buildDisconnectedLambdaConnectionState,
   getLambdaConnectionErrorDetails,
   LambdaHealthCheckError,
+  normalizeLambdaBaseUrl,
   verifyLambdaHealth,
 } from '../utils/verifyLambdaHealth';
 import { generateAuthSecret } from './generateAuthSecret';
@@ -44,7 +45,7 @@ import {
 } from './pluginParams';
 
 const MISSING_AUTH_SECRET_MESSAGE =
-  'Enter Lambda auth secret before calling lambda endpoints.';
+  'Save a shared secret before using the backup service.';
 const BACKUP_NOW_AFTER_SAVE_RETRY_DELAY_MS = 1200;
 
 /** Extract a human-readable message from an unknown thrown value. */
@@ -82,6 +83,7 @@ export type ConnectionTestError = {
 export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
   const params = ctx.plugin.attributes.parameters as BackupsParameters;
   const projectTimezone = getProjectTimezone(ctx.site);
+  const canEdit = ctx.currentRole.meta.final_permissions.can_edit_schema;
 
   const savedSecret = readAuthSecret(params);
   const savedUrl = readDeploymentUrl(params);
@@ -94,13 +96,14 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
     () => savedSecret || generateAuthSecret(),
   );
   const [urlInput, setUrlInput] = useState(savedUrl);
-  const [cadenceSelection, setCadenceSelection] = useState<BackupCadence[]>(() =>
-    readEnabledCadences(params, projectTimezone),
+  const [cadenceSelection, setCadenceSelection] = useState<BackupCadence[]>(
+    () => readEnabledCadences(params, projectTimezone),
   );
   const [debugEnabled, setDebugEnabled] = useState(() => readDebug(params));
 
   // Activity flags.
   const [isSavingSecret, setIsSavingSecret] = useState(false);
+  const [isSavingDeployment, setIsSavingDeployment] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isMountChecking, setIsMountChecking] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
@@ -112,6 +115,9 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
   // Connect-step transient error (pre-flight validation not written to params).
   const [connectionTestError, setConnectionTestError] =
     useState<ConnectionTestError | null>(null);
+  const [deploymentUrlError, setDeploymentUrlError] = useState<string | null>(
+    null,
+  );
 
   // Overview / environment data.
   const [lambdaBackupStatus, setLambdaBackupStatus] = useState<
@@ -220,8 +226,8 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
         setLambdaBackupStatus(undefined);
         setOverviewError(
           candidateUrl.length === 0
-            ? 'Backup status is unavailable until a Lambda URL is connected.'
-            : 'Backup status is unavailable until the auth secret is saved.',
+            ? 'Backup status is unavailable until a deployment URL is saved.'
+            : 'Backup status is unavailable until the shared secret is saved.',
         );
         setIsLoadingOverview(false);
         return;
@@ -242,7 +248,7 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
         setOverviewError(
           error instanceof Error
             ? error.message
-            : 'Could not load backup overview from lambda status endpoint.',
+            : 'Could not load backup status from the deployed service.',
         );
       } finally {
         setIsLoadingOverview(false);
@@ -620,6 +626,7 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
 
   const handleUrlChange = useCallback((value: string) => {
     setUrlInput(value);
+    setDeploymentUrlError(null);
     setConnectionTestError(null);
   }, []);
 
@@ -627,24 +634,44 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
     setSecretInput(generateAuthSecret());
   }, []);
 
+  const writeSecretToClipboard = useCallback(
+    async (value: string, successMessage: string) => {
+      if (!value) {
+        return false;
+      }
+      try {
+        await navigator.clipboard.writeText(value);
+        ctx.notice(successMessage);
+        return true;
+      } catch {
+        await ctx.alert('Could not copy the secret. Copy it manually.');
+        return false;
+      }
+    },
+    [ctx],
+  );
+
   const copySecret = useCallback(async () => {
     const value = secretInput.trim();
     if (!value) {
       return;
     }
-    try {
-      await navigator.clipboard.writeText(value);
-      ctx.notice('Auth secret copied to clipboard.');
-    } catch {
-      await ctx.alert('Could not copy the secret. Copy it manually.');
+    await writeSecretToClipboard(value, 'Shared secret copied.');
+  }, [secretInput, writeSecretToClipboard]);
+
+  const copySavedSecret = useCallback(async () => {
+    const value = savedSecret.trim();
+    if (!value) {
+      return;
     }
-  }, [ctx, secretInput]);
+    await writeSecretToClipboard(value, 'Shared secret copied.');
+  }, [savedSecret, writeSecretToClipboard]);
 
   const saveSecret = useCallback(async () => {
     const nextSecret = secretInput.trim();
     if (!nextSecret) {
       await ctx.alert('Enter or generate an auth secret before saving.');
-      return;
+      return false;
     }
 
     setIsSavingSecret(true);
@@ -663,10 +690,11 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
 
       await persistPluginParameters(updates);
       debugLogger.log('Auth secret saved', { secretChanged });
-      ctx.notice('Auth secret saved.');
+      return true;
     } catch (error) {
       debugLogger.error('Could not save auth secret', error);
       await ctx.alert('Could not save the auth secret.');
+      return false;
     } finally {
       setIsSavingSecret(false);
     }
@@ -675,24 +703,72 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
   /**
    * Persist the edited secret and immediately copy it to the clipboard so the
    * user can paste it into their deployment's `DATOCMS_BACKUPS_SHARED_SECRET`
-   * env var in one action. Reuses {@link saveSecret} (validates + persists) and
-   * {@link copySecret} (clipboard + notice/alert).
+   * env var in one action. The clipboard write only happens after persistence
+   * succeeds, so the copied value is always the saved value.
    */
   const saveAndCopySecret = useCallback(async () => {
-    await saveSecret();
-    await copySecret();
-  }, [copySecret, saveSecret]);
+    const didSave = await saveSecret();
+    if (!didSave) {
+      return;
+    }
+
+    await writeSecretToClipboard(
+      secretInput.trim(),
+      'Shared secret saved and copied.',
+    );
+  }, [saveSecret, secretInput, writeSecretToClipboard]);
 
   /** Discard the in-flight secret edit, restoring the field to the saved value. */
   const revertSecret = useCallback(() => {
     setSecretInput(savedSecret);
   }, [savedSecret]);
 
-  const saveAndTestConnection = useCallback(async () => {
+  const saveDeploymentUrl = useCallback(async () => {
     const candidateUrl = urlInput.trim();
     if (!candidateUrl) {
+      setDeploymentUrlError('Enter the public URL for your deployment.');
+      return;
+    }
+
+    setIsSavingDeployment(true);
+    setDeploymentUrlError(null);
+
+    try {
+      const normalizedUrl = normalizeLambdaBaseUrl(candidateUrl);
+      const urlChanged = normalizedUrl !== readDeploymentUrl(params);
+      const updates: Record<string, unknown> = {
+        deploymentURL: normalizedUrl,
+        netlifyURL: normalizedUrl,
+        vercelURL: normalizedUrl,
+      };
+
+      if (urlChanged) {
+        updates.lambdaConnection = null;
+        updates.connectionValidationMode = null;
+      }
+
+      await persistPluginParameters(updates);
+      setUrlInput(normalizedUrl);
+      setConnectionTestError(null);
+      debugLogger.log('Deployment URL saved', { urlChanged });
+      ctx.notice('Deployment URL saved.');
+    } catch (error) {
+      const message =
+        error instanceof LambdaHealthCheckError
+          ? error.message
+          : 'Could not save the deployment URL.';
+      setDeploymentUrlError(message);
+      debugLogger.error('Could not save deployment URL', error);
+    } finally {
+      setIsSavingDeployment(false);
+    }
+  }, [ctx, debugLogger, params, persistPluginParameters, urlInput]);
+
+  const testConnection = useCallback(async () => {
+    const candidateUrl = readDeploymentUrl(params);
+    if (!candidateUrl) {
       setConnectionTestError({
-        summary: 'Enter your lambda deployment URL.',
+        summary: 'Save a deployment URL in step 2 first.',
         details: [],
       });
       return;
@@ -709,7 +785,6 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
       return;
     }
 
-    const hadHealthyConnection = isConnectionHealthy(params);
     setIsConnecting(true);
     setConnectionTestError(null);
 
@@ -727,11 +802,8 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
         'config_connect',
       );
 
-      // Persist the deployment URL triplet (legacy netlify/vercel keys kept in
-      // lockstep) together with the resulting connection state. The secret is
-      // not re-written here — it is already saved, and re-persisting a value
-      // captured before this multi-second request risks clobbering a concurrent
-      // secret save.
+      // Keep the legacy URL keys in lockstep while persisting the connection
+      // result. The secret is already saved and is never re-written here.
       await persistPluginParameters({
         deploymentURL: verificationResult.normalizedBaseUrl,
         netlifyURL: verificationResult.normalizedBaseUrl,
@@ -741,15 +813,15 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
       });
 
       setUrlInput(verificationResult.normalizedBaseUrl);
-      debugLogger.log('Lambda connected successfully', {
+      debugLogger.log('Backup service connected successfully', {
         endpoint: verificationResult.endpoint,
       });
-      ctx.notice('Lambda function connected successfully.');
+      ctx.notice('Connection verified.');
 
       // If a schedule is already saved (e.g. reconnecting to a fresh
       // deployment), create any missing backup environments now — matching the
       // old connect behavior. Fresh installs have no stored schedule yet, so
-      // creation stays step 3's responsibility.
+      // creation stays step 4's responsibility.
       if (hasStoredBackupSchedule(params)) {
         await ensureBackupsExistForCadences({
           baseUrl: verificationResult.normalizedBaseUrl,
@@ -770,26 +842,20 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
           summary: error.message || 'Connection test failed.',
           details: getLambdaConnectionErrorDetails(disconnectedState),
         });
-        // Never clobber a previously-healthy deployment on a failed test (e.g.
-        // a typo). Only persist the failing URL/state when there is no working
-        // connection to preserve, so the error stays sticky during setup.
-        if (!hadHealthyConnection) {
-          try {
-            await persistPluginParameters({
-              deploymentURL: candidateUrl,
-              netlifyURL: candidateUrl,
-              vercelURL: candidateUrl,
-              lambdaConnection: disconnectedState,
-              connectionValidationMode: null,
-            });
-          } catch {
-            // Error already surfaced via connectionTestError above.
-          }
+        // The URL was already explicitly saved in the Deploy step, so a failed
+        // test is authoritative and should replace any stale healthy state.
+        try {
+          await persistPluginParameters({
+            lambdaConnection: disconnectedState,
+            connectionValidationMode: null,
+          });
+        } catch {
+          // Error already surfaced via connectionTestError above.
         }
       } else {
-        debugLogger.error('Unexpected error while connecting lambda', error);
+        debugLogger.error('Unexpected error while testing connection', error);
         setConnectionTestError({
-          summary: 'Unexpected error while connecting lambda.',
+          summary: 'Unexpected error while testing the connection.',
           details: [`Failure details: ${getErrorMessage(error)}`],
         });
       }
@@ -803,12 +869,12 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
     params,
     persistPluginParameters,
     projectTimezone,
-    urlInput,
   ]);
 
-  const disconnect = useCallback(async () => {
+  const removeDeployment = useCallback(async () => {
     setIsDisconnecting(true);
     setConnectionTestError(null);
+    setDeploymentUrlError(null);
 
     try {
       await persistPluginParameters({
@@ -822,13 +888,13 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
       setUrlInput('');
       setLambdaBackupStatus(undefined);
       setOverviewError(
-        'Backup status is unavailable until a Lambda URL is connected.',
+        'Backup status is unavailable until a deployment is connected.',
       );
-      debugLogger.log('Lambda disconnected');
-      ctx.notice('Current lambda function has been disconnected.');
+      debugLogger.log('Deployment removed');
+      ctx.notice('Saved deployment removed.');
     } catch (error) {
-      debugLogger.error('Could not disconnect current lambda', error);
-      await ctx.alert('Could not disconnect the current lambda function.');
+      debugLogger.error('Could not remove deployment', error);
+      await ctx.alert('Could not remove the saved deployment.');
     } finally {
       setIsDisconnecting(false);
     }
@@ -882,7 +948,7 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
     );
     if (normalized.length === 0) {
       await ctx.alert('Select at least one backup cadence.');
-      return;
+      return false;
     }
 
     setIsSavingSchedule(true);
@@ -903,9 +969,11 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
           cadences: normalized,
         });
       }
+      return true;
     } catch (error) {
       debugLogger.error('Could not save backup schedule', error);
       await ctx.alert('Could not save the backup schedule.');
+      return false;
     } finally {
       setIsSavingSchedule(false);
     }
@@ -944,12 +1012,14 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
       const secret = readAuthSecret(params);
 
       if (!candidateUrl) {
-        setOverviewError('Connect a Lambda URL before running backup now.');
+        setOverviewError(
+          'Save and verify a deployment before running Backup now.',
+        );
         return;
       }
       if (!secret) {
         setOverviewError(
-          'Lambda auth secret is required before running backup now.',
+          'A shared secret is required before running Backup now.',
         );
         return;
       }
@@ -995,7 +1065,12 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
     await ctx.navigateTo(`${environmentPrefix}/project_settings/environments`);
   }, [ctx]);
 
+  const onOpenAccessTokens = useCallback(async () => {
+    await ctx.navigateTo('/project_settings/access_tokens');
+  }, [ctx]);
+
   const canBackupNow =
+    canEdit &&
     isConnected &&
     savedSecret.trim().length > 0 &&
     !isConnecting &&
@@ -1010,6 +1085,7 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
   return {
     params,
     projectTimezone,
+    canEdit,
     // saved reads
     savedSecret,
     savedUrl,
@@ -1030,14 +1106,18 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
     regenerateSecret,
     revertSecret,
     copySecret,
-    saveAndTestConnection,
-    disconnect,
+    copySavedSecret,
+    saveDeploymentUrl,
+    testConnection,
+    removeDeployment,
     saveSchedule,
     saveDebug,
     backupNow,
     onOpenEnvironments,
+    onOpenAccessTokens,
     // activity
     isSavingSecret,
+    isSavingDeployment,
     isConnecting,
     isMountChecking,
     isDisconnecting,
@@ -1045,6 +1125,7 @@ export const useBackupsConfig = (ctx: RenderConfigScreenCtx) => {
     backupNowInFlightCadence,
     progressMessage,
     connectionTestError,
+    deploymentUrlError,
     // overview
     lambdaBackupStatus,
     availableEnvironmentIds,

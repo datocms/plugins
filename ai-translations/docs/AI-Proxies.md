@@ -82,7 +82,7 @@ Testing from the plugin
 Notes
 -----
 
-- DeepL uses the built-in DatoCMS CORS proxy (`cors-proxy.datocms.com`) automatically, so no custom proxy setup is required. Simply provide your DeepL API key in the plugin settings.
+- DeepL and Yandex Translate use the built-in DatoCMS CORS proxy (`cors-proxy.datocms.com`) automatically, so no custom proxy setup is required. Simply provide the matching API key in the plugin settings.
+- Yandex's Translate API does not answer browser CORS preflight requests, so the plugin always routes both translation and supported-language requests through the DatoCMS proxy.
 - For OpenAI, the plugin uses the official SDK when a proxy is set, with `baseURL` pointing at your proxy (`<Proxy>/v1`).
 - For Gemini and Anthropic, the plugin uses `fetch` when a proxy is set and targets the REST endpoints described above.
-

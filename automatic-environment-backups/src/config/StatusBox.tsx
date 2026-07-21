@@ -19,7 +19,7 @@ type VariantTokens = {
 const VARIANT_TOKENS: Record<StatusBoxVariant, VariantTokens> = {
   neutral: {
     border: 'var(--color--border)',
-    surface: 'var(--color--light-bg, var(--color--surface))',
+    surface: 'var(--color--surface-muted)',
     ink: 'var(--color--ink)',
   },
   success: {
@@ -44,14 +44,21 @@ const VARIANT_TOKENS: Record<StatusBoxVariant, VariantTokens> = {
  * The `variant` selects a soft-color palette matching the DatoCMS dashboard;
  * content is arbitrary so callers can render remediation text or lists.
  */
-export const StatusBox = ({ variant, title, children, style }: StatusBoxProps) => {
+export const StatusBox = ({
+  variant,
+  title,
+  children,
+  style,
+}: StatusBoxProps) => {
   const tokens = VARIANT_TOKENS[variant];
 
   return (
     <div
+      role={variant === 'error' ? 'alert' : 'status'}
+      aria-live={variant === 'error' ? 'assertive' : 'polite'}
       style={{
         border: `1px solid ${tokens.border}`,
-        borderRadius: '6px',
+        borderRadius: '4px',
         background: tokens.surface,
         color: tokens.ink,
         padding: 'var(--spacing-m)',
@@ -66,7 +73,7 @@ export const StatusBox = ({ variant, title, children, style }: StatusBoxProps) =
           style={{
             margin: 0,
             marginBottom: children ? 'var(--spacing-xs)' : 0,
-            fontWeight: 600,
+            fontWeight: 'var(--font-weight-bold)',
           }}
         >
           {title}

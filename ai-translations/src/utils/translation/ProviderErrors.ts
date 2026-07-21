@@ -433,7 +433,7 @@ function extractErrorDetails(err: unknown): { code?: string; param?: string } {
 
 /** Per-vendor hint for rate limit errors. */
 function getRateLimitHint(
-  vendor: 'openai' | 'google' | 'anthropic' | 'deepl',
+  vendor: VendorId,
 ): string {
   if (vendor === 'openai')
     return 'Reduce concurrency, switch to a more available model, or increase limits.';
@@ -441,33 +441,50 @@ function getRateLimitHint(
     return 'Reduce request rate or increase quota in Google Cloud console.';
   if (vendor === 'anthropic')
     return 'Reduce request rate or increase Anthropic rate limits.';
-  return 'Reduce concurrency or batch size; check DeepL plan limits.';
+  if (vendor === 'deepl')
+    return 'Reduce concurrency or batch size; check DeepL plan limits.';
+  return 'Reduce request rate or increase the Translate API quotas in Yandex Cloud.';
 }
 
 /** Per-vendor hint for quota errors. */
-function getQuotaHint(
-  vendor: 'openai' | 'google' | 'anthropic' | 'deepl',
-): string {
+function getQuotaHint(vendor: VendorId): string {
   if (vendor === 'openai')
     return 'Check selected provider usage and billing; switch to a smaller model if needed.';
   if (vendor === 'google')
     return 'Verify Google project quotas and billing for Generative Language API.';
   if (vendor === 'anthropic')
     return 'Check Anthropic usage limits and billing.';
-  return 'Check DeepL usage limits and plan.';
+  if (vendor === 'deepl') return 'Check DeepL usage limits and plan.';
+  return 'Check Yandex Cloud Translate quotas and billing for the configured folder.';
 }
 
 /** Per-vendor hint for model-not-found errors. */
-function getModelHint(
-  vendor: 'openai' | 'google' | 'anthropic' | 'deepl',
-): string {
+function getModelHint(vendor: VendorId): string {
   if (vendor === 'openai')
     return 'Ensure the model exists on your account and is spelled correctly.';
   if (vendor === 'google')
     return 'Ensure the Gemini model id is correct and available in your region.';
   if (vendor === 'anthropic')
     return 'Ensure the Claude model id is correct and you have access.';
-  return 'Ensure the language pair is valid for DeepL; check target code.';
+  if (vendor === 'deepl')
+    return 'Ensure the language pair is valid for DeepL; check target code.';
+  return 'Ensure the target locale is supported by Yandex Translate.';
+}
+
+/** Per-vendor hint for authentication and permissions errors. */
+function getAuthHint(vendor: VendorId): string {
+  switch (vendor) {
+    case 'openai':
+      return 'Check the provider API key and organization access in settings.';
+    case 'google':
+      return 'Check the Google API key and that Generative Language API is enabled.';
+    case 'anthropic':
+      return 'Check the Anthropic API key and workspace access in settings.';
+    case 'deepl':
+      return 'Check the DeepL API key and selected Free or Pro endpoint in settings.';
+    case 'yandex':
+      return 'Check the Yandex service-account API key, ai.translate.user role, API key scope, and optional Folder ID in settings.';
+  }
 }
 
 /**
@@ -545,14 +562,76 @@ function normalizePrefixedError(
 }
 
 /**
+ * Normalizes Yandex credential, permission, and folder errors before generic
+ * HTTP matching. These failures are configuration-fatal for record runs.
+ */
+function normalizeYandexConfigurationError(
+  vendor: VendorId,
+  status: number | string | undefined,
+  message: string,
+): NormalizedProviderError | null {
+  if (vendor !== 'yandex') return null;
+
+  const isFolderError = includes(
+    message,
+    'folder id',
+    'folderid',
+    'folder not found',
+    'specified folder',
+    'cloud resource not found',
+  ) || status === 404 || status === 'NOT_FOUND';
+  if (isFolderError) {
+    return {
+      source: 'provider',
+      code: 'auth',
+      message: 'Yandex Translate could not access the configured Folder ID.',
+      hint:
+        'Check the Folder ID and make sure the service account belongs to that folder and has the ai.translate.user role.',
+    };
+  }
+
+  const isPermissionError =
+    status === 403 ||
+    status === 'PERMISSION_DENIED' ||
+    includes(
+      message,
+      'permission denied',
+      'permission_denied',
+      'forbidden',
+      // Idempotency: this function's own rephrased output must re-classify as a
+      // permission error on a second normalization pass (the engine normalizes
+      // once at the provider boundary and again at the stall-guard boundary),
+      // otherwise the 'auth' code is lost — the exact status is gone by then.
+      'denied access to the translate api',
+    );
+  if (isPermissionError) {
+    return {
+      source: 'provider',
+      code: 'auth',
+      message: 'Yandex Cloud denied access to the Translate API.',
+      hint: getAuthHint(vendor),
+    };
+  }
+
+  return null;
+}
+
+/**
  * Normalizes known provider-side error patterns.
  */
 function normalizeKnownProviderError(
-  vendor: 'openai' | 'google' | 'anthropic' | 'deepl',
+  vendor: VendorId,
   status: number | string | undefined,
   message: string,
   errorDetails: { code?: string; param?: string },
 ): NormalizedProviderError | null {
+  const yandexConfigurationError = normalizeYandexConfigurationError(
+    vendor,
+    status,
+    message,
+  );
+  if (yandexConfigurationError) return yandexConfigurationError;
+
   if (isOpenAIStreamVerificationError(vendor, status, message, errorDetails)) {
     return {
       source: 'provider',
@@ -579,14 +658,23 @@ function normalizeKnownProviderError(
       source: 'provider',
       code: 'auth',
       message: 'Authentication failed for the selected translation provider.',
-      hint:
-        vendor === 'openai'
-          ? 'Check the provider API key and organization access in settings.'
-          : 'Check Google API key and that Generative Language API is enabled.',
+      hint: getAuthHint(vendor),
     };
   }
 
-  if (status === 429 || includes(message, 'rate limit', 'too many requests')) {
+  const isQuotaError = includes(
+    message,
+    'insufficient_quota',
+    'quota exceeded',
+    'quota limit exceeded',
+    'resource has been exhausted',
+    'resource exhausted',
+    'out of quota',
+  );
+  if (
+    !isQuotaError &&
+    (status === 429 || includes(message, 'rate limit', 'too many requests'))
+  ) {
     return {
       source: 'provider',
       code: 'rate_limit',
@@ -602,7 +690,7 @@ function normalizeKnownProviderError(
  * Normalizes quota, model, network, and endpoint provider errors.
  */
 function normalizeProviderQuotaModelNetworkError(
-  vendor: 'openai' | 'google' | 'anthropic' | 'deepl',
+  vendor: VendorId,
   status: number | string | undefined,
   message: string,
 ): NormalizedProviderError | null {
@@ -610,7 +698,9 @@ function normalizeProviderQuotaModelNetworkError(
     message,
     'insufficient_quota',
     'quota exceeded',
+    'quota limit exceeded',
     'resource has been exhausted',
+    'resource exhausted',
     'out of quota',
   );
   if (isQuotaError) {
@@ -630,13 +720,37 @@ function normalizeProviderQuotaModelNetworkError(
       'no such model',
       'unsupported model',
       'not found: model',
+      'unsupported target language',
+      'unsupported language code',
+      'does not support the target locale',
     );
   if (isModelError) {
     return {
       source: 'provider',
       code: 'model',
-      message: 'The selected model is unavailable or not accessible.',
+      message:
+        vendor === 'yandex'
+          ? 'The target language is unavailable in Yandex Translate.'
+          : 'The selected model is unavailable or not accessible.',
       hint: getModelHint(vendor),
+    };
+  }
+
+  const isYandexServiceError =
+    vendor === 'yandex' &&
+    (status === 500 ||
+      status === 503 ||
+      status === 504 ||
+      status === 'INTERNAL' ||
+      status === 'UNAVAILABLE' ||
+      status === 'DEADLINE_EXCEEDED');
+  if (isYandexServiceError) {
+    return {
+      source: 'provider',
+      code: 'network',
+      message,
+      hint:
+        'Yandex Translate may be temporarily unavailable. Wait and try again; use the request ID when contacting Yandex support.',
     };
   }
 
@@ -692,7 +806,7 @@ function normalizeProviderQuotaModelNetworkError(
  */
 function deriveNormalizedError(
   err: unknown,
-  vendor: 'openai' | 'google' | 'anthropic' | 'deepl',
+  vendor: VendorId,
 ): NormalizedProviderError {
   const status = extractStatus(err);
   const rawMessage = extractMessage(err);
@@ -771,7 +885,7 @@ function readRetryAfterMs(err: unknown): number | undefined {
  */
 export function normalizeProviderError(
   err: unknown,
-  vendor: 'openai' | 'google' | 'anthropic' | 'deepl',
+  vendor: VendorId,
 ): NormalizedProviderError {
   // Already normalized upstream (e.g. rethrown by translateArray): return the
   // preserved shape verbatim so its code/source/retryAfterMs survive the second
@@ -783,6 +897,32 @@ export function normalizeProviderError(
   return retryAfterMs === undefined
     ? normalized
     : { ...normalized, retryAfterMs };
+}
+
+/**
+ * Returns true when continuing a record run would repeat a provider
+ * configuration failure for every remaining field or record.
+ *
+ * @param vendor - Active translation provider.
+ * @param error - Already normalized provider error.
+ */
+export function isFatalProviderError(
+  vendor: VendorId,
+  error: NormalizedProviderError,
+): boolean {
+  if (vendor === 'deepl' && includes(error.message, 'wrong endpoint')) {
+    return true;
+  }
+  if (vendor === 'openai' && includes(error.message, 'verified to stream')) {
+    return true;
+  }
+  if (vendor === 'yandex') {
+    return (
+      error.code === 'auth' ||
+      includes(error.message, 'folder id', 'permission denied')
+    );
+  }
+  return false;
 }
 
 /**

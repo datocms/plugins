@@ -1,6 +1,6 @@
 # Repository Guidelines
 
-Vite + React + TypeScript DatoCMS plugin that translates localized content through external providers (OpenAI, Gemini, Anthropic, DeepL). Three flows — field-level, whole-record (sidebar), and bulk — share the translation utilities, so a change to one flow usually needs review in the others.
+Vite + React + TypeScript DatoCMS plugin that translates localized content through external providers (OpenAI, Gemini, Anthropic, DeepL, Yandex Translate). Three flows — field-level, whole-record (sidebar), and bulk — share the translation utilities, so a change to one flow usually needs review in the others.
 
 ## Project Structure
 
@@ -32,8 +32,15 @@ Need a real project to click around in? `npm run test:e2e:manual [-- <vendor>]` 
 - Style with the semantic `--color--*` Canvas tokens only — no deprecated legacy tokens (`--base-body-color`, `--accent-color`, …), no `ctx.theme` colors, no hardcoded hex/rgb.
 - Never call `ctx.openModal`/`ctx.openConfirm` from inside a `renderModal` — the nested dialog renders *behind* the modal and the await never resolves. Have the modal `ctx.resolve(...)`, then open the follow-up from the top-level handler.
 - Render locale/model chips through the shared `chipOption` renderer (`src/components/BulkTranslations/chipOption.tsx`) and pass `classNamePrefix={CHIP_SELECT_CLASS_PREFIX}` so single- and multi-selects match.
-- Bulk progress is structured, not stringly-typed: carry per-record data on `ProgressUpdate` fields (`statusText`, `recordLabel`, `translated*/copiedLink*` lists, `warnings`, …), never concatenated into `message`. `ProgressRow` renders each row; record-title links use `buildRecordEditorUrl` (`src/utils/recordUrl.ts`), which needs `ctx.site.attributes.internal_domain` + `ctx.isEnvironmentPrimary` because the plugin iframe's origin is not the admin origin. The warning tooltip is `position: fixed` at hover-measured coordinates — a CSS `:hover` absolute tooltip gets clipped by the `.__updates` scroll container.
+- Bulk progress is structured, not stringly-typed: carry per-record data on `ProgressUpdate` fields (`statusText`, `recordLabel`, `itemTypeId`, `updatedAt`, `translated*/copiedLink*` lists, `warnings`, …), never concatenated into `message`. `ProgressRow` renders each row; record-title links use `buildRecordEditorUrl` (`src/utils/recordUrl.ts`), which needs `ctx.site.attributes.internal_domain` + `ctx.isEnvironmentPrimary` because the plugin iframe's origin is not the admin origin. The warning tooltip is `position: fixed` at hover-measured coordinates — a CSS `:hover` absolute tooltip gets clipped by the `.__updates` scroll container.
 - CSV export goes through the pure, unit-tested `toCsv`/`buildTranslationReportRows` helpers in `src/utils/csvExport.ts`; add new columns there and to `TRANSLATION_REPORT_HEADERS`. `downloadCsv` prepends a UTF-8 BOM and falls back to a new tab when the sandbox blocks downloads.
+- The post-translation **Publish all translated records** action must include only completed records that were actually updated and whose models have `draft_mode_active`; CMA bulk-publish requests must contain no more than 200 records each, and a partial failure can retry only the remaining records.
+
+## Providers
+
+- Supported providers are OpenAI, Gemini, Anthropic, DeepL, and Yandex Translate. Keep provider-specific code in `src/utils/translation/providers/` and route selection through `ProviderFactory.ts`.
+- Yandex Translate goes through the same unified engine as the other vendors: v2 API via the built-in DatoCMS CORS proxy, supported-locale resolution (preserving variants like `pt-BR`/`sr-Latn`), HTML-aware requests, placeholder preservation, and Unicode-aware batching within Yandex's 10,000-character-per-request limit (`YandexMap.ts`, `providers/YandexProvider.ts`, `YandexConfig.tsx`). A single segment over the limit is rejected with an actionable error rather than split in a way that could corrupt HTML/Markdown/JSON/ICU/placeholders.
+- Prompt placeholders and locale handling are shared, cross-cutting behavior — not one-off UI details. If you touch provider errors, batching, locale mapping, or translation routing, review the corresponding tests before finishing.
 
 ## Translation Engine Rules
 

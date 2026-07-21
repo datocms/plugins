@@ -13,6 +13,7 @@ import {
   hasTranslatableSourceValue,
   isAbortError,
   isRateLimitError,
+  shouldRetryRateLimitError,
   shouldProcessField,
 } from './TranslationCore';
 
@@ -354,6 +355,18 @@ describe('TranslationCore.ts', () => {
       expect(isRateLimitError({ message: 'Unauthorized' })).toBe(false);
     });
 
+    it('should not treat quota exhaustion as retryable rate limiting', () => {
+      expect(
+        isRateLimitError({ status: 429, message: 'Quota limit exceeded' }),
+      ).toBe(false);
+      expect(
+        isRateLimitError({
+          status: 429,
+          message: 'RESOURCE_EXHAUSTED: resource has been exhausted',
+        }),
+      ).toBe(false);
+    });
+
     it('should return false for null', () => {
       expect(isRateLimitError(null)).toBe(false);
     });
@@ -367,6 +380,23 @@ describe('TranslationCore.ts', () => {
     it('should be case insensitive for message matching', () => {
       expect(isRateLimitError({ message: 'RATE LIMIT' })).toBe(true);
       expect(isRateLimitError({ message: 'too many requests' })).toBe(true);
+    });
+  });
+
+  describe('shouldRetryRateLimitError', () => {
+    it('allows existing providers to retry transient rate limits', () => {
+      expect(
+        shouldRetryRateLimitError({ status: 429 }, 'openai'),
+      ).toBe(true);
+    });
+
+    it('does not transparently retry Yandex translation calls', () => {
+      expect(
+        shouldRetryRateLimitError(
+          { status: 429, message: 'Too many requests' },
+          'yandex',
+        ),
+      ).toBe(false);
     });
   });
 

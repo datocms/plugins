@@ -124,6 +124,27 @@ describe('Logger', () => {
     expect(data.nested.text).toBe('Value [REDACTED]');
   });
 
+  it('redacts the configured Yandex API key wherever it appears', () => {
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const yandexApiKey = 'yandex-secret-key-123456';
+
+    createLogger(
+      buildParams({
+        vendor: 'yandex',
+        yandexApiKey,
+        enableDebugging: true,
+      }),
+      'YandexRedaction',
+    ).logRequest(`Calling Yandex with ${yandexApiKey}`, {
+      headers: { Authorization: `Api-Key ${yandexApiKey}` },
+      yandexApiKey,
+    });
+
+    const raw = String(logSpy.mock.calls[0]?.[0]);
+    expect(raw).not.toContain(yandexApiKey);
+    expect(raw).toContain('[REDACTED]');
+  });
+
   it('serializes errors as copyable JSON', () => {
     const errorSpy = vi
       .spyOn(console, 'error')

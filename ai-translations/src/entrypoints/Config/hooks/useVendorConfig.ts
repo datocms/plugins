@@ -5,9 +5,10 @@
  */
 
 import { useCallback, useState } from 'react';
+import type { VendorId } from '../../../utils/translation/types';
 import type { ctxParamsType } from '../ConfigScreen';
 
-export type VendorType = 'openai' | 'google' | 'anthropic' | 'deepl';
+export type VendorType = VendorId;
 
 export interface VendorConfigState {
   // Vendor selection
@@ -31,6 +32,9 @@ export interface VendorConfigState {
   deeplSplittingTags: string;
   deeplGlossaryId: string;
   deeplGlossaryPairs: string;
+  // Yandex Translate
+  yandexApiKey: string;
+  yandexFolderId: string;
 }
 
 export interface VendorConfigActions {
@@ -50,6 +54,8 @@ export interface VendorConfigActions {
   setDeeplSplittingTags: (value: string) => void;
   setDeeplGlossaryId: (value: string) => void;
   setDeeplGlossaryPairs: (value: string) => void;
+  setYandexApiKey: (value: string) => void;
+  setYandexFolderId: (value: string) => void;
 }
 
 /**
@@ -104,6 +110,8 @@ function resolveInitialVendorState(
     anthropicApiKey: pluginParams.anthropicApiKey ?? '',
     anthropicModel: pluginParams.anthropicModel ?? 'claude-haiku-4-5-latest',
     ...resolveDeepLDefaults(pluginParams),
+    yandexApiKey: pluginParams.yandexApiKey ?? '',
+    yandexFolderId: pluginParams.yandexFolderId?.trim() ?? '',
   };
 }
 
@@ -148,6 +156,8 @@ export function useVendorConfig(
   const [deeplGlossaryPairs, setDeeplGlossaryPairs] = useState(
     initial.deeplGlossaryPairs,
   );
+  const [yandexApiKey, setYandexApiKey] = useState(initial.yandexApiKey);
+  const [yandexFolderId, setYandexFolderId] = useState(initial.yandexFolderId);
 
   const state: VendorConfigState = {
     vendor,
@@ -166,6 +176,8 @@ export function useVendorConfig(
     deeplSplittingTags,
     deeplGlossaryId,
     deeplGlossaryPairs,
+    yandexApiKey,
+    yandexFolderId,
   };
 
   const actions: VendorConfigActions = {
@@ -200,6 +212,8 @@ export function useVendorConfig(
       (v: string) => setDeeplGlossaryPairs(v),
       [],
     ),
+    setYandexApiKey: useCallback((v: string) => setYandexApiKey(v), []),
+    setYandexFolderId: useCallback((v: string) => setYandexFolderId(v), []),
   };
 
   return [state, actions];
@@ -228,5 +242,7 @@ export function getVendorConfigParams(
     deeplSplittingTags: state.deeplSplittingTags,
     deeplGlossaryId: state.deeplGlossaryId,
     deeplGlossaryPairs: state.deeplGlossaryPairs,
+    yandexApiKey: state.yandexApiKey,
+    yandexFolderId: state.yandexFolderId.trim(),
   };
 }

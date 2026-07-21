@@ -17,8 +17,10 @@ import {
 import { segmentGraphemes } from '../graphemes';
 import { formatLocaleWithCode } from '../localeUtils';
 import {
+  NormalizedError,
   formatErrorForUser,
   type NormalizedProviderError,
+  isFatalProviderError,
   normalizeProviderError,
 } from './ProviderErrors';
 import type { QcFlag } from './qc/types';
@@ -62,6 +64,26 @@ export {
   stripBlockIds,
   translateWithSystemicRetry,
 } from '../../engine';
+
+/**
+ * Aborts the whole run when an accumulated field failure is a fatal provider
+ * configuration error (bad key, wrong endpoint, unverified model, invalid
+ * Yandex Folder ID) — one that would recur for every remaining record. The
+ * thrown `NormalizedError` is re-thrown by `translateAndSaveRecord`'s catch
+ * (which treats fatal errors as non-recoverable), unwinding the record reduce
+ * and rejecting the run before any write. Systemic errors still pause instead.
+ */
+const abortRunOnFatalFailure = (
+  provider: TranslationProvider,
+  failedFields: { field: string; error: NormalizedProviderError }[],
+): void => {
+  const fatalError = failedFields.find((f) =>
+    isFatalProviderError(provider.vendor, f.error),
+  )?.error;
+  if (fatalError) {
+    throw new NormalizedError(fatalError, { cause: fatalError });
+  }
+};
 
 /**
  * Optional per-model allowlist of field api_keys that the user explicitly
@@ -321,7 +343,7 @@ export type ProgressUpdate = {
   recordLabel?: string;
   /** Item type id of the record, used to build a link to its editor. */
   itemTypeId?: string;
-  /** CMA `updated_at` of the record after the write (for the CSV report). */
+  /** CMA `updated_at` of the record after the write. */
   updatedAt?: string;
   /** API keys of fields that were AI-translated on this record. */
   translatedFieldApiKeys?: string[];
@@ -939,6 +961,14 @@ export async function translateAndUpdateRecords(
       Promise.resolve(),
     );
 
+    // A fatal provider-configuration error (bad key, wrong endpoint, unverified
+    // model, invalid Yandex Folder ID) recurs for every remaining field and
+    // record, so grinding on would just report the same failure N times. Abort
+    // the whole run: the record-level catch re-throws a fatal error, unwinding
+    // the record reduce and rejecting the run before any write. Systemic errors
+    // still pause via onSystemic; this is the hard-stop for unrecoverable config.
+    abortRunOnFatalFailure(provider, aggregatedFailedFields);
+
     // Timestamp for the CSV report: the write's fresh `updated_at` when we
     // touched the record, otherwise the record's existing timestamp.
     const recordMeta = (
@@ -1382,6 +1412,12 @@ export async function translateAndUpdateRecords(
         });
         return 'cancelled';
       }
+
+      // A fatal provider-configuration error (bad key, wrong endpoint, unverified
+      // model) repeats for every remaining record — rethrow to abort the whole
+      // run instead of reporting the same failure N times.
+      const norm = normalizeProviderError(error, provider.vendor);
+      if (isFatalProviderError(provider.vendor, norm)) throw error;
 
       return reportRecordFailure(
         error,

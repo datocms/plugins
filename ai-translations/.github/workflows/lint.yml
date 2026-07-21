@@ -1,19 +1,19 @@
-name: Lint (ESLint)
+name: Lint (Biome)
 
 on:
   pull_request:
   push:
 
 jobs:
-  eslint:
-    name: ESLint (non-blocking)
+  biome:
+    name: Biome (non-blocking)
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: 'npm'
       - run: npm ci
       - run: npm run lint

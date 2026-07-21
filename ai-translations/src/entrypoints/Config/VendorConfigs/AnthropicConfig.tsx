@@ -35,7 +35,6 @@ export default function AnthropicConfig({
       <ModelSelectField
         id="anthropicModel"
         label="Claude Model"
-        hint="Recommended: claude-haiku-4-5-latest"
         value={anthropicModel}
         onChange={setAnthropicModel}
         models={listOfAnthropicModels}

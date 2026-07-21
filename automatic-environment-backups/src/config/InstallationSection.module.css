@@ -1,0 +1,75 @@
+.section {
+  margin-bottom: var(--spacing-l);
+  overflow: hidden;
+  border: 1px solid var(--color--border);
+  border-radius: 4px;
+  background: var(--color--surface);
+}
+
+.summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-m);
+  padding: var(--spacing-m);
+  color: var(--color--ink);
+  cursor: pointer;
+  list-style: none;
+  transition: background 0.2s var(--material-ease);
+}
+
+.summary::-webkit-details-marker {
+  display: none;
+}
+
+.summary::marker {
+  content: "";
+}
+
+.summary:hover {
+  background: var(--color--surface-hover);
+}
+
+.summary:focus-visible {
+  outline: 3px solid var(--color--focus--outline);
+  outline-offset: -3px;
+}
+
+.summaryCopy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.summaryCopy strong {
+  font-size: var(--font-size-m);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.4;
+}
+
+.summaryCopy span {
+  color: var(--color--ink-subtle);
+  font-size: var(--font-size-s);
+  line-height: 1.4;
+}
+
+.chevron {
+  flex: 0 0 auto;
+  color: var(--color--ink-subtle);
+  transition: transform 0.2s var(--material-ease);
+}
+
+.section[open] .chevron {
+  transform: rotate(180deg);
+}
+
+.body {
+  padding: var(--spacing-l);
+  border-top: 1px solid var(--color--border);
+}
+
+@media (max-width: 560px) {
+  .body {
+    padding: var(--spacing-m);
+  }
+}

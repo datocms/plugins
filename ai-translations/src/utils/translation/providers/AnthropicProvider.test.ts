@@ -9,7 +9,7 @@ import AnthropicProvider from './AnthropicProvider';
 
 // Mock fetch globally
 const mockFetch = vi.fn();
-global.fetch = mockFetch;
+globalThis.fetch = mockFetch;
 
 describe('AnthropicProvider', () => {
   let provider: AnthropicProvider;

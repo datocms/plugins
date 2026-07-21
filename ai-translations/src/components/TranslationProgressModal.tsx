@@ -10,7 +10,10 @@ import {
 } from '../utils/csvExport';
 import { formatLocalDateStamp } from '../utils/localDateStamp';
 import { buildRecordEditorUrl } from '../utils/recordUrl';
-import { createSchemaRepository } from '../utils/schemaRepository';
+import {
+  createSchemaRepository,
+  type SchemaRepository,
+} from '../utils/schemaRepository';
 import { LocaleChip } from './BulkTranslations/LocaleChip';
 import { isExportEnabled } from './BulkTranslations/exportGating';
 import { PausePanel } from './BulkTranslations/PausePanel';
@@ -22,11 +25,17 @@ import {
 import { ProgressRow } from './BulkTranslations/ProgressRow';
 import { summarizeBulkProgress } from './BulkTranslations/progressSummary';
 import {
+  bulkPublishTranslatedRecords,
+  getDraftModeItemTypeIds,
+  getPublishableTranslatedRecordIds,
+} from '../utils/translation/BulkPublishUtils';
+import {
   formatErrorForUser,
   normalizeProviderError,
 } from '../utils/translation/ProviderErrors';
 import {
   buildFieldTypeDictionaryWithRepo,
+  type DatoCMSRecordFromAPI,
   fetchRecordsWithPagination,
   type ProgressUpdate,
   translateAndUpdateRecords,
@@ -70,6 +79,125 @@ function getTranslationErrorMessage(
   return formatErrorForUser(normalizeProviderError(error, vendor ?? 'openai'));
 }
 
+async function loadDraftModeItemTypeIds(
+  records: DatoCMSRecordFromAPI[],
+  schemaRepository: SchemaRepository,
+  enableDebugging: boolean | undefined,
+): Promise<string[]> {
+  try {
+    return await getDraftModeItemTypeIds(
+      records.map((record) => record.item_type.id),
+      (itemTypeId) => schemaRepository.getItemTypeById(itemTypeId),
+    );
+  } catch (error) {
+    // Translation can still proceed if this optional eligibility lookup fails;
+    // the publish action simply remains unavailable.
+    if (enableDebugging) {
+      console.error(
+        'Could not determine which translated models support publishing:',
+        error,
+      );
+    }
+    return [];
+  }
+}
+
+function getPublishButtonLabel(
+  isPublishing: boolean,
+  publishedCount: number,
+  totalCount: number,
+  remainingCount: number,
+): string {
+  if (isPublishing) {
+    return `Publishing ${publishedCount} of ${totalCount}…`;
+  }
+  if (remainingCount === 0) {
+    return `Published ${totalCount} record${totalCount === 1 ? '' : 's'}`;
+  }
+  if (publishedCount > 0) {
+    return `Retry publishing remaining (${remainingCount})`;
+  }
+  return `Publish all translated records (${totalCount})`;
+}
+
+function getPartialPublishMessage(publishedCount: number): string {
+  if (publishedCount === 0) return '';
+  return ` ${publishedCount} record${publishedCount === 1 ? '' : 's'} were published before the operation stopped.`;
+}
+
+function useBulkPublishing({
+  ctx,
+  accessToken,
+  pluginParams,
+  publishableRecordIds,
+  canPublish,
+}: {
+  ctx: RenderModalCtx;
+  accessToken: string;
+  pluginParams: ctxParamsType;
+  publishableRecordIds: string[];
+  canPublish: boolean;
+}) {
+  const [publishedRecordIds, setPublishedRecordIds] = useState<string[]>([]);
+  const [isPublishing, setIsPublishing] = useState(false);
+  const publishedRecordIdSet = new Set(publishedRecordIds);
+  const remainingRecordIds = publishableRecordIds.filter(
+    (recordId) => !publishedRecordIdSet.has(recordId),
+  );
+  const hasPublishedAll =
+    publishableRecordIds.length > 0 && remainingRecordIds.length === 0;
+
+  const handlePublish = async () => {
+    if (isPublishing || remainingRecordIds.length === 0 || !canPublish) return;
+
+    setIsPublishing(true);
+    let publishedThisAttempt = 0;
+
+    try {
+      const client = buildDatoCMSClient(
+        accessToken,
+        ctx.environment,
+        ctx.cmaBaseUrl,
+      );
+      await bulkPublishTranslatedRecords(
+        client,
+        remainingRecordIds,
+        (batchRecordIds) => {
+          publishedThisAttempt += batchRecordIds.length;
+          setPublishedRecordIds((currentRecordIds) => [
+            ...new Set([...currentRecordIds, ...batchRecordIds]),
+          ]);
+        },
+      );
+    } catch (error) {
+      await ctx.alert(
+        `Could not publish all translated records.${getPartialPublishMessage(
+          publishedThisAttempt,
+        )} ${getTranslationErrorMessage(error, pluginParams.vendor)}`,
+      );
+      return;
+    } finally {
+      setIsPublishing(false);
+    }
+
+    await ctx.notice(
+      `Published ${publishableRecordIds.length} translated record${publishableRecordIds.length === 1 ? '' : 's'}.`,
+    );
+  };
+
+  return {
+    handlePublish,
+    hasPublishedAll,
+    isPublishing,
+    publishButtonLabel: getPublishButtonLabel(
+      isPublishing,
+      publishedRecordIds.length,
+      publishableRecordIds.length,
+      remainingRecordIds.length,
+    ),
+  };
+}
+
 /**
  * Modal component that displays translation progress and handles the translation process.
  * Shows a progress bar, status updates for each record being translated,
@@ -98,6 +226,9 @@ export default function TranslationProgressModal({
   // mirror lets `addProgressUpdate` drop updates that arrive after a cancel.
   const isCancelledRef = useRef(false);
   const [hasFatalError, setHasFatalError] = useState(false);
+  const [draftModeItemTypeIds, setDraftModeItemTypeIds] = useState<string[]>(
+    [],
+  );
   const abortRef = useRef<AbortController | null>(null);
   const updatesRef = useRef<HTMLDivElement | null>(null);
 
@@ -153,6 +284,9 @@ export default function TranslationProgressModal({
   // Handle the translation process - runs once on mount
   useEffect(() => {
     let isMounted = true;
+    const setDraftModeIdsIfMounted = (itemTypeIds: string[]) => {
+      if (isMounted) setDraftModeItemTypeIds(itemTypeIds);
+    };
 
     const processTranslation = async () => {
       // Guard: only start once per modal instance
@@ -174,6 +308,16 @@ export default function TranslationProgressModal({
 
         // Create SchemaRepository for cached schema lookups
         const schemaRepository = createSchemaRepository(client);
+
+        // The publish action is only valid for records belonging to models
+        // with DatoCMS draft/published mode enabled. Resolve this from the full
+        // schema instead of the partial item-type data available on the ctx.
+        const resolvedDraftModeItemTypeIds = await loadDraftModeItemTypeIds(
+          records,
+          schemaRepository,
+          pluginParams.enableDebugging,
+        );
+        setDraftModeIdsIfMounted(resolvedDraftModeItemTypeIds);
 
         // Use SchemaRepository for field dictionary lookups (cached automatically)
         const getFieldTypeDictionary = async (itemTypeId: string) => {
@@ -231,8 +375,7 @@ export default function TranslationProgressModal({
             status: 'error',
             message: failureMessage,
             statusText: failureMessage,
-            // Carry the reason as a warning so it also lands in the CSV `notes`
-            // column (which is sourced from `warnings`, not `message`).
+            // Carry the reason as a warning so the row can expose the details.
             warnings: [failureMessage],
           });
         }
@@ -282,6 +425,21 @@ export default function TranslationProgressModal({
     failedCount,
     percentComplete,
   } = summarizeBulkProgress(processedRecords, totalRecords);
+
+  // Auto-publish (ported from master): records eligible for publishing are
+  // those belonging to draft-mode models that translated successfully.
+  const publishableRecordIds = getPublishableTranslatedRecordIds(
+    processedRecords,
+    draftModeItemTypeIds,
+  );
+  const { handlePublish, hasPublishedAll, isPublishing, publishButtonLabel } =
+    useBulkPublishing({
+      ctx,
+      accessToken,
+      pluginParams,
+      publishableRecordIds,
+      canPublish: isCompleted && !hasFatalError,
+    });
 
   const buildRecordUrl = (update: ProgressUpdate): string | undefined =>
     buildRecordEditorUrl({
@@ -439,11 +597,24 @@ export default function TranslationProgressModal({
               Cancel
             </Button>
           )}
+          {isCompleted &&
+            !hasFatalError &&
+            publishableRecordIds.length > 0 && (
+              <Button
+                type="button"
+                buttonType="muted"
+                onClick={handlePublish}
+                disabled={isPublishing || hasPublishedAll}
+                buttonSize="s"
+              >
+                {publishButtonLabel}
+              </Button>
+            )}
           <Button
             type="button"
             buttonType="primary"
             onClick={handleClose}
-            disabled={isProcessing && !isCompleted}
+            disabled={isPublishing || (isProcessing && !isCompleted)}
             buttonSize="s"
           >
             {isCompleted ? 'Close' : isProcessing ? 'Please wait...' : 'Close'}

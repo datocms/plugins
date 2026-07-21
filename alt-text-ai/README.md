@@ -1,21 +1,99 @@
 # Alt Text AI
 
-Alt Text AI is a plugin that integrates DatoCMS with [AltText.ai](https://alttext.ai) to generate image alt text directly in the DatoCMS dashboard.
+Generate alt text for image assets from DatoCMS `file` and `gallery` fields or directly in the Media Area. Choose [AltText.ai](https://alttext.ai), OpenAI, Anthropic Claude, or Google Gemini.
+
+## Supported providers
+
+| Provider | Required settings |
+| --- | --- |
+| AltText.ai | [AltText.ai API key](https://alttext.ai/account/api_keys) |
+| OpenAI | [OpenAI API key](https://platform.openai.com/api-keys) and an image-input model |
+| Anthropic Claude | [Anthropic API key](https://console.anthropic.com/settings/keys) and an image-input model |
+| Google Gemini | [Gemini API key](https://aistudio.google.com/apikey) and an image-input model |
+
+For direct model providers, the plugin loads every model ID returned by the provider's model-list API after an API key is entered. It does not recommend or preselect a model. Choose one that accepts image input and returns text, or enter a model ID manually.
 
 ## Configuration
 
-In the plugin's settings screen, paste an API key obtained from [https://alttext.ai/account/api_keys](https://alttext.ai/account/api_keys).
+1. Grant the plugin the `currentUserAccessToken` permission when installing it. The plugin needs this permission to retrieve selected assets and update their default metadata in the current DatoCMS environment.
+2. Open the plugin settings and choose an alt text provider.
+3. Enter that provider's API key.
+4. For OpenAI, Anthropic, or Gemini, select or enter a vision-capable model and review the prompt template.
+5. Save the settings.
 
-The plugin also relies on the editor's current user access token, so make sure that permission is granted when installing.
+The prompt template for direct model providers supports these placeholders:
 
-## Usage
+- `{locale}`: the active record locale for field actions, or the project locale being generated in Media Area actions.
+- `{filename}`: the asset filename, supplied as supporting context.
 
-Once configured, the plugin adds two dropdown actions to every `file` and `gallery` field. Open a record and use the field-specific dropdown to run:
+Keep an instruction in the prompt that asks the provider to return only the alt text. AltText.ai uses its own generation configuration rather than this prompt template.
 
-- **Generate missing alt texts**: only fills in alt text for assets that don't have one yet.
-- **Generate Alt Texts**: regenerates alt text for every asset in the field, overwriting any existing values.
+### Existing installations
 
-## Scripts
+Existing installations are migrated automatically. A previously saved `apiKey` remains associated with AltText.ai, and AltText.ai remains the selected provider until you choose another one.
 
-- `npm run dev`: Run the plugin locally with Vite.
-- `npm run build`: Type-check and build production assets into `dist/`.
+## Where to generate alt text
+
+The plugin adds the same two actions in three places: **Generate missing alt texts** and **Regenerate all alt texts**.
+
+### 1. A file or gallery field
+
+Open the actions menu on a populated `file` or `gallery` field.
+
+![Alt text generation actions in a populated DatoCMS file field](docs/generate-alt-text-field.jpg)
+
+### 2. Selected assets in the Media Area
+
+Select one or more images, then open the bulk actions menu in the selection bar.
+
+![Alt text generation actions for selected assets in the DatoCMS Media Area](docs/generate-alt-text-media-selection.jpg)
+
+### 3. An open asset in the Media Area
+
+Open an image asset, then use the asset actions menu beside its filename.
+
+![Alt text generation actions on an open DatoCMS image asset](docs/generate-alt-text-single-asset.jpg)
+
+## How the actions work
+
+All three locations offer the same choices:
+
+- **Generate missing alt texts** fills assets whose alt text is empty and leaves existing alt text unchanged.
+- **Regenerate all alt texts** generates alt text for every targeted image and overwrites existing values.
+
+In a record field, generated values update the current form and are not saved automatically. Review the output, make any necessary edits, and save the record.
+
+For localized fields, the plugin reads and updates only the field value for the active locale. Run the action separately in each locale that needs alt text. It does not update asset metadata globally or change other fields and records that reference the same upload.
+
+In the Media Area, the same actions are available after selecting multiple uploads and inside an individual asset. The plugin generates default alt text for every project locale and saves it immediately to each upload. Non-image files are skipped. **Regenerate all alt texts** asks for confirmation before replacing saved upload defaults.
+
+For larger Media Area runs, the plugin shows occasional aggregate progress updates with the number of locale versions processed and assets finished. Updates are throttled so they remain useful without creating a notification for every image or locale.
+
+Media Area actions change the upload's global default metadata. They do not replace explicit alt text overrides already stored in record fields.
+
+## Security and privacy
+
+Provider API keys are stored in the plugin parameters and used by client-side requests from the DatoCMS editor. Anyone who can run or inspect the plugin in that project may be able to retrieve those keys. Use dedicated keys with the narrowest available permissions, quotas, billing limits, and origin or API restrictions, and rotate them regularly. If your organization's policy prohibits browser-exposed credentials, do not configure a direct provider key.
+
+The data sent depends on the selected provider. AltText.ai receives a transformed public image URL, the active locale, and a stable identifier derived from the DatoCMS upload ID. OpenAI and Anthropic receive the transformed public image URL plus the expanded prompt. Gemini receives the image bytes plus the expanded prompt. The expanded prompt contains the locale or filename only when its template includes the corresponding placeholder. Review the selected provider's data-handling terms before processing sensitive assets.
+
+The editor's DatoCMS current-user access token is used only to retrieve uploads and update their default metadata through the Content Management API for the current environment. It is never sent to AltText.ai, OpenAI, Anthropic, or Google.
+
+## Limitations and accessibility notes
+
+- The plugin is intended for image assets. Other file types are not supported and may produce a provider error.
+- Direct providers require a model that accepts image input and returns text. Model availability, pricing, rate limits, and output quality depend on the provider account.
+- Each asset-generation request times out after 60 seconds without changing that asset's alt text.
+- AI-generated descriptions can be inaccurate. Always review them in the context where the image appears.
+- Empty alt text can be intentional for decorative images. **Generate missing alt texts** cannot distinguish an intentional empty value from a missing one, so review decorative images before saving.
+- A single asset can need different alt text in different contexts. Field actions update only the current occurrence; Media Area actions update the upload defaults inherited where no explicit field-level override exists.
+
+## Development
+
+Run commands from this directory:
+
+- `npm run dev`: start the local Vite development server.
+- `npm run build`: type-check the project and build production assets into `dist/`.
+- `npm run test`: run the test suite once.
+- `npm run test:watch`: run tests in watch mode.
+- `npm run preview`: preview the production build locally.

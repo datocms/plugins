@@ -40,12 +40,13 @@ import type { FateLists } from './fieldFateTree/types';
 import { useExclusionRules } from './hooks/useExclusionRules';
 import { useFeatureToggles } from './hooks/useFeatureToggles';
 // PERF-003: Custom hooks for grouped state management
-import { useVendorConfig } from './hooks/useVendorConfig';
+import { type VendorType, useVendorConfig } from './hooks/useVendorConfig';
 import AnthropicConfig from './VendorConfigs/AnthropicConfig';
 import DeepLConfig from './VendorConfigs/DeepLConfig';
 import GeminiConfig from './VendorConfigs/GeminiConfig';
 // Vendor configuration components
 import OpenAIConfig from './VendorConfigs/OpenAIConfig';
+import YandexConfig from './VendorConfigs/YandexConfig';
 
 /**
  * The shape of the plugin parameters we store in DatoCMS.
@@ -54,7 +55,7 @@ import OpenAIConfig from './VendorConfigs/OpenAIConfig';
  */
 export type ctxParamsType = {
   // Vendor selection and credentials
-  vendor?: 'openai' | 'google' | 'anthropic' | 'deepl';
+  vendor?: VendorType;
   gptModel: string; // The GPT model used for translations (OpenAI)
   apiKey: string; // The API key used to authenticate with OpenAI
   // Google (Gemini) settings
@@ -75,6 +76,9 @@ export type ctxParamsType = {
   // DeepL glossary settings
   deeplGlossaryId?: string; // default glossary id (optional)
   deeplGlossaryPairs?: string; // per-pair mapping text (optional)
+  // Yandex Translate settings
+  yandexApiKey?: string;
+  yandexFolderId?: string;
   translationFields: string[]; // List of field editor types that can be translated
   translateWholeRecord: boolean; // Whether to allow entire record translation
   translateBulkRecords: boolean; // Whether to allow bulk records translation in tabular view
@@ -89,7 +93,13 @@ export type ctxParamsType = {
 /**
  * Valid vendor identifiers for the plugin.
  */
-const VALID_VENDORS = ['openai', 'google', 'anthropic', 'deepl'] as const;
+const VALID_VENDORS = [
+  'openai',
+  'google',
+  'anthropic',
+  'deepl',
+  'yandex',
+] as const;
 
 /**
  * Type guard to validate plugin parameters at runtime.
@@ -323,31 +333,43 @@ const updatePluginParams = async ({
  * Determines whether the vendor-specific credentials are incomplete,
  * which would prevent saving the configuration.
  *
- * @param vendor - Currently selected vendor.
- * @param apiKey - OpenAI API key.
- * @param gptModel - Selected OpenAI model.
- * @param googleApiKey - Google API key.
- * @param geminiModel - Selected Gemini model.
- * @param anthropicApiKey - Anthropic API key.
- * @param anthropicModel - Selected Anthropic model.
- * @param deeplApiKey - DeepL API key.
+ * @param credentials - Currently selected vendor and its credential fields.
  * @returns True if credentials are missing for the current vendor.
  */
-function isVendorCredentialsMissing(
-  vendor: string,
-  apiKey: string,
-  gptModel: string,
-  googleApiKey: string,
-  geminiModel: string,
-  anthropicApiKey: string,
-  anthropicModel: string,
-  deeplApiKey: string,
-): boolean {
+export function isVendorCredentialsMissing(credentials: {
+  vendor: VendorType;
+  apiKey: string;
+  gptModel: string;
+  googleApiKey: string;
+  geminiModel: string;
+  anthropicApiKey: string;
+  anthropicModel: string;
+  deeplApiKey: string;
+  yandexApiKey: string;
+}): boolean {
+  const {
+    vendor,
+    apiKey,
+    gptModel,
+    googleApiKey,
+    geminiModel,
+    anthropicApiKey,
+    anthropicModel,
+    deeplApiKey,
+    yandexApiKey,
+  } = credentials;
+
   if (vendor === 'openai') return gptModel === 'None' || !apiKey;
   if (vendor === 'google') return !googleApiKey || !geminiModel;
   if (vendor === 'anthropic') return !anthropicApiKey || !anthropicModel;
   if (vendor === 'deepl') return !deeplApiKey;
+  if (vendor === 'yandex') return !yandexApiKey.trim();
   return false;
+}
+
+/** Returns true for vendors that translate through a native API, not a prompt. */
+export function isNativeTranslationVendor(vendor: VendorType): boolean {
+  return vendor === 'deepl' || vendor === 'yandex';
 }
 
 /**
@@ -392,11 +414,12 @@ function isDefaultConfiguration(
  * @param vendor - The vendor identifier string.
  * @returns The human-readable vendor label.
  */
-function getVendorLabel(vendor: string): string {
+function getVendorLabel(vendor: VendorType): string {
   if (vendor === 'openai') return 'OpenAI (ChatGPT)';
   if (vendor === 'google') return 'Google (Gemini)';
   if (vendor === 'anthropic') return 'Anthropic (Claude)';
-  return 'DeepL';
+  if (vendor === 'deepl') return 'DeepL';
+  return 'Yandex Translate';
 }
 
 /**
@@ -408,13 +431,19 @@ function getVendorLabel(vendor: string): string {
  */
 function parseVendorFromSelectOption(
   opt: unknown,
-): 'openai' | 'google' | 'anthropic' | 'deepl' | undefined {
+): VendorType | undefined {
   const selected = Array.isArray(opt) ? opt[0] : opt;
   if (!selected || typeof selected !== 'object' || !('value' in selected)) {
     return undefined;
   }
   const v = (selected as { value: unknown }).value;
-  if (v === 'openai' || v === 'google' || v === 'anthropic' || v === 'deepl') {
+  if (
+    v === 'openai' ||
+    v === 'google' ||
+    v === 'anthropic' ||
+    v === 'deepl' ||
+    v === 'yandex'
+  ) {
     return v;
   }
   return undefined;
@@ -425,7 +454,7 @@ function parseVendorFromSelectOption(
  * Groups all current config state and saved params needed to detect changes.
  */
 type CheckFormDirtyArgs = {
-  vendor: string;
+  vendor: VendorType;
   apiKey: string;
   googleApiKey: string;
   geminiModel: string;
@@ -441,6 +470,8 @@ type CheckFormDirtyArgs = {
   deeplApiKey: string;
   deeplGlossaryId: string;
   deeplGlossaryPairs: string;
+  yandexApiKey: string;
+  yandexFolderId: string;
   translationFields: string[];
   translateWholeRecord: boolean;
   translateBulkRecords: boolean;
@@ -481,6 +512,8 @@ function checkFormDirty(args: CheckFormDirtyArgs): boolean {
     deeplApiKey,
     deeplGlossaryId,
     deeplGlossaryPairs,
+    yandexApiKey,
+    yandexFolderId,
     translationFields,
     translateWholeRecord,
     translateBulkRecords,
@@ -508,6 +541,8 @@ function checkFormDirty(args: CheckFormDirtyArgs): boolean {
       anthropicApiKey,
       anthropicModel,
       gptModel,
+      yandexApiKey,
+      yandexFolderId,
     },
     pluginParams,
   );
@@ -546,13 +581,15 @@ function checkFormDirty(args: CheckFormDirtyArgs): boolean {
 
 function checkVendorCredentialsDirty(
   current: {
-    vendor: string;
+    vendor: VendorType;
     apiKey: string;
     googleApiKey: string;
     geminiModel: string;
     anthropicApiKey: string;
     anthropicModel: string;
     gptModel: string;
+    yandexApiKey: string;
+    yandexFolderId: string;
   },
   saved: ctxParamsType,
 ): boolean {
@@ -564,7 +601,9 @@ function checkVendorCredentialsDirty(
     current.anthropicApiKey !== (saved.anthropicApiKey ?? '') ||
     current.anthropicModel !==
       (saved.anthropicModel ?? 'claude-haiku-4-5-latest') ||
-    current.gptModel !== (saved.gptModel ?? 'None')
+    current.gptModel !== (saved.gptModel ?? 'None') ||
+    current.yandexApiKey !== (saved.yandexApiKey ?? '') ||
+    current.yandexFolderId.trim() !== (saved.yandexFolderId?.trim() ?? '')
   );
 }
 
@@ -633,6 +672,8 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     deeplSplittingTags,
     deeplGlossaryId,
     deeplGlossaryPairs,
+    yandexApiKey,
+    yandexFolderId,
   } = vendorConfig;
   const {
     setVendor,
@@ -651,6 +692,8 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     setDeeplSplittingTags,
     setDeeplGlossaryId,
     setDeeplGlossaryPairs,
+    setYandexApiKey,
+    setYandexFolderId,
   } = vendorActions;
 
   const {
@@ -882,6 +925,8 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         deeplApiKey,
         deeplGlossaryId,
         deeplGlossaryPairs,
+        yandexApiKey,
+        yandexFolderId,
         translationFields,
         translateWholeRecord,
         translateBulkRecords,
@@ -915,6 +960,8 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       deeplApiKey,
       deeplGlossaryId,
       deeplGlossaryPairs,
+      yandexApiKey,
+      yandexFolderId,
       modelsToBeExcluded,
       rolesToBeExcluded,
       apiKeysToBeExcluded,
@@ -951,8 +998,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     });
   }, [ctx.currentUserAccessToken, ctx.environment, ctx.cmaBaseUrl]);
 
-  const isSaveButtonDisabled =
-    isVendorCredentialsMissing(
+  const vendorCredentialsMissing = isVendorCredentialsMissing({
       vendor,
       apiKey,
       gptModel,
@@ -961,17 +1007,18 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
       anthropicApiKey,
       anthropicModel,
       deeplApiKey,
-    ) ||
-    isDefaultConfiguration(
-      translationFields,
-      translateWholeRecord,
-      translateBulkRecords,
-      prompt,
-      modelsToBeExcluded,
-      rolesToBeExcluded,
-      apiKeysToBeExcluded,
-      fieldsToCopyFromSource,
-    );
+      yandexApiKey,
+    });
+  const isRestoreDefaultsButtonDisabled = isDefaultConfiguration(
+    translationFields,
+    translateWholeRecord,
+    translateBulkRecords,
+    prompt,
+    modelsToBeExcluded,
+    rolesToBeExcluded,
+    apiKeysToBeExcluded,
+    fieldsToCopyFromSource,
+  );
 
   return (
     // Canvas is a Datocms React UI wrapper for consistent styling
@@ -989,6 +1036,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
                 { label: 'Google (Gemini)', value: 'google' },
                 { label: 'Anthropic (Claude)', value: 'anthropic' },
                 { label: 'DeepL', value: 'deepl' },
+                { label: 'Yandex Translate', value: 'yandex' },
               ],
             }}
             onChange={(opt) => {
@@ -1024,7 +1072,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
             setAnthropicModel={setAnthropicModel}
             listOfAnthropicModels={listOfAnthropicModels}
           />
-        ) : (
+        ) : vendor === 'deepl' ? (
           <DeepLConfig
             deeplApiKey={deeplApiKey}
             setDeeplApiKey={setDeeplApiKey}
@@ -1047,14 +1095,21 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
             siteLocales={siteLocales}
             openConfirm={ctx.openConfirm}
           />
+        ) : (
+          <YandexConfig
+            yandexApiKey={yandexApiKey}
+            setYandexApiKey={setYandexApiKey}
+            yandexFolderId={yandexFolderId}
+            setYandexFolderId={setYandexFolderId}
+          />
         )}
       </Section>
       </div>
 
       <div className={s.sectionSpacing}>
       <Section title="General translation settings">
-        {/* Prompt input is not applicable to DeepL; hide for that vendor */}
-        {vendor !== 'deepl' && (
+        {/* Prompt input is not applicable to native translation providers. */}
+        {!isNativeTranslationVendor(vendor) && (
             <div className={s.promptContainer}>
               <label
                   className={s.label}
@@ -1222,7 +1277,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
         <div className={s.buttons}>
           <Button
               fullWidth
-              disabled={isSaveButtonDisabled}
+              disabled={isRestoreDefaultsButtonDisabled}
               buttonType="muted"
               onClick={() => {
                 setVendor('openai');
@@ -1251,7 +1306,9 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
             Restore to defaults
           </Button>
           <Button
-              disabled={!isFormDirty || isLoading}
+              disabled={
+                vendorCredentialsMissing || !isFormDirty || isLoading
+              }
               fullWidth
               buttonType="primary"
               onClick={() =>
@@ -1275,6 +1332,8 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
                       deeplSplittingTags,
                       deeplGlossaryId,
                       deeplGlossaryPairs,
+                      yandexApiKey,
+                      yandexFolderId: yandexFolderId.trim(),
                       translationFields,
                       translateWholeRecord,
                       translateBulkRecords,

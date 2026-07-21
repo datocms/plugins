@@ -1,0 +1,19 @@
+.dot {
+  display: inline-block;
+  width: 0.7em;
+  min-width: 0.7em;
+  margin-right: 0.3em;
+  vertical-align: -0.05em;
+}
+
+.published {
+  fill: var(--color--status-published--ink);
+}
+
+.updated {
+  fill: var(--color--status-outdated--ink);
+}
+
+.draft {
+  fill: var(--color--status-draft--ink);
+}

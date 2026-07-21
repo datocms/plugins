@@ -3,6 +3,7 @@ import AnthropicProvider from './providers/AnthropicProvider';
 import DeepLProvider from './providers/DeepLProvider';
 import GeminiProvider from './providers/GeminiProvider';
 import OpenAIProvider from './providers/OpenAIProvider';
+import YandexProvider from './providers/YandexProvider';
 import type { TranslationProvider, VendorId } from './types';
 import { ProviderConfigurationError } from './types';
 
@@ -29,7 +30,8 @@ type VendorCredentials =
   | { vendor: 'openai'; apiKey: string; model: string }
   | { vendor: 'google'; apiKey: string; model: string }
   | { vendor: 'anthropic'; apiKey: string; model: string }
-  | { vendor: 'deepl'; apiKey: string; baseUrl: string };
+  | { vendor: 'deepl'; apiKey: string; baseUrl: string }
+  | { vendor: 'yandex'; apiKey: string; folderId?: string };
 
 /**
  * Resolves the DeepL base URL from plugin configuration.
@@ -107,6 +109,24 @@ function extractDeepLCredentials(
 }
 
 /**
+ * Extracts credentials for Yandex Translate.
+ * The Folder ID is optional because service-account API keys can infer their
+ * home folder in some Yandex Cloud configurations.
+ *
+ * @param pluginParams - Plugin configuration.
+ * @returns Credentials or null when the API key is missing.
+ */
+function extractYandexCredentials(
+  pluginParams: ctxParamsType,
+): VendorCredentials | null {
+  const apiKey = pluginParams.yandexApiKey?.trim() ?? '';
+  if (!apiKey) return null;
+
+  const folderId = pluginParams.yandexFolderId?.trim() || undefined;
+  return { vendor: 'yandex', apiKey, folderId };
+}
+
+/**
  * Extracts credentials for the OpenAI vendor.
  *
  * @param pluginParams - Plugin configuration.
@@ -142,8 +162,12 @@ function extractVendorCredentials(
       return extractAnthropicCredentials(pluginParams);
     case 'deepl':
       return extractDeepLCredentials(pluginParams);
-    default:
+    case 'yandex':
+      return extractYandexCredentials(pluginParams);
+    case 'openai':
       return extractOpenAICredentials(pluginParams);
+    default:
+      return null;
   }
 }
 
@@ -161,15 +185,20 @@ function getMissingCredentialsMessage(vendor: VendorId): string {
       return 'Anthropic API key and Claude model must be configured in settings.';
     case 'deepl':
       return 'DeepL API key must be configured in settings.';
-    default:
+    case 'yandex':
+      return 'Yandex Translate API key must be configured in settings.';
+    case 'openai':
       return 'OpenAI API key and model must be configured in settings.';
+    default:
+      return 'A supported translation provider must be selected in settings.';
   }
 }
 
 /**
  * Returns a memoized translation provider instance based on the plugin
  * configuration. Supports OpenAI (default), Google/Gemini, Anthropic/Claude
- * and DeepL (array translation) with light endpoint heuristics.
+ * DeepL (array translation), and Yandex Translate (native array translation)
+ * with provider-specific endpoint and credential handling.
  *
  * @param pluginParams - Configuration captured from the settings screen.
  * @returns A provider implementing the `TranslationProvider` interface.
@@ -198,8 +227,12 @@ export function getProvider(pluginParams: ctxParamsType): TranslationProvider {
     case 'deepl':
       cacheKey = `deepl:${safeCacheKey(credentials.apiKey)}:${credentials.baseUrl}`;
       break;
-    default:
+    case 'yandex':
+      cacheKey = `yandex:${safeCacheKey(credentials.apiKey)}:${credentials.folderId ?? ''}`;
+      break;
+    case 'openai':
       cacheKey = `openai:${safeCacheKey(credentials.apiKey)}:${credentials.model}`;
+      break;
   }
 
   const cached = cache.get(cacheKey);
@@ -226,11 +259,18 @@ export function getProvider(pluginParams: ctxParamsType): TranslationProvider {
         baseUrl: credentials.baseUrl,
       });
       break;
-    default:
+    case 'yandex':
+      provider = new YandexProvider({
+        apiKey: credentials.apiKey,
+        folderId: credentials.folderId,
+      });
+      break;
+    case 'openai':
       provider = new OpenAIProvider({
         apiKey: credentials.apiKey,
         model: credentials.model,
       });
+      break;
   }
 
   cache.set(cacheKey, provider);

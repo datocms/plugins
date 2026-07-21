@@ -68,6 +68,7 @@ import {
 } from './utils/translation/SharedFieldUtils';
 import TranslateField from './utils/translation/TranslateField';
 import type { QcFlag } from './utils/translation/qc/types';
+import { startTranslationProgressToasts } from './utils/translation/TranslationProgressToasts';
 import { isEmptyStructuredText } from './utils/translation/utils';
 
 /**
@@ -315,13 +316,6 @@ connect({
       ctx.updatePluginParameters({ ...pluginParams, ...defaults });
     }
 
-    // Check if provider is configured after applying defaults
-    const effectiveParams = { ...pluginParams, ...defaults };
-    if (!isProviderConfigured(effectiveParams as ctxParamsType)) {
-      ctx.alert(
-        'Please configure credentials for the selected AI vendor in the settings page',
-      );
-    }
   },
 
   renderConfigScreen(ctx) {
@@ -763,11 +757,14 @@ connect({
         return;
       }
 
-      ctx.customToast({
-        type: 'warning',
-        message: `Translating "${ctx.field.attributes.label}" from ${formatLocaleWithCode(locale)}...`,
-        dismissAfterTimeout: true,
-      });
+      const progressMessage = `Translating "${ctx.field.attributes.label}" from ${formatLocaleWithCode(locale)}...`;
+      const stopProgressToasts = startTranslationProgressToasts(
+        (toast) => ctx.customToast(toast),
+        (elapsedSeconds) =>
+          elapsedSeconds === 0
+            ? progressMessage
+            : `${progressMessage} Still working (${elapsedSeconds}s elapsed).`,
+      );
       const qcFlags: QcFlag[] = [];
       let translatedValue: unknown;
       try {
@@ -788,6 +785,8 @@ connect({
         const normalized = normalizeProviderError(e, provider.vendor);
         ctx.alert(formatErrorForUser(normalized));
         return;
+      } finally {
+        stopProgressToasts();
       }
 
       // Persist translated value into the current editing locale
@@ -829,11 +828,16 @@ connect({
 
       // Translate to all locales
       if (locale === 'allLocales') {
-        ctx.customToast({
-          type: 'warning',
-          message: `Translating "${ctx.field.attributes.label}" to all locales...`,
-          dismissAfterTimeout: true,
-        });
+        const targetLocales = locales.filter((loc) => loc !== ctx.locale);
+        let processedLocales = 0;
+        const progressMessage = `Translating "${ctx.field.attributes.label}" to all locales...`;
+        const stopProgressToasts = startTranslationProgressToasts(
+          (toast) => ctx.customToast(toast),
+          (elapsedSeconds) =>
+            elapsedSeconds === 0
+              ? progressMessage
+              : `${progressMessage} ${processedLocales}/${targetLocales.length} locales processed (${elapsedSeconds}s elapsed).`,
+        );
 
         const qcFlags: QcFlag[] = [];
         /**
@@ -888,11 +892,19 @@ connect({
           await ctx.setFieldValue(fieldPath, translatedValue);
         };
 
-        const targetLocales = locales.filter((loc) => loc !== ctx.locale);
-        await targetLocales.reduce(
-          (chain, loc) => chain.then(() => translateToLocale(loc)),
-          Promise.resolve(),
-        );
+        try {
+          await targetLocales.reduce(
+            (chain, loc) =>
+              chain.then(() =>
+                translateToLocale(loc).finally(() => {
+                  processedLocales += 1;
+                }),
+              ),
+            Promise.resolve(),
+          );
+        } finally {
+          stopProgressToasts();
+        }
 
         ctx.notice(`Translated "${ctx.field.attributes.label}" to all locales`);
         surfaceFieldQcFlags(ctx, qcFlags);
@@ -900,11 +912,14 @@ connect({
       }
 
       // Translate to a specific locale
-      ctx.customToast({
-        dismissAfterTimeout: true,
-        type: 'warning',
-        message: `Translating "${ctx.field.attributes.label}" to ${formatLocaleWithCode(locale)}...`,
-      });
+      const progressMessage = `Translating "${ctx.field.attributes.label}" to ${formatLocaleWithCode(locale)}...`;
+      const stopProgressToasts = startTranslationProgressToasts(
+        (toast) => ctx.customToast(toast),
+        (elapsedSeconds) =>
+          elapsedSeconds === 0
+            ? progressMessage
+            : `${progressMessage} Still working (${elapsedSeconds}s elapsed).`,
+      );
 
       const qcFlags: QcFlag[] = [];
       let translatedValue: unknown;
@@ -926,6 +941,8 @@ connect({
         const normalized = normalizeProviderError(e, provider.vendor);
         ctx.alert(formatErrorForUser(normalized));
         return;
+      } finally {
+        stopProgressToasts();
       }
 
       const fieldPath = `${ctx.field.attributes.api_key}.${locale}`;

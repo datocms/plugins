@@ -56,8 +56,12 @@ describe('normalizeProviderError threads Retry-After from every vendor shape', (
       status: 429,
       response: { headers: new Headers({ 'retry-after': '7' }) },
     });
+    // Google returns RESOURCE_EXHAUSTED (429 + "Resource exhausted") for both
+    // rate limits and quota; the reconciled classifier (from the 3.7.0 line)
+    // labels it 'quota'. Either way it is systemic and the Retry-After is honored
+    // — the retryAfterMs threading is the point of this test.
     expect(normalizeProviderError(err, 'google')).toMatchObject({
-      code: 'rate_limit',
+      code: 'quota',
       retryAfterMs: 7_000,
     });
   });
