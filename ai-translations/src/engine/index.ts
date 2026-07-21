@@ -23,6 +23,7 @@ import type {
 import {
   formatErrorForUser,
   isSystemicError,
+  NormalizedError,
   type NormalizedProviderError,
   normalizeProviderError,
 } from '../utils/translation/ProviderErrors';
@@ -656,7 +657,16 @@ export async function buildTranslatedUpdatePayload(
           },
         );
       } catch (error) {
-        throw normalizeProviderError(error, provider.vendor);
+        // Throw a NormalizedError INSTANCE (not the bare normalized object) so the
+        // outer `attempt` catch's `normalizeProviderError` short-circuits on it
+        // (isNormalizedError) instead of re-deriving from the already-friendly
+        // message — a second derivation drops a rephrased 'auth'/'rate_limit' to
+        // 'unknown', which `isSystemicError` then misses, so the run fails the
+        // field silently instead of pausing.
+        throw new NormalizedError(
+          normalizeProviderError(error, provider.vendor),
+          { cause: error },
+        );
       }
     };
 

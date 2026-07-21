@@ -1553,6 +1553,43 @@ describe('ItemsDropdownUtils', () => {
       expect(update).not.toHaveBeenCalled();
     });
 
+    it('pauses via onSystemic on an auth error even after the provider message is rephrased (double-normalization regression)', async () => {
+      // A 401 normalizes to code 'auth' (systemic) on the first pass, but the
+      // engine normalizes a SECOND time at the stall-guard boundary. If the first
+      // pass already rephrased the message to a friendly one, the second pass must
+      // NOT drop 'auth' to 'unknown' — otherwise the run silently fails the field
+      // instead of pausing (caught by the E2E "auth pauses immediately" test).
+      vi.mocked(translateFieldValue).mockRejectedValue(
+        new ProviderError('Authorization failed', 401, 'deepl'),
+      );
+      const onSystemic = vi.fn().mockResolvedValue('cancelled');
+      const update = vi.fn();
+      // biome-ignore lint/suspicious/noExplicitAny: minimal CMA client stub for the test
+      const client = { items: { update } } as any;
+      const records: DatoCMSRecordFromAPI[] = [
+        { id: 'r1', item_type: { id: 'm1' }, title: { en: 'First' } },
+      ];
+      const getFieldTypeDictionary = vi.fn().mockResolvedValue({
+        title: { editor: 'single_line', id: 'field-title', isLocalized: true },
+      });
+
+      await translateAndUpdateRecords(
+        records,
+        client,
+        provider,
+        'en',
+        ['it'],
+        getFieldTypeDictionary,
+        pluginParams,
+        { alert: vi.fn(), environment: 'main' },
+        'access-token',
+        { onSystemic },
+      );
+
+      expect(onSystemic).toHaveBeenCalled();
+      expect(update).not.toHaveBeenCalled();
+    });
+
     it('paces the run through a run-scoped adaptive pacer that widens after a rate limit', async () => {
       // The first provider call 429s; the systemic handler resumes; the retry
       // then succeeds. This exercises the whole wiring chain — createPacer being
