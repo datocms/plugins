@@ -5,11 +5,14 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import type { QcFlag } from '../utils/translation/qc/types';
 import {
   assertNoBareBlockIds,
   EngineInputError,
   formShapeToFormWrites,
+  hasBlockingQcError,
   itemToSimpleShape,
+  partitionWritesByQcErrors,
 } from './formAdapter';
 
 describe('itemToSimpleShape', () => {
@@ -406,5 +409,77 @@ describe('formShapeToFormWrites', () => {
     expect(formShapeToFormWrites(formValues, writtenLocales)).toEqual([
       { fieldPath: 'title.it', locale: 'it', value: 'Ciao' },
     ]);
+  });
+});
+
+describe('partitionWritesByQcErrors', () => {
+  const write = (fieldPath: string, locale: string, value: unknown) => ({
+    fieldPath,
+    locale,
+    value,
+  });
+  const flag = (
+    fieldPath: string,
+    locale: string,
+    severity: 'error' | 'warning' | 'info',
+  ): QcFlag =>
+    ({
+      checkId: 'truncated',
+      severity,
+      fieldPath,
+      locale,
+      message: 'x',
+    }) as unknown as QcFlag;
+
+  it('withholds a cell with an error-tier flag and stages clean siblings', () => {
+    const writes = [
+      write('title.it', 'it', 'Ciao'),
+      write('body.it', 'it', 'corrupt'),
+    ];
+    const { staged, withheld } = partitionWritesByQcErrors(writes, [
+      flag('body', 'it', 'error'),
+    ]);
+    expect(staged).toEqual([write('title.it', 'it', 'Ciao')]);
+    expect(withheld).toEqual([write('body.it', 'it', 'corrupt')]);
+  });
+
+  it('stages a cell flagged only warning/info (does not block)', () => {
+    const writes = [write('title.it', 'it', 'Ciao')];
+    const { staged, withheld } = partitionWritesByQcErrors(writes, [
+      flag('title', 'it', 'warning'),
+      flag('title', 'it', 'info'),
+    ]);
+    expect(staged).toEqual(writes);
+    expect(withheld).toEqual([]);
+  });
+
+  it('blocks per (field, locale): a defective locale leaves the same field in a clean locale staged', () => {
+    const writes = [
+      write('title.it', 'it', 'corrupt'),
+      write('title.de', 'de', 'Hallo'),
+    ];
+    const { staged, withheld } = partitionWritesByQcErrors(writes, [
+      flag('title', 'it', 'error'),
+    ]);
+    expect(staged).toEqual([write('title.de', 'de', 'Hallo')]);
+    expect(withheld).toEqual([write('title.it', 'it', 'corrupt')]);
+  });
+});
+
+describe('hasBlockingQcError', () => {
+  it('is true when any flag is error severity', () => {
+    expect(hasBlockingQcError([{ severity: 'warning' }, { severity: 'error' }])).toBe(
+      true,
+    );
+  });
+
+  it('is false when only warning/info flags are present', () => {
+    expect(
+      hasBlockingQcError([{ severity: 'warning' }, { severity: 'info' }]),
+    ).toBe(false);
+  });
+
+  it('is false for an empty flag list', () => {
+    expect(hasBlockingQcError([])).toBe(false);
   });
 });

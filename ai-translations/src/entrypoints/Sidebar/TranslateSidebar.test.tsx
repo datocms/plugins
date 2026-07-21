@@ -223,9 +223,40 @@ describe('TranslateSidebar', () => {
 
     await waitFor(() => {
       expect(baseCtx.alert).toHaveBeenCalledWith(
-        expect.stringContaining('may be incomplete'),
+        expect.stringContaining('were NOT applied to the form'),
       );
     });
+  });
+
+  it('withholds an error-tier cell from the form instead of staging corrupt content', async () => {
+    translateRecordUnits.mockResolvedValue({
+      ...emptyResult,
+      qcFlags: [
+        {
+          checkId: 'truncated',
+          severity: 'error',
+          fieldPath: 'title',
+          locale: 'it',
+          message: 'Output was truncated',
+        },
+      ],
+    });
+
+    render(<TranslateSidebar ctx={asCtx(baseCtx)} />);
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Translate all fields' }),
+    );
+
+    await waitFor(() => {
+      expect(writeToForm).toHaveBeenCalled();
+    });
+    const staged = (
+      writeToForm.mock.calls[0][0] as {
+        writes: Array<{ fieldPath: string }>;
+      }
+    ).writes;
+    // The error-tier cell must NOT reach the form (existing value preserved).
+    expect(staged.some((w) => w.fieldPath === 'title.it')).toBe(false);
   });
 
   it('stages block fields in FORM shape via itemToFormValues, not the raw CMA payload', async () => {

@@ -48,6 +48,7 @@ import {
 import AIBulkTranslationsPage from './entrypoints/CustomPage/AIBulkTranslationsPage';
 import LoadingAddon from './entrypoints/LoadingAddon';
 import TranslateSidebar from './entrypoints/Sidebar/TranslateSidebar';
+import { hasBlockingQcError } from './engine/formAdapter';
 import { defaultPrompt } from './prompts/DefaultPrompt';
 import { createLogger } from './utils/logging/Logger';
 import { formatLocaleWithCode } from './utils/localeUtils';
@@ -271,6 +272,32 @@ function surfaceFieldQcFlags(
       `Translation finished with ${flags.length} note(s) worth reviewing.`,
     );
   }
+}
+
+/**
+ * Stages a translated cell into the open form, or WITHHOLDS it when the cell
+ * carries an error-tier QC defect (conform gate, form-path variant): the
+ * existing form value is kept and the user is alerted, instead of overwriting it
+ * with content that would corrupt the value or be rejected by the CMA at Save.
+ */
+async function stageFieldOrWithhold(
+  ctx: ExecuteFieldDropdownActionCtx,
+  args: {
+    fieldPath: string;
+    value: unknown;
+    label: string;
+    successMessage: string;
+    qcFlags: QcFlag[];
+  },
+): Promise<void> {
+  if (hasBlockingQcError(args.qcFlags)) {
+    ctx.alert(
+      `"${args.label}" was not applied: the translation has errors (the existing value was kept).`,
+    );
+    return;
+  }
+  await ctx.setFieldValue(args.fieldPath, args.value);
+  ctx.notice(args.successMessage);
 }
 
 connect({
@@ -813,10 +840,15 @@ connect({
         targetLocale: ctx.locale,
         value: translatedValue,
       });
-      await ctx.setFieldValue(fieldPath, translatedValue);
-      ctx.notice(
-        `Translated "${ctx.field.attributes.label}" from ${formatLocaleWithCode(locale)}`,
-      );
+      // Conform gate (form-path variant): withhold a cell with an error-tier QC
+      // defect instead of staging corrupt content; the existing value is kept.
+      await stageFieldOrWithhold(ctx, {
+        fieldPath,
+        value: translatedValue,
+        label: ctx.field.attributes.label,
+        successMessage: `Translated "${ctx.field.attributes.label}" from ${formatLocaleWithCode(locale)}`,
+        qcFlags,
+      });
       surfaceFieldQcFlags(ctx, qcFlags);
 
       return;
@@ -845,6 +877,7 @@ connect({
          * Extracted to avoid await-in-loop lint errors in the sequential chain.
          */
         const translateToLocale = async (loc: string): Promise<void> => {
+          const flagsBefore = qcFlags.length;
           let translatedValue: unknown;
           try {
             translatedValue = await TranslateField(
@@ -865,6 +898,10 @@ connect({
             ctx.alert(formatErrorForUser(normalized));
             return;
           }
+
+          // Withhold this locale if its translation raised an error-tier defect;
+          // sibling locales still write. Flags are surfaced together after the loop.
+          if (hasBlockingQcError(qcFlags.slice(flagsBefore))) return;
 
           const fieldPath = `${ctx.field.attributes.api_key}.${loc}`;
           logger.info('Translated field payload', {
@@ -968,10 +1005,13 @@ connect({
         targetLocale: locale,
         value: translatedValue,
       });
-      await ctx.setFieldValue(fieldPath, translatedValue);
-      ctx.notice(
-        `Translated "${ctx.field.attributes.label}" to ${formatLocaleWithCode(locale)}`,
-      );
+      await stageFieldOrWithhold(ctx, {
+        fieldPath,
+        value: translatedValue,
+        label: ctx.field.attributes.label,
+        successMessage: `Translated "${ctx.field.attributes.label}" to ${formatLocaleWithCode(locale)}`,
+        qcFlags,
+      });
       surfaceFieldQcFlags(ctx, qcFlags);
       return;
     }

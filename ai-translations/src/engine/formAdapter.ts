@@ -98,6 +98,54 @@ export const formShapeToFormWrites = (
   return writes;
 };
 
+/**
+ * Partitions form writes into those safe to stage and those WITHHELD because
+ * their `(field, locale)` cell carries an error-tier QC defect (truncation,
+ * structure loss, length-validator violation, …). This is the form-path
+ * equivalent of the bulk conform block gate (spec §3): an `error`-severity flag
+ * means the value would corrupt the stored content or be rejected by the CMA, so
+ * it must not be staged into the open form — the existing form value is left
+ * intact instead. Blocking is per cell, so clean sibling cells still stage.
+ * `warning`/`info` flags never block; they only annotate.
+ *
+ * The block key is `` `${flag.fieldPath}.${flag.locale}` ``, which matches the
+ * `fieldPath` produced by {@link formShapeToFormWrites}.
+ *
+ * @param writes - Writes from {@link formShapeToFormWrites}.
+ * @param qcFlags - The run's QC flags (each carrying `fieldPath` + `locale`).
+ * @returns `{ staged, withheld }` — only `staged` should reach the form.
+ */
+export const partitionWritesByQcErrors = <W extends { fieldPath: string }>(
+  writes: W[],
+  qcFlags: ReadonlyArray<{
+    fieldPath?: string;
+    locale?: string;
+    severity: string;
+  }>,
+): { staged: W[]; withheld: W[] } => {
+  const blocked = new Set(
+    qcFlags
+      .filter((f) => f.severity === 'error')
+      .map((f) => `${f.fieldPath}.${f.locale}`),
+  );
+  const staged: W[] = [];
+  const withheld: W[] = [];
+  for (const w of writes) {
+    (blocked.has(w.fieldPath) ? withheld : staged).push(w);
+  }
+  return { staged, withheld };
+};
+
+/**
+ * Whether any of a cell's QC flags is error-tier — i.e. the translated value
+ * would corrupt the stored content or be rejected by the CMA and must NOT be
+ * staged. The per-field-dropdown equivalent of {@link partitionWritesByQcErrors}
+ * (which operates on a whole record's writes). `warning`/`info` never block.
+ */
+export const hasBlockingQcError = (
+  qcFlags: ReadonlyArray<{ severity: string }>,
+): boolean => qcFlags.some((f) => f.severity === 'error');
+
 /** A DatoCMS block object: `{ type: 'item', id, attributes, relationships }`. */
 const isBlockShaped = (
   value: unknown,

@@ -39,6 +39,7 @@ import {
   type JsonApiItem,
   formShapeToFormWrites,
   itemToSimpleShape,
+  partitionWritesByQcErrors,
 } from '../../engine/formAdapter';
 import { assertNoBareBlockIds } from '../../engine/formAdapter';
 import { writeToForm } from '../../engine/formSink';
@@ -118,7 +119,7 @@ function summarizeRunOutcome(
     return {
       kind: 'failures',
       statusLine: 'Completed with warnings — see report',
-      alert: `Translation finished, but ${result.failedFields.length + errorCount} field(s) may be incomplete — please review before saving:\n${lines.join('\n')}`,
+      alert: `Translation finished. ${result.failedFields.length + errorCount} field(s) had errors and were NOT applied to the form (existing values kept):\n${lines.join('\n')}`,
     };
   }
 
@@ -234,7 +235,15 @@ async function stageTranslationsToForm(args: {
   // Stage the CONVERTED form-shape values into the open form. writtenLocales
   // gates the writes to only the (field, locale) pairs this run produced (§2.1),
   // so untouched locales the converted item still carries are never re-staged.
-  const writes = formShapeToFormWrites(formShape, result.writtenLocales);
+  // Conform gate (spec §3), form-path variant: withhold any cell carrying an
+  // error-tier QC defect so corrupt content is never staged into the open form —
+  // the existing form value is left intact. Clean sibling cells still stage. The
+  // withheld cells are surfaced by `summarizeRunOutcome` (error-severity flags).
+  const allWrites = formShapeToFormWrites(formShape, result.writtenLocales);
+  const { staged: writes } = partitionWritesByQcErrors(
+    allWrites,
+    result.qcFlags,
+  );
   const sinkResult = await writeToForm({ writes, ctx, isCancelled });
 
   return { kind: 'done', result, sinkResult };
