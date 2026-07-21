@@ -14,16 +14,6 @@ Centra remains the source of truth for catalog data. The plugin stores only stab
 - Live product cards with unresolved and availability states
 - Light and dark mode support through DatoCMS UI tokens
 
-## Installation
-
-Install **Centra** from the DatoCMS Marketplace, or install the npm package manually:
-
-```text
-datocms-plugin-centra
-```
-
-The plugin does not request DatoCMS API permissions.
-
 ## Configuration
 
 Open the plugin settings and enter:
@@ -34,12 +24,6 @@ Open the plugin settings and enter:
 Select **Save and connect**. The plugin validates the credentials by loading one
 catalog page before saving. The same Centra connection is used in every DatoCMS
 environment.
-
-### Token visibility
-
-The bearer token is stored directly in DatoCMS plugin parameters and is used by the browser through the DatoCMS CORS relay. Masking the input prevents casual disclosure on the settings screen, but it does not turn the token into a server-side secret. Use a dedicated read-only no-session catalog token and restrict access to the DatoCMS project appropriately.
-
-The plugin never uses a Centra shared secret, AMS credentials, or a customer-hosted proxy.
 
 ## Adding a Centra field
 
@@ -125,7 +109,65 @@ The plugin intentionally does not store product names, URIs, images, prices, sto
 
 ## Resolving references in a frontend
 
-Fetch DisplayItems by the stored numeric IDs. For item references, locate the exact nested item using the stored opaque `itemId`.
+Query the JSON field from DatoCMS using its API key. The Content Delivery API returns the field as a JSON-encoded string, or `null` when the field is empty. Replace `centraProducts` below with your field's API key.
+
+```graphql
+query ProductPage {
+  product {
+    centraProducts
+  }
+}
+```
+
+The response contains a string rather than a parsed reference document:
+
+```json
+{
+  "data": {
+    "product": {
+      "centraProducts": "{\"version\":1,\"kind\":\"variant\",\"references\":[{\"displayItemId\":2752}]}"
+    }
+  }
+}
+```
+
+Parse the field before reading its references:
+
+```ts
+type CentraReferenceDocument =
+  | {
+      version: 1;
+      kind: 'primaryProduct' | 'variant';
+      references: Array<{ displayItemId: number }>;
+    }
+  | {
+      version: 1;
+      kind: 'item';
+      references: Array<{
+        displayItemId: number;
+        itemId: string;
+      }>;
+    };
+
+function parseCentraField(
+  rawValue: string | null,
+): CentraReferenceDocument | null {
+  if (rawValue === null) return null;
+
+  // Add runtime validation for the version, kind, and reference shape
+  // before using this data in production.
+  return JSON.parse(rawValue) as CentraReferenceDocument;
+}
+
+const document = parseCentraField(data.product.centraProducts);
+const displayItemIds = [
+  ...new Set(
+    document?.references.map(({ displayItemId }) => displayItemId) ?? [],
+  ),
+];
+```
+
+After parsing the DatoCMS value, fetch the referenced DisplayItems from Centra using those numeric IDs:
 
 ```graphql
 query ResolveCentraReferences(
@@ -168,22 +210,33 @@ query ResolveCentraReferences(
 }
 ```
 
-Reorder the response using the stored `references` array. Keep a placeholder for missing DisplayItems or Items instead of silently dropping them.
+Centra may return DisplayItems in a different order. Reorder them using the parsed `references` array, and keep a placeholder for any missing DisplayItem instead of silently dropping the saved reference.
 
 ## SKU behavior
 
-Centra exposes buyable sizes as `Item` objects nested below a DisplayItem. A SKU string is display metadata, not a safe identity: stores can contain repeated SKU values, including repeated values within one DisplayItem.
-
-The plugin therefore stores this pair:
+For a field configured for SKUs/sizes, parsing the DatoCMS JSON string produces a document with `kind: 'item'`. Each reference contains the parent DisplayItem ID and the exact nested Centra Item ID:
 
 ```ts
-type CentraItemReference = {
-  displayItemId: number;
-  itemId: string;
-};
+const document = parseCentraField(data.product.centraSkus);
+
+if (document?.kind === 'item') {
+  const displayItemsById = new Map(
+    displayItems.map((displayItem) => [displayItem.id, displayItem]),
+  );
+
+  const resolvedSkus = document.references.map((reference) => {
+    const displayItem = displayItemsById.get(reference.displayItemId);
+    const item =
+      displayItem?.items.find(({ id }) => id === reference.itemId) ?? null;
+
+    return { reference, displayItem, item };
+  });
+}
 ```
 
-SKU search first asks Centra for matching DisplayItems, then ranks exact nested SKU and GTIN matches in the returned products. Every duplicate match remains selectable. The plugin never scans the entire catalog in the browser.
+In this example, `displayItems` is the list returned by the Centra query above. Mapping over the parsed `references` array preserves the editor-defined order. Keep entries with a missing `displayItem` or `item` visible in your application rather than silently dropping them.
+
+SKU and GTIN values are searchable display metadata, not identity. Centra catalogs can contain duplicate SKU values, even within the same DisplayItem, so frontend code must not resolve a selection by SKU or GTIN. The stable identity is the stored `displayItemId` and `itemId` pair.
 
 ## Availability and stock
 
@@ -209,27 +262,3 @@ response is not the one editors should browse.
 ### A primary product now shows a warning
 
 The selected DisplayItem is pinned. If Centra later assigns another primary variant, the plugin warns and leaves the existing reference untouched. Replace it explicitly if the content should follow the new primary choice.
-
-## Development
-
-```bash
-npm install
-npm run dev
-```
-
-Then install a private plugin in DatoCMS with `http://localhost:5173/` as its entry point.
-
-Run all local checks with:
-
-```bash
-npm run lint
-npm test
-npm run build
-```
-
-## Centra documentation
-
-- [Storefront API architecture](https://centra.dev/storefront-api/architecture)
-- [Catalog product information](https://centra.dev/storefront-api/catalog/product-information)
-- [DisplayItem API type](https://centra.dev/storefront-api/api-reference/types/DisplayItem)
-- [Item API type](https://centra.dev/storefront-api/api-reference/types/Item)
