@@ -88,6 +88,31 @@ npm run test:e2e:report    # open the last HTML report
 A green run self-cleans its environments; a failed run leaves them in place for
 debugging (and they're reaped on the next run).
 
+## A sandbox to click around in by hand
+
+Sometimes you don't want a test — you want a throwaway copy of the project to poke
+at the plugin in. Same fork machinery, no assertions:
+
+```bash
+npm run test:e2e:manual              # first provider with a key in .env.testing
+npm run test:e2e:manual -- deepl     # or pin it to one vendor
+```
+
+It starts Vite if it isn't already running, forks `main` into
+`manual-e2e-<timestamp>`, pins the plugin in that env to your chosen provider, and
+opens your browser at the env's content editor. It also prints the plugin-settings
+URL, which is where the config screen (and the field-exclusion picker) lives.
+
+The environment **outlives the command** — `Ctrl-C` only stops Vite, and unlike
+the suite's `e2e-*` envs it is never auto-reaped, so it's still there tomorrow.
+Reclaim sandboxes when you're done:
+
+```bash
+npm run test:e2e:manual:cleanup      # lists every sandbox, deletes on confirm
+```
+
+It shows each environment with its age and destroys nothing until you answer `y`.
+
 ## Reading the run output
 
 Because every provider lane runs in parallel, output is tagged so interleaved

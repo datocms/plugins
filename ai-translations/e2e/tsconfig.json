@@ -12,6 +12,11 @@
     "isolatedModules": true,
     "noEmit": true
   },
-  "include": ["tests/**/*.ts", "fixtures/**/*.ts", "../playwright.config.ts"],
+  "include": [
+    "tests/**/*.ts",
+    "fixtures/**/*.ts",
+    "manual/**/*.ts",
+    "../playwright.config.ts"
+  ],
   "exclude": ["seed", "node_modules"]
 }

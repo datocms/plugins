@@ -30,6 +30,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "test:e2e:manual": "tsx e2e/manual/fork.ts",
+    "test:e2e:manual:cleanup": "tsx e2e/manual/cleanup.ts",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:report": "playwright show-report e2e/playwright-report",
     "self-heal": "OPENAI= GEMINI= CLAUDE= claude 'Use the playwright-test-healer agent to run and heal the failing E2E tests on the DeepL lane, but first ask the user if there are any notes they want to provide'",
