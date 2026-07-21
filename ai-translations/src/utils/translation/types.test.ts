@@ -136,12 +136,27 @@ describe('types.ts', () => {
     });
 
     it('should work with all vendor types', () => {
-      const vendors = ['openai', 'google', 'anthropic', 'deepl'] as const;
+      const vendors = [
+        'openai',
+        'google',
+        'anthropic',
+        'deepl',
+        'yandex',
+      ] as const;
 
       for (const vendor of vendors) {
         const error = new ProviderError('Test', 500, vendor);
         expect(error.vendor).toBe(vendor);
       }
+    });
+
+    it('preserves an original error cause', () => {
+      const cause = new Error('Original failure');
+      const error = new ProviderError('Wrapped failure', 500, 'yandex', {
+        cause,
+      });
+
+      expect(error.cause).toBe(cause);
     });
   });
 

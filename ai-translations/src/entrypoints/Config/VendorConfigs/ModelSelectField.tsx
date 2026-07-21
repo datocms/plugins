@@ -2,6 +2,10 @@
  * ModelSelectField.tsx
  * DRY-003: Shared model selection component for vendor configurations.
  * Extracts the common pattern used across OpenAI, Gemini, and Anthropic configs.
+ *
+ * Never add hard-coded model recommendations or "Recommended" hints here or
+ * in callers. Provider model catalogs change too quickly for that guidance to
+ * remain accurate; users should choose from the dynamically loaded model list.
  */
 
 import { SelectField } from 'datocms-react-ui';
@@ -13,7 +17,6 @@ export interface ModelSelectFieldProps {
   value: string;
   onChange: (value: string) => void;
   models: string[];
-  hint?: string;
   isLoading?: boolean;
 }
 
@@ -23,7 +26,6 @@ export default function ModelSelectField({
   value,
   onChange,
   models,
-  hint,
   isLoading = false,
 }: ModelSelectFieldProps) {
   const options = useMemo(
@@ -48,7 +50,6 @@ export default function ModelSelectField({
       id={id}
       label={label}
       required
-      hint={hint}
       placeholder={isLoading ? 'Loading models...' : undefined}
       value={selectedValue}
       selectInputProps={{

@@ -35,7 +35,6 @@ export default function GeminiConfig({
       <ModelSelectField
         id="geminiModel"
         label="Gemini Model"
-        hint="Recommended: gemini-2.5-flash"
         value={geminiModel}
         onChange={setGeminiModel}
         models={listOfGeminiModels}

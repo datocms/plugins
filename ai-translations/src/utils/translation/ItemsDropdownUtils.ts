@@ -11,6 +11,7 @@ import { formatLocaleWithCode } from '../localeUtils';
 import { isFieldIncludedInSelection } from './BulkTranslationHelpers';
 import {
   formatErrorForUser,
+  isFatalProviderError,
   normalizeProviderError,
 } from './ProviderErrors';
 import {
@@ -270,7 +271,7 @@ export type ProgressUpdate = {
   recordLabel?: string;
   /** Item type id of the record, used to build a link to its editor. */
   itemTypeId?: string;
-  /** CMA `updated_at` of the record after the write (for the CSV report). */
+  /** CMA `updated_at` of the record after the write. */
   updatedAt?: string;
   /** API keys of fields that were AI-translated on this record. */
   translatedFieldApiKeys?: string[];
@@ -349,7 +350,7 @@ export interface BuildTranslatedUpdatePayloadResult {
    * updated".
    */
   referenceFieldsCopied: number;
-  /** API keys of the fields that were AI-translated (for the CSV report). */
+  /** API keys of the fields that were AI-translated. */
   translatedFields: string[];
   /**
    * Structured record-reference copy events. Consolidated into one per-record
@@ -614,8 +615,8 @@ export async function translateAndUpdateRecords(
       Promise.resolve(),
     );
 
-    // Timestamp for the CSV report: the write's fresh `updated_at` when we
-    // touched the record, otherwise the record's existing timestamp.
+    // Keep the write's fresh `updated_at` when we touched the record,
+    // otherwise retain the record's existing timestamp.
     const recordMeta = (record as { meta?: { updated_at?: string } }).meta;
     let updatedAt = recordMeta?.updated_at;
     if (Object.keys(mergedPayload).length > 0) {
@@ -677,9 +678,8 @@ export async function translateAndUpdateRecords(
     ];
     const warnings = recordWarnings.length > 0 ? recordWarnings : undefined;
 
-    // The per-record fields shared by every finished update (drive the row link
-    // and the CSV report).
-    const reportFields = {
+    // The structured per-record fields shared by every finished update.
+    const completionFields = {
       recordLabel,
       itemTypeId,
       updatedAt: outcome.updatedAt,
@@ -703,7 +703,7 @@ export async function translateAndUpdateRecords(
         status: 'error',
         message: `No fields were updated for "${recordLabel}" (#${recordId}).`,
         statusText: 'No fields were updated',
-        ...reportFields,
+        ...completionFields,
       });
       return 'continue';
     }
@@ -726,7 +726,7 @@ export async function translateAndUpdateRecords(
       status: 'completed',
       message: completionMessage,
       statusText,
-      ...reportFields,
+      ...completionFields,
     });
     return 'done';
   }
@@ -805,6 +805,7 @@ export async function translateAndUpdateRecords(
     } catch (error) {
       const friendlyMessage = getFriendlyDatoErrorMessage(error, record.id);
       const norm = normalizeProviderError(error, provider.vendor);
+      if (isFatalProviderError(provider.vendor, norm)) throw error;
       const formattedMessage = formatErrorForUser(norm);
       const rawMessage = error instanceof Error ? error.message : String(error);
       console.error(`Error translating record ${record.id}:`, rawMessage);
@@ -1048,6 +1049,7 @@ export async function buildTranslatedUpdatePayload(
       translatedFields.push(field);
     } catch (error) {
       const norm = normalizeProviderError(error, provider.vendor);
+      if (isFatalProviderError(provider.vendor, norm)) throw error;
       const formattedMessage = formatErrorForUser(norm);
       console.error(
         `Error translating field ${field} → ${toLocale} for record ${record.id}: ${formattedMessage}`,

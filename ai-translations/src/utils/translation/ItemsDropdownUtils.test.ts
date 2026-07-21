@@ -16,6 +16,7 @@ vi.mock('./TranslateField', () => ({
 }));
 
 import { translateFieldValue } from './TranslateField';
+import { ProviderError } from './types';
 
 describe('ItemsDropdownUtils', () => {
   const pluginParams: ctxParamsType = {
@@ -224,6 +225,27 @@ describe('ItemsDropdownUtils', () => {
       expect(result.warnings).toContain(
         'Field "slug" to Italian [it] was skipped: Plugin error: Translated slug is empty after normalization.',
       );
+    });
+
+    it('aborts the record immediately for fatal Yandex credential errors', async () => {
+      vi.mocked(translateFieldValue).mockRejectedValue(
+        new ProviderError('Permission denied', 403, 'yandex'),
+      );
+      const yandexProvider = { ...provider, vendor: 'yandex' as const };
+
+      await expect(
+        buildTranslatedUpdatePayload(
+          record,
+          'en',
+          'it',
+          fieldTypeDictionary,
+          yandexProvider,
+          { ...pluginParams, vendor: 'yandex' },
+          'access-token',
+          'main',
+        ),
+      ).rejects.toThrow('Permission denied');
+      expect(translateFieldValue).toHaveBeenCalledTimes(1);
     });
 
     it('copies source value for required non-block fields, strips IDs for required block fields', async () => {
@@ -682,6 +704,49 @@ describe('ItemsDropdownUtils', () => {
       expect(finalUpdate?.translatedFieldIds).toContain('field-title');
       expect(finalUpdate?.copiedLinkFieldApiKeys).toContain('related');
       expect(finalUpdate?.copiedLinkFieldIds).toContain('field-related');
+    });
+
+    it('stops the bulk run after a fatal Yandex configuration error', async () => {
+      vi.mocked(translateFieldValue).mockRejectedValue(
+        new ProviderError('Folder ID is invalid', 400, 'yandex'),
+      );
+      const update = vi.fn();
+      // biome-ignore lint/suspicious/noExplicitAny: minimal CMA client stub for the test
+      const client = { items: { update } } as any;
+      const records: DatoCMSRecordFromAPI[] = [
+        {
+          id: 'r1',
+          item_type: { id: 'm1' },
+          title: { en: 'First' },
+        },
+        {
+          id: 'r2',
+          item_type: { id: 'm1' },
+          title: { en: 'Second' },
+        },
+      ];
+      const getFieldTypeDictionary = vi.fn().mockResolvedValue({
+        title: { editor: 'single_line', id: 'field-title', isLocalized: true },
+      });
+      const yandexProvider = { ...provider, vendor: 'yandex' as const };
+
+      await expect(
+        translateAndUpdateRecords(
+          records,
+          client,
+          yandexProvider,
+          'en',
+          ['it'],
+          getFieldTypeDictionary,
+          { ...pluginParams, vendor: 'yandex' },
+          { alert: vi.fn(), environment: 'main' },
+          'access-token',
+        ),
+      ).rejects.toThrow('Folder ID is invalid');
+
+      expect(translateFieldValue).toHaveBeenCalledTimes(1);
+      expect(getFieldTypeDictionary).toHaveBeenCalledTimes(1);
+      expect(update).not.toHaveBeenCalled();
     });
   });
 

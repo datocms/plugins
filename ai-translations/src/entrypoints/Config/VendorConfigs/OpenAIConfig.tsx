@@ -49,7 +49,6 @@ export default function OpenAIConfig({
       <ModelSelectField
         id="gptModel"
         label="GPT Model"
-        hint="Recommended: gpt-5.4-mini"
         value={gptModel}
         onChange={setGptModel}
         models={listOfModels}

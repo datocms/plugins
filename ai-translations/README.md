@@ -10,7 +10,7 @@ This plugin integrates with AI providers and provides on-demand AI-powered trans
 
 On the plugin's Settings screen:
 
-1. **AI Vendor**: Choose your provider — OpenAI (ChatGPT), Google (Gemini), Anthropic (Claude), or DeepL.
+1. **AI Vendor**: Choose your provider — OpenAI (ChatGPT), Google (Gemini), Anthropic (Claude), DeepL, or Yandex Translate.
 2. If you chose OpenAI:
    - **OpenAI API Key**: Paste a valid OpenAI key.
    - **GPT Model**: After entering your key, the plugin lists available chat models. Select a model from the dropdown.
@@ -23,24 +23,29 @@ On the plugin's Settings screen:
 5. If you chose DeepL:
    - **DeepL API Key**: Paste your DeepL API key.
    - **Use DeepL Free endpoint**: Enable this if your key ends with `:fx` (Free plan).
-6. **Prompt Template** (AI vendors only): Customize how translations are requested. Use `{fieldValue}`, `{fromLocale}`, `{toLocale}`, and `{recordContext}`.
-7. **Translatable Field Types**: Pick which field editor types (single_line, markdown, structured_text, etc.) can be translated. 
-8. **Translate Whole Record**: Enable the sidebar that translates every localized field in a record.
-9. **Translate Bulk Records**: Enable bulk translations from table view or via the dedicated page.
-10. **AI Bulk Translations Page**: Translate whole models at once.
-11. **Enable Debugging**: Optional toggle that prints detailed logs to the browser console while keeping API keys redacted.
+6. If you chose Yandex Translate:
+   - **Yandex API Key**: Paste a service-account API key with the `yc.ai.translate.execute` scope. The service account must have the `ai.translate.user` role.
+   - **Folder ID**: Optionally provide the Yandex Cloud folder to bill and authorize. Leave it blank to let Yandex infer the service account's home folder.
+7. **Prompt Template** (LLM vendors only): Customize how translations are requested. Use `{fieldValue}`, `{fromLocale}`, `{toLocale}`, and `{recordContext}`.
+8. **Translatable Field Types**: Pick which field editor types (single_line, markdown, structured_text, etc.) can be translated.
+9. **Translate Whole Record**: Enable the sidebar that translates every localized field in a record.
+10. **Translate Bulk Records**: Enable bulk translations from table view or via the dedicated page.
+11. **AI Bulk Translations Page**: Translate whole models at once.
+12. **Enable Debugging**: Optional toggle that prints detailed logs to the browser console while keeping API keys redacted.
 
 ### Key Restrictions and Security
 - Keys are stored in plugin settings and used client-side. Do not share your workspace publicly.
 - Prefer restricting keys:
   - OpenAI: regular secret key; rotate periodically.
   - Google: restrict by HTTP referrer and enable only the Generative Language API.
+  - Yandex: use a dedicated service account with only the `ai.translate.user` role and an API key restricted to `yc.ai.translate.execute`.
 - The plugin redacts API keys from debug logs automatically.
 
 _**Models**_
 - OpenAI: the model list is fetched dynamically for your account; the plugin filters out embeddings, audio/whisper/tts, moderation, image, and realtime models.
 - Google: the model list is fetched dynamically from the Generative Language API.
 - Anthropic: the model list is fetched dynamically for your account.
+- DeepL and Yandex Translate use their native translation APIs and do not require a model selection or prompt.
 
 Save your changes. The plugin is now ready.
 
@@ -52,7 +57,7 @@ For each translatable field:
 
 1. Click on the field's dropdown menu in the DatoCMS record editor (on the top right of the field)
 2. Select "Translate to" -> Choose a target locale or "All locales."
-3. The plugin uses your configured AI vendor settings to generate a translation.
+3. The plugin uses your configured translation vendor settings to generate a translation.
 4. The field updates automatically.
 
 You can also pull content from a different locale by choosing "Translate from" to copy and translate that locale's content into your current locale.
@@ -75,6 +80,7 @@ Translate multiple records at once from any table view:
 3. Click the three dots dropdown in the bar at the bottom (to the right of the bar) and choose "AI Translate these records"
 4. In the picker, choose your source and target languages (the target defaults to "All other locales") and, optionally, narrow which fields are translated per model
 5. Review the confirmation summary, then watch the progress modal as all selected records are translated
+6. After translation, you can bulk-publish the successfully updated records whose models have draft/published mode enabled
 
 ![Bulk Translations Table View](https://raw.githubusercontent.com/marcelofinamorvieira/datocms-plugin-ai-translations/refs/heads/master/public/assets/bulk-translation-example.png)
 
@@ -87,6 +93,7 @@ The plugin includes a dedicated page for translating multiple models at once:
 3. Choose one or more models to translate (block models are excluded); each model appears as a card where you can refine which fields are translated
 4. Click "Start Bulk Translation" and review the confirmation summary of locales, models, and fields
 5. The modal will display progress as all records from the selected models are translated
+6. After translation, you can bulk-publish the successfully updated records whose models have draft/published mode enabled
 
 If anything required is missing (for example a model with no fields selected, or no target locale), the page lists exactly what's left before the Start button enables.
 
@@ -97,8 +104,6 @@ If anything required is missing (for example a model with no fields selected, or
 Link and Links fields (references to other records) are **not translated** — a reference points at the same shared record regardless of locale. When you translate into a new locale, the plugin copies those references from the source locale so the new locale is valid. This also prevents failures on fields that require a minimum number of linked records, which used to abort the whole record's translation. The linked records themselves are never followed or re-translated.
 
 Whenever this happens, the record's row in the bulk progress modal is flagged with an amber warning icon and a **"— with warnings"** label; its title links (in a new tab) to the record, and hovering the row reveals the full detail in a tooltip. Any fields that genuinely failed to translate are surfaced the same way.
-
-The modal also has an **Export CSV** button that downloads a per-record report — status (success/warning/failure), the CMA update timestamp, record ID, title, edit URL, source and target locales, the field IDs (and api keys) that were translated, the link-field IDs whose references were copied without translation, and a notes column with the warnings — handy for auditing a large run or handing follow-up work to an editor.
 
 ## Contextual Translations
 
@@ -182,7 +187,7 @@ If DeepL returns a glossary mismatch (e.g., glossary languages don't match the c
 
 ### Tips and Limitations
 
-- Glossaries apply only to the DeepL vendor. OpenAI/Gemini/Anthropic do not use glossaries.
+- Glossaries apply only to the DeepL vendor. OpenAI/Gemini/Anthropic/Yandex do not use these glossary settings.
 - The plugin preserves placeholders and HTML tags automatically (`notranslate`, `ph`, etc.). Glossaries will not alter those tokens. This behavior can be configured in the DeepL Tag Settings.
 - If you set a DeepL "formality" level, it is sent only for targets that support it; otherwise omitted.
 - Ensure you test the API key after entering it to catch any potential errors.
@@ -207,6 +212,17 @@ If DeepL returns a glossary mismatch (e.g., glossary languages don't match the c
   1. Get an API key from your DeepL account (Pro or Free).
   2. In the plugin settings, switch vendor to DeepL and paste the key.
   3. If using a Free key (ends with `:fx`), enable "Use DeepL Free endpoint".
+- To use Yandex Translate:
+  1. Create a Yandex Cloud service account with the `ai.translate.user` role and issue an API key with the `yc.ai.translate.execute` scope.
+  2. In the plugin settings, switch vendor to Yandex Translate and paste the API key.
+  3. Optionally enter a Folder ID, then use "Test credentials" before saving.
+
+## Yandex Translate Notes
+
+- Yandex Translate requests are sent to the v2 API through the built-in DatoCMS CORS proxy because the Yandex endpoint cannot be called directly from a browser iframe.
+- The plugin resolves the current supported-language list from Yandex, preserves supported locale variants such as `pt-BR` and `sr-Latn`, and falls back to a supported base language where appropriate.
+- Yandex accepts at most 10,000 Unicode characters per request. The plugin batches complete translation segments within that limit. A single field segment over the limit is rejected with an actionable error instead of being split in a way that could corrupt HTML, Markdown, JSON, ICU messages, or placeholders.
+- Yandex's optional spell-checking, custom models, inline glossaries, and expiring IAM-token authentication are not configured by this plugin.
 
 ## License
 

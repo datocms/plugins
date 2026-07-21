@@ -1,5 +1,5 @@
 import { Spinner } from 'datocms-react-ui';
-import { useRef, useState } from 'react';
+import { type ReactNode, useRef, useState } from 'react';
 import { BsExclamationTriangleFill } from 'react-icons/bs';
 import type { ProgressUpdate } from '../../utils/translation/ItemsDropdownUtils';
 
@@ -15,6 +15,60 @@ function defaultStatusLabel(status: ProgressUpdate['status']): string {
   if (status === 'processing') return 'Processing…';
   if (status === 'error') return 'Error';
   return '';
+}
+
+function renderStatusIcon(
+  status: ProgressUpdate['status'],
+  hasWarnings: boolean,
+): ReactNode {
+  if (status === 'completed') {
+    return hasWarnings ? (
+      <BsExclamationTriangleFill
+        className="TranslationProgressModal__warning-icon"
+        aria-label="Completed with warnings"
+      />
+    ) : (
+      '✓'
+    );
+  }
+  if (status === 'processing') return <Spinner size={16} />;
+  if (status === 'error') return '✗';
+  return null;
+}
+
+function renderMessage(
+  label: string | undefined,
+  recordUrl: string | undefined,
+  statusText: string,
+  isCompletedWithWarnings: boolean,
+): ReactNode {
+  if (!label) return statusText;
+
+  const recordLabel = recordUrl ? (
+    <a
+      className="TranslationProgressModal__record-link"
+      href={recordUrl}
+      target="_blank"
+      rel="noreferrer noopener"
+    >
+      {label}
+    </a>
+  ) : (
+    <span className="TranslationProgressModal__record-link">{label}</span>
+  );
+
+  return (
+    <>
+      {recordLabel}
+      {' — '}
+      {statusText}
+      {isCompletedWithWarnings && (
+        <span className="TranslationProgressModal__with-warnings">
+          {' — with warnings'}
+        </span>
+      )}
+    </>
+  );
 }
 
 /**
@@ -64,44 +118,10 @@ export function ProgressRow({ update, recordUrl }: ProgressRowProps) {
       onBlur={hideTooltip}
     >
       <span className="TranslationProgressModal__update-status">
-        {update.status === 'completed' && !hasWarnings && '✓'}
-        {isCompletedWithWarnings && (
-          <BsExclamationTriangleFill
-            className="TranslationProgressModal__warning-icon"
-            aria-label="Completed with warnings"
-          />
-        )}
-        {update.status === 'processing' && <Spinner size={16} />}
-        {update.status === 'error' && '✗'}
+        {renderStatusIcon(update.status, hasWarnings)}
       </span>
       <span className="TranslationProgressModal__update-message">
-        {label ? (
-          <>
-            {recordUrl ? (
-              <a
-                className="TranslationProgressModal__record-link"
-                href={recordUrl}
-                target="_blank"
-                rel="noreferrer noopener"
-              >
-                {label}
-              </a>
-            ) : (
-              <span className="TranslationProgressModal__record-link">
-                {label}
-              </span>
-            )}
-            {' — '}
-            {statusText}
-            {isCompletedWithWarnings && (
-              <span className="TranslationProgressModal__with-warnings">
-                {' — with warnings'}
-              </span>
-            )}
-          </>
-        ) : (
-          statusText
-        )}
+        {renderMessage(label, recordUrl, statusText, isCompletedWithWarnings)}
       </span>
       {hasWarnings && tooltipPos && (
         <span

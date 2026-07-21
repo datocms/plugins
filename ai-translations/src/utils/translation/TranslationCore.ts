@@ -19,6 +19,7 @@ import {
   RATE_LIMIT_MAX_DELAY_MS,
 } from '../constants';
 import { isFieldExcluded, isFieldTranslatable } from './SharedFieldUtils';
+import type { VendorId } from './types';
 import { isEmptyStructuredText } from './utils';
 
 /**
@@ -102,7 +103,7 @@ export function getMaxConcurrency(pluginParams: ctxParamsType): number {
     return 2;
   }
 
-  // Non-Gemini vendors (OpenAI, Anthropic, DeepL)
+  // Non-Gemini vendors (OpenAI, Anthropic, DeepL, Yandex)
   // Light/fast profiles
   if (/(^|[-])nano\b/.test(modelId) || /flash|mini|lite/.test(modelId))
     return 6;
@@ -155,11 +156,35 @@ export function isRateLimitError(err: unknown): boolean {
   if (err === null || typeof err !== 'object') return false;
 
   const anyErr = err as { status?: number; code?: string; message?: string };
+  const message = String(anyErr?.message ?? '');
+
+  // Quota exhaustion is not transient, even when a provider reports it with
+  // HTTP 429. Retrying it only repeats a request that cannot currently succeed.
+  if (
+    /insufficient_quota|quota (?:limit )?exceeded|resource (?:has been )?exhausted|out of quota/i.test(
+      message,
+    )
+  ) {
+    return false;
+  }
+
   return (
     anyErr?.status === 429 ||
     anyErr?.code === 'rate_limit_exceeded' ||
-    /\b429\b|rate limit|Too Many Requests/i.test(String(anyErr?.message ?? ''))
+    /\b429\b|rate limit|Too Many Requests/i.test(message)
   );
+}
+
+/**
+ * Determines whether a rate-limited translation job may be transparently
+ * retried. Yandex translation calls are deliberately excluded because its
+ * translate endpoint is non-idempotent.
+ */
+export function shouldRetryRateLimitError(
+  err: unknown,
+  vendor: VendorId,
+): boolean {
+  return vendor !== 'yandex' && isRateLimitError(err);
 }
 
 /**

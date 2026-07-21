@@ -4,7 +4,12 @@
 /**
  * Supported vendor identifiers for translation providers.
  */
-export type VendorId = 'openai' | 'google' | 'anthropic' | 'deepl';
+export type VendorId =
+  | 'openai'
+  | 'google'
+  | 'anthropic'
+  | 'deepl'
+  | 'yandex';
 
 /**
  * Default timeout for API calls in milliseconds (2 minutes).
@@ -77,7 +82,7 @@ export function createTimeoutSignal(
 
 /**
  * Options for batch translation operations.
- * Used by providers that support native array translation (e.g., DeepL).
+ * Used by providers that support native array translation (DeepL and Yandex).
  */
 export interface BatchTranslationOptions {
   /** Source language code (optional for auto-detect). */
@@ -115,7 +120,7 @@ export interface BatchTranslationOptions {
  * features but is currently unused in production code paths.
  *
  * The optional `translateArray()` method enables providers with native batch
- * translation (like DeepL) to use their more efficient API directly.
+ * translation (like DeepL and Yandex) to use their more efficient API directly.
  */
 export interface TranslationProvider {
   /** Provider id (e.g., 'openai', 'google'). */
@@ -176,9 +181,15 @@ export class ProviderError extends Error {
    * @param message - Error message describing the failure.
    * @param status - Optional HTTP status code from the provider.
    * @param vendor - Optional vendor identifier for error context.
+   * @param options - Optional native error options, including the original cause.
    */
-  constructor(message: string, status?: number, vendor?: VendorId) {
-    super(message);
+  constructor(
+    message: string,
+    status?: number,
+    vendor?: VendorId,
+    options?: ErrorOptions,
+  ) {
+    super(message, options);
     this.name = 'ProviderError';
     this.status = status;
     this.vendor = vendor;

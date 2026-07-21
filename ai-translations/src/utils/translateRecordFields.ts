@@ -29,6 +29,7 @@ import {
 import { createLogger } from './logging/Logger';
 import {
   formatErrorForUser,
+  isFatalProviderError,
   normalizeProviderError,
 } from './translation/ProviderErrors';
 import { getProvider } from './translation/ProviderFactory';
@@ -47,10 +48,14 @@ import {
   getRequestSpacingMs,
   hasTranslatableSourceValue,
   isAbortError,
-  isRateLimitError,
+  shouldRetryRateLimitError,
   shouldProcessField,
 } from './translation/TranslationCore';
-import type { TranslationProvider } from './translation/types';
+import {
+  isProviderError,
+  ProviderError,
+  type TranslationProvider,
+} from './translation/types';
 
 // Options for the translation process. Provides callback hooks that allow the
 // UI to respond to translation events and enables cancellation support for
@@ -89,18 +94,22 @@ type TranslateOptions = {
 };
 
 /**
- * Determines whether a translation error is fatal for a given provider,
- * meaning further translation requests should not be attempted.
- *
- * @param vendor - The provider vendor identifier.
- * @param errorMessage - The normalized error message to check.
- * @returns True if the error is a known fatal error for the given vendor.
+ * Adds user-facing context to a fatal error without dropping provider metadata.
  */
-function isFatalProviderError(vendor: string, errorMessage: string): boolean {
-  if (vendor === 'deepl' && /wrong endpoint/i.test(errorMessage)) return true;
-  if (vendor === 'openai' && /verified to stream/i.test(errorMessage))
-    return true;
-  return false;
+function createFatalProviderError(
+  error: unknown,
+  message: string,
+  provider: TranslationProvider,
+): Error {
+  if (isProviderError(error)) {
+    return new ProviderError(
+      message,
+      error.status,
+      error.vendor ?? provider.vendor,
+      { cause: error },
+    );
+  }
+  return new Error(message, { cause: error });
 }
 
 /**
@@ -257,8 +266,9 @@ async function runFieldLocaleJob(params: RunJobParams): Promise<void> {
   } catch (e) {
     if (isAbortError(e)) return;
     const norm = normalizeProviderError(e, provider.vendor);
-    if (isFatalProviderError(provider.vendor, norm.message)) {
-      const fatalErr = new Error(formatErrorForUser(norm));
+    if (isFatalProviderError(provider.vendor, norm)) {
+      const message = formatErrorForUser(norm);
+      const fatalErr = createFatalProviderError(e, message, provider);
       setFatalAbort(true);
       setFatalError(fatalErr);
       throw fatalErr;
@@ -870,7 +880,7 @@ export async function translateRecordFields(
           // Stop scheduling further jobs
           nextIndex = jobs.length;
         } else if (
-          isRateLimitError(err) &&
+          shouldRetryRateLimitError(err, provider.vendor) &&
           job.retries < RATE_LIMIT_MAX_RETRIES
         ) {
           job.retries += 1;

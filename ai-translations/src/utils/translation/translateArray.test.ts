@@ -6,7 +6,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import { tokenize, translateArray } from './translateArray';
-import type { TranslationProvider } from './types';
+import { ProviderError, type TranslationProvider } from './types';
 
 type LogPayload = {
   level: string;
@@ -600,6 +600,107 @@ describe('translateArray.ts', () => {
       });
     });
 
+    describe('Yandex provider translation', () => {
+      let mockYandexProvider: Required<
+        Pick<TranslationProvider, 'translateArray'>
+      > &
+        Omit<TranslationProvider, 'translateArray'> & {
+          translateArray: ReturnType<typeof vi.fn>;
+        };
+
+      beforeEach(() => {
+        mockYandexProvider = {
+          vendor: 'yandex',
+          streamText: vi.fn(),
+          completeText: vi.fn(),
+          translateArray: vi.fn(),
+        } as typeof mockYandexProvider;
+      });
+
+      it('passes raw locales and generic native options to Yandex', async () => {
+        mockYandexProvider.translateArray.mockResolvedValue(['Olá']);
+
+        const result = await translateArray(
+          mockYandexProvider,
+          {
+            ...mockPluginParams,
+            deeplPreserveFormatting: true,
+            deeplGlossaryId: 'must-not-leak',
+          },
+          ['Hello'],
+          'en-US',
+          'pt-BR',
+          { isHTML: true, formality: 'more' },
+        );
+
+        expect(result).toEqual(['Olá']);
+        expect(mockYandexProvider.translateArray).toHaveBeenCalledWith(
+          ['Hello'],
+          {
+            sourceLang: 'en-US',
+            targetLang: 'pt-BR',
+            isHTML: true,
+            originalSourceLocale: 'en-US',
+            originalTargetLocale: 'pt-BR',
+            debug: expect.any(Object),
+          },
+        );
+      });
+
+      it('omits a blank source locale so Yandex can auto-detect it', async () => {
+        mockYandexProvider.translateArray.mockResolvedValue(['Hallo']);
+
+        await translateArray(
+          mockYandexProvider,
+          mockPluginParams,
+          ['Hello'],
+          '',
+          'de',
+        );
+
+        expect(mockYandexProvider.translateArray).toHaveBeenCalledWith(
+          ['Hello'],
+          expect.objectContaining({ sourceLang: undefined, targetLang: 'de' }),
+        );
+      });
+
+      it('protects and restores placeholders for Yandex', async () => {
+        mockYandexProvider.translateArray.mockResolvedValue(['Hallo ⟦PH_0⟧']);
+
+        const result = await translateArray(
+          mockYandexProvider,
+          mockPluginParams,
+          ['Hello {{name}}'],
+          'en',
+          'de',
+        );
+
+        expect(result).toEqual(['Hallo {{name}}']);
+      });
+    });
+
+    describe('native provider routing', () => {
+      it('rejects native batching for a provider without explicit native options', async () => {
+        const unsupportedNativeProvider: TranslationProvider = {
+          vendor: 'openai',
+          streamText: vi.fn(),
+          completeText: vi.fn(),
+          translateArray: vi.fn(),
+        };
+
+        await expect(
+          translateArray(
+            unsupportedNativeProvider,
+            mockPluginParams,
+            ['Hello'],
+            'en',
+            'de',
+          ),
+        ).rejects.toThrow('Native batch translation is not configured');
+        expect(unsupportedNativeProvider.translateArray).not.toHaveBeenCalled();
+      });
+    });
+
     describe('error handling', () => {
       it('should normalize and rethrow provider errors', async () => {
         vi.mocked(mockProvider.completeText).mockRejectedValue({
@@ -627,6 +728,36 @@ describe('translateArray.ts', () => {
           expect.fail('Should have thrown');
         } catch (e) {
           expect((e as Error).cause).toBe(originalError);
+        }
+      });
+
+      it('preserves ProviderError status and vendor while adding context', async () => {
+        const originalError = new ProviderError(
+          'Permission denied',
+          403,
+          'yandex',
+        );
+        const yandexProvider: TranslationProvider = {
+          vendor: 'yandex',
+          streamText: vi.fn(),
+          completeText: vi.fn(),
+          translateArray: vi.fn().mockRejectedValue(originalError),
+        };
+
+        try {
+          await translateArray(
+            yandexProvider,
+            mockPluginParams,
+            ['Hello'],
+            'en',
+            'de',
+          );
+          expect.fail('Should have thrown');
+        } catch (error) {
+          expect(error).toBeInstanceOf(ProviderError);
+          expect((error as ProviderError).status).toBe(403);
+          expect((error as ProviderError).vendor).toBe('yandex');
+          expect((error as Error).cause).toBe(originalError);
         }
       });
     });
