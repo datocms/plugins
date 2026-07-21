@@ -22,6 +22,7 @@
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import { Button, Canvas, SelectField, Spinner } from 'datocms-react-ui';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { resolveResumeSelection } from '../../utils/resumePrompt';
 import {
   CHIP_SELECT_CLASS_PREFIX,
   type ChipOption,
@@ -412,6 +413,12 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
 
       if (confirmed !== true) return;
 
+      // Resume detection (steps 4/5): offer to resume a compatible interrupted
+      // prior run instead of retranslating everything.
+      const selection = await resolveResumeSelection(ctx, pluginParams);
+      if (selection.kind === 'cancel') return;
+      const resume = selection.resume;
+
       // Single modal handles the whole job: each record is translated into
       // every target locale and saved in one CMA write per record.
       const modalPromise = ctx.openModal({
@@ -426,6 +433,7 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
           pluginParams,
           itemIds: allRecordIds,
           selectedFieldsByModel,
+          resume,
         },
       });
 

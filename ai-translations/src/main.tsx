@@ -49,6 +49,8 @@ import AIBulkTranslationsPage from './entrypoints/CustomPage/AIBulkTranslationsP
 import LoadingAddon from './entrypoints/LoadingAddon';
 import TranslateSidebar from './entrypoints/Sidebar/TranslateSidebar';
 import { hasBlockingQcError } from './engine/formAdapter';
+import type { ResumeTarget } from './engine/report';
+import { resolveResumeSelection } from './utils/resumePrompt';
 import { defaultPrompt } from './prompts/DefaultPrompt';
 import { createLogger } from './utils/logging/Logger';
 import { formatLocaleWithCode } from './utils/localeUtils';
@@ -86,6 +88,7 @@ interface TranslationProgressModalParams {
   pluginParams: ctxParamsType;
   itemIds: string[];
   selectedFieldsByModel?: Record<string, string[]>;
+  resume?: { runId: string; targets: ResumeTarget[] };
 }
 
 type EnvironmentNavigationCtx = {
@@ -524,6 +527,11 @@ connect({
 
       if (confirmed !== true) return;
 
+      // Resume detection (steps 4/5): mirror the bulk page — offer to resume a
+      // compatible interrupted prior run rather than retranslating everything.
+      const resumeSelection = await resolveResumeSelection(ctx, pluginParams);
+      if (resumeSelection.kind === 'cancel') return;
+
       const progressParams: TranslationProgressModalParams = {
         totalRecords: itemIds.length,
         fromLocale,
@@ -532,6 +540,7 @@ connect({
         pluginParams,
         itemIds,
         selectedFieldsByModel,
+        resume: resumeSelection.resume,
       };
 
       const progressResult = (await ctx.openModal({

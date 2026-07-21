@@ -47,4 +47,5 @@ export {
   type RunSummary,
 } from './runStore';
 export { createIndexedDBRunStore } from './indexedDBRunStore';
+export { decideResume, type ResumeDecision } from './resumeDecision';
 export { policyDigest } from './policyDigest';

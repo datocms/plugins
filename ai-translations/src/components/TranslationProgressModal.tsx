@@ -40,6 +40,12 @@ import {
   type ProgressUpdate,
   translateAndUpdateRecords,
 } from '../utils/translation/ItemsDropdownUtils';
+import {
+  createIndexedDBRunStore,
+  type ResumeTarget,
+  type RunState,
+  unitsToResume,
+} from '../engine/report';
 import { getProvider } from '../utils/translation/ProviderFactory';
 import './TranslationProgressModal.css';
 
@@ -65,11 +71,55 @@ interface TranslationProgressModalParams {
    * only the listed field api_keys are translated for matching records.
    */
   selectedFieldsByModel?: Record<string, string[]>;
+  /**
+   * Present when the user chose to resume a prior interrupted run (step 5): the
+   * prior run's id and its unfinished (record, locale) targets. The modal reloads
+   * the prior RunState from the store and re-runs only those units.
+   */
+  resume?: { runId: string; targets: ResumeTarget[] };
 }
 
 interface TranslationProgressModalProps {
   ctx: RenderModalCtx;
   parameters: TranslationProgressModalParams;
+}
+
+/**
+ * Wires cross-session-resume persistence for one run (steps 3/5): reloads a
+ * prior run when resuming, checkpoints to IndexedDB after each record, and on a
+ * fully-completed run drops the checkpoint. Kept out of the run effect so its
+ * store lifecycle doesn't inflate the effect's complexity. All best-effort — a
+ * storage failure never blocks the run.
+ */
+async function setupResumePersistence(
+  resume: { runId: string; targets: ResumeTarget[] } | undefined,
+): Promise<{
+  resumeInput: { priorState: RunState; targets: ResumeTarget[] } | undefined;
+  persist: (state: RunState) => Promise<void>;
+  onRunState: (state: RunState) => void;
+  finalize: () => Promise<void>;
+}> {
+  const store = createIndexedDBRunStore();
+  const priorState = resume ? await store.load(resume.runId) : null;
+  let finalRunState: RunState | undefined;
+  return {
+    resumeInput:
+      priorState && resume
+        ? { priorState, targets: resume.targets }
+        : undefined,
+    persist: (state) => {
+      finalRunState = state;
+      return store.save(state).catch(() => {});
+    },
+    onRunState: (state) => {
+      finalRunState = state;
+    },
+    finalize: async () => {
+      if (finalRunState && unitsToResume(finalRunState).length === 0) {
+        await store.delete(finalRunState.runId).catch(() => {});
+      }
+    },
+  };
 }
 
 function getTranslationErrorMessage(
@@ -215,6 +265,7 @@ export default function TranslationProgressModal({
     pluginParams,
     itemIds,
     selectedFieldsByModel,
+    resume,
   } = parameters;
   const [progress, setProgress] = useState<ProgressUpdate[]>([]);
   // The run's lifecycle state drives the pause screen, the footer buttons, and
@@ -328,6 +379,10 @@ export default function TranslationProgressModal({
         const abortController = new AbortController();
         abortRef.current = abortController;
 
+        // Cross-session resume (steps 3/5): checkpoint after each record and, on
+        // a chosen resume, re-run only the unfinished units — see the helper.
+        const resumePersistence = await setupResumePersistence(resume);
+
         await translateAndUpdateRecords(
           records,
           client,
@@ -348,9 +403,14 @@ export default function TranslationProgressModal({
             onSystemic: pauseController?.handleSystemic,
             abortSignal: abortController.signal,
             selectedFieldsByModel,
+            persist: resumePersistence.persist,
+            onRunState: resumePersistence.onRunState,
+            resume: resumePersistence.resumeInput,
           },
           schemaRepository,
         );
+
+        await resumePersistence.finalize();
 
         // Mark the run terminal on the happy path too. The completion effect
         // below only fires when every record reports back; if fewer records come
@@ -396,6 +456,7 @@ export default function TranslationProgressModal({
     fromLocale,
     itemIds,
     pluginParams,
+    resume,
     selectedFieldsByModel,
     toLocales,
   ]);
