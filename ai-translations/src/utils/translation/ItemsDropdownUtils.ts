@@ -14,6 +14,7 @@ import {
   buildFieldTypeDictionaryFromRepo,
   type SchemaRepository,
 } from '../schemaRepository';
+import { getStableDeviceId } from '../deviceId';
 import { segmentGraphemes } from '../graphemes';
 import { formatLocaleWithCode } from '../localeUtils';
 import {
@@ -833,7 +834,7 @@ export async function translateAndUpdateRecords(
   };
   let runState = createRunState({
     runId: uuid(),
-    deviceId: uuid(), // TODO(step6): a stable per-browser id (IndexedDB)
+    deviceId: getStableDeviceId(),
     startedAt: Date.now(),
     operation: 'translate',
     policyDigest: policyDigest(runPolicy),
