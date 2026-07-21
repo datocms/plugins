@@ -7,16 +7,19 @@ The whole report engine (`src/engine/report/`) is built and unit-tested. This
 plan covers only the wiring that makes it *live*. Steps are ordered so each lands
 green on its own.
 
-## Status
+## Status — COMPLETE (2026-07-21)
 
 | Step | What | Status |
 |---|---|---|
 | 1 | IndexedDB `RunStore` (durable tier) | ✅ done — `src/engine/report/indexedDBRunStore.ts` (+ tests, `fake-indexeddb`) |
-| 6a | Stable per-browser `deviceId` | ✅ done — `src/utils/deviceId.ts`, wired at `ItemsDropdownUtils.ts` (`createRunState`) |
-| 3 | Persist a checkpoint per record | ⬜ TODO |
-| 4 | Detect an incomplete prior run on open | ⬜ TODO |
-| 5 | Resume vs start-fresh UI | ⬜ TODO |
-| 6b | Engine resume-set (re-run only unfinished units) | ⬜ TODO |
+| 6a | Stable per-browser `deviceId` | ✅ done — `src/utils/deviceId.ts`, wired in `createRunState` |
+| 3 | Persist a checkpoint per record | ✅ done — `TranslateBatchOptions.persist`, bump+persist after each fold |
+| 6b | Engine resume-set (re-run only unfinished units) | ✅ done — `TranslateBatchOptions.resume`; `localesFor` narrows loop + plan build |
+| 4 | Detect an incomplete prior run on open | ✅ done — `decideResume` (pure, tested) |
+| 5 | Resume vs start-fresh UI | ✅ done — `resolveResumeSelection` (pure, tested) in both openers; modal `setupResumePersistence` |
+
+Full path is live: persist → detect → prompt → resume-only-unfinished → clean up.
+The notes below are retained as the original design rationale.
 
 Everything below the wiring is already built + tested: `serialize/deserializeRunState`,
 `machineTokenForUnit`, `pickLatestRunState` / `unitsToResume` / `isPolicyCompatible`,
