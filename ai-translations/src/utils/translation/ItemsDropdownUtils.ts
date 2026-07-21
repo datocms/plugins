@@ -873,6 +873,28 @@ export async function translateAndUpdateRecords(
         toLocales,
       });
 
+  // Seed every intended unit as not-attempted so an interrupted run can resume the
+  // records it never reached — not just ones that completed with a defect. Only a
+  // fresh run needs this (a resumed run already carries its prior units); as each
+  // record completes, foldOutcome upserts its units by the same recordId+locale key.
+  if (!options.resume) {
+    for (const record of records) {
+      for (const toLocale of localesFor(record.id)) {
+        runState = foldOutcome(
+          runState,
+          {
+            recordId: record.id,
+            toLocale,
+            bucket: 'not-attempted',
+            reasons: [],
+            flags: [],
+          },
+          { now: Date.now() },
+        );
+      }
+    }
+  }
+
 
   /**
    * Translates all fields of a record into every target locale, emitting a

@@ -22,6 +22,8 @@ import {
   bumpCheckpoint,
   createRunState,
   type ResumeTarget,
+  type RunState,
+  unitsToResume,
 } from '../../engine/report';
 import type { QcFlag } from './qc/types';
 import { ProviderError } from './types';
@@ -1687,6 +1689,52 @@ describe('ItemsDropdownUtils', () => {
       // One persisted checkpoint per record, monotonically increasing.
       expect(persist).toHaveBeenCalledTimes(2);
       expect(checkpoints).toEqual([1, 2]);
+    });
+
+    it('seeds not-attempted units so an interrupted run can resume records it never reached (step 6b)', async () => {
+      vi.mocked(translateFieldValue).mockResolvedValue('Ciao');
+      const update = vi
+        .fn()
+        .mockImplementation(
+          async (id: string, payload: Record<string, unknown>) => ({
+            id,
+            ...payload,
+            meta: { updated_at: '2026-07-08T21:00:00.000Z' },
+          }),
+        );
+      // biome-ignore lint/suspicious/noExplicitAny: minimal CMA client stub
+      const client = { items: { update } } as any;
+      const records: DatoCMSRecordFromAPI[] = [
+        { id: 'r1', item_type: { id: 'm1' }, title: { en: 'One' } },
+        { id: 'r2', item_type: { id: 'm1' }, title: { en: 'Two' } },
+      ];
+      const getFieldTypeDictionary = vi.fn().mockResolvedValue({
+        title: { editor: 'single_line', id: 'field-title', isLocalized: true },
+      });
+      // What is resumable at each checkpoint, computed live (not cloned).
+      const resumableAt: string[][] = [];
+      const persist = (state: RunState) => {
+        resumableAt.push(unitsToResume(state).map((t) => t.recordId));
+      };
+
+      await translateAndUpdateRecords(
+        records,
+        client,
+        provider,
+        'en',
+        ['it'],
+        getFieldTypeDictionary,
+        pluginParams,
+        { alert: vi.fn(), environment: 'main' },
+        'access-token',
+        { persist },
+      );
+
+      // After record 1's checkpoint, record 2 (not yet reached) is still resumable
+      // — so an interruption there would resume it. After the last, nothing is.
+      expect(resumableAt[0]).toContain('r2');
+      expect(resumableAt[0]).not.toContain('r1');
+      expect(resumableAt.at(-1)).toEqual([]);
     });
 
     it('resumes only the unfinished units, skipping records already done (step 6b)', async () => {
