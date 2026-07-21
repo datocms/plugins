@@ -18,6 +18,11 @@ vi.mock('./TranslateField', () => ({
 }));
 
 import { translateFieldValue } from './TranslateField';
+import {
+  bumpCheckpoint,
+  createRunState,
+  type ResumeTarget,
+} from '../../engine/report';
 import type { QcFlag } from './qc/types';
 import { ProviderError } from './types';
 
@@ -1603,6 +1608,99 @@ describe('ItemsDropdownUtils', () => {
       // widens — the reactive pause alone would leave `sleeps` empty.
       expect(sleeps).toEqual([50, 100]);
       expect(translateFieldValue).toHaveBeenCalledTimes(2);
+    });
+
+    it('persists an incremental checkpoint after each record (resume, step 3)', async () => {
+      vi.mocked(translateFieldValue).mockResolvedValue('Ciao');
+      const update = vi
+        .fn()
+        .mockImplementation(
+          async (_id: string, payload: Record<string, unknown>) => ({
+            ...payload,
+            meta: { updated_at: '2026-07-08T21:00:00.000Z' },
+          }),
+        );
+      // biome-ignore lint/suspicious/noExplicitAny: minimal CMA client stub
+      const client = { items: { update } } as any;
+      const records: DatoCMSRecordFromAPI[] = [
+        { id: 'r1', item_type: { id: 'm1' }, title: { en: 'One' } },
+        { id: 'r2', item_type: { id: 'm1' }, title: { en: 'Two' } },
+      ];
+      const getFieldTypeDictionary = vi.fn().mockResolvedValue({
+        title: { editor: 'single_line', id: 'field-title', isLocalized: true },
+      });
+      const checkpoints: number[] = [];
+      const persist = vi.fn((state: { checkpoint: number }) => {
+        checkpoints.push(state.checkpoint);
+      });
+
+      await translateAndUpdateRecords(
+        records,
+        client,
+        provider,
+        'en',
+        ['it'],
+        getFieldTypeDictionary,
+        pluginParams,
+        { alert: vi.fn(), environment: 'main' },
+        'access-token',
+        { persist },
+      );
+
+      // One persisted checkpoint per record, monotonically increasing.
+      expect(persist).toHaveBeenCalledTimes(2);
+      expect(checkpoints).toEqual([1, 2]);
+    });
+
+    it('resumes only the unfinished units, skipping records already done (step 6b)', async () => {
+      vi.mocked(translateFieldValue).mockResolvedValue('Ciao');
+      const update = vi
+        .fn()
+        .mockImplementation(
+          async (id: string, payload: Record<string, unknown>) => ({
+            id,
+            ...payload,
+            meta: { updated_at: '2026-07-08T21:00:00.000Z' },
+          }),
+        );
+      // biome-ignore lint/suspicious/noExplicitAny: minimal CMA client stub
+      const client = { items: { update } } as any;
+      const records: DatoCMSRecordFromAPI[] = [
+        { id: 'r1', item_type: { id: 'm1' }, title: { en: 'One' } },
+        { id: 'r2', item_type: { id: 'm1' }, title: { en: 'Two' } },
+      ];
+      const getFieldTypeDictionary = vi.fn().mockResolvedValue({
+        title: { editor: 'single_line', id: 'field-title', isLocalized: true },
+      });
+      const priorState = bumpCheckpoint(
+        createRunState({
+          runId: 'run-1',
+          deviceId: 'device-1',
+          startedAt: 1,
+          operation: 'translate',
+          policyDigest: 'abcd1234',
+          fromLocale: 'en',
+          toLocales: ['it'],
+        }),
+      );
+      const targets: ResumeTarget[] = [{ recordId: 'r2', toLocale: 'it' }];
+
+      await translateAndUpdateRecords(
+        records,
+        client,
+        provider,
+        'en',
+        ['it'],
+        getFieldTypeDictionary,
+        pluginParams,
+        { alert: vi.fn(), environment: 'main' },
+        'access-token',
+        { resume: { priorState, targets } },
+      );
+
+      // r1 is already done (not a target); only r2 is (re-)written.
+      expect(update).toHaveBeenCalledTimes(1);
+      expect(update).toHaveBeenCalledWith('r2', expect.anything());
     });
 
     // The merge seam: master's report pipeline (reference copies →

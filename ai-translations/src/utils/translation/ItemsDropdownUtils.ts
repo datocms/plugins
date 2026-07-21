@@ -45,9 +45,11 @@ import {
   toPlanRecord,
 } from '../../engine/plan';
 import {
+  bumpCheckpoint,
   createRunState,
   foldOutcome,
   policyDigest,
+  type ResumeTarget,
   type RunState,
 } from '../../engine/report';
 
@@ -436,6 +438,21 @@ export type TranslateBatchOptions = {
    * surfaces the new report model so downstream UI can adopt it.
    */
   onRunState?: (runState: RunState) => void;
+  /**
+   * Invoked with the accumulated {@link RunState} after EACH record is folded,
+   * with a bumped checkpoint — the incremental persistence hook for cross-session
+   * resume (persistence spec §8, step 3). Best-effort: a rejection is swallowed so
+   * a failed checkpoint never breaks the run. Distinct from {@link onRunState},
+   * which fires once at the end for the shadow report.
+   */
+  persist?: (runState: RunState) => void | Promise<void>;
+  /**
+   * Resume a prior run (persistence spec §8, step 6b): re-run only the `targets`
+   * (unfinished units) and continue folding onto `priorState` instead of starting
+   * a fresh RunState. The caller loads `priorState` from the store and computes
+   * `targets` via `unitsToResume`.
+   */
+  resume?: { priorState: RunState; targets: ResumeTarget[] };
 };
 
 /**
@@ -832,15 +849,29 @@ export async function translateAndUpdateRecords(
     excludedTokens: pluginParams.apiKeysToBeExcludedFromThisPlugin ?? [],
     copyTokens: pluginParams.fieldsToCopyFromSource ?? [],
   };
-  let runState = createRunState({
-    runId: uuid(),
-    deviceId: getStableDeviceId(),
-    startedAt: Date.now(),
-    operation: 'translate',
-    policyDigest: policyDigest(runPolicy),
-    fromLocale,
-    toLocales,
-  });
+
+  // Resume (step 6b): when a prior run is handed in, re-run ONLY its unfinished
+  // (record, locale) units and continue folding onto its RunState. `localesFor`
+  // narrows each record to its resumable locales; a normal run gets every locale.
+  const resumeSet = options.resume
+    ? new Set(options.resume.targets.map((t) => `${t.recordId}::${t.toLocale}`))
+    : null;
+  const localesFor = (recordId: string): string[] =>
+    resumeSet
+      ? toLocales.filter((loc) => resumeSet.has(`${recordId}::${loc}`))
+      : toLocales;
+
+  let runState = options.resume
+    ? options.resume.priorState
+    : createRunState({
+        runId: uuid(),
+        deviceId: getStableDeviceId(),
+        startedAt: Date.now(),
+        operation: 'translate',
+        policyDigest: policyDigest(runPolicy),
+        fromLocale,
+        toLocales,
+      });
 
 
   /**
@@ -859,6 +890,11 @@ export async function translateAndUpdateRecords(
       record.item_type.id,
     );
     const itemTypeId = record.item_type.id;
+    // Resume-aware: the locales still to run for THIS record (all of them on a
+    // normal run). Drives both the per-locale loop and the plan build, so the
+    // write body carries only the (re-)translated locales — already-done locales
+    // are neither retranslated nor overwritten.
+    const recordToLocales = localesFor(record.id);
     const toFieldIds = (apiKeys: string[]): string[] =>
       apiKeys
         .map((key) => fieldTypeDictionary[key]?.id)
@@ -957,7 +993,7 @@ export async function translateAndUpdateRecords(
 
     // Sequential per-locale to keep within provider rate-limit budgets and
     // surface progress in the order the user picked.
-    await toLocales.reduce(
+    await recordToLocales.reduce(
       (chain, toLocale) => chain.then(() => translateForLocale(toLocale)),
       Promise.resolve(),
     );
@@ -990,7 +1026,7 @@ export async function translateAndUpdateRecords(
         policy: runPolicy,
         policyDigest: runState.policyDigest,
         fromLocale,
-        toLocales,
+        toLocales: recordToLocales,
       }),
     );
     const { body, outcomes } = orchestrateRecordOutcome({
@@ -1100,6 +1136,16 @@ export async function translateAndUpdateRecords(
           ? { ...outcome, bucket: 'written-unverified' as const }
           : outcome;
       runState = foldOutcome(runState, projected, { now: Date.now() });
+    }
+
+    // Persist an incremental checkpoint after each record so a later session can
+    // resume the run (persistence spec §8, step 3). Best-effort and isolated: a
+    // storage failure must degrade resume to off, never fail the record or run.
+    runState = bumpCheckpoint(runState);
+    try {
+      await options.persist?.(runState);
+    } catch {
+      // Swallow: resume persistence is a nice-to-have, never load-bearing.
     }
 
     // Derived AFTER the read-back demotion, never from a running tally: a field
@@ -1432,7 +1478,11 @@ export async function translateAndUpdateRecords(
   }
 
   // Process records sequentially using reduce to avoid await-in-loop
-  await records.reduce(async (previousRecord, record, i) => {
+  // Resume (step 6b): skip records with no unfinished units entirely.
+  const recordsToRun = resumeSet
+    ? records.filter((record) => localesFor(record.id).length > 0)
+    : records;
+  await recordsToRun.reduce(async (previousRecord, record, i) => {
     const previousOutcome = await previousRecord;
     if (previousOutcome === 'cancelled') return 'cancelled';
     return processRecord(record, i);
