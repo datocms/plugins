@@ -1,5 +1,8 @@
 # DatoCMS Yandex Translate plugin
 
+> [!WARNING]
+> **This plugin is deprecated.** Please use the [AI Translations plugin](https://github.com/datocms/plugins/tree/master/ai-translations) instead, which includes Yandex Translate as a supported provider.
+
 Makes it easier to automatically translate your content into secondary languages.
 
 ## Configuration
