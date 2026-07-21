@@ -211,27 +211,41 @@ by unit tests**; the E2E plans below follow this suite's rule — E2E proves who
 pure logic stays in unit tests, and any new spec is validated on `--project=deepl`
 before it's assumed green.
 
-### Conform block gate on the form paths (sidebar + per-field dropdown) — unit-covered; E2E planned
+### Conform block gate on the form paths (sidebar + per-field dropdown) — unit-covered; form-path E2E deferred
 An error-tier QC value is now **withheld** from the open form on the sidebar and the
 per-field dropdown (not just dropped from the bulk write). Unit coverage:
 `formAdapter.test.ts` (`partitionWritesByQcErrors`, `hasBlockingQcError`) and
-`TranslateSidebar.test.tsx` ("withholds an error-tier cell from the form"). E2E plan
-(DeepL lane): translate a record whose `badge` overflows its `length` validator via the
-sidebar → assert the badge input keeps its prior value (the translation is withheld) and
-the alert names it. `badge` is already the deterministic length-error stand-in used by
-the bulk length test, so this is E2E-able — a scaffold pending a first live run.
+`TranslateSidebar.test.tsx` ("withholds an error-tier cell from the form"). The **bulk**
+block gate is already E2E-covered by the badge length-overflow test
+(`ai-translations.spec.ts`, catalog_entry → es → a failure), which still passes under the
+gate (block ⇒ reported as failure). The **form-path** withhold is deferred from E2E
+because whether a translated `badge` overflows its validator is DeepL-dependent (non-
+deterministic per record/locale) — the deterministic proof lives in the unit tests. If
+authored later, force the error tier with a fault (structural/over-length response) rather
+than relying on a real overflow.
 
-### Cross-session resume — unit-covered; E2E planned
+### Two real bugs the E2E surfaced while validating the above
+1. **auth/systemic errors did not pause** — the engine normalized a provider error twice
+   and the second pass dropped a rephrased `auth`/`rate_limit` to `unknown` (isSystemicError
+   then missed it). Caught by "auth error pauses immediately"; fixed by throwing a
+   `NormalizedError` instance from `attemptWith` so the second pass short-circuits. Unit
+   regression added.
+2. **resume never offered a not-yet-reached record** — `RunState` only tracked folded
+   records, so a run interrupted before reaching record N left N untracked. Fixed by
+   seeding every intended unit as `not-attempted` at run start.
+
+### Cross-session resume — unit-covered AND E2E-covered ✅
 Bulk runs checkpoint to IndexedDB per record; an interrupted run can be resumed. Unit
 coverage: `indexedDBRunStore.test.ts`, `resumeDecision.test.ts`, `resumePrompt.test.ts`,
 `deviceId.test.ts`, and the `ItemsDropdownUtils.test.ts` "persists an incremental
-checkpoint" / "resumes only the unfinished units" tests. E2E plan (DeepL lane, ≥2
-records): let record 1 complete (persisted), interrupt at record 2 (429 pause → Cancel),
-reopen the bulk flow → assert the **Resume** `openConfirm` appears; on Resume assert only
-record 2 is (re)written; on Start over assert the checkpoint is dropped and everything
-reruns. Note `injectRateLimit` faults the *first* N calls, so targeting record 2 needs a
-`failTimes` tuned to record 1's call count (provider/field-dependent) — hence deferred to
-a live authoring pass rather than committed blind.
+checkpoint" / "seeds not-attempted units" / "resumes only the unfinished units" tests.
+**E2E** (`bulk-reliability.spec.ts` → "an interrupted run is resumable", DeepL lane,
+passing): fault only "Summer Collection" (fetched last of the 3 `catalog_entry` records)
+so Autumn+Winter complete and checkpoint while Summer pauses on a 429; Cancel; reopen the
+bulk flow; assert the native **Resume** `openConfirm` appears; Resume; assert only
+Summer's fr title is populated. Determinism came from targeting the LAST-fetched record by
+`matchBody` (the fetch order is a stable CMA default) rather than tuning `failTimes`.
+This run also exercises the auth/systemic double-normalization fix (the 429 must pause).
 
 ### Suite interaction (harness)
 The resume prompt now appears in the bulk openers whenever a compatible **interrupted**
