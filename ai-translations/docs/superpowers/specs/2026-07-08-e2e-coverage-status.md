@@ -203,6 +203,44 @@ login (env-dependent), multi-model items-picker (unreachable: the record list
 is single-model, so a selection never spans models), a11y/keyboard sweeps and
 cross-flow overwrite interactions (valuable but a separate initiative).
 
+## Third wave (2026-07-21): reconciliation follow-ups
+
+Three v4 decisions landed after the master reconciliation (see the branch commits and
+`docs/superpowers/plans/2026-07-21-cross-session-resume.md`). Their **logic is covered
+by unit tests**; the E2E plans below follow this suite's rule — E2E proves whole flows,
+pure logic stays in unit tests, and any new spec is validated on `--project=deepl`
+before it's assumed green.
+
+### Conform block gate on the form paths (sidebar + per-field dropdown) — unit-covered; E2E planned
+An error-tier QC value is now **withheld** from the open form on the sidebar and the
+per-field dropdown (not just dropped from the bulk write). Unit coverage:
+`formAdapter.test.ts` (`partitionWritesByQcErrors`, `hasBlockingQcError`) and
+`TranslateSidebar.test.tsx` ("withholds an error-tier cell from the form"). E2E plan
+(DeepL lane): translate a record whose `badge` overflows its `length` validator via the
+sidebar → assert the badge input keeps its prior value (the translation is withheld) and
+the alert names it. `badge` is already the deterministic length-error stand-in used by
+the bulk length test, so this is E2E-able — a scaffold pending a first live run.
+
+### Cross-session resume — unit-covered; E2E planned
+Bulk runs checkpoint to IndexedDB per record; an interrupted run can be resumed. Unit
+coverage: `indexedDBRunStore.test.ts`, `resumeDecision.test.ts`, `resumePrompt.test.ts`,
+`deviceId.test.ts`, and the `ItemsDropdownUtils.test.ts` "persists an incremental
+checkpoint" / "resumes only the unfinished units" tests. E2E plan (DeepL lane, ≥2
+records): let record 1 complete (persisted), interrupt at record 2 (429 pause → Cancel),
+reopen the bulk flow → assert the **Resume** `openConfirm` appears; on Resume assert only
+record 2 is (re)written; on Start over assert the checkpoint is dropped and everything
+reruns. Note `injectRateLimit` faults the *first* N calls, so targeting record 2 needs a
+`failTimes` tuned to record 1's call count (provider/field-dependent) — hence deferred to
+a live authoring pass rather than committed blind.
+
+### Suite interaction (harness)
+The resume prompt now appears in the bulk openers whenever a compatible **interrupted**
+prior run is found in the browser's IndexedDB. Playwright isolates storage per test so it
+does not leak across tests; but a single test that cancels a partially-completed run and
+then reopens the bulk flow **will** hit the prompt — handle it (Resume / Start over) or
+clear IndexedDB. A fully-completed run deletes its own checkpoint, so the prompt never
+follows a clean run.
+
 ## How to extend
 
 See [`e2e/AGENTS.md`](../../../e2e/AGENTS.md) — especially applying seed schema

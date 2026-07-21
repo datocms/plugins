@@ -60,6 +60,14 @@ The engine emits `QcFlag`s through a non-breaking `onQcFlag` callback threaded v
 - `suppressRedundantFlags` prunes overlaps (e.g. `length-ratio` under a field-wide error/`length-mismatch`; field-wide `source-fallback` under a `truncated` or field-wide `length-mismatch`), and `coalesceSourceFallbackFlags` merges per-chunk `source-fallback` flags into one with the field-level denominator — long fields are translated in independent chunks, so per-chunk counts misreport the total.
 - When adding a field-type translator: forward `onQcFlag` and the `kind` (html/markdown/text) hint down to `translateArray`; for a batch of independent sub-fields (SEO title+description, file alt/title/metadata) also pass `qcAtomicSegments: true` so `no-op` is evaluated per segment.
 
+### Conform block gate (all three entrypoints)
+An `error`-severity QC flag means the value would corrupt stored content or 422 on save, so it is **withheld from the write** and the existing value is preserved — enforced on all three surfaces (spec §3), not just bulk.
+- **Bulk**: `orchestrateRecordOutcome`/`conform` (`src/engine/plan`) BLOCKS the whole `(record, locale)` — the locale is dropped from the `items.update` body, never overwritten with bad content.
+- **Sidebar**: `partitionWritesByQcErrors` (`engine/formAdapter`) drops error-tier `(field, locale)` cells from the form writes before `writeToForm`; clean sibling cells still stage.
+- **Per-field dropdown**: `hasBlockingQcError` guards each `ctx.setFieldValue` (via `stageFieldOrWithhold` in `main.tsx`); a translate-to-all skips only the offending locale.
+
+Form-path "block" = *don't stage the defective cell* (a human reviews before Save), so only the per-cell invariants apply — no CMA write happens here, so the body-level locale-sync/completeness checks (`checkAssembledBody`) do not. `warning`/`info` never block; they only annotate. The block predicate is a single source of truth: `severity === 'error'`.
+
 ### Field outcomes & the null-guard
 `translateField` returns a `FieldOutcome` (`translated` | `untranslatable` | `failed`) and never mutates the payload — the caller writes from the outcome. A `failed` field must never overwrite an *existing* target-locale value with `null` (e.g. after a provider 429). This is enforced in the locale-sync loop by the `existingTargetKey` skip (target locale already holds a value), **not** by excluding `failed` fields wholesale — an `if (updatePayload[field]) continue` sentinel can't tell `failed` from `untranslatable`; do not reintroduce it.
 
@@ -77,6 +85,15 @@ An optimization, never a precondition — browsers can't read the header without
 
 ### Bulk report
 `buildBulkReportRows` (`bulkReport.ts`) is the durable "which records failed and why" list. Each QC flag is mirrored into `ProgressUpdate.warnings` (live tooltip) AND kept structurally in `qcFlags`; the report renders the structured flag and drops the mirrored free-text (matched via `QC_WARNING_PREFIXES` from `ItemsDropdownUtils`) so one flag isn't counted twice. A free-text warning row takes the record's *status* severity. The modal resolves with its `progress` on **both** Close and Cancel — cancelling mid-run still yields the partial report.
+
+### Cross-session resume
+The bulk run is checkpointed to IndexedDB so it survives a reload/cancel (persistence spec §8; report engine under `src/engine/report`, all storage-abstracted through the `RunStore` interface).
+- **Persist**: `translateAndUpdateRecords` folds a canonical `RunState` after each record and, via `options.persist`, `bumpCheckpoint` + `store.save`s it — best-effort in its own try/catch, so a storage failure never breaks the run. The modal supplies `persist` backed by `createIndexedDBRunStore`.
+- **deviceId** is a stable per-browser id (`utils/deviceId.ts`, persisted in localStorage), NOT a per-run UUID — it's the `pickLatestRunState` tie-break; a throwaway id makes resume non-deterministic.
+- **Detect + prompt**: both bulk openers (`AIBulkTranslationsPage`, `main.tsx` items-dropdown) call `resolveResumeSelection` (`utils/resumePrompt.ts`) before opening the modal — `store.latest()` → `decideResume` (needs `isPolicyCompatible` + a non-empty `unitsToResume`) → an `openConfirm` Resume/Start-over/Cancel. Raised from the opener's top-level handler, never inside a renderModal (no nested modals).
+- **Resume-set**: on Resume, `translateAndUpdateRecords` gets `resume: { priorState, targets }`; it continues folding onto `priorState` and `localesFor` narrows **both** the per-locale loop and the plan build to the unfinished units, so already-done locales are neither retranslated nor overwritten. A fully-completed run drops its checkpoint (`store.delete`); an interrupted one is kept for next time.
+- **Policy-change safety**: `policyDigest` (order-independent CRC of the excluded/copy token lists) gates resume — flip a fate or de-select a locale and the stale run is refused, not silently resumed against a different config.
+- Keep the pure decisions (`decideResume`, `resolveResumeSelection`, `partitionWritesByQcErrors`) testable and the UI glue thin — that split is why the feature landed with unit tests and no `any`.
 
 ### File/gallery fields
 Translate `alt`/`title` (plus extra string metadata); when blank on the field value, `FileFieldTranslation.ts` enriches from the upload's `default_field_metadata`. That structure has **two live shapes** and `readUploadDefaultAltTitle` must read both: legacy locale-first `{ en: { alt, title, focal_point } }` and field-first `{ alt: { en, it }, focal_point: { x, y } }` (from the [non-localized focal points](https://www.datocms.com/product-updates/non-localized-focal-points) update — default for projects created after 2026-06-11). Detection keys on whether a top-level key matches the source locale; locale codes never collide with `alt`/`title`/`focal_point`. Reading only one shape silently disables enrichment on half the projects in the wild.

@@ -235,6 +235,14 @@ update the `parseReport` regex in lockstep, or every bulk test silently reads ze
   connections and never goes idle → intermittent 30s timeouts. `dato-auth.ts`
   confirms auth by the URL leaving `/sign_in`, then a bounded `load` + short settle.
   Same rule for any new dashboard navigation.
+- **The resume prompt can appear after an interrupted bulk run (4.0).** The bulk
+  openers checkpoint each run to IndexedDB and, on reopening, offer to resume a
+  compatible *interrupted* prior run — an `openConfirm` with **Resume / Start over /
+  Cancel**. Playwright isolates IndexedDB per test so it never leaks across tests, but a
+  test that cancels a partially-completed run and reopens the bulk flow in the same
+  context will hit it: click **Start over** (or clear IndexedDB) unless the test is
+  specifically exercising resume. A fully-completed run drops its own checkpoint, so a
+  clean run is never followed by the prompt.
 - **DeepL fault injection must target the CORS proxy, not `*.deepl.com`.** DeepL is
   the only vendor routed through the DatoCMS CORS proxy
   (`cors-proxy.datocms.com/?url=<encoded url>`, see `DeepLProvider`), so
