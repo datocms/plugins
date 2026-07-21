@@ -419,6 +419,13 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
       if (selection.kind === 'cancel') return;
       const resume = selection.resume;
 
+      // On resume, process (and count) ONLY the records with unfinished units —
+      // otherwise the modal's completedCount can never reach totalRecords and the
+      // Close button never enables.
+      const recordIdsToRun = resume
+        ? [...new Set(resume.targets.map((t) => t.recordId))]
+        : allRecordIds;
+
       // Single modal handles the whole job: each record is translated into
       // every target locale and saved in one CMA write per record.
       const modalPromise = ctx.openModal({
@@ -426,12 +433,12 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
         title: 'Translation Progress',
         width: 'l',
         parameters: {
-          totalRecords: allRecordIds.length,
+          totalRecords: recordIdsToRun.length,
           fromLocale: sourceLocale.value,
           toLocales: targetLocales,
           accessToken: ctx.currentUserAccessToken,
           pluginParams,
-          itemIds: allRecordIds,
+          itemIds: recordIdsToRun,
           selectedFieldsByModel,
           resume,
         },

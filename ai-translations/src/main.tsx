@@ -531,16 +531,22 @@ connect({
       // compatible interrupted prior run rather than retranslating everything.
       const resumeSelection = await resolveResumeSelection(ctx, pluginParams);
       if (resumeSelection.kind === 'cancel') return;
+      const resume = resumeSelection.resume;
+      // On resume, process (and count) only the records with unfinished units, or
+      // the modal's completedCount never reaches totalRecords.
+      const recordIdsToRun = resume
+        ? [...new Set(resume.targets.map((t) => t.recordId))]
+        : itemIds;
 
       const progressParams: TranslationProgressModalParams = {
-        totalRecords: itemIds.length,
+        totalRecords: recordIdsToRun.length,
         fromLocale,
         toLocales,
         accessToken,
         pluginParams,
-        itemIds,
+        itemIds: recordIdsToRun,
         selectedFieldsByModel,
-        resume: resumeSelection.resume,
+        resume,
       };
 
       const progressResult = (await ctx.openModal({
