@@ -1,0 +1,31 @@
+.wrapper {
+  position: relative;
+  display: inline-block;
+  margin-left: 5px;
+  vertical-align: middle;
+}
+
+.wrapper svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+  color: var(--color--danger-soft--ink);
+  fill: currentColor;
+}
+
+.wrapper svg:first-child {
+  position: relative;
+  z-index: 1;
+}
+
+.wrapper svg:nth-child(2) {
+  position: absolute;
+  top: 50%;
+  left: 10px;
+  z-index: 0;
+  transform: translateY(-50%);
+}
+
+.double {
+  width: 30px;
+}

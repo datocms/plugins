@@ -1,0 +1,160 @@
+.bar {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  z-index: 1000;
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  justify-content: space-between;
+  max-width: calc(100vw - 40px);
+  padding: 10px 20px;
+  background-color: var(--color--primary--surface);
+  border-radius: 8px;
+  box-shadow: var(--shadow--floating);
+  transform: translateX(-50%);
+  transition: all 0.2s ease-out;
+}
+
+.content {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.status {
+  flex: 0 0 auto;
+  color: var(--color--primary--ink);
+  white-space: nowrap;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+}
+
+.group {
+  display: flex;
+}
+
+.button {
+  box-sizing: border-box;
+  display: inline-block;
+  padding: 0.3em 0.8em;
+  font-family: inherit;
+  font-size: 1em;
+  font-weight: bold;
+  line-height: inherit;
+  color: var(--color--overlay--ink);
+  white-space: nowrap;
+  background: var(--color--overlay--surface);
+  border: 0 solid transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.3s var(--material-ease);
+}
+
+.button:hover,
+.button:focus-visible {
+  background: var(--color--overlay--surface-hover);
+}
+
+.button:active {
+  background: var(--color--overlay--surface-active);
+}
+
+.button:disabled {
+  cursor: not-allowed;
+  opacity: 0.8;
+}
+
+.primaryButton {
+  /*
+   * The native CMS intentionally keeps primary selection actions on its
+   * light wash palette in both color schemes. Wash primitives are not passed
+   * through Canvas, so keep native-equivalent local fallbacks for plugins.
+   */
+  color: var(--wash-750, oklch(0.4306 0 0));
+  background: var(--wash-0, oklch(1 0 0));
+}
+
+.primaryButton:hover,
+.primaryButton:focus-visible {
+  color: var(--wash-750, oklch(0.4306 0 0));
+  background: var(--wash-30, oklch(0.9991 0 0));
+}
+
+.primaryButton:active {
+  color: var(--wash-750, oklch(0.4306 0 0));
+  background: var(--wash-50, oklch(0.9975 0 0));
+}
+
+.group .button:first-child:not(:last-child) {
+  margin-right: 1px;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+}
+
+.group .button:last-child:not(:first-child) {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 10px;
+  color: var(--color--primary--ink);
+  background: transparent;
+  border: 0;
+  border-radius: 100%;
+  cursor: pointer;
+}
+
+.close svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+.close:hover,
+.close:focus-visible {
+  background: var(--color--primary--surface-hover);
+}
+
+.close:active {
+  background: var(--color--primary--surface-active);
+}
+
+@media screen and (min-width: 600px) {
+  .bar {
+    gap: 40px;
+    padding-left: 40px;
+  }
+
+  .content {
+    gap: 40px;
+  }
+}
+
+@media screen and (max-width: 600px) {
+  .bar {
+    max-width: calc(100vw - 20px);
+  }
+
+  .content {
+    overflow-x: auto;
+  }
+
+  .secondary {
+    display: none;
+  }
+}
