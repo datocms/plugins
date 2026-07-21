@@ -1508,6 +1508,46 @@ describe('ItemsDropdownUtils', () => {
       expect(update).not.toHaveBeenCalled();
     });
 
+    it('pauses via onSystemic instead of aborting when a pause handler is wired', async () => {
+      // Same fatal Yandex config error, but with a systemic pause handler
+      // present: 'auth' is a SYSTEMIC_CODE, so the systemic-retry loop calls
+      // onSystemic (pause) BEFORE the error can fall through to the run-level
+      // fatal abort. Returning 'cancelled' ends the run cleanly (resolves),
+      // whereas the no-handler abort path rejects. This locks pause-first.
+      vi.mocked(translateFieldValue).mockRejectedValue(
+        new ProviderError('Folder ID is invalid', 400, 'yandex'),
+      );
+      const onSystemic = vi.fn().mockResolvedValue('cancelled');
+      const update = vi.fn();
+      // biome-ignore lint/suspicious/noExplicitAny: minimal CMA client stub for the test
+      const client = { items: { update } } as any;
+      const records: DatoCMSRecordFromAPI[] = [
+        { id: 'r1', item_type: { id: 'm1' }, title: { en: 'First' } },
+      ];
+      const getFieldTypeDictionary = vi.fn().mockResolvedValue({
+        title: { editor: 'single_line', id: 'field-title', isLocalized: true },
+      });
+      const yandexProvider = { ...provider, vendor: 'yandex' as const };
+
+      // Resolves (does not reject): the pause handler intercepts the systemic
+      // error and cancels, so the run never reaches the fatal-abort throw.
+      await translateAndUpdateRecords(
+        records,
+        client,
+        yandexProvider,
+        'en',
+        ['it'],
+        getFieldTypeDictionary,
+        { ...pluginParams, vendor: 'yandex' },
+        { alert: vi.fn(), environment: 'main' },
+        'access-token',
+        { onSystemic },
+      );
+
+      expect(onSystemic).toHaveBeenCalled();
+      expect(update).not.toHaveBeenCalled();
+    });
+
     it('paces the run through a run-scoped adaptive pacer that widens after a rate limit', async () => {
       // The first provider call 429s; the systemic handler resumes; the retry
       // then succeeds. This exercises the whole wiring chain — createPacer being
