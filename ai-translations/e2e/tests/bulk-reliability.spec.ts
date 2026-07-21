@@ -10,7 +10,7 @@ import { cmaClient } from './setup/cma';
 import { TIMEOUTS } from './setup/constants';
 import { step } from './setup/log';
 import { recordOutcome } from './setup/outcomes';
-import { loadManifest } from './steps/assert-record';
+import { assertLocalesPopulated, loadManifest } from './steps/assert-record';
 import { bulkPageUrl, frameWithButton, runBulkTranslation } from './steps/bulk';
 import {
   clearFaults,
@@ -564,5 +564,96 @@ test.describe('AI Translations — bulk reliability', () => {
       ).toMatch(/came back (null|absent|empty) from the cma/);
       return Promise.resolve();
     });
+  });
+
+  // ── Cross-session resume: interrupt a run, then resume only the unfinished
+  // records. DeepL lane (the resumed record falls through to the real provider). ──
+  test('an interrupted run is resumable: Resume reruns only the unfinished records', async ({
+    page,
+  }) => {
+    const { vendor } = meta();
+    test.skip(
+      vendor !== 'deepl',
+      'resume falls through to the real provider — DeepL lane',
+    );
+    test.setTimeout(TIMEOUTS.ten_min);
+
+    // catalog_entry is fetched in order [Autumn, Winter, Summer]; faulting only
+    // Summer's title call lets Autumn+Winter complete (and checkpoint to IndexedDB)
+    // while Summer pauses on a 429 — leaving it the sole unfinished unit.
+    const SUMMER_ID = 'XIQ_8uYXShmmfYRkxVjogw';
+
+    await step(vendor, 'fault only "Summer Collection"', () =>
+      injectRateLimit(page, {
+        vendor,
+        matchBody: /Summer Collection/,
+        failTimes: 999,
+      }),
+    );
+
+    const frame = await step(
+      vendor,
+      'start catalog_entry title → fr; Summer pauses',
+      () =>
+        startBulkRun(page, {
+          modelCode: 'catalog_entry',
+          toLocale: 'fr',
+          onlyFields: ['title'],
+        }),
+    );
+    await expect(pausePanel(frame)).toBeVisible({ timeout: TIMEOUTS.one_min });
+
+    await step(
+      vendor,
+      'cancel — Autumn+Winter done, Summer left unfinished',
+      async () => {
+        await pausePanel(frame).getByRole('button', { name: 'Cancel' }).click();
+        await expect
+          .poll(() => isPauseGone(page), { timeout: TIMEOUTS.one_min })
+          .toBe(true);
+      },
+    );
+
+    await step(vendor, 'clear the fault so the resumed Summer succeeds', () =>
+      clearFaults(page),
+    );
+
+    const progress = await step(
+      vendor,
+      'reopen → the Resume prompt appears → Resume',
+      async () => {
+        await page.goto(await bulkPageUrl(meta()), {
+          waitUntil: 'domcontentloaded',
+        });
+        await page.waitForTimeout(3000);
+        const f = bulkFrame(page);
+        await selectByCode(f, 2, 'catalog_entry');
+        await f
+          .getByText(/Fields to translate/i)
+          .waitFor({ timeout: TIMEOUTS.thirty_sec });
+        await selectByCode(f, 1, 'fr');
+        await selectByCode(f, 3, 'title');
+        await f
+          .getByRole('button', { name: /start bulk translation/i })
+          .click();
+        const confirmFrame = await frameWithButton(page, /^Translate /);
+        await confirmFrame.getByRole('button', { name: /^Translate / }).click();
+        // The resume prompt is a native dashboard openConfirm (page-level, not an iframe).
+        await page.getByRole('button', { name: 'Resume' }).click();
+        return frameWithButton(page, /^(Close|Please wait)/);
+      },
+    );
+
+    await step(vendor, 'the resumed run completes', async () => {
+      await expect(
+        progress.getByRole('button', { name: 'Close' }),
+      ).toBeEnabled({ timeout: TIMEOUTS.five_min });
+    });
+
+    await step(
+      vendor,
+      'Summer fr title is now populated (only the unfinished record ran)',
+      () => assertLocalesPopulated(meta().envName, SUMMER_ID, ['fr'], ['title']),
+    );
   });
 });
