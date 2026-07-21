@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-all-records-viewer",
   "homepage": "https://github.com/datocms/plugins/tree/master/all-records-viewer#readme",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": "DatoCMS <support@datocms.com>",
   "description": "Browse and manage records from every DatoCMS model in one tabular view.",
   "keywords": [
