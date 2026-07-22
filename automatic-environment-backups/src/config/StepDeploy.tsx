@@ -26,7 +26,7 @@ export const StepDeploy = ({ config }: { config: BackupsConfig }) => {
   return (
     <>
       <p className={styles.savedUrl}>
-        Add these two environment variables at your hosting provider before
+        Add the API token and shared secret at your hosting provider before
         deploying:
       </p>
 
@@ -50,8 +50,12 @@ export const StepDeploy = ({ config }: { config: BackupsConfig }) => {
 
         <div className={styles.environmentVariable}>
           <div>
-            <code>DATOCMS_BACKUPS_SHARED_SECRET</code>
-            <p>The saved secret from step 1.</p>
+            <strong>Shared secret</strong>
+            <p>
+              Use the saved secret from step 1 as <code>CRON_SECRET</code> on
+              Vercel, or as <code>DATOCMS_BACKUPS_SHARED_SECRET</code> on
+              Netlify or Cloudflare.
+            </p>
           </div>
           <Button
             buttonType="muted"

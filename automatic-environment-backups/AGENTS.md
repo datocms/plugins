@@ -65,6 +65,9 @@ orchestrator.
   `marcelofinamorvieira/datocms-backups-scheduled-function`), `executionMode:
   'lambda_cron'`, daily at 02:05 UTC. This plugin only configures and monitors
   it — nothing runs from the browser.
+- Vercel deployments use `CRON_SECRET` for both Vercel's Bearer-authenticated
+  cron GET and the plugin's shared-secret requests. Netlify and Cloudflare use
+  `DATOCMS_BACKUPS_SHARED_SECRET`.
 
 ## Validate
 - `npm run test` (tsc + vitest) and `npm run build`. No lint script is wired

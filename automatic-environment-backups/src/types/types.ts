@@ -70,6 +70,7 @@ export type LambdaBackupStatusSlot = {
   executionMode: 'lambda_cron';
   lastBackupAt: string | null;
   nextBackupAt: string | null;
+  dueNow?: boolean;
 };
 
 export type LambdaBackupStatus = {

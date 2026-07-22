@@ -81,9 +81,11 @@ const buildLambdaRows = (
       lastBackup: slot.lastBackupAt
         ? formatRelativeDateTime(slot.lastBackupAt, now)
         : 'Never',
-      nextBackup: slot.nextBackupAt
-        ? formatRelativeDateTime(slot.nextBackupAt, now)
-        : 'Unavailable',
+      nextBackup: slot.dueNow
+        ? 'Due now'
+        : slot.nextBackupAt
+          ? formatRelativeDateTime(slot.nextBackupAt, now)
+          : 'Unavailable',
       environmentName: slot.lastBackupAt
         ? toLambdaEnvironmentName(cadence, slot.lastBackupAt)
         : 'Not yet created',

@@ -85,7 +85,8 @@ const toValidatedSlot = (
     candidate.scope !== expectedScope ||
     candidate.executionMode !== 'lambda_cron' ||
     !isIsoOrNull(candidate.lastBackupAt) ||
-    !isIsoOrNull(candidate.nextBackupAt)
+    !isIsoOrNull(candidate.nextBackupAt) ||
+    (candidate.dueNow !== undefined && typeof candidate.dueNow !== 'boolean')
   ) {
     return null;
   }
@@ -95,6 +96,7 @@ const toValidatedSlot = (
     executionMode: 'lambda_cron',
     lastBackupAt: candidate.lastBackupAt,
     nextBackupAt: candidate.nextBackupAt,
+    dueNow: candidate.dueNow === true,
   };
 };
 

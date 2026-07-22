@@ -33,6 +33,7 @@ describe('buildBackupOverviewRows', () => {
             executionMode: 'lambda_cron',
             lastBackupAt: null,
             nextBackupAt: '2026-03-05T02:05:00.000Z',
+            dueNow: true,
           },
           biweekly: {
             scope: 'biweekly',
@@ -61,6 +62,7 @@ describe('buildBackupOverviewRows', () => {
     expect(rows[1]).toMatchObject({
       scope: 'weekly',
       lastBackup: 'Never',
+      nextBackup: 'Due now',
       environmentName: 'Not yet created',
       environmentLinked: false,
     });

@@ -42,6 +42,7 @@ describe('fetchLambdaBackupStatus', () => {
                 executionMode: 'lambda_cron',
                 lastBackupAt: '2026-02-26T02:05:00.000Z',
                 nextBackupAt: '2026-02-27T02:05:00.000Z',
+                dueNow: true,
               },
               weekly: {
                 scope: 'weekly',
@@ -77,6 +78,8 @@ describe('fetchLambdaBackupStatus', () => {
 
     expect(result.scheduler.provider).toBe('vercel');
     expect(result.slots.daily.executionMode).toBe('lambda_cron');
+    expect(result.slots.daily.dueNow).toBe(true);
+    expect(result.slots.weekly.dueNow).toBe(false);
     expect(result.slots.biweekly?.scope).toBe('biweekly');
     expect(result.slots.monthly?.scope).toBe('monthly');
     expect(fetchMock).toHaveBeenCalledTimes(1);
