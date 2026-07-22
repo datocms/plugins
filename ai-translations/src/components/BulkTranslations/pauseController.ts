@@ -16,7 +16,10 @@ export type RunStatus =
   | { kind: 'running' }
   | {
       kind: 'paused';
-      reason: NormalizedProviderError;
+      /** The systemic error that paused the run; absent on a user-initiated pause. */
+      reason?: NormalizedProviderError;
+      /** What paused the run: a systemic error, or the user hitting Pause. */
+      trigger?: 'systemic' | 'manual';
       /** Epoch ms the auto-retry will fire; absent when the pause is manual. */
       resumeAt?: number;
       /** 1-based auto-retry attempt so far (0 when the pause is manual). */
@@ -35,7 +38,12 @@ export type PauseController = {
   handleSystemic: SystemicHandler;
   /** Between-unit gate: resolves `'cancelled'` once `cancel()` has been called. */
   gate: RunGate;
-  /** Releases a manual pause, continuing the run. */
+  /**
+   * User-initiated pause. Suspends the run at the next between-unit boundary (the
+   * in-flight record/locale finishes first). No-op if already cancelled or paused.
+   */
+  pause: () => void;
+  /** Releases a manual or systemic pause, continuing the run. */
   resume: () => void;
   /** Stops the run: unwinds any pending pause and marks the run cancelled. */
   cancel: () => void;
@@ -78,6 +86,8 @@ export const createPauseController = ({
 }: PauseControllerOptions): PauseController => {
   let rateLimitRetries = 0;
   let isCancelled = false;
+  let isManuallyPaused = false;
+  let releaseManualPause: (() => void) | undefined;
   let resolveManual: ((outcome: 'retry' | 'cancelled') => void) | undefined;
 
   // Resolves once `cancel()` is called, so an in-flight auto-retry countdown
@@ -105,6 +115,7 @@ export const createPauseController = ({
       const delay = computeRetryDelay(err.retryAfterMs, attempt);
       onStatus({
         kind: 'paused',
+        trigger: 'systemic',
         reason: err,
         resumeAt: nowMs() + delay,
         attempt,
@@ -115,8 +126,13 @@ export const createPauseController = ({
       return 'retry';
     }
 
-    // Manual pause: a non-rate-limit systemic error, or an exhausted budget.
-    onStatus({ kind: 'paused', reason: err, attempt: rateLimitRetries });
+    // Persisted pause: a non-rate-limit systemic error, or an exhausted budget.
+    onStatus({
+      kind: 'paused',
+      trigger: 'systemic',
+      reason: err,
+      attempt: rateLimitRetries,
+    });
     const outcome = await new Promise<'retry' | 'cancelled'>((resolve) => {
       resolveManual = resolve;
     });
@@ -126,11 +142,39 @@ export const createPauseController = ({
 
   return {
     handleSystemic,
-    gate: async () => (isCancelled ? 'cancelled' : 'continue'),
-    resume: () => settleManual('retry'),
+    gate: async () => {
+      if (isCancelled) return 'cancelled';
+      // A user pause suspends here (between units) until resume/cancel. Only one
+      // gate call is ever pending, so a single release latch is sufficient.
+      if (isManuallyPaused) {
+        await new Promise<void>((resolve) => {
+          releaseManualPause = resolve;
+        });
+        if (isCancelled) return 'cancelled';
+      }
+      return 'continue';
+    },
+    pause: () => {
+      if (isCancelled || isManuallyPaused) return;
+      isManuallyPaused = true;
+      onStatus({ kind: 'paused', trigger: 'manual', attempt: 0 });
+    },
+    resume: () => {
+      if (isManuallyPaused) {
+        isManuallyPaused = false;
+        releaseManualPause?.();
+        releaseManualPause = undefined;
+        onStatus({ kind: 'running' });
+        return;
+      }
+      settleManual('retry');
+    },
     cancel: () => {
       isCancelled = true;
+      isManuallyPaused = false;
       releaseCancelSignal?.();
+      releaseManualPause?.();
+      releaseManualPause = undefined;
       settleManual('cancelled');
       onStatus({ kind: 'cancelled' });
     },

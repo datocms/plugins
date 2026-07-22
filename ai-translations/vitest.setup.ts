@@ -44,6 +44,34 @@ vi.mock('datocms-react-ui', () => {
       formLabelProps?: unknown;
     }) => React.createElement('select', { ...rest }, children),
     Spinner: () => React.createElement('div', { 'data-testid': 'spinner' }),
+    CaretDownIcon: () =>
+      React.createElement('span', { 'data-testid': 'caret-down' }),
+    CaretUpIcon: () =>
+      React.createElement('span', { 'data-testid': 'caret-up' }),
+    // Dropdown renders its trigger + menu inline (menu always "open" in tests) so
+    // option clicks are directly assertable.
+    Dropdown: ({
+      renderTrigger,
+      children,
+    }: {
+      renderTrigger: (ctx: { open: boolean; onClick: () => void }) => React.ReactNode;
+      children?: React.ReactNode;
+    }) =>
+      React.createElement(
+        'div',
+        {},
+        renderTrigger({ open: false, onClick: () => {} }),
+        children,
+      ),
+    DropdownMenu: ({ children }: { children?: React.ReactNode }) =>
+      React.createElement('div', { role: 'menu' }, children),
+    DropdownOption: ({
+      children,
+      onClick,
+    }: {
+      children?: React.ReactNode;
+      onClick?: () => void;
+    }) => React.createElement('button', { type: 'button', onClick }, children),
     SwitchField: ({
       label,
       value,

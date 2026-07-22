@@ -104,6 +104,8 @@ export interface UnitOutcome {
   flags: CellFlag[];
   preVersion?: string;
   postVersion?: string;
+  /** The record's model id — folded onto the record for the per-model resume summary. */
+  itemTypeId?: string;
 }
 
 export type Tier = 'invariant' | 'heuristic';

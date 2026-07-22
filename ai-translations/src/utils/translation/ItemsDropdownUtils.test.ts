@@ -258,7 +258,9 @@ describe('ItemsDropdownUtils', () => {
       vi.mocked(translateFieldValue)
         .mockResolvedValueOnce('Ciao')
         .mockRejectedValueOnce(
-          new Error('Translated slug is empty after normalization'),
+          new Error(
+            "The translation produced an empty slug — slugs keep only lowercase letters, numbers, and hyphens, so a fully non-Latin translation (e.g. Japanese or Arabic) reduces to nothing. Set this locale's slug manually, or exclude the slug field from translation for these locales",
+          ),
         )
         .mockResolvedValueOnce([
           { type: 'paragraph', children: [{ text: 'Corpo' }] },
@@ -304,7 +306,7 @@ describe('ItemsDropdownUtils', () => {
         },
       ]);
       expect(result.warnings).toContain(
-        'Field "slug" to Italian [it] was skipped: Plugin error: Translated slug is empty after normalization.',
+        'Field "slug" to Italian [it] was skipped: Translation issue: The translation produced an empty slug — slugs keep only lowercase letters, numbers, and hyphens, so a fully non-Latin translation (e.g. Japanese or Arabic) reduces to nothing. Set this locale\'s slug manually, or exclude the slug field from translation for these locales.',
       );
     });
 
@@ -1279,6 +1281,74 @@ describe('ItemsDropdownUtils', () => {
   });
 
   describe('translateAndUpdateRecords', () => {
+    it('reports a missing source locale as an in-modal error update', async () => {
+      const updates: ProgressUpdate[] = [];
+      // biome-ignore lint/suspicious/noExplicitAny: minimal CMA client stub for the test
+      const client = { items: { update: vi.fn() } } as any;
+
+      // The ctx here has NO `alert` — the run's ctx type forbids it (a background
+      // alert would render behind the open modal), so a missing-source-locale
+      // record can only surface via onProgress as an in-modal error row.
+      await translateAndUpdateRecords(
+        // No `en` key: the record lacks the source locale.
+        [{ id: 'r1', item_type: { id: 'm1' }, title: { it: 'Ciao' } }],
+        client,
+        provider,
+        'en',
+        ['it'],
+        vi.fn().mockResolvedValue({
+          title: { editor: 'single_line', id: 'field-title', isLocalized: true },
+        }),
+        pluginParams,
+        { environment: 'main' },
+        'access-token',
+        { onProgress: (u) => updates.push(u) },
+      );
+
+      const finalUpdate = updates.filter((u) => u.recordId === 'r1').at(-1);
+      expect(finalUpdate?.status).toBe('error');
+      expect(finalUpdate?.warnings?.join(' ')).toMatch(
+        /does not have the source locale/i,
+      );
+    });
+
+    it('streams a live activeField progress update as each field translates', async () => {
+      vi.mocked(translateFieldValue).mockResolvedValue('Ciao');
+      const updates: ProgressUpdate[] = [];
+      const update = vi
+        .fn()
+        .mockImplementation(async (_id: string, payload: Record<string, unknown>) => ({
+          ...payload,
+          meta: { updated_at: '2026-07-08T21:00:00.000Z' },
+        }));
+      // biome-ignore lint/suspicious/noExplicitAny: minimal CMA client stub for the test
+      const client = { items: { update } } as any;
+
+      await translateAndUpdateRecords(
+        [{ id: 'r1', item_type: { id: 'm1' }, title: { en: 'Hello' } }],
+        client,
+        provider,
+        'en',
+        ['it'],
+        vi.fn().mockResolvedValue({
+          title: { editor: 'single_line', id: 'field-title', isLocalized: true },
+        }),
+        pluginParams,
+        { environment: 'main' },
+        'access-token',
+        { onProgress: (u) => updates.push(u) },
+      );
+
+      const active = updates.find((u) => u.activeField);
+      expect(active?.status).toBe('processing');
+      expect(active?.activeField?.field).toBe('title');
+      expect(active?.activeField?.sourcePreview).toBe('Hello');
+      // Once the field comes back, the same channel carries a target snippet.
+      expect(
+        updates.some((u) => u.activeField?.targetPreview === 'Ciao'),
+      ).toBe(true);
+    });
+
     it('drops a CMA-swallowed field from the report instead of claiming it was translated', async () => {
       vi.mocked(translateFieldValue).mockResolvedValue('Ciao');
       const updates: ProgressUpdate[] = [];
@@ -1301,7 +1371,7 @@ describe('ItemsDropdownUtils', () => {
           title: { editor: 'single_line', id: 'field-title', isLocalized: true },
         }),
         pluginParams,
-        { alert: vi.fn(), environment: 'main' },
+        { environment: 'main' },
         'access-token',
         { onProgress: (u) => updates.push(u) },
       );
@@ -1355,7 +1425,7 @@ describe('ItemsDropdownUtils', () => {
         ['it'],
         getFieldTypeDictionary,
         pluginParams,
-        { alert: vi.fn(), environment: 'main' },
+        { environment: 'main' },
         'access-token',
         { onProgress: (u) => updates.push(u) },
       );
@@ -1414,7 +1484,7 @@ describe('ItemsDropdownUtils', () => {
           brand: { editor: 'single_line', id: 'field-brand', isLocalized: true },
         }),
         { ...pluginParams, fieldsToCopyFromSource: ['field-brand'] },
-        { alert: vi.fn(), environment: 'main' },
+        { environment: 'main' },
         'access-token',
         { onProgress: (u) => updates.push(u) },
       );
@@ -1463,7 +1533,7 @@ describe('ItemsDropdownUtils', () => {
           title: { editor: 'single_line', id: 'field-title', isLocalized: true },
         }),
         pluginParams,
-        { alert: vi.fn(), environment: 'main' },
+        { environment: 'main' },
         'access-token',
         { onProgress: (u) => updates.push(u), gate },
       );
@@ -1505,7 +1575,7 @@ describe('ItemsDropdownUtils', () => {
           ['it'],
           getFieldTypeDictionary,
           { ...pluginParams, vendor: 'yandex' },
-          { alert: vi.fn(), environment: 'main' },
+          { environment: 'main' },
           'access-token',
         ),
       ).rejects.toThrow(/Folder ID/i);
@@ -1546,7 +1616,7 @@ describe('ItemsDropdownUtils', () => {
         ['it'],
         getFieldTypeDictionary,
         { ...pluginParams, vendor: 'yandex' },
-        { alert: vi.fn(), environment: 'main' },
+        { environment: 'main' },
         'access-token',
         { onSystemic },
       );
@@ -1583,7 +1653,7 @@ describe('ItemsDropdownUtils', () => {
         ['it'],
         getFieldTypeDictionary,
         pluginParams,
-        { alert: vi.fn(), environment: 'main' },
+        { environment: 'main' },
         'access-token',
         { onSystemic },
       );
@@ -1633,7 +1703,7 @@ describe('ItemsDropdownUtils', () => {
         ['it'],
         getFieldTypeDictionary,
         pluginParams,
-        { alert: vi.fn(), environment: 'main' },
+        { environment: 'main' },
         'access-token',
         {
           onProgress: vi.fn(),
@@ -1681,7 +1751,7 @@ describe('ItemsDropdownUtils', () => {
         ['it'],
         getFieldTypeDictionary,
         pluginParams,
-        { alert: vi.fn(), environment: 'main' },
+        { environment: 'main' },
         'access-token',
         { persist },
       );
@@ -1725,7 +1795,7 @@ describe('ItemsDropdownUtils', () => {
         ['it'],
         getFieldTypeDictionary,
         pluginParams,
-        { alert: vi.fn(), environment: 'main' },
+        { environment: 'main' },
         'access-token',
         { persist },
       );
@@ -1778,7 +1848,7 @@ describe('ItemsDropdownUtils', () => {
         ['it'],
         getFieldTypeDictionary,
         pluginParams,
-        { alert: vi.fn(), environment: 'main' },
+        { environment: 'main' },
         'access-token',
         { resume: { priorState, targets } },
       );
@@ -1815,7 +1885,7 @@ describe('ItemsDropdownUtils', () => {
         ['it'],
         vi.fn().mockResolvedValue(dict),
         pluginParams,
-        { alert: vi.fn(), environment: 'main' },
+        { environment: 'main' },
         'access-token',
         { onProgress: (u) => updates.push(u) },
       );
@@ -2047,7 +2117,7 @@ describe('ItemsDropdownUtils', () => {
             title: { editor: 'single_line', id: 'field-title', isLocalized: true },
           }),
           pluginParams,
-          { alert: vi.fn(), environment: 'main' },
+          { environment: 'main' },
           'access-token',
           {},
         );
@@ -2098,7 +2168,7 @@ describe('ItemsDropdownUtils', () => {
               title: { editor: 'single_line', id: 'field-title', isLocalized: true },
             }),
             pluginParams,
-            { alert: vi.fn(), environment: 'main' },
+            { environment: 'main' },
             'access-token',
             { onProgress: (u) => updates.push(u) },
           ),

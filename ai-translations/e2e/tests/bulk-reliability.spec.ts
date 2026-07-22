@@ -11,7 +11,12 @@ import { TIMEOUTS } from './setup/constants';
 import { step } from './setup/log';
 import { recordOutcome } from './setup/outcomes';
 import { assertLocalesPopulated, loadManifest } from './steps/assert-record';
-import { bulkPageUrl, frameWithButton, runBulkTranslation } from './steps/bulk';
+import {
+  bulkPageUrl,
+  frameWithButton,
+  progressModalFrame,
+  runBulkTranslation,
+} from './steps/bulk';
 import {
   clearFaults,
   injectAuthError,
@@ -99,7 +104,7 @@ const startBulkRun = async (
   const confirmFrame = await frameWithButton(page, /^Translate /);
   await confirmFrame.getByRole('button', { name: /^Translate / }).click();
 
-  return frameWithButton(page, /^(Close|Please wait)/);
+  return progressModalFrame(page);
 };
 
 /** The mid-run pause panel within a progress frame. */
@@ -221,25 +226,37 @@ test.describe('AI Translations — bulk reliability', () => {
       vendor,
       'pick a victim field from real seed content (CMA)',
       async () => {
-        const [product] = await client.items.list({
-          filter: { type: 'product' },
-        });
-        const stringFields = LOCALIZED_PRODUCT_FIELDS.filter((field) => {
-          const value = (product[field] as Record<string, unknown> | null)?.en;
-          return typeof value === 'string' && value.trim().length > 8;
-        });
-        expect(
-          stringFields.length,
-          'the seed needs >=2 localized string fields to fault one and translate the other',
-        ).toBeGreaterThanOrEqual(2);
-        return {
-          victimField: stringFields[0],
-          siblingField: stringFields[1],
-          // The body matcher is THIS product's source text, so the fault hits
-          // only this record's victim-field call — sibling records translate for
-          // real. Scope the "untouched/never-null" assertions to this record.
-          victimSource: (product[stringFields[0]] as Record<string, string>).en,
-        };
+        const products = await client.items.list({ filter: { type: 'product' } });
+        // Find ANY product with >=2 localized string fields whose `en` is long
+        // enough to be a reliable request-body matcher. Iterating (not just the
+        // first) keeps this robust when an earlier test in the full lane mutated
+        // some products — as long as one real seed product remains.
+        for (const product of products) {
+          const stringFields = LOCALIZED_PRODUCT_FIELDS.filter((field) => {
+            const value = (product[field] as Record<string, unknown> | null)?.en;
+            // Must be VERBATIM text: the fault matches the request body, so a JSON
+            // field (e.g. attributes_json, sent structured, not as its raw `{…}`
+            // string) would never be faulted. Exclude JSON-shaped values.
+            return (
+              typeof value === 'string' &&
+              value.trim().length > 8 &&
+              !/^\s*[{[]/.test(value)
+            );
+          });
+          if (stringFields.length >= 2) {
+            return {
+              victimField: stringFields[0],
+              siblingField: stringFields[1],
+              // The body matcher is THIS product's source text, so the fault hits
+              // only this record's victim-field call — sibling records translate
+              // for real. Scope the "untouched/never-null" assertions to it.
+              victimSource: (product[stringFields[0]] as Record<string, string>).en,
+            };
+          }
+        }
+        throw new Error(
+          'no product has >=2 localized string fields with en length > 8 (seed regressed?)',
+        );
       },
     );
 
@@ -344,9 +361,17 @@ test.describe('AI Translations — bulk reliability', () => {
       ).toHaveText(CANCEL_WARNING);
     });
 
-    await step(vendor, 'cancel closes the run', async () => {
+    await step(vendor, 'cancel stops the run but keeps the report open', async () => {
       await pausePanel(frame).getByRole('button', { name: 'Cancel' }).click();
-      await expect.poll(() => isPauseGone(page), { timeout: TIMEOUTS.one_min }).toBe(true);
+      // Cancel no longer closes the modal — the pause panel is replaced by a
+      // terminal 'cancelled' state so partial results stay reviewable + exportable.
+      await expect
+        .poll(() => isPauseGone(page), { timeout: TIMEOUTS.one_min })
+        .toBe(true);
+      await expect(
+        frame.getByRole('button', { name: 'Close', exact: true }),
+        'Cancel leaves the modal open in a cancelled state offering Close',
+      ).toBeVisible({ timeout: TIMEOUTS.thirty_sec });
     });
   });
 
@@ -484,7 +509,7 @@ test.describe('AI Translations — bulk reliability', () => {
     });
   });
 
-  test('Export CSV is disabled mid-run and while paused, enabled once complete', async ({
+  test('Export CSV is hidden mid-run and while paused, shown once complete', async ({
     page,
   }) => {
     const { vendor } = meta();
@@ -504,15 +529,17 @@ test.describe('AI Translations — bulk reliability', () => {
     );
     const exportButton = frame.getByRole('button', { name: /export csv/i });
 
-    await step(vendor, 'Export is disabled while the run is paused', async () => {
+    await step(vendor, 'Export is HIDDEN while the run is paused', async () => {
       await expect(pausePanel(frame)).toBeVisible({ timeout: TIMEOUTS.one_min });
+      // A paused run is not a finished run — Export isn't offered at all (a greyed
+      // control just clutters the footer; the report doesn't exist yet).
       await expect(
         exportButton,
-        'a paused run is not a finished run — its CSV would be misleadingly partial',
-      ).toBeDisabled();
+        'Export must not be rendered until the run is terminal',
+      ).toHaveCount(0);
     });
 
-    await step(vendor, 'Export is enabled once the run completes', async () => {
+    await step(vendor, 'Export appears and is enabled once the run completes', async () => {
       const close = frame.getByRole('button', { name: 'Close', exact: true });
       await expect(close).toBeEnabled({ timeout: TIMEOUTS.five_min });
       await expect(exportButton, 'a completed run offers its report').toBeEnabled();
@@ -620,27 +647,23 @@ test.describe('AI Translations — bulk reliability', () => {
 
     const progress = await step(
       vendor,
-      'reopen → the Resume prompt appears → Resume',
+      'reopen → the resume banner appears up-front → Resume',
       async () => {
         await page.goto(await bulkPageUrl(meta()), {
           waitUntil: 'domcontentloaded',
         });
         await page.waitForTimeout(3000);
         const f = bulkFrame(page);
-        await selectByCode(f, 2, 'catalog_entry');
-        await f
-          .getByText(/Fields to translate/i)
-          .waitFor({ timeout: TIMEOUTS.thirty_sec });
-        await selectByCode(f, 1, 'fr');
-        await selectByCode(f, 3, 'title');
-        await f
-          .getByRole('button', { name: /start bulk translation/i })
-          .click();
-        const confirmFrame = await frameWithButton(page, /^Translate /);
-        await confirmFrame.getByRole('button', { name: /^Translate / }).click();
-        // The resume prompt is a native dashboard openConfirm (page-level, not an iframe).
-        await page.getByRole('button', { name: 'Resume' }).click();
-        return frameWithButton(page, /^(Close|Please wait)/);
+        // The interrupted run is detected ON MOUNT and surfaced as a banner BEFORE
+        // any re-picking; its one-click Resume restores the selection and re-runs
+        // only the unfinished units (Summer), with no picker/confirm round-trip.
+        const resumeBtn = f.getByRole('button', { name: 'Resume' });
+        await expect(
+          resumeBtn,
+          'the resume banner should surface the interrupted run on load',
+        ).toBeVisible({ timeout: TIMEOUTS.thirty_sec });
+        await resumeBtn.click();
+        return progressModalFrame(page);
       },
     );
 

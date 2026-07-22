@@ -269,6 +269,29 @@ export function defaultFieldSelection(fields: TranslatableField[]): string[] {
 }
 
 /**
+ * Resolves selected api_keys to their field objects **in the order the user
+ * picked them**, dropping any key with no matching field. The picker stores the
+ * selection in click order; rendering must not re-impose schema-layout order, so
+ * callers map through this instead of filtering the layout-ordered field list.
+ *
+ * @param selectedApiKeys - Selected api_keys in click/selection order.
+ * @param fields - The model's translatable fields (any order).
+ * @returns The matching fields, preserving `selectedApiKeys` order.
+ */
+export function orderSelectedFields<T extends { apiKey: string }>(
+  selectedApiKeys: string[],
+  fields: T[],
+): T[] {
+  const byKey = new Map(fields.map((f) => [f.apiKey, f]));
+  const result: T[] = [];
+  for (const key of selectedApiKeys) {
+    const field = byKey.get(key);
+    if (field) result.push(field);
+  }
+  return result;
+}
+
+/**
  * Removes entries from a model-keyed map for models the user just deselected.
  *
  * Pure: returns a new object rather than mutating the input. Avoids unbounded

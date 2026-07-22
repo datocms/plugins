@@ -14,9 +14,44 @@ import {
   decideResume,
   policyDigest,
   type ResumeTarget,
+  type RunState,
   type RunStore,
 } from '../engine/report';
 import type { ctxParamsType } from '../entrypoints/Config/ConfigScreen';
+
+/** A compatible interrupted run, ready to surface inline or resume. */
+export type ResumableRun = {
+  runId: string;
+  priorState: RunState;
+  targets: ResumeTarget[];
+};
+
+const digestFor = (pluginParams: ctxParamsType): string =>
+  policyDigest({
+    excludedTokens: pluginParams.apiKeysToBeExcludedFromThisPlugin ?? [],
+    copyTokens: pluginParams.fieldsToCopyFromSource ?? [],
+  });
+
+/**
+ * Non-interactive early detection: returns the resumable prior run (if any)
+ * WITHOUT prompting, so a caller can surface it inline the moment the bulk
+ * screen loads — instead of only discovering it after the user has re-picked
+ * records and fields. Same policy-compatibility gate as
+ * {@link resolveResumeSelection}. Best-effort: any store error yields `null`.
+ */
+export const detectResumableRun = async (
+  pluginParams: ctxParamsType,
+  store: RunStore = createIndexedDBRunStore(),
+): Promise<ResumableRun | null> => {
+  const prior = await store.latest().catch(() => null);
+  const decision = decideResume(prior, digestFor(pluginParams));
+  if (decision.kind !== 'resumable') return null;
+  return {
+    runId: decision.priorState.runId,
+    priorState: decision.priorState,
+    targets: decision.targets,
+  };
+};
 
 /** The subset of a DatoCMS ctx this helper needs (any opener ctx satisfies it). */
 type ConfirmCtx = {

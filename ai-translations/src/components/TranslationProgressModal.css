@@ -101,8 +101,9 @@
 .TranslationProgressModal__update-item {
   padding: 8px 0;
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
   font-size: var(--font-size-s);
   color: var(--color--ink);
   text-align: left;
@@ -111,6 +112,13 @@
 
 .TranslationProgressModal__update-item:first-child {
   border-top: 0;
+}
+
+/* The header line: status icon, message, and the expand disclosure. */
+.TranslationProgressModal__row-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .TranslationProgressModal__update-status {
@@ -167,32 +175,85 @@ a.TranslationProgressModal__record-link {
   font-weight: var(--font-weight-bold);
 }
 
+/* Expand/collapse disclosure for a flagged row's detail. */
+.TranslationProgressModal__detail-toggle {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 4px;
+  border: 0;
+  background: transparent;
+  color: var(--color--ink-subtle);
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.TranslationProgressModal__detail-toggle:hover {
+  color: var(--color--ink);
+  background-color: var(--color--light-bg-color);
+}
+
 /*
- * Per-row warning tooltip. Rendered with position:fixed at JS-measured
- * coordinates so it escapes the scrollable updates container instead of being
- * clipped by it.
+ * Per-row detail panel: the full per-field/per-locale reasons, revealed inline
+ * on click. Indented to align under the message and capped with an internal
+ * scroll so a record that failed across many locales can't push the whole list
+ * off-screen.
  */
-.TranslationProgressModal__tooltip {
-  position: fixed;
-  z-index: 100;
-  max-width: min(560px, 80vw);
+.TranslationProgressModal__detail {
+  margin: 0 0 0 28px;
+  padding: 8px 10px;
+  list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 8px 10px;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
   background-color: var(--color--warning-soft--surface);
   color: var(--color--warning-soft--ink);
   border: 1px solid var(--color--warning-soft--border);
   border-radius: 6px;
-  box-shadow: 0 6px 18px rgb(0 0 0 / 25%);
-  font-size: var(--font-size-s);
   font-weight: var(--font-weight-regular);
   line-height: 1.4;
-  pointer-events: none;
 }
 
-.TranslationProgressModal__tooltip-line {
+.TranslationProgressModal__detail-line {
   display: block;
+  overflow-wrap: anywhere;
+}
+
+/* Transient "now translating …" sub-line under an in-progress record. */
+.TranslationProgressModal__active-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 28px;
+  font-size: var(--font-size-xs, 12px);
+  color: var(--color--ink-subtle);
+  min-width: 0;
+}
+
+.TranslationProgressModal__active-field-key {
+  flex: 0 0 auto;
+  font-family: var(--font-family-mono, monospace);
+  color: var(--color--ink);
+}
+
+.TranslationProgressModal__active-field-src,
+.TranslationProgressModal__active-field-tgt {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 40%;
+}
+
+.TranslationProgressModal__active-field-tgt {
+  color: var(--color--ink);
+}
+
+.TranslationProgressModal__active-field-arrow {
+  flex: 0 0 auto;
+  opacity: 0.6;
 }
 
 .TranslationProgressModal__initializing {

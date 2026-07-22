@@ -6,21 +6,60 @@
  * and why". Presentational and ctx-free: it operates purely on report rows.
  */
 
+import {
+  Button,
+  CaretDownIcon,
+  CaretUpIcon,
+  Dropdown,
+  DropdownMenu,
+  DropdownOption,
+} from 'datocms-react-ui';
 import { useMemo } from 'react';
 import { downloadTextFile } from '../../utils/downloadTextFile';
 import {
   type BulkReportRow,
   toBulkReportCsv,
   toBulkReportJson,
+  toBulkReportPlaintext,
 } from '../../utils/translation/bulkReport';
 import s from './BulkTranslationReport.module.css';
 
 type Props = {
+  /**
+   * Report rows, each optionally carrying a `machineReadableStatus` token
+   * (filled by `withMachineTokens` from the run's RunState) — the CSV and JSON
+   * exports carry it as the machine-readable column.
+   */
   rows: BulkReportRow[];
   onClose: () => void;
   /** Optional toast/notice after a successful copy (e.g. `ctx.notice`). */
   onCopied?: (message: string) => void;
 };
+
+type ReportFormat = 'plaintext' | 'csv' | 'json';
+
+const FORMAT_META: Record<
+  ReportFormat,
+  { label: string; filename: string; mime: string }
+> = {
+  plaintext: {
+    label: 'Plaintext',
+    filename: 'translation-report.txt',
+    mime: 'text/plain;charset=utf-8',
+  },
+  csv: {
+    label: 'CSV',
+    filename: 'translation-report.csv',
+    mime: 'text/csv;charset=utf-8',
+  },
+  json: {
+    label: 'JSON',
+    filename: 'translation-report.json',
+    mime: 'application/json',
+  },
+};
+
+const FORMAT_ORDER: ReportFormat[] = ['plaintext', 'csv', 'json'];
 
 /**
  * Renders the "Record" cell: the editor-friendly title (falling back to the
@@ -54,20 +93,33 @@ function RecordCell({ row }: { row: BulkReportRow }) {
 }
 
 export function BulkTranslationReport({ rows, onClose, onCopied }: Props) {
-  const csv = useMemo(() => toBulkReportCsv(rows), [rows]);
-  const json = useMemo(() => toBulkReportJson(rows), [rows]);
+  // CSV/JSON carry the human report plus each row's machine-readable token
+  // (already on the rows); Plaintext is the human summary.
+  const contentFor = useMemo(() => {
+    const csv = toBulkReportCsv(rows);
+    const json = toBulkReportJson(rows);
+    const plaintext = toBulkReportPlaintext(rows);
+    return (format: ReportFormat): string =>
+      format === 'plaintext' ? plaintext : format === 'csv' ? csv : json;
+  }, [rows]);
+
   const recordCount = useMemo(
     () => new Set(rows.map((r) => r.recordId)).size,
     [rows],
   );
 
-  const handleCopy = async () => {
+  const handleCopy = async (format: ReportFormat) => {
     try {
-      await navigator.clipboard?.writeText(csv);
-      onCopied?.('Report copied to clipboard');
+      await navigator.clipboard?.writeText(contentFor(format));
+      onCopied?.(`Report copied as ${FORMAT_META[format].label}`);
     } catch {
-      // Clipboard access can be blocked in the iframe; downloads still work.
+      // Clipboard access can be blocked in the iframe; the Export menu still works.
     }
+  };
+
+  const handleExport = (format: ReportFormat) => {
+    const { filename, mime } = FORMAT_META[format];
+    downloadTextFile(filename, mime, contentFor(format));
   };
 
   return (
@@ -79,35 +131,49 @@ export function BulkTranslationReport({ rows, onClose, onCopied }: Props) {
           translations
         </div>
         <div className={s.actions}>
-          <button type="button" className={s.btn} onClick={handleCopy}>
-            Copy
-          </button>
-          <button
-            type="button"
-            className={s.btn}
-            onClick={() =>
-              downloadTextFile(
-                'translation-report.csv',
-                'text/csv;charset=utf-8',
-                csv,
-              )
-            }
+          <Dropdown
+            renderTrigger={({ open, onClick }) => (
+              <Button
+                type="button"
+                buttonSize="s"
+                onClick={onClick}
+                rightIcon={open ? <CaretUpIcon /> : <CaretDownIcon />}
+              >
+                Copy report as
+              </Button>
+            )}
           >
-            Download CSV
-          </button>
-          <button
-            type="button"
-            className={s.btn}
-            onClick={() =>
-              downloadTextFile(
-                'translation-report.json',
-                'application/json',
-                json,
-              )
-            }
+            <DropdownMenu>
+              {FORMAT_ORDER.map((format) => (
+                <DropdownOption
+                  key={format}
+                  onClick={() => void handleCopy(format)}
+                >
+                  {FORMAT_META[format].label}
+                </DropdownOption>
+              ))}
+            </DropdownMenu>
+          </Dropdown>
+          <Dropdown
+            renderTrigger={({ open, onClick }) => (
+              <Button
+                type="button"
+                buttonSize="s"
+                onClick={onClick}
+                rightIcon={open ? <CaretUpIcon /> : <CaretDownIcon />}
+              >
+                Export report as
+              </Button>
+            )}
           >
-            Download JSON
-          </button>
+            <DropdownMenu>
+              {FORMAT_ORDER.map((format) => (
+                <DropdownOption key={format} onClick={() => handleExport(format)}>
+                  {FORMAT_META[format].label}
+                </DropdownOption>
+              ))}
+            </DropdownMenu>
+          </Dropdown>
           <button
             type="button"
             className={s.btnGhost}

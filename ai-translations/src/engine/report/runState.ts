@@ -23,6 +23,9 @@ export interface RunUnitState {
 
 export interface RunRecordState {
   recordId: string;
+  /** The record's model id — enables the per-model resume summary. Optional for
+   *  back-compat with artifacts written before it was captured. */
+  itemTypeId?: string;
   sourceVersion?: string;
   writtenVersion?: string;
   units: RunUnitState[];
@@ -39,6 +42,8 @@ export interface RunState {
   policyDigest: string;
   fromLocale: string;
   toLocales: string[];
+  /** The per-model field allowlist the run used — restored into the picker on resume. */
+  selectedFieldsByModel?: Record<string, string[]>;
   records: RunRecordState[];
 }
 
@@ -51,6 +56,7 @@ export interface RunContext {
   policyDigest: string;
   fromLocale: string;
   toLocales: string[];
+  selectedFieldsByModel?: Record<string, string[]>;
 }
 
 /** Creates an empty RunState for a new run. */
@@ -65,6 +71,7 @@ export function createRunState(ctx: RunContext): RunState {
     policyDigest: ctx.policyDigest,
     fromLocale: ctx.fromLocale,
     toLocales: ctx.toLocales,
+    selectedFieldsByModel: ctx.selectedFieldsByModel,
     records: [],
   };
 }
@@ -101,6 +108,7 @@ export function foldOutcome(
   if (index === -1) {
     const record: RunRecordState = {
       recordId: outcome.recordId,
+      itemTypeId: outcome.itemTypeId,
       sourceVersion: outcome.preVersion,
       writtenVersion: outcome.postVersion,
       units: [unit],
@@ -116,6 +124,7 @@ export function foldOutcome(
       : existing.units.map((u, i) => (i === unitIndex ? unit : u));
   const updated: RunRecordState = {
     ...existing,
+    itemTypeId: outcome.itemTypeId ?? existing.itemTypeId,
     sourceVersion: outcome.preVersion ?? existing.sourceVersion,
     writtenVersion: outcome.postVersion ?? existing.writtenVersion,
     units,

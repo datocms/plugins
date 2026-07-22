@@ -10,6 +10,11 @@
  */
 
 import {
+  machineTokenForUnit,
+  type RunState,
+  type RunUnitState,
+} from '../../engine/report';
+import {
   type ProgressStatus,
   type ProgressUpdate,
   QC_WARNING_PREFIXES,
@@ -33,6 +38,12 @@ export type BulkReportRow = {
   checkId: string;
   /** Human-readable reason. */
   reason: string;
+  /**
+   * The checksummed, re-importable machine token for this row's (record, locale)
+   * unit — filled by {@link withMachineTokens} from the run's RunState. Absent
+   * when no RunState is available (e.g. a report rebuilt purely from progress).
+   */
+  machineReadableStatus?: string;
 };
 
 /** Fields shared by every row derived from the same record. */
@@ -176,8 +187,19 @@ export function buildBulkReportRows(
     });
 }
 
-const CSV_HEADER =
-  'Record ID,Record title,Edit URL,Status,Field,Locale,Severity,Check,Reason';
+const CSV_COLUMNS = [
+  'Record ID',
+  'Record title',
+  'Edit URL',
+  'Status',
+  'Field',
+  'Locale',
+  'Severity',
+  'Check',
+  'Reason',
+  'Machine readable status',
+] as const;
+const CSV_HEADER = CSV_COLUMNS.join(',');
 
 /**
  * Escapes a single CSV cell per RFC 4180 (quote-wrap when needed) and
@@ -210,6 +232,7 @@ export function toBulkReportCsv(rows: BulkReportRow[]): string {
       r.severity,
       r.checkId,
       r.reason,
+      r.machineReadableStatus ?? '',
     ]
       .map(csvCell)
       .join(','),
@@ -220,4 +243,108 @@ export function toBulkReportCsv(rows: BulkReportRow[]): string {
 /** Serializes report rows to pretty-printed JSON. */
 export function toBulkReportJson(rows: BulkReportRow[]): string {
   return JSON.stringify(rows, null, 2);
+}
+
+/** Splits one RFC-4180 CSV line into cells, honoring quoted fields. */
+function parseCsvLine(line: string): string[] {
+  const cells: string[] = [];
+  let cell = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+    if (inQuotes) {
+      if (char === '"') {
+        if (line[i + 1] === '"') {
+          cell += '"';
+          i += 1;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        cell += char;
+      }
+    } else if (char === '"') {
+      inQuotes = true;
+    } else if (char === ',') {
+      cells.push(cell);
+      cell = '';
+    } else {
+      cell += char;
+    }
+  }
+  cells.push(cell);
+  return cells;
+}
+
+/**
+ * Parses a report CSV (as produced by {@link toBulkReportCsv}) back into rows —
+ * the import side of the report round-trip. Unknown/extra columns are ignored;
+ * the machine token column is preserved so a re-import stays re-exportable.
+ */
+export function fromBulkReportCsv(csv: string): BulkReportRow[] {
+  const lines = csv.split(/\r?\n/).filter((line) => line.length > 0);
+  if (lines.length <= 1) return [];
+  return lines.slice(1).map((line) => {
+    const c = parseCsvLine(line);
+    return {
+      recordId: c[0] ?? '',
+      recordTitle: c[1] || undefined,
+      editUrl: c[2] || undefined,
+      status: (c[3] ?? 'error') as ProgressStatus,
+      fieldPath: c[4] ?? '',
+      locale: c[5] ?? '',
+      severity: c[6] ?? '',
+      checkId: c[7] ?? '',
+      reason: c[8] ?? '',
+      machineReadableStatus: c[9] || undefined,
+    };
+  });
+}
+
+/**
+ * Enriches report rows with the checksummed machine token for each row's
+ * (record, locale) unit, read from the run's RunState. This is the
+ * "machine-readable column" the CSV/JSON exports carry — a re-importable anchor
+ * validatable from that single cell. Rows whose unit isn't in the RunState (or
+ * when no RunState is given) pass through unchanged.
+ */
+export function withMachineTokens(
+  rows: BulkReportRow[],
+  runState?: RunState,
+): BulkReportRow[] {
+  if (!runState) return rows;
+  const units = new Map<string, RunUnitState>();
+  for (const record of runState.records) {
+    for (const unit of record.units) {
+      units.set(`${record.recordId}::${unit.toLocale}`, unit);
+    }
+  }
+  return rows.map((row) => {
+    const unit = units.get(`${row.recordId}::${row.locale}`);
+    if (!unit) return row;
+    try {
+      return { ...row, machineReadableStatus: machineTokenForUnit(row.recordId, unit) };
+    } catch {
+      return row;
+    }
+  });
+}
+
+/**
+ * Renders the report as a human-readable plaintext block — the "Copy/Export as
+ * Plaintext" format, for pasting into a ticket or chat. One line per issue,
+ * severity-prefixed, with the record title, field, locale, and reason.
+ */
+export function toBulkReportPlaintext(rows: BulkReportRow[]): string {
+  if (rows.length === 0) return 'No issues to report.';
+  const recordCount = new Set(rows.map((r) => r.recordId)).size;
+  const header = `${rows.length} issue${rows.length === 1 ? '' : 's'} across ${recordCount} record${recordCount === 1 ? '' : 's'} — review before relying on these translations:`;
+  const lines = rows.map((r) => {
+    const title = r.recordTitle || r.recordId;
+    const field = r.fieldPath ? ` "${r.fieldPath}"` : '';
+    const locale = r.locale ? ` [${r.locale}]` : '';
+    const severity = (r.severity || 'note').toUpperCase();
+    return `- ${severity} — ${title}${field}${locale}: ${r.reason}`;
+  });
+  return [header, '', ...lines].join('\n');
 }

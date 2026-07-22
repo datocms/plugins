@@ -66,7 +66,10 @@ export function isNormalizedError(err: unknown): err is NormalizedError {
 const SOURCE_LABEL_ENTRIES: Array<[ErrorSource, string]> = [
   ['provider', 'Translation provider error'],
   ['datocms', 'DatoCMS error'],
-  ['plugin', 'Plugin error'],
+  // Not always a plugin *bug* — this bucket also covers content situations (e.g.
+  // a translation that normalizes to an empty slug), so a neutral "Translation
+  // issue" label reads correctly for both, unlike an alarming "Plugin error".
+  ['plugin', 'Translation issue'],
 ];
 
 /**

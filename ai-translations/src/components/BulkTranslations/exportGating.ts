@@ -15,3 +15,13 @@ export const isExportEnabled = (
 ): boolean =>
   processedCount > 0 &&
   (status.kind === 'completed' || status.kind === 'cancelled');
+
+/**
+ * Whether the Export button should be RENDERED at all. It is offered only once
+ * the run is terminal — showing a greyed-out Export mid-run (the previous
+ * behaviour) just clutters the footer with a dead control. Distinct from
+ * {@link isExportEnabled}, which governs the clickable/disabled state of a
+ * terminal-but-empty run (cancelled before any record produced a row).
+ */
+export const isExportVisible = (status: RunStatus): boolean =>
+  status.kind === 'completed' || status.kind === 'cancelled';

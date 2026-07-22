@@ -559,7 +559,9 @@ export async function translateFieldValue(
   if (fieldType === 'slug') {
     const normalizedSlug = normalizeTranslatedSlug(translatedValue);
     if (!normalizedSlug) {
-      throw new Error('Translated slug is empty after normalization');
+      throw new Error(
+        "The translation produced an empty slug — slugs keep only lowercase letters, numbers, and hyphens, so a fully non-Latin translation (e.g. Japanese or Arabic) reduces to nothing. Set this locale's slug manually, or exclude the slug field from translation for these locales",
+      );
     }
     logger.info('Translated field payload', {
       fieldType,

@@ -8,6 +8,7 @@ import {
   QC_WARNING_NOTE_LABEL,
   RUN_CANCELLED,
   buildTranslatedUpdatePayload,
+  type FieldProgressEvent,
 } from '../../engine';
 import { createSlotScheduler } from '../../engine/slotScheduler';
 import {
@@ -346,6 +347,17 @@ export type ProgressUpdate = {
   recordLabel?: string;
   /** Item type id of the record, used to build a link to its editor. */
   itemTypeId?: string;
+  /**
+   * The field currently being translated + short source/target snippets, for the
+   * transient "now translating …" line under an in-progress record. Only set on
+   * `processing` updates; cleared once the record settles.
+   */
+  activeField?: {
+    field: string;
+    toLocale: string;
+    sourcePreview: string;
+    targetPreview?: string;
+  };
   /** CMA `updated_at` of the record after the write. */
   updatedAt?: string;
   /** API keys of fields that were AI-translated on this record. */
@@ -776,6 +788,34 @@ function buildRecordUpdateBody(
 }
 
 /**
+ * Builds the live per-field progress reporter for one record. Module-level (not
+ * nested in the per-record loop) so it adds no cognitive complexity there; the
+ * {@link FieldProgressEvent} carries its own target locale, so the returned
+ * function is passed straight to the engine's `onFieldProgress`.
+ */
+function makeFieldProgressReporter(
+  updateProgress: (update: ProgressUpdate) => void,
+  base: {
+    recordIndex: number;
+    recordId: string;
+    recordLabel: string;
+    itemTypeId: string;
+  },
+): (event: FieldProgressEvent) => void {
+  return (event) =>
+    updateProgress({
+      recordIndex: base.recordIndex,
+      recordId: base.recordId,
+      status: 'processing',
+      message: `Translating "${base.recordLabel}" (#${base.recordId}) to ${formatLocaleWithCode(event.toLocale)}…`,
+      statusText: `Translating to ${formatLocaleWithCode(event.toLocale)}…`,
+      recordLabel: base.recordLabel,
+      itemTypeId: base.itemTypeId,
+      activeField: event,
+    });
+}
+
+/**
  * Translates and updates a list of records using CMA, reporting progress
  * via callbacks and supporting cancellation.
  *
@@ -803,8 +843,11 @@ export async function translateAndUpdateRecords(
   toLocales: string[],
   getFieldTypeDictionary: (itemTypeId: string) => Promise<FieldTypeDictionary>,
   pluginParams: ctxParamsType,
+  // The run reports ONLY via `options.onProgress` into the modal — it must never
+  // message the user directly (a ctx.alert renders behind the open modal and
+  // hangs, per the no-nested-modals rule). Dropping `alert` from this type makes
+  // that a compile error. The caller owns all user-facing messaging.
   ctx: {
-    alert: (msg: string) => void;
     environment: string;
     cmaBaseUrl?: string;
   },
@@ -871,6 +914,8 @@ export async function translateAndUpdateRecords(
         policyDigest: policyDigest(runPolicy),
         fromLocale,
         toLocales,
+        // Persist the field allowlist so a resume can restore the picker exactly.
+        selectedFieldsByModel: options.selectedFieldsByModel,
       });
 
   // Seed every intended unit as not-attempted so an interrupted run can resume the
@@ -884,6 +929,7 @@ export async function translateAndUpdateRecords(
           runState,
           {
             recordId: record.id,
+            itemTypeId: record.item_type.id,
             toLocale,
             bucket: 'not-attempted',
             reasons: [],
@@ -903,6 +949,7 @@ export async function translateAndUpdateRecords(
    * payload back with a single CMA update so each record is touched at
    * most once.
    */
+  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: the per-record orchestrator (translate every locale → aggregate → conform → single CMA write) is inherently branchy; splitting it would scatter the atomic-write invariant across helpers.
   async function translateAndSaveRecord(
     record: DatoCMSRecordFromAPI,
     recordIndex: number,
@@ -912,6 +959,16 @@ export async function translateAndUpdateRecords(
       record.item_type.id,
     );
     const itemTypeId = record.item_type.id;
+
+    // Live per-field progress → a transient "now translating …" sub-line on the
+    // record's row. Built by a module-level factory so this per-record function
+    // stays flat; the event carries its own locale, so it's a direct reference.
+    const reportFieldProgress = makeFieldProgressReporter(updateProgress, {
+      recordIndex,
+      recordId: record.id,
+      recordLabel,
+      itemTypeId,
+    });
     // Resume-aware: the locales still to run for THIS record (all of them on a
     // normal run). Drives both the per-locale loop and the plan build, so the
     // write body carries only the (re-)translated locales — already-done locales
@@ -982,6 +1039,8 @@ export async function translateAndUpdateRecords(
           scheduler,
           sleep: options.sleep,
           selectedFieldsByModel: options.selectedFieldsByModel,
+          // Live per-field progress → a transient sub-line on the record's row.
+          onFieldProgress: reportFieldProgress,
         },
         schemaRepository,
         ctx.cmaBaseUrl,
@@ -1436,7 +1495,9 @@ export async function translateAndUpdateRecords(
       if (!hasKeyDeep(record as Record<string, unknown>, fromLocale)) {
         const errorMsg = `Record "${recordLabel}" (#${record.id}) does not have the source locale ${formatLocaleWithCode(fromLocale)}`;
         console.error(`Record ${record.id} ${errorMsg}`);
-        ctx.alert(`Error: Record ID ${record.id} ${errorMsg}`);
+        // Do NOT ctx.alert here: this runs while the progress modal is open, so
+        // an alert renders (and hangs) behind it. The error update below surfaces
+        // the same detail as an in-modal per-record error row.
         updateProgress({
           recordIndex,
           recordId: record.id,

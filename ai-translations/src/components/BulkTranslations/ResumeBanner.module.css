@@ -1,0 +1,64 @@
+.banner {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  border: 1px solid var(--color--primary-soft--border, var(--border-color));
+  border-radius: 8px;
+  background-color: var(--color--primary-soft--surface, var(--light-bg-color));
+  color: var(--color--ink);
+}
+
+.icon {
+  flex: 0 0 auto;
+  color: var(--color--ink-primary);
+  margin-top: 2px;
+}
+
+.body {
+  flex: 1;
+  min-width: 0;
+}
+
+.title {
+  font-weight: var(--font-weight-bold);
+  margin-bottom: 4px;
+}
+
+.summary {
+  font-size: var(--font-size-s);
+  margin-bottom: 8px;
+}
+
+.models {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: var(--font-size-s);
+}
+
+.modelRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.modelName {
+  font-weight: var(--font-weight-bold);
+}
+
+.modelStat {
+  color: var(--color--ink-subtle);
+  white-space: nowrap;
+}
+
+.actions {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}

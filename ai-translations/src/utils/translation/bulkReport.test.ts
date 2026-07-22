@@ -7,9 +7,13 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  type BulkReportRow,
   buildBulkReportRows,
+  fromBulkReportCsv,
   toBulkReportCsv,
   toBulkReportJson,
+  toBulkReportPlaintext,
+  withMachineTokens,
 } from './bulkReport';
 import type { ProgressUpdate } from './ItemsDropdownUtils';
 
@@ -310,7 +314,7 @@ describe('toBulkReportCsv', () => {
     ]);
     const lines = csv.split('\n');
     expect(lines[0]).toBe(
-      'Record ID,Record title,Edit URL,Status,Field,Locale,Severity,Check,Reason',
+      'Record ID,Record title,Edit URL,Status,Field,Locale,Severity,Check,Reason,Machine readable status',
     );
     // The reason has a comma and quotes → must be wrapped and quotes doubled.
     expect(lines[1]).toContain('"Too long, ""way"" too long"');
@@ -332,5 +336,116 @@ describe('toBulkReportJson', () => {
       },
     ];
     expect(JSON.parse(toBulkReportJson(rows))).toEqual(rows);
+  });
+});
+
+describe('withMachineTokens', () => {
+  const runState = {
+    schemaVersion: 1,
+    runId: 'run-1',
+    checkpoint: 1,
+    deviceId: 'd',
+    startedAt: 0,
+    operation: 'translate',
+    policyDigest: 'pd',
+    fromLocale: 'en',
+    toLocales: ['it'],
+    records: [
+      {
+        recordId: '42',
+        itemTypeId: 'm1',
+        units: [
+          {
+            toLocale: 'fr',
+            bucket: 'blocked' as const,
+            reasons: [{ fieldPath: 'title', code: 'required-blank' as const }],
+            flagCheckIds: [],
+            updatedAt: 0,
+          },
+        ],
+      },
+    ],
+  };
+
+  const rows: BulkReportRow[] = [
+    {
+      recordId: '42',
+      status: 'error',
+      fieldPath: 'title',
+      locale: 'fr',
+      severity: 'error',
+      checkId: 'required-blank',
+      reason: 'x',
+    },
+    {
+      recordId: '99',
+      status: 'error',
+      fieldPath: 'title',
+      locale: 'fr',
+      severity: 'error',
+      checkId: 'x',
+      reason: 'y',
+    },
+  ];
+
+  it('fills the machine token for a row whose unit is in the RunState', () => {
+    const [matched, unmatched] = withMachineTokens(rows, runState);
+    expect(matched.machineReadableStatus).toMatch(/^v1:/);
+    // A row with no matching unit is unchanged.
+    expect(unmatched.machineReadableStatus).toBeUndefined();
+  });
+
+  it('passes rows through unchanged when no RunState is given', () => {
+    expect(withMachineTokens(rows)).toEqual(rows);
+  });
+});
+
+describe('fromBulkReportCsv', () => {
+  it('round-trips rows (incl. the machine token) through toBulkReportCsv', () => {
+    const rows: BulkReportRow[] = [
+      {
+        recordId: '42',
+        recordTitle: 'Backpack, "the" one',
+        status: 'error',
+        fieldPath: 'title',
+        locale: 'fr',
+        severity: 'error',
+        checkId: 'length-validator',
+        reason: 'Too long',
+        machineReadableStatus: 'v1:abc-_',
+      },
+    ];
+    const back = fromBulkReportCsv(toBulkReportCsv(rows));
+    expect(back).toHaveLength(1);
+    expect(back[0].recordId).toBe('42');
+    expect(back[0].recordTitle).toBe('Backpack, "the" one');
+    expect(back[0].reason).toBe('Too long');
+    expect(back[0].machineReadableStatus).toBe('v1:abc-_');
+  });
+});
+
+describe('toBulkReportPlaintext', () => {
+  it('summarizes rows as a human-readable list', () => {
+    const text = toBulkReportPlaintext([
+      {
+        recordId: '42',
+        status: 'error',
+        recordTitle: 'Backpack',
+        fieldPath: 'badge',
+        locale: 'es',
+        severity: 'error',
+        checkId: 'length-validator',
+        reason: 'Too long',
+      },
+    ]);
+    expect(text).toMatch(/1 issue.*across 1 record/i);
+    expect(text).toMatch(/Backpack/);
+    expect(text).toMatch(/badge/);
+    expect(text).toMatch(/es/);
+    expect(text).toMatch(/Too long/);
+  });
+
+  it('handles an empty report', () => {
+    expect(toBulkReportPlaintext([])).toMatch(/no issues/i);
   });
 });

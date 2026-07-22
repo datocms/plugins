@@ -15,7 +15,8 @@ import {
   type SchemaRepository,
 } from '../utils/schemaRepository';
 import { LocaleChip } from './BulkTranslations/LocaleChip';
-import { isExportEnabled } from './BulkTranslations/exportGating';
+import { isExportEnabled, isExportVisible } from './BulkTranslations/exportGating';
+import { footerPrimary } from './BulkTranslations/footerState';
 import { PausePanel } from './BulkTranslations/PausePanel';
 import {
   createPauseController,
@@ -282,6 +283,9 @@ export default function TranslationProgressModal({
   );
   const abortRef = useRef<AbortController | null>(null);
   const updatesRef = useRef<HTMLDivElement | null>(null);
+  // The latest RunState the run produced — resolved to the page so its report can
+  // export the machine-readable CSV/JSON (the re-importable, checksummed artifact).
+  const finalRunStateRef = useRef<RunState | undefined>(undefined);
 
   // The pause machine — one instance per modal. `onStatus` drives `runStatus`
   // so the PausePanel can render; the same controller is passed into the run as
@@ -403,8 +407,14 @@ export default function TranslationProgressModal({
             onSystemic: pauseController?.handleSystemic,
             abortSignal: abortController.signal,
             selectedFieldsByModel,
-            persist: resumePersistence.persist,
-            onRunState: resumePersistence.onRunState,
+            persist: (state) => {
+              finalRunStateRef.current = state;
+              return resumePersistence.persist(state);
+            },
+            onRunState: (state) => {
+              finalRunStateRef.current = state;
+              resumePersistence.onRunState(state);
+            },
             resume: resumePersistence.resumeInput,
           },
           schemaRepository,
@@ -544,11 +554,34 @@ export default function TranslationProgressModal({
     }
   }, []);
 
+  // Guard against losing an in-flight run: while processing, warn before the tab
+  // is closed or navigated away (the whole run lives in this modal). Best-effort
+  // — a cross-origin plugin iframe can't always force the native prompt, but the
+  // run is now resumable if it is lost. Removed the moment the run is terminal.
+  useEffect(() => {
+    if (!isProcessing) return;
+    const warnBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warnBeforeUnload);
+    return () => window.removeEventListener('beforeunload', warnBeforeUnload);
+  }, [isProcessing]);
+
+  const primary = footerPrimary(runStatus, { isPublishing });
+
   const handleClose = () => {
     const hasErrors = hasFatalError || processedRecords.some(
       (update) => update.status === 'error',
     );
-    ctx.resolve({ completed: isCompleted && !hasErrors, canceled: false, progress });
+    ctx.resolve({
+      completed: isCompleted && !hasErrors,
+      // A cancel now leaves the modal open in a terminal 'cancelled' state; the
+      // resolve happens later, from Close — so read the flag off the status.
+      canceled: runStatus.kind === 'cancelled',
+      progress,
+      runState: finalRunStateRef.current,
+    });
   };
 
   const handleCancel = () => {
@@ -556,12 +589,12 @@ export default function TranslationProgressModal({
     // unwinds via RUN_CANCELLED; it also mirrors the cancel into isCancelledRef
     // and flips runStatus to 'cancelled'.
     controller.cancel();
-    // Abort in-flight requests to stop streaming immediately
+    // Abort in-flight requests to stop streaming immediately.
     abortRef.current?.abort();
-    // Pass `progress` (like handleClose does) so the page can still build the
-    // durable report of the records processed before the cancel — otherwise the
-    // partial "which records failed and why" report is silently discarded.
-    ctx.resolve({ completed: false, canceled: true, progress });
+    // Do NOT resolve here: keep the modal open in its terminal 'cancelled' state
+    // so the user can still read the partial per-record results (and Export
+    // them). Closing — which resolves with `progress` for the page's durable
+    // report — is a deliberate second action via the Close button.
   };
 
   return (
@@ -638,16 +671,28 @@ export default function TranslationProgressModal({
         </div>
 
         <div className="TranslationProgressModal__footer">
-          <Button
-            type="button"
-            buttonType="muted"
-            onClick={handleExportCsv}
-            buttonSize="s"
-            disabled={!isExportEnabled(runStatus, processedRecords.length)}
-            className="TranslationProgressModal__export-button"
-          >
-            Export CSV
-          </Button>
+          {isExportVisible(runStatus) && (
+            <Button
+              type="button"
+              buttonType="muted"
+              onClick={handleExportCsv}
+              buttonSize="s"
+              disabled={!isExportEnabled(runStatus, processedRecords.length)}
+              className="TranslationProgressModal__export-button"
+            >
+              Export CSV
+            </Button>
+          )}
+          {runStatus.kind === 'running' && (
+            <Button
+              type="button"
+              buttonType="muted"
+              onClick={() => controller.pause()}
+              buttonSize="s"
+            >
+              Pause
+            </Button>
+          )}
           {runStatus.kind === 'running' && (
             <Button
               type="button"
@@ -671,15 +716,17 @@ export default function TranslationProgressModal({
                 {publishButtonLabel}
               </Button>
             )}
-          <Button
-            type="button"
-            buttonType="primary"
-            onClick={handleClose}
-            disabled={isPublishing || (isProcessing && !isCompleted)}
-            buttonSize="s"
-          >
-            {isCompleted ? 'Close' : isProcessing ? 'Please wait...' : 'Close'}
-          </Button>
+          {primary.isVisible && (
+            <Button
+              type="button"
+              buttonType="primary"
+              onClick={handleClose}
+              disabled={primary.isDisabled}
+              buttonSize="s"
+            >
+              {primary.label}
+            </Button>
+          )}
         </div>
       </div>
     </Canvas>

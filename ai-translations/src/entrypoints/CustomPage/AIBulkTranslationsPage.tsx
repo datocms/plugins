@@ -22,7 +22,16 @@
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import { Button, Canvas, SelectField, Spinner } from 'datocms-react-ui';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { resolveResumeSelection } from '../../utils/resumePrompt';
+import {
+  type ResumableRun,
+  detectResumableRun,
+} from '../../utils/resumePrompt';
+import {
+  type ResumeTarget,
+  restoreSelectionFromRunState,
+  summarizeRunByModel,
+} from '../../engine/report';
+import { ResumeBanner } from '../../components/BulkTranslations/ResumeBanner';
 import {
   CHIP_SELECT_CLASS_PREFIX,
   type ChipOption,
@@ -38,7 +47,10 @@ import { buildRecordEditorUrl } from '../../utils/recordUrl';
 import {
   type BulkReportRow,
   buildBulkReportRows,
+  fromBulkReportCsv,
+  withMachineTokens,
 } from '../../utils/translation/bulkReport';
+import { loadLastReport, saveLastReport } from '../../utils/lastReportStore';
 import {
   ALL_LOCALES_VALUE,
   defaultFieldSelection,
@@ -69,6 +81,8 @@ interface TranslationModalResult {
   completed?: boolean;
   canceled?: boolean;
   progress?: import('../../utils/translation/ItemsDropdownUtils').ProgressUpdate[];
+  /** The run's final RunState — powers the machine-readable CSV/JSON export. */
+  runState?: import('../../engine/report').RunState;
 }
 
 /**
@@ -106,8 +120,33 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
   // Persisted end-of-run report (which records failed and why). Survives until
   // the next run or an explicit dismiss, so the user can review/export it.
   const [reportRows, setReportRows] = useState<BulkReportRow[]>([]);
+  // A resumable interrupted run, detected on mount and surfaced as a banner BEFORE
+  // the user re-picks anything (the resume offer used to come last, after selection).
+  const [resumableRun, setResumableRun] = useState<ResumableRun | null>(null);
 
   const pluginParams = ctx.plugin.attributes.parameters as ctxParamsType;
+
+  // Detect a resumable interrupted run on mount and surface it as a banner.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: detect once on mount; pluginParams is stable for the page's lifetime.
+  useEffect(() => {
+    let cancelled = false;
+    detectResumableRun(pluginParams)
+      .then((run) => {
+        if (!cancelled) setResumableRun(run);
+      })
+      .catch(() => {
+        // Best-effort: a store read failure just means no banner.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Re-show the last run's report after a page reload.
+  useEffect(() => {
+    const last = loadLastReport();
+    if (last && last.rows.length > 0) setReportRows(last.rows);
+  }, []);
 
   // Initial load: models + locales
   useEffect(() => {
@@ -341,7 +380,108 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
     return loaded !== undefined && loaded.length === 0;
   };
 
-  // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Keeps the launch flow readable at the call site.
+  // Opens the progress modal for a set of records and folds its result back into
+  // the page (report rows + RunState for export + the completion notice). Shared
+  // by a fresh Start and a one-click Resume from the banner.
+  const launchProgressModal = async (opts: {
+    totalRecords: number;
+    itemIds: string[];
+    fromLocale: string;
+    toLocales: string[];
+    selectedFieldsByModel: Record<string, string[]>;
+    resume?: { runId: string; targets: ResumeTarget[] };
+    totalForNotice: number;
+  }): Promise<void> => {
+    const result = (await ctx.openModal({
+      id: 'translationProgressModal',
+      title: 'Translation Progress',
+      width: 'l',
+      parameters: {
+        totalRecords: opts.totalRecords,
+        fromLocale: opts.fromLocale,
+        toLocales: opts.toLocales,
+        accessToken: ctx.currentUserAccessToken,
+        pluginParams,
+        itemIds: opts.itemIds,
+        selectedFieldsByModel: opts.selectedFieldsByModel,
+        resume: opts.resume,
+      },
+    })) as TranslationModalResult | undefined;
+
+    const buildRecordUrl = (
+      update: import('../../utils/translation/ItemsDropdownUtils').ProgressUpdate,
+    ): string | undefined =>
+      buildRecordEditorUrl({
+        internalDomain: ctx.site?.attributes?.internal_domain,
+        environment: ctx.environment,
+        isEnvironmentPrimary: ctx.isEnvironmentPrimary,
+        itemTypeId: update.itemTypeId,
+        recordId: update.recordId,
+      });
+    // Enrich rows with each unit's machine-readable token (for the CSV/JSON
+    // export's machine column), then persist so the report survives a reload.
+    const rows = withMachineTokens(
+      buildBulkReportRows(result?.progress ?? [], buildRecordUrl),
+      result?.runState,
+    );
+    setReportRows(rows);
+    if (rows.length > 0) saveLastReport({ rows });
+    const flaggedRecordCount = new Set(rows.map((r) => r.recordId)).size;
+
+    if (result?.canceled) {
+      await ctx.notice('Bulk translation was canceled');
+    } else if (rows.length > 0) {
+      await ctx.notice(
+        `Bulk translation finished — ${flaggedRecordCount} record(s) need review. See the report below.`,
+      );
+    } else if (result?.completed) {
+      await ctx.notice(
+        `Successfully translated ${opts.totalForNotice} record(s) to ${opts.toLocales.length} locale(s)`,
+      );
+    }
+  };
+
+  // One-click resume from the banner: restore the prior run's selection and
+  // re-run only its unfinished units — no re-picking records or fields.
+  const handleResumeFromBanner = async (run: ResumableRun): Promise<void> => {
+    const restored = restoreSelectionFromRunState(run.priorState);
+    const itemIds = [...new Set(run.targets.map((t) => t.recordId))];
+    setResumableRun(null);
+    setReportRows([]);
+    try {
+      await launchProgressModal({
+        totalRecords: itemIds.length,
+        itemIds,
+        fromLocale: restored.fromLocale,
+        toLocales: restored.toLocales,
+        selectedFieldsByModel: restored.selectedFieldsByModel,
+        resume: { runId: run.runId, targets: run.targets },
+        totalForNotice: restored.itemIds.length,
+      });
+    } catch (error) {
+      handleUIError(error, pluginParams.vendor, ctx);
+    }
+  };
+
+  // Import a previously-exported report (CSV or JSON) and show it — lets a
+  // reviewer reopen a run from a file (e.g. one shared by a teammate).
+  const handleImportReport = async (file: File): Promise<void> => {
+    try {
+      const content = await file.text();
+      const rows: BulkReportRow[] = /\.json$/i.test(file.name)
+        ? (JSON.parse(content) as BulkReportRow[])
+        : fromBulkReportCsv(content);
+      if (!Array.isArray(rows)) throw new Error('not a report');
+      setReportRows(rows);
+      saveLastReport({ rows });
+      await ctx.notice(`Imported ${rows.length} row(s) from ${file.name}`);
+    } catch {
+      await ctx.alert(
+        'Could not read that file. Import a CSV or JSON report previously exported by this plugin.',
+      );
+    }
+  };
+
   const startTranslation = async () => {
     if (!isReady) return;
     if (!ctx.currentUserAccessToken) {
@@ -413,72 +553,20 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
 
       if (confirmed !== true) return;
 
-      // Resume detection (steps 4/5): offer to resume a compatible interrupted
-      // prior run instead of retranslating everything.
-      const selection = await resolveResumeSelection(ctx, pluginParams);
-      if (selection.kind === 'cancel') return;
-      const resume = selection.resume;
-
-      // On resume, process (and count) ONLY the records with unfinished units —
-      // otherwise the modal's completedCount can never reach totalRecords and the
-      // Close button never enables.
-      const recordIdsToRun = resume
-        ? [...new Set(resume.targets.map((t) => t.recordId))]
-        : allRecordIds;
-
+      // Resume is offered UP-FRONT via the banner (detectResumableRun on mount),
+      // not here — so a Start always runs the full fresh selection, and it
+      // supersedes any pending resume offer.
+      setResumableRun(null);
       // Single modal handles the whole job: each record is translated into
       // every target locale and saved in one CMA write per record.
-      const modalPromise = ctx.openModal({
-        id: 'translationProgressModal',
-        title: 'Translation Progress',
-        width: 'l',
-        parameters: {
-          totalRecords: recordIdsToRun.length,
-          fromLocale: sourceLocale.value,
-          toLocales: targetLocales,
-          accessToken: ctx.currentUserAccessToken,
-          pluginParams,
-          itemIds: recordIdsToRun,
-          selectedFieldsByModel,
-          resume,
-        },
+      await launchProgressModal({
+        totalRecords: allRecordIds.length,
+        itemIds: allRecordIds,
+        fromLocale: sourceLocale.value,
+        toLocales: targetLocales,
+        selectedFieldsByModel,
+        totalForNotice: allRecordIds.length,
       });
-
-      const result = (await modalPromise) as
-        | TranslationModalResult
-        | undefined;
-
-      const localeCount = targetLocales.length;
-      // Build the full, structured report (no 20-row cap) and persist it to the
-      // page so it can be reviewed and exported after the modal closes. The same
-      // editor-URL builder the modal's CSV export uses turns each flagged record
-      // into a clickable link.
-      const buildRecordUrl = (
-        update: import('../../utils/translation/ItemsDropdownUtils').ProgressUpdate,
-      ): string | undefined =>
-        buildRecordEditorUrl({
-          internalDomain: ctx.site?.attributes?.internal_domain,
-          environment: ctx.environment,
-          isEnvironmentPrimary: ctx.isEnvironmentPrimary,
-          itemTypeId: update.itemTypeId,
-          recordId: update.recordId,
-        });
-      const rows = buildBulkReportRows(result?.progress ?? [], buildRecordUrl);
-      setReportRows(rows);
-      const flaggedRecordCount = new Set(rows.map((r) => r.recordId)).size;
-
-      if (result?.canceled) {
-        await ctx.notice('Bulk translation was canceled');
-      } else if (rows.length > 0) {
-        await ctx.notice(
-          `Bulk translation finished — ${flaggedRecordCount} record(s) need review. See the report below.`,
-        );
-      } else if (result?.completed) {
-        await ctx.notice(
-          `Successfully translated ${allRecordIds.length} record(s) to ${localeCount} locale(s)`,
-        );
-      }
-      // else: the modal was dismissed via its chrome (no result) — say nothing.
     } catch (error) {
       handleUIError(error, pluginParams.vendor, ctx);
     } finally {
@@ -508,6 +596,19 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
                 Pick the source and target languages, the models, and the
                 fields you want translated.
               </p>
+              <label className={s.importControl}>
+                Import a previous report (CSV or JSON)
+                <input
+                  type="file"
+                  accept=".csv,.json,text/csv,application/json"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void handleImportReport(file);
+                    // Reset so re-selecting the same file fires onChange again.
+                    event.target.value = '';
+                  }}
+                />
+              </label>
             </div>
 
             {isLoading && (
@@ -517,6 +618,17 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
                   Loading languages and models...
                 </div>
               </div>
+            )}
+
+            {resumableRun && (
+              <ResumeBanner
+                summary={summarizeRunByModel(resumableRun.priorState)}
+                resolveModelName={(id) =>
+                  models.find((m) => m.value === id)?.label ?? id
+                }
+                onResume={() => void handleResumeFromBanner(resumableRun)}
+                onDismiss={() => setResumableRun(null)}
+              />
             )}
 
             {/* Language selectors row */}

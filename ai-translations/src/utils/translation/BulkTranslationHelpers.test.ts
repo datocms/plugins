@@ -6,6 +6,7 @@ import {
   hasAnyFieldSelectedForModel,
   isFieldIncludedInSelection,
   isReadyToTranslate,
+  orderSelectedFields,
   pruneFieldSelection,
   resolveTargetLocales,
   type SdkField,
@@ -311,6 +312,27 @@ describe('defaultFieldSelection', () => {
 
   it('handles empty input', () => {
     expect(defaultFieldSelection([])).toEqual([]);
+  });
+});
+
+describe('orderSelectedFields', () => {
+  const fields = [
+    { id: '1', apiKey: 'a', label: 'A', editor: 'single_line' },
+    { id: '2', apiKey: 'b', label: 'B', editor: 'single_line' },
+    { id: '3', apiKey: 'c', label: 'C', editor: 'single_line' },
+  ];
+
+  it('returns fields in the selected/click order, not schema-layout order', () => {
+    expect(orderSelectedFields(['c', 'a'], fields).map((f) => f.apiKey)).toEqual([
+      'c',
+      'a',
+    ]);
+  });
+
+  it('drops api_keys not present in the fields', () => {
+    expect(
+      orderSelectedFields(['a', 'zzz'], fields).map((f) => f.apiKey),
+    ).toEqual(['a']);
   });
 });
 

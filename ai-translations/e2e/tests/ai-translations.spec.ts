@@ -249,9 +249,9 @@ test.describe('AI Translations', () => {
     // flagged record/field/severity/reason until the next run. runBulkTranslation
     // has already closed the modal by the time it returns, but the dismissed
     // modal's iframe can linger "visible", so locate the bulk page by its content
-    // (the retained report's own "Download CSV" button) rather than by visibility.
+    // (the retained report's "Export report as" dropdown) rather than by visibility.
     await step(vendor, 'assert the on-page report table survives closing the modal', async () => {
-      const pageFrame = await frameWithButton(page, /^Download CSV$/);
+      const pageFrame = await frameWithButton(page, /Export report as/i);
       const reportRegion = pageFrame.getByRole('region', {
         name: 'Bulk translation report',
       });
@@ -267,11 +267,12 @@ test.describe('AI Translations', () => {
         /shared references|copied/,
       );
 
-      // The retained report's own machine export: Download JSON must produce
-      // parseable rows carrying the same structured facts as the table.
+      // "Export report as → JSON": row-based JSON carrying the same structured
+      // facts as the table, plus the machine-readable token column.
+      await pageFrame.getByRole('button', { name: /Export report as/i }).click();
       const [download] = await Promise.all([
         page.waitForEvent('download', { timeout: TIMEOUTS.thirty_sec }),
-        pageFrame.getByRole('button', { name: 'Download JSON' }).click(),
+        pageFrame.getByRole('button', { name: /^JSON$/ }).click(),
       ]);
       const rows = JSON.parse(readFileSync((await download.path()) ?? '', 'utf8')) as Array<
         Record<string, unknown>
@@ -280,6 +281,10 @@ test.describe('AI Translations', () => {
       expect(
         rows.some((r) => r.fieldPath === 'related_articles' && r.checkId === 'reference-copy'),
         'the JSON export should carry the structured reference-copy row',
+      ).toBe(true);
+      expect(
+        rows.some((r) => typeof r.machineReadableStatus === 'string' && (r.machineReadableStatus as string).startsWith('v1:')),
+        'the JSON export should carry the machine-readable token column',
       ).toBe(true);
     });
 
@@ -662,6 +667,34 @@ test.describe('AI Translations', () => {
       toasts,
       `expected a length/QC alert among the sidebar toasts, got:\n${run.toasts.join('\n') || '(none)'}`,
     ).toMatch(/badge|length|character|allow|incomplete|issue|exceed|shorten/);
+
+    // The conform gate (this branch's core reliability guarantee): the over-length
+    // translation must be WITHHELD from the form — not staged and then silently
+    // truncated/rejected. Save (the sidebar only staged into the form) and prove
+    // via the CMA that no badge locale ever exceeded its 5-char limit, and the
+    // source + any pre-existing target kept their exact prior value.
+    await step(vendor, 'the over-length badge translation was withheld from the form', async () => {
+      const before = (await cmaClient(envName).items.find(badgeEntry.id))
+        .badge as Record<string, string | null>;
+      const save = await saveRecord(page, vendor);
+      expect(
+        save.status,
+        `save must succeed: a withheld over-length badge leaves nothing for the CMA to reject.\n${save.fieldErrors.join('\n')}`,
+      ).toBeLessThan(400);
+
+      const after = (await cmaClient(envName).items.find(badgeEntry.id))
+        .badge as Record<string, string | null>;
+      for (const [locale, value] of Object.entries(after)) {
+        expect(
+          [...String(value ?? '')].length,
+          `badge[${locale}] "${value}" overflows the 5-char limit — the over-length translation was NOT withheld`,
+        ).toBeLessThanOrEqual(5);
+      }
+      expect(
+        after.en,
+        'the translation source (badge.en) must be untouched',
+      ).toBe(before.en);
+    });
   });
 
   test('field dropdown: "Translate to" fills an empty target locale (A2 excerpt)', async ({ page }) => {
@@ -1245,6 +1278,20 @@ test.describe('AI Translations', () => {
       ).toBeDisabled();
     });
 
+    await step(vendor, 'dirtying a field (valid credentials) unlocks Save', async () => {
+      const freeSwitch = config.getByRole('switch', {
+        name: /Use DeepL Free endpoint/i,
+      });
+      await freeSwitch.click();
+      await expect(
+        config.getByRole('button', { name: /^Save/ }),
+        'a dirty form with valid credentials must enable Save',
+      ).toBeEnabled();
+      // Revert so the form is pristine again (this test saves nothing).
+      await freeSwitch.click();
+      await expect(config.getByRole('button', { name: /^Save/ })).toBeDisabled();
+    });
+
     await step(vendor, 'switch the vendor to OpenAI and assert the credential swap', async () => {
       await config.locator('[class*="-control"]').first().click();
       await config
@@ -1257,11 +1304,12 @@ test.describe('AI Translations', () => {
       });
       await expect(
         config.getByText('DeepL API Key'),
-        "the DeepL block should be gone after the vendor switch",
+        'the DeepL block should be gone after the vendor switch',
       ).toHaveCount(0);
-      // The switch dirties the form → Save unlocks. NOT clicked: this test
-      // must leave the lane's params untouched.
-      await expect(config.getByRole('button', { name: /^Save/ })).toBeEnabled();
+      // The switch dirties the form, but the OpenAI key is empty on this DeepL
+      // lane, so the credentials gate keeps Save disabled — Save needs BOTH a
+      // dirty form AND valid credentials for the selected vendor. (Nothing saved.)
+      await expect(config.getByRole('button', { name: /^Save/ })).toBeDisabled();
     });
 
     await step(vendor, 'switch back to DeepL (nothing saved)', async () => {
@@ -1273,76 +1321,82 @@ test.describe('AI Translations', () => {
     });
   });
 
-  test('config screen: the field-exclusion picker resolves model and block fields', async ({
+  test('config screen: the field-fate tree resolves model and block fields (non-OpenAI vendor)', async ({
     page,
   }) => {
-    // Regression for the customer report: the "Fields to be excluded from
-    // translation" list was empty for non-OpenAI vendors (it was gated on the
-    // OpenAI key even though the list is DatoCMS schema), so nothing — including
-    // fields inside blocks — could be excluded. Asserted on the DeepL lane
-    // precisely because it is NOT OpenAI.
-    //
-    // Rather than fight the react-select/switch chrome, we pre-exclude a real
-    // BLOCK field via CMA: that flips `hasExclusionRules` so the section
-    // auto-reveals, and the picker must RESOLVE that id to its
-    // "<name> (<Block> block)" label. The pre-fix empty list would instead
-    // render "undefined (undefined)".
+    // Regression for the customer report: the field list was EMPTY for non-OpenAI
+    // vendors (gated on the OpenAI key even though it's DatoCMS schema), so nothing
+    // — including fields inside blocks — could be given a rule. The projectwide
+    // fate tree (which replaced the old exclusion multi-select in commit 14c2024)
+    // must enumerate every model AND the fields inside its blocks on a non-OpenAI
+    // vendor. Asserted on the DeepL lane precisely because it is NOT OpenAI.
     const { vendor, envName } = meta();
-    test.skip(vendor !== 'deepl', 'exclusion-picker population asserted on the DeepL lane');
+    test.skip(vendor !== 'deepl', 'field resolution asserted on the DeepL lane');
     test.setTimeout(TIMEOUTS.five_min);
 
     const client = cmaClient(envName);
-    const original = await getPluginParams(envName);
-    try {
-      const blockFieldId = await step(vendor, 'pick a field inside a block (CMA)', async () => {
+    const modelWithBlock = await step(
+      vendor,
+      'find a model with a TRANSLATABLE block field (CMA)',
+      async () => {
         const itemTypes = await client.itemTypes.list();
-        const block = itemTypes.find((it) => it.modular_block);
-        expect(block, 'the seed must have at least one block model').toBeTruthy();
-        const fields = await client.fields.list(block!.id);
-        expect(fields.length, 'the block must expose at least one field').toBeGreaterThan(0);
-        return fields[0].id;
-      });
+        for (const it of itemTypes.filter((t) => !t.modular_block)) {
+          const fields = await client.fields.list(it.id);
+          // rich_text / structured_text are in the plugin's translatable set, so
+          // their block containers render as expandable block nodes in the fate
+          // tree. (single_block is excluded from translationFields in this seed, so
+          // those fields show as "not translatable" and carry no block node.)
+          if (
+            fields.some((f) =>
+              ['rich_text', 'structured_text'].includes(f.field_type as string),
+            )
+          ) {
+            return it;
+          }
+        }
+        throw new Error('the seed must have a model with a translatable block field');
+      },
+    );
 
-      await step(vendor, 'exclude that block field so the section auto-reveals', () =>
-        setPluginParams(envName, {
-          ...original,
-          apiKeysToBeExcludedFromThisPlugin: [blockFieldId],
-        }),
+    await step(vendor, "open the plugin's settings screen", async () => {
+      const pluginId = await resolvePluginId();
+      await page.goto(
+        `https://${PROJECT_SUBDOMAIN()}.admin.datocms.com/environments/${envName}` +
+          `/configuration/plugins/${pluginId}/edit`,
+        { waitUntil: 'domcontentloaded' },
       );
+      await page.waitForTimeout(3000);
+    });
 
-      await step(vendor, "open the plugin's settings screen", async () => {
-        const pluginId = await resolvePluginId();
-        await page.goto(
-          `https://${PROJECT_SUBDOMAIN()}.admin.datocms.com/environments/${envName}` +
-            `/configuration/plugins/${pluginId}/edit`,
-          { waitUntil: 'domcontentloaded' },
-        );
-        await page.waitForTimeout(3000);
-      });
+    const config = await step(vendor, 'locate the config frame (Save button present)', () =>
+      frameWithButton(page, /^Save/),
+    );
 
-      const config = await step(vendor, 'locate the config frame (Save button present)', () =>
-        frameWithButton(page, /^Save/),
-      );
+    await step(vendor, 'the fate tree enumerated the schema on DeepL (models resolved)', async () => {
+      // Every model renders a "N translate · N copy · N skip" summary — the list
+      // was EMPTY for non-OpenAI vendors before the fix.
+      await expect(
+        config.getByText(/\d+ translate/).first(),
+        'the fate tree must list models (empty for non-OpenAI before the fix)',
+      ).toBeVisible({ timeout: TIMEOUTS.thirty_sec });
+    });
 
-      await step(
-        vendor,
-        'the excluded block field resolves to its "<name> (<Block> block)" label',
-        async () => {
-          // The block field's label proves the list loaded AND enumerated blocks.
-          await expect(
-            config.getByText(/ block\)/).first(),
-            'a block field must resolve in the exclusion picker (regressed for non-OpenAI vendors)',
-          ).toBeVisible({ timeout: TIMEOUTS.thirty_sec });
-          // And it must not render the empty-list placeholder.
-          await expect(
-            config.getByText('undefined (undefined)'),
-            'the exclusion field list must not be empty',
-          ).toHaveCount(0);
-        },
-      );
-    } finally {
-      await setPluginParams(envName, original);
-    }
+    await step(
+      vendor,
+      `expand "${modelWithBlock.name}" — its block field resolves`,
+      async () => {
+        await config
+          .getByText(modelWithBlock.name as string, { exact: false })
+          .first()
+          .click();
+        // A block-bearing field renders with a "block" badge — proving the fields
+        // INSIDE blocks are enumerated (the whole point of the customer report).
+        await expect(
+          config.getByText('block', { exact: true }).first(),
+          'a block-bearing field must resolve in the fate tree',
+        ).toBeVisible({ timeout: TIMEOUTS.thirty_sec });
+      },
+    );
   });
 
   test('gating: plugin params control which surfaces render', async ({ page }) => {

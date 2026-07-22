@@ -19,7 +19,7 @@ import type { RenderItemFormSidebarPanelCtx } from 'datocms-plugin-sdk';
 import { Button, Canvas, SelectField } from 'datocms-react-ui';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { MdCelebration } from 'react-icons/md';
+import { FaWandMagicSparkles } from 'react-icons/fa6';
 import {
   CHIP_SELECT_CLASS_PREFIX,
   type ChipOption,
@@ -118,7 +118,7 @@ function summarizeRunOutcome(
     ].slice(0, 8);
     return {
       kind: 'failures',
-      statusLine: 'Completed with warnings — see report',
+      statusLine: 'Completed with errors — see the field messages below',
       alert: `Translation finished. ${result.failedFields.length + errorCount} field(s) had errors and were NOT applied to the form (existing values kept):\n${lines.join('\n')}`,
     };
   }
@@ -600,7 +600,7 @@ export default function TranslateSidebar({ ctx }: PropTypes) {
                       transition={{ delay: 0.2 }}
                       style={{ color: 'var(--color--primary-soft--ink)' }}
                     >
-                      <MdCelebration size={20} />
+                      <FaWandMagicSparkles size={20} />
                     </motion.div>
                     Translations were applied to the form. Review them and
                     click Save.
@@ -610,7 +610,7 @@ export default function TranslateSidebar({ ctx }: PropTypes) {
                       transition={{ delay: 0.2 }}
                       style={{ color: 'var(--color--primary-soft--ink)' }}
                     >
-                      <MdCelebration size={20} />
+                      <FaWandMagicSparkles size={20} />
                     </motion.div>
                   </motion.div>
                   <div className={s.timerTrack}>

@@ -7,7 +7,7 @@ import {
   type RunState,
 } from '../engine/report';
 import type { ctxParamsType } from '../entrypoints/Config/ConfigScreen';
-import { resolveResumeSelection } from './resumePrompt';
+import { detectResumableRun, resolveResumeSelection } from './resumePrompt';
 
 const pluginParams = {
   apiKeysToBeExcludedFromThisPlugin: [],
@@ -82,5 +82,21 @@ describe('resolveResumeSelection', () => {
       store,
     );
     expect(sel).toEqual({ kind: 'cancel' });
+  });
+});
+
+describe('detectResumableRun', () => {
+  it('returns the resumable run without prompting when one is compatible', async () => {
+    const store = createInMemoryRunStore();
+    await store.save(priorWithUnfinished());
+    const found = await detectResumableRun(pluginParams, store);
+    expect(found?.runId).toBe('run-1');
+    expect(found?.targets.length).toBeGreaterThan(0);
+    expect(found?.priorState.records).toHaveLength(1);
+  });
+
+  it('returns null when there is no prior run', async () => {
+    const store = createInMemoryRunStore();
+    expect(await detectResumableRun(pluginParams, store)).toBeNull();
   });
 });

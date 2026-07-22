@@ -41,6 +41,14 @@ export {
   deserializeRunState,
   type TokenDivergence,
 } from './jsonAdapter';
+export { serializeRunStateCsv, deserializeRunStateCsv } from './csvAdapter';
+export {
+  summarizeRunByModel,
+  restoreSelectionFromRunState,
+  type ModelResumeSummary,
+  type RunResumeSummary,
+  type RestoredSelection,
+} from './runSummary';
 export {
   createInMemoryRunStore,
   type RunStore,

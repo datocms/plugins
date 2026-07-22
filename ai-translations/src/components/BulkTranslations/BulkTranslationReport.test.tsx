@@ -63,35 +63,52 @@ describe('BulkTranslationReport', () => {
     expect(screen.getByText('42')).toBeTruthy();
   });
 
-  it('downloads a CSV with the report when "Download CSV" is clicked', () => {
+  // The two menus each render Plaintext/CSV/JSON options; getAllByRole returns
+  // them in DOM order — Copy menu first, then Export menu.
+  const copyOption = (name: RegExp) =>
+    screen.getAllByRole('button', { name })[0];
+  const exportOption = (name: RegExp) =>
+    screen.getAllByRole('button', { name })[1];
+
+  it('offers Copy and Export dropdowns, each with Plaintext/CSV/JSON', () => {
     render(<BulkTranslationReport rows={rows} onClose={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: /download csv/i }));
-    expect(downloadTextFile).toHaveBeenCalledTimes(1);
-    const [filename, mime, content] = vi.mocked(downloadTextFile).mock.calls[0];
+    expect(screen.getByRole('button', { name: /copy report as/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /export report as/i })).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: /^CSV$/ })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: /^JSON$/ })).toHaveLength(2);
+    expect(screen.getAllByRole('button', { name: /^Plaintext$/ })).toHaveLength(2);
+  });
+
+  it('exports CSV/JSON carrying the human report plus the machine token column', () => {
+    const withToken = [
+      { ...rows[0], machineReadableStatus: 'v1:token-42' },
+      rows[1],
+    ];
+    render(<BulkTranslationReport rows={withToken} onClose={vi.fn()} />);
+
+    fireEvent.click(exportOption(/^CSV$/));
+    const [filename, mime, csv] = vi.mocked(downloadTextFile).mock.calls[0];
     expect(filename).toMatch(/\.csv$/);
     expect(mime).toContain('csv');
-    expect(content).toContain(
-      'Record ID,Record title,Edit URL,Status,Field,Locale,Severity,Check,Reason',
-    );
-    expect(content).toContain('length-validator');
+    // Human detail AND the machine column.
+    expect(csv).toContain('length-validator');
+    expect(csv).toContain('Machine readable status');
+    expect(csv).toContain('v1:token-42');
+
+    fireEvent.click(exportOption(/^JSON$/));
+    const [, , json] = vi.mocked(downloadTextFile).mock.calls[1];
+    expect(json).toContain('length-validator');
+    expect(json).toContain('machineReadableStatus');
+    expect(json).toContain('v1:token-42');
   });
 
-  it('downloads JSON when "Download JSON" is clicked', () => {
+  it('copies the report as plaintext to the clipboard', () => {
     render(<BulkTranslationReport rows={rows} onClose={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: /download json/i }));
-    const [filename, mime, content] = vi.mocked(downloadTextFile).mock.calls[0];
-    expect(filename).toMatch(/\.json$/);
-    expect(mime).toContain('json');
-    expect(JSON.parse(content)).toHaveLength(2);
-  });
-
-  it('copies the CSV report to the clipboard when "Copy" is clicked', () => {
-    render(<BulkTranslationReport rows={rows} onClose={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: /copy/i }));
+    fireEvent.click(copyOption(/^Plaintext$/));
     expect(navigator.clipboard.writeText).toHaveBeenCalledTimes(1);
-    expect(
-      vi.mocked(navigator.clipboard.writeText).mock.calls[0][0],
-    ).toContain('length-validator');
+    const copied = vi.mocked(navigator.clipboard.writeText).mock.calls[0][0];
+    expect(copied).toMatch(/across 2 records/i);
+    expect(copied).toContain('Grand Hotel');
   });
 
   it('invokes onClose when the close control is clicked', () => {

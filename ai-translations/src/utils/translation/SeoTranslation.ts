@@ -145,7 +145,7 @@ export async function translateSeoFieldValue(
       onQcFlag?.({
         checkId: 'seo-truncated',
         severity: 'warning',
-        message: `The translated SEO title was longer than ${SEO_TITLE_MAX_LENGTH} characters and was truncated — review it.`,
+        message: `The translated SEO title exceeded the ${SEO_TITLE_MAX_LENGTH}-character limit and was trimmed to fit search engines — check that the shortened text still reads well.`,
       });
       translatedTitle = truncateToGraphemes(
         translatedTitle,
@@ -164,7 +164,7 @@ export async function translateSeoFieldValue(
       onQcFlag?.({
         checkId: 'seo-truncated',
         severity: 'warning',
-        message: `The translated SEO description was longer than ${SEO_DESCRIPTION_MAX_LENGTH} characters and was truncated — review it.`,
+        message: `The translated SEO description exceeded the ${SEO_DESCRIPTION_MAX_LENGTH}-character limit and was trimmed to fit search engines — check that the shortened text still reads well.`,
       });
       translatedDescription = truncateToGraphemes(
         translatedDescription,

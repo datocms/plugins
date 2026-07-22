@@ -1,7 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { isExportEnabled } from './exportGating';
+import { isExportEnabled, isExportVisible } from './exportGating';
 
 const err = { code: 'rate_limit', source: 'provider', message: 'x' } as const;
+
+describe('isExportVisible', () => {
+  it('is hidden while running', () =>
+    expect(isExportVisible({ kind: 'running' })).toBe(false));
+  it('is hidden while paused', () =>
+    expect(isExportVisible({ kind: 'paused', reason: err, attempt: 1 })).toBe(
+      false,
+    ));
+  it('is visible once completed', () =>
+    expect(isExportVisible({ kind: 'completed' })).toBe(true));
+  it('is visible once cancelled', () =>
+    expect(isExportVisible({ kind: 'cancelled' })).toBe(true));
+});
 
 describe('isExportEnabled', () => {
   it('is disabled while running', () =>

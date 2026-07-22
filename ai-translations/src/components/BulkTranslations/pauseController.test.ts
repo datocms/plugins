@@ -14,6 +14,35 @@ const authErr: NormalizedProviderError = {
 };
 
 describe('createPauseController', () => {
+  it('manual pause blocks the between-unit gate until resume', async () => {
+    const onStatus = vi.fn();
+    const c = createPauseController({ sleep: vi.fn(), onStatus });
+
+    c.pause();
+    expect(onStatus).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'paused', trigger: 'manual' }),
+    );
+
+    const gated = c.gate();
+    let settled = false;
+    void gated.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false); // still suspended at the boundary
+
+    c.resume();
+    await expect(gated).resolves.toBe('continue');
+  });
+
+  it('cancel unwinds a manual pause', async () => {
+    const c = createPauseController({ sleep: vi.fn(), onStatus: vi.fn() });
+    c.pause();
+    const gated = c.gate();
+    c.cancel();
+    await expect(gated).resolves.toBe('cancelled');
+  });
+
   it('auto-resumes a rate limit after the computed delay', async () => {
     const sleep = vi.fn().mockResolvedValue(undefined);
     const onStatus = vi.fn();

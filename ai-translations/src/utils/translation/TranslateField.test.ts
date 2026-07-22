@@ -239,7 +239,7 @@ describe('TranslateField', () => {
         'field-slug',
         'main',
       ),
-    ).rejects.toThrow('Translated slug is empty after normalization');
+    ).rejects.toThrow('translation produced an empty slug');
   });
 
   it('removes only wrapper ids from block payloads while preserving nested metadata ids', async () => {

@@ -14,7 +14,10 @@
  */
 import { Button, SelectField } from 'datocms-react-ui';
 import { useMemo } from 'react';
-import type { TranslatableField } from '../../utils/translation/BulkTranslationHelpers';
+import {
+  orderSelectedFields,
+  type TranslatableField,
+} from '../../utils/translation/BulkTranslationHelpers';
 import {
   CHIP_SELECT_CLASS_PREFIX,
   type ChipOption,
@@ -99,9 +102,18 @@ export function ModelFieldPicker({
   // — mirroring how the locale select shows "All other locales".
   const allSelected =
     !!fields && fields.length > 0 && fields.every((f) => selectedSet.has(f.apiKey));
+  // Render the selected chips in the user's CLICK order, not schema-layout
+  // order: map the stored (click-ordered) api_keys to options rather than
+  // filtering the layout-ordered `fieldOptions`, which would re-sort on every
+  // render. Because react-select's `value` now carries click order, new picks
+  // append to the end and the onChange round-trip preserves it.
   const value: ChipOption[] = allSelected
     ? [ALL_FIELDS_OPTION]
-    : fieldOptions.filter((o) => selectedSet.has(o.value));
+    : orderSelectedFields(selectedApiKeys, fields ?? []).map((f) => ({
+        label: f.label,
+        value: f.apiKey,
+        code: f.apiKey,
+      }));
 
   const handleChange = (
     newValue: SingleValue<ChipOption> | MultiValue<ChipOption>,

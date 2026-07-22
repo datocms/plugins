@@ -35,6 +35,18 @@ describe('jsonAdapter', () => {
     expect(json.records[0].units[0].mrc).toMatch(/^v1:/);
   });
 
+  it('round-trips selectedFieldsByModel and per-record itemTypeId (restore inputs)', () => {
+    let state = createRunState({ ...ctx, selectedFieldsByModel: { m1: ['title'] } });
+    state = foldOutcome(
+      state,
+      { recordId: 'r1', itemTypeId: 'm1', toLocale: 'it', bucket: 'written', reasons: [], flags: [] },
+      { now: 1 },
+    );
+    const back = deserializeRunState(serializeRunState(state));
+    expect(back.selectedFieldsByModel).toEqual({ m1: ['title'] });
+    expect(back.records[0].itemTypeId).toBe('m1');
+  });
+
   it('rejects an unknown schemaVersion', () => {
     const json = serializeRunState(sampleState()).replace('"schemaVersion":1', '"schemaVersion":99');
     expect(() => deserializeRunState(json)).toThrow(/unknown schemaVersion/);

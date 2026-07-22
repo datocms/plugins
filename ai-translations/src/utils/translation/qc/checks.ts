@@ -33,7 +33,7 @@ export function checkLengthMismatch(args: {
     severity: 'warning',
     fieldPath,
     locale,
-    message: `Model returned ${received} segment(s) for ${expected} sent; output was repaired and may be incomplete.`,
+    message: `The provider returned ${received} text block(s) but ${expected} were sent, so the output was auto-repaired and may be missing or duplicated content. Review this field and re-translate if it looks wrong.`,
   };
 }
 
@@ -58,7 +58,7 @@ export function checkPlaceholderSurvival(args: {
     segmentIndex,
     fieldPath,
     locale,
-    message: `${missing.length} placeholder(s) lost in translation of segment ${segmentIndex}.`,
+    message: `${missing.length} placeholder(s) (e.g. {{name}}) were dropped from block ${segmentIndex}, so the rendered text will be missing those values. Re-translate this field, or restore the placeholders by hand.`,
   };
 }
 
@@ -79,6 +79,6 @@ export function checkTruncated(args: {
     fieldPath,
     locale,
     message:
-      'Provider cut the response off at the output-token limit; translation is incomplete.',
+      'The provider hit its output-token limit and stopped mid-response, so this translation is incomplete. Re-translate the field — splitting very long content into smaller fields helps.',
   };
 }

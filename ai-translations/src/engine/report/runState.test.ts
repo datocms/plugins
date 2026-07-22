@@ -35,6 +35,33 @@ describe('createRunState', () => {
     expect(state.checkpoint).toBe(0);
     expect(state.records).toEqual([]);
   });
+
+  it('persists the field allowlist so a resume can restore it', () => {
+    const state = createRunState({
+      ...ctx,
+      selectedFieldsByModel: { m1: ['title', 'body'] },
+    });
+    expect(state.selectedFieldsByModel).toEqual({ m1: ['title', 'body'] });
+  });
+});
+
+describe('foldOutcome — itemTypeId', () => {
+  it('records the model id on the record (for the per-model summary)', () => {
+    const state = foldOutcome(
+      createRunState(ctx),
+      outcome({ itemTypeId: 'model-A' }),
+      { now: 1 },
+    );
+    expect(state.records[0].itemTypeId).toBe('model-A');
+  });
+
+  it('keeps a prior itemTypeId when a later outcome omits it', () => {
+    let state = foldOutcome(createRunState(ctx), outcome({ itemTypeId: 'model-A' }), {
+      now: 1,
+    });
+    state = foldOutcome(state, outcome({ toLocale: 'de' }), { now: 2 });
+    expect(state.records[0].itemTypeId).toBe('model-A');
+  });
 });
 
 describe('bumpCheckpoint', () => {

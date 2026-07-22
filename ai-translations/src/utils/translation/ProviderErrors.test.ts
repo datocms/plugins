@@ -571,7 +571,7 @@ describe('ProviderErrors.ts', () => {
         source: 'plugin' as const,
         message: 'Error occurred',
       };
-      expect(formatErrorForUser(error)).toBe('Plugin error: Error occurred');
+      expect(formatErrorForUser(error)).toBe('Translation issue: Error occurred');
     });
 
     it('should combine message and hint', () => {

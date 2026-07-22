@@ -1,10 +1,11 @@
 /**
  * Bridges a canonical run unit to the machine cell token and back (persistence
- * spec §4/§6). The token is the cross-format integrity anchor: the CSV
- * `machine_readable_status` column value AND the per-unit `mrc` field in JSON use
- * this same function. The CSV projection is deliberately lossy — `fieldPath` is
- * dropped (the token carries only reason CODES) — so a reconstructed unit's
- * reasons have an empty fieldPath; the rich IndexedDB/JSON tiers retain it.
+ * spec §4/§6). The token is the cross-format integrity anchor: it is the JSON
+ * per-unit `mrc` field ({@link ./jsonAdapter}) and the CSV `machine_readable_status`
+ * column ({@link ./csvAdapter}, `serializeRunStateCsv`). The CSV projection is
+ * deliberately lossy — `fieldPath` is dropped (the token carries only reason
+ * CODES) — so a reconstructed unit's reasons have an empty fieldPath; the rich
+ * IndexedDB/JSON tiers retain it.
  */
 import { isHeuristicFlagId, type HeuristicFlagId } from './bitmaps';
 import { decodeMachineCell, encodeMachineCell } from './machineCell';

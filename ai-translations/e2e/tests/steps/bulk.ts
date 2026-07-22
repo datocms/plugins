@@ -67,6 +67,36 @@ export const frameWithButton = async (
   return found!;
 };
 
+/**
+ * Locates the progress-modal iframe by its root class — stable across every run
+ * state (running / paused / completed / cancelled), unlike a footer button whose
+ * label changes (Pause → Resume → Close). Also avoids matching the bulk page's
+ * resume banner, which carries its own "Resume" button.
+ */
+export const progressModalFrame = async (page: Page): Promise<Frame> => {
+  let found: Frame | undefined;
+  await expect
+    .poll(
+      async () => {
+        for (const frame of page.frames()) {
+          if (!frame.url().includes('localhost:5173')) continue;
+          const has = await frame
+            .locator('.TranslationProgressModal')
+            .count()
+            .catch(() => 0);
+          if (has) {
+            found = frame;
+            return true;
+          }
+        }
+        return false;
+      },
+      { timeout: TIMEOUTS.one_min },
+    )
+    .toBe(true);
+  return found!;
+};
+
 /** Parsed outcome of a bulk run, read from the progress modal's summary line. */
 export type BulkReport = {
   total: number;
@@ -183,8 +213,9 @@ export const startBulkRun = async (
   const confirmFrame = await frameWithButton(page, /^Translate /);
   await confirmFrame.getByRole('button', { name: /^Translate / }).click();
 
-  // Progress modal (its own iframe).
-  return frameWithButton(page, /^(Close|Please wait)/);
+  // Progress modal (its own iframe) — located by its root class, since the
+  // footer button label varies by run state (Pause/Resume/Close).
+  return progressModalFrame(page);
 };
 
 export const runBulkTranslation = async (

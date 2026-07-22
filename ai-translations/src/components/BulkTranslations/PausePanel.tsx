@@ -32,7 +32,14 @@ const remainingSeconds = (resumeAt: number): number =>
  * Cancel is always available, with its consequence spelled out inline.
  */
 export function PausePanel({ status, onResume, onCancel }: PausePanelProps) {
-  const { reason, resumeAt } = status;
+  const { reason, resumeAt, trigger } = status;
+  // A manual pause carries no provider error; explain that it's user-initiated
+  // and where it will pick up (the in-flight record finishes before it settles).
+  const message =
+    reason?.message ??
+    (trigger === 'manual'
+      ? 'You paused the run. The record in progress will finish, then it will wait here until you resume.'
+      : 'Translation paused.');
 
   const [secondsLeft, setSecondsLeft] = useState(() =>
     typeof resumeAt === 'number' ? remainingSeconds(resumeAt) : 0,
@@ -54,8 +61,8 @@ export function PausePanel({ status, onResume, onCancel }: PausePanelProps) {
       <p className="TranslationProgressModal__pause-title">
         Translation paused
       </p>
-      <p className="TranslationProgressModal__pause-message">{reason.message}</p>
-      {reason.hint && (
+      <p className="TranslationProgressModal__pause-message">{message}</p>
+      {reason?.hint && (
         <p className="TranslationProgressModal__pause-hint">{reason.hint}</p>
       )}
       {isCountingDown && (

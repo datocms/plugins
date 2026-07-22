@@ -56,6 +56,20 @@
   color: var(--color--ink-subtle);
 }
 
+.importControl {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+  font-size: var(--font-size-s);
+  color: var(--color--ink-subtle);
+  cursor: pointer;
+}
+
+.importControl input[type='file'] {
+  font-size: var(--font-size-s);
+}
+
 .section {
   display: flex;
   flex-direction: column;

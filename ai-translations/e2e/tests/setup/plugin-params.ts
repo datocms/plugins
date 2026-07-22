@@ -102,7 +102,11 @@ const buildParams = (spec: ProviderSpec, model: string, env = requireEnv()) => {
         ...base,
         vendor: 'google',
         apiKey: '',
-        gptModel: '',
+        // Seed the same default onBoot applies for a missing gptModel. A raw ''
+        // would be rewritten by onBoot AFTER the config form mounts (which froze
+        // its state at ''), making a pristine form load "dirty". A settled install
+        // never has '' here, so seed the settled value.
+        gptModel: 'gpt-5.4-mini',
         googleApiKey: key,
         geminiModel: model,
       };
@@ -111,7 +115,11 @@ const buildParams = (spec: ProviderSpec, model: string, env = requireEnv()) => {
         ...base,
         vendor: 'anthropic',
         apiKey: '',
-        gptModel: '',
+        // Seed the same default onBoot applies for a missing gptModel. A raw ''
+        // would be rewritten by onBoot AFTER the config form mounts (which froze
+        // its state at ''), making a pristine form load "dirty". A settled install
+        // never has '' here, so seed the settled value.
+        gptModel: 'gpt-5.4-mini',
         anthropicApiKey: key,
         anthropicModel: model,
       };
@@ -120,7 +128,11 @@ const buildParams = (spec: ProviderSpec, model: string, env = requireEnv()) => {
         ...base,
         vendor: 'deepl',
         apiKey: '',
-        gptModel: '',
+        // Seed the same default onBoot applies for a missing gptModel. A raw ''
+        // would be rewritten by onBoot AFTER the config form mounts (which froze
+        // its state at ''), making a pristine form load "dirty". A settled install
+        // never has '' here, so seed the settled value.
+        gptModel: 'gpt-5.4-mini',
         deeplApiKey: key,
         deeplEndpoint: 'auto',
       };

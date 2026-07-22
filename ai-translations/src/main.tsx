@@ -49,8 +49,11 @@ import AIBulkTranslationsPage from './entrypoints/CustomPage/AIBulkTranslationsP
 import LoadingAddon from './entrypoints/LoadingAddon';
 import TranslateSidebar from './entrypoints/Sidebar/TranslateSidebar';
 import { hasBlockingQcError } from './engine/formAdapter';
-import type { ResumeTarget } from './engine/report';
-import { resolveResumeSelection } from './utils/resumePrompt';
+import {
+  type ResumeTarget,
+  restoreSelectionFromRunState,
+} from './engine/report';
+import { detectResumableRun } from './utils/resumePrompt';
 import { defaultPrompt } from './prompts/DefaultPrompt';
 import { createLogger } from './utils/logging/Logger';
 import { formatLocaleWithCode } from './utils/localeUtils';
@@ -483,6 +486,94 @@ connect({
 
     try {
       const itemIds = items.map((item) => item.id);
+
+      // Opens the progress modal for a computed selection and folds its result
+      // into a BRIEF notice. The modal itself shows every flagged record inline
+      // (expandable per-record detail), so we no longer dump a wall-of-text
+      // ctx.alert that renders behind the modal and duplicates it.
+      const runProgress = async (params: {
+        fromLocale: string;
+        toLocales: string[];
+        itemIds: string[];
+        selectedFieldsByModel?: Record<string, string[]>;
+        resume?: { runId: string; targets: ResumeTarget[] };
+        totalForNotice: number;
+      }): Promise<void> => {
+        const progressParams: TranslationProgressModalParams = {
+          totalRecords: params.itemIds.length,
+          fromLocale: params.fromLocale,
+          toLocales: params.toLocales,
+          accessToken,
+          pluginParams,
+          itemIds: params.itemIds,
+          selectedFieldsByModel: params.selectedFieldsByModel,
+          resume: params.resume,
+        };
+        const progressResult = (await ctx.openModal({
+          id: 'translationProgressModal',
+          title: 'Translation Progress',
+          width: 'l',
+          parameters: progressParams as unknown as Record<string, unknown>,
+        })) as
+          | {
+              completed?: boolean;
+              canceled?: boolean;
+              progress?: import('./utils/translation/ItemsDropdownUtils').ProgressUpdate[];
+            }
+          | undefined;
+
+        const flaggedRecords = new Set(
+          (progressResult?.progress ?? [])
+            .filter(
+              (update) =>
+                update.status === 'error' ||
+                update.status === 'completed-with-warnings',
+            )
+            .map((update) => update.recordId),
+        ).size;
+
+        if (progressResult?.canceled) {
+          await ctx.notice('Bulk translation was canceled');
+        } else if (flaggedRecords > 0) {
+          await ctx.notice(
+            `Translation finished — ${flaggedRecords} record(s) need review. Reopen the flagged records to see the per-field details.`,
+          );
+        } else if (progressResult?.completed) {
+          await ctx.notice(
+            `Successfully translated ${params.totalForNotice} record(s).`,
+          );
+        }
+      };
+
+      // Resume is offered UP-FRONT — before the picker — mirroring the bulk
+      // page's banner, so the offer comes before re-picking records/fields.
+      const resumable = await detectResumableRun(pluginParams).catch(() => null);
+      if (resumable) {
+        const choice = await ctx.openConfirm({
+          title: 'Resume the previous run?',
+          content: `A previous bulk translation left ${resumable.targets.length} record–locale unit(s) unfinished. Resume where it left off, or start a new translation?`,
+          choices: [
+            { label: 'Resume', value: 'resume', intent: 'positive' },
+            { label: 'Start new', value: 'fresh' },
+          ],
+          cancel: { label: 'Cancel', value: 'cancel' },
+        });
+        if (choice === 'cancel') return;
+        if (choice === 'resume') {
+          const restored = restoreSelectionFromRunState(resumable.priorState);
+          await runProgress({
+            fromLocale: restored.fromLocale,
+            toLocales: restored.toLocales,
+            itemIds: [...new Set(resumable.targets.map((t) => t.recordId))],
+            selectedFieldsByModel: restored.selectedFieldsByModel,
+            resume: { runId: resumable.runId, targets: resumable.targets },
+            totalForNotice: restored.itemIds.length,
+          });
+          return;
+        }
+        // 'fresh' → fall through to a normal pick-and-translate.
+      }
+
       const pickerParams: AITranslationsPickerModalParams = {
         itemIds,
         models,
@@ -527,65 +618,13 @@ connect({
 
       if (confirmed !== true) return;
 
-      // Resume detection (steps 4/5): mirror the bulk page — offer to resume a
-      // compatible interrupted prior run rather than retranslating everything.
-      const resumeSelection = await resolveResumeSelection(ctx, pluginParams);
-      if (resumeSelection.kind === 'cancel') return;
-      const resume = resumeSelection.resume;
-      // On resume, process (and count) only the records with unfinished units, or
-      // the modal's completedCount never reaches totalRecords.
-      const recordIdsToRun = resume
-        ? [...new Set(resume.targets.map((t) => t.recordId))]
-        : itemIds;
-
-      const progressParams: TranslationProgressModalParams = {
-        totalRecords: recordIdsToRun.length,
+      await runProgress({
         fromLocale,
         toLocales,
-        accessToken,
-        pluginParams,
-        itemIds: recordIdsToRun,
+        itemIds,
         selectedFieldsByModel,
-        resume,
-      };
-
-      const progressResult = (await ctx.openModal({
-        id: 'translationProgressModal',
-        title: 'Translation Progress',
-        width: 'l',
-        parameters: progressParams as unknown as Record<string, unknown>,
-      })) as
-        | {
-            completed?: boolean;
-            canceled?: boolean;
-            progress?: import('./utils/translation/ItemsDropdownUtils').ProgressUpdate[];
-          }
-        | undefined;
-
-      const flagged = (progressResult?.progress ?? []).filter(
-        (update) =>
-          update.status === 'error' ||
-          update.status === 'completed-with-warnings',
-      );
-      if (progressResult?.canceled) {
-        await ctx.notice('Bulk translation was canceled');
-      } else if (flagged.length > 0) {
-        const reviewList = flagged
-          .slice(0, 20)
-          .map(
-            (update) =>
-              `• ${(update.warnings?.[0] ?? update.message ?? update.recordId).slice(0, 140)}`,
-          )
-          .join('\n');
-        const more =
-          flagged.length > 20 ? `\n…and ${flagged.length - 20} more.` : '';
-        await ctx.alert(
-          `Translation finished — ${flagged.length} record(s) need review:\n${reviewList}${more}`,
-        );
-      } else if (progressResult?.completed) {
-        await ctx.notice(`Successfully translated ${items.length} record(s).`);
-      }
-      // else: the modal was dismissed via its chrome (no result) — say nothing.
+        totalForNotice: items.length,
+      });
     } catch (error) {
       handleUIError(error, pluginParams.vendor, ctx);
     }

@@ -476,6 +476,38 @@ const applyCopyFromSourceFields = (args: {
   return copiedFieldCount;
 };
 
+/** A live per-field progress event for the modal's transient "now translating" line. */
+export interface FieldProgressEvent {
+  /** The field api key being translated. */
+  field: string;
+  /** The target locale. */
+  toLocale: string;
+  /** A short snippet of the SOURCE value. */
+  sourcePreview: string;
+  /** A short snippet of the TRANSLATED value — present once it comes back. */
+  targetPreview?: string;
+}
+
+const truncatePreview = (text: string): string => {
+  const clean = text.replace(/\s+/g, ' ').trim();
+  return clean.length > 60 ? `${clean.slice(0, 60)}…` : clean;
+};
+
+/** Short, display-safe snippet of a field value for the live progress line. */
+function previewOf(value: unknown): string {
+  if (typeof value === 'string') return truncatePreview(value);
+  if (Array.isArray(value)) {
+    const text = value
+      .map((entry) => (typeof entry === 'string' ? entry : ''))
+      .join(' ')
+      .trim();
+    return text ? truncatePreview(text) : '[structured content]';
+  }
+  if (value && typeof value === 'object') return '[structured content]';
+  if (value == null) return '';
+  return truncatePreview(String(value));
+}
+
 export async function buildTranslatedUpdatePayload(
   record: DatoCMSRecordFromAPI,
   fromLocale: string,
@@ -511,6 +543,12 @@ export async function buildTranslatedUpdatePayload(
      * never asked to translate.
      */
     applyLocaleSync?: boolean;
+    /**
+     * Live progress hook: fired once per field with a source snippet just before
+     * it is translated, and again with the target snippet once it comes back — so
+     * the modal can show a transient "now translating …" line. Best-effort UX.
+     */
+    onFieldProgress?: (event: FieldProgressEvent) => void;
   } = {},
   schemaRepository?: SchemaRepository,
   cmaBaseUrl?: string,
@@ -746,6 +784,11 @@ export async function buildTranslatedUpdatePayload(
     // at every field boundary too.
     if ((await opts.gate?.()) === 'cancelled') throw RUN_CANCELLED;
 
+    const sourcePreview = previewOf(
+      (record[field] as Record<string, unknown> | undefined)?.[fromLocale],
+    );
+    opts.onFieldProgress?.({ field, toLocale, sourcePreview });
+
     const outcome = await translateField(field);
     outcomes.set(field, outcome);
 
@@ -757,6 +800,12 @@ export async function buildTranslatedUpdatePayload(
       recordWrittenLocale(field, toLocale);
       translatedFieldCount += 1;
       translatedFields.push(field);
+      opts.onFieldProgress?.({
+        field,
+        toLocale,
+        sourcePreview,
+        targetPreview: previewOf(outcome.value),
+      });
       return;
     }
 

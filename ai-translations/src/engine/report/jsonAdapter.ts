@@ -14,6 +14,7 @@ type SerializedUnit = RunUnitState & { mrc: string };
 
 interface SerializedRecord {
   recordId: string;
+  itemTypeId?: string;
   sourceVersion?: string;
   writtenVersion?: string;
   units: SerializedUnit[];
@@ -59,6 +60,7 @@ export function deserializeRunState(
 
   const records = parsed.records.map((record) => ({
     recordId: record.recordId,
+    itemTypeId: record.itemTypeId,
     sourceVersion: record.sourceVersion,
     writtenVersion: record.writtenVersion,
     units: record.units.map(({ mrc, ...unit }): RunUnitState => {

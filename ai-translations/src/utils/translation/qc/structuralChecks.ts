@@ -76,7 +76,7 @@ export function checkHtmlStructure(args: SegmentArgs): QcFlag | null {
       fieldPath: args.fieldPath,
       locale: args.locale,
       segmentIndex: args.segmentIndex,
-      message: 'Translated HTML has a different block structure than the source — a block may have been dropped or altered.',
+      message: 'The translated HTML has a different block structure than the source — a heading, list, table, or image may have been dropped or added. Open the record and compare the formatting; re-translate the field if a block is missing.',
     };
   }
   const srcP = paragraphCount(args.source);
@@ -88,7 +88,7 @@ export function checkHtmlStructure(args: SegmentArgs): QcFlag | null {
       fieldPath: args.fieldPath,
       locale: args.locale,
       segmentIndex: args.segmentIndex,
-      message: 'Translated HTML has a different paragraph count than the source.',
+      message: 'The translated HTML has a different number of paragraphs than the source — text may have been merged or split. Review the formatting in this locale.',
     };
   }
   return null;
@@ -181,7 +181,7 @@ export function checkMarkdownStructure(args: SegmentArgs): QcFlag | null {
       locale: args.locale,
       segmentIndex: args.segmentIndex,
       message:
-        'Translated Markdown is missing or has extra headings, lists, code blocks, or links vs the source.',
+        'The translated Markdown is missing or has extra headings, lists, code blocks, or links compared with the source. Compare the two and re-translate the field if structure was lost.',
     };
   }
   if (paragraphDiff) {
@@ -191,7 +191,7 @@ export function checkMarkdownStructure(args: SegmentArgs): QcFlag | null {
       fieldPath: args.fieldPath,
       locale: args.locale,
       segmentIndex: args.segmentIndex,
-      message: 'Translated Markdown has a different paragraph count than the source.',
+      message: 'The translated Markdown has a different number of paragraphs than the source — text may have been merged or split. Review the formatting in this locale.',
     };
   }
   return null;
@@ -245,7 +245,7 @@ export function checkNoOp(args: {
     severity: 'warning',
     fieldPath: args.fieldPath,
     locale: args.locale,
-    message: `${unchanged} of ${eligible} segment(s) are unchanged from the source — the translation may not have run.`,
+    message: `${unchanged} of ${eligible} text block(s) came back identical to the source. The provider may have left them untranslated (common for names, code, or already-translated text). Confirm they should read the same in this locale — if they are correct as-is, no action is needed.`,
   };
 }
 
@@ -289,6 +289,6 @@ export function checkLengthRatio(args: SegmentArgs): QcFlag | null {
     fieldPath: args.fieldPath,
     locale: args.locale,
     segmentIndex: args.segmentIndex,
-    message: `Translation is much shorter than the source (${translated.length} vs ${source.length} chars) — it may be truncated.`,
+    message: `The translation is much shorter than the source (${translated.length} vs ${source.length} characters), so content may have been cut off or skipped. Compare it against the source and re-translate this field if text is missing.`,
   };
 }
