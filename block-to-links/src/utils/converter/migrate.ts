@@ -50,6 +50,66 @@ export interface MigrationOptions {
   forceLocalizedFields?: boolean;
   /** Available locales in the project */
   availableLocales?: string[];
+  /** Validate all payloads without creating records */
+  validateOnly?: boolean;
+  /** Skip validation because a conversion-wide preflight already passed */
+  skipValidation?: boolean;
+}
+
+export interface GroupedMigrationOptions {
+  /** Validate all payloads without creating records */
+  validateOnly?: boolean;
+  /** Skip validation because a conversion-wide preflight already passed */
+  skipValidation?: boolean;
+}
+
+function formatPathIndices(pathIndices: number[]): string {
+  return pathIndices.length > 0 ? pathIndices.join(' → ') : 'root';
+}
+
+function formatApiValidationIssues(error: unknown): string | null {
+  if (!error || typeof error !== 'object') return null;
+
+  const apiErrors = (error as { errors?: unknown }).errors;
+  if (!Array.isArray(apiErrors)) return null;
+
+  const issues = apiErrors.flatMap((apiError) => {
+    if (!apiError || typeof apiError !== 'object') return [];
+    const attributes = (apiError as { attributes?: unknown }).attributes;
+    if (!attributes || typeof attributes !== 'object') return [];
+
+    const { code, details } = attributes as {
+      code?: unknown;
+      details?: unknown;
+    };
+    if (!details || typeof details !== 'object') return [];
+
+    const issue = details as Record<string, unknown>;
+    if (
+      code === 'INVALID_FIELD' &&
+      issue.code === 'VALIDATION_REQUIRED_ALT_TITLE'
+    ) {
+      const field = typeof issue.field === 'string' ? issue.field : 'image';
+      const locale =
+        typeof issue.locale === 'string' ? ` (locale ${issue.locale})` : '';
+      return [
+        `Required alternate text is missing at ${field}${locale}. Add alt text to that source image field, or add a default alt for the upload in that locale, then retry`,
+      ];
+    }
+
+    return [];
+  });
+
+  return issues.length > 0 ? issues.join('; ') : null;
+}
+
+function migrationValidationError(error: unknown, source: string): Error {
+  const details =
+    formatApiValidationIssues(error) ??
+    (error instanceof Error ? error.message : String(error));
+  return new Error(
+    `Cannot migrate ${source}. The source content does not satisfy the copied model validations. ${details}`,
+  );
 }
 
 // =============================================================================
@@ -78,7 +138,12 @@ export async function migrateBlocksToRecordsNested(
   onMigrated: (count: number) => void,
   options: MigrationOptions = {},
 ): Promise<BlockMigrationMapping> {
-  const { forceLocalizedFields = false, availableLocales = [] } = options;
+  const {
+    forceLocalizedFields = false,
+    availableLocales = [],
+    validateOnly = false,
+    skipValidation = false,
+  } = options;
   const mapping: BlockMigrationMapping = {};
   let migratedCount = Object.keys(existingMapping).length;
 
@@ -102,27 +167,50 @@ export async function migrateBlocksToRecordsNested(
 
   const blocksArray = Array.from(uniqueBlocks.values());
 
-  // Create records for all unique block instances in parallel
-  const createdEntries = await Promise.all(
-    blocksArray.map(async (instance) => {
-      const sanitizedData = sanitizeFieldValuesForCreation(instance.blockData);
+  const preparedBlocks = blocksArray.map((instance) => {
+    const sanitizedData = sanitizeFieldValuesForCreation(instance.blockData);
 
-      const recordData =
-        forceLocalizedFields && availableLocales.length > 0
-          ? wrapFieldsInLocalizedHash(sanitizedData, availableLocales)
-          : sanitizedData;
+    const recordData =
+      forceLocalizedFields && availableLocales.length > 0
+        ? wrapFieldsInLocalizedHash(sanitizedData, availableLocales)
+        : sanitizedData;
 
-      const newRecord = await client.items.create({
-        item_type: { type: 'item_type', id: newModelId },
+    return {
+      instance,
+      request: {
+        item_type: { type: 'item_type' as const, id: newModelId },
         ...recordData,
-      });
+      },
+    };
+  });
+
+  if (!skipValidation) {
+    await Promise.all(
+      preparedBlocks.map(async ({ instance, request }) => {
+        try {
+          await client.items.validateNew(request);
+        } catch (error) {
+          throw migrationValidationError(
+            error,
+            `source record ${instance.rootRecordId}, block ${instance.blockId}, position ${formatPathIndices(instance.pathIndices)}`,
+          );
+        }
+      }),
+    );
+  }
+
+  if (validateOnly) return mapping;
+
+  const createdEntries = await Promise.all(
+    preparedBlocks.map(async ({ instance, request }) => {
+      const newRecord = await client.items.create(request);
 
       return { blockId: instance.blockId, recordId: newRecord.id };
     }),
   );
 
-  for (const { blockId, recordId } of createdEntries) {
-    mapping[blockId] = recordId;
+  for (const { blockId: migratedBlockId, recordId } of createdEntries) {
+    mapping[migratedBlockId] = recordId;
     migratedCount++;
   }
   onMigrated(migratedCount);
@@ -149,7 +237,9 @@ export async function migrateGroupedBlocksToRecords(
   availableLocales: string[],
   existingMapping: BlockMigrationMapping,
   onMigrated: (count: number) => void,
+  options: GroupedMigrationOptions = {},
 ): Promise<BlockMigrationMapping> {
+  const { validateOnly = false, skipValidation = false } = options;
   const mapping: BlockMigrationMapping = {};
   let migratedCount = Object.keys(existingMapping).length;
 
@@ -158,30 +248,58 @@ export async function migrateGroupedBlocksToRecords(
     return !group.allBlockIds.every((id) => existingMapping[id]);
   });
 
-  // Create one record per group in parallel — groups are independent of each other
-  const createdGroups = await Promise.all(
-    groupsToMigrate.map(async (group) => {
-      const allFieldKeys = new Set<string>();
-      for (const localeKey of Object.keys(group.localeData)) {
-        for (const fieldKey of Object.keys(group.localeData[localeKey])) {
-          allFieldKeys.add(fieldKey);
-        }
+  const preparedGroups = groupsToMigrate.map((group) => {
+    const allFieldKeys = new Set<string>();
+    for (const localeKey of Object.keys(group.localeData)) {
+      for (const fieldKey of Object.keys(group.localeData[localeKey])) {
+        allFieldKeys.add(fieldKey);
       }
+    }
 
-      const localizedFieldData = mergeLocaleData(
-        group.localeData,
-        allFieldKeys,
-        availableLocales,
-      );
+    const localizedFieldData = mergeLocaleData(
+      group.localeData,
+      allFieldKeys,
+      availableLocales,
+    );
 
-      const sanitizedData =
-        sanitizeLocalizedFieldValuesForCreation(localizedFieldData);
+    const sanitizedData =
+      sanitizeLocalizedFieldValuesForCreation(localizedFieldData);
 
-      const newRecord = await client.items.create({
-        item_type: { type: 'item_type', id: newModelId },
+    return {
+      group,
+      request: {
+        item_type: { type: 'item_type' as const, id: newModelId },
         ...sanitizedData,
-      });
+      },
+    };
+  });
 
+  // Validate the complete batch before creating its first record. Validation is
+  // non-mutating and prevents a single legacy validation issue from leaving a
+  // partially-created batch behind.
+  if (!skipValidation) {
+    await Promise.all(
+      preparedGroups.map(async ({ group, request }) => {
+        try {
+          await client.items.validateNew(request);
+        } catch (error) {
+          const locales = Object.keys(group.localeData)
+            .filter((locale) => locale !== '__default__')
+            .join(', ');
+          throw migrationValidationError(
+            error,
+            `source record ${group.rootRecordId}, block position ${formatPathIndices(group.pathIndices)}${locales ? `, source locales ${locales}` : ''}`,
+          );
+        }
+      }),
+    );
+  }
+
+  if (validateOnly) return mapping;
+
+  const createdGroups = await Promise.all(
+    preparedGroups.map(async ({ group, request }) => {
+      const newRecord = await client.items.create(request);
       return { group, recordId: newRecord.id };
     }),
   );
@@ -265,14 +383,10 @@ export async function migrateFieldData(
       );
     }
 
-    try {
-      await client.items.update(record.id, {
-        [newFieldApiKey]: newValue,
-      });
-      recordsToPublish?.add(record.id);
-    } catch (error) {
-      console.error(`Failed to migrate data for record ${record.id}:`, error);
-    }
+    await client.items.update(record.id, {
+      [newFieldApiKey]: newValue,
+    });
+    recordsToPublish?.add(record.id);
   }
 }
 
@@ -375,14 +489,10 @@ export async function migrateFieldDataAppend(
       newValue = combineLinks(existingLinks, newLinks);
     }
 
-    try {
-      await client.items.update(record.id, {
-        [linksFieldApiKey]: newValue,
-      });
-      recordsToPublish?.add(record.id);
-    } catch (error) {
-      console.error(`Failed to append data for record ${record.id}:`, error);
-    }
+    await client.items.update(record.id, {
+      [linksFieldApiKey]: newValue,
+    });
+    recordsToPublish?.add(record.id);
   }
 }
 

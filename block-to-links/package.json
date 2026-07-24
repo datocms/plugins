@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-block-to-links",
   "homepage": "https://github.com/datocms/plugins/tree/master/block-to-links#readme",
-  "version": "0.3.13",
+  "version": "0.3.14",
   "author": "DatoCMS <support@datocms.com>",
   "description": "A plugin that allows you to convert blocks to links",
   "keywords": [
@@ -25,6 +25,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "preview": "vite preview",
     "prepublishOnly": "npm run build"
   },
@@ -42,7 +44,8 @@
     "@vitejs/plugin-react": "^5.2.0",
     "globals": "^17.4.0",
     "typescript": "^5.9.3",
-    "vite": "^7.3.1"
+    "vite": "^7.3.1",
+    "vitest": "^4.1.10"
   },
   "packageManager": "npm@11.11.0",
   "overrides": {

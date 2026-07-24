@@ -2,7 +2,7 @@
  * Locale Handling Utilities
  *
  * Utilities for working with localized field values in DatoCMS.
- * Handles wrapping, unwrapping, and ensuring complete locale coverage
+ * Handles wrapping, unwrapping, and preserving source locale coverage
  * for field values during migration operations.
  *
  * @module utils/locale
@@ -113,78 +113,61 @@ export function completeLocalizedUpdate<T>(
 
 /**
  * Merges locale data from multiple sources into a single localized value.
- * Used when combining block data from different locales into one record.
+ * Only locales represented by source blocks are materialized. If the source
+ * block was non-localized, its value is assigned to the project's main locale.
  *
  * @param localeData - Object mapping locale codes to field data
  * @param fieldKeys - Set of all field keys to include
- * @param availableLocales - List of all locales to include
- * @param fallbackLocale - Locale to use as fallback for missing data
+ * @param availableLocales - Project locales, with the main locale first
  * @returns Merged localized field data
  */
-/**
- * Determines the effective fallback locale from the available locale data.
- */
-function resolveEffectiveFallbackLocale(
+function sourceLocalesForGroup(
   localeData: Record<string, Record<string, unknown>>,
-  fallbackLocale?: string,
-): string | undefined {
-  const localesWithData = Object.keys(localeData).filter(
-    (k) => k !== '__default__',
+  availableLocales: string[],
+): string[] {
+  const sourceLocaleSet = new Set(
+    Object.keys(localeData).filter((locale) => locale !== '__default__'),
   );
-  return (
-    fallbackLocale ??
-    (localesWithData.includes('en') ? 'en' : localesWithData[0])
-  );
-}
 
-/**
- * Resolves the field value for a single locale, applying fallback logic.
- */
-function resolveLocaleFieldValue(
-  locale: string,
-  fieldKey: string,
-  localeData: Record<string, Record<string, unknown>>,
-  defaultData: Record<string, unknown> | null,
-  fallbackData: Record<string, unknown> | null,
-): unknown {
-  const localeBlockData = localeData[locale] ?? defaultData;
-  if (localeBlockData?.[fieldKey] !== undefined) {
-    return localeBlockData[fieldKey];
+  if (sourceLocaleSet.size === 0 && localeData.__default__) {
+    return availableLocales.length > 0 ? [availableLocales[0]] : [];
   }
-  if (fallbackData?.[fieldKey] !== undefined) {
-    return fallbackData[fieldKey];
+
+  const orderedLocales = availableLocales.filter((locale) =>
+    sourceLocaleSet.delete(locale),
+  );
+
+  // Preserve unexpected-but-present locale keys instead of dropping content.
+  for (const locale of sourceLocaleSet) {
+    orderedLocales.push(locale);
   }
-  return null;
+
+  return orderedLocales;
 }
 
 export function mergeLocaleData(
   localeData: Record<string, Record<string, unknown>>,
   fieldKeys: Set<string>,
   availableLocales: string[],
-  fallbackLocale?: string,
 ): Record<string, LocalizedValue> {
   const result: Record<string, LocalizedValue> = {};
-
-  const effectiveFallback = resolveEffectiveFallbackLocale(
-    localeData,
-    fallbackLocale,
-  );
-  const fallbackData = effectiveFallback
-    ? (localeData[effectiveFallback] ?? null)
-    : null;
   const defaultData = localeData.__default__ ?? null;
+  const sourceLocales = sourceLocalesForGroup(localeData, availableLocales);
+  const usesNonLocalizedSource =
+    defaultData !== null &&
+    Object.keys(localeData).every((locale) => locale === '__default__');
 
   for (const fieldKey of fieldKeys) {
     const localizedValue: LocalizedValue = {};
 
-    for (const locale of availableLocales) {
-      localizedValue[locale] = resolveLocaleFieldValue(
-        locale,
-        fieldKey,
-        localeData,
-        defaultData,
-        fallbackData,
-      );
+    for (const locale of sourceLocales) {
+      const sourceData = usesNonLocalizedSource
+        ? defaultData
+        : (localeData[locale] ?? null);
+      localizedValue[locale] =
+        sourceData && sourceData[fieldKey] !== undefined
+          ? sourceData[fieldKey]
+          : null;
     }
 
     result[fieldKey] = localizedValue;

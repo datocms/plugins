@@ -102,6 +102,10 @@ async function analyzeAndCreateModel(ctx: ConversionContext): Promise<{
   });
   const analysis = await analyzeBlock(client, blockId);
 
+  if (analysis.modularContentFields.length === 0) {
+    throw new Error('This block is not used in any modular content fields');
+  }
+
   const nestedPaths = await buildNestedPathsToRootModels(
     client,
     analysis.modularContentFields,
@@ -132,6 +136,65 @@ async function analyzeAndCreateModel(ctx: ConversionContext): Promise<{
     availableLocales,
     newModel,
   };
+}
+
+/**
+ * Validates every record payload for every path before the first record is
+ * created. The newly-created model is still unreferenced at this stage, so it
+ * can be removed safely if any source content fails the copied validations.
+ */
+async function validateAllPaths(
+  ctx: ConversionContext,
+  nestedPaths: NestedBlockPath[],
+  newModelId: string,
+  availableLocales: string[],
+  shouldLocalizeFields: boolean,
+): Promise<void> {
+  const { client, blockId, totalSteps, onProgress } = ctx;
+
+  onProgress({
+    currentStep: 3,
+    totalSteps,
+    stepDescription: 'Validating all block content before migration...',
+    percentage: 25,
+    details: `Checking ${nestedPaths.length} nested paths`,
+  });
+
+  await nestedPaths.reduce(async (previousValidation, nestedPath) => {
+    await previousValidation;
+    await migrateSingleNestedPath(
+      client,
+      nestedPath,
+      blockId,
+      newModelId,
+      {},
+      availableLocales,
+      shouldLocalizeFields,
+      () => {},
+      { validateOnly: true },
+    );
+  }, Promise.resolve());
+}
+
+async function rollbackUnreferencedModel(
+  client: CMAClient,
+  modelId: string,
+  error: unknown,
+): Promise<never> {
+  try {
+    await client.itemTypes.destroy(modelId);
+  } catch (cleanupError) {
+    const originalMessage =
+      error instanceof Error ? error.message : String(error);
+    const cleanupMessage =
+      cleanupError instanceof Error
+        ? cleanupError.message
+        : String(cleanupError);
+    throw new Error(
+      `${originalMessage} The unused converted model could not be cleaned up automatically: ${cleanupMessage}`,
+    );
+  }
+  throw error;
 }
 
 /**
@@ -174,6 +237,7 @@ async function migrateAllPaths(
         availableLocales,
         shouldLocalizeFields,
         onCount,
+        { skipValidation: true },
       );
 
       return { ...acc, ...pathMapping };
@@ -183,7 +247,11 @@ async function migrateAllPaths(
 }
 
 /**
- * Step 4: Converts all modular content fields to links fields in parallel.
+ * Step 4: Converts all modular content fields to links fields sequentially.
+ *
+ * Each conversion can create, destroy, or rename fields. Keeping these operations
+ * serialized prevents one conversion from submitting a nested-record snapshot
+ * against a schema that another conversion has just changed.
  */
 async function convertAllFields(
   ctx: ConversionContext,
@@ -210,9 +278,10 @@ async function convertAllFields(
     percentage: 55,
   });
 
-  await Promise.all(
-    analysis.modularContentFields.map((mcField) =>
-      convertModularContentToLinksField({
+  await analysis.modularContentFields.reduce(
+    async (previousConversion, mcField) => {
+      await previousConversion;
+      await convertModularContentToLinksField({
         client,
         mcField,
         newModelId,
@@ -222,8 +291,9 @@ async function convertAllFields(
         availableLocales,
         fullyReplace,
         recordsToPublish: publishAfterChanges ? recordsToPublish : undefined,
-      }),
-    ),
+      });
+    },
+    Promise.resolve(),
   );
 
   return analysis.modularContentFields.length;
@@ -351,25 +421,36 @@ export async function convertBlockToModel(
       newModel,
     } = await analyzeAndCreateModel(ctx);
 
-    if (analysis.modularContentFields.length === 0) {
-      return {
-        success: false,
-        migratedRecordsCount: 0,
-        convertedFieldsCount: 0,
-        error: 'This block is not used in any modular content fields',
-      };
+    try {
+      await validateAllPaths(
+        ctx,
+        nestedPaths,
+        newModel.id,
+        availableLocales,
+        shouldLocalizeFields,
+      );
+    } catch (error) {
+      await rollbackUnreferencedModel(client, newModel.id, error);
     }
 
-    const globalMapping = await migrateAllPaths(
-      ctx,
-      nestedPaths,
-      newModel.id,
-      availableLocales,
-      shouldLocalizeFields,
-      (count) => {
-        migratedRecordsCount = count;
-      },
-    );
+    let globalMapping: BlockMigrationMapping = {};
+    try {
+      globalMapping = await migrateAllPaths(
+        ctx,
+        nestedPaths,
+        newModel.id,
+        availableLocales,
+        shouldLocalizeFields,
+        (count) => {
+          migratedRecordsCount = count;
+        },
+      );
+    } catch (error) {
+      // No parent field points at the new model until Step 4 starts, so rolling
+      // it back here also removes every record created by earlier paths.
+      migratedRecordsCount = 0;
+      await rollbackUnreferencedModel(client, newModel.id, error);
+    }
 
     if (publishAfterChanges) {
       for (const newRecordId of Object.values(globalMapping)) {
@@ -460,6 +541,7 @@ async function migrateSingleNestedPath(
   availableLocales: string[],
   shouldLocalizeFields: boolean,
   onCount: (count: number) => void,
+  options: { validateOnly?: boolean; skipValidation?: boolean } = {},
 ): Promise<BlockMigrationMapping> {
   if (nestedPath.isInLocalizedContext) {
     const groupedInstances = await getGroupedBlockInstances(
@@ -474,6 +556,7 @@ async function migrateSingleNestedPath(
       availableLocales,
       globalMapping,
       onCount,
+      options,
     );
   }
 
@@ -487,6 +570,7 @@ async function migrateSingleNestedPath(
     {
       forceLocalizedFields: shouldLocalizeFields,
       availableLocales,
+      ...options,
     },
   );
 }

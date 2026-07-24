@@ -187,48 +187,12 @@ function extractBlocksFromStructuredTextValue(
   const structuredText = fieldValue as StructuredTextValue;
   const blocks = structuredText.blocks || [];
 
-  // Get document children and check for block/inlineBlock types
-  const doc = structuredText.document as unknown as Record<string, unknown>;
-  const children = (doc?.children as unknown[]) || [];
-  const allChildTypes = children.map(
-    (c: unknown) => (c as Record<string, unknown>)?.type,
-  );
-
-  // Check if there are any 'block' or 'inlineBlock' types in the children
-  const hasBlockTypes = allChildTypes.some(
-    (t) => t === 'block' || t === 'inlineBlock',
-  );
-
-  if (hasBlockTypes) {
-    // Find the actual block nodes
-    const blockChildren = children.filter((c: unknown) => {
-      const child = c as Record<string, unknown>;
-      return child?.type === 'block' || child?.type === 'inlineBlock';
-    });
-
-    // With nested: true, blocks are inlined in the document tree
-    // The 'item' property contains the full block object, not just an ID
-    const inlinedBlocks: DastBlockRecord[] = blockChildren
-      .map((child) => {
-        const blockNode = child as Record<string, unknown>;
-        const itemData = blockNode.item;
-
-        // If item is an object (inlined block), extract it
-        if (itemData && typeof itemData === 'object') {
-          return itemData as DastBlockRecord;
-        }
-        // If item is just an ID string, look it up in blocks array
-        if (typeof itemData === 'string' && blocks.length > 0) {
-          const found = blocks.find((b) => b.id === itemData);
-          if (found) return found;
-        }
-        return null;
-      })
-      .filter((b): b is DastBlockRecord => b !== null);
-
-    if (inlinedBlocks.length > 0) {
-      return inlinedBlocks;
-    }
+  // With nested: true, blocks are inlined anywhere in the DAST tree. Inline
+  // blocks normally live inside paragraph children, not directly under root.
+  const inlinedBlocks: DastBlockRecord[] = [];
+  collectInlinedDastBlocks(structuredText.document, inlinedBlocks);
+  if (inlinedBlocks.length > 0) {
+    return inlinedBlocks;
   }
 
   // Fallback to the original approach for cases where blocks array is populated
@@ -248,4 +212,29 @@ function extractBlocksFromStructuredTextValue(
 
   // Return only blocks that are referenced in the document
   return blocks.filter((block) => referencedBlockIds.has(block.id));
+}
+
+function collectInlinedDastBlocks(
+  node: unknown,
+  result: DastBlockRecord[],
+): void {
+  if (Array.isArray(node)) {
+    for (const child of node) collectInlinedDastBlocks(child, result);
+    return;
+  }
+  if (!node || typeof node !== 'object') return;
+
+  const nodeObject = node as Record<string, unknown>;
+  if (
+    (nodeObject.type === 'block' || nodeObject.type === 'inlineBlock') &&
+    nodeObject.item &&
+    typeof nodeObject.item === 'object'
+  ) {
+    result.push(nodeObject.item as DastBlockRecord);
+    return;
+  }
+
+  for (const value of Object.values(nodeObject)) {
+    collectInlinedDastBlocks(value, result);
+  }
 }

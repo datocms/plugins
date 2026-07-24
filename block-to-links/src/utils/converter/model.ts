@@ -51,22 +51,41 @@ export async function createNewModelFromBlock(
     collection_appearance: 'table',
   });
 
-  // Copy fields from block to new model
-  const { titleFieldId } = await copyFieldsToModel(
-    client,
-    newModel.id,
-    analysis.fields,
-    forceLocalizedFields,
-  );
+  try {
+    // Copy fields from block to new model
+    const { titleFieldId } = await copyFieldsToModel(
+      client,
+      newModel.id,
+      analysis.fields,
+      forceLocalizedFields,
+    );
 
-  // Set title field if we found a suitable one
-  if (titleFieldId) {
-    await client.itemTypes.update(newModel.id, {
-      title_field: { type: 'field', id: titleFieldId },
-    });
+    // Set title field if we found a suitable one
+    if (titleFieldId) {
+      await client.itemTypes.update(newModel.id, {
+        title_field: { type: 'field', id: titleFieldId },
+      });
+    }
+
+    return { id: newModel.id, api_key: newModel.api_key };
+  } catch (error) {
+    // At this point the model is new and unreferenced, so removing it is a safe
+    // rollback for a partial field-copy failure.
+    try {
+      await client.itemTypes.destroy(newModel.id);
+    } catch (cleanupError) {
+      const originalMessage =
+        error instanceof Error ? error.message : String(error);
+      const cleanupMessage =
+        cleanupError instanceof Error
+          ? cleanupError.message
+          : String(cleanupError);
+      throw new Error(
+        `${originalMessage} The incomplete converted model could not be cleaned up automatically: ${cleanupMessage}`,
+      );
+    }
+    throw error;
   }
-
-  return { id: newModel.id, api_key: newModel.api_key };
 }
 
 /**

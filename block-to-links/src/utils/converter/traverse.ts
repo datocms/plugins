@@ -12,6 +12,7 @@ import type { NestedBlockPath } from '../../types';
 import {
   type BlockFieldType,
   extractBlocksFromFieldValue,
+  getBlockId,
   getBlockTypeId,
 } from '../blocks';
 
@@ -62,9 +63,11 @@ export function getNestedFieldValueFromBlock(
 }
 
 /**
- * Sets a field value in a block object.
- * Handles both direct properties and values nested in `attributes`.
- * Returns a new block object (does not mutate the original).
+ * Builds a minimal CMA update for one field of an existing nested block.
+ *
+ * Expanded `nested: true` responses must not be round-tripped: they can contain
+ * unrelated attributes that became stale after a schema change. Existing blocks
+ * are therefore represented as an ID plus only the changed attribute.
  *
  * @param block - The block object to update
  * @param fieldApiKey - The API key of the field to set
@@ -76,6 +79,32 @@ export function setNestedFieldValueInBlock(
   fieldApiKey: string,
   value: unknown,
 ): Record<string, unknown> {
+  const blockId = getBlockId(block);
+  if (blockId) {
+    const blockTypeId = getBlockTypeId(block);
+    return {
+      type: 'item',
+      id: blockId,
+      ...(blockTypeId
+        ? {
+            relationships: {
+              item_type: {
+                data: {
+                  type: 'item_type',
+                  id: blockTypeId,
+                },
+              },
+            },
+          }
+        : {}),
+      attributes: {
+        [fieldApiKey]: value,
+      },
+    };
+  }
+
+  // Defensive fallback for an unsaved block. Nested responses normally always
+  // have IDs, but preserving the complete creation envelope is safer here.
   // Deep clone to avoid mutation
   const clonedBlock = JSON.parse(JSON.stringify(block));
 
@@ -95,6 +124,15 @@ export function setNestedFieldValueInBlock(
   return clonedBlock;
 }
 
+/**
+ * Represents an untouched existing block with its ID, as required by the CMA
+ * request contract. Unsaved blocks are kept as complete creation payloads.
+ */
+function unchangedBlockReference(block: unknown): unknown {
+  if (!block || typeof block !== 'object') return block;
+  return getBlockId(block as Record<string, unknown>) ?? block;
+}
+
 // =============================================================================
 // Structured Text Reconstruction
 // =============================================================================
@@ -104,47 +142,61 @@ export function setNestedFieldValueInBlock(
  *
  * Handles two formats:
  * - Traditional format: blocks in the `blocks` array
- * - Nested format (nested: true): blocks inlined in `document.children`
+ * - Nested format (nested: true): blocks inlined anywhere in the DAST document
  *
  * @param originalValue - The original structured text value
  * @param updatedBlocks - The updated block objects
  * @returns Reconstructed structured text value
  */
-/**
- * Checks whether a document child node is an inlined block (nested: true format).
- */
-function isInlinedBlockChild(child: unknown): boolean {
-  if (!child || typeof child !== 'object') return false;
-  const childObj = child as Record<string, unknown>;
-  return (
-    childObj.type === 'block' &&
-    childObj.item !== undefined &&
-    typeof childObj.item === 'object'
-  );
+function hasInlinedBlockNode(node: unknown): boolean {
+  if (Array.isArray(node)) return node.some(hasInlinedBlockNode);
+  if (!node || typeof node !== 'object') return false;
+
+  const nodeObject = node as Record<string, unknown>;
+  if (
+    (nodeObject.type === 'block' || nodeObject.type === 'inlineBlock') &&
+    nodeObject.item !== undefined &&
+    typeof nodeObject.item === 'object'
+  ) {
+    return true;
+  }
+
+  return Object.values(nodeObject).some(hasInlinedBlockNode);
 }
 
-/**
- * Replaces inlined block children in a document children array with updated blocks.
- */
-function replaceInlinedBlockChildren(
-  children: unknown[],
+function replaceInlinedBlockNodes(
+  node: unknown,
   updatedBlocks: unknown[],
-): unknown[] {
-  let blockIndex = 0;
-  return children.map((child) => {
-    if (!child || typeof child !== 'object') return child;
-    const childObj = child as Record<string, unknown>;
-    if (
-      childObj.type === 'block' &&
-      childObj.item !== undefined &&
-      blockIndex < updatedBlocks.length
-    ) {
-      const updatedChild = { ...childObj, item: updatedBlocks[blockIndex] };
-      blockIndex++;
-      return updatedChild;
-    }
-    return child;
-  });
+  blockIndex: { current: number },
+): unknown {
+  if (Array.isArray(node)) {
+    return node.map((child) =>
+      replaceInlinedBlockNodes(child, updatedBlocks, blockIndex),
+    );
+  }
+  if (!node || typeof node !== 'object') return node;
+
+  const nodeObject = node as Record<string, unknown>;
+  if (
+    (nodeObject.type === 'block' || nodeObject.type === 'inlineBlock') &&
+    nodeObject.item !== undefined &&
+    typeof nodeObject.item === 'object' &&
+    blockIndex.current < updatedBlocks.length
+  ) {
+    const updatedNode = {
+      ...nodeObject,
+      item: updatedBlocks[blockIndex.current],
+    };
+    blockIndex.current++;
+    return updatedNode;
+  }
+
+  return Object.fromEntries(
+    Object.entries(nodeObject).map(([key, value]) => [
+      key,
+      replaceInlinedBlockNodes(value, updatedBlocks, blockIndex),
+    ]),
+  );
 }
 
 export function reconstructStructuredTextWithUpdatedBlocks(
@@ -153,17 +205,17 @@ export function reconstructStructuredTextWithUpdatedBlocks(
 ): Record<string, unknown> {
   const result = { ...originalValue };
 
-  // Check if we have inlined blocks in document.children (nested: true format)
+  // Check if we have inlined blocks anywhere in the DAST document.
   const document = originalValue.document as
     | Record<string, unknown>
     | undefined;
   if (document && typeof document === 'object') {
-    const children = document.children as unknown[] | undefined;
-    if (Array.isArray(children) && children.some(isInlinedBlockChild)) {
-      result.document = {
-        ...document,
-        children: replaceInlinedBlockChildren(children, updatedBlocks),
-      };
+    if (hasInlinedBlockNode(document)) {
+      result.document = replaceInlinedBlockNodes(
+        document,
+        updatedBlocks,
+        { current: 0 },
+      );
       return result;
     }
   }
@@ -207,7 +259,10 @@ function recurseIntoNestedBlock(
   );
 
   if (nestedFieldValue === undefined) {
-    return { didUpdate: false, resultBlock: block };
+    return {
+      didUpdate: false,
+      resultBlock: unchangedBlockReference(block),
+    };
   }
 
   const result = traverseAndUpdateNestedBlocks(
@@ -226,7 +281,10 @@ function recurseIntoNestedBlock(
     return { didUpdate: true, resultBlock: updatedBlock };
   }
 
-  return { didUpdate: false, resultBlock: block };
+  return {
+    didUpdate: false,
+    resultBlock: unchangedBlockReference(block),
+  };
 }
 
 function processBlocksArray(
@@ -251,14 +309,18 @@ function processBlocksArray(
     const blockTypeId = getBlockTypeId(blockObj);
 
     if (blockTypeId !== currentStep.expectedBlockTypeId) {
-      newBlocks.push(block);
+      newBlocks.push(unchangedBlockReference(block));
       continue;
     }
 
     if (isLastStep) {
       const updatedBlock = updateFn(blockObj, locale);
-      newBlocks.push(updatedBlock);
-      updated = true;
+      if (updatedBlock === blockObj) {
+        newBlocks.push(unchangedBlockReference(block));
+      } else {
+        newBlocks.push(updatedBlock);
+        updated = true;
+      }
     } else {
       const { didUpdate, resultBlock } = recurseIntoNestedBlock(
         block,
@@ -333,17 +395,16 @@ function processLocalizedLocale(
     updateFn,
   );
 
-  if (result.updated) {
-    return {
-      updated: true,
-      newLocaleValue: reconstructFieldValue(
-        localeValue,
-        result.newBlocks,
-        currentStep.fieldType,
-      ),
-    };
-  }
-  return { updated: false, newLocaleValue: localeValue };
+  return {
+    updated: result.updated,
+    // Keep every locale request-safe. If another locale is updated, this value
+    // becomes part of the same localized field payload.
+    newLocaleValue: reconstructFieldValue(
+      localeValue,
+      result.newBlocks,
+      currentStep.fieldType,
+    ),
+  };
 }
 
 /**
@@ -464,10 +525,15 @@ function applyUpdateToBlocksAtLevel(
     }
     const blockObj = block as Record<string, unknown>;
     if (getBlockTypeId(blockObj) === expectedBlockTypeId) {
-      newBlocks.push(updateFn(blockObj, locale));
-      updated = true;
+      const updatedBlock = updateFn(blockObj, locale);
+      if (updatedBlock === blockObj) {
+        newBlocks.push(unchangedBlockReference(block));
+      } else {
+        newBlocks.push(updatedBlock);
+        updated = true;
+      }
     } else {
-      newBlocks.push(block);
+      newBlocks.push(unchangedBlockReference(block));
     }
   }
 
@@ -493,17 +559,14 @@ function applyUpdateAtLevelForLocale(
     step.expectedBlockTypeId,
     updateFn,
   );
-  if (result.updated) {
-    return {
-      updated: true,
-      newLocaleValue: reconstructFieldValue(
-        localeValue,
-        result.newBlocks,
-        step.fieldType,
-      ),
-    };
-  }
-  return { updated: false, newLocaleValue: localeValue };
+  return {
+    updated: result.updated,
+    newLocaleValue: reconstructFieldValue(
+      localeValue,
+      result.newBlocks,
+      step.fieldType,
+    ),
+  };
 }
 
 /**
@@ -603,19 +666,27 @@ function filterOrRecurseBlock(
   path: NestedBlockPath['path'],
   pathIndex: number,
   targetBlockId: string,
-): { keep: boolean; updatedBlock: unknown } {
+): { keep: boolean; changed: boolean; updatedBlock: unknown } {
   const blockTypeId = getBlockTypeId(blockObj);
 
   if (isLastStep) {
     // Remove target blocks, keep others
     if (blockTypeId === targetBlockId) {
-      return { keep: false, updatedBlock: null };
+      return { keep: false, changed: true, updatedBlock: null };
     }
-    return { keep: true, updatedBlock: block };
+    return {
+      keep: true,
+      changed: false,
+      updatedBlock: unchangedBlockReference(block),
+    };
   }
 
   if (blockTypeId !== currentStep.expectedBlockTypeId) {
-    return { keep: true, updatedBlock: block };
+    return {
+      keep: true,
+      changed: false,
+      updatedBlock: unchangedBlockReference(block),
+    };
   }
 
   const nextStep = path[pathIndex + 1];
@@ -625,7 +696,11 @@ function filterOrRecurseBlock(
   );
 
   if (nestedFieldValue === undefined) {
-    return { keep: true, updatedBlock: block };
+    return {
+      keep: true,
+      changed: false,
+      updatedBlock: unchangedBlockReference(block),
+    };
   }
 
   const result = traverseAndRemoveBlocks(
@@ -640,9 +715,13 @@ function filterOrRecurseBlock(
       nextStep.fieldApiKey,
       result.newValue,
     );
-    return { keep: true, updatedBlock };
+    return { keep: true, changed: true, updatedBlock };
   }
-  return { keep: true, updatedBlock: block };
+  return {
+    keep: true,
+    changed: false,
+    updatedBlock: unchangedBlockReference(block),
+  };
 }
 
 /**
@@ -665,7 +744,7 @@ function filterBlocksForRemoval(
       continue;
     }
     const blockObj = block as Record<string, unknown>;
-    const { keep, updatedBlock } = filterOrRecurseBlock(
+    const { keep, changed, updatedBlock } = filterOrRecurseBlock(
       block,
       blockObj,
       isLastStep,
@@ -677,7 +756,7 @@ function filterBlocksForRemoval(
     if (!keep) {
       updated = true;
     } else {
-      if (updatedBlock !== block) updated = true;
+      if (changed) updated = true;
       newBlocks.push(updatedBlock);
     }
   }
@@ -711,17 +790,14 @@ function removeBlocksForLocaleValue(
     pathIndex,
     targetBlockId,
   );
-  if (result.updated) {
-    return {
-      updated: true,
-      newLocaleValue: reconstructFieldValue(
-        localeValue,
-        result.newBlocks,
-        currentStep.fieldType,
-      ),
-    };
-  }
-  return { updated: false, newLocaleValue: localeValue };
+  return {
+    updated: result.updated,
+    newLocaleValue: reconstructFieldValue(
+      localeValue,
+      result.newBlocks,
+      currentStep.fieldType,
+    ),
+  };
 }
 
 /**
