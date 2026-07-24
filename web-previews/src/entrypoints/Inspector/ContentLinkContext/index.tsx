@@ -12,14 +12,14 @@ import {
   useState,
 } from 'react';
 import type { Frontend } from '../../../types';
-import { inspectorUrl } from '../../../utils/urls';
-import { normalizePathForVisualEditing } from '../normalizePathForVisualEditing';
 import {
   type ContentLinkMethods,
   type ContentLinkState,
   SYMBOL_FOR_PRIMARY_ENVIRONMENT,
-} from './types';
-import useContentLinkConnection from './useContentLinkConnection';
+} from '../../../utils/contentLink/types';
+import useContentLinkConnection from '../../../utils/contentLink/useContentLinkConnection';
+import { normalizePathForVisualEditing } from '../../../utils/normalizePathForVisualEditing';
+import { inspectorUrl } from '../../../utils/urls';
 
 type IframeState = { path: string; key: string };
 
