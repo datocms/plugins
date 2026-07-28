@@ -118,6 +118,15 @@ export type ProgressCallback = (progress: ConversionProgress) => void;
 
 export type CMAClient = Client;
 
+/**
+ * A best-effort inverse operation registered during non-destructive conversion.
+ * Actions are executed in reverse order if field migration fails.
+ */
+export interface ConversionRollbackAction {
+  description: string;
+  run: () => Promise<void>;
+}
+
 // =============================================================================
 // CMA-specific DAST types (different from CDA format)
 // =============================================================================

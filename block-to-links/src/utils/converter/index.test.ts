@@ -37,7 +37,11 @@ vi.mock('./model', () => ({
   renameModelToOriginal: mocks.renameModelToOriginal,
 }));
 
-import type { CMAClient, ModularContentFieldInfo } from '../../types';
+import type {
+  CMAClient,
+  ConversionRollbackAction,
+  ModularContentFieldInfo,
+} from '../../types';
 import { convertBlockToModel } from './index';
 
 function modularField(id: string): ModularContentFieldInfo {
@@ -300,6 +304,59 @@ describe('schema-changing field conversion', () => {
     expect(
       mocks.convertModularContentToLinksField,
     ).not.toHaveBeenCalled();
+  });
+
+  it('rolls back non-destructive field changes before removing the model', async () => {
+    const events: string[] = [];
+    mocks.convertModularContentToLinksField.mockImplementation(
+      async ({
+        rollbackActions,
+      }: {
+        rollbackActions?: ConversionRollbackAction[];
+      }) => {
+        rollbackActions?.push({
+          description: 'first field mutation',
+          run: async () => {
+            events.push('rollback:first');
+          },
+        });
+        rollbackActions?.push({
+          description: 'second field mutation',
+          run: async () => {
+            events.push('rollback:second');
+          },
+        });
+        throw new Error('PUT /items/page-1: 500');
+      },
+    );
+    const client = {
+      site: {
+        find: vi.fn(async () => ({ locales: ['en', 'de-DE'] })),
+      },
+      itemTypes: {
+        destroy: vi.fn(async () => {
+          events.push('destroy:model');
+        }),
+      },
+    } as unknown as CMAClient;
+
+    const result = await convertBlockToModel(
+      client,
+      'target-block',
+      vi.fn(),
+    );
+
+    expect(result).toMatchObject({
+      success: false,
+      error: 'PUT /items/page-1: 500',
+      migratedRecordsCount: 0,
+      convertedFieldsCount: 0,
+    });
+    expect(events).toEqual([
+      'rollback:second',
+      'rollback:first',
+      'destroy:model',
+    ]);
   });
 
   it('does not create a model for an unused block', async () => {

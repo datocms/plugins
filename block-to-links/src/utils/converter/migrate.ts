@@ -10,6 +10,7 @@
 import type {
   BlockMigrationMapping,
   CMAClient,
+  ConversionRollbackAction,
   GroupedBlockInstance,
   NestedBlockPath,
   StructuredTextValue,
@@ -67,38 +68,40 @@ function formatPathIndices(pathIndices: number[]): string {
   return pathIndices.length > 0 ? pathIndices.join(' → ') : 'root';
 }
 
+function formatApiValidationIssue(apiError: unknown): string | null {
+  if (!apiError || typeof apiError !== 'object') return null;
+  const attributes = (apiError as { attributes?: unknown }).attributes;
+  if (!attributes || typeof attributes !== 'object') return null;
+
+  const { code, details } = attributes as {
+    code?: unknown;
+    details?: unknown;
+  };
+  if (!details || typeof details !== 'object') return null;
+
+  const issue = details as Record<string, unknown>;
+  if (
+    code !== 'INVALID_FIELD' ||
+    issue.code !== 'VALIDATION_REQUIRED_ALT_TITLE'
+  ) {
+    return null;
+  }
+
+  const field = typeof issue.field === 'string' ? issue.field : 'image';
+  const locale =
+    typeof issue.locale === 'string' ? ` (locale ${issue.locale})` : '';
+  return `Required alternate text is missing at ${field}${locale}. Add alt text to that source image field, or add a default alt for the upload in that locale, then retry`;
+}
+
 function formatApiValidationIssues(error: unknown): string | null {
   if (!error || typeof error !== 'object') return null;
 
   const apiErrors = (error as { errors?: unknown }).errors;
   if (!Array.isArray(apiErrors)) return null;
 
-  const issues = apiErrors.flatMap((apiError) => {
-    if (!apiError || typeof apiError !== 'object') return [];
-    const attributes = (apiError as { attributes?: unknown }).attributes;
-    if (!attributes || typeof attributes !== 'object') return [];
-
-    const { code, details } = attributes as {
-      code?: unknown;
-      details?: unknown;
-    };
-    if (!details || typeof details !== 'object') return [];
-
-    const issue = details as Record<string, unknown>;
-    if (
-      code === 'INVALID_FIELD' &&
-      issue.code === 'VALIDATION_REQUIRED_ALT_TITLE'
-    ) {
-      const field = typeof issue.field === 'string' ? issue.field : 'image';
-      const locale =
-        typeof issue.locale === 'string' ? ` (locale ${issue.locale})` : '';
-      return [
-        `Required alternate text is missing at ${field}${locale}. Add alt text to that source image field, or add a default alt for the upload in that locale, then retry`,
-      ];
-    }
-
-    return [];
-  });
+  const issues = apiErrors
+    .map(formatApiValidationIssue)
+    .filter((issue): issue is string => issue !== null);
 
   return issues.length > 0 ? issues.join('; ') : null;
 }
@@ -110,6 +113,65 @@ function migrationValidationError(error: unknown, source: string): Error {
   return new Error(
     `Cannot migrate ${source}. The source content does not satisfy the copied model validations. ${details}`,
   );
+}
+
+function containsExtractedLinks(
+  value: unknown,
+  isSingleValue: boolean,
+): boolean {
+  if (isSingleValue) return typeof value === 'string' && value.length > 0;
+  return (
+    Array.isArray(value) &&
+    value.some((link) => typeof link === 'string' && link.length > 0)
+  );
+}
+
+async function findRawFieldValueForRollback(
+  rollbackActions: ConversionRollbackAction[] | undefined,
+  client: CMAClient,
+  recordId: string,
+  fieldApiKey: string,
+): Promise<unknown> {
+  if (!rollbackActions) return undefined;
+  const rawRecord = await client.items.find(recordId, {
+    version: 'current',
+  });
+  return rawRecord[fieldApiKey];
+}
+
+function registerRecordRollback(
+  rollbackActions: ConversionRollbackAction[] | undefined,
+  client: CMAClient,
+  recordId: string,
+  fieldApiKey: string,
+  previousValue: unknown,
+): void {
+  rollbackActions?.push({
+    description: `restore record ${recordId} field ${fieldApiKey}`,
+    run: async () => {
+      await client.items.update(recordId, {
+        [fieldApiKey]: previousValue,
+      });
+    },
+  });
+}
+
+function extractLocalizedLinks(
+  source: Record<string, unknown>,
+  targetBlockId: string,
+  mapping: BlockMigrationMapping,
+  isSingleValue: boolean,
+): Record<string, unknown> {
+  const localizedValue: Record<string, unknown> = {};
+  for (const [locale, localeValue] of Object.entries(source)) {
+    localizedValue[locale] = extractLinksFromValue(
+      localeValue,
+      targetBlockId,
+      mapping,
+      isSingleValue,
+    );
+  }
+  return localizedValue;
 }
 
 // =============================================================================
@@ -361,18 +423,20 @@ export async function migrateFieldData(
       !Array.isArray(oldValue)
     ) {
       // Localized field - process each locale
-      const localizedValue: Record<string, unknown> = {};
-      for (const [locale, localeValue] of Object.entries(
+      const localizedValue = extractLocalizedLinks(
         oldValue as Record<string, unknown>,
-      )) {
-        localizedValue[locale] = extractLinksFromValue(
-          localeValue,
-          targetBlockId,
-          mapping,
-          isSingleValue,
-        );
-      }
+        targetBlockId,
+        mapping,
+        isSingleValue,
+      );
       newValue = localizedValue;
+      if (
+        !Object.values(localizedValue).some((value) =>
+          containsExtractedLinks(value, isSingleValue),
+        )
+      ) {
+        continue;
+      }
     } else {
       // Non-localized field
       newValue = extractLinksFromValue(
@@ -381,6 +445,7 @@ export async function migrateFieldData(
         mapping,
         isSingleValue,
       );
+      if (!containsExtractedLinks(newValue, isSingleValue)) continue;
     }
 
     await client.items.update(record.id, {
@@ -411,8 +476,9 @@ function mergeLocalizedLinksForAppend(
   existingLocalized: Record<string, unknown>,
   targetBlockId: string,
   mapping: BlockMigrationMapping,
-): Record<string, unknown> {
+): { localizedValue: Record<string, unknown>; changed: boolean } {
   const localizedValue: Record<string, unknown> = {};
+  let changed = false;
   const allLocales = new Set([
     ...Object.keys(oldValueLocalized),
     ...Object.keys(existingLocalized),
@@ -429,10 +495,12 @@ function mergeLocalizedLinksForAppend(
         ) as string[])
       : [];
     const existingLinks = normalizeLinksArray(existingLocalized[locale]);
-    localizedValue[locale] = combineLinks(existingLinks, newLinks);
+    const combinedLinks = combineLinks(existingLinks, newLinks);
+    localizedValue[locale] = combinedLinks;
+    if (combinedLinks.length !== existingLinks.length) changed = true;
   }
 
-  return localizedValue;
+  return { localizedValue, changed };
 }
 
 export async function migrateFieldDataAppend(
@@ -444,6 +512,7 @@ export async function migrateFieldDataAppend(
   targetBlockId: string,
   mapping: BlockMigrationMapping,
   recordsToPublish?: Set<string>,
+  rollbackActions?: ConversionRollbackAction[],
 ): Promise<void> {
   // Read WITHOUT nested to get raw field values for existing links
   for await (const record of client.items.listPagedIterator({
@@ -472,12 +541,14 @@ export async function migrateFieldDataAppend(
         unknown
       >;
       const oldValueLocalized = oldValue as Record<string, unknown>;
-      newValue = mergeLocalizedLinksForAppend(
+      const result = mergeLocalizedLinksForAppend(
         oldValueLocalized,
         existingLocalized,
         targetBlockId,
         mapping,
       );
+      if (!result.changed) continue;
+      newValue = result.localizedValue;
     } else {
       const newLinks = extractLinksFromValue(
         oldValue,
@@ -486,12 +557,21 @@ export async function migrateFieldDataAppend(
         false,
       ) as string[];
       const existingLinks = normalizeLinksArray(existingLinksValue);
-      newValue = combineLinks(existingLinks, newLinks);
+      const combinedLinks = combineLinks(existingLinks, newLinks);
+      if (combinedLinks.length === existingLinks.length) continue;
+      newValue = combinedLinks;
     }
 
     await client.items.update(record.id, {
       [linksFieldApiKey]: newValue,
     });
+    registerRecordRollback(
+      rollbackActions,
+      client,
+      record.id,
+      linksFieldApiKey,
+      existingLinksValue,
+    );
     recordsToPublish?.add(record.id);
   }
 }
@@ -551,6 +631,7 @@ export async function migrateNestedBlockFieldData(
         mapping,
         isSingleValue,
       );
+      if (!containsExtractedLinks(newValue, isSingleValue)) return blockData;
       return setNestedFieldValueInBlock(blockData, newFieldApiKey, newValue);
     };
 
@@ -608,6 +689,7 @@ export async function migrateNestedBlockFieldDataAppend(
   mapping: BlockMigrationMapping,
   availableLocales: string[],
   recordsToPublish?: Set<string>,
+  rollbackActions?: ConversionRollbackAction[],
 ): Promise<void> {
   const pathToParentBlock = nestedPath.path.slice(0, -1);
 
@@ -628,8 +710,9 @@ export async function migrateNestedBlockFieldDataAppend(
       mapping,
       false,
     ) as string[];
-    const existingLinks = (existingLinksValue || []) as string[];
+    const existingLinks = normalizeLinksArray(existingLinksValue);
     const combinedLinks = combineLinks(existingLinks, newLinks);
+    if (combinedLinks.length === existingLinks.length) return blockData;
 
     return setNestedFieldValueInBlock(
       blockData,
@@ -666,6 +749,13 @@ export async function migrateNestedBlockFieldDataAppend(
     }
 
     if (result.updated) {
+      const previousValue = await findRawFieldValueForRollback(
+        rollbackActions,
+        client,
+        record.id,
+        rootFieldApiKey,
+      );
+
       let updateValue = result.newValue;
 
       if (
@@ -683,6 +773,13 @@ export async function migrateNestedBlockFieldDataAppend(
       await client.items.update(record.id, {
         [rootFieldApiKey]: updateValue,
       });
+      registerRecordRollback(
+        rollbackActions,
+        client,
+        record.id,
+        rootFieldApiKey,
+        previousValue,
+      );
       recordsToPublish?.add(record.id);
     }
   }
@@ -878,6 +975,7 @@ export async function migrateStructuredTextFieldDataPartial(
   mapping: BlockMigrationMapping,
   availableLocales: string[],
   recordsToPublish?: Set<string>,
+  rollbackActions?: ConversionRollbackAction[],
 ): Promise<void> {
   for await (const record of client.items.listPagedIterator({
     filter: { type: modelId },
@@ -917,9 +1015,22 @@ export async function migrateStructuredTextFieldDataPartial(
     }
 
     if (hasChanges && newValue) {
+      const previousValue = await findRawFieldValueForRollback(
+        rollbackActions,
+        client,
+        record.id,
+        fieldApiKey,
+      );
       await client.items.update(record.id, {
         [fieldApiKey]: newValue,
       });
+      registerRecordRollback(
+        rollbackActions,
+        client,
+        record.id,
+        fieldApiKey,
+        previousValue,
+      );
       recordsToPublish?.add(record.id);
     }
   }
@@ -935,6 +1046,7 @@ export async function migrateNestedStructuredTextFieldDataPartial(
   targetBlockId: string,
   mapping: BlockMigrationMapping,
   recordsToPublish?: Set<string>,
+  rollbackActions?: ConversionRollbackAction[],
 ): Promise<void> {
   for await (const record of client.items.listPagedIterator({
     filter: { type: nestedPath.rootModelId },
@@ -987,9 +1099,22 @@ export async function migrateNestedStructuredTextFieldDataPartial(
     }
 
     if (result.updated) {
+      const previousValue = await findRawFieldValueForRollback(
+        rollbackActions,
+        client,
+        record.id,
+        rootFieldApiKey,
+      );
       await client.items.update(record.id, {
         [rootFieldApiKey]: result.newValue,
       });
+      registerRecordRollback(
+        rollbackActions,
+        client,
+        record.id,
+        rootFieldApiKey,
+        previousValue,
+      );
       recordsToPublish?.add(record.id);
     }
   }

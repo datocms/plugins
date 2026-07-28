@@ -1,11 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import type {
   CMAClient,
+  ConversionRollbackAction,
   GroupedBlockInstance,
   NestedBlockPath,
 } from '../../types';
 import {
   migrateBlocksToRecordsNested,
+  migrateFieldData,
+  migrateFieldDataAppend,
   migrateGroupedBlocksToRecords,
   migrateNestedBlockFieldData,
 } from './migrate';
@@ -67,6 +70,20 @@ function clientWithItemMethods(methods: Record<string, unknown>): CMAClient {
   return {
     items: methods,
   } as unknown as CMAClient;
+}
+
+function block(id: string, itemTypeId: string): Record<string, unknown> {
+  return {
+    id,
+    type: 'item',
+    __itemTypeId: itemTypeId,
+    relationships: {
+      item_type: {
+        data: { type: 'item_type', id: itemTypeId },
+      },
+    },
+    attributes: {},
+  };
 }
 
 describe('record creation preflight', () => {
@@ -420,5 +437,119 @@ describe('nested record updates', () => {
     ]);
     expect(JSON.stringify(updates)).not.toContain('obsolete_schema_field');
     expect(JSON.stringify(updates)).not.toContain('"link"');
+  });
+});
+
+describe('links field updates', () => {
+  it('skips localized records that contain no matching blocks', async () => {
+    const update = vi.fn();
+    const emptyLocalizedSource = Object.fromEntries(
+      projectLocales.map((locale) => [
+        locale,
+        [block(`other-${locale}`, 'other-type')],
+      ]),
+    );
+    const client = clientWithItemMethods({
+      listPagedIterator: async function* () {
+        yield {
+          id: 'page-without-target',
+          hero: emptyLocalizedSource,
+        };
+      },
+      update,
+    });
+
+    await migrateFieldData(
+      client,
+      'page-model',
+      'hero',
+      'hero_links',
+      true,
+      'target-type',
+      {},
+      false,
+    );
+
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it('only appends new links and can restore the previous raw value', async () => {
+    const rollbackActions: ConversionRollbackAction[] = [];
+    const updates: Array<{
+      id: string;
+      body: Record<string, unknown>;
+    }> = [];
+    const rawRecords = [
+      {
+        id: 'page-without-target',
+        hero_links: { en: [] },
+      },
+      {
+        id: 'page-with-new-link',
+        hero_links: { en: ['existing-record'] },
+      },
+      {
+        id: 'page-with-existing-link',
+        hero_links: { en: ['converted-record'] },
+      },
+    ];
+    const nestedRecords: Record<string, Record<string, unknown>> = {
+      'page-without-target': {
+        id: 'page-without-target',
+        hero: { en: [block('other-block', 'other-type')] },
+      },
+      'page-with-new-link': {
+        id: 'page-with-new-link',
+        hero: { en: [block('target-block', 'target-type')] },
+      },
+      'page-with-existing-link': {
+        id: 'page-with-existing-link',
+        hero: { en: [block('target-block', 'target-type')] },
+      },
+    };
+    const client = clientWithItemMethods({
+      listPagedIterator: async function* () {
+        yield* rawRecords;
+      },
+      find: vi.fn(async (id: string) => nestedRecords[id]),
+      update: vi.fn(
+        async (id: string, body: Record<string, unknown>) => {
+          updates.push({ id, body });
+        },
+      ),
+    });
+
+    await migrateFieldDataAppend(
+      client,
+      'page-model',
+      'hero',
+      'hero_links',
+      true,
+      'target-type',
+      { 'target-block': 'converted-record' },
+      undefined,
+      rollbackActions,
+    );
+
+    expect(updates).toEqual([
+      {
+        id: 'page-with-new-link',
+        body: {
+          hero_links: {
+            en: ['existing-record', 'converted-record'],
+          },
+        },
+      },
+    ]);
+    expect(rollbackActions).toHaveLength(1);
+
+    await rollbackActions[0].run();
+
+    expect(updates[1]).toEqual({
+      id: 'page-with-new-link',
+      body: {
+        hero_links: { en: ['existing-record'] },
+      },
+    });
   });
 });

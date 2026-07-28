@@ -10,6 +10,7 @@
 import type {
   BlockMigrationMapping,
   CMAClient,
+  ConversionRollbackAction,
   ModularContentFieldInfo,
   NestedBlockPath,
 } from '../../types';
@@ -49,6 +50,8 @@ export interface FieldConversionContext {
   fullyReplace: boolean;
   /** Set to track records for publishing */
   recordsToPublish?: Set<string>;
+  /** Inverse operations for safe non-destructive cleanup after a failure */
+  rollbackActions?: ConversionRollbackAction[];
 }
 
 type FieldUpdatePayload = Parameters<CMAClient['fields']['update']>[1];
@@ -162,6 +165,7 @@ async function migrateStructuredTextData(
     nestedPaths,
     availableLocales,
     recordsToPublish,
+    rollbackActions,
   } = ctx;
 
   if (mcField.parentIsBlock) {
@@ -176,6 +180,7 @@ async function migrateStructuredTextData(
         blockIdToRemove,
         mapping,
         recordsToPublish,
+        rollbackActions,
       );
     } else {
       await migrateNestedStructuredTextFieldData(
@@ -197,6 +202,7 @@ async function migrateStructuredTextData(
       mapping,
       availableLocales,
       recordsToPublish,
+      rollbackActions,
     );
   } else {
     await migrateStructuredTextFieldData(
@@ -221,7 +227,7 @@ async function handleStructuredTextFieldConversion(
   },
   remainingBlockIds: string[],
 ): Promise<void> {
-  const { client, mcField, newModelId, fullyReplace } = ctx;
+  const { client, mcField, newModelId, fullyReplace, rollbackActions } = ctx;
 
   const validators = currentField.validators as Record<string, unknown>;
   const currentBlocksValidator = validators.structured_text_blocks as
@@ -244,9 +250,21 @@ async function handleStructuredTextFieldConversion(
     phase1Validators.structured_text_blocks = currentBlocksValidator;
   }
 
-  await client.fields.update(mcField.id, {
-    validators: phase1Validators,
-  } as FieldUpdatePayload);
+  if (!existingLinkTypes.includes(newModelId)) {
+    await client.fields.update(mcField.id, {
+      validators: phase1Validators,
+    } as FieldUpdatePayload);
+    if (!fullyReplace) {
+      rollbackActions?.push({
+        description: `restore validators for field ${mcField.id}`,
+        run: async () => {
+          await client.fields.update(mcField.id, {
+            validators,
+          } as FieldUpdatePayload);
+        },
+      });
+    }
+  }
 
   // PHASE 2: Migrate DAST data
   await migrateStructuredTextData(ctx, !fullyReplace);
@@ -286,7 +304,7 @@ async function createLinksFieldAlongsideOriginal(
   originalPosition: number,
   originalFieldset: { id: string; type: 'fieldset' } | null,
   isSingleBlock: boolean,
-): Promise<{ api_key: string }> {
+): Promise<{ id: string; api_key: string }> {
   const { client, mcField, newModelId } = ctx;
   const expectedLinksApiKey = `${originalApiKey}_links`;
 
@@ -382,6 +400,7 @@ async function handleNonDestructiveConversion(
     nestedPaths,
     availableLocales,
     recordsToPublish,
+    rollbackActions,
   } = ctx;
 
   const existingFields = await client.fields.list(mcField.parentModelId);
@@ -408,6 +427,14 @@ async function handleNonDestructiveConversion(
           items_item_type: { item_types: [...currentItemTypes, newModelId] },
         },
       });
+      rollbackActions?.push({
+        description: `restore validators for field ${existingLinksField.id}`,
+        run: async () => {
+          await client.fields.update(existingLinksField.id, {
+            validators: currentValidators,
+          });
+        },
+      });
     }
 
     if (mcField.parentIsBlock) {
@@ -422,6 +449,7 @@ async function handleNonDestructiveConversion(
           mapping,
           availableLocales,
           recordsToPublish,
+          rollbackActions,
         );
       }
     } else {
@@ -434,6 +462,7 @@ async function handleNonDestructiveConversion(
         blockIdToRemove,
         mapping,
         recordsToPublish,
+        rollbackActions,
       );
     }
   } else {
@@ -446,6 +475,12 @@ async function handleNonDestructiveConversion(
       originalFieldset,
       isSingleBlock,
     );
+    rollbackActions?.push({
+      description: `remove field ${newLinksField.id}`,
+      run: async () => {
+        await client.fields.destroy(newLinksField.id);
+      },
+    });
     await migrateBlockFieldDataToTarget(
       ctx,
       originalApiKey,

@@ -18,6 +18,7 @@ import type {
   BlockMigrationMapping,
   CMAClient,
   ConversionResult,
+  ConversionRollbackAction,
   NestedBlockPath,
   ProgressCallback,
 } from '../../types';
@@ -80,6 +81,7 @@ type ConversionContext = {
   recordsToPublish: Set<string>;
   publishAfterChanges: boolean;
   fullyReplace: boolean;
+  rollbackActions: ConversionRollbackAction[];
 };
 
 /**
@@ -197,6 +199,50 @@ async function rollbackUnreferencedModel(
   throw error;
 }
 
+async function rollbackNonDestructiveConversion(
+  ctx: ConversionContext,
+  modelId: string,
+  error: unknown,
+): Promise<never> {
+  const cleanupErrors: string[] = [];
+
+  for (const action of [...ctx.rollbackActions].reverse()) {
+    try {
+      // biome-ignore lint/performance/noAwaitInLoops: schema rollback actions must run in reverse mutation order
+      await action.run();
+    } catch (cleanupError) {
+      const message =
+        cleanupError instanceof Error
+          ? cleanupError.message
+          : String(cleanupError);
+      cleanupErrors.push(`${action.description}: ${message}`);
+    }
+  }
+  ctx.rollbackActions.length = 0;
+
+  try {
+    await ctx.client.itemTypes.destroy(modelId);
+  } catch (cleanupError) {
+    cleanupErrors.push(
+      `remove converted model: ${
+        cleanupError instanceof Error
+          ? cleanupError.message
+          : String(cleanupError)
+      }`,
+    );
+  }
+
+  if (cleanupErrors.length > 0) {
+    const originalMessage =
+      error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `${originalMessage} The failed conversion could not be cleaned up automatically: ${cleanupErrors.join('; ')}`,
+    );
+  }
+
+  throw error;
+}
+
 /**
  * Step 3: Migrates all block instances to new records sequentially.
  */
@@ -269,6 +315,7 @@ async function convertAllFields(
     fullyReplace,
     publishAfterChanges,
     recordsToPublish,
+    rollbackActions,
   } = ctx;
 
   onProgress({
@@ -291,6 +338,7 @@ async function convertAllFields(
         availableLocales,
         fullyReplace,
         recordsToPublish: publishAfterChanges ? recordsToPublish : undefined,
+        rollbackActions: fullyReplace ? undefined : rollbackActions,
       });
     },
     Promise.resolve(),
@@ -399,6 +447,7 @@ export async function convertBlockToModel(
   if (publishAfterChanges) totalSteps++;
 
   const recordsToPublish = new Set<string>();
+  const rollbackActions: ConversionRollbackAction[] = [];
   let migratedRecordsCount = 0;
   let convertedFieldsCount = 0;
 
@@ -410,6 +459,7 @@ export async function convertBlockToModel(
     recordsToPublish,
     publishAfterChanges,
     fullyReplace,
+    rollbackActions,
   };
 
   try {
@@ -458,14 +508,23 @@ export async function convertBlockToModel(
       }
     }
 
-    convertedFieldsCount = await convertAllFields(
-      ctx,
-      analysis,
-      newModel.id,
-      globalMapping,
-      nestedPaths,
-      availableLocales,
-    );
+    try {
+      convertedFieldsCount = await convertAllFields(
+        ctx,
+        analysis,
+        newModel.id,
+        globalMapping,
+        nestedPaths,
+        availableLocales,
+      );
+    } catch (error) {
+      if (!fullyReplace) {
+        migratedRecordsCount = 0;
+        recordsToPublish.clear();
+        await rollbackNonDestructiveConversion(ctx, newModel.id, error);
+      }
+      throw error;
+    }
     await cleanupIfFullyReplacing(ctx, nestedPaths);
 
     let currentStep = 6;
