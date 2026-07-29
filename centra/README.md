@@ -138,15 +138,15 @@ type CentraReferenceDocument =
   | {
       version: 1;
       kind: 'primaryProduct' | 'variant';
-      references: Array<{ displayItemId: number }>;
+      references: { displayItemId: number }[];
     }
   | {
       version: 1;
       kind: 'item';
-      references: Array<{
+      references: {
         displayItemId: number;
         itemId: string;
-      }>;
+      }[];
     };
 
 function parseCentraField(

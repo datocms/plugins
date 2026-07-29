@@ -331,7 +331,7 @@ describe('PickerModal', () => {
     expect(firstSignal?.aborted).toBe(true);
   });
 
-  it('keeps pagination in the action footer and appends the next page', async () => {
+  it('keeps native pagination in the action footer and preserves staged selections across pages', async () => {
     const secondDisplayItem: CentraDisplayItem = {
       ...displayItem,
       id: 558,
@@ -347,16 +347,16 @@ describe('PickerModal', () => {
               page: 1,
               hasMore: true,
               nextPage: 2,
-              totalCount: 2,
+              totalCount: 48,
             }
           : {
               items: [secondDisplayItem],
               page: 2,
               hasMore: false,
-              totalCount: 2,
+              totalCount: 48,
             },
       );
-    const { ctx } = createCtx({
+    const { ctx, resolve } = createCtx({
       paramsVersion: '1',
       kind: 'variant',
       cardinality: 'multiple',
@@ -365,25 +365,40 @@ describe('PickerModal', () => {
     render(<PickerModal ctx={ctx} />);
 
     expect(await screen.findByText('Dog Toy')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Select Dog Toy' }));
     const footer = screen.getByRole('group', { name: 'Picker actions' });
-    const loadMore = within(footer).getByRole('button', { name: 'Load more' });
+    const pagination = within(footer).getByRole('navigation', {
+      name: 'Catalog pagination',
+    });
     expect(
-      within(footer).getByRole('button', { name: 'Cancel' }),
-    ).toBeVisible();
+      within(footer).queryByRole('button', { name: 'Load more' }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(footer).queryByRole('button', { name: 'Cancel' }),
+    ).not.toBeInTheDocument();
     expect(
       within(footer).getByRole('button', { name: 'Apply selection' }),
     ).toBeVisible();
 
-    fireEvent.click(loadMore);
+    fireEvent.click(within(pagination).getByRole('button', { name: '2' }));
 
     expect(await screen.findByText('Elina_UK')).toBeInTheDocument();
-    expect(screen.getByText('Dog Toy')).toBeInTheDocument();
+    expect(screen.queryByText('Dog Toy')).not.toBeInTheDocument();
+    expect(footer).toHaveTextContent('1 product variant selected');
     expect(search).toHaveBeenLastCalledWith(
       expect.objectContaining({ page: 2 }),
     );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Select Elina_UK' }));
+    fireEvent.click(
+      within(footer).getByRole('button', { name: 'Apply selection' }),
+    );
+    expect(resolve).toHaveBeenCalledWith({
+      references: [{ displayItemId: 2752 }, { displayItemId: 558 }],
+    });
   });
 
-  it('keeps current results mounted when loading another page fails', async () => {
+  it('keeps the current page mounted and lets pagination retry after a failure', async () => {
     vi.spyOn(CentraClient.prototype, 'searchDisplayItems').mockImplementation(
       async ({ page }) => {
         if (page === 1) {
@@ -405,15 +420,16 @@ describe('PickerModal', () => {
 
     render(<PickerModal ctx={ctx} />);
     expect(await screen.findByText('Dog Toy')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
+    fireEvent.click(screen.getByRole('button', { name: '2' }));
 
     expect(
-      await screen.findByRole('button', { name: 'Try again' }),
+      await screen.findByRole('alert'),
     ).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'The next page is temporarily unavailable.',
+    );
     expect(screen.getByText('Dog Toy')).toBeInTheDocument();
-    expect(
-      screen.getByText(/Loading more products failed/),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '2' })).toBeEnabled();
   });
 
   it('ranks an exact SKU match first inside the selected product', async () => {

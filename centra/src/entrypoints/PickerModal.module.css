@@ -131,12 +131,6 @@
   font-weight: var(--font-weight-bold);
 }
 
-.paginationSlot {
-  display: flex;
-  min-width: 104px;
-  justify-content: flex-end;
-}
-
 .skeletonCard {
   display: grid;
   min-width: 0;
@@ -282,10 +276,5 @@
 
   .footerInfo {
     margin-right: 0;
-  }
-
-  .paginationSlot {
-    min-width: 0;
-    justify-content: flex-start;
   }
 }

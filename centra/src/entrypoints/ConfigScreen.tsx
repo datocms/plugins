@@ -68,7 +68,9 @@ export default function ConfigScreen({ ctx }: Props) {
       await ctx.updatePluginParameters(normalized);
       ctx.notice('Centra connected successfully.');
     } catch (error) {
-      await ctx.alert(safeErrorMessage(error, normalized.token));
+      void ctx
+        .alert(safeErrorMessage(error, normalized.token))
+        .catch(() => undefined);
     } finally {
       setIsSaving(false);
     }

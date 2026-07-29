@@ -195,6 +195,24 @@ describe('ConfigScreen', () => {
     expect(updatePluginParameters).not.toHaveBeenCalled();
   });
 
+  it('leaves the connecting state while the failure alert is still open', async () => {
+    clientMocks.searchDisplayItems.mockRejectedValue(
+      new Error('Centra is unavailable'),
+    );
+    const { ctx, alert } = createCtx({
+      parameters: { ...VALID_PARAMETERS, paramsVersion: '1' },
+    });
+    alert.mockReturnValue(new Promise(() => undefined));
+    render(<ConfigScreen ctx={ctx} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save and connect' }));
+
+    await waitFor(() => expect(alert).toHaveBeenCalledOnce());
+    expect(
+      screen.getByRole('button', { name: 'Save and connect' }),
+    ).toBeEnabled();
+  });
+
   it('renders read-only credentials without a save action', () => {
     const { ctx } = createCtx({ canEditSchema: false });
     render(<ConfigScreen ctx={ctx} />);

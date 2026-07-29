@@ -4,6 +4,7 @@ import isEqual from 'lodash-es/isEqual';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import CatalogItemRow from '../components/CatalogItemRow';
 import CatalogProductCard from '../components/CatalogProductCard';
+import Pagination from '../components/Pagination';
 import useDebouncedValue from '../components/useDebouncedValue';
 import {
   PICKER_MODAL_HEIGHT,
@@ -37,8 +38,6 @@ type SearchState = {
   status: 'loading' | 'success' | 'error';
   items: CentraDisplayItem[];
   page: number;
-  hasMore: boolean;
-  nextPage?: number;
   totalCount?: number;
   error?: string;
 };
@@ -60,16 +59,6 @@ const INITIAL_DRILLDOWN_SKELETON_IDS = [
   'initial-drilldown-4',
   'initial-drilldown-5',
 ];
-const LOAD_MORE_CARD_SKELETON_IDS = [
-  'more-card-1',
-  'more-card-2',
-  'more-card-3',
-];
-const LOAD_MORE_DRILLDOWN_SKELETON_IDS = [
-  'more-drilldown-1',
-  'more-drilldown-2',
-];
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -202,6 +191,18 @@ function searchCatalog(
     kind: fieldParameters.kind,
     limit: SEARCH_PAGE_SIZE,
   });
+}
+
+function pageCountForResult(result: {
+  page: number;
+  hasMore: boolean;
+  totalCount?: number;
+}): number {
+  if (typeof result.totalCount === 'number') {
+    return Math.max(1, Math.ceil(result.totalCount / SEARCH_PAGE_SIZE));
+  }
+
+  return Math.max(1, result.page + (result.hasMore ? 1 : 0));
 }
 
 function pickerEntityLabels(kind: CentraFieldParametersV1['kind']): {
@@ -393,7 +394,7 @@ type PickerResultsProps = {
   selection: CentraReference[];
   query: string;
   expandedDisplayItemId: number | null;
-  isLoadingMore: boolean;
+  isChangingPage: boolean;
   onToggleExpanded: (displayItemId: number) => void;
   onToggleReference: (reference: CentraReference) => void;
 };
@@ -406,28 +407,27 @@ function PickerResults({
   selection,
   query,
   expandedDisplayItemId,
-  isLoadingMore,
+  isChangingPage,
   onToggleExpanded,
   onToggleReference,
 }: PickerResultsProps) {
   const drilldown = fieldParameters.kind === 'item';
-  const resultsAreInactive = searchIsPending || search.status === 'error';
+  const resultsAreInactive =
+    searchIsPending || isChangingPage || search.status === 'error';
   const initialSkeletonIds = drilldown
     ? INITIAL_DRILLDOWN_SKELETON_IDS
     : INITIAL_CARD_SKELETON_IDS;
-  const loadMoreSkeletonIds = drilldown
-    ? LOAD_MORE_DRILLDOWN_SKELETON_IDS
-    : LOAD_MORE_CARD_SKELETON_IDS;
   const showInitialSkeletons = searchIsPending && search.items.length === 0;
 
   return (
     <div
+      id="centra-picker-results"
       className={`${styles.results} ${
         resultsAreInactive && search.items.length > 0
           ? styles.resultsRefreshing
           : ''
       }`}
-      aria-busy={searchIsPending || isLoadingMore}
+      aria-busy={searchIsPending || isChangingPage}
       inert={resultsAreInactive ? true : undefined}
     >
       {showInitialSkeletons && (
@@ -471,11 +471,6 @@ function PickerResults({
           onToggleReference={onToggleReference}
         />
       ))}
-
-      {isLoadingMore &&
-        loadMoreSkeletonIds.map((id) => (
-          <CatalogSkeleton key={id} drilldown={drilldown} />
-        ))}
     </div>
   );
 }
@@ -484,12 +479,11 @@ type PickerFooterProps = {
   entityLabel: string;
   entityPlural: string;
   selectionCount: number;
-  hasMore: boolean;
+  currentPage: number;
+  pageCount: number;
   searchIsPending: boolean;
-  isLoadingMore: boolean;
-  loadMoreError: string | null;
-  onLoadMore: () => void;
-  onCancel: () => void;
+  isChangingPage: boolean;
+  onPageChange: (page: number) => void;
   onApply: () => void;
 };
 
@@ -497,44 +491,27 @@ function PickerFooter({
   entityLabel,
   entityPlural,
   selectionCount,
-  hasMore,
+  currentPage,
+  pageCount,
   searchIsPending,
-  isLoadingMore,
-  loadMoreError,
-  onLoadMore,
-  onCancel,
+  isChangingPage,
+  onPageChange,
   onApply,
 }: PickerFooterProps) {
-  const showPagination = hasMore || isLoadingMore || loadMoreError !== null;
-  let paginationLabel = 'Load more';
-  if (isLoadingMore) paginationLabel = 'Loading…';
-  if (loadMoreError) paginationLabel = 'Try again';
-
   return (
     <div className={styles.footer} role="group" aria-label="Picker actions">
       <span className={styles.footerInfo}>
         <strong>{selectionCount}</strong>{' '}
         {selectionCount === 1 ? entityLabel : entityPlural} selected
       </span>
-      <div className={styles.paginationSlot}>
-        {showPagination && (
-          <Button
-            buttonType="muted"
-            disabled={isLoadingMore || searchIsPending}
-            onClick={onLoadMore}
-          >
-            {paginationLabel}
-          </Button>
-        )}
-        {loadMoreError && (
-          <span className={styles.srOnly} role="alert">
-            Loading more products failed: {loadMoreError}
-          </span>
-        )}
-      </div>
-      <Button buttonType="muted" onClick={onCancel}>
-        Cancel
-      </Button>
+      <Pagination
+        perPage={SEARCH_PAGE_SIZE}
+        currentPage={currentPage - 1}
+        totalEntries={pageCount * SEARCH_PAGE_SIZE}
+        maxPagesToShow={5}
+        disabled={searchIsPending || isChangingPage}
+        onPageChange={(page) => onPageChange(page + 1)}
+      />
       <Button buttonType="primary" onClick={onApply}>
         Apply selection
       </Button>
@@ -573,14 +550,13 @@ export default function PickerModal({ ctx }: Props) {
   const [expandedDisplayItemId, setExpandedDisplayItemId] = useState<
     number | null
   >(null);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
-  const loadMoreController = useRef<AbortController | null>(null);
+  const [isChangingPage, setIsChangingPage] = useState(false);
+  const [pageCount, setPageCount] = useState(1);
+  const pageController = useRef<AbortController | null>(null);
   const [search, setSearch] = useState<SearchState>({
     status: 'loading',
     items: [],
     page: 1,
-    hasMore: false,
   });
 
   useEffect(() => {
@@ -594,10 +570,10 @@ export default function PickerModal({ ctx }: Props) {
   }, [connection, ctx, fieldParameters, modalParameters]);
 
   const updateQuery = (value: string) => {
-    loadMoreController.current?.abort();
-    loadMoreController.current = null;
-    setIsLoadingMore(false);
-    setLoadMoreError(null);
+    pageController.current?.abort();
+    pageController.current = null;
+    setIsChangingPage(false);
+    setPageCount(1);
     setQuery(value);
   };
 
@@ -624,11 +600,9 @@ export default function PickerModal({ ctx }: Props) {
           status: 'success',
           items: result.items,
           page: result.page,
-          hasMore: result.hasMore,
-          nextPage: result.nextPage,
           totalCount: result.totalCount,
         });
-        setLoadMoreError(null);
+        setPageCount(pageCountForResult(result));
 
         setExpandedDisplayItemId((current) => {
           if (result.items.some((item) => item.id === current)) return current;
@@ -641,18 +615,17 @@ export default function PickerModal({ ctx }: Props) {
       })
       .catch((error: unknown) => {
         if (controller.signal.aborted) return;
+        setPageCount(1);
         setSearch((current) => ({
           ...current,
           status: 'error',
-          hasMore: false,
-          nextPage: undefined,
           error: friendlyError(error),
         }));
       });
 
     return () => {
       controller.abort();
-      loadMoreController.current?.abort();
+      pageController.current?.abort();
     };
   }, [client, connection, debouncedQuery, fieldParameters]);
 
@@ -711,44 +684,54 @@ export default function PickerModal({ ctx }: Props) {
     });
   };
 
-  const loadMore = async () => {
-    if (isLoadingMore || !search.hasMore) return;
-    loadMoreController.current?.abort();
+  const changePage = async (page: number) => {
+    if (isChangingPage || page === search.page || page < 1 || page > pageCount) {
+      return;
+    }
+    pageController.current?.abort();
     const controller = new AbortController();
-    loadMoreController.current = controller;
-    setIsLoadingMore(true);
-    setLoadMoreError(null);
+    pageController.current = controller;
+    setIsChangingPage(true);
+    setSearch((current) => ({
+      ...current,
+      status: 'loading',
+      error: undefined,
+    }));
     try {
-      const nextPage = search.nextPage ?? search.page + 1;
       const result = await searchCatalog(client, fieldParameters, {
         query: debouncedQuery,
-        page: nextPage,
+        page,
         signal: controller.signal,
       });
 
       if (controller.signal.aborted) return;
 
-      setSearch((current) => ({
+      setSearch({
         status: 'success',
-        items: [
-          ...current.items,
-          ...result.items.filter(
-            (item) =>
-              !current.items.some((candidate) => candidate.id === item.id),
-          ),
-        ],
+        items: result.items,
         page: result.page,
-        hasMore: result.hasMore,
-        nextPage: result.nextPage,
-        totalCount: result.totalCount ?? current.totalCount,
-      }));
+        totalCount: result.totalCount,
+      });
+      setPageCount((current) =>
+        result.totalCount === undefined
+          ? Math.max(current, pageCountForResult(result))
+          : pageCountForResult(result),
+      );
+      setExpandedDisplayItemId(null);
+      document
+        .getElementById('centra-picker-results')
+        ?.scrollTo?.({ top: 0, behavior: 'auto' });
     } catch (error) {
       if (controller.signal.aborted) return;
-      setLoadMoreError(friendlyError(error));
+      setSearch((current) => ({
+        ...current,
+        status: 'error',
+        error: friendlyError(error),
+      }));
     } finally {
-      if (loadMoreController.current === controller) {
-        loadMoreController.current = null;
-        setIsLoadingMore(false);
+      if (pageController.current === controller) {
+        pageController.current = null;
+        setIsChangingPage(false);
       }
     }
   };
@@ -804,7 +787,10 @@ export default function PickerModal({ ctx }: Props) {
             </Button>
           </div>
 
-          <SearchStatus pending={searchIsPending} search={search} />
+          <SearchStatus
+            pending={searchIsPending || isChangingPage}
+            search={search}
+          />
         </div>
 
         <PickerResults
@@ -815,7 +801,7 @@ export default function PickerModal({ ctx }: Props) {
           selection={selection}
           query={debouncedQuery}
           expandedDisplayItemId={expandedDisplayItemId}
-          isLoadingMore={isLoadingMore}
+          isChangingPage={isChangingPage}
           onToggleExpanded={toggleExpanded}
           onToggleReference={toggleReference}
         />
@@ -824,12 +810,11 @@ export default function PickerModal({ ctx }: Props) {
           entityLabel={entityLabel}
           entityPlural={entityPlural}
           selectionCount={selection.length}
-          hasMore={search.hasMore}
+          currentPage={search.page}
+          pageCount={pageCount}
           searchIsPending={searchIsPending}
-          isLoadingMore={isLoadingMore}
-          loadMoreError={loadMoreError}
-          onLoadMore={() => void loadMore()}
-          onCancel={() => ctx.resolve(null)}
+          isChangingPage={isChangingPage}
+          onPageChange={(page) => void changePage(page)}
           onApply={resolveSelection}
         />
       </div>
