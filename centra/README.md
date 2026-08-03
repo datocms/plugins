@@ -4,8 +4,6 @@ Select Centra products, exact product variants, and buyable SKU/size items direc
 
 Centra remains the source of truth for catalog data. The plugin stores only stable reference IDs in DatoCMS and loads names, media, prices, availability, stock, SKU values, and other product details live from Centra.
 
-## Features
-
 - Product picker restricted to each display's primary variant
 - Exact product-variant picker
 - SKU/size picker backed by Centra `Item` IDs
