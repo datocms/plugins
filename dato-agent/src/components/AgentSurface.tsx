@@ -27,6 +27,7 @@ import {
   ConnectionIcon,
   CopyIcon,
   DisconnectIcon,
+  EditIcon,
   HistoryIcon,
   PlusIcon,
   RetryIcon,
@@ -1265,6 +1266,63 @@ function approvalActionDisabled(
   return Boolean(disabled) || !action;
 }
 
+function ApprovalFooter({
+  approval,
+  canDecide,
+  disabled,
+  onReview,
+  onApprove,
+  onReject,
+}: {
+  approval: UnsafeApprovalViewModel;
+  canDecide: boolean;
+  disabled?: boolean;
+  onReview?: (approval: UnsafeApprovalViewModel) => void;
+  onApprove?: (approval: UnsafeApprovalViewModel) => void;
+  onReject?: (approval: UnsafeApprovalViewModel) => void;
+}) {
+  const hasDetails = Boolean(approval.details?.length && onReview);
+  if (!hasDetails && !canDecide) {
+    return null;
+  }
+
+  return (
+    <div className={styles.approvalFooter}>
+      {hasDetails && (
+        <button
+          aria-haspopup="dialog"
+          className={styles.approvalDetailsButton}
+          disabled={disabled}
+          onClick={() => onReview?.(approval)}
+          type="button"
+        >
+          Review details
+        </button>
+      )}
+      {canDecide && (
+        <div className={styles.approvalActions}>
+          <Button
+            buttonSize="xs"
+            buttonType="negative"
+            disabled={approvalActionDisabled(disabled, onReject)}
+            onClick={() => onReject?.(approval)}
+          >
+            Deny
+          </Button>
+          <Button
+            buttonSize="xs"
+            buttonType="primary"
+            disabled={approvalActionDisabled(disabled, onApprove)}
+            onClick={() => onApprove?.(approval)}
+          >
+            Approve
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ApprovalEntry({
   approval,
   disabled,
@@ -1307,6 +1365,9 @@ function ApprovalEntry({
         className={`${styles.approvalCard} ${styles.approvalCardResolved}`}
         role="group"
       >
+        <span className={styles.approvalIcon}>
+          <EditIcon />
+        </span>
         <p className={styles.approvalResolution} role="status">
           {statusMessage}
         </p>
@@ -1332,41 +1393,23 @@ function ApprovalEntry({
       className={styles.approvalCard}
       role="group"
     >
-      <div className={styles.approvalBody}>
-        <h3 id={titleId}>{approval.title}</h3>
-        <p id={descriptionId}>{approval.description}</p>
-        {approval.details && approval.details.length > 0 && onReview && (
-          <button
-            aria-haspopup="dialog"
-            className={styles.approvalDetailsButton}
-            disabled={disabled}
-            onClick={() => onReview(approval)}
-            type="button"
-          >
-            Review details
-          </button>
-        )}
-      </div>
-      {canDecide && (
-        <div className={styles.approvalActions}>
-          <Button
-            buttonSize="xs"
-            buttonType="negative"
-            disabled={approvalActionDisabled(disabled, onReject)}
-            onClick={() => onReject?.(approval)}
-          >
-            Deny
-          </Button>
-          <Button
-            buttonSize="xs"
-            buttonType="primary"
-            disabled={approvalActionDisabled(disabled, onApprove)}
-            onClick={() => onApprove?.(approval)}
-          >
-            Approve
-          </Button>
+      <div className={styles.approvalHeader}>
+        <span className={styles.approvalIcon}>
+          <EditIcon />
+        </span>
+        <div className={styles.approvalBody}>
+          <h3 id={titleId}>{approval.title}</h3>
+          <p id={descriptionId}>{approval.description}</p>
         </div>
-      )}
+      </div>
+      <ApprovalFooter
+        approval={approval}
+        canDecide={canDecide}
+        disabled={disabled}
+        onApprove={onApprove}
+        onReject={onReject}
+        onReview={onReview}
+      />
       {statusMessage && (
         <p
           className={

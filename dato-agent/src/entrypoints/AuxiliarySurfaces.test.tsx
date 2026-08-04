@@ -1,4 +1,10 @@
-import { cleanup, render, screen, within } from '@testing-library/react';
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from '@testing-library/react';
 import type { RenderInspectorCtx, RenderModalCtx } from 'datocms-plugin-sdk';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -8,6 +14,19 @@ import LoadingFrame from './LoadingFrame';
 import OAuthCallbackPage from './OAuthCallbackPage';
 
 vi.mock('datocms-react-ui', () => ({
+  Button: ({
+    children,
+    disabled,
+    onClick,
+  }: {
+    children: ReactNode;
+    disabled?: boolean;
+    onClick?: () => void;
+  }) => (
+    <button disabled={disabled} onClick={onClick} type="button">
+      {children}
+    </button>
+  ),
   Canvas: ({ children }: { children: ReactNode }) => <>{children}</>,
   Spinner: () => <div data-testid="spinner" />,
 }));
@@ -43,7 +62,32 @@ describe('auxiliary surfaces', () => {
     expect(container.querySelector('pre code')).toHaveTextContent(
       'await client.items.update("123", { title: "Hello" });',
     );
+    expect(
+      screen.queryByRole('button', { name: 'Approve' }),
+    ).not.toBeInTheDocument();
   });
+
+  it.each([
+    ['Approve', 'approve'],
+    ['Deny', 'deny'],
+  ] as const)(
+    'returns %s decisions from a pending approval modal',
+    (label, decision) => {
+      const resolve = vi.fn().mockResolvedValue(undefined);
+      const ctx = {
+        parameters: {
+          canDecide: true,
+          details: [{ label: 'Target', value: 'Homepage' }],
+        },
+        resolve,
+      } as unknown as RenderModalCtx;
+
+      render(<ApprovalDetailsModal ctx={ctx} />);
+      fireEvent.click(screen.getByRole('button', { name: label }));
+
+      expect(resolve).toHaveBeenCalledWith(decision);
+    },
+  );
 
   it('distinguishes a session-local file from a DatoCMS asset', () => {
     const availableCtx = {

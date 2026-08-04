@@ -719,6 +719,11 @@ describe('Agent host-dialog callbacks', () => {
         status: 'pending',
       });
       expect(openModal).toHaveBeenCalledOnce();
+      expect(openModal).toHaveBeenCalledWith(
+        expect.objectContaining({
+          parameters: expect.objectContaining({ canDecide: true }),
+        }),
+      );
 
       let settled = false;
       void Promise.resolve(pending).then(() => {

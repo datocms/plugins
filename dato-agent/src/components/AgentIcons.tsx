@@ -153,3 +153,12 @@ export function CopyIcon({ className }: IconProps) {
     </Icon>
   );
 }
+
+export function EditIcon({ className }: IconProps) {
+  return (
+    <Icon className={className}>
+      <path d="m4 16-.8 4 4-.8L18.5 7.9l-3.2-3.2L4 16Z" />
+      <path d="m13.8 6.2 3.2 3.2" />
+    </Icon>
+  );
+}

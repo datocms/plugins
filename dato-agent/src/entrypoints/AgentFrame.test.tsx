@@ -90,7 +90,7 @@ function props(overrides: Partial<AgentFrameProps> = {}): AgentFrameProps {
       ...DEFAULT_CONFIG,
       openAiApiKey: 'sk-test-key',
     },
-    onReviewApprovalDetails: vi.fn(),
+    onReviewApprovalDetails: vi.fn().mockResolvedValue(null),
     onConfirmEnableAutoApprove: vi.fn().mockResolvedValue(true),
     ...overrides,
   };
@@ -2114,8 +2114,8 @@ describe('AgentFrame', () => {
     let closeDetails: (() => void) | undefined;
     const onReviewApprovalDetails = vi.fn(
       () =>
-        new Promise<void>((resolve) => {
-          closeDetails = resolve;
+        new Promise<null>((resolve) => {
+          closeDetails = () => resolve(null);
         }),
     );
     const onConfirmEnableAutoApprove = vi.fn().mockResolvedValue(true);
@@ -2175,7 +2175,7 @@ describe('AgentFrame', () => {
     const recordModal = new Promise<void>((resolve) => {
       closeRecord = resolve;
     });
-    const onReviewApprovalDetails = vi.fn().mockResolvedValue(undefined);
+    const onReviewApprovalDetails = vi.fn().mockResolvedValue(null);
     const onConfirmEnableAutoApprove = vi.fn().mockResolvedValue(true);
     const navigator = {
       supportsRecordList: false,
@@ -2239,7 +2239,7 @@ describe('AgentFrame', () => {
           finishConfirmation = resolve;
         }),
     );
-    const onReviewApprovalDetails = vi.fn().mockResolvedValue(undefined);
+    const onReviewApprovalDetails = vi.fn().mockResolvedValue(null);
     const navigator = {
       supportsRecordList: false,
       openRecord: vi.fn().mockResolvedValue(undefined),
@@ -2333,6 +2333,98 @@ describe('AgentFrame', () => {
       expect(mocks.surfaceProps?.hostActionPending).toBe(false);
     });
   });
+
+  it('ignores a modal decision returned after the agent frame unmounts', async () => {
+    let finishReview:
+      | ((decision: 'approve' | 'deny' | null) => void)
+      | undefined;
+    const onReviewApprovalDetails = vi.fn(
+      () =>
+        new Promise<'approve' | 'deny' | null>((resolve) => {
+          finishReview = resolve;
+        }),
+    );
+    const { unmount } = render(
+      <AgentFrame {...props({ onReviewApprovalDetails })} />,
+    );
+    await startApprovalTurn();
+
+    const approvalEntry = mocks.surfaceProps?.entries.find(
+      (entry) => entry.kind === 'approval',
+    );
+    if (approvalEntry?.kind !== 'approval') {
+      throw new Error('Expected an approval entry.');
+    }
+
+    act(() => {
+      mocks.surfaceProps?.onReviewUnsafeAction?.(approvalEntry.approval);
+    });
+    expect(onReviewApprovalDetails).toHaveBeenCalledOnce();
+
+    unmount();
+    await act(async () => {
+      finishReview?.('approve');
+      await Promise.resolve();
+    });
+
+    expect(mocks.runtime?.submitApprovals).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['approve', true],
+    ['deny', false],
+  ] as const)(
+    'submits a %s decision returned by the approval details modal',
+    async (modalDecision, approve) => {
+      const onReviewApprovalDetails = vi.fn().mockResolvedValue(modalDecision);
+      render(<AgentFrame {...props({ onReviewApprovalDetails })} />);
+      await startApprovalTurn();
+
+      const completed = completedResult({
+        responseId: 'resp_after_modal_decision',
+        text: approve ? 'The change was applied.' : 'No change was made.',
+      });
+      if (!mocks.runtime) {
+        throw new Error('Expected a runtime.');
+      }
+      vi.mocked(mocks.runtime.submitApprovals).mockImplementation(
+        async (
+          _args: unknown,
+          onEvent?: (event: AgentRuntimeEvent) => void | Promise<void>,
+        ) => {
+          await onEvent?.({ type: 'turn_completed', result: completed });
+          return completed;
+        },
+      );
+
+      const approvalEntry = mocks.surfaceProps?.entries.find(
+        (entry) => entry.kind === 'approval',
+      );
+      if (approvalEntry?.kind !== 'approval') {
+        throw new Error('Expected an approval entry.');
+      }
+
+      act(() => {
+        mocks.surfaceProps?.onReviewUnsafeAction?.(approvalEntry.approval);
+      });
+
+      await waitFor(() => {
+        expect(mocks.runtime?.submitApprovals).toHaveBeenCalledOnce();
+      });
+      expect(mocks.runtime.submitApprovals).toHaveBeenCalledWith(
+        expect.objectContaining({
+          decisions: [
+            expect.objectContaining({
+              approvalRequestId: 'approval_1',
+              approve,
+            }),
+          ],
+        }),
+        expect.any(Function),
+      );
+      expect(mocks.surfaceProps?.hostActionPending).toBe(false);
+    },
+  );
 
   it('automatically submits one complete unsafe approval bundle', async () => {
     const frameProps = props();

@@ -32,6 +32,7 @@ import {
   type ReadCurrentRecordLiveFormStateInput,
 } from '../lib/agentRuntime';
 import { validateApprovalScope } from '../lib/approval';
+import type { ApprovalDetailsDecision } from '../lib/approvalDetailsModal';
 import {
   type AutoApprovalScope,
   createAutoApprovalStore,
@@ -171,7 +172,7 @@ export type AgentFrameProps = {
   openCurrentField?: (field: FieldReferenceInput) => void | Promise<void>;
   onReviewApprovalDetails: (
     approval: UnsafeApprovalViewModel,
-  ) => Promise<unknown>;
+  ) => Promise<ApprovalDetailsDecision | null>;
   onConfirmEnableAutoApprove: () => Promise<boolean>;
 };
 
@@ -3908,7 +3909,11 @@ export default function AgentFrame(props: AgentFrameProps) {
     approve: boolean,
   ): Promise<void> {
     const pending = pendingApprovalsRef.current.get(approvalView.id);
-    if (!pending || approvalDispatchRef.current.has(pending.responseId)) {
+    if (
+      !pending ||
+      pending.decision ||
+      approvalDispatchRef.current.has(pending.responseId)
+    ) {
       return;
     }
 
@@ -4397,13 +4402,23 @@ export default function AgentFrame(props: AgentFrameProps) {
       return;
     }
 
+    let decision: ApprovalDetailsDecision | null = null;
     try {
-      await props.onReviewApprovalDetails(approval);
+      decision = await props.onReviewApprovalDetails(approval);
     } catch {
       // Closing or failing to open review details must not leave host actions
       // locked or change the approval decision.
     } finally {
       finishHostAction();
+    }
+
+    if (!mountedRef.current) {
+      return;
+    }
+    if (decision === 'approve') {
+      await decideApproval(approval, true);
+    } else if (decision === 'deny') {
+      await decideApproval(approval, false);
     }
   };
 
