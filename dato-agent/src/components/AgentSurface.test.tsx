@@ -707,7 +707,7 @@ describe('AgentSurface', () => {
     expect(openUser).toHaveBeenCalledWith('user-1');
   });
 
-  it('visibly disables inline mentions while the agent is working', async () => {
+  it('keeps inline mentions clickable while the agent is working', async () => {
     const user = userEvent.setup();
     const onOpenRecord = vi.fn();
 
@@ -751,12 +751,16 @@ describe('AgentSurface', () => {
     );
 
     const mention = screen.getByRole('button', { name: 'Homepage' });
-    expect(mention).toBeDisabled();
+    expect(mention).toBeEnabled();
     await user.click(mention);
-    expect(onOpenRecord).not.toHaveBeenCalled();
+    expect(onOpenRecord).toHaveBeenCalledWith({
+      itemId: 'homepage',
+      itemTypeId: 'page',
+      title: 'Homepage',
+    });
   });
 
-  it('disables record results while the agent is still running', async () => {
+  it('keeps record results clickable while the agent is still running', async () => {
     const user = userEvent.setup();
     const onOpenRecord = vi.fn();
 
@@ -777,9 +781,12 @@ describe('AgentSurface', () => {
     );
 
     const openButton = screen.getByRole('button', { name: 'Open One' });
-    expect(openButton).toBeDisabled();
+    expect(openButton).toBeEnabled();
     await user.click(openButton);
-    expect(onOpenRecord).not.toHaveBeenCalled();
+    expect(onOpenRecord).toHaveBeenCalledWith(
+      { itemId: 'one', title: 'One' },
+      'running-records',
+    );
   });
 
   it('disables a record receipt while its modal is opening', () => {

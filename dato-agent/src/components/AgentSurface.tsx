@@ -1479,7 +1479,6 @@ function openTranscriptMention(
 function AgentTurnEntry({
   entries,
   hostActionPending,
-  isRunning,
   mentionHost,
   onApproveUnsafeAction,
   onCopyFailureDiagnostics,
@@ -1492,7 +1491,6 @@ function AgentTurnEntry({
 }: {
   entries: readonly AgentTranscriptEntry[];
   hostActionPending?: boolean;
-  isRunning?: boolean;
   mentionHost: AgentMentionHost;
   onApproveUnsafeAction?: AgentSurfaceProps['onApproveUnsafeAction'];
   onCopyFailureDiagnostics?: AgentSurfaceProps['onCopyFailureDiagnostics'];
@@ -1533,9 +1531,7 @@ function AgentTurnEntry({
             case 'records':
               return (
                 <RecordsEntry
-                  disabled={Boolean(
-                    isRunning || hostActionPending || entry.opening,
-                  )}
+                  disabled={Boolean(hostActionPending || entry.opening)}
                   entry={entry}
                   key={entry.id}
                   mentionHost={mentionHost}
@@ -1545,7 +1541,7 @@ function AgentTurnEntry({
             case 'fields':
               return (
                 <FieldsEntry
-                  disabled={Boolean(isRunning || hostActionPending)}
+                  disabled={Boolean(hostActionPending)}
                   entry={entry}
                   key={entry.id}
                   onOpenField={onOpenField}
@@ -1554,7 +1550,7 @@ function AgentTurnEntry({
             case 'assets':
               return (
                 <AssetsEntry
-                  disabled={Boolean(isRunning || hostActionPending)}
+                  disabled={Boolean(hostActionPending)}
                   entry={entry}
                   key={entry.id}
                   onOpenAsset={onOpenAsset}
@@ -1563,7 +1559,7 @@ function AgentTurnEntry({
             case 'mentions':
               return (
                 <MentionsEntry
-                  disabled={Boolean(isRunning || hostActionPending)}
+                  disabled={Boolean(hostActionPending)}
                   entry={entry}
                   key={entry.id}
                   mentionHost={mentionHost}
@@ -1658,12 +1654,12 @@ function Transcript({
           groupTranscriptEntries(entries).map((group) =>
             group.kind === 'user' ? (
               <MessageEntry
-                disabled={Boolean(isRunning || hostActionPending)}
+                disabled={Boolean(hostActionPending)}
                 entry={group.entry}
                 key={group.id}
                 mentionHost={mentionHost}
                 onOpenMention={(mention) => {
-                  if (isRunning || hostActionPending) return;
+                  if (hostActionPending) return;
                   openTranscriptMention(mention, {
                     mentionHost,
                     onOpenAsset,
@@ -1678,7 +1674,6 @@ function Transcript({
               <AgentTurnEntry
                 entries={group.entries}
                 hostActionPending={hostActionPending}
-                isRunning={isRunning}
                 key={group.id}
                 mentionHost={mentionHost}
                 onApproveUnsafeAction={onApproveUnsafeAction}
