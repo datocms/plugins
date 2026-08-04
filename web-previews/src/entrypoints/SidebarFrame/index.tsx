@@ -35,7 +35,7 @@ import {
 } from '../../utils/urls';
 import { PreviewLinkSelector } from './PreviewLinkSelector';
 import {
-  linkSupportsVisualEditing,
+  sidebarVisualEditingInfo,
   useSidebarContentLink,
 } from './useSidebarContentLink';
 
@@ -88,9 +88,25 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
     ? frontends.find((f) => f.name === currentPreviewLink.frontendName)
     : undefined;
 
-  const currentLinkSupportsVisualEditing = linkSupportsVisualEditing(
+  const currentSidebarVisualEditing = sidebarVisualEditingInfo(
     currentPreviewLink,
     currentFrontend,
+  );
+  const currentLinkSupportsVisualEditing = Boolean(
+    currentSidebarVisualEditing,
+  );
+
+  const iframeUrl =
+    currentPreviewLink &&
+    editModeEnabled &&
+    currentSidebarVisualEditing &&
+    !currentSidebarVisualEditing.alreadyInDraftMode
+      ? currentSidebarVisualEditing.iframeUrl
+      : currentPreviewLink?.url;
+
+  const connectContentLink = Boolean(
+    currentSidebarVisualEditing &&
+      (editModeEnabled || currentSidebarVisualEditing.alreadyInDraftMode),
   );
 
   const editModeTooltip = currentLinkSupportsVisualEditing
@@ -230,7 +246,7 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
             )}
           </Toolbar>
 
-          {currentPreviewLink && (
+          {currentPreviewLink && iframeUrl && (
             <>
               {currentViewport === 'custom' && (
                 <ViewportCustomizer
@@ -240,11 +256,9 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
               )}
 
               <IframeContainer
-                key={`${currentPreviewLink.url}-${reloadCounter}`}
-                src={currentPreviewLink.url}
-                iframeRef={
-                  currentLinkSupportsVisualEditing ? iframeRef : undefined
-                }
+                key={`${iframeUrl}-${reloadCounter}`}
+                src={iframeUrl}
+                iframeRef={connectContentLink ? iframeRef : undefined}
                 allow={iframeAllowAttribute}
                 sizing={
                   currentViewport === 'responsive'

@@ -6,24 +6,69 @@ import {
   SYMBOL_FOR_PRIMARY_ENVIRONMENT,
 } from '../../utils/contentLink/types';
 import useContentLinkConnection from '../../utils/contentLink/useContentLinkConnection';
-import { extractRedirectFromDraftModePreviewUrl } from '../../utils/urls';
+
+export type SidebarVisualEditingInfo = {
+  iframeUrl: string;
+  alreadyInDraftMode: boolean;
+};
+
+function safeRedirectPath(
+  redirect: string,
+  draftModeUrl: URL,
+): string | undefined {
+  const url = new URL(redirect, draftModeUrl.origin);
+
+  if (url.origin !== draftModeUrl.origin) {
+    return undefined;
+  }
+
+  return `${url.pathname}${url.search}${url.hash}`;
+}
 
 /**
- * A preview link supports visual editing when its frontend has draft mode
- * configured and the link URL is the draft-mode route (a page where
- * @datocms/content-link is active). Same gate the "Open in Visual" button uses.
+ * Resolves any preview link belonging to a visual-editing frontend to a URL
+ * that enables draft mode for the same page. Published preview links normally
+ * point to a disable-draft-mode helper, so checking only for the configured
+ * enable route would incorrectly reject fully published records.
  */
-export function linkSupportsVisualEditing(
+export function sidebarVisualEditingInfo(
   link: PreviewLinkWithFrontend | undefined,
   frontend: Frontend | undefined,
-): boolean {
+): SidebarVisualEditingInfo | undefined {
   const enableDraftModeUrl = frontend?.visualEditing?.enableDraftModeUrl;
   if (!link || !enableDraftModeUrl) {
-    return false;
+    return undefined;
   }
-  return Boolean(
-    extractRedirectFromDraftModePreviewUrl(link.url, enableDraftModeUrl),
-  );
+
+  try {
+    const previewUrl = new URL(link.url);
+    const draftModeUrl = new URL(enableDraftModeUrl);
+    const redirect = previewUrl.searchParams.get('redirect');
+
+    const path = redirect
+      ? safeRedirectPath(redirect, draftModeUrl)
+      : previewUrl.origin === draftModeUrl.origin &&
+          previewUrl.pathname !== draftModeUrl.pathname
+        ? `${previewUrl.pathname}${previewUrl.search}${previewUrl.hash}`
+        : undefined;
+
+    if (!path) {
+      return undefined;
+    }
+
+    draftModeUrl.searchParams.set('redirect', path);
+
+    return {
+      iframeUrl: draftModeUrl.toString(),
+      // Preview endpoints can use another deployment hostname while sharing
+      // the configured draft-mode route. The route itself is what determines
+      // whether the iframe has already enabled draft content.
+      alreadyInDraftMode:
+        previewUrl.pathname === draftModeUrl.pathname && redirect !== null,
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 // Same pattern the Inspector sends to @datocms/content-link on init: it tells
@@ -80,8 +125,8 @@ export function useSidebarContentLink(
   });
 
   // Keep the click-to-edit overlay in sync with the toggle. The connection
-  // itself stays alive regardless of the toggle, so flipping it never reloads
-  // the iframe — the user keeps whatever page they browsed to.
+  // stays alive when the selected preview is already in draft mode; published
+  // previews are reloaded through the draft-mode route before connecting.
   useEffect(() => {
     if (connection.type !== 'connected') {
       return;
