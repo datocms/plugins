@@ -1149,6 +1149,7 @@ describe('AgentFrame', () => {
         anthropicApiKey: 'sk-ant-test-key',
         anthropicModel: 'claude-sonnet-5',
         anthropicReasoningEffort: 'high',
+        anthropicFastMode: true,
       },
       loadHostContext: vi.fn(async () => ({
         text: 'surface=standalone\nproject_map|complete=true',
@@ -1211,6 +1212,7 @@ describe('AgentFrame', () => {
       apiKey: 'sk-ant-test-key',
       model: 'claude-sonnet-5',
       reasoningEffort: 'high',
+      fastMode: true,
     });
     expect(mocks.surfaceProps?.connection).toMatchObject({
       providerConfigStatus: 'configured',

@@ -4,6 +4,7 @@ import {
   listOpenAiProviderModels,
   listProviderModels,
   preferredProviderModel,
+  providerModelSupportsFastMode,
 } from './providerModels';
 
 function jsonResponse(payload: unknown, status = 200): Response {
@@ -51,6 +52,23 @@ function anthropicModel({
 }
 
 describe('provider model discovery', () => {
+  it('limits fast mode to provider models that currently support it', () => {
+    expect(providerModelSupportsFastMode('openai', 'gpt-5.6-terra')).toBe(true);
+    expect(providerModelSupportsFastMode('openai', 'gpt-4.1')).toBe(false);
+    expect(providerModelSupportsFastMode('anthropic', 'claude-opus-5')).toBe(
+      true,
+    );
+    expect(
+      providerModelSupportsFastMode('anthropic', 'claude-opus-4-8-20260801'),
+    ).toBe(true);
+    expect(providerModelSupportsFastMode('anthropic', 'claude-sonnet-5')).toBe(
+      false,
+    );
+    expect(providerModelSupportsFastMode('anthropic', 'claude-opus-4-7')).toBe(
+      false,
+    );
+  });
+
   it('keeps the compatible OpenAI ordering and capability set', async () => {
     const fetchModels = vi.fn<typeof fetch>().mockResolvedValue(
       jsonResponse({

@@ -11,6 +11,7 @@ import { strToU8, zipSync } from 'fflate';
 import { describe, expect, it, vi } from 'vitest';
 import type {
   AgentAnthropicFileClient,
+  AgentAnthropicMessageCreateParamsStreaming,
   AgentAnthropicMessageStream,
   AgentAnthropicMessagesClient,
   AgentRuntimeAttachment,
@@ -19,6 +20,7 @@ import type {
   AgentTurnResult,
 } from './agentRuntime';
 import {
+  ANTHROPIC_FAST_MODE_BETA,
   ANTHROPIC_FILES_API_BETA,
   createAgentRuntime,
   DEEP_ANTHROPIC_MAX_OUTPUT_TOKENS,
@@ -215,13 +217,13 @@ class FakeAnthropicStream implements AgentAnthropicMessageStream {
 }
 
 class QueueAnthropicClient implements AgentAnthropicMessagesClient {
-  readonly requests: MessageCreateParamsStreaming[] = [];
+  readonly requests: AgentAnthropicMessageCreateParamsStreaming[] = [];
   readonly signals: Array<AbortSignal | undefined> = [];
 
   constructor(private readonly messages: Array<Message | Error>) {}
 
   stream(
-    params: MessageCreateParamsStreaming,
+    params: AgentAnthropicMessageCreateParamsStreaming,
     options?: { signal?: AbortSignal },
   ): AgentAnthropicMessageStream {
     this.requests.push(params);
@@ -546,6 +548,8 @@ describe('AnthropicAgentRuntime', () => {
     const mcp = mcpClientWith();
     const runtime = runtimeWith(anthropic, mcp.client, {
       anthropicFileClient: files,
+      fastMode: true,
+      model: 'claude-opus-4-8',
     });
     const historyAttachment = attachment({
       id: 'local-history',
@@ -577,10 +581,13 @@ describe('AnthropicAgentRuntime', () => {
 
     expect(result.status).toBe('completed');
     expect(files.uploads).toMatchObject([historyAttachment, currentAttachment]);
-    const request = anthropic.requests[0] as MessageCreateParamsStreaming & {
-      betas?: readonly string[];
-    };
-    expect(request.betas).toEqual([ANTHROPIC_FILES_API_BETA]);
+    const request = anthropic
+      .requests[0] as AgentAnthropicMessageCreateParamsStreaming;
+    expect(request.betas).toEqual([
+      ANTHROPIC_FILES_API_BETA,
+      ANTHROPIC_FAST_MODE_BETA,
+    ]);
+    expect(request.speed).toBe('fast');
     expect(request.messages).toEqual([
       {
         role: 'user',
@@ -894,6 +901,7 @@ describe('AnthropicAgentRuntime', () => {
     const mcp = mcpClientWith();
     const runtime = runtimeWith(anthropic, mcp.client, {
       additionalInstructions: 'Prefer sentence case.',
+      fastMode: true,
       getModelSchema: vi.fn(),
       hostContext: 'models:\n- article | Article | title:string',
     });
@@ -937,6 +945,8 @@ describe('AnthropicAgentRuntime', () => {
         disable_parallel_tool_use: true,
       },
     });
+    expect(request.speed).toBeUndefined();
+    expect(request.betas).toBeUndefined();
     expect(JSON.stringify(request.system)).toContain(
       'models:\\n- article | Article | title:string',
     );

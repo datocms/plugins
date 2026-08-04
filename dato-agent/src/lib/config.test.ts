@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ANTHROPIC_REASONING_EFFORTS,
   activeApiKey,
+  activeFastMode,
   activeModel,
   activeModelMaxOutputTokens,
   activeReasoningEffort,
@@ -11,6 +12,7 @@ import {
   REASONING_EFFORTS,
   serializeConfig,
   withActiveApiKey,
+  withActiveFastMode,
   withActiveModel,
   withActiveReasoningEffort,
 } from './config';
@@ -48,6 +50,7 @@ describe('normalizeConfig', () => {
         anthropicModel: '  claude-sonnet-5 ',
         anthropicModelMaxOutputTokens: 128_000,
         anthropicReasoningEffort: 'xhigh',
+        anthropicFastMode: true,
       }),
     ).toMatchObject({
       provider: 'anthropic',
@@ -55,6 +58,7 @@ describe('normalizeConfig', () => {
       anthropicModel: 'claude-sonnet-5',
       anthropicModelMaxOutputTokens: 128_000,
       anthropicReasoningEffort: 'xhigh',
+      anthropicFastMode: true,
     });
 
     expect(normalizeConfig({ provider: 'ChatGPT' }).provider).toBe('openai');
@@ -99,10 +103,12 @@ describe('normalizeConfig', () => {
       openAiApiKey: 'sk-openai',
       model: 'gpt-5.6-terra',
       reasoningEffort: 'medium',
+      openAiFastMode: true,
       anthropicApiKey: 'sk-ant-old',
       anthropicModel: 'claude-opus-4-6',
       anthropicModelMaxOutputTokens: 64_000,
       anthropicReasoningEffort: 'max',
+      anthropicFastMode: false,
     });
 
     expect(providerLabel(anthropic.provider)).toBe('Anthropic (Claude)');
@@ -110,24 +116,31 @@ describe('normalizeConfig', () => {
     expect(activeModel(anthropic)).toBe('claude-opus-4-6');
     expect(activeModelMaxOutputTokens(anthropic)).toBe(64_000);
     expect(activeReasoningEffort(anthropic)).toBe('max');
+    expect(activeFastMode(anthropic)).toBe(false);
 
-    const updated = withActiveReasoningEffort(
-      withActiveModel(
-        withActiveApiKey(anthropic, 'sk-ant-new'),
-        'claude-new',
-        128_000,
+    const updated = withActiveFastMode(
+      withActiveReasoningEffort(
+        withActiveModel(
+          withActiveApiKey(anthropic, 'sk-ant-new'),
+          'claude-new',
+          128_000,
+        ),
+        'low',
       ),
-      'low',
+      true,
     );
     expect(updated).toMatchObject({
       openAiApiKey: 'sk-openai',
       model: 'gpt-5.6-terra',
       reasoningEffort: 'medium',
+      openAiFastMode: true,
       anthropicApiKey: 'sk-ant-new',
       anthropicModel: 'claude-new',
       anthropicModelMaxOutputTokens: 128_000,
       anthropicReasoningEffort: 'low',
+      anthropicFastMode: true,
     });
+    expect(activeFastMode(updated)).toBe(true);
     expect(withActiveReasoningEffort(updated, 'none')).toBe(updated);
   });
 
@@ -139,9 +152,11 @@ describe('normalizeConfig', () => {
         provider: 'anthropic',
         openAiApiKey: 'sk-openai',
         model: 'gpt-5.6-sol',
+        openAiFastMode: true,
         anthropicApiKey: 'sk-ant-project',
         anthropicModel: 'claude-sonnet-5',
         anthropicModelMaxOutputTokens: 128_000,
+        anthropicFastMode: true,
       },
     );
 
@@ -150,9 +165,11 @@ describe('normalizeConfig', () => {
       provider: 'anthropic',
       openAiApiKey: 'sk-openai',
       model: 'gpt-5.6-sol',
+      openAiFastMode: true,
       anthropicApiKey: 'sk-ant-project',
       anthropicModel: 'claude-sonnet-5',
       anthropicModelMaxOutputTokens: 128_000,
+      anthropicFastMode: true,
     });
     expect(serialized).not.toHaveProperty('defaultSidebarWidth');
   });

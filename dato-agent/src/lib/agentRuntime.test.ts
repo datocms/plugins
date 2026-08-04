@@ -528,6 +528,7 @@ describe('AgentRuntime', () => {
     ]);
     const runtime = runtimeWith(client, {
       reasoningEffort: 'high',
+      fastMode: true,
       additionalInstructions: 'Prefer sentence case.',
     });
     const { events, result } = await drain(
@@ -553,6 +554,7 @@ describe('AgentRuntime', () => {
 
     const request = client.requests[0];
     expect(request.model).toBe(DEFAULT_AGENT_MODEL);
+    expect(request.service_tier).toBe('priority');
     expect(request.reasoning).toEqual({ effort: 'high', summary: 'auto' });
     expect(request.instructions).toContain('"siteId": "site-1"');
     expect(request.instructions).toContain(

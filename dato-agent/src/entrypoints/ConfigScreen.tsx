@@ -23,6 +23,7 @@ import {
   type AgentConfig,
   type AgentProvider,
   activeApiKey,
+  activeFastMode,
   activeModel,
   activeReasoningEffort,
   normalizeConfig,
@@ -30,6 +31,7 @@ import {
   type ReasoningEffort,
   serializeConfig,
   withActiveApiKey,
+  withActiveFastMode,
   withActiveModel,
   withActiveReasoningEffort,
 } from '../lib/config';
@@ -37,6 +39,7 @@ import {
   listProviderModels,
   type ProviderModel,
   preferredProviderModel,
+  providerModelSupportsFastMode,
 } from '../lib/providerModels';
 import styles from './ConfigScreen.module.css';
 
@@ -343,11 +346,17 @@ function configWithSelectedModel(
   config: AgentConfig,
   selectedModel: ProviderModel,
 ): AgentConfig {
-  const withModel = withActiveModel(
+  let withModel = withActiveModel(
     config,
     selectedModel.id,
     selectedModel.maxOutputTokens,
   );
+  if (
+    activeFastMode(withModel) &&
+    !providerModelSupportsFastMode(config.provider, selectedModel.id)
+  ) {
+    withModel = withActiveFastMode(withModel, false);
+  }
   const availableOptions = reasoningOptions(config.provider, selectedModel);
   if (
     availableOptions.some(
@@ -397,6 +406,10 @@ function ProviderConfigurationFields({
   setConfig,
 }: ProviderConfigurationFieldsProps) {
   const details = PROVIDER_DETAILS[config.provider];
+  const fastMode = activeFastMode(config);
+  const fastModeSupported = selectedModel
+    ? providerModelSupportsFastMode(config.provider, selectedModel.id)
+    : false;
 
   return (
     <Section title="AI provider">
@@ -513,6 +526,27 @@ function ProviderConfigurationFields({
               !canEditSchema ||
               saving ||
               (config.provider === 'anthropic' && !selectedModel),
+          }}
+        />
+        <SwitchField
+          id="fast-mode"
+          name="fast-mode"
+          label="Fast mode"
+          hint={
+            fastModeSupported
+              ? 'Uses premium processing for every model request, including tool steps, and can significantly increase API costs.'
+              : config.provider === 'anthropic'
+                ? 'Not available for this Claude model. Anthropic Fast mode currently requires a supported Opus model and preview access.'
+                : 'Not available for the selected OpenAI model.'
+          }
+          value={fastMode}
+          onChange={(value) =>
+            setConfig((current) => withActiveFastMode(current, value))
+          }
+          switchInputProps={{
+            name: 'fast-mode',
+            value: fastMode,
+            disabled: !canEditSchema || saving || !fastModeSupported,
           }}
         />
       </FieldGroup>

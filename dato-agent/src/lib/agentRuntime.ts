@@ -49,6 +49,7 @@ import {
 } from './localAssetTool';
 import { createDatoCmsMcpTool, DATOCMS_MCP_SERVER_LABEL } from './mcpPolicy';
 import type { LocalFileAttachmentDescriptor } from './mentions';
+import { providerModelSupportsFastMode } from './providerModels';
 import { type AgentSystemContext, buildSystemPrompt } from './systemPrompt';
 
 export const DEFAULT_AGENT_MODEL = 'gpt-5.6-terra' as const;
@@ -75,6 +76,7 @@ export const MAX_AGENT_ATTACHMENT_BYTES = 20 * 1024 * 1024;
 export const MAX_AGENT_IMAGE_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 export const MAX_AGENT_ATTACHMENT_TOTAL_BYTES = 25 * 1024 * 1024;
 export const ANTHROPIC_FILES_API_BETA = 'files-api-2025-04-14' as const;
+export const ANTHROPIC_FAST_MODE_BETA = 'fast-mode-2026-02-01' as const;
 
 export type AgentAttachmentDescriptor = LocalFileAttachmentDescriptor;
 
@@ -551,8 +553,9 @@ export interface AgentAnthropicMessageStream
 
 export type AgentAnthropicMessageCreateParamsStreaming =
   MessageCreateParamsStreaming & {
-    /** Required only when a request contains Anthropic Files API references. */
+    /** Beta headers required by optional Anthropic request features. */
     betas?: readonly string[];
+    speed?: 'standard' | 'fast' | null;
   };
 
 export interface AgentAnthropicMessagesClient {
@@ -583,6 +586,7 @@ export interface AgentRuntimeConfig {
    */
   modelMaxOutputTokens?: number;
   reasoningEffort?: ReasoningEffort;
+  fastMode?: boolean;
   additionalInstructions?: string;
   /**
    * Compact trusted metadata supplied by the DatoCMS host. When requested for a
@@ -2798,6 +2802,7 @@ export class AgentRuntime implements AgentRuntimeHandle {
   private readonly context: AgentSystemContext;
   private readonly navigation: AgentNavigationCallbacks;
   private readonly reasoningEffort: ReasoningEffort;
+  private readonly fastMode: boolean;
   private readonly additionalInstructions?: string;
   private readonly hostContext?: string;
   private readonly getModelSchema?: GetModelSchemaCallback;
@@ -2811,6 +2816,9 @@ export class AgentRuntime implements AgentRuntimeHandle {
     this.model = config.model?.trim() || DEFAULT_AGENT_MODEL;
     this.maxContinuations = resolveMaxContinuations(config.maxContinuations);
     this.reasoningEffort = config.reasoningEffort ?? 'medium';
+    this.fastMode =
+      Boolean(config.fastMode) &&
+      providerModelSupportsFastMode('openai', this.model);
     this.additionalInstructions =
       config.additionalInstructions?.trim().slice(0, 10_000) || undefined;
     this.hostContext = normalizeHostContext(config.hostContext);
@@ -3131,6 +3139,7 @@ export class AgentRuntime implements AgentRuntimeHandle {
       max_tool_calls: number;
     } = {
       model: this.model,
+      ...(this.fastMode ? { service_tier: 'priority' } : {}),
       instructions: buildSystemPrompt(this.context, {
         additionalInstructions: this.additionalInstructions,
       }),
@@ -3810,7 +3819,7 @@ function createDefaultAnthropicClients(
   return {
     messages: {
       stream(params, options) {
-        if (params.betas?.includes(ANTHROPIC_FILES_API_BETA)) {
+        if (params.betas && params.betas.length > 0) {
           return client.beta.messages.stream(
             {
               ...params,
@@ -4159,6 +4168,7 @@ export class AnthropicAgentRuntime implements AgentRuntimeHandle {
   private readonly context: AgentSystemContext;
   private readonly navigation: AgentNavigationCallbacks;
   private readonly reasoningEffort: AnthropicReasoningEffort;
+  private readonly fastMode: boolean;
   private readonly maxOutputTokens: number;
   private readonly additionalInstructions?: string;
   private readonly hostContext?: string;
@@ -4177,6 +4187,9 @@ export class AnthropicAgentRuntime implements AgentRuntimeHandle {
     this.model = config.model?.trim() || DEFAULT_ANTHROPIC_AGENT_MODEL;
     this.maxContinuations = resolveMaxContinuations(config.maxContinuations);
     this.reasoningEffort = resolveAnthropicEffort(config);
+    this.fastMode =
+      Boolean(config.fastMode) &&
+      providerModelSupportsFastMode('anthropic', this.model);
     this.maxOutputTokens = resolveAnthropicMaxOutputTokens(
       this.reasoningEffort,
       config.modelMaxOutputTokens,
@@ -4595,6 +4608,11 @@ export class AnthropicAgentRuntime implements AgentRuntimeHandle {
     state: AnthropicLoopState,
     tools: AnthropicTool[],
   ): AgentAnthropicMessageCreateParamsStreaming {
+    const betas = [
+      ...(state.usesFiles ? [ANTHROPIC_FILES_API_BETA] : []),
+      ...(this.fastMode ? [ANTHROPIC_FAST_MODE_BETA] : []),
+    ];
+
     return {
       model: this.model,
       max_tokens: this.maxOutputTokens,
@@ -4610,7 +4628,8 @@ export class AnthropicAgentRuntime implements AgentRuntimeHandle {
       },
       thinking: { type: 'adaptive', display: 'omitted' },
       output_config: { effort: this.reasoningEffort },
-      ...(state.usesFiles ? { betas: [ANTHROPIC_FILES_API_BETA] } : {}),
+      ...(betas.length > 0 ? { betas } : {}),
+      ...(this.fastMode ? { speed: 'fast' } : {}),
       stream: true,
     };
   }

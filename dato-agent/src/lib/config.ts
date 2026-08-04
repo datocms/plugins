@@ -35,6 +35,7 @@ export type AgentConfig = {
    */
   model: string;
   reasoningEffort: ReasoningEffort;
+  openAiFastMode: boolean;
   anthropicApiKey: string;
   anthropicModel: string;
   /**
@@ -44,6 +45,7 @@ export type AgentConfig = {
    */
   anthropicModelMaxOutputTokens: number | null;
   anthropicReasoningEffort: AnthropicReasoningEffort;
+  anthropicFastMode: boolean;
   additionalInstructions: string;
   enableRecordSidebar: boolean;
 };
@@ -53,10 +55,12 @@ export const DEFAULT_CONFIG: AgentConfig = {
   openAiApiKey: '',
   model: DEFAULT_MODEL,
   reasoningEffort: 'medium',
+  openAiFastMode: false,
   anthropicApiKey: '',
   anthropicModel: '',
   anthropicModelMaxOutputTokens: null,
   anthropicReasoningEffort: 'high',
+  anthropicFastMode: false,
   additionalInstructions: '',
   enableRecordSidebar: true,
 };
@@ -96,6 +100,10 @@ export function normalizeConfig(parameters: unknown): AgentConfig {
   const reasoningEffort =
     REASONING_EFFORTS.find((effort) => effort === source.reasoningEffort) ??
     DEFAULT_CONFIG.reasoningEffort;
+  const openAiFastMode =
+    typeof source.openAiFastMode === 'boolean'
+      ? source.openAiFastMode
+      : DEFAULT_CONFIG.openAiFastMode;
   const anthropicApiKey = trimmedString(source.anthropicApiKey);
   const anthropicModel = trimmedString(source.anthropicModel);
   const anthropicModelMaxOutputTokens = positiveSafeInteger(
@@ -105,6 +113,10 @@ export function normalizeConfig(parameters: unknown): AgentConfig {
     ANTHROPIC_REASONING_EFFORTS.find(
       (effort) => effort === source.anthropicReasoningEffort,
     ) ?? DEFAULT_CONFIG.anthropicReasoningEffort;
+  const anthropicFastMode =
+    typeof source.anthropicFastMode === 'boolean'
+      ? source.anthropicFastMode
+      : DEFAULT_CONFIG.anthropicFastMode;
   const additionalInstructions =
     typeof source.additionalInstructions === 'string'
       ? source.additionalInstructions
@@ -119,10 +131,12 @@ export function normalizeConfig(parameters: unknown): AgentConfig {
     openAiApiKey,
     model,
     reasoningEffort,
+    openAiFastMode,
     anthropicApiKey,
     anthropicModel,
     anthropicModelMaxOutputTokens,
     anthropicReasoningEffort,
+    anthropicFastMode,
     additionalInstructions,
     enableRecordSidebar,
   };
@@ -175,6 +189,15 @@ export function activeReasoningEffort(config: AgentConfig): ReasoningEffort {
   }
 }
 
+export function activeFastMode(config: AgentConfig): boolean {
+  switch (config.provider) {
+    case 'openai':
+      return config.openAiFastMode;
+    case 'anthropic':
+      return config.anthropicFastMode;
+  }
+}
+
 export function withActiveApiKey(
   config: AgentConfig,
   apiKey: string,
@@ -216,6 +239,18 @@ export function withActiveReasoningEffort(
         return config;
       }
       return { ...config, anthropicReasoningEffort: effort };
+  }
+}
+
+export function withActiveFastMode(
+  config: AgentConfig,
+  fastMode: boolean,
+): AgentConfig {
+  switch (config.provider) {
+    case 'openai':
+      return { ...config, openAiFastMode: fastMode };
+    case 'anthropic':
+      return { ...config, anthropicFastMode: fastMode };
   }
 }
 

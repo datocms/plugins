@@ -72,6 +72,22 @@ export function isCompatibleOpenAiAgentModel(modelId: string): boolean {
   );
 }
 
+export function providerModelSupportsFastMode(
+  provider: AgentProvider,
+  modelId: string,
+): boolean {
+  const normalizedModelId = modelId.trim().toLowerCase();
+
+  switch (provider) {
+    case 'openai':
+      return isCompatibleOpenAiAgentModel(normalizedModelId);
+    case 'anthropic':
+      return /^(?:claude-opus-5|claude-opus-4-8)(?:-\d{8}|-\d{4}-\d{2}-\d{2})?$/.test(
+        normalizedModelId,
+      );
+  }
+}
+
 function openAiModelPriority(modelId: string): number {
   if (modelId === 'gpt-5.6-terra') return 0;
   if (modelId === 'gpt-5.6-sol') return 1;

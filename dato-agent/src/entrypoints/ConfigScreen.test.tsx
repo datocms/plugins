@@ -142,28 +142,33 @@ vi.mock('datocms-react-ui', () => ({
     </div>
   ),
   SwitchField: ({
+    hint,
     id,
     label,
     onChange,
     switchInputProps,
     value,
   }: {
+    hint?: ReactNode;
     id: string;
     label: ReactNode;
     onChange: (value: boolean) => void;
     switchInputProps?: { disabled?: boolean };
     value: boolean;
   }) => (
-    <label htmlFor={id}>
-      {label}
-      <input
-        checked={value}
-        disabled={switchInputProps?.disabled}
-        id={id}
-        onChange={(event) => onChange(event.target.checked)}
-        type="checkbox"
-      />
-    </label>
+    <div>
+      <label htmlFor={id}>
+        {label}
+        <input
+          checked={value}
+          disabled={switchInputProps?.disabled}
+          id={id}
+          onChange={(event) => onChange(event.target.checked)}
+          type="checkbox"
+        />
+      </label>
+      {hint && <span>{hint}</span>}
+    </div>
   ),
   TextareaField: ({
     id,
@@ -234,10 +239,12 @@ const PARAMETERS = {
   openAiApiKey: 'sk-project',
   model: 'gpt-5.6-terra',
   reasoningEffort: 'medium',
+  openAiFastMode: false,
   anthropicApiKey: '',
   anthropicModel: '',
   anthropicModelMaxOutputTokens: null,
   anthropicReasoningEffort: 'high',
+  anthropicFastMode: false,
   additionalInstructions: '',
   enableRecordSidebar: true,
 };
@@ -303,6 +310,10 @@ describe('ConfigScreen', () => {
     expect(screen.getByLabelText('OpenAI API key')).toBeRequired();
     expect(screen.getByLabelText('OpenAI API key')).toBeEnabled();
     expect(screen.getByLabelText('OpenAI model')).toBeRequired();
+    expect(screen.getByLabelText('Fast mode')).toBeEnabled();
+    expect(
+      screen.getByText(/premium processing.*increase API costs/i),
+    ).toBeVisible();
     expect(
       screen.getByRole('button', { name: 'Save settings' }),
     ).toHaveAttribute('data-full-width', 'true');
@@ -392,6 +403,58 @@ describe('ConfigScreen', () => {
         name: 'Medium — balanced (Recommended)',
       }),
     ).toBeInTheDocument();
+  });
+
+  it('saves fast mode independently for OpenAI', async () => {
+    const { ctx, updatePluginParameters } = createCtx();
+    render(<ConfigScreen ctx={ctx} />);
+    await finishModelDiscovery();
+
+    fireEvent.click(screen.getByLabelText('Fast mode'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await act(async () => {});
+
+    expect(updatePluginParameters).toHaveBeenCalledWith(
+      expect.objectContaining({
+        openAiFastMode: true,
+        anthropicFastMode: false,
+      }),
+    );
+  });
+
+  it('enables Anthropic fast mode only for supported Opus models', async () => {
+    modelMocks.listProviderModels.mockResolvedValue([
+      CLAUDE_OPUS,
+      CLAUDE_SONNET,
+    ]);
+    const { ctx, updatePluginParameters } = createCtx({
+      parameters: {
+        ...PARAMETERS,
+        provider: 'anthropic',
+        openAiApiKey: '',
+        anthropicApiKey: 'sk-ant-project',
+      },
+    });
+    render(<ConfigScreen ctx={ctx} />);
+    await finishModelDiscovery();
+
+    expect(screen.getByLabelText('Fast mode')).toBeDisabled();
+    expect(screen.getByText(/requires a supported Opus model/i)).toBeVisible();
+
+    fireEvent.change(screen.getByLabelText('Claude model'), {
+      target: { value: CLAUDE_OPUS.id },
+    });
+    expect(screen.getByLabelText('Fast mode')).toBeEnabled();
+    fireEvent.click(screen.getByLabelText('Fast mode'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await act(async () => {});
+
+    expect(updatePluginParameters).toHaveBeenCalledWith(
+      expect.objectContaining({
+        anthropicFastMode: true,
+        anthropicModel: CLAUDE_OPUS.id,
+      }),
+    );
   });
 
   it('saves the active Anthropic model selected from discovery', async () => {
@@ -534,6 +597,7 @@ describe('ConfigScreen', () => {
 
     expect(screen.getByLabelText('Vendor')).toBeDisabled();
     expect(screen.getByLabelText('OpenAI API key')).toBeDisabled();
+    expect(screen.getByLabelText('Fast mode')).toBeDisabled();
     expect(screen.queryByRole('button', { name: 'Save settings' })).toBeNull();
   });
 });
