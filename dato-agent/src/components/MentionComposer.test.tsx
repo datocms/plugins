@@ -7,11 +7,28 @@ import {
   waitFor,
 } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { clearSessionLocalFiles, getSessionLocalFile } from '../lib/localFiles';
 import type { AgentMentionHost } from '../lib/mentionHost';
-import type { AgentComposerSubmission } from '../lib/mentions';
+import {
+  type AgentComposerSubmission,
+  fallbackAssetMention,
+  fallbackRecordMention,
+} from '../lib/mentions';
 import type { NavigationCallbacks } from '../recordComments/entrypoints/contexts/NavigationCallbacksContext';
 import { MentionComposer } from './MentionComposer';
+
+vi.mock('datocms-react-ui', async (importOriginal) => {
+  const original = await importOriginal<typeof import('datocms-react-ui')>();
+  const PassThrough = ({ children }: { children?: ReactNode }) => children;
+  return {
+    ...original,
+    Tooltip: PassThrough,
+    TooltipContent: () => null,
+    TooltipTrigger: PassThrough,
+  };
+});
 
 const currentUser: AgentMentionHost['currentUser'] = {
   id: 'current-user',
@@ -37,6 +54,7 @@ const secretModel: AgentMentionHost['projectModels'][number] = {
 
 const navigation: NavigationCallbacks = {
   handleOpenAsset: vi.fn(),
+  handleOpenFile: vi.fn(),
   handleOpenRecord: vi.fn(),
 };
 
@@ -45,6 +63,7 @@ function createHost(
 ): AgentMentionHost {
   return {
     currentUser,
+    projectOwnerId: 'project-owner',
     projectModels: [pageModel, secretModel],
     recordModels: [pageModel],
     canMentionFields: true,
@@ -90,8 +109,18 @@ function createHost(
     ]),
     selectAsset: vi.fn(async () => undefined),
     selectRecord: vi.fn(async () => undefined),
+    resolveAsset: vi.fn(async ({ uploadId, label }) =>
+      fallbackAssetMention(uploadId, label || `Asset #${uploadId}`),
+    ),
+    resolveRecord: vi.fn(async ({ itemId, label }) =>
+      fallbackRecordMention({
+        id: itemId,
+        title: label || `Record #${itemId}`,
+      }),
+    ),
     openUser: vi.fn(),
     openModel: vi.fn(),
+    openLocalFile: vi.fn(async () => undefined),
     ...overrides,
   };
 }
@@ -136,9 +165,93 @@ function pasteText(element: HTMLElement, text: string) {
 
 afterEach(() => {
   cleanup();
+  clearSessionLocalFiles();
 });
 
 describe('MentionComposer', () => {
+  it('adds multiple computer files as references and submits metadata without embedding bytes', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    renderComposer(createHost({ canMentionAssets: false }), { onSubmit });
+
+    const input = screen.getByLabelText('Choose files from computer');
+    const click = vi.spyOn(input, 'click');
+    await user.click(
+      screen.getByRole('button', { name: 'Upload files from computer' }),
+    );
+    expect(click).toHaveBeenCalledOnce();
+
+    const pdf = new File(['PDF bytes'], 'brief.pdf', {
+      type: 'application/pdf',
+      lastModified: 1_786_000_000_000,
+    });
+    const notes = new File(['Some notes'], 'notes.txt', {
+      type: 'text/plain',
+      lastModified: 1_786_000_001_000,
+    });
+    await user.upload(input, [pdf, notes]);
+
+    expect(screen.getByText('brief.pdf')).toBeVisible();
+    expect(screen.getByText('notes.txt')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Send' }));
+
+    const submission = onSubmit.mock.calls[0]?.[0] as AgentComposerSubmission;
+    const fileMentions = submission.segments.flatMap((segment) =>
+      segment.type === 'mention' && segment.mention.type === 'file'
+        ? [segment.mention]
+        : [],
+    );
+    expect(fileMentions).toHaveLength(2);
+    expect(submission.attachments).toEqual(
+      fileMentions.map(({ type: _type, ...descriptor }) => descriptor),
+    );
+    expect(Object.keys(submission.attachments?.[0] ?? {}).sort()).toEqual([
+      'filename',
+      'id',
+      'lastModified',
+      'mimeType',
+      'size',
+    ]);
+    expect(getSessionLocalFile(fileMentions[0].id)).toBe(pdf);
+    expect(getSessionLocalFile(fileMentions[1].id)).toBe(notes);
+    expect(submission.providerText).toContain(
+      'HOST-ATTACHED LOCAL FILES (NOT DATOCMS ASSETS)',
+    );
+  });
+
+  it('rejects empty, oversized, and excess local files before registration', async () => {
+    const user = userEvent.setup();
+    renderComposer(createHost());
+    const input = screen.getByLabelText('Choose files from computer');
+    const validFiles = Array.from(
+      { length: 6 },
+      (_, index) => new File(['x'], `valid-${index + 1}.txt`),
+    );
+    const empty = new File([], 'empty.txt', { type: 'text/plain' });
+    const oversizedImage = new File(['x'], 'huge.png', {
+      type: 'image/png',
+    });
+    Object.defineProperty(oversizedImage, 'size', {
+      value: 10 * 1024 * 1024 + 1,
+    });
+
+    await user.upload(input, [...validFiles, empty, oversizedImage]);
+
+    expect(screen.getByText('valid-5.txt')).toBeVisible();
+    expect(screen.queryByText('valid-6.txt')).not.toBeInTheDocument();
+    expect(screen.queryByText('empty.txt')).not.toBeInTheDocument();
+    expect(screen.queryByText('huge.png')).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Empty files cannot be attached.',
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Images must be 10 MB or smaller',
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'A message can include up to 5 files',
+    );
+  });
+
   it('filters and selects users from a toolbar-opened menu with the keyboard', async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn();

@@ -2,6 +2,7 @@ import type {
   AssetMention,
   CommentSegment,
   FieldMention,
+  LocalFileMention,
   Mention,
   ModelMention,
   RecordMention,
@@ -59,6 +60,7 @@ import { MentionClickContext } from './MentionClickContext';
 import {
   AssetMentionNodeView,
   FieldMentionNodeView,
+  FileMentionNodeView,
   ModelMentionNodeView,
   RecordMentionNodeView,
   UserMentionNodeView,
@@ -101,6 +103,7 @@ export type TipTapComposerRef = {
   focus: () => void;
   clear: () => void;
   insertMention: (mention: Mention) => void;
+  insertMentions: (mentions: readonly Mention[]) => void;
   insertText: (text: string) => void;
   getSegments: () => CommentSegment[];
   isEmpty: () => boolean;
@@ -328,6 +331,11 @@ export const TipTapComposer = forwardRef<
           case 'asset': {
             const assetMention = mention as AssetMention;
             nav.handleOpenAsset(assetMention.id);
+            break;
+          }
+          case 'file': {
+            const fileMention = mention as LocalFileMention;
+            void nav.handleOpenFile(fileMention);
             break;
           }
           case 'record': {
@@ -915,6 +923,11 @@ export const TipTapComposer = forwardRef<
           nodeViewComponent: AssetMentionNodeView,
         }),
         createMentionNodeExtension({
+          name: MENTION_NODE_TYPES.file,
+          mentionType: 'file',
+          nodeViewComponent: FileMentionNodeView,
+        }),
+        createMentionNodeExtension({
           name: MENTION_NODE_TYPES.record,
           mentionType: 'record',
           nodeViewComponent: RecordMentionNodeView,
@@ -1226,6 +1239,37 @@ export const TipTapComposer = forwardRef<
                 { type: 'text', text: ' ' },
               ])
               .run();
+          }
+        },
+
+        insertMentions: (mentions: readonly Mention[]) => {
+          if (!editor || disabledRef.current || mentions.length === 0) return;
+
+          const content = mentions.flatMap((mention) => [
+            {
+              type: MENTION_NODE_TYPES[mention.type],
+              attrs: mention,
+            },
+            { type: 'text', text: ' ' },
+          ]);
+          const currentSegments = tipTapDocToFullSegments(editor.getJSON());
+          const isEffectivelyEmpty =
+            currentSegments.length === 0 ||
+            (currentSegments.length === 1 &&
+              currentSegments[0].type === 'text' &&
+              !currentSegments[0].content.trim());
+
+          if (isEffectivelyEmpty) {
+            editor
+              .chain()
+              .focus()
+              .setContent({
+                type: 'doc',
+                content: [{ type: 'paragraph', content }],
+              })
+              .run();
+          } else {
+            editor.chain().focus().insertContent(content).run();
           }
         },
 

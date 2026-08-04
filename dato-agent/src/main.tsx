@@ -4,11 +4,13 @@ import './recordComments/entrypoints/styles/tokens.css';
 import { lazy, Suspense } from 'react';
 import ApprovalDetailsModal from './entrypoints/ApprovalDetailsModal';
 import ConfigScreen from './entrypoints/ConfigScreen';
+import FileDetailsModal from './entrypoints/FileDetailsModal';
 import InspectorEmptyPanel from './entrypoints/InspectorEmptyPanel';
 import LoadingFrame from './entrypoints/LoadingFrame';
 import OAuthCallbackPage from './entrypoints/OAuthCallbackPage';
 import { APPROVAL_DETAILS_MODAL_ID } from './lib/approvalDetailsModal';
 import { normalizeConfig } from './lib/config';
+import { FILE_DETAILS_MODAL_ID } from './lib/fileDetailsModal';
 import { inspectorRecordPaneWidth } from './lib/inspectorLayout';
 import { handleOAuthCallbackIfPresent } from './lib/oauth';
 import { DEFAULT_SIDEBAR_WIDTH, readSidebarWidth } from './lib/persistedWidth';
@@ -111,8 +113,13 @@ if (!handledOAuthCallback) {
     },
 
     renderModal(modalId, ctx) {
-      if (modalId === APPROVAL_DETAILS_MODAL_ID) {
-        render(<ApprovalDetailsModal ctx={ctx} />);
+      switch (modalId) {
+        case APPROVAL_DETAILS_MODAL_ID:
+          render(<ApprovalDetailsModal ctx={ctx} />);
+          break;
+        case FILE_DETAILS_MODAL_ID:
+          render(<FileDetailsModal ctx={ctx} />);
+          break;
       }
     },
   });

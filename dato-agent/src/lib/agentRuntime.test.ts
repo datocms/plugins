@@ -9,11 +9,13 @@ import type {
 import { describe, expect, it, vi } from 'vitest';
 import {
   type AgentResponsesClient,
+  type AgentRuntimeAttachment,
   type AgentRuntimeEvent,
   type AgentTurnResult,
   createAgentRuntime,
   DEFAULT_AGENT_MODEL,
   DEFAULT_MAX_CONTINUATIONS,
+  MAX_AGENT_ATTACHMENTS_PER_MESSAGE,
   MAX_CURRENT_FORM_STATE_FIELDS,
   MAX_DISTINCT_MODEL_SCHEMAS_PER_TURN,
   MAX_HOST_CONTEXT_CHARACTERS,
@@ -307,6 +309,28 @@ function runtimeWith(
   });
 }
 
+function attachment({
+  id,
+  filename,
+  mimeType,
+  content,
+}: {
+  id: string;
+  filename: string;
+  mimeType: string;
+  content: string;
+}): AgentRuntimeAttachment {
+  const file = new Blob([content], { type: mimeType });
+  return {
+    id,
+    filename,
+    mimeType,
+    size: file.size,
+    lastModified: 1_700_000_000_000,
+    file,
+  };
+}
+
 describe('AgentRuntime', () => {
   it('rejects an oversized message before contacting OpenAI', async () => {
     const client = new QueueResponsesClient([]);
@@ -323,6 +347,176 @@ describe('AgentRuntime', () => {
         code: 'invalid_request',
         message: `A message cannot exceed ${MAX_CONVERSATION_MESSAGE_CHARACTERS.toLocaleString()} characters.`,
         retryable: false,
+      },
+    });
+    expect(client.requests).toHaveLength(0);
+  });
+
+  it('sends current and retained browser files as bounded Responses input_file blocks', async () => {
+    const client = new QueueResponsesClient([
+      eventsFor(response('resp-files'), ['Read both files.']),
+    ]);
+    const runtime = runtimeWith(client);
+    const historyAttachment = attachment({
+      id: 'file-history',
+      filename: 'notes.txt',
+      mimeType: 'text/plain',
+      content: 'Earlier notes',
+    });
+    const currentAttachment = attachment({
+      id: 'file-current',
+      filename: 'brief.pdf',
+      mimeType: 'application/pdf',
+      content: '%PDF-current brief',
+    });
+
+    const { result } = await drain(
+      runtime.streamTurn({
+        history: [
+          {
+            role: 'user',
+            text: 'Keep these notes in mind.',
+            attachments: [historyAttachment],
+          },
+          { role: 'assistant', text: 'I will.' },
+        ],
+        message: 'Use the attached brief too.',
+        attachments: [currentAttachment],
+      }),
+    );
+
+    expect(result.status).toBe('completed');
+    const input = client.requests[0]?.input;
+    expect(Array.isArray(input)).toBe(true);
+    const messages = input as ResponseInput;
+    expect(messages).toHaveLength(3);
+    expect(messages[0]).toMatchObject({
+      type: 'message',
+      role: 'user',
+      content: [
+        { type: 'input_text', text: 'Keep these notes in mind.' },
+        {
+          type: 'input_file',
+          filename: 'notes.txt',
+          file_data: `data:text/plain;base64,${btoa('Earlier notes')}`,
+        },
+      ],
+    });
+    expect(messages[1]).toMatchObject({
+      type: 'message',
+      role: 'assistant',
+      content: 'I will.',
+    });
+    expect(messages[2]).toMatchObject({
+      type: 'message',
+      role: 'user',
+      content: [
+        { type: 'input_text', text: 'Use the attached brief too.' },
+        {
+          type: 'input_file',
+          filename: 'brief.pdf',
+          file_data: `data:application/pdf;base64,${btoa('%PDF-current brief')}`,
+        },
+      ],
+    });
+  });
+
+  it('sends common images as Responses input_image data URL blocks', async () => {
+    const client = new QueueResponsesClient([
+      eventsFor(response('resp-image'), ['I can see it.']),
+    ]);
+    const runtime = runtimeWith(client);
+    const image = attachment({
+      id: 'file-image',
+      filename: 'diagram.png',
+      mimeType: 'image/png',
+      content: 'png-bytes',
+    });
+
+    const { result } = await drain(
+      runtime.streamTurn({
+        message: 'Describe this image.',
+        attachments: [image],
+      }),
+    );
+
+    expect(result.status).toBe('completed');
+    expect(client.requests[0]?.input).toEqual([
+      {
+        type: 'message',
+        role: 'user',
+        content: [
+          { type: 'input_text', text: 'Describe this image.' },
+          {
+            type: 'input_image',
+            detail: 'auto',
+            image_url: `data:image/png;base64,${btoa('png-bytes')}`,
+          },
+        ],
+      },
+    ]);
+  });
+
+  it('keeps an OpenAI-unsupported local file metadata-only for optional asset creation', async () => {
+    const client = new QueueResponsesClient([
+      eventsFor(response('resp-metadata-only'), [
+        'I cannot read that file, but it remains attached.',
+      ]),
+    ]);
+    const runtime = runtimeWith(client);
+    const unsupported = attachment({
+      id: 'file-binary',
+      filename: 'archive.bin',
+      mimeType: 'application/octet-stream',
+      content: 'opaque',
+    });
+
+    const { result } = await drain(
+      runtime.streamTurn({
+        message: 'Read this file.',
+        attachments: [unsupported],
+      }),
+    );
+
+    expect(result.status).toBe('completed');
+    const input = client.requests[0]?.input as ResponseInput;
+    expect(input).toHaveLength(1);
+    const content = input[0]?.type === 'message' ? input[0].content : undefined;
+    expect(content).toEqual([
+      {
+        type: 'input_text',
+        text: expect.stringContaining('HOST-PROVIDED LOCAL FILE AVAILABILITY'),
+      },
+    ]);
+    expect(JSON.stringify(content)).toContain('file-binary');
+    expect(JSON.stringify(content)).toContain('not_supplied_to_model');
+    expect(JSON.stringify(content)).toContain('Do not claim to have read them');
+    expect(JSON.stringify(content)).not.toContain('file_data');
+  });
+
+  it('bounds attachment count before reading browser bytes', async () => {
+    const client = new QueueResponsesClient([]);
+    const runtime = runtimeWith(client);
+    const attachments = Array.from(
+      { length: MAX_AGENT_ATTACHMENTS_PER_MESSAGE + 1 },
+      (_, index) =>
+        attachment({
+          id: `file-${index}`,
+          filename: `file-${index}.txt`,
+          mimeType: 'text/plain',
+          content: `${index}`,
+        }),
+    );
+
+    const { result } = await drain(
+      runtime.streamTurn({ message: 'Read these.', attachments }),
+    );
+
+    expect(result).toMatchObject({
+      status: 'failed',
+      error: {
+        code: 'invalid_request',
+        message: `A message cannot include more than ${MAX_AGENT_ATTACHMENTS_PER_MESSAGE} files.`,
       },
     });
     expect(client.requests).toHaveLength(0);
@@ -769,6 +963,102 @@ describe('AgentRuntime', () => {
           event.type === 'activity' && event.activity.label === 'Record opened',
       ),
     ).toBe(false);
+  });
+
+  it('advertises and executes the explicit host asset-creation tool when available', async () => {
+    const createCall = {
+      type: 'function_call',
+      id: 'function-create-asset',
+      call_id: 'call-create-asset',
+      name: 'create_dato_asset',
+      arguments: JSON.stringify({
+        source: 'attached_file',
+        attachment_id: 'local-file-123',
+        url: null,
+        filename: null,
+      }),
+      status: 'completed',
+    } satisfies ResponseFunctionToolCall;
+    const client = new QueueResponsesClient([
+      eventsFor(response('resp-create-asset', [createCall])),
+      eventsFor(response('resp-create-asset-done'), ['Asset created.']),
+    ]);
+    const createDatoAsset = vi.fn().mockResolvedValue({
+      uploadId: 'upload-123',
+      filename: 'brief.pdf',
+      url: 'https://cdn.example/upload-123',
+      mimeType: 'application/pdf',
+    });
+    const runtime = runtimeWith(client, { createDatoAsset });
+
+    const { events, result } = await drain(
+      runtime.streamTurn({
+        message: 'Upload the attached brief as a DatoCMS asset.',
+        attachments: [
+          attachment({
+            id: 'local-file-123',
+            filename: 'brief.bin',
+            mimeType: 'application/octet-stream',
+            content: 'opaque-asset-bytes',
+          }),
+        ],
+      }),
+    );
+
+    expect(
+      client.requests[0]?.tools?.find(
+        (tool) => tool.type === 'function' && tool.name === 'create_dato_asset',
+      ),
+    ).toMatchObject({
+      type: 'function',
+      name: 'create_dato_asset',
+      strict: true,
+      description: expect.stringContaining(
+        'Merely attaching or referencing a file is never permission',
+      ),
+    });
+    expect(JSON.stringify(client.requests[0]?.input)).toContain(
+      'not_supplied_to_model',
+    );
+    expect(JSON.stringify(client.requests[0]?.input)).not.toContain(
+      'opaque-asset-bytes',
+    );
+    expect(createDatoAsset).toHaveBeenCalledWith(
+      {
+        source: 'attached_file',
+        attachmentId: 'local-file-123',
+      },
+      undefined,
+    );
+    expect(client.requests[1]?.input).toEqual([
+      expect.objectContaining({
+        type: 'function_call_output',
+        call_id: 'call-create-asset',
+        output: JSON.stringify({
+          ok: true,
+          uploadId: 'upload-123',
+          filename: 'brief.pdf',
+          url: 'https://cdn.example/upload-123',
+          mimeType: 'application/pdf',
+        }),
+      }),
+    ]);
+    expect(events).toContainEqual({
+      type: 'activity',
+      responseId: 'resp-create-asset',
+      activity: expect.objectContaining({
+        id: 'call-create-asset',
+        kind: 'asset',
+        status: 'completed',
+        label: 'Asset created',
+        toolName: 'create_dato_asset',
+      }),
+    });
+    expect(result).toMatchObject({
+      status: 'completed',
+      responseId: 'resp-create-asset-done',
+      text: 'Asset created.',
+    });
   });
 
   it('presents verified records in chat without invoking either navigation callback', async () => {

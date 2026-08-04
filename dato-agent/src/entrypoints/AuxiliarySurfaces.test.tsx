@@ -3,6 +3,7 @@ import type { RenderInspectorCtx, RenderModalCtx } from 'datocms-plugin-sdk';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import ApprovalDetailsModal from './ApprovalDetailsModal';
+import FileDetailsModal from './FileDetailsModal';
 import LoadingFrame from './LoadingFrame';
 import OAuthCallbackPage from './OAuthCallbackPage';
 
@@ -42,6 +43,47 @@ describe('auxiliary surfaces', () => {
     expect(container.querySelector('pre code')).toHaveTextContent(
       'await client.items.update("123", { title: "Hello" });',
     );
+  });
+
+  it('distinguishes a session-local file from a DatoCMS asset', () => {
+    const availableCtx = {
+      parameters: {
+        filename: 'brief.pdf',
+        mimeType: 'application/pdf',
+        size: 2048,
+        lastModified: 1_786_000_000_000,
+        bytesAvailable: true,
+      },
+    } as unknown as RenderModalCtx;
+
+    const { rerender } = render(<FileDetailsModal ctx={availableCtx} />);
+
+    expect(screen.getByText('brief.pdf')).toBeVisible();
+    expect(screen.getByText('2.0 KB')).toBeVisible();
+    expect(
+      screen.getByText('This file is not yet a DatoCMS asset.'),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        'File bytes are available only for this browser session.',
+      ),
+    ).toBeVisible();
+
+    rerender(
+      <FileDetailsModal
+        ctx={
+          {
+            ...availableCtx,
+            parameters: { ...availableCtx.parameters, bytesAvailable: false },
+          } as RenderModalCtx
+        }
+      />,
+    );
+    expect(
+      screen.getByText(
+        'The file bytes are no longer available; only its metadata remains.',
+      ),
+    ).toBeVisible();
   });
 
   it('exposes concise success and error callback statuses', () => {

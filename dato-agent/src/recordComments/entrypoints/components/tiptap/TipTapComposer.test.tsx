@@ -34,6 +34,7 @@ describe('TipTapComposer mount lifecycle', () => {
         <NavigationCallbacksProvider
           callbacks={{
             handleOpenAsset: vi.fn(),
+            handleOpenFile: vi.fn(),
             handleOpenRecord: vi.fn(),
           }}
         >

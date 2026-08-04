@@ -100,6 +100,7 @@ export type AgentRecordResultViewModel = {
   itemId: string;
   itemTypeId?: string;
   title: string;
+  mention?: Extract<Mention, { type: 'record' }>;
   modelLabel?: string;
   subtitle?: string;
   statusLabel?: string;
@@ -110,12 +111,14 @@ export type AgentFieldResultViewModel = {
   fieldPath: string;
   title: string;
   locale?: string;
+  mention?: Extract<Mention, { type: 'field' }>;
 };
 
 export type AgentAssetResultViewModel = {
   uploadId: string;
   title: string;
   deleted?: boolean;
+  mention?: Extract<Mention, { type: 'asset' }>;
 };
 
 export type AgentModelResultViewModel = {
@@ -706,13 +709,13 @@ function MessageAvatar({
 
 function UserMessageContent({
   content,
-  currentUser,
+  mentionHost,
   disabled,
   onOpenMention,
   segments,
 }: {
   content: string;
-  currentUser: AgentMentionHost['currentUser'];
+  mentionHost: AgentMentionHost;
   disabled: boolean;
   onOpenMention: (mention: Mention) => void;
   segments?: readonly CommentSegment[];
@@ -731,11 +734,21 @@ function UserMessageContent({
           <span key={key}>{segment.content}</span>
         ) : (
           <MentionDisplay
-            isClickable={!disabled}
+            isClickable={
+              !disabled &&
+              !(
+                segment.mention.type === 'user' &&
+                segment.mention.id === mentionHost.projectOwnerId
+              )
+            }
+            isProjectOwner={
+              segment.mention.type === 'user' &&
+              segment.mention.id === mentionHost.projectOwnerId
+            }
             key={key}
             mention={segment.mention}
             onClick={() => onOpenMention(segment.mention)}
-            projectUsers={[currentUser]}
+            projectUsers={[mentionHost.currentUser]}
           />
         ),
       )}
@@ -838,7 +851,7 @@ function MessageEntry({
           {entry.content && entry.role === 'user' && (
             <UserMessageContent
               content={entry.content}
-              currentUser={mentionHost.currentUser}
+              mentionHost={mentionHost}
               disabled={disabled}
               onOpenMention={onOpenMention}
               segments={entry.segments}
@@ -1036,24 +1049,26 @@ function RecordsEntry({
           const model = record.itemTypeId
             ? modelsById.get(record.itemTypeId)
             : undefined;
-          const mention = fallbackRecordMention({
-            id: record.itemId,
-            title: record.title,
-            ...(model
-              ? {
-                  model: {
-                    modelId: model.id,
-                    modelApiKey: model.apiKey,
-                    modelName: model.name,
-                    modelEmoji: null,
-                    isSingleton: false,
-                  },
-                }
-              : {}),
-          });
+          const mention =
+            record.mention ??
+            fallbackRecordMention({
+              id: record.itemId,
+              title: record.title,
+              ...(model
+                ? {
+                    model: {
+                      modelId: model.id,
+                      modelApiKey: model.apiKey,
+                      modelName: model.name,
+                      modelEmoji: null,
+                      isSingleton: false,
+                    },
+                  }
+                : {}),
+            });
           return (
             <MentionDisplay
-              accessibleLabel={`Open ${record.title}`}
+              accessibleLabel={`Open ${mention.title}`}
               isClickable={!disabled && Boolean(onOpenRecord)}
               key={`${record.itemTypeId ?? 'record'}:${record.itemId}`}
               mention={mention}
@@ -1101,14 +1116,16 @@ function FieldsEntry({
             accessibleLabel={`Show ${field.title}`}
             isClickable={!disabled && Boolean(onOpenField)}
             key={`${field.fieldPath}:${field.locale ?? ''}`}
-            mention={{
-              type: 'field',
-              apiKey: field.fieldPath.split('.').at(-1) || field.fieldPath,
-              label: field.title,
-              localized: Boolean(field.locale),
-              fieldPath: field.fieldPath,
-              ...(field.locale ? { locale: field.locale } : {}),
-            }}
+            mention={
+              field.mention ?? {
+                type: 'field',
+                apiKey: field.fieldPath.split('.').at(-1) || field.fieldPath,
+                label: field.title,
+                localized: Boolean(field.locale),
+                fieldPath: field.fieldPath,
+                ...(field.locale ? { locale: field.locale } : {}),
+              }
+            }
             onClick={() => {
               if (!disabled && onOpenField) {
                 void Promise.resolve(onOpenField(field, entry.id)).catch(
@@ -1148,7 +1165,10 @@ function AssetsEntry({
             <MentionDisplay
               accessibleLabel={`Open ${asset.title}`}
               isClickable={!disabled && !asset.deleted && Boolean(onOpenAsset)}
-              mention={fallbackAssetMention(asset.uploadId, asset.title)}
+              mention={
+                asset.mention ??
+                fallbackAssetMention(asset.uploadId, asset.title)
+              }
               onClick={() => {
                 if (!disabled && !asset.deleted && onOpenAsset) {
                   void Promise.resolve(onOpenAsset(asset, entry.id)).catch(
@@ -1187,32 +1207,50 @@ function MentionsEntry({
       )}
       <div className={styles.mentionReceiptItems}>
         {withStableKeys(entry.mentions, mentionIdentity).map(
-          ({ key, value: mention }) => (
-            <MentionDisplay
-              accessibleLabel={
-                mention.type === 'user'
-                  ? `Open ${mention.name}`
-                  : mention.type === 'model'
+          ({ key, value: mention }) => {
+            const isOwner =
+              mention.type === 'user' &&
+              mention.id === mentionHost.projectOwnerId;
+            const isOpenable =
+              !disabled &&
+              !isOwner &&
+              (mention.type === 'user' ||
+                mention.type === 'model' ||
+                mention.type === 'file');
+            return (
+              <MentionDisplay
+                accessibleLabel={
+                  mention.type === 'user'
                     ? `Open ${mention.name}`
-                    : undefined
-              }
-              isClickable={!disabled}
-              key={key}
-              mention={mention}
-              onClick={() => {
-                if (disabled) return;
-                if (mention.type === 'user') {
-                  void mentionHost.openUser(mention.id);
-                } else if (mention.type === 'model') {
-                  mentionHost.openModel(mention.id, mention.isBlockModel);
+                    : mention.type === 'model'
+                      ? `Open ${mention.name}`
+                      : mention.type === 'file'
+                        ? `Show details for ${mention.filename}`
+                        : undefined
                 }
-              }}
-              projectUsers={entry.mentions.filter(
-                (candidate): candidate is Extract<Mention, { type: 'user' }> =>
-                  candidate.type === 'user',
-              )}
-            />
-          ),
+                isClickable={isOpenable}
+                isProjectOwner={isOwner}
+                key={key}
+                mention={mention}
+                onClick={() => {
+                  if (!isOpenable) return;
+                  if (mention.type === 'user') {
+                    void mentionHost.openUser(mention.id);
+                  } else if (mention.type === 'model') {
+                    mentionHost.openModel(mention.id, mention.isBlockModel);
+                  } else if (mention.type === 'file') {
+                    void mentionHost.openLocalFile(mention);
+                  }
+                }}
+                projectUsers={entry.mentions.filter(
+                  (
+                    candidate,
+                  ): candidate is Extract<Mention, { type: 'user' }> =>
+                    candidate.type === 'user',
+                )}
+              />
+            );
+          },
         )}
       </div>
       {entry.error && <p className={styles.inlineError}>{entry.error}</p>}
@@ -1439,6 +1477,9 @@ function openTranscriptMention(
       ignoreHostActionFailure(
         actions.onOpenAsset({ uploadId: mention.id, title: mention.filename }),
       );
+      return;
+    case 'file':
+      ignoreHostActionFailure(actions.mentionHost.openLocalFile(mention));
       return;
     case 'model':
       actions.mentionHost.openModel(mention.id, mention.isBlockModel);
@@ -1835,6 +1876,7 @@ export function AgentSurface({
         avatarUrl: null,
         userType: 'user',
       },
+      projectOwnerId: 'project-owner',
       projectModels: [],
       recordModels: [],
       canMentionFields: false,
@@ -1843,8 +1885,16 @@ export function AgentSurface({
       loadProjectUsers: async () => [],
       selectAsset: async () => undefined,
       selectRecord: async () => undefined,
+      resolveAsset: async ({ uploadId, label }) =>
+        fallbackAssetMention(uploadId, label || `Asset #${uploadId}`),
+      resolveRecord: async ({ itemId, label }) =>
+        fallbackRecordMention({
+          id: itemId,
+          title: label || `Record #${itemId}`,
+        }),
       openUser: () => undefined,
       openModel: () => undefined,
+      openLocalFile: async () => undefined,
     } satisfies AgentMentionHost);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [conversationActionPending, setConversationActionPending] =
@@ -1982,6 +2032,7 @@ export function AgentSurface({
                       title: `Asset ${assetId}`,
                     });
                   },
+                  handleOpenFile: resolvedMentionHost.openLocalFile,
                   handleOpenRecord: async (recordId, modelId) => {
                     await onOpenRecord?.({
                       itemId: recordId,

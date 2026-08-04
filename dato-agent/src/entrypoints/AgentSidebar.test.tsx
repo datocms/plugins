@@ -353,8 +353,21 @@ describe('AgentSidebar local current-form capabilities', () => {
     ).resolves.toEqual({
       title: 'Fields',
       fields: [
-        { fieldPath: 'title', label: 'Title', locale: 'en' },
-        { fieldPath: 'body', label: 'Body' },
+        {
+          fieldPath: 'title',
+          label: 'Title',
+          apiKey: 'title',
+          localized: true,
+          locale: 'en',
+          fieldType: 'single_line',
+        },
+        {
+          fieldPath: 'body',
+          label: 'Body',
+          apiKey: 'body',
+          localized: false,
+          fieldType: 'single_line',
+        },
       ],
     });
 

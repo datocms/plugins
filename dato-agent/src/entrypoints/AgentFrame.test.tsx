@@ -5,6 +5,7 @@ import type {
   AgentRuntime,
   AgentRuntimeConfig,
   AgentRuntimeEvent,
+  AgentTurnArgs,
   AgentTurnResult,
   ContinueApprovalsArgs,
 } from '../lib/agentRuntime';
@@ -18,6 +19,12 @@ import {
   createCredentialStore,
   createOAuthCredentials,
 } from '../lib/credentials';
+import { clearSessionLocalFiles, registerLocalFile } from '../lib/localFiles';
+import type { AgentMentionHost } from '../lib/mentionHost';
+import type {
+  AgentComposerSubmission,
+  LocalFileMention,
+} from '../lib/mentions';
 import { createUnsafeDispatchJournalStore } from '../lib/unsafeDispatchJournal';
 import AgentFrame, { type AgentFrameProps } from './AgentFrame';
 
@@ -135,6 +142,80 @@ function enableAutoApproval(frameProps: AgentFrameProps): void {
     environment: frameProps.environment,
     currentUserId: frameProps.currentUserId,
   }).setEnabled(true);
+}
+
+function localFileSubmission(
+  mention: LocalFileMention,
+  text = `Read ${mention.filename}`,
+): AgentComposerSubmission {
+  const { id, filename, mimeType, size, lastModified } = mention;
+  return {
+    displayText: text,
+    providerText: text,
+    segments: [
+      { type: 'text', content: `${text} ` },
+      { type: 'mention', mention },
+    ],
+    attachments: [{ id, filename, mimeType, size, lastModified }],
+  };
+}
+
+function createdAssetMention(id: string, filename: string) {
+  return {
+    type: 'asset' as const,
+    id,
+    filename,
+    url: `https://www.datocms-assets.com/${filename}`,
+    thumbnailUrl: null,
+    mimeType: filename.endsWith('.pdf') ? 'application/pdf' : 'image/png',
+  };
+}
+
+function assetCreatingMentionHost(
+  overrides: Partial<AgentMentionHost> = {},
+): AgentMentionHost {
+  return {
+    currentUser: {
+      id: 'editor',
+      name: 'Editor',
+      email: 'editor@example.com',
+      avatarUrl: null,
+      userType: 'user',
+    },
+    projectOwnerId: 'owner',
+    projectModels: [],
+    recordModels: [],
+    canMentionFields: false,
+    canMentionAssets: true,
+    canMentionModels: false,
+    canCreateAssets: true,
+    loadProjectUsers: async () => [],
+    selectAsset: async () => undefined,
+    selectRecord: async () => undefined,
+    resolveAsset: vi.fn(async ({ uploadId, label }) =>
+      createdAssetMention(uploadId, label ?? `Asset-${uploadId}.png`),
+    ),
+    resolveRecord: vi.fn(async ({ itemId, label }) => ({
+      type: 'record' as const,
+      id: itemId,
+      title: label ?? `Record #${itemId}`,
+      modelId: 'unknown',
+      modelApiKey: '',
+      modelName: 'Record',
+      modelEmoji: null,
+      thumbnailUrl: null,
+    })),
+    createAsset: vi.fn(async (input) =>
+      createdAssetMention(
+        `created-${input.source}`,
+        input.filename ?? (input.source === 'url' ? 'download.png' : 'file'),
+      ),
+    ),
+    openUser: () => undefined,
+    openModel: () => undefined,
+    openLocalFile: async () => undefined,
+    ...overrides,
+  };
 }
 
 function storedConversation({
@@ -278,10 +359,12 @@ describe('AgentFrame', () => {
     mocks.runtime = undefined;
     mocks.runtimeConfig = undefined;
     mocks.runtimeConfigs.length = 0;
+    clearSessionLocalFiles();
   });
 
   afterEach(() => {
     cleanup();
+    clearSessionLocalFiles();
     vi.restoreAllMocks();
   });
 
@@ -2784,6 +2867,644 @@ describe('AgentFrame', () => {
     });
   });
 
+  it('resolves and persists native record and asset presentation metadata', async () => {
+    const recordMention = {
+      type: 'record' as const,
+      id: 'record-without-label',
+      title: 'Designing for Slow Networks',
+      modelId: 'post-model',
+      modelApiKey: 'post',
+      modelName: 'Post',
+      modelEmoji: '📝',
+      thumbnailUrl: 'https://www.datocms-assets.com/post.jpg?w=48',
+    };
+    const assetMention = {
+      type: 'asset' as const,
+      id: 'hero-upload',
+      filename: 'hero.jpg',
+      url: 'https://www.datocms-assets.com/hero.jpg',
+      thumbnailUrl: 'https://www.datocms-assets.com/hero.jpg?w=300',
+      mimeType: 'image/jpeg',
+    };
+    const resolveRecord = vi.fn(async () => recordMention);
+    const resolveAsset = vi.fn(async () => assetMention);
+    const mentionHost = {
+      currentUser: {
+        id: 'editor',
+        name: 'Editor',
+        email: 'editor@example.com',
+        avatarUrl: null,
+        userType: 'user',
+      },
+      projectOwnerId: 'owner',
+      projectModels: [
+        {
+          id: 'post-model',
+          apiKey: 'post',
+          name: 'Post',
+          isBlockModel: false,
+        },
+      ],
+      recordModels: [],
+      canMentionFields: false,
+      canMentionAssets: true,
+      canMentionModels: false,
+      loadProjectUsers: async () => [],
+      selectAsset: async () => undefined,
+      selectRecord: async () => undefined,
+      resolveRecord,
+      resolveAsset,
+      openUser: () => undefined,
+      openModel: () => undefined,
+      openLocalFile: async () => undefined,
+    } satisfies AgentMentionHost;
+    const navigator = {
+      supportsRecordList: true,
+      openRecord: vi.fn().mockResolvedValue(undefined),
+      showRecords: vi.fn().mockResolvedValue(undefined),
+      openAsset: vi.fn().mockResolvedValue({ deleted: false }),
+    };
+    const frameProps = props({ mentionHost, navigator });
+    const result = completedResult();
+    mocks.runtime = {
+      runTurn: vi.fn(
+        async (
+          _args: unknown,
+          onEvent?: (event: AgentRuntimeEvent) => void | Promise<void>,
+        ) => {
+          await mocks.runtimeConfig?.navigation.openRecord({
+            itemId: 'record-without-label',
+          });
+          await mocks.runtimeConfig?.navigation.presentAssets({
+            title: 'Hero asset',
+            assets: [{ uploadId: 'hero-upload' }],
+          });
+          await onEvent?.({
+            type: 'text_delta',
+            responseId: 'resp_complete',
+            delta: 'Here it is.',
+          });
+          await onEvent?.({ type: 'turn_completed', result });
+          return result;
+        },
+      ),
+    } as unknown as AgentRuntime;
+
+    const rendered = render(<AgentFrame {...frameProps} />);
+    act(() => {
+      mocks.surfaceProps?.onSubmit('Show that record and its image');
+    });
+
+    await waitFor(() => {
+      expect(mocks.surfaceProps?.isRunning).toBe(false);
+    });
+    expect(resolveRecord).toHaveBeenCalledWith({
+      itemId: 'record-without-label',
+    });
+    expect(resolveAsset).toHaveBeenCalledWith({ uploadId: 'hero-upload' });
+    expect(
+      mocks.surfaceProps?.entries.find((entry) => entry.kind === 'records'),
+    ).toMatchObject({
+      records: [
+        {
+          itemId: 'record-without-label',
+          itemTypeId: 'post-model',
+          title: 'Designing for Slow Networks',
+          mention: recordMention,
+        },
+      ],
+    });
+    expect(
+      mocks.surfaceProps?.entries.find((entry) => entry.kind === 'assets'),
+    ).toMatchObject({
+      assets: [
+        {
+          uploadId: 'hero-upload',
+          title: 'hero.jpg',
+          mention: assetMention,
+        },
+      ],
+    });
+
+    const storedAssistant = createConversationStore({
+      pluginId: frameProps.pluginId,
+      siteId: frameProps.siteId,
+      environment: frameProps.environment,
+      currentUserId: frameProps.currentUserId,
+      scope: frameProps.scope,
+    })
+      .list()[0]
+      ?.messages.find((message) => message.role === 'assistant');
+    expect(storedAssistant?.recordResults?.[0]?.records[0]?.mention).toEqual(
+      recordMention,
+    );
+    expect(storedAssistant?.assetResults?.[0]?.assets[0]?.mention).toEqual(
+      assetMention,
+    );
+
+    rendered.unmount();
+    render(<AgentFrame {...frameProps} />);
+    expect(
+      mocks.surfaceProps?.entries.find((entry) => entry.kind === 'records'),
+    ).toMatchObject({
+      records: [{ mention: recordMention }],
+    });
+    expect(
+      mocks.surfaceProps?.entries.find((entry) => entry.kind === 'assets'),
+    ).toMatchObject({
+      assets: [{ mention: assetMention }],
+    });
+  });
+
+  it('hydrates a restored raw record receipt without breaking response continuity', async () => {
+    const itemId = 'HTC4ys4MRiG_gJcyrHMigA';
+    const resolvedMention = {
+      type: 'record' as const,
+      id: itemId,
+      title: 'Web development services',
+      modelId: 'post-model',
+      modelApiKey: 'post',
+      modelName: 'Post',
+      modelEmoji: '📝',
+      thumbnailUrl:
+        'https://www.datocms-assets.com/12345/web-development.jpg?w=48',
+    };
+    const resolveRecord = vi.fn<AgentMentionHost['resolveRecord']>(
+      async () => resolvedMention,
+    );
+    const mentionHost = {
+      currentUser: {
+        id: 'editor',
+        name: 'Editor',
+        email: 'editor@example.com',
+        avatarUrl: null,
+        userType: 'user',
+      },
+      projectOwnerId: 'owner',
+      projectModels: [],
+      recordModels: [],
+      canMentionFields: false,
+      canMentionAssets: false,
+      canMentionModels: false,
+      loadProjectUsers: async () => [],
+      selectAsset: async () => undefined,
+      selectRecord: async () => undefined,
+      resolveRecord,
+      resolveAsset: async ({ uploadId, label }) => ({
+        type: 'asset' as const,
+        id: uploadId,
+        filename: label || `Asset #${uploadId}`,
+        url: '',
+        thumbnailUrl: null,
+        mimeType: 'application/octet-stream',
+      }),
+      openUser: () => undefined,
+      openModel: () => undefined,
+      openLocalFile: async () => undefined,
+    } satisfies AgentMentionHost;
+    const frameProps = props({
+      currentUserId: `legacy-receipt-user-${testUser}`,
+      mentionHost,
+    });
+    const store = createConversationStore({
+      pluginId: frameProps.pluginId,
+      siteId: frameProps.siteId,
+      environment: frameProps.environment,
+      currentUserId: frameProps.currentUserId,
+      scope: frameProps.scope,
+    });
+    const updatedAt = '2026-08-04T10:00:00.000Z';
+    store.save({
+      id: 'legacy-record-receipt',
+      title: 'Find web development content',
+      createdAt: updatedAt,
+      updatedAt,
+      previousResponseId: 'resp_before_restore',
+      responseProvider: 'openai',
+      responseModel: DEFAULT_CONFIG.model,
+      hostContextFingerprint: 'v1:project:before-restore',
+      messages: [
+        {
+          id: 'legacy-user-message',
+          role: 'user',
+          text: 'Show me the record about web development',
+          createdAt: updatedAt,
+        },
+        {
+          id: 'legacy-assistant-message',
+          role: 'assistant',
+          text: 'Here is the record.',
+          createdAt: updatedAt,
+          recordResults: [
+            {
+              id: 'legacy-record-results',
+              title: 'Record found',
+              records: [{ itemId, title: `Record ${itemId}` }],
+            },
+          ],
+        },
+      ],
+    });
+
+    const rendered = render(<AgentFrame {...frameProps} />);
+
+    await waitFor(() => {
+      expect(resolveRecord).toHaveBeenCalledWith({
+        type: 'record',
+        itemId,
+        label: `Record ${itemId}`,
+      });
+      expect(
+        mocks.surfaceProps?.entries.find((entry) => entry.kind === 'records'),
+      ).toMatchObject({
+        records: [
+          {
+            itemId,
+            itemTypeId: 'post-model',
+            title: 'Web development services',
+            mention: resolvedMention,
+          },
+        ],
+      });
+    });
+
+    await waitFor(() => {
+      const restored = store.get('legacy-record-receipt');
+      expect(
+        restored?.messages[1]?.recordResults?.[0]?.records[0],
+      ).toMatchObject({
+        itemId,
+        itemTypeId: 'post-model',
+        title: 'Web development services',
+        mention: resolvedMention,
+      });
+      expect(restored).toMatchObject({
+        updatedAt,
+        previousResponseId: 'resp_before_restore',
+        responseProvider: 'openai',
+        responseModel: DEFAULT_CONFIG.model,
+        hostContextFingerprint: 'v1:project:before-restore',
+      });
+    });
+
+    resolveRecord.mockResolvedValueOnce({
+      type: 'record',
+      id: itemId,
+      title: `Record #${itemId}`,
+      modelId: 'unknown',
+      modelApiKey: '',
+      modelName: 'Record',
+      modelEmoji: null,
+      thumbnailUrl: null,
+    });
+    rendered.unmount();
+    render(<AgentFrame {...frameProps} />);
+
+    await waitFor(() => {
+      expect(resolveRecord).toHaveBeenCalledTimes(2);
+      expect(
+        mocks.surfaceProps?.entries.find((entry) => entry.kind === 'records'),
+      ).toMatchObject({
+        records: [
+          {
+            itemId,
+            title: 'Web development services',
+            mention: resolvedMention,
+          },
+        ],
+      });
+      expect(store.get('legacy-record-receipt')).toMatchObject({
+        updatedAt,
+        previousResponseId: 'resp_before_restore',
+      });
+    });
+  });
+
+  it('hydrates restored field receipts with native field-type metadata', async () => {
+    const loadModelFields = vi.fn(async () => [
+      {
+        apiKey: 'name',
+        label: 'Name',
+        localized: true,
+        fieldPath: 'name',
+        displayLabel: 'Name',
+        depth: 0,
+        availableLocales: ['en'],
+        fieldType: 'single_line',
+        isBlockContainer: false,
+      },
+    ]);
+    const mentionHost = {
+      currentUser: {
+        id: 'editor',
+        name: 'Editor',
+        email: 'editor@example.com',
+        avatarUrl: null,
+        userType: 'user',
+      },
+      projectOwnerId: 'owner',
+      projectModels: [],
+      recordModels: [],
+      canMentionFields: true,
+      canMentionAssets: false,
+      canMentionModels: false,
+      loadProjectUsers: async () => [],
+      loadModelFields,
+      selectAsset: async () => undefined,
+      selectRecord: async () => undefined,
+      resolveRecord: async ({ itemId, label }) => ({
+        type: 'record' as const,
+        id: itemId,
+        title: label || `Record #${itemId}`,
+        modelId: 'unknown',
+        modelApiKey: '',
+        modelName: 'Record',
+        modelEmoji: null,
+        thumbnailUrl: null,
+      }),
+      resolveAsset: async ({ uploadId, label }) => ({
+        type: 'asset' as const,
+        id: uploadId,
+        filename: label || `Asset #${uploadId}`,
+        url: '',
+        thumbnailUrl: null,
+        mimeType: 'application/octet-stream',
+      }),
+      openUser: () => undefined,
+      openModel: () => undefined,
+      openLocalFile: async () => undefined,
+    } satisfies AgentMentionHost;
+    const frameProps = props({
+      currentUserId: `legacy-field-user-${testUser}`,
+      scope: { type: 'record', recordId: 'record-1' },
+      mentionHost,
+    });
+    const store = createConversationStore({
+      pluginId: frameProps.pluginId,
+      siteId: frameProps.siteId,
+      environment: frameProps.environment,
+      currentUserId: frameProps.currentUserId,
+      scope: frameProps.scope,
+    });
+    const updatedAt = '2026-08-04T11:00:00.000Z';
+    store.save({
+      id: 'legacy-field-receipt',
+      title: 'Read the current fields',
+      createdAt: updatedAt,
+      updatedAt,
+      messages: [
+        {
+          id: 'legacy-field-user-message',
+          role: 'user',
+          text: 'Show the Name field.',
+          createdAt: updatedAt,
+        },
+        {
+          id: 'legacy-field-assistant-message',
+          role: 'assistant',
+          text: 'Here is the field.',
+          createdAt: updatedAt,
+          fieldResults: [
+            {
+              id: 'legacy-field-results',
+              title: 'Name field',
+              fields: [{ fieldPath: 'name', title: 'Name', locale: 'en' }],
+            },
+          ],
+        },
+      ],
+    });
+
+    render(<AgentFrame {...frameProps} />);
+
+    await waitFor(() => {
+      expect(loadModelFields).toHaveBeenCalledOnce();
+      expect(
+        mocks.surfaceProps?.entries.find((entry) => entry.kind === 'fields'),
+      ).toMatchObject({
+        fields: [
+          {
+            fieldPath: 'name',
+            title: 'Name',
+            locale: 'en',
+            mention: {
+              type: 'field',
+              apiKey: 'name',
+              label: 'Name',
+              localized: true,
+              fieldPath: 'name',
+              locale: 'en',
+              fieldType: 'single_line',
+            },
+          },
+        ],
+      });
+    });
+
+    await waitFor(() => {
+      const restored = store.get('legacy-field-receipt');
+      expect(restored?.updatedAt).toBe(updatedAt);
+      expect(
+        restored?.messages[1]?.fieldResults?.[0]?.fields[0]?.mention,
+      ).toMatchObject({
+        type: 'field',
+        apiKey: 'name',
+        fieldType: 'single_line',
+      });
+    });
+  });
+
+  it('keeps rich restored record and asset metadata when hydration falls back', async () => {
+    const recordId = 'HTC4ys4MRiG_gJcyrHMigA';
+    const uploadId = 'XyZ9MixedCaseUpload';
+    const recordMention = {
+      type: 'record' as const,
+      id: recordId,
+      title: 'Web development services',
+      modelId: 'post-model',
+      modelApiKey: 'post',
+      modelName: 'Post',
+      modelEmoji: '📝',
+      thumbnailUrl:
+        'https://www.datocms-assets.com/12345/web-development.jpg?w=48',
+    };
+    const assetMention = {
+      type: 'asset' as const,
+      id: uploadId,
+      filename: 'web-development.jpg',
+      url: 'https://www.datocms-assets.com/12345/web-development.jpg',
+      thumbnailUrl:
+        'https://www.datocms-assets.com/12345/web-development.jpg?w=300',
+      mimeType: 'image/jpeg',
+    };
+    const resolveRecord = vi.fn<AgentMentionHost['resolveRecord']>(
+      async () => ({
+        type: 'record',
+        id: recordId,
+        title: `Record #${recordId}`,
+        modelId: 'unknown',
+        modelApiKey: '',
+        modelName: 'Record',
+        modelEmoji: null,
+        thumbnailUrl: null,
+      }),
+    );
+    const resolveAsset = vi.fn<AgentMentionHost['resolveAsset']>(async () => ({
+      type: 'asset',
+      id: uploadId,
+      filename: `Asset #${uploadId}`,
+      url: '',
+      thumbnailUrl: null,
+      mimeType: 'application/octet-stream',
+    }));
+    const mentionHost = {
+      currentUser: {
+        id: 'editor',
+        name: 'Editor',
+        email: 'editor@example.com',
+        avatarUrl: null,
+        userType: 'user',
+      },
+      projectOwnerId: 'owner',
+      projectModels: [],
+      recordModels: [],
+      canMentionFields: false,
+      canMentionAssets: true,
+      canMentionModels: false,
+      loadProjectUsers: async () => [],
+      selectAsset: async () => undefined,
+      selectRecord: async () => undefined,
+      resolveRecord,
+      resolveAsset,
+      openUser: () => undefined,
+      openModel: () => undefined,
+      openLocalFile: async () => undefined,
+    } satisfies AgentMentionHost;
+    const frameProps = props({
+      currentUserId: `fallback-hydration-user-${testUser}`,
+      mentionHost,
+    });
+    const store = createConversationStore({
+      pluginId: frameProps.pluginId,
+      siteId: frameProps.siteId,
+      environment: frameProps.environment,
+      currentUserId: frameProps.currentUserId,
+      scope: frameProps.scope,
+    });
+    const richUpdatedAt = '2026-08-04T10:00:00.000Z';
+    store.save({
+      id: 'rich-restored-chat',
+      title: 'Rich restored chat',
+      createdAt: richUpdatedAt,
+      updatedAt: richUpdatedAt,
+      messages: [
+        {
+          id: 'rich-user-message',
+          role: 'user',
+          text: 'Show the related record and image',
+          createdAt: richUpdatedAt,
+        },
+        {
+          id: 'rich-assistant-message',
+          role: 'assistant',
+          text: 'Here they are.',
+          createdAt: richUpdatedAt,
+          recordResults: [
+            {
+              id: 'rich-record-results',
+              records: [
+                {
+                  itemId: recordId,
+                  itemTypeId: 'post-model',
+                  title: recordMention.title,
+                  mention: recordMention,
+                },
+              ],
+            },
+          ],
+          assetResults: [
+            {
+              id: 'rich-asset-results',
+              assets: [
+                {
+                  uploadId,
+                  title: assetMention.filename,
+                  mention: assetMention,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    store.save(
+      storedConversation({
+        id: 'newer-chat',
+        title: 'Newer chat',
+        updatedAt: '2026-08-04T11:00:00.000Z',
+      }),
+    );
+
+    render(<AgentFrame {...frameProps} />);
+    const richChat = mocks.surfaceProps?.recentConversations?.find(
+      (candidate) => candidate.id === 'rich-restored-chat',
+    );
+    if (!richChat) throw new Error('Expected the rich restored chat.');
+    act(() => {
+      mocks.surfaceProps?.onSelectConversation?.(richChat);
+    });
+
+    await waitFor(() => {
+      expect(resolveRecord).toHaveBeenCalledOnce();
+      expect(resolveAsset).toHaveBeenCalledOnce();
+      expect(
+        mocks.surfaceProps?.entries.find((entry) => entry.kind === 'records'),
+      ).toMatchObject({
+        records: [
+          {
+            itemId: recordId,
+            itemTypeId: 'post-model',
+            title: recordMention.title,
+            mention: recordMention,
+          },
+        ],
+      });
+      expect(
+        mocks.surfaceProps?.entries.find((entry) => entry.kind === 'assets'),
+      ).toMatchObject({
+        assets: [
+          {
+            uploadId,
+            title: assetMention.filename,
+            mention: assetMention,
+          },
+        ],
+      });
+    });
+
+    await waitFor(() => {
+      const restored = store.get('rich-restored-chat');
+      expect(
+        restored?.messages[1]?.recordResults?.[0]?.records[0],
+      ).toMatchObject({
+        title: recordMention.title,
+        itemTypeId: recordMention.modelId,
+        mention: recordMention,
+      });
+      expect(restored?.messages[1]?.assetResults?.[0]?.assets[0]).toMatchObject(
+        {
+          title: assetMention.filename,
+          mention: assetMention,
+        },
+      );
+      expect(restored?.updatedAt).toBe(richUpdatedAt);
+      expect(store.list().map((conversation) => conversation.id)).toEqual([
+        'newer-chat',
+        'rich-restored-chat',
+      ]);
+    });
+  });
+
   it.each<AgentProvider>(['openai', 'anthropic'])(
     'executes only the final queued navigation request for %s',
     async (provider) => {
@@ -4446,4 +5167,370 @@ describe('AgentFrame', () => {
       mocks.surfaceProps?.entries.find((entry) => entry.kind === 'activity'),
     ).toMatchObject({ phase: 'cancelled' });
   });
+
+  it('passes the exact session File to the runtime for a current attachment', async () => {
+    const file = new File(['current attachment bytes'], 'brief.pdf', {
+      type: 'application/pdf',
+      lastModified: 1_786_000_000_000,
+    });
+    const mention = registerLocalFile(file);
+    const result = completedResult({ responseId: 'resp_file_current' });
+    const runTurn = vi.fn(
+      async (
+        _args: AgentTurnArgs,
+        onEvent?: (event: AgentRuntimeEvent) => void | Promise<void>,
+      ) => {
+        await onEvent?.({ type: 'turn_completed', result });
+        return result;
+      },
+    );
+    mocks.runtime = { runTurn } as unknown as AgentRuntime;
+
+    render(<AgentFrame {...props()} />);
+    act(() => {
+      mocks.surfaceProps?.onSubmit(localFileSubmission(mention));
+    });
+
+    await waitFor(() => expect(runTurn).toHaveBeenCalledOnce());
+    const turn = runTurn.mock.calls[0]?.[0];
+    expect(turn?.attachments).toEqual([
+      {
+        id: mention.id,
+        filename: mention.filename,
+        mimeType: mention.mimeType,
+        size: mention.size,
+        lastModified: mention.lastModified,
+        file,
+      },
+    ]);
+    expect(turn?.attachments?.[0]?.file).toBe(file);
+    expect(turn?.message).toContain('"bytesAvailable":true');
+  });
+
+  it('retains session-owned file bytes in later provider history', async () => {
+    const file = new File(['retained attachment bytes'], 'research.pdf', {
+      type: 'application/pdf',
+      lastModified: 1_786_000_001_000,
+    });
+    const mention = registerLocalFile(file);
+    let response = 0;
+    const runTurn = vi.fn(
+      async (
+        _args: AgentTurnArgs,
+        onEvent?: (event: AgentRuntimeEvent) => void | Promise<void>,
+      ) => {
+        response += 1;
+        const result = completedResult({
+          responseId: `resp_history_${response}`,
+        });
+        await onEvent?.({ type: 'turn_completed', result });
+        return result;
+      },
+    );
+    mocks.runtime = { runTurn } as unknown as AgentRuntime;
+
+    render(
+      <AgentFrame {...props({ config: configForProvider('anthropic') })} />,
+    );
+    act(() => {
+      mocks.surfaceProps?.onSubmit(localFileSubmission(mention));
+    });
+    await waitFor(() => {
+      expect(runTurn).toHaveBeenCalledTimes(1);
+      expect(mocks.surfaceProps?.isRunning).toBe(false);
+    });
+
+    act(() => {
+      mocks.surfaceProps?.onSubmit('Use the retained research now');
+    });
+    await waitFor(() => expect(runTurn).toHaveBeenCalledTimes(2));
+
+    const laterTurn = runTurn.mock.calls[1]?.[0];
+    expect(laterTurn?.attachments).toEqual([]);
+    const retained = laterTurn?.history?.find(
+      (entry) => entry.role === 'user' && entry.attachments?.length,
+    )?.attachments?.[0];
+    expect(retained).toEqual({
+      id: mention.id,
+      filename: mention.filename,
+      mimeType: mention.mimeType,
+      size: mention.size,
+      lastModified: mention.lastModified,
+      file,
+    });
+    expect(retained?.file).toBe(file);
+    expect(
+      laterTurn?.history?.find((entry) => entry.attachments?.length)?.text,
+    ).toContain('"bytesAvailable":true');
+  });
+
+  it('creates assets only from current or retained turn attachments and appends receipts', async () => {
+    const historicalFile = new File(['historical bytes'], 'history.pdf', {
+      type: 'application/pdf',
+      lastModified: 1_786_000_002_000,
+    });
+    const currentFile = new File(['current bytes'], 'current.pdf', {
+      type: 'application/pdf',
+      lastModified: 1_786_000_003_000,
+    });
+    const historicalMention = registerLocalFile(historicalFile);
+    const currentMention = registerLocalFile(currentFile);
+    const createAsset = vi.fn<NonNullable<AgentMentionHost['createAsset']>>(
+      async (input) => {
+        const isCurrent =
+          input.source === 'file' && input.fileOrBlob === currentFile;
+        return createdAssetMention(
+          isCurrent ? 'upload-current' : 'upload-history',
+          input.filename ?? 'created.pdf',
+        );
+      },
+    );
+    const mentionHost = assetCreatingMentionHost({ createAsset });
+    let turnNumber = 0;
+    const runTurn = vi.fn(
+      async (
+        _args: AgentTurnArgs,
+        onEvent?: (event: AgentRuntimeEvent) => void | Promise<void>,
+      ) => {
+        turnNumber += 1;
+        if (turnNumber === 2) {
+          const createDatoAsset = mocks.runtimeConfig?.createDatoAsset;
+          expect(createDatoAsset).toBeTypeOf('function');
+          await expect(
+            createDatoAsset?.({
+              source: 'attached_file',
+              attachmentId: currentMention.id,
+            }),
+          ).resolves.toMatchObject({ uploadId: 'upload-current' });
+          await expect(
+            createDatoAsset?.({
+              source: 'attached_file',
+              attachmentId: historicalMention.id,
+              filename: 'renamed-history.pdf',
+            }),
+          ).resolves.toMatchObject({ uploadId: 'upload-history' });
+        }
+        const result = completedResult({
+          responseId: `resp_asset_attachment_${turnNumber}`,
+        });
+        await onEvent?.({ type: 'turn_completed', result });
+        return result;
+      },
+    );
+    mocks.runtime = { runTurn } as unknown as AgentRuntime;
+
+    render(
+      <AgentFrame
+        {...props({
+          config: configForProvider('anthropic'),
+          mentionHost,
+        })}
+      />,
+    );
+    act(() => {
+      mocks.surfaceProps?.onSubmit(localFileSubmission(historicalMention));
+    });
+    await waitFor(() => {
+      expect(runTurn).toHaveBeenCalledTimes(1);
+      expect(mocks.surfaceProps?.isRunning).toBe(false);
+    });
+
+    act(() => {
+      mocks.surfaceProps?.onSubmit(localFileSubmission(currentMention));
+    });
+    await waitFor(() => {
+      expect(runTurn).toHaveBeenCalledTimes(2);
+      expect(
+        mocks.surfaceProps?.entries.filter((entry) => entry.kind === 'assets'),
+      ).toHaveLength(2);
+    });
+
+    expect(createAsset).toHaveBeenNthCalledWith(
+      1,
+      {
+        source: 'file',
+        fileOrBlob: currentFile,
+        filename: 'current.pdf',
+      },
+      { signal: undefined, skipConfirmation: false },
+    );
+    expect(createAsset).toHaveBeenNthCalledWith(
+      2,
+      {
+        source: 'file',
+        fileOrBlob: historicalFile,
+        filename: 'renamed-history.pdf',
+      },
+      { signal: undefined, skipConfirmation: false },
+    );
+    const receipts =
+      mocks.surfaceProps?.entries.filter((entry) => entry.kind === 'assets') ??
+      [];
+    expect(receipts).toEqual([
+      expect.objectContaining({
+        title: 'Asset created',
+        assets: [expect.objectContaining({ uploadId: 'upload-current' })],
+      }),
+      expect.objectContaining({
+        title: 'Asset created',
+        assets: [expect.objectContaining({ uploadId: 'upload-history' })],
+      }),
+    ]);
+  });
+
+  it('rejects an attachment ID that exists in the session but not in the active turn or history', async () => {
+    const rogueMention = registerLocalFile(
+      new File(['rogue bytes'], 'rogue.pdf', { type: 'application/pdf' }),
+    );
+    const createAsset = vi.fn<NonNullable<AgentMentionHost['createAsset']>>();
+    const mentionHost = assetCreatingMentionHost({ createAsset });
+    const result = completedResult({ responseId: 'resp_unknown_attachment' });
+    const runTurn = vi.fn(
+      async (
+        _args: AgentTurnArgs,
+        onEvent?: (event: AgentRuntimeEvent) => void | Promise<void>,
+      ) => {
+        const createDatoAsset = mocks.runtimeConfig?.createDatoAsset;
+        expect(createDatoAsset).toBeTypeOf('function');
+        await expect(
+          createDatoAsset?.({
+            source: 'attached_file',
+            attachmentId: rogueMention.id,
+          }),
+        ).rejects.toThrow('not available in this chat session');
+        await onEvent?.({ type: 'turn_completed', result });
+        return result;
+      },
+    );
+    mocks.runtime = { runTurn } as unknown as AgentRuntime;
+
+    render(<AgentFrame {...props({ mentionHost })} />);
+    act(() => {
+      mocks.surfaceProps?.onSubmit('Create an asset without attaching it');
+    });
+
+    await waitFor(() => expect(runTurn).toHaveBeenCalledOnce());
+    expect(createAsset).not.toHaveBeenCalled();
+  });
+
+  it('routes URL asset creation through the host callback and appends a receipt', async () => {
+    const createAsset = vi.fn<NonNullable<AgentMentionHost['createAsset']>>(
+      async () => createdAssetMention('upload-url', 'imported-hero.png'),
+    );
+    const mentionHost = assetCreatingMentionHost({ createAsset });
+    const result = completedResult({ responseId: 'resp_url_asset' });
+    let signal: AbortSignal | undefined;
+    const runTurn = vi.fn(
+      async (
+        args: AgentTurnArgs,
+        onEvent?: (event: AgentRuntimeEvent) => void | Promise<void>,
+      ) => {
+        signal = args.signal;
+        await mocks.runtimeConfig?.createDatoAsset?.(
+          {
+            source: 'url',
+            url: 'https://example.com/hero.png',
+            filename: 'imported-hero.png',
+          },
+          args.signal,
+        );
+        await onEvent?.({ type: 'turn_completed', result });
+        return result;
+      },
+    );
+    mocks.runtime = { runTurn } as unknown as AgentRuntime;
+
+    render(<AgentFrame {...props({ mentionHost })} />);
+    act(() => {
+      mocks.surfaceProps?.onSubmit('Import the hero URL as an asset');
+    });
+
+    await waitFor(() => {
+      expect(runTurn).toHaveBeenCalledOnce();
+      expect(
+        mocks.surfaceProps?.entries.some(
+          (entry) =>
+            entry.kind === 'assets' &&
+            entry.assets.some((asset) => asset.uploadId === 'upload-url'),
+        ),
+      ).toBe(true);
+    });
+    expect(createAsset).toHaveBeenCalledWith(
+      {
+        source: 'url',
+        url: 'https://example.com/hero.png',
+        filename: 'imported-hero.png',
+      },
+      { signal, skipConfirmation: false },
+    );
+  });
+
+  it.each([
+    {
+      label: 'enabled and clean',
+      autoApprove: true,
+      dirty: false,
+      expectedSkip: true,
+    },
+    {
+      label: 'disabled and clean',
+      autoApprove: false,
+      dirty: false,
+      expectedSkip: false,
+    },
+    {
+      label: 'enabled but dirty',
+      autoApprove: true,
+      dirty: true,
+      expectedSkip: false,
+    },
+  ])(
+    'sets host confirmation bypass only when auto-approve is $label',
+    async ({ autoApprove, dirty, expectedSkip }) => {
+      const createAsset = vi.fn<NonNullable<AgentMentionHost['createAsset']>>(
+        async () => createdAssetMention('upload-auto', 'auto.png'),
+      );
+      const mentionHost = assetCreatingMentionHost({ createAsset });
+      const frameProps = props({
+        currentUserId: `asset-auto-${autoApprove}-${dirty}-${testUser}`,
+        editorHasUnsavedChanges: dirty,
+        mentionHost,
+      });
+      if (autoApprove) enableAutoApproval(frameProps);
+      const result = completedResult({ responseId: 'resp_auto_asset' });
+      let signal: AbortSignal | undefined;
+      const runTurn = vi.fn(
+        async (
+          args: AgentTurnArgs,
+          onEvent?: (event: AgentRuntimeEvent) => void | Promise<void>,
+        ) => {
+          signal = args.signal;
+          await mocks.runtimeConfig?.createDatoAsset?.(
+            {
+              source: 'url',
+              url: 'https://example.com/auto.png',
+            },
+            args.signal,
+          );
+          await onEvent?.({ type: 'turn_completed', result });
+          return result;
+        },
+      );
+      mocks.runtime = { runTurn } as unknown as AgentRuntime;
+
+      render(<AgentFrame {...frameProps} />);
+      act(() => {
+        mocks.surfaceProps?.onSubmit('Create the URL as an asset');
+      });
+
+      await waitFor(() => expect(createAsset).toHaveBeenCalledOnce());
+      expect(createAsset).toHaveBeenCalledWith(
+        {
+          source: 'url',
+          url: 'https://example.com/auto.png',
+        },
+        { signal, skipConfirmation: expectedSkip },
+      );
+    },
+  );
 });

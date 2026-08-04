@@ -1,6 +1,7 @@
 import type {
   AssetMention,
   CommentSegment,
+  LocalFileMention,
   Mention,
   ModelMention,
   RecordMention,
@@ -11,6 +12,7 @@ export type {
   AssetMention,
   CommentSegment,
   FieldMention,
+  LocalFileMention,
   Mention,
   ModelMention,
   RecordMention,
@@ -25,7 +27,13 @@ export type AgentComposerSubmission = {
   displayText: string;
   providerText: string;
   segments: CommentSegment[];
+  attachments?: LocalFileAttachmentDescriptor[];
 };
+
+export type LocalFileAttachmentDescriptor = Pick<
+  LocalFileMention,
+  'id' | 'filename' | 'mimeType' | 'size' | 'lastModified'
+>;
 
 function boundedText(value: unknown, max = MAX_MENTION_LABEL_CHARACTERS) {
   return typeof value === 'string' ? value.trim().slice(0, max) : '';
@@ -87,6 +95,31 @@ function normalizeAssetMention(candidate: Record<string, unknown>) {
   } satisfies AssetMention;
 }
 
+function normalizeNonNegativeNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0
+    ? value
+    : undefined;
+}
+
+function normalizeLocalFileMention(candidate: Record<string, unknown>) {
+  const id = boundedId(candidate.id);
+  const filename = boundedText(candidate.filename);
+  const size = normalizeNonNegativeNumber(candidate.size);
+  const lastModified = normalizeNonNegativeNumber(candidate.lastModified);
+  if (!id || !filename || size === undefined || lastModified === undefined) {
+    return undefined;
+  }
+  return {
+    type: 'file',
+    id,
+    filename,
+    mimeType:
+      boundedText(candidate.mimeType, 160) || 'application/octet-stream',
+    size,
+    lastModified,
+  } satisfies LocalFileMention;
+}
+
 function normalizeRecordMention(candidate: Record<string, unknown>) {
   const id = boundedId(candidate.id);
   const title = boundedText(candidate.title);
@@ -132,6 +165,8 @@ export function normalizeMention(value: unknown): Mention | undefined {
       return normalizeFieldMention(candidate);
     case 'asset':
       return normalizeAssetMention(candidate);
+    case 'file':
+      return normalizeLocalFileMention(candidate);
     case 'record':
       return normalizeRecordMention(candidate);
     case 'model':
@@ -231,6 +266,8 @@ export function mentionDisplayText(mention: Mention): string {
       return `#${mention.apiKey}${mention.locale ? ` (${mention.locale})` : ''}`;
     case 'asset':
       return mention.filename;
+    case 'file':
+      return mention.filename;
     case 'record':
       return mention.title;
     case 'model':
@@ -260,6 +297,16 @@ type ProviderReference =
       locale?: string;
     }
   | { ref: number; type: 'asset'; id: string; label: string }
+  | {
+      ref: number;
+      type: 'file';
+      id: string;
+      label: string;
+      mimeType: string;
+      size: number;
+      lastModified: number;
+      bytesAvailable?: boolean;
+    }
   | {
       ref: number;
       type: 'record';
@@ -292,6 +339,16 @@ function providerReference(mention: Mention, ref: number): ProviderReference {
       };
     case 'asset':
       return { ref, type: 'asset', id: mention.id, label: mention.filename };
+    case 'file':
+      return {
+        ref,
+        type: 'file',
+        id: mention.id,
+        label: mention.filename,
+        mimeType: mention.mimeType,
+        size: mention.size,
+        lastModified: mention.lastModified,
+      };
     case 'record':
       return {
         ref,
@@ -317,13 +374,25 @@ function providerReference(mention: Mention, ref: number): ProviderReference {
  * Produces provider-facing text while keeping exact identities host-authored.
  * Display labels remain untrusted content and are never interpreted as commands.
  */
-export function segmentsProviderText(segments: readonly CommentSegment[]) {
+export function segmentsProviderText(
+  segments: readonly CommentSegment[],
+  options: {
+    localFileBytesAvailable?: (attachmentId: string) => boolean;
+  } = {},
+) {
   const references: ProviderReference[] = [];
   let nextRef = 1;
   const text = segments
     .map((segment) => {
       if (segment.type === 'text') return segment.content;
-      const reference = providerReference(segment.mention, nextRef);
+      const baseReference = providerReference(segment.mention, nextRef);
+      const reference =
+        baseReference.type === 'file' && options.localFileBytesAvailable
+          ? {
+              ...baseReference,
+              bytesAvailable: options.localFileBytesAvailable(baseReference.id),
+            }
+          : baseReference;
       references.push(reference);
       nextRef += 1;
       return `${mentionDisplayText(segment.mention)} [ref:${reference.ref}]`;
@@ -333,9 +402,26 @@ export function segmentsProviderText(segments: readonly CommentSegment[]) {
 
   if (references.length === 0) return text;
 
-  return `${text}\n\nHOST-SELECTED DATOCMS REFERENCES\n${JSON.stringify(
-    references,
-  )}`;
+  const datocmsReferences = references.filter(
+    (reference) => reference.type !== 'file',
+  );
+  const localFileReferences = references.filter(
+    (reference) => reference.type === 'file',
+  );
+  const metadata = [
+    ...(datocmsReferences.length > 0
+      ? [
+          `HOST-SELECTED DATOCMS REFERENCES\n${JSON.stringify(datocmsReferences)}`,
+        ]
+      : []),
+    ...(localFileReferences.length > 0
+      ? [
+          `HOST-ATTACHED LOCAL FILES (NOT DATOCMS ASSETS)\n${JSON.stringify(localFileReferences)}`,
+        ]
+      : []),
+  ];
+
+  return `${text}\n\n${metadata.join('\n\n')}`;
 }
 
 export function mentionFromModel(

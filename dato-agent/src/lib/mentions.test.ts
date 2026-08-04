@@ -35,6 +35,14 @@ const mentions: Mention[] = [
     mimeType: 'image/jpeg',
   },
   {
+    type: 'file',
+    id: 'local-file-1',
+    filename: 'brief.pdf',
+    mimeType: 'application/pdf',
+    size: 4096,
+    lastModified: 1_786_000_000_000,
+  },
+  {
     type: 'record',
     id: 'record-1',
     title: 'Homepage',
@@ -66,17 +74,27 @@ describe('mention serialization', () => {
     ];
 
     expect(segmentsDisplayText(segments)).toBe(
-      'Compare @Ada Lovelace, #title (en), hero.jpg, Homepage, Page',
+      'Compare @Ada Lovelace, #title (en), hero.jpg, brief.pdf, Homepage, Page',
     );
 
     const providerText = segmentsProviderText(segments);
     expect(providerText).toContain('HOST-SELECTED DATOCMS REFERENCES');
+    expect(providerText).toContain(
+      'HOST-ATTACHED LOCAL FILES (NOT DATOCMS ASSETS)',
+    );
     expect(providerText).toContain('@Ada Lovelace [ref:1]');
     expect(providerText).toContain('"type":"record"');
     expect(providerText).toContain('"id":"record-1"');
     expect(providerText).toContain('"modelId":"model-1"');
     expect(providerText).toContain('"apiKey":"page"');
+    expect(providerText).toContain('"mimeType":"application/pdf"');
+    expect(providerText).toContain('"size":4096');
     expect(providerText).not.toContain('ada@example.com');
+
+    const availabilityAwareText = segmentsProviderText(segments, {
+      localFileBytesAvailable: () => false,
+    });
+    expect(availabilityAwareText).toContain('"bytesAvailable":false');
   });
 
   it('treats instruction-looking labels as quoted data rather than prompt structure', () => {

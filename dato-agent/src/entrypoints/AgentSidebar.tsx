@@ -220,6 +220,11 @@ function verifyCurrentFieldReference({
   return {
     fieldPath: reference.fieldPath,
     label: currentField.attributes.label,
+    apiKey: currentField.attributes.api_key,
+    localized: currentField.attributes.localized,
+    fieldType:
+      currentField.attributes.appearance.editor ||
+      currentField.attributes.field_type,
     ...(locale ? { locale } : {}),
   };
 }

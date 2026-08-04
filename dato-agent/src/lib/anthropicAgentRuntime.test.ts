@@ -7,15 +7,19 @@ import type {
   ToolResultBlockParam,
   ToolUseBlock,
 } from '@anthropic-ai/sdk/resources/messages/messages';
+import { strToU8, zipSync } from 'fflate';
 import { describe, expect, it, vi } from 'vitest';
 import type {
+  AgentAnthropicFileClient,
   AgentAnthropicMessageStream,
   AgentAnthropicMessagesClient,
+  AgentRuntimeAttachment,
   AgentRuntimeEvent,
   AgentRuntimeHandle,
   AgentTurnResult,
 } from './agentRuntime';
 import {
+  ANTHROPIC_FILES_API_BETA,
   createAgentRuntime,
   DEEP_ANTHROPIC_MAX_OUTPUT_TOKENS,
   DEFAULT_ANTHROPIC_MAX_OUTPUT_TOKENS,
@@ -250,6 +254,30 @@ class QueueAnthropicClient implements AgentAnthropicMessagesClient {
   }
 }
 
+class QueueAnthropicFileClient implements AgentAnthropicFileClient {
+  readonly uploads: AgentRuntimeAttachment[] = [];
+  readonly signals: Array<AbortSignal | undefined> = [];
+  readonly deleted: string[] = [];
+
+  constructor(private readonly results: Array<string | Error>) {}
+
+  async upload(
+    attachment: AgentRuntimeAttachment,
+    options?: { signal?: AbortSignal },
+  ): Promise<{ id: string }> {
+    this.uploads.push(attachment);
+    this.signals.push(options?.signal);
+    const next = this.results.shift();
+    if (!next) throw new Error('No fake Anthropic file result was queued.');
+    if (next instanceof Error) throw next;
+    return { id: next };
+  }
+
+  async delete(fileId: string): Promise<void> {
+    this.deleted.push(fileId);
+  }
+}
+
 const MCP_TOOLS: readonly DatoMcpToolDescriptor[] = [
   {
     name: 'whoami',
@@ -358,6 +386,74 @@ function runtimeWith(
   });
 }
 
+function attachment({
+  id,
+  filename,
+  mimeType,
+  content,
+}: {
+  id: string;
+  filename: string;
+  mimeType: string;
+  content: string | Uint8Array;
+}): AgentRuntimeAttachment {
+  const blobContent =
+    typeof content === 'string'
+      ? content
+      : (() => {
+          const buffer = new ArrayBuffer(content.byteLength);
+          new Uint8Array(buffer).set(content);
+          return buffer;
+        })();
+  const file = new Blob([blobContent], { type: mimeType });
+  return {
+    id,
+    filename,
+    mimeType,
+    size: file.size,
+    lastModified: 1_700_000_000_000,
+    file,
+  };
+}
+
+function docxAttachment({
+  id = 'local-docx',
+  filename = 'brief.docx',
+}: {
+  id?: string;
+  filename?: string;
+} = {}): AgentRuntimeAttachment {
+  const content = zipSync(
+    {
+      '[Content_Types].xml': strToU8(`<?xml version="1.0"?>
+        <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+          <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml" />
+          <Default Extension="xml" ContentType="application/xml" />
+          <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml" />
+        </Types>`),
+      '_rels/.rels': strToU8(`<?xml version="1.0"?>
+        <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+          <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml" />
+        </Relationships>`),
+      'word/document.xml': strToU8(`<?xml version="1.0"?>
+        <w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+          <w:body>
+            <w:p><w:r><w:t>Quarterly launch plan</w:t></w:r></w:p>
+            <w:tbl><w:tr><w:tc><w:p><w:r><w:t>Owner</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Marketing</w:t></w:r></w:p></w:tc></w:tr></w:tbl>
+          </w:body>
+        </w:document>`),
+    },
+    { level: 9 },
+  );
+  return attachment({
+    id,
+    filename,
+    mimeType:
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    content,
+  });
+}
+
 async function drain(
   stream: AsyncGenerator<AgentRuntimeEvent, AgentTurnResult>,
 ): Promise<{ events: AgentRuntimeEvent[]; result: AgentTurnResult }> {
@@ -437,6 +533,358 @@ describe('AnthropicAgentRuntime', () => {
     });
     expect(anthropic.requests).toHaveLength(0);
     expect(mcp.listTools).not.toHaveBeenCalled();
+  });
+
+  it('uploads current and retained files once, references them in Messages, and cleans them up', async () => {
+    const anthropic = new QueueAnthropicClient([
+      message('msg-files', [textBlock('Read both files.')]),
+    ]);
+    const files = new QueueAnthropicFileClient([
+      'anthropic-file-history',
+      'anthropic-file-current',
+    ]);
+    const mcp = mcpClientWith();
+    const runtime = runtimeWith(anthropic, mcp.client, {
+      anthropicFileClient: files,
+    });
+    const historyAttachment = attachment({
+      id: 'local-history',
+      filename: 'notes.txt',
+      mimeType: 'text/plain',
+      content: 'Earlier notes',
+    });
+    const currentAttachment = attachment({
+      id: 'local-current',
+      filename: 'diagram.png',
+      mimeType: 'image/png',
+      content: 'png-bytes',
+    });
+
+    const { result } = await drain(
+      runtime.streamTurn({
+        history: [
+          {
+            role: 'user',
+            text: 'Read these notes.',
+            attachments: [historyAttachment],
+          },
+          { role: 'assistant', text: 'Ready for the next file.' },
+        ],
+        message: 'Compare them with this image.',
+        attachments: [currentAttachment],
+      }),
+    );
+
+    expect(result.status).toBe('completed');
+    expect(files.uploads).toMatchObject([historyAttachment, currentAttachment]);
+    const request = anthropic.requests[0] as MessageCreateParamsStreaming & {
+      betas?: readonly string[];
+    };
+    expect(request.betas).toEqual([ANTHROPIC_FILES_API_BETA]);
+    expect(request.messages).toEqual([
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'document',
+            source: { type: 'file', file_id: 'anthropic-file-history' },
+            title: 'notes.txt',
+          },
+          { type: 'text', text: 'Read these notes.' },
+        ],
+      },
+      { role: 'assistant', content: 'Ready for the next file.' },
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'image',
+            source: { type: 'file', file_id: 'anthropic-file-current' },
+          },
+          { type: 'text', text: 'Compare them with this image.' },
+        ],
+      },
+    ]);
+    expect(files.deleted).toEqual([
+      'anthropic-file-history',
+      'anthropic-file-current',
+    ]);
+    expect(mcp.close).toHaveBeenCalledOnce();
+  });
+
+  it('reuses one Anthropic file ID through tool continuations without re-uploading bytes', async () => {
+    const anthropic = new QueueAnthropicClient([
+      message(
+        'msg-file-tool',
+        [toolUse('toolu-file-whoami', 'whoami', {})],
+        'tool_use',
+      ),
+      message('msg-file-done', [textBlock('The file and project agree.')]),
+    ]);
+    const files = new QueueAnthropicFileClient(['anthropic-file-one']);
+    const mcp = mcpClientWith();
+    const runtime = runtimeWith(anthropic, mcp.client, {
+      anthropicFileClient: files,
+    });
+
+    const { result } = await drain(
+      runtime.streamTurn({
+        message: 'Compare this with the project.',
+        attachments: [
+          attachment({
+            id: 'local-one',
+            filename: 'notes.txt',
+            mimeType: 'text/plain',
+            content: 'project notes',
+          }),
+        ],
+      }),
+    );
+
+    expect(result.status).toBe('completed');
+    expect(files.uploads).toHaveLength(1);
+    expect(anthropic.requests).toHaveLength(2);
+    for (const request of anthropic.requests) {
+      expect(
+        (
+          request as MessageCreateParamsStreaming & {
+            betas?: readonly string[];
+          }
+        ).betas,
+      ).toEqual([ANTHROPIC_FILES_API_BETA]);
+    }
+    expect(anthropic.requests[1]?.messages[0]).toMatchObject({
+      role: 'user',
+      content: [
+        {
+          type: 'document',
+          source: { type: 'file', file_id: 'anthropic-file-one' },
+        },
+        { type: 'text', text: 'Compare this with the project.' },
+      ],
+    });
+    expect(mcp.callTool).toHaveBeenCalledOnce();
+    expect(files.deleted).toEqual(['anthropic-file-one']);
+  });
+
+  it('extracts a valid DOCX into bounded plain text before Anthropic upload without mutating the raw attachment', async () => {
+    const anthropic = new QueueAnthropicClient([
+      message('msg-docx', [textBlock('I read the launch plan.')]),
+    ]);
+    const files = new QueueAnthropicFileClient(['anthropic-file-docx-text']);
+    const mcp = mcpClientWith();
+    const runtime = runtimeWith(anthropic, mcp.client, {
+      anthropicFileClient: files,
+    });
+    const document = docxAttachment();
+    const originalFile = document.file;
+
+    const { result } = await drain(
+      runtime.streamTurn({
+        message: 'Read this brief.',
+        attachments: [document],
+      }),
+    );
+
+    expect(result.status).toBe('completed');
+    expect(files.uploads).toHaveLength(1);
+    const uploaded = files.uploads[0];
+    expect(uploaded).toMatchObject({
+      id: 'local-docx',
+      filename: 'brief.docx.txt',
+      mimeType: 'text/plain',
+    });
+    expect(uploaded?.file).not.toBe(originalFile);
+    await expect(uploaded?.file.text()).resolves.toContain(
+      'Quarterly launch plan',
+    );
+    await expect(uploaded?.file.text()).resolves.toContain('Owner\tMarketing');
+    expect(document).toMatchObject({
+      filename: 'brief.docx',
+      mimeType:
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      file: originalFile,
+    });
+    const request = anthropic.requests[0] as MessageCreateParamsStreaming & {
+      betas?: readonly string[];
+    };
+    expect(request.betas).toEqual([ANTHROPIC_FILES_API_BETA]);
+    expect(request.messages[0]).toMatchObject({
+      role: 'user',
+      content: [
+        {
+          type: 'document',
+          source: { type: 'file', file_id: 'anthropic-file-docx-text' },
+          title: 'brief.docx',
+        },
+        { type: 'text', text: 'Read this brief.' },
+      ],
+    });
+    expect(files.deleted).toEqual(['anthropic-file-docx-text']);
+  });
+
+  it('keeps a malformed modern Office document metadata-only instead of claiming to read it', async () => {
+    const anthropic = new QueueAnthropicClient([
+      message('msg-malformed-docx', [
+        textBlock('I could not read the malformed document.'),
+      ]),
+    ]);
+    const files = new QueueAnthropicFileClient([]);
+    const mcp = mcpClientWith();
+    const runtime = runtimeWith(anthropic, mcp.client, {
+      anthropicFileClient: files,
+    });
+    const document = attachment({
+      id: 'local-malformed-docx',
+      filename: 'broken.docx',
+      mimeType:
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      content: 'not-a-zip',
+    });
+
+    const { result } = await drain(
+      runtime.streamTurn({
+        message: 'Read this document if possible.',
+        attachments: [document],
+      }),
+    );
+
+    expect(result.status).toBe('completed');
+    expect(files.uploads).toHaveLength(0);
+    const request = anthropic.requests[0] as MessageCreateParamsStreaming & {
+      betas?: readonly string[];
+    };
+    expect(request.betas).toBeUndefined();
+    expect(JSON.stringify(request.messages)).toContain(
+      'HOST-PROVIDED LOCAL FILE AVAILABILITY',
+    );
+    expect(JSON.stringify(request.messages)).toContain(
+      'not a valid or supported ZIP-based document',
+    );
+    expect(JSON.stringify(request.messages)).toContain('not_supplied_to_model');
+    expect(JSON.stringify(request.messages)).not.toContain('file_id');
+  });
+
+  it.each([
+    ['contract.doc', 'application/msword'],
+    ['budget.xls', 'application/vnd.ms-excel'],
+    ['slides.ppt', 'application/vnd.ms-powerpoint'],
+  ])(
+    'keeps legacy Office attachment %s metadata-only with clear conversion guidance',
+    async (filename, mimeType) => {
+      const anthropic = new QueueAnthropicClient([
+        message('msg-legacy-office', [
+          textBlock('The legacy file remains available as an attachment.'),
+        ]),
+      ]);
+      const files = new QueueAnthropicFileClient([]);
+      const mcp = mcpClientWith();
+      const createDatoAsset = vi.fn(async () => ({
+        uploadId: 'upload-created',
+        filename,
+        url: 'https://example.com/file',
+        mimeType,
+      }));
+      const runtime = runtimeWith(anthropic, mcp.client, {
+        anthropicFileClient: files,
+        createDatoAsset,
+      });
+      const document = attachment({
+        id: `local-${filename}`,
+        filename,
+        mimeType,
+        content: 'legacy-office-bytes',
+      });
+
+      const { result } = await drain(
+        runtime.streamTurn({
+          message: 'Keep this attached for a possible asset import.',
+          attachments: [document],
+        }),
+      );
+
+      expect(result.status).toBe('completed');
+      expect(files.uploads).toHaveLength(0);
+      const request = anthropic.requests[0] as MessageCreateParamsStreaming & {
+        betas?: readonly string[];
+      };
+      expect(request.betas).toBeUndefined();
+      expect(JSON.stringify(request.messages)).toContain(`local-${filename}`);
+      expect(JSON.stringify(request.messages)).toContain(
+        'Convert this file to DOCX, XLSX, PPTX, or PDF',
+      );
+      expect(request.tools?.map((tool) => tool.name)).toContain(
+        'create_dato_asset',
+      );
+      expect(createDatoAsset).not.toHaveBeenCalled();
+    },
+  );
+
+  it('requires an injectable or API-key-backed Anthropic Files transport only when files are attached', async () => {
+    const anthropic = new QueueAnthropicClient([]);
+    const mcp = mcpClientWith();
+    const runtime = runtimeWith(anthropic, mcp.client);
+    const document = attachment({
+      id: 'local-pdf',
+      filename: 'brief.pdf',
+      mimeType: 'application/pdf',
+      content: '%PDF-brief',
+    });
+
+    const { result } = await drain(
+      runtime.streamTurn({
+        message: 'Read this brief.',
+        attachments: [document],
+      }),
+    );
+
+    expect(result).toMatchObject({
+      status: 'failed',
+      error: { code: 'invalid_request', retryable: false },
+    });
+    expect(result.error?.message).toContain(
+      'Anthropic file reading is unavailable',
+    );
+    expect(anthropic.requests).toHaveLength(0);
+    expect(mcp.listTools).not.toHaveBeenCalled();
+  });
+
+  it('deletes already-uploaded Anthropic files when a later upload fails', async () => {
+    const anthropic = new QueueAnthropicClient([]);
+    const files = new QueueAnthropicFileClient([
+      'anthropic-file-first',
+      new Error('Files API unavailable'),
+    ]);
+    const mcp = mcpClientWith();
+    const runtime = runtimeWith(anthropic, mcp.client, {
+      anthropicFileClient: files,
+    });
+
+    const { result } = await drain(
+      runtime.streamTurn({
+        message: 'Compare these files.',
+        attachments: [
+          attachment({
+            id: 'local-first',
+            filename: 'first.txt',
+            mimeType: 'text/plain',
+            content: 'first',
+          }),
+          attachment({
+            id: 'local-second',
+            filename: 'second.txt',
+            mimeType: 'text/plain',
+            content: 'second',
+          }),
+        ],
+      }),
+    );
+
+    expect(result.status).toBe('failed');
+    expect(files.deleted).toEqual(['anthropic-file-first']);
+    expect(anthropic.requests).toHaveLength(0);
+    expect(mcp.listTools).not.toHaveBeenCalled();
+    expect(mcp.close).toHaveBeenCalledOnce();
   });
 
   it('builds a native Anthropic request with direct MCP tools, context, and history', async () => {
@@ -604,6 +1052,154 @@ describe('AnthropicAgentRuntime', () => {
         .mcp_servers,
     ).toBeUndefined();
     expect(mcp.close).toHaveBeenCalledOnce();
+  });
+
+  it('provides the same explicit host asset-creation tool and continuation behavior', async () => {
+    const anthropic = new QueueAnthropicClient([
+      message(
+        'msg-create-asset',
+        [
+          toolUse('toolu-create-asset', 'create_dato_asset', {
+            source: 'url',
+            attachment_id: null,
+            url: 'https://example.com/hero.png',
+            filename: 'hero.png',
+          }),
+        ],
+        'tool_use',
+      ),
+      message('msg-create-asset-done', [textBlock('Asset created.')]),
+    ]);
+    const mcp = mcpClientWith();
+    const createDatoAsset = vi.fn().mockResolvedValue({
+      uploadId: 'upload-hero',
+      filename: 'hero.png',
+      url: 'https://cdn.example/upload-hero',
+      mimeType: 'image/png',
+    });
+    const runtime = runtimeWith(anthropic, mcp.client, { createDatoAsset });
+
+    const { events, result } = await drain(
+      runtime.streamTurn({
+        message: 'Create a DatoCMS asset from this URL.',
+      }),
+    );
+
+    expect(
+      anthropic.requests[0]?.tools?.find(
+        (tool) => tool.name === 'create_dato_asset',
+      ),
+    ).toMatchObject({
+      name: 'create_dato_asset',
+      description: expect.stringContaining(
+        'Merely attaching or referencing a file is never permission',
+      ),
+    });
+    expect(createDatoAsset).toHaveBeenCalledWith(
+      {
+        source: 'url',
+        url: 'https://example.com/hero.png',
+        filename: 'hero.png',
+      },
+      undefined,
+    );
+    const completedRequest = anthropic.requests[1] ?? anthropic.requests[0];
+    if (!completedRequest) throw new Error('Expected an Anthropic request.');
+    expect(lastMessageContent(completedRequest)).toContainEqual(
+      expect.objectContaining({
+        type: 'tool_result',
+        tool_use_id: 'toolu-create-asset',
+        content: JSON.stringify({
+          ok: true,
+          uploadId: 'upload-hero',
+          filename: 'hero.png',
+          url: 'https://cdn.example/upload-hero',
+          mimeType: 'image/png',
+        }),
+      }),
+    );
+    expect(events).toContainEqual({
+      type: 'activity',
+      responseId: 'msg-create-asset',
+      activity: expect.objectContaining({
+        id: 'toolu-create-asset',
+        kind: 'asset',
+        status: 'completed',
+        label: 'Asset created',
+        toolName: 'create_dato_asset',
+      }),
+    });
+    expect(result).toMatchObject({
+      status: 'completed',
+      responseId: 'msg-create-asset-done',
+      text: 'Asset created.',
+    });
+  });
+
+  it('can create an asset from a metadata-only legacy attachment without sending its bytes to Anthropic', async () => {
+    const anthropic = new QueueAnthropicClient([
+      message(
+        'msg-create-legacy-asset',
+        [
+          toolUse('toolu-create-legacy-asset', 'create_dato_asset', {
+            source: 'attached_file',
+            attachment_id: 'local-contract',
+            url: null,
+            filename: null,
+          }),
+        ],
+        'tool_use',
+      ),
+      message('msg-create-legacy-asset-done', [
+        textBlock('Legacy document uploaded as an asset.'),
+      ]),
+    ]);
+    const mcp = mcpClientWith();
+    const createDatoAsset = vi.fn().mockResolvedValue({
+      uploadId: 'upload-contract',
+      filename: 'contract.doc',
+      url: 'https://cdn.example/upload-contract',
+      mimeType: 'application/msword',
+    });
+    const runtime = runtimeWith(anthropic, mcp.client, { createDatoAsset });
+
+    const { result } = await drain(
+      runtime.streamTurn({
+        message: 'Upload this contract as a DatoCMS asset.',
+        attachments: [
+          attachment({
+            id: 'local-contract',
+            filename: 'contract.doc',
+            mimeType: 'application/msword',
+            content: 'legacy-contract-bytes',
+          }),
+        ],
+      }),
+    );
+
+    expect(createDatoAsset).toHaveBeenCalledWith(
+      {
+        source: 'attached_file',
+        attachmentId: 'local-contract',
+      },
+      undefined,
+    );
+    const firstRequest = anthropic
+      .requests[0] as MessageCreateParamsStreaming & {
+      betas?: readonly string[];
+    };
+    expect(firstRequest.betas).toBeUndefined();
+    expect(JSON.stringify(firstRequest.messages)).toContain(
+      'not_supplied_to_model',
+    );
+    expect(JSON.stringify(firstRequest.messages)).not.toContain(
+      'legacy-contract-bytes',
+    );
+    expect(result).toMatchObject({
+      status: 'completed',
+      responseId: 'msg-create-legacy-asset-done',
+      text: 'Legacy document uploaded as an asset.',
+    });
   });
 
   it('does not advertise current-record field tools when the Anthropic host surface lacks those capabilities', async () => {

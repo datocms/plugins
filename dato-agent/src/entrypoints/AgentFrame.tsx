@@ -14,12 +14,17 @@ import {
 import {
   type AgentApprovalDecision,
   type AgentApprovalRequest,
+  type AgentConversationHistoryMessage,
+  type AgentRuntimeAttachment,
   type AgentRuntimeEvent,
   type AgentTurnResult,
   type AgentTurnStatus,
   createAgentRuntime,
   type FieldReferenceInput,
   type GetModelSchemaCallback,
+  MAX_AGENT_ATTACHMENT_TOTAL_BYTES,
+  MAX_AGENT_ATTACHMENTS_PER_MESSAGE,
+  MAX_AGENT_ATTACHMENTS_PER_REQUEST,
   type NavigationCallbackResult,
   type PresentFieldsInput,
   type PresentModelsInput,
@@ -64,10 +69,18 @@ import {
   DIAGNOSTICS_SCHEMA_VERSION,
   serializeDiagnostics,
 } from '../lib/diagnostics';
+import type { CreateDatoAssetCallback } from '../lib/localAssetTool';
+import {
+  getSessionLocalFile,
+  hasSessionLocalFileBytes,
+} from '../lib/localFiles';
 import type { AgentMentionHost } from '../lib/mentionHost';
 import {
   type AgentComposerSubmission,
   type CommentSegment,
+  fallbackAssetMention,
+  fallbackRecordMention,
+  type LocalFileAttachmentDescriptor,
   type Mention,
   mentionFromModel,
   mentionFromUser,
@@ -96,6 +109,7 @@ import {
   type UnsafeDispatchJournal,
   type UnsafeDispatchJournalStore,
 } from '../lib/unsafeDispatchJournal';
+import type { FieldInfo } from '../recordComments/entrypoints/hooks/useMentions';
 
 type CurrentRecord = {
   id: string;
@@ -178,7 +192,9 @@ type ActiveTurn = {
   message: string;
   displayMessage: string;
   segments: CommentSegment[];
-  history: Array<{ role: 'user' | 'assistant'; text: string }>;
+  history: AgentConversationHistoryMessage[];
+  attachments: AgentRuntimeAttachment[];
+  attachmentDescriptors?: LocalFileAttachmentDescriptor[];
   entriesBefore: AgentTranscriptEntry[];
   conversationBefore: Conversation;
   userEntryId: string;
@@ -783,6 +799,7 @@ function recordResultsFollowingMessage(
           title: record.title,
           ...(record.itemTypeId ? { itemTypeId: record.itemTypeId } : {}),
           ...(record.fieldPath ? { fieldPath: record.fieldPath } : {}),
+          ...(record.mention ? { mention: { ...record.mention } } : {}),
         })),
       });
     }
@@ -810,6 +827,7 @@ function fieldResultsFollowingMessage(
           fieldPath: field.fieldPath,
           title: field.title,
           ...(field.locale ? { locale: field.locale } : {}),
+          ...(field.mention ? { mention: { ...field.mention } } : {}),
         })),
       });
     }
@@ -837,6 +855,7 @@ function assetResultsFollowingMessage(
           uploadId: asset.uploadId,
           title: asset.title,
           ...(asset.deleted ? { deleted: true } : {}),
+          ...(asset.mention ? { mention: { ...asset.mention } } : {}),
         })),
       });
     }
@@ -863,6 +882,410 @@ function mentionResultsFollowingMessage(
   }
 
   return groups.length > 0 ? groups : undefined;
+}
+
+function presentedFieldResult(
+  field: FieldReferenceInput,
+): AgentFieldResultViewModel {
+  const title = field.label || field.fieldPath;
+  const apiKey = field.apiKey || field.fieldPath.split('.').at(-1) || title;
+  return {
+    fieldPath: field.fieldPath,
+    title,
+    mention: {
+      type: 'field',
+      apiKey,
+      label: title,
+      localized: field.localized ?? Boolean(field.locale),
+      fieldPath: field.fieldPath,
+      ...(field.locale ? { locale: field.locale } : {}),
+      ...(field.fieldType ? { fieldType: field.fieldType } : {}),
+    },
+    ...(field.locale ? { locale: field.locale } : {}),
+  };
+}
+
+const MAX_RESTORED_PRESENTATION_REFERENCES = 100;
+
+type PresentationHydrationTarget =
+  | {
+      type: 'record';
+      itemId: string;
+      itemTypeId?: string;
+      label?: string;
+    }
+  | { type: 'asset'; uploadId: string; label?: string };
+
+function restoredPresentationTargets(
+  entries: readonly AgentTranscriptEntry[],
+): PresentationHydrationTarget[] {
+  const targets = new Map<string, PresentationHydrationTarget>();
+  for (const entry of entries.slice().reverse()) {
+    for (const target of presentationTargetsFromEntry(entry)) {
+      if (targets.size >= MAX_RESTORED_PRESENTATION_REFERENCES) {
+        return [...targets.values()];
+      }
+      const key = presentationTargetKey(target);
+      if (!targets.has(key)) targets.set(key, target);
+    }
+  }
+
+  return [...targets.values()];
+}
+
+function presentationTargetKey(target: PresentationHydrationTarget): string {
+  const id = target.type === 'record' ? target.itemId : target.uploadId;
+  return `${target.type}:${id}`;
+}
+
+function recordPresentationTargets(
+  entry: Extract<AgentTranscriptEntry, { kind: 'records' }>,
+): PresentationHydrationTarget[] {
+  return entry.records
+    .slice()
+    .reverse()
+    .map((record) => ({
+      type: 'record' as const,
+      itemId: record.itemId,
+      ...(record.itemTypeId ? { itemTypeId: record.itemTypeId } : {}),
+      ...(record.title ? { label: record.title } : {}),
+    }));
+}
+
+function assetPresentationTargets(
+  entry: Extract<AgentTranscriptEntry, { kind: 'assets' }>,
+): PresentationHydrationTarget[] {
+  return entry.assets
+    .slice()
+    .reverse()
+    .map((asset) => ({
+      type: 'asset' as const,
+      uploadId: asset.uploadId,
+      ...(asset.title ? { label: asset.title } : {}),
+    }));
+}
+
+function presentationTargetFromSegment(
+  segment: CommentSegment,
+): PresentationHydrationTarget | undefined {
+  if (segment.type !== 'mention') return undefined;
+  if (segment.mention.type === 'record') {
+    return {
+      type: 'record',
+      itemId: segment.mention.id,
+      ...(segment.mention.modelId !== 'unknown'
+        ? { itemTypeId: segment.mention.modelId }
+        : {}),
+      label: segment.mention.title,
+    };
+  }
+  if (segment.mention.type !== 'asset') return undefined;
+  return {
+    type: 'asset',
+    uploadId: segment.mention.id,
+    label: segment.mention.filename,
+  };
+}
+
+function messagePresentationTargets(
+  entry: Extract<AgentTranscriptEntry, { kind: 'message' }>,
+): PresentationHydrationTarget[] {
+  if (!entry.segments) return [];
+  return entry.segments
+    .slice()
+    .reverse()
+    .map(presentationTargetFromSegment)
+    .filter(
+      (target): target is PresentationHydrationTarget => target !== undefined,
+    );
+}
+
+function presentationTargetsFromEntry(
+  entry: AgentTranscriptEntry,
+): PresentationHydrationTarget[] {
+  if (entry.kind === 'records') return recordPresentationTargets(entry);
+  if (entry.kind === 'assets') return assetPresentationTargets(entry);
+  if (entry.kind === 'message') return messagePresentationTargets(entry);
+  return [];
+}
+
+type ResolvedPresentations = {
+  records: Map<string, Extract<Mention, { type: 'record' }>>;
+  assets: Map<string, Extract<Mention, { type: 'asset' }>>;
+};
+
+type ResolvedEntityMention = Extract<
+  Mention,
+  { type: 'record' } | { type: 'asset' }
+>;
+
+function resolvedPresentations(
+  results: readonly PromiseSettledResult<ResolvedEntityMention>[],
+): ResolvedPresentations {
+  const records = new Map<string, Extract<Mention, { type: 'record' }>>();
+  const assets = new Map<string, Extract<Mention, { type: 'asset' }>>();
+  for (const result of results) {
+    if (result.status !== 'fulfilled') continue;
+    if (result.value.type === 'record') {
+      records.set(result.value.id, result.value);
+    } else if (result.value.type === 'asset') {
+      assets.set(result.value.id, result.value);
+    }
+  }
+  return { records, assets };
+}
+
+function needsRestoredFieldPresentation(
+  entries: readonly AgentTranscriptEntry[],
+): boolean {
+  return entries.some((entry) => {
+    if (entry.kind === 'fields') {
+      return entry.fields.some((field) => !field.mention?.fieldType);
+    }
+    return (
+      entry.kind === 'message' &&
+      Boolean(
+        entry.segments?.some(
+          (segment) =>
+            segment.type === 'mention' &&
+            segment.mention.type === 'field' &&
+            !segment.mention.fieldType,
+        ),
+      )
+    );
+  });
+}
+
+async function restoredFieldPresentations(
+  mentionHost: AgentMentionHost,
+  needed: boolean,
+): Promise<ReadonlyMap<string, FieldInfo>> {
+  if (!needed || !mentionHost.loadModelFields) return new Map();
+  try {
+    const fields = await mentionHost.loadModelFields();
+    return new Map(fields.map((field) => [field.fieldPath, field]));
+  } catch {
+    return new Map();
+  }
+}
+
+function genericRecordPresentationTitle(title: string, itemId: string) {
+  return (
+    title.trim().toLowerCase().replaceAll('#', '') ===
+    `record ${itemId.toLowerCase()}`
+  );
+}
+
+function enrichedRecordMention(
+  current: Extract<Mention, { type: 'record' }> | undefined,
+  resolved: Extract<Mention, { type: 'record' }>,
+): Extract<Mention, { type: 'record' }> {
+  if (!current) return resolved;
+  const resolvedModelKnown = resolved.modelId !== 'unknown';
+  return {
+    ...resolved,
+    title:
+      genericRecordPresentationTitle(resolved.title, resolved.id) &&
+      !genericRecordPresentationTitle(current.title, current.id)
+        ? current.title
+        : resolved.title,
+    modelId: resolvedModelKnown ? resolved.modelId : current.modelId,
+    modelApiKey: resolved.modelApiKey || current.modelApiKey,
+    modelName:
+      resolved.modelName === 'Record' && current.modelName !== 'Record'
+        ? current.modelName
+        : resolved.modelName,
+    modelEmoji: resolved.modelEmoji ?? current.modelEmoji,
+    thumbnailUrl: resolved.thumbnailUrl ?? current.thumbnailUrl,
+    ...(resolved.isSingleton || current.isSingleton
+      ? { isSingleton: true }
+      : {}),
+  };
+}
+
+function genericAssetPresentationTitle(title: string, uploadId: string) {
+  return (
+    title.trim().toLowerCase().replaceAll('#', '') ===
+    `asset ${uploadId.toLowerCase()}`
+  );
+}
+
+function enrichedAssetMention(
+  current: Extract<Mention, { type: 'asset' }> | undefined,
+  resolved: Extract<Mention, { type: 'asset' }>,
+): Extract<Mention, { type: 'asset' }> {
+  if (!current) return resolved;
+  return {
+    ...resolved,
+    filename:
+      genericAssetPresentationTitle(resolved.filename, resolved.id) &&
+      !genericAssetPresentationTitle(current.filename, current.id)
+        ? current.filename
+        : resolved.filename,
+    url: resolved.url || current.url,
+    thumbnailUrl: resolved.thumbnailUrl ?? current.thumbnailUrl,
+    mimeType:
+      resolved.mimeType === 'application/octet-stream'
+        ? current.mimeType
+        : resolved.mimeType,
+  };
+}
+
+function enrichedFieldMention({
+  current,
+  field,
+  fieldPath,
+  title,
+  locale,
+}: {
+  current?: Extract<Mention, { type: 'field' }>;
+  field?: FieldInfo;
+  fieldPath: string;
+  title: string;
+  locale?: string;
+}): Extract<Mention, { type: 'field' }> {
+  const resolvedLocale = locale ?? current?.locale;
+  return {
+    type: 'field',
+    apiKey:
+      field?.apiKey ||
+      current?.apiKey ||
+      fieldPath.split('.').at(-1) ||
+      fieldPath,
+    label: field?.label || current?.label || title,
+    localized:
+      field?.localized ?? current?.localized ?? Boolean(resolvedLocale),
+    fieldPath,
+    ...(resolvedLocale ? { locale: resolvedLocale } : {}),
+    ...(field?.fieldType || current?.fieldType
+      ? { fieldType: field?.fieldType || current?.fieldType }
+      : {}),
+  };
+}
+
+function enrichedEntityMention(
+  current: Mention,
+  records: ReadonlyMap<string, Extract<Mention, { type: 'record' }>>,
+  assets: ReadonlyMap<string, Extract<Mention, { type: 'asset' }>>,
+  fields: ReadonlyMap<string, FieldInfo>,
+): Mention {
+  if (current.type === 'record') {
+    const resolved = records.get(current.id);
+    return resolved ? enrichedRecordMention(current, resolved) : current;
+  }
+  if (current.type === 'asset') {
+    const resolved = assets.get(current.id);
+    return resolved ? enrichedAssetMention(current, resolved) : current;
+  }
+  if (current.type === 'field') {
+    const field = fields.get(current.fieldPath);
+    return field
+      ? enrichedFieldMention({
+          current,
+          field,
+          fieldPath: current.fieldPath,
+          title: current.label,
+        })
+      : current;
+  }
+  return current;
+}
+
+function applyRestoredPresentation(
+  entries: readonly AgentTranscriptEntry[],
+  records: ReadonlyMap<string, Extract<Mention, { type: 'record' }>>,
+  assets: ReadonlyMap<string, Extract<Mention, { type: 'asset' }>>,
+  fields: ReadonlyMap<string, FieldInfo>,
+): AgentTranscriptEntry[] {
+  return entries.map((entry) => {
+    if (entry.kind === 'records') {
+      return {
+        ...entry,
+        records: entry.records.map((record) => {
+          const resolved = records.get(record.itemId);
+          if (!resolved) return record;
+          const current =
+            record.mention ??
+            fallbackRecordMention({
+              id: record.itemId,
+              title: record.title,
+              ...(record.itemTypeId
+                ? {
+                    model: {
+                      modelId: record.itemTypeId,
+                      modelApiKey: '',
+                      modelName: 'Record',
+                      modelEmoji: null,
+                    },
+                  }
+                : {}),
+            });
+          const mention = enrichedRecordMention(current, resolved);
+          return {
+            ...record,
+            title: mention.title,
+            mention,
+            ...(mention.modelId !== 'unknown'
+              ? { itemTypeId: mention.modelId }
+              : {}),
+          };
+        }),
+      };
+    }
+    if (entry.kind === 'assets') {
+      return {
+        ...entry,
+        assets: entry.assets.map((asset) => {
+          const resolved = assets.get(asset.uploadId);
+          const mention = resolved
+            ? enrichedAssetMention(
+                asset.mention ??
+                  fallbackAssetMention(asset.uploadId, asset.title),
+                resolved,
+              )
+            : undefined;
+          return mention
+            ? { ...asset, title: mention.filename, mention }
+            : asset;
+        }),
+      };
+    }
+    if (entry.kind === 'fields') {
+      return {
+        ...entry,
+        fields: entry.fields.map((fieldResult) => {
+          const field = fields.get(fieldResult.fieldPath);
+          if (!field) return fieldResult;
+          return {
+            ...fieldResult,
+            mention: enrichedFieldMention({
+              current: fieldResult.mention,
+              field,
+              fieldPath: fieldResult.fieldPath,
+              title: fieldResult.title,
+              ...(fieldResult.locale ? { locale: fieldResult.locale } : {}),
+            }),
+          };
+        }),
+      };
+    }
+    if (entry.kind !== 'message' || !entry.segments) return entry;
+    return {
+      ...entry,
+      segments: entry.segments.map((segment) => {
+        if (segment.type !== 'mention') return segment;
+        return {
+          type: 'mention',
+          mention: enrichedEntityMention(
+            segment.mention,
+            records,
+            assets,
+            fields,
+          ),
+        };
+      }),
+    };
+  });
 }
 
 function conversationMessageFromTranscript(
@@ -956,7 +1379,9 @@ function conversationMessagesFromTranscript(
 
 function conversationProviderText(message: ConversationMessage): string {
   if (message.role === 'user' && message.segments?.length) {
-    return segmentsProviderText(message.segments);
+    return segmentsProviderText(message.segments, {
+      localFileBytesAvailable: hasSessionLocalFileBytes,
+    });
   }
 
   if (message.role !== 'assistant') return message.text;
@@ -1010,6 +1435,14 @@ function hostPresentedMentionReference(mention: Mention) {
       };
     case 'asset':
       return { type: mention.type, id: mention.id, label: mention.filename };
+    case 'file':
+      return {
+        type: mention.type,
+        id: mention.id,
+        label: mention.filename,
+        mimeType: mention.mimeType,
+        size: mention.size,
+      };
     case 'record':
       return {
         type: mention.type,
@@ -1027,6 +1460,94 @@ function hostPresentedMentionReference(mention: Mention) {
         label: mention.name,
       };
   }
+}
+
+function localFileDescriptors(
+  segments: readonly CommentSegment[] | undefined,
+): LocalFileAttachmentDescriptor[] {
+  return (segments ?? []).flatMap((segment) =>
+    segment.type === 'mention' && segment.mention.type === 'file'
+      ? [
+          {
+            id: segment.mention.id,
+            filename: segment.mention.filename,
+            mimeType: segment.mention.mimeType,
+            size: segment.mention.size,
+            lastModified: segment.mention.lastModified,
+          },
+        ]
+      : [],
+  );
+}
+
+function runtimeAttachments(
+  descriptors: readonly LocalFileAttachmentDescriptor[] | undefined,
+): AgentRuntimeAttachment[] {
+  const seen = new Set<string>();
+  return (descriptors ?? []).flatMap((descriptor) => {
+    if (seen.has(descriptor.id)) return [];
+    seen.add(descriptor.id);
+    const file = getSessionLocalFile(descriptor.id);
+    return file ? [{ ...descriptor, file }] : [];
+  });
+}
+
+function providerHistory(
+  messages: readonly ConversationMessage[],
+  currentAttachments: readonly AgentRuntimeAttachment[],
+): AgentConversationHistoryMessage[] {
+  const eligibleMessages = messages.filter(
+    (message) =>
+      message.role === 'user' ||
+      (!message.interrupted && Boolean(message.text.trim())),
+  );
+  const history = eligibleMessages.map(
+    (message): AgentConversationHistoryMessage => ({
+      role: message.role,
+      text: conversationProviderText(message),
+    }),
+  );
+  let remainingCount = Math.max(
+    0,
+    MAX_AGENT_ATTACHMENTS_PER_REQUEST - currentAttachments.length,
+  );
+  let remainingBytes = Math.max(
+    0,
+    MAX_AGENT_ATTACHMENT_TOTAL_BYTES -
+      currentAttachments.reduce(
+        (total, attachment) => total + attachment.size,
+        0,
+      ),
+  );
+  const reservedIds = new Set(
+    currentAttachments.map((attachment) => attachment.id),
+  );
+  for (let index = history.length - 1; index >= 0; index -= 1) {
+    const historyEntry = history[index];
+    const message = eligibleMessages[index];
+    if (historyEntry?.role !== 'user' || !message) continue;
+
+    const retained: AgentRuntimeAttachment[] = [];
+    for (const attachment of runtimeAttachments(
+      localFileDescriptors(message.segments),
+    )) {
+      if (
+        retained.length >= MAX_AGENT_ATTACHMENTS_PER_MESSAGE ||
+        remainingCount === 0 ||
+        attachment.size > remainingBytes ||
+        reservedIds.has(attachment.id)
+      ) {
+        continue;
+      }
+      retained.push(attachment);
+      reservedIds.add(attachment.id);
+      remainingCount -= 1;
+      remainingBytes -= attachment.size;
+    }
+    if (retained.length > 0) historyEntry.attachments = retained;
+  }
+
+  return history;
 }
 
 function loadStoredConversations(
@@ -1156,27 +1677,50 @@ function recoverUnsafeDispatchJournal(
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: This frame coordinates the chat, OAuth, persistence, native navigation, and approval state that must share one React lifecycle.
 export default function AgentFrame(props: AgentFrameProps) {
-  const mentionHost =
-    props.mentionHost ??
-    ({
-      currentUser: {
-        id: props.currentUserId,
-        name: 'You',
-        email: '',
-        avatarUrl: null,
-        userType: 'user',
+  const mentionHost = useMemo<AgentMentionHost>(
+    () =>
+      props.mentionHost ?? {
+        currentUser: {
+          id: props.currentUserId,
+          name: 'You',
+          email: '',
+          avatarUrl: null,
+          userType: 'user',
+        },
+        projectOwnerId: 'project-owner',
+        projectModels: [],
+        recordModels: [],
+        canMentionFields: false,
+        canMentionAssets: false,
+        canMentionModels: false,
+        loadProjectUsers: async () => [],
+        selectAsset: async () => undefined,
+        selectRecord: async () => undefined,
+        resolveAsset: async ({ uploadId, label }) =>
+          fallbackAssetMention(uploadId, label || `Asset #${uploadId}`),
+        resolveRecord: async ({ itemId, itemTypeId, label }) =>
+          fallbackRecordMention({
+            id: itemId,
+            title: label || `Record #${itemId}`,
+            ...(itemTypeId
+              ? {
+                  model: {
+                    modelId: itemTypeId,
+                    modelApiKey: '',
+                    modelName: 'Record',
+                    modelEmoji: null,
+                  },
+                }
+              : {}),
+          }),
+        openUser: () => undefined,
+        openModel: () => undefined,
+        openLocalFile: async () => undefined,
       },
-      projectModels: [],
-      recordModels: [],
-      canMentionFields: false,
-      canMentionAssets: false,
-      canMentionModels: false,
-      loadProjectUsers: async () => [],
-      selectAsset: async () => undefined,
-      selectRecord: async () => undefined,
-      openUser: () => undefined,
-      openModel: () => undefined,
-    } satisfies AgentMentionHost);
+    [props.currentUserId, props.mentionHost],
+  );
+  const mentionHostRef = useRef(mentionHost);
+  mentionHostRef.current = mentionHost;
   const surface: AgentSurfaceKind =
     props.surface ?? (props.currentRecord ? 'record' : 'project');
   const scopeType = props.scope.type;
@@ -1481,6 +2025,79 @@ export default function AgentFrame(props: AgentFrameProps) {
       }
     }
   }
+
+  function persistRestoredPresentation() {
+    const current = conversationRef.current;
+    try {
+      const next = conversationStore.save({
+        ...current,
+        messages: conversationMessagesFromTranscript(
+          entriesRef.current,
+          current.updatedAt,
+        ),
+      });
+      conversationRef.current = next;
+      if (mountedRef.current) {
+        setConversation(next);
+        setStoredConversations(loadStoredConversations(conversationStore));
+        setConversationPersistenceError(undefined);
+      }
+    } catch {
+      if (mountedRef.current) {
+        setConversationPersistenceError(
+          'This chat could not be saved in this browser.',
+        );
+      }
+    }
+  }
+
+  const persistRestoredPresentationRef = useRef(persistRestoredPresentation);
+  persistRestoredPresentationRef.current = persistRestoredPresentation;
+
+  useEffect(() => {
+    const activeConversationId = conversation.id;
+    const presentationHost = mentionHostRef.current;
+    const targets = restoredPresentationTargets(entriesRef.current);
+    const needsFields = needsRestoredFieldPresentation(entriesRef.current);
+    if (targets.length === 0 && !needsFields) return;
+
+    let cancelled = false;
+    const applyPresentations = ([results, fields]: [
+      PromiseSettledResult<ResolvedEntityMention>[],
+      ReadonlyMap<string, FieldInfo>,
+    ]) => {
+      if (cancelled || !mountedRef.current) return;
+      if (conversationRef.current.id !== activeConversationId) return;
+
+      const { records, assets } = resolvedPresentations(results);
+      if (records.size === 0 && assets.size === 0 && fields.size === 0) return;
+
+      const next = applyRestoredPresentation(
+        entriesRef.current,
+        records,
+        assets,
+        fields,
+      );
+      entriesRef.current = next;
+      setEntries(next);
+      if (!activeTurnRef.current) persistRestoredPresentationRef.current();
+    };
+
+    void Promise.all([
+      Promise.allSettled(
+        targets.map(async (target) =>
+          target.type === 'record'
+            ? presentationHost.resolveRecord(target)
+            : presentationHost.resolveAsset(target),
+        ),
+      ),
+      restoredFieldPresentations(presentationHost, needsFields),
+    ]).then(applyPresentations);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [conversation.id]);
 
   const checkpointInterruptedTurn = (
     turn: ActiveTurn,
@@ -1835,6 +2452,9 @@ export default function AgentFrame(props: AgentFrameProps) {
             displayText: turn.displayMessage,
             providerText: turn.message,
             segments: turn.segments,
+            ...(turn.attachmentDescriptors?.length
+              ? { attachments: turn.attachmentDescriptors }
+              : {}),
           },
           history: turn.history,
           entriesBefore: turn.entriesBefore,
@@ -1844,22 +2464,35 @@ export default function AgentFrame(props: AgentFrameProps) {
       : undefined;
   };
 
-  const appendRecordResults = (
+  const appendRecordResults = async (
     title: string,
     records: readonly RecordTarget[],
   ) => {
+    const presentedRecords = await Promise.all(
+      records.map(async (record) => {
+        const mention = await mentionHost.resolveRecord({
+          itemId: record.itemId,
+          ...(record.itemTypeId ? { itemTypeId: record.itemTypeId } : {}),
+          ...(record.label ? { label: record.label } : {}),
+        });
+        const itemTypeId =
+          mention.modelId !== 'unknown' ? mention.modelId : record.itemTypeId;
+        return {
+          itemId: record.itemId,
+          title: mention.title,
+          mention,
+          ...(itemTypeId ? { itemTypeId } : {}),
+          ...(record.fieldPath ? { fieldPath: record.fieldPath } : {}),
+        } satisfies AgentRecordResultViewModel;
+      }),
+    );
     updateEntries((current) => [
       ...current,
       {
         id: uid('records'),
         kind: 'records',
         title,
-        records: records.map((record) => ({
-          itemId: record.itemId,
-          title: record.label || `Record ${record.itemId}`,
-          ...(record.itemTypeId ? { itemTypeId: record.itemTypeId } : {}),
-          ...(record.fieldPath ? { fieldPath: record.fieldPath } : {}),
-        })),
+        records: presentedRecords,
       },
     ]);
   };
@@ -1874,29 +2507,32 @@ export default function AgentFrame(props: AgentFrameProps) {
         id: uid('fields'),
         kind: 'fields',
         title,
-        fields: fields.map((field) => ({
-          fieldPath: field.fieldPath,
-          title: field.label || field.fieldPath,
-          ...(field.locale ? { locale: field.locale } : {}),
-        })),
+        fields: fields.map(presentedFieldResult),
       },
     ]);
   };
 
-  const appendAssetResults = (
+  const appendAssetResults = async (
     title: string,
     assets: readonly { uploadId: string; label?: string }[],
   ) => {
+    const presentedAssets = await Promise.all(
+      assets.map(async (asset) => {
+        const mention = await mentionHost.resolveAsset(asset);
+        return {
+          uploadId: asset.uploadId,
+          title: mention.filename,
+          mention,
+        } satisfies AgentAssetResultViewModel;
+      }),
+    );
     updateEntries((current) => [
       ...current,
       {
         id: uid('assets'),
         kind: 'assets',
         title,
-        assets: assets.map((asset) => ({
-          uploadId: asset.uploadId,
-          title: asset.label || `Asset ${asset.uploadId}`,
-        })),
+        assets: presentedAssets,
       },
     ]);
   };
@@ -1961,6 +2597,58 @@ export default function AgentFrame(props: AgentFrameProps) {
     }
   };
 
+  const hostCreateAsset = mentionHost.createAsset;
+  const createDatoAsset: CreateDatoAssetCallback | undefined =
+    hostCreateAsset && mentionHost.canCreateAssets
+      ? async (input, signal) => {
+          const turn = activeTurnRef.current;
+          if (!turn) {
+            throw new Error('The active chat request is no longer available.');
+          }
+
+          const source =
+            input.source === 'attached_file'
+              ? (() => {
+                  const attachment = [
+                    ...turn.attachments,
+                    ...turn.history.flatMap((entry) => entry.attachments ?? []),
+                  ].find((candidate) => candidate.id === input.attachmentId);
+                  const file = attachment
+                    ? getSessionLocalFile(attachment.id)
+                    : undefined;
+                  if (!attachment || !file) {
+                    throw new Error(
+                      'That local file is not available in this chat session. Ask the editor to attach it again.',
+                    );
+                  }
+                  return {
+                    source: 'file' as const,
+                    fileOrBlob: file,
+                    filename: input.filename ?? attachment.filename,
+                  };
+                })()
+              : {
+                  source: 'url' as const,
+                  url: input.url,
+                  ...(input.filename ? { filename: input.filename } : {}),
+                };
+          const mention = await hostCreateAsset(source, {
+            skipConfirmation:
+              autoApproveEnabledRef.current && !editorDirtyRef.current,
+            signal,
+          });
+          await appendAssetResults('Asset created', [
+            { uploadId: mention.id, label: mention.filename },
+          ]);
+          return {
+            uploadId: mention.id,
+            filename: mention.filename,
+            url: mention.url,
+            mimeType: mention.mimeType,
+          };
+        }
+      : undefined;
+
   const createRuntime = (hostContext?: string) =>
     createAgentRuntime({
       provider: props.config.provider,
@@ -1972,10 +2660,11 @@ export default function AgentFrame(props: AgentFrameProps) {
       additionalInstructions: props.config.additionalInstructions,
       hostContext,
       getModelSchema: props.getModelSchema,
+      ...(createDatoAsset ? { createDatoAsset } : {}),
       context: runtimeSystemContext(),
       navigation: {
-        presentRecords: ({ title, records }) => {
-          appendRecordResults(title, records);
+        presentRecords: async ({ title, records }) => {
+          await appendRecordResults(title, records);
           return {
             presented: true,
             count: records.length,
@@ -1983,13 +2672,13 @@ export default function AgentFrame(props: AgentFrameProps) {
               'Clickable record results were added to the chat without changing the current CMS view.',
           };
         },
-        openRecord: ({ itemId, itemTypeId, fieldPath }) => {
+        openRecord: async ({ itemId, itemTypeId, fieldPath }) => {
           const target = { itemId, itemTypeId, fieldPath };
-          appendRecordResults('Record found', [target]);
+          await appendRecordResults('Record found', [target]);
           return queuePendingNavigation({ type: 'openRecord', target });
         },
-        showRecords: ({ title, records }) => {
-          appendRecordResults(title, records);
+        showRecords: async ({ title, records }) => {
+          await appendRecordResults(title, records);
           if (!props.navigator.supportsRecordList) {
             return {
               presented: true,
@@ -2035,8 +2724,8 @@ export default function AgentFrame(props: AgentFrameProps) {
                 ),
             }
           : {}),
-        presentAssets: ({ title, assets }) => {
-          appendAssetResults(title, assets);
+        presentAssets: async ({ title, assets }) => {
+          await appendAssetResults(title, assets);
           return {
             presented: true,
             count: assets.length,
@@ -2305,25 +2994,22 @@ export default function AgentFrame(props: AgentFrameProps) {
             segments: [{ type: 'text', content: rawSubmission.trim() }],
           }
         : rawSubmission;
-    const message = submission.providerText.trim();
+    const message = segmentsProviderText(submission.segments, {
+      localFileBytesAvailable: hasSessionLocalFileBytes,
+    }).trim();
     const displayMessage = submission.displayText.trim();
     if (running || !message || !displayMessage) {
       return;
     }
 
+    // The visible mention list is the authority for which browser files belong
+    // to this turn. Never accept a detached descriptor that is not represented
+    // in the editor-visible message.
+    const attachmentDescriptors = localFileDescriptors(submission.segments);
+    const attachments = runtimeAttachments(attachmentDescriptors);
     const history =
       retryCandidate?.history ??
-      conversationRef.current.messages
-        .filter(
-          (historyMessage) =>
-            historyMessage.role === 'user' ||
-            (!historyMessage.interrupted &&
-              Boolean(historyMessage.text.trim())),
-        )
-        .map((historyMessage) => ({
-          role: historyMessage.role,
-          text: conversationProviderText(historyMessage),
-        }));
+      providerHistory(conversationRef.current.messages, attachments);
     const entriesBefore = retryCandidate
       ? retryCandidate.entriesBefore
       : entriesRef.current.map((entry) =>
@@ -2354,6 +3040,8 @@ export default function AgentFrame(props: AgentFrameProps) {
       displayMessage,
       segments: submission.segments,
       history,
+      attachments,
+      ...(attachmentDescriptors.length > 0 ? { attachmentDescriptors } : {}),
       entriesBefore,
       conversationBefore,
       userEntryId,
@@ -2488,6 +3176,7 @@ export default function AgentFrame(props: AgentFrameProps) {
           {
             message,
             history,
+            attachments,
             previousResponseId,
             injectHostContext,
             signal: controller.signal,
@@ -2578,6 +3267,7 @@ export default function AgentFrame(props: AgentFrameProps) {
           {
             message,
             history,
+            attachments,
             previousResponseId: undefined,
             injectHostContext: Boolean(retryHostContext),
             signal: controller.signal,

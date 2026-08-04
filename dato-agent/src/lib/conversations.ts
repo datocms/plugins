@@ -43,6 +43,7 @@ export interface ConversationRecordResult {
   itemTypeId?: string;
   title: string;
   fieldPath?: string;
+  mention?: Extract<Mention, { type: 'record' }>;
 }
 
 export interface ConversationRecordResultGroup {
@@ -55,6 +56,7 @@ export interface ConversationFieldResult {
   fieldPath: string;
   title: string;
   locale?: string;
+  mention?: Extract<Mention, { type: 'field' }>;
 }
 
 export interface ConversationFieldResultGroup {
@@ -67,6 +69,7 @@ export interface ConversationAssetResult {
   uploadId: string;
   title: string;
   deleted?: boolean;
+  mention?: Extract<Mention, { type: 'asset' }>;
 }
 
 export interface ConversationAssetResultGroup {
@@ -392,12 +395,20 @@ function normalizeRecordResult(
 
   const itemTypeId = normalizeRecordResultReference(candidate.itemTypeId);
   const fieldPath = normalizeRecordResultReference(candidate.fieldPath);
+  const candidateMention = normalizeMention(candidate.mention);
+  const mention =
+    candidateMention?.type === 'record' &&
+    candidateMention.id === itemId &&
+    (!itemTypeId || candidateMention.modelId === itemTypeId)
+      ? candidateMention
+      : undefined;
 
   return {
     itemId,
     title,
     ...(itemTypeId ? { itemTypeId } : {}),
     ...(fieldPath ? { fieldPath } : {}),
+    ...(mention ? { mention } : {}),
   };
 }
 
@@ -476,10 +487,19 @@ function normalizeFieldResult(
     return undefined;
   }
 
+  const candidateMention = normalizeMention(candidate.mention);
+  const mention =
+    candidateMention?.type === 'field' &&
+    candidateMention.fieldPath === fieldPath &&
+    candidateMention.locale === locale
+      ? candidateMention
+      : undefined;
+
   return {
     fieldPath,
     title,
     ...(locale ? { locale } : {}),
+    ...(mention ? { mention } : {}),
   };
 }
 
@@ -559,10 +579,17 @@ function normalizeAssetResult(
     return undefined;
   }
 
+  const candidateMention = normalizeMention(candidate.mention);
+  const mention =
+    candidateMention?.type === 'asset' && candidateMention.id === uploadId
+      ? candidateMention
+      : undefined;
+
   return {
     uploadId,
     title,
     ...(candidate.deleted === true ? { deleted: true } : {}),
+    ...(mention ? { mention } : {}),
   };
 }
 
@@ -938,19 +965,28 @@ function cloneConversations(
       if (message.recordResults) {
         cloned.recordResults = message.recordResults.map((group) => ({
           ...group,
-          records: group.records.map((record) => ({ ...record })),
+          records: group.records.map((record) => ({
+            ...record,
+            ...(record.mention ? { mention: { ...record.mention } } : {}),
+          })),
         }));
       }
       if (message.fieldResults) {
         cloned.fieldResults = message.fieldResults.map((group) => ({
           ...group,
-          fields: group.fields.map((field) => ({ ...field })),
+          fields: group.fields.map((field) => ({
+            ...field,
+            ...(field.mention ? { mention: { ...field.mention } } : {}),
+          })),
         }));
       }
       if (message.assetResults) {
         cloned.assetResults = message.assetResults.map((group) => ({
           ...group,
-          assets: group.assets.map((asset) => ({ ...asset })),
+          assets: group.assets.map((asset) => ({
+            ...asset,
+            ...(asset.mention ? { mention: { ...asset.mention } } : {}),
+          })),
         }));
       }
       if (message.mentionResults) {

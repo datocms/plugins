@@ -25,6 +25,19 @@ export type AssetMention = {
   mimeType: string;
 };
 
+/**
+ * A browser-local file selected by the editor. Its ID belongs to the plugin's
+ * in-memory file registry and must never be treated as a DatoCMS upload ID.
+ */
+export type LocalFileMention = {
+  type: 'file';
+  id: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+  lastModified: number;
+};
+
 export type RecordMention = {
   type: 'record';
   id: string;
@@ -55,6 +68,7 @@ export type Mention =
   | UserMention
   | FieldMention
   | AssetMention
+  | LocalFileMention
   | RecordMention
   | ModelMention;
 
@@ -74,6 +88,12 @@ export function isFieldMention(mention: Mention): mention is FieldMention {
 
 export function isAssetMention(mention: Mention): mention is AssetMention {
   return mention.type === 'asset';
+}
+
+export function isLocalFileMention(
+  mention: Mention,
+): mention is LocalFileMention {
+  return mention.type === 'file';
 }
 
 export function isRecordMention(mention: Mention): mention is RecordMention {
@@ -105,6 +125,8 @@ export type StoredAssetMention = {
   id: string;
 };
 
+export type StoredLocalFileMention = LocalFileMention;
+
 export type StoredRecordMention = {
   type: 'record';
   id: string;
@@ -120,6 +142,7 @@ export type StoredMention =
   | StoredUserMention
   | StoredFieldMention
   | StoredAssetMention
+  | StoredLocalFileMention
   | StoredRecordMention
   | StoredModelMention;
 

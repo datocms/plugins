@@ -7,9 +7,34 @@ import {
   formatFieldType,
   getTruncatedFilename,
 } from '@utils/mentionFormatters';
-import { memo, useId, useMemo, useState } from 'react';
+import { Tooltip, TooltipContent, TooltipTrigger } from 'datocms-react-ui';
+import { memo, useEffect, useId, useMemo, useState } from 'react';
 import { cn } from '@/utils/cn';
+import { getSessionLocalFile } from '../../../../lib/localFiles';
 import { ModelMentionIcon, RecordDocumentIcon } from '../Icons';
+
+function PortaledMentionTooltip({
+  children,
+  content,
+  tooltipId,
+}: {
+  children: React.ReactElement;
+  content?: React.ReactNode;
+  tooltipId: string;
+}) {
+  if (!content) return children;
+
+  return (
+    <Tooltip placement="top">
+      <TooltipTrigger>
+        <span className={styles.mentionTooltipTrigger}>{children}</span>
+      </TooltipTrigger>
+      <TooltipContent>
+        <span id={tooltipId}>{content}</span>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
 
 type MentionDisplayProps = {
   mention: Mention;
@@ -47,28 +72,22 @@ function AssetThumbnailMention({
   if (hasError) {
     return (
       <span className={styles.assetMentionWrapper}>
-        <button
-          type="button"
-          tabIndex={tabIndex}
-          className={cn(styles.assetMention, styles.assetMentionNoThumb)}
-          aria-describedby={tooltipId}
-          aria-label={accessibleLabel}
-          disabled={!isClickable}
-          onClick={isClickable ? onClick : undefined}
+        <PortaledMentionTooltip
+          content={mention.filename}
+          tooltipId={tooltipId}
         >
-          <span className={styles.assetMentionName}>{truncatedName}</span>
-        </button>
-        <span
-          id={tooltipId}
-          role="tooltip"
-          className={styles.assetMentionTooltip}
-        >
-          {mention.filename}
-          <span
-            className={styles.assetMentionTooltipArrow}
-            aria-hidden="true"
-          />
-        </span>
+          <button
+            type="button"
+            tabIndex={tabIndex}
+            className={cn(styles.assetMention, styles.assetMentionNoThumb)}
+            aria-describedby={tooltipId}
+            aria-label={accessibleLabel}
+            disabled={!isClickable}
+            onClick={isClickable ? onClick : undefined}
+          >
+            <span className={styles.assetMentionName}>{truncatedName}</span>
+          </button>
+        </PortaledMentionTooltip>
       </span>
     );
   }
@@ -135,24 +154,22 @@ function UserMentionDisplay({
 
   return (
     <span className={styles.userMentionWrapper}>
-      <button
-        type="button"
-        tabIndex={tabIndex}
-        className={cn(
-          styles.userMention,
-          !isClickable && styles.userMentionDisabled,
-        )}
-        aria-describedby={tooltipId}
-        aria-label={accessibleLabel}
-        onClick={isClickable ? onClick : undefined}
-        disabled={!isClickable}
-      >
-        @{resolvedName}
-      </button>
-      <span id={tooltipId} role="tooltip" className={styles.userMentionTooltip}>
-        {tooltipText}
-        <span className={styles.userMentionTooltipArrow} aria-hidden="true" />
-      </span>
+      <PortaledMentionTooltip content={tooltipText} tooltipId={tooltipId}>
+        <button
+          type="button"
+          tabIndex={tabIndex}
+          className={cn(
+            styles.userMention,
+            !isClickable && styles.userMentionDisabled,
+          )}
+          aria-describedby={tooltipId}
+          aria-label={accessibleLabel}
+          onClick={isClickable ? onClick : undefined}
+          disabled={!isClickable}
+        >
+          @{resolvedName}
+        </button>
+      </PortaledMentionTooltip>
     </span>
   );
 }
@@ -179,38 +196,30 @@ function FieldMentionDisplay({
 
   return (
     <span className={styles.fieldMentionWrapper}>
-      <button
-        type="button"
-        tabIndex={tabIndex}
-        className={cn(
-          styles.fieldMention,
-          !isClickable && styles.fieldMentionDisabled,
-        )}
-        aria-describedby={formattedFieldType ? tooltipId : undefined}
-        aria-label={accessibleLabel}
-        onClick={isClickable ? onClick : undefined}
-        disabled={!isClickable}
+      <PortaledMentionTooltip
+        content={formattedFieldType}
+        tooltipId={tooltipId}
       >
-        #{mention.apiKey}
-        {hasLocale && (
-          <span className={styles.fieldMentionLocaleBadge}>
-            {mention.locale}
-          </span>
-        )}
-      </button>
-      {formattedFieldType && (
-        <span
-          id={tooltipId}
-          role="tooltip"
-          className={styles.fieldMentionTooltip}
+        <button
+          type="button"
+          tabIndex={tabIndex}
+          className={cn(
+            styles.fieldMention,
+            !isClickable && styles.fieldMentionDisabled,
+          )}
+          aria-describedby={formattedFieldType ? tooltipId : undefined}
+          aria-label={accessibleLabel}
+          onClick={isClickable ? onClick : undefined}
+          disabled={!isClickable}
         >
-          {formattedFieldType}
-          <span
-            className={styles.fieldMentionTooltipArrow}
-            aria-hidden="true"
-          />
-        </span>
-      )}
+          #{mention.apiKey}
+          {hasLocale && (
+            <span className={styles.fieldMentionLocaleBadge}>
+              {mention.locale}
+            </span>
+          )}
+        </button>
+      </PortaledMentionTooltip>
     </span>
   );
 }
@@ -253,27 +262,67 @@ function AssetMentionDisplay({
 
   return (
     <span className={styles.assetMentionWrapper}>
-      <button
-        type="button"
-        tabIndex={tabIndex}
-        className={cn(styles.assetMention, styles.assetMentionNoThumb)}
-        aria-describedby={tooltipId}
-        aria-label={accessibleLabel}
-        disabled={!isClickable}
-        onClick={isClickable ? onClick : undefined}
-      >
-        <span className={styles.assetMentionName}>{truncatedName}</span>
-      </button>
-      <span
-        id={tooltipId}
-        role="tooltip"
-        className={styles.assetMentionTooltip}
-      >
-        {mention.filename}
-        <span className={styles.assetMentionTooltipArrow} aria-hidden="true" />
-      </span>
+      <PortaledMentionTooltip content={mention.filename} tooltipId={tooltipId}>
+        <button
+          type="button"
+          tabIndex={tabIndex}
+          className={cn(styles.assetMention, styles.assetMentionNoThumb)}
+          aria-describedby={tooltipId}
+          aria-label={accessibleLabel}
+          disabled={!isClickable}
+          onClick={isClickable ? onClick : undefined}
+        >
+          <span className={styles.assetMentionName}>{truncatedName}</span>
+        </button>
+      </PortaledMentionTooltip>
     </span>
   );
+}
+
+type LocalFileMentionDisplayProps = {
+  mention: Extract<Mention, { type: 'file' }>;
+  tabIndex: number;
+  tooltipId: string;
+  onClick: (e: React.MouseEvent) => void;
+  isClickable: boolean;
+  accessibleLabel?: string;
+};
+
+function LocalFileMentionDisplay({
+  mention,
+  ...displayProps
+}: LocalFileMentionDisplayProps) {
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    const file = getSessionLocalFile(mention.id);
+    if (
+      !file ||
+      !mention.mimeType.startsWith('image/') ||
+      typeof URL.createObjectURL !== 'function'
+    ) {
+      setPreviewUrl(null);
+      return;
+    }
+
+    const nextPreviewUrl = URL.createObjectURL(file);
+    setPreviewUrl(nextPreviewUrl);
+    return () => URL.revokeObjectURL(nextPreviewUrl);
+  }, [mention.id, mention.mimeType]);
+
+  const assetLikeMention = useMemo<Extract<Mention, { type: 'asset' }>>(
+    () => ({
+      type: 'asset',
+      id: mention.id,
+      filename: mention.filename,
+      mimeType: mention.mimeType,
+      url: previewUrl ?? '',
+      thumbnailUrl: previewUrl,
+    }),
+    [mention, previewUrl],
+  );
+
+  return <AssetMentionDisplay mention={assetLikeMention} {...displayProps} />;
 }
 
 type RecordMentionDisplayProps = {
@@ -303,53 +352,47 @@ function RecordMentionDisplay({
 
   return (
     <span className={styles.recordMentionWrapper}>
-      <button
-        type="button"
-        tabIndex={tabIndex}
-        className={cn(
-          styles.recordMention,
-          !mention.thumbnailUrl && styles.recordMentionNoThumb,
-        )}
-        aria-describedby={tooltipId}
-        aria-label={accessibleLabel}
-        disabled={!isClickable}
-        onClick={isClickable ? onClick : undefined}
-      >
-        {mention.thumbnailUrl ? (
-          <>
-            <img
-              src={mention.thumbnailUrl}
-              alt={`Thumbnail for ${displayTitle}`}
-              className={styles.recordMentionThumb}
-              onError={(e) => {
-                const target = e.currentTarget;
-                target.onerror = null;
-                target.style.display = 'none';
-                const parentButton = target.closest('button');
-                if (parentButton) {
-                  parentButton.setAttribute('data-img-error', 'true');
-                }
-              }}
-            />
-            <span className={styles.recordMentionFallback} aria-hidden="true">
-              <RecordDocumentIcon className={styles.recordMentionIcon} />
-            </span>
-          </>
-        ) : displayEmoji ? (
-          <span className={styles.recordMentionEmoji}>{displayEmoji}</span>
-        ) : (
-          <RecordDocumentIcon className={styles.recordMentionIcon} />
-        )}
-        <span className={styles.recordMentionTitle}>{displayTitle}</span>
-      </button>
-      <span
-        id={tooltipId}
-        role="tooltip"
-        className={styles.recordMentionTooltip}
-      >
-        {tooltipText}
-        <span className={styles.recordMentionTooltipArrow} aria-hidden="true" />
-      </span>
+      <PortaledMentionTooltip content={tooltipText} tooltipId={tooltipId}>
+        <button
+          type="button"
+          tabIndex={tabIndex}
+          className={cn(
+            styles.recordMention,
+            !mention.thumbnailUrl && styles.recordMentionNoThumb,
+          )}
+          aria-describedby={tooltipId}
+          aria-label={accessibleLabel}
+          disabled={!isClickable}
+          onClick={isClickable ? onClick : undefined}
+        >
+          {mention.thumbnailUrl ? (
+            <>
+              <img
+                src={mention.thumbnailUrl}
+                alt={`Thumbnail for ${displayTitle}`}
+                className={styles.recordMentionThumb}
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  target.onerror = null;
+                  target.style.display = 'none';
+                  const parentButton = target.closest('button');
+                  if (parentButton) {
+                    parentButton.setAttribute('data-img-error', 'true');
+                  }
+                }}
+              />
+              <span className={styles.recordMentionFallback} aria-hidden="true">
+                <RecordDocumentIcon className={styles.recordMentionIcon} />
+              </span>
+            </>
+          ) : displayEmoji ? (
+            <span className={styles.recordMentionEmoji}>{displayEmoji}</span>
+          ) : (
+            <RecordDocumentIcon className={styles.recordMentionIcon} />
+          )}
+          <span className={styles.recordMentionTitle}>{displayTitle}</span>
+        </button>
+      </PortaledMentionTooltip>
     </span>
   );
 }
@@ -376,30 +419,27 @@ function ModelMentionDisplay({
 
   return (
     <span className={styles.modelMentionWrapper}>
-      <button
-        type="button"
-        tabIndex={tabIndex}
-        className={styles.modelMention}
-        aria-describedby={tooltipId}
-        aria-label={accessibleLabel}
-        disabled={!isClickable}
-        onClick={isClickable ? onClick : undefined}
+      <PortaledMentionTooltip
+        content={`${mention.isBlockModel ? 'Block' : 'Model'}: ${mention.apiKey}`}
+        tooltipId={tooltipId}
       >
-        {modelEmoji ? (
-          <span className={styles.modelMentionEmoji}>{modelEmoji}</span>
-        ) : (
-          <ModelMentionIcon className={styles.modelMentionIcon} />
-        )}
-        {cleanName}
-      </button>
-      <span
-        id={tooltipId}
-        role="tooltip"
-        className={styles.modelMentionTooltip}
-      >
-        {mention.isBlockModel ? 'Block' : 'Model'}: {mention.apiKey}
-        <span className={styles.modelMentionTooltipArrow} aria-hidden="true" />
-      </span>
+        <button
+          type="button"
+          tabIndex={tabIndex}
+          className={styles.modelMention}
+          aria-describedby={tooltipId}
+          aria-label={accessibleLabel}
+          disabled={!isClickable}
+          onClick={isClickable ? onClick : undefined}
+        >
+          {modelEmoji ? (
+            <span className={styles.modelMentionEmoji}>{modelEmoji}</span>
+          ) : (
+            <ModelMentionIcon className={styles.modelMentionIcon} />
+          )}
+          {cleanName}
+        </button>
+      </PortaledMentionTooltip>
     </span>
   );
 }
@@ -473,6 +513,18 @@ const MentionDisplayComponent = ({
     case 'asset':
       return (
         <AssetMentionDisplay
+          mention={mention}
+          tabIndex={tabIndex}
+          tooltipId={tooltipId}
+          onClick={handleClick}
+          isClickable={isClickable}
+          accessibleLabel={accessibleLabel}
+        />
+      );
+
+    case 'file':
+      return (
+        <LocalFileMentionDisplay
           mention={mention}
           tabIndex={tabIndex}
           tooltipId={tooltipId}

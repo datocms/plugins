@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MAX_CONVERSATION_MESSAGE_CHARACTERS } from '../lib/conversations';
+import {
+  localFileDescriptorFromMention,
+  localFileMaximumBytes,
+  MAX_LOCAL_FILES_PER_MESSAGE,
+  MAX_LOCAL_FILES_TOTAL_BYTES,
+  registerLocalFile,
+} from '../lib/localFiles';
 import type { AgentMentionHost } from '../lib/mentionHost';
 import {
   type AgentComposerSubmission,
@@ -39,6 +46,73 @@ function mentionCount(segments: readonly CommentSegment[]) {
   return segments.filter((segment) => segment.type === 'mention').length;
 }
 
+const LOCAL_FILE_REJECTION_MESSAGES = {
+  empty: 'Empty files cannot be attached.',
+  oversized:
+    'Images must be 10 MB or smaller; other files must be 20 MB or smaller.',
+  count: `A message can include up to ${MAX_LOCAL_FILES_PER_MESSAGE} files and ${MAX_MENTIONS_PER_MESSAGE} total references.`,
+  totalSize: 'Files in one message cannot exceed 25 MB total.',
+} as const;
+
+type LocalFileRejection = keyof typeof LOCAL_FILE_REJECTION_MESSAGES;
+
+function localFileRejection(
+  file: File,
+  acceptedCount: number,
+  availableSlots: number,
+  availableBytes: number,
+): LocalFileRejection | undefined {
+  if (file.size === 0) return 'empty';
+  if (file.size > localFileMaximumBytes(file.type)) return 'oversized';
+  if (acceptedCount >= availableSlots) return 'count';
+  if (file.size > availableBytes) return 'totalSize';
+  return undefined;
+}
+
+function selectAllowedLocalFiles(
+  files: FileList,
+  segments: readonly CommentSegment[],
+): { acceptedFiles: File[]; error?: string } {
+  const currentFiles = segments.flatMap((segment) =>
+    segment.type === 'mention' && segment.mention.type === 'file'
+      ? [segment.mention]
+      : [],
+  );
+  const availableSlots = Math.min(
+    Math.max(0, MAX_MENTIONS_PER_MESSAGE - mentionCount(segments)),
+    Math.max(0, MAX_LOCAL_FILES_PER_MESSAGE - currentFiles.length),
+  );
+  let availableBytes = Math.max(
+    0,
+    MAX_LOCAL_FILES_TOTAL_BYTES -
+      currentFiles.reduce((total, file) => total + file.size, 0),
+  );
+  const acceptedFiles: File[] = [];
+  const rejections = new Set<LocalFileRejection>();
+
+  for (const file of files) {
+    const rejection = localFileRejection(
+      file,
+      acceptedFiles.length,
+      availableSlots,
+      availableBytes,
+    );
+    if (rejection) {
+      rejections.add(rejection);
+      continue;
+    }
+    acceptedFiles.push(file);
+    availableBytes -= file.size;
+  }
+
+  const error = Object.entries(LOCAL_FILE_REJECTION_MESSAGES)
+    .flatMap(([key, message]) =>
+      rejections.has(key as LocalFileRejection) ? [message] : [],
+    )
+    .join(' ');
+  return { acceptedFiles, ...(error ? { error } : {}) };
+}
+
 export function MentionComposer({
   host,
   navigation,
@@ -50,6 +124,7 @@ export function MentionComposer({
   onStop,
 }: MentionComposerProps) {
   const composerRef = useRef<TipTapComposerRef>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [segments, setSegments] = useState<CommentSegment[]>([]);
   const [projectUsers, setProjectUsers] = useState<UserInfo[]>([
     host.currentUser,
@@ -163,10 +238,17 @@ export function MentionComposer({
       return;
     }
 
+    const attachments = currentSegments.flatMap((segment) =>
+      segment.type === 'mention' && segment.mention.type === 'file'
+        ? [localFileDescriptorFromMention(segment.mention)]
+        : [],
+    );
+
     onSubmit({
       displayText,
       providerText: currentProviderText,
       segments: currentSegments,
+      ...(attachments.length > 0 && { attachments }),
     });
     composerRef.current?.clear();
     setSegments([]);
@@ -187,6 +269,23 @@ export function MentionComposer({
       }
     }
   }, [host]);
+
+  const selectLocalFiles = useCallback(
+    (files: FileList | null) => {
+      if (inputDisabledRef.current || !files?.length) return;
+
+      setPickerError(undefined);
+      const currentSegments = composerRef.current?.getSegments() ?? segments;
+      const { acceptedFiles, error } = selectAllowedLocalFiles(
+        files,
+        currentSegments,
+      );
+      composerRef.current?.insertMentions(acceptedFiles.map(registerLocalFile));
+      if (error) setPickerError(error);
+      composerRef.current?.focus();
+    },
+    [segments],
+  );
 
   const selectRecord = useCallback(
     async (model: AgentMentionHost['recordModels'][number]) => {
@@ -216,6 +315,19 @@ export function MentionComposer({
     >
       <NavigationCallbacksProvider callbacks={navigation}>
         <div className={commentBarStyles.composerInputWrapper}>
+          <input
+            aria-label="Choose files from computer"
+            disabled={inputDisabled}
+            hidden
+            multiple
+            onChange={(event) => {
+              selectLocalFiles(event.currentTarget.files);
+              event.currentTarget.value = '';
+            }}
+            ref={fileInputRef}
+            type="file"
+          />
+
           <TipTapComposer
             ariaLabel="Message the DatoCMS agent"
             autoFocus={false}
@@ -284,6 +396,7 @@ export function MentionComposer({
             onFieldClick={() =>
               composerRef.current?.triggerMentionType('field')
             }
+            onFileClick={() => fileInputRef.current?.click()}
             onModelClick={() =>
               composerRef.current?.triggerMentionType('model')
             }

@@ -11,6 +11,7 @@ import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MAX_CONVERSATION_MESSAGE_CHARACTERS } from '../lib/conversations';
 import type { AgentMentionHost } from '../lib/mentionHost';
+import { fallbackAssetMention, fallbackRecordMention } from '../lib/mentions';
 import {
   type AgentConnectionViewModel,
   type AgentConversationSummaryViewModel,
@@ -540,6 +541,7 @@ describe('AgentSurface', () => {
     const onOpenAsset = vi.fn();
     const openModel = vi.fn();
     const openUser = vi.fn();
+    const openLocalFile = vi.fn(async () => undefined);
     const mentionHost = {
       currentUser: {
         id: 'current-user',
@@ -548,6 +550,7 @@ describe('AgentSurface', () => {
         avatarUrl: null,
         userType: 'user',
       },
+      projectOwnerId: 'project-owner',
       projectModels: [],
       recordModels: [],
       canMentionFields: true,
@@ -557,8 +560,16 @@ describe('AgentSurface', () => {
       loadModelFields: async () => [],
       selectAsset: async () => undefined,
       selectRecord: async () => undefined,
+      resolveAsset: async ({ uploadId, label }) =>
+        fallbackAssetMention(uploadId, label || `Asset #${uploadId}`),
+      resolveRecord: async ({ itemId, label }) =>
+        fallbackRecordMention({
+          id: itemId,
+          title: label || `Record #${itemId}`,
+        }),
       openModel,
       openUser,
+      openLocalFile,
     } satisfies AgentMentionHost;
 
     render(
@@ -569,7 +580,7 @@ describe('AgentSurface', () => {
             id: 'user-with-mentions',
             kind: 'message',
             role: 'user',
-            content: 'Open Homepage #title Hero.jpg Page @Ada',
+            content: 'Open Homepage #title Hero.jpg brief.pdf Page @Ada',
             segments: [
               { type: 'text', content: 'Open ' },
               {
@@ -606,6 +617,18 @@ describe('AgentSurface', () => {
                   url: '',
                   thumbnailUrl: null,
                   mimeType: 'image/jpeg',
+                },
+              },
+              { type: 'text', content: ' ' },
+              {
+                type: 'mention',
+                mention: {
+                  type: 'file',
+                  id: 'local-file-1',
+                  filename: 'brief.pdf',
+                  mimeType: 'application/pdf',
+                  size: 2048,
+                  lastModified: 1_786_000_000_000,
                 },
               },
               { type: 'text', content: ' ' },
@@ -658,6 +681,16 @@ describe('AgentSurface', () => {
     expect(onOpenAsset).toHaveBeenCalledWith({
       uploadId: 'upload-1',
       title: 'Hero.jpg',
+    });
+
+    await user.click(screen.getByRole('button', { name: 'brief.pdf' }));
+    expect(openLocalFile).toHaveBeenCalledWith({
+      type: 'file',
+      id: 'local-file-1',
+      filename: 'brief.pdf',
+      mimeType: 'application/pdf',
+      size: 2048,
+      lastModified: 1_786_000_000_000,
     });
 
     await user.click(screen.getByRole('button', { name: 'Page' }));

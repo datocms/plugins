@@ -115,6 +115,15 @@ export function AssetMentionIcon(props: IconProps) {
   );
 }
 
+export function FileUploadIcon(props: IconProps) {
+  return (
+    <svg viewBox="0 0 16 16" fill="currentColor" {...props}>
+      <path d="M4 0a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V4.5L9.5 0H4Zm0 1h5v3.5A1.5 1.5 0 0 0 10.5 6H13v8a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1Z" />
+      <path d="M8.5 12.5v-4.293l1.146 1.147a.5.5 0 0 0 .708-.708l-2-2a.5.5 0 0 0-.708 0l-2 2a.5.5 0 1 0 .708.708L7.5 8.207V12.5a.5.5 0 0 0 1 0Z" />
+    </svg>
+  );
+}
+
 export function ModelMentionIcon(props: IconProps) {
   return (
     <svg viewBox="0 0 16 16" fill="currentColor" {...props}>

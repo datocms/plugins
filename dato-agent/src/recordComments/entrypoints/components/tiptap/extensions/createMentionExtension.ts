@@ -50,6 +50,13 @@ const MENTION_TYPE_ATTRS: Record<
     thumbnailUrl: { default: null },
     mimeType: { default: null },
   },
+  file: {
+    id: { default: null },
+    filename: { default: null },
+    mimeType: { default: null },
+    size: { default: null },
+    lastModified: { default: null },
+  },
   record: {
     id: { default: null },
     title: { default: null },

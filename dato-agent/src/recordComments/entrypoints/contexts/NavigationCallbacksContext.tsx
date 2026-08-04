@@ -13,6 +13,9 @@ export type NavigationCallbacks = {
     isBlockModel: boolean,
   ) => void | Promise<void>;
   handleOpenAsset: (assetId: string) => void | Promise<void>;
+  handleOpenFile: (
+    file: Extract<Mention, { type: 'file' }>,
+  ) => void | Promise<void>;
   handleOpenRecord: (recordId: string, modelId: string) => void | Promise<void>;
 };
 
@@ -61,6 +64,9 @@ export async function openMention(
       break;
     case 'asset':
       await callbacks.handleOpenAsset(mention.id);
+      break;
+    case 'file':
+      await callbacks.handleOpenFile(mention);
       break;
     case 'record':
       await callbacks.handleOpenRecord(mention.id, mention.modelId);

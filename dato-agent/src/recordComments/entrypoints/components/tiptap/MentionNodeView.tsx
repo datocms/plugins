@@ -54,5 +54,6 @@ function createMentionNodeView(
 export const UserMentionNodeView = createMentionNodeView('user', true);
 export const FieldMentionNodeView = createMentionNodeView('field');
 export const AssetMentionNodeView = createMentionNodeView('asset');
+export const FileMentionNodeView = createMentionNodeView('file');
 export const RecordMentionNodeView = createMentionNodeView('record');
 export const ModelMentionNodeView = createMentionNodeView('model');

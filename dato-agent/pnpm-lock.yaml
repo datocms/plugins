@@ -11,6 +11,9 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.115.0
         version: 0.115.0(zod@4.4.3)
+      '@datocms/cma-client-browser':
+        specifier: ^5.6.0
+        version: 5.6.0
       '@modelcontextprotocol/sdk':
         specifier: ^1.30.0
         version: 1.30.0(zod@4.4.3)
@@ -38,6 +41,9 @@ importers:
       datocms-react-ui:
         specifier: 2.2.6
         version: 2.2.6(@types/react@19.2.17)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      fflate:
+        specifier: ^0.8.2
+        version: 0.8.3
       md5:
         specifier: ^2.3.0
         version: 2.3.0
@@ -270,6 +276,9 @@ packages:
   '@csstools/css-tokenizer@4.0.0':
     resolution: {integrity: sha512-QxULHAm7cNu72w97JUNCBFODFaXpbDg+dP8b/oWFAZ2MTRppA3U00Y2L1HqaS4J6yBqxwa/Y3nMBaxVKbB/NsA==}
     engines: {node: '>=20.19.0'}
+
+  '@datocms/cma-client-browser@5.6.0':
+    resolution: {integrity: sha512-9IaNpXsF7RLNFDyB/7z4bZXhc0bA0dcmSKUom5F19FhiWvzwy9X+IfcbdVeJN2lXyZl6Bu9C6eJ3h8+O5qXiqA==}
 
   '@datocms/cma-client@5.6.0':
     resolution: {integrity: sha512-xPqCwsK/UGumzumQj+k8q8gDb6fM9EdyTEf3rvy6+imC8GSZOcPtBVv6VbuWxTRs0ycHCVjqtSqRHt8SZQ6i8g==}
@@ -1243,6 +1252,9 @@ packages:
     peerDependenciesMeta:
       picomatch:
         optional: true
+
+  fflate@0.8.3:
+    resolution: {integrity: sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA==}
 
   finalhandler@2.1.1:
     resolution: {integrity: sha512-S8KoZgRZN+a5rNwqTxlZZePjT/4cnm0ROV70LedRHZ0p8u9fRID0hJUZQpkKLzro8LfmC8sx23bY6tVNxv8pQA==}
@@ -2448,6 +2460,11 @@ snapshots:
 
   '@csstools/css-tokenizer@4.0.0': {}
 
+  '@datocms/cma-client-browser@5.6.0':
+    dependencies:
+      '@datocms/cma-client': 5.6.0
+      '@datocms/rest-client-utils': 5.4.9
+
   '@datocms/cma-client@5.6.0':
     dependencies:
       '@datocms/rest-client-utils': 5.4.9
@@ -3373,6 +3390,8 @@ snapshots:
   fdir@6.5.0(picomatch@4.0.5):
     optionalDependencies:
       picomatch: 4.0.5
+
+  fflate@0.8.3: {}
 
   finalhandler@2.1.1:
     dependencies:

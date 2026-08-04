@@ -20,6 +20,10 @@ function isOptionalBooleanAttr(value: unknown): value is boolean | undefined {
   return value === undefined || typeof value === 'boolean';
 }
 
+function isNonNegativeNumberAttr(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+
 export function isValidUserMentionAttrs(
   attrs: Record<string, unknown>,
 ): attrs is Record<string, unknown> & {
@@ -71,6 +75,24 @@ export function isValidAssetMentionAttrs(
     isStringAttr(attrs.url) &&
     isNullableStringAttr(attrs.thumbnailUrl) &&
     isStringAttr(attrs.mimeType)
+  );
+}
+
+export function isValidLocalFileMentionAttrs(
+  attrs: Record<string, unknown>,
+): attrs is Record<string, unknown> & {
+  id: string;
+  filename: string;
+  mimeType: string;
+  size: number;
+  lastModified: number;
+} {
+  return (
+    isStringAttr(attrs.id) &&
+    isStringAttr(attrs.filename) &&
+    isStringAttr(attrs.mimeType) &&
+    isNonNegativeNumberAttr(attrs.size) &&
+    isNonNegativeNumberAttr(attrs.lastModified)
   );
 }
 
@@ -159,6 +181,12 @@ function isValidStoredAssetMention(mention: Record<string, unknown>): boolean {
   return mention.type === 'asset' && isStringAttr(mention.id);
 }
 
+function isValidStoredLocalFileMention(
+  mention: Record<string, unknown>,
+): boolean {
+  return mention.type === 'file' && isValidLocalFileMentionAttrs(mention);
+}
+
 function isValidStoredRecordMention(mention: Record<string, unknown>): boolean {
   return (
     mention.type === 'record' &&
@@ -178,6 +206,7 @@ export function isValidStoredMention(mention: unknown): boolean {
     isValidStoredUserMention(mention) ||
     isValidStoredFieldMention(mention) ||
     isValidStoredAssetMention(mention) ||
+    isValidStoredLocalFileMention(mention) ||
     isValidStoredRecordMention(mention) ||
     isValidStoredModelMention(mention)
   );

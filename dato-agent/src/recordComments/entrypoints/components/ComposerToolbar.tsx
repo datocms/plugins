@@ -3,6 +3,7 @@ import { cn } from '@/utils/cn';
 import {
   AssetMentionIcon,
   FieldMentionIcon,
+  FileUploadIcon,
   ModelMentionIcon,
   RecordMentionIcon,
   SendIcon,
@@ -16,6 +17,7 @@ type ComposerToolbarProps = {
   onFieldClick: () => void;
   onRecordClick: () => void;
   onAssetClick: () => void;
+  onFileClick: () => void;
   onModelClick: () => void;
   onSendClick: () => void;
   isSendDisabled: boolean;
@@ -32,6 +34,7 @@ const UserIcon = <UserMentionIcon />;
 const FieldIcon = <FieldMentionIcon />;
 const RecordIcon = <RecordMentionIcon />;
 const AssetIcon = <AssetMentionIcon />;
+const FileIcon = <FileUploadIcon />;
 const ModelIcon = <ModelMentionIcon />;
 const SendIconElement = <SendIcon />;
 const StopIconElement = <StopIcon />;
@@ -41,6 +44,7 @@ const ComposerToolbar = ({
   onFieldClick,
   onRecordClick,
   onAssetClick,
+  onFileClick,
   onModelClick,
   onSendClick,
   isSendDisabled,
@@ -97,6 +101,15 @@ const ComposerToolbar = ({
               : 'Asset mentions unavailable - no upload permissions'
           }
           buttonClassName={cn(styles.toolbarButton, styles.toolbarButtonAsset)}
+        />
+
+        <ToolbarButton
+          icon={FileIcon}
+          tooltipText="File from computer"
+          onClick={onFileClick}
+          ariaLabel="Upload files from computer"
+          buttonClassName={cn(styles.toolbarButton, styles.toolbarButtonAsset)}
+          disabled={disabled}
         />
 
         <ToolbarButton

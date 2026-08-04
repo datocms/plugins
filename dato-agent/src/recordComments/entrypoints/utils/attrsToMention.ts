@@ -7,6 +7,7 @@ import {
 import {
   isValidAssetMentionAttrs,
   isValidFieldMentionAttrs,
+  isValidLocalFileMentionAttrs,
   isValidModelMentionAttrs,
   isValidRecordMentionAttrs,
   isValidUserMentionAttrs,
@@ -61,6 +62,20 @@ export function attrsToMention(
         url: attrs.url,
         thumbnailUrl: attrs.thumbnailUrl,
         mimeType: attrs.mimeType,
+      };
+
+    case 'file':
+      if (!isValidLocalFileMentionAttrs(attrs)) {
+        logWarn('Invalid local file mention attrs', { attrs });
+        return null;
+      }
+      return {
+        type: 'file',
+        id: attrs.id,
+        filename: attrs.filename,
+        mimeType: attrs.mimeType,
+        size: attrs.size,
+        lastModified: attrs.lastModified,
       };
 
     case 'record':

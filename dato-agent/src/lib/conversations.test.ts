@@ -355,6 +355,319 @@ describe('conversation persistence', () => {
     );
   });
 
+  it('round-trips and independently clones full receipt mention metadata', () => {
+    const storage = new MemoryStorage();
+    const store = createConversationStore(baseContext, storage);
+    const source: Conversation = {
+      ...conversation('rich-references', '2026-07-28T10:00:00.000Z'),
+      messages: [
+        {
+          id: 'assistant-message',
+          role: 'assistant',
+          text: 'Here are the references.',
+          createdAt: '2026-07-28T10:00:00.000Z',
+          recordResults: [
+            {
+              id: 'records',
+              records: [
+                {
+                  itemId: 'homepage',
+                  itemTypeId: 'page',
+                  title: 'Homepage',
+                  mention: {
+                    type: 'record',
+                    id: 'homepage',
+                    title: 'Homepage',
+                    modelId: 'page',
+                    modelApiKey: 'page',
+                    modelName: 'Page',
+                    modelEmoji: '📄',
+                    thumbnailUrl:
+                      'https://www.datocms-assets.com/1/home.jpg?w=48',
+                    isSingleton: true,
+                  },
+                },
+              ],
+            },
+          ],
+          fieldResults: [
+            {
+              id: 'fields',
+              fields: [
+                {
+                  fieldPath: 'title',
+                  title: 'Title',
+                  locale: 'en',
+                  mention: {
+                    type: 'field',
+                    apiKey: 'title',
+                    label: 'Title',
+                    localized: true,
+                    fieldPath: 'title',
+                    locale: 'en',
+                    fieldType: 'string',
+                  },
+                },
+              ],
+            },
+          ],
+          assetResults: [
+            {
+              id: 'assets',
+              assets: [
+                {
+                  uploadId: 'hero',
+                  title: 'hero.jpg',
+                  mention: {
+                    type: 'asset',
+                    id: 'hero',
+                    filename: 'hero.jpg',
+                    url: 'https://www.datocms-assets.com/1/hero.jpg',
+                    thumbnailUrl:
+                      'https://www.datocms-assets.com/1/hero.jpg?w=300',
+                    mimeType: 'image/jpeg',
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const saved = store.save(source);
+    const savedMessage = saved.messages[0];
+    expect(savedMessage?.recordResults?.[0]?.records[0]?.mention).toEqual(
+      source.messages[0]?.recordResults?.[0]?.records[0]?.mention,
+    );
+    expect(savedMessage?.fieldResults?.[0]?.fields[0]?.mention).toEqual(
+      source.messages[0]?.fieldResults?.[0]?.fields[0]?.mention,
+    );
+    expect(savedMessage?.assetResults?.[0]?.assets[0]?.mention).toEqual(
+      source.messages[0]?.assetResults?.[0]?.assets[0]?.mention,
+    );
+
+    const sourceRecordMention =
+      source.messages[0]?.recordResults?.[0]?.records[0]?.mention;
+    const sourceFieldMention =
+      source.messages[0]?.fieldResults?.[0]?.fields[0]?.mention;
+    const sourceAssetMention =
+      source.messages[0]?.assetResults?.[0]?.assets[0]?.mention;
+    if (sourceRecordMention) sourceRecordMention.title = 'Changed source';
+    if (sourceFieldMention) sourceFieldMention.label = 'Changed source';
+    if (sourceAssetMention) sourceAssetMention.filename = 'changed-source.jpg';
+
+    const firstRead = store.get(source.id);
+    const secondRead = store.get(source.id);
+    const firstRecordMention =
+      firstRead?.messages[0]?.recordResults?.[0]?.records[0]?.mention;
+    const secondRecordMention =
+      secondRead?.messages[0]?.recordResults?.[0]?.records[0]?.mention;
+    const firstFieldMention =
+      firstRead?.messages[0]?.fieldResults?.[0]?.fields[0]?.mention;
+    const secondFieldMention =
+      secondRead?.messages[0]?.fieldResults?.[0]?.fields[0]?.mention;
+    const firstAssetMention =
+      firstRead?.messages[0]?.assetResults?.[0]?.assets[0]?.mention;
+    const secondAssetMention =
+      secondRead?.messages[0]?.assetResults?.[0]?.assets[0]?.mention;
+
+    expect(firstRecordMention).toMatchObject({ title: 'Homepage' });
+    expect(firstFieldMention).toMatchObject({ label: 'Title' });
+    expect(firstAssetMention).toMatchObject({ filename: 'hero.jpg' });
+    expect(firstRecordMention).not.toBe(secondRecordMention);
+    expect(firstFieldMention).not.toBe(secondFieldMention);
+    expect(firstAssetMention).not.toBe(secondAssetMention);
+  });
+
+  it('discards receipt mention metadata with mismatched identities or field locales', () => {
+    const storage = new MemoryStorage();
+    const store = createConversationStore(baseContext, storage);
+    const saved = store.save({
+      ...conversation('mismatched-references', '2026-07-28T10:00:00.000Z'),
+      messages: [
+        {
+          id: 'assistant-message',
+          role: 'assistant',
+          text: 'References',
+          createdAt: '2026-07-28T10:00:00.000Z',
+          recordResults: [
+            {
+              id: 'records',
+              records: [
+                {
+                  itemId: 'item-1',
+                  itemTypeId: 'article',
+                  title: 'Item one',
+                  mention: {
+                    type: 'record',
+                    id: 'another-item',
+                    title: 'Another item',
+                    modelId: 'article',
+                    modelApiKey: 'article',
+                    modelName: 'Article',
+                    modelEmoji: null,
+                    thumbnailUrl: null,
+                  },
+                },
+                {
+                  itemId: 'item-2',
+                  itemTypeId: 'article',
+                  title: 'Item two',
+                  mention: {
+                    type: 'record',
+                    id: 'item-2',
+                    title: 'Item two',
+                    modelId: 'page',
+                    modelApiKey: 'page',
+                    modelName: 'Page',
+                    modelEmoji: null,
+                    thumbnailUrl: null,
+                  },
+                },
+              ],
+            },
+          ],
+          fieldResults: [
+            {
+              id: 'fields',
+              fields: [
+                {
+                  fieldPath: 'title',
+                  title: 'Title',
+                  locale: 'en',
+                  mention: {
+                    type: 'field',
+                    apiKey: 'title',
+                    label: 'Titolo',
+                    localized: true,
+                    fieldPath: 'title',
+                    locale: 'it',
+                    fieldType: 'string',
+                  },
+                },
+              ],
+            },
+          ],
+          assetResults: [
+            {
+              id: 'assets',
+              assets: [
+                {
+                  uploadId: 'upload-1',
+                  title: 'one.jpg',
+                  mention: {
+                    type: 'asset',
+                    id: 'upload-2',
+                    filename: 'two.jpg',
+                    url: 'https://www.datocms-assets.com/1/two.jpg',
+                    thumbnailUrl: null,
+                    mimeType: 'image/jpeg',
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    const message = saved.messages[0];
+    expect(message?.recordResults?.[0]?.records).toEqual([
+      {
+        itemId: 'item-1',
+        itemTypeId: 'article',
+        title: 'Item one',
+      },
+      {
+        itemId: 'item-2',
+        itemTypeId: 'article',
+        title: 'Item two',
+      },
+    ]);
+    expect(message?.fieldResults?.[0]?.fields).toEqual([
+      { fieldPath: 'title', title: 'Title', locale: 'en' },
+    ]);
+    expect(message?.assetResults?.[0]?.assets).toEqual([
+      { uploadId: 'upload-1', title: 'one.jpg' },
+    ]);
+  });
+
+  it('continues to restore and resave legacy receipts without mention metadata', () => {
+    const storage = new MemoryStorage();
+    const store = createConversationStore(baseContext, storage);
+    const legacy = {
+      ...conversation('legacy-references', '2026-07-28T10:00:00.000Z'),
+      messages: [
+        {
+          id: 'assistant-message',
+          role: 'assistant' as const,
+          text: 'Legacy references',
+          createdAt: '2026-07-28T10:00:00.000Z',
+          recordResults: [
+            {
+              id: 'records',
+              records: [
+                {
+                  itemId: 'item-1',
+                  itemTypeId: 'article',
+                  title: 'Legacy article',
+                },
+              ],
+            },
+          ],
+          fieldResults: [
+            {
+              id: 'fields',
+              fields: [{ fieldPath: 'title', title: 'Title', locale: 'en' }],
+            },
+          ],
+          assetResults: [
+            {
+              id: 'assets',
+              assets: [
+                { uploadId: 'upload-1', title: 'legacy.jpg', deleted: true },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    storage.setItem(
+      store.key,
+      JSON.stringify({ version: 1, conversations: [legacy] }),
+    );
+
+    const restored = store.get(legacy.id);
+    expect(restored?.messages[0]).toMatchObject(legacy.messages[0]);
+    expect(
+      restored?.messages[0]?.recordResults?.[0]?.records[0],
+    ).not.toHaveProperty('mention');
+    expect(
+      restored?.messages[0]?.fieldResults?.[0]?.fields[0],
+    ).not.toHaveProperty('mention');
+    expect(
+      restored?.messages[0]?.assetResults?.[0]?.assets[0],
+    ).not.toHaveProperty('mention');
+
+    if (!restored) throw new Error('Expected the legacy conversation');
+    store.save(restored);
+    const persisted = JSON.parse(storage.getItem(store.key) ?? '{}') as {
+      version?: number;
+      conversations?: Conversation[];
+    };
+    expect(persisted.version).toBe(1);
+    expect(
+      persisted.conversations?.[0]?.messages[0]?.recordResults?.[0]?.records[0],
+    ).not.toHaveProperty('mention');
+    expect(
+      persisted.conversations?.[0]?.messages[0]?.fieldResults?.[0]?.fields[0],
+    ).not.toHaveProperty('mention');
+    expect(
+      persisted.conversations?.[0]?.messages[0]?.assetResults?.[0]?.assets[0],
+    ).not.toHaveProperty('mention');
+  });
+
   it('caps record receipt groups and records per group', () => {
     const storage = new MemoryStorage();
     const store = createConversationStore(baseContext, storage);

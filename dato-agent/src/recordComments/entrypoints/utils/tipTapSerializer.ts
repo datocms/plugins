@@ -14,6 +14,7 @@ const MENTION_NODE_TYPES = {
   user: 'userMention',
   field: 'fieldMention',
   asset: 'assetMention',
+  file: 'fileMention',
   record: 'recordMention',
   model: 'modelMention',
 } as const;
@@ -25,6 +26,7 @@ const NODE_TYPE_TO_MENTION_TYPE: Record<NodeTypeValue, MentionType> = {
   userMention: 'user',
   fieldMention: 'field',
   assetMention: 'asset',
+  fileMention: 'file',
   recordMention: 'record',
   modelMention: 'model',
 };
@@ -59,6 +61,8 @@ export function mentionToStoredMention(mention: Mention): StoredMention {
       };
     case 'asset':
       return { type: 'asset', id: mention.id };
+    case 'file':
+      return { ...mention };
     case 'record':
       return { type: 'record', id: mention.id, modelId: mention.modelId };
     case 'model':
@@ -94,6 +98,32 @@ function attrsToStoredRecordMention(
   return { type: 'record', id: attrs.id, modelId: attrs.modelId };
 }
 
+function attrsToStoredLocalFileMention(
+  attrs: Record<string, unknown>,
+): StoredMention | null {
+  if (
+    typeof attrs.id !== 'string' ||
+    typeof attrs.filename !== 'string' ||
+    typeof attrs.mimeType !== 'string' ||
+    typeof attrs.size !== 'number' ||
+    !Number.isFinite(attrs.size) ||
+    attrs.size < 0 ||
+    typeof attrs.lastModified !== 'number' ||
+    !Number.isFinite(attrs.lastModified) ||
+    attrs.lastModified < 0
+  ) {
+    return null;
+  }
+  return {
+    type: 'file',
+    id: attrs.id,
+    filename: attrs.filename,
+    mimeType: attrs.mimeType,
+    size: attrs.size,
+    lastModified: attrs.lastModified,
+  };
+}
+
 /**
  * Converts TipTap node attrs directly to StoredMention for persistence.
  */
@@ -112,6 +142,8 @@ function nodeAttrsToStoredMention(
     case 'asset':
       if (typeof attrs.id !== 'string') return null;
       return { type: 'asset', id: attrs.id };
+    case 'file':
+      return attrsToStoredLocalFileMention(attrs);
     case 'record':
       return attrsToStoredRecordMention(attrs);
     case 'model':
