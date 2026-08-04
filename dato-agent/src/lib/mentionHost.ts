@@ -1,3 +1,4 @@
+import { SchemaRepository } from '@datocms/cma-client';
 import { buildClient, type Client } from '@datocms/cma-client-browser';
 import type {
   Field,
@@ -367,6 +368,101 @@ function createMentionClient(ctx: MentionCtx): Client | null {
   });
 }
 
+type SchemaItemType = Awaited<ReturnType<SchemaRepository['getItemTypeById']>>;
+type SchemaField = Awaited<
+  ReturnType<SchemaRepository['getItemTypeFields']>
+>[number];
+
+function sdkFieldRelationship(field: { id: string } | null | undefined) {
+  return {
+    data: field ? { id: field.id, type: 'field' as const } : null,
+  };
+}
+
+function sdkItemTypeFromSchema(itemType: SchemaItemType): ItemType {
+  return {
+    id: itemType.id,
+    type: 'item_type',
+    attributes: {
+      api_key: itemType.api_key,
+      collection_appearance: itemType.collection_appearance,
+      modular_block: itemType.modular_block,
+      name: itemType.name,
+      singleton: itemType.singleton,
+    },
+    relationships: {
+      image_preview_field: sdkFieldRelationship(itemType.image_preview_field),
+      presentation_image_field: sdkFieldRelationship(
+        itemType.presentation_image_field,
+      ),
+      presentation_title_field: sdkFieldRelationship(
+        itemType.presentation_title_field,
+      ),
+      title_field: sdkFieldRelationship(itemType.title_field),
+    },
+  } as unknown as ItemType;
+}
+
+function sdkFieldFromSchema(field: SchemaField, itemTypeId: string): Field {
+  return {
+    id: field.id,
+    type: 'field',
+    attributes: {
+      api_key: field.api_key,
+      field_type: field.field_type,
+      label: field.label,
+      localized: field.localized,
+      position: field.position,
+    },
+    relationships: {
+      item_type: {
+        data: { id: itemTypeId, type: 'item_type' },
+      },
+    },
+  } as unknown as Field;
+}
+
+type LoadedRecordSchema = {
+  fields: Field[];
+  itemType: ItemType;
+  model: ModelInfo;
+};
+
+type RecordPresentation = {
+  fields: Field[];
+  itemType: ItemType | undefined;
+  model: ModelInfo;
+};
+
+async function recordPresentation({
+  itemType,
+  loadFields,
+  loadMissingSchema,
+  model,
+  modelId,
+}: {
+  itemType: ItemType | undefined;
+  loadFields: (modelId: string) => Promise<Field[]>;
+  loadMissingSchema: (modelId: string) => Promise<LoadedRecordSchema>;
+  model: ModelInfo;
+  modelId: string;
+}): Promise<RecordPresentation> {
+  if (modelId === 'unknown') return { fields: [], itemType, model };
+  if (!itemType) {
+    try {
+      return await loadMissingSchema(modelId);
+    } catch {
+      return { fields: [], itemType, model };
+    }
+  }
+
+  try {
+    return { fields: await loadFields(modelId), itemType, model };
+  } catch {
+    return { fields: [], itemType, model };
+  }
+}
+
 function normalizedAssetFilename(
   value: string | undefined,
 ): string | undefined {
@@ -642,8 +738,14 @@ export function createAgentMentionHost(
   const recordModels = readableModels(ctx, projectModels);
   const modelsById = new Map(projectModels.map((model) => [model.id, model]));
   const client = createMentionClient(ctx);
+  const schemaRepository = client
+    ? new SchemaRepository(
+        client as ConstructorParameters<typeof SchemaRepository>[0],
+      )
+    : undefined;
   const assetCreationAllowed = canCreateAssets(ctx);
   const fieldsByModel = new Map<string, Promise<Field[]>>();
+  const missingRecordSchemas = new Map<string, Promise<LoadedRecordSchema>>();
   const resolvedRecords = new Map<string, Promise<RecordMention>>();
   const resolvedAssets = new Map<string, Promise<AssetMention>>();
   const initialCurrentUser = currentUserInfo(ctx);
@@ -665,6 +767,41 @@ export function createAgentMentionHost(
     return promise;
   };
 
+  const loadMissingRecordSchema = (modelId: string) => {
+    const cached = missingRecordSchemas.get(modelId);
+    if (cached) return cached;
+    if (!schemaRepository) {
+      return Promise.reject(new Error('Record schema loading is unavailable.'));
+    }
+
+    const promise = schemaRepository
+      .getItemTypeById(modelId)
+      .then(async (schemaItemType) => {
+        const schemaFields =
+          await schemaRepository.getItemTypeFields(schemaItemType);
+        const loaded = {
+          itemType: sdkItemTypeFromSchema(schemaItemType),
+          fields: schemaFields.map((field) =>
+            sdkFieldFromSchema(field, modelId),
+          ),
+          model: {
+            id: schemaItemType.id,
+            apiKey: schemaItemType.api_key,
+            name: schemaItemType.name,
+            isBlockModel: schemaItemType.modular_block,
+          },
+        } satisfies LoadedRecordSchema;
+        modelsById.set(modelId, loaded.model);
+        return loaded;
+      })
+      .catch((error: unknown) => {
+        missingRecordSchemas.delete(modelId);
+        throw error;
+      });
+    missingRecordSchemas.set(modelId, promise);
+    return promise;
+  };
+
   const resolveRecord = async (input: {
     itemId: string;
     itemTypeId?: string;
@@ -680,26 +817,25 @@ export function createAgentMentionHost(
       .then(async (record) => {
         const actualModelId =
           cmaRecordModelId(record) ?? input.itemTypeId ?? 'unknown';
-        const model = modelsById.get(actualModelId) ?? {
+        const fallbackModel = modelsById.get(actualModelId) ?? {
           id: actualModelId,
           apiKey: '',
           name: 'Record',
           isBlockModel: false,
         };
-        let fields: Field[] = [];
-        if (actualModelId !== 'unknown') {
-          try {
-            fields = await loadRecordFields(actualModelId);
-          } catch {
-            // Keep the record clickable even if its presentation cannot load.
-          }
-        }
+        const presentation = await recordPresentation({
+          itemType: ctx.itemTypes[actualModelId],
+          loadFields: loadRecordFields,
+          loadMissingSchema: loadMissingRecordSchema,
+          model: fallbackModel,
+          modelId: actualModelId,
+        });
         const mention = await createRecordMention({
           client,
-          fields,
-          itemType: ctx.itemTypes[actualModelId],
+          fields: presentation.fields,
+          itemType: presentation.itemType,
           mainLocale: ctx.site.attributes.locales[0] ?? 'en',
-          model,
+          model: presentation.model,
           record: {
             id: input.itemId,
             values: objectValue(record),

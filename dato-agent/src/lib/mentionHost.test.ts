@@ -8,11 +8,15 @@ const cmaMocks = vi.hoisted(() => ({
   createUpload: vi.fn(),
   findItem: vi.fn(),
   findUpload: vi.fn(),
+  rawListFields: vi.fn(),
+  rawListItemTypes: vi.fn(),
 }));
 
 vi.mock('@datocms/cma-client-browser', () => ({
   buildClient: vi.fn(() => ({
+    fields: { rawList: cmaMocks.rawListFields },
     items: { find: cmaMocks.findItem },
+    itemTypes: { rawList: cmaMocks.rawListItemTypes },
     uploads: {
       createFromFileOrBlob: cmaMocks.createUpload,
       find: cmaMocks.findUpload,
@@ -223,6 +227,101 @@ describe('createAgentMentionHost', () => {
 
     await host.resolveRecord({ itemId: 'record-1' });
     expect(cmaMocks.findItem).toHaveBeenCalledTimes(1);
+  });
+
+  it('loads missing model presentation metadata before rendering a record reference', async () => {
+    const itemId = 'HTC4ys4MRiG_gJcyrHMigA';
+    cmaMocks.findItem.mockResolvedValue({
+      id: itemId,
+      item_type: { id: 'product', type: 'item_type' },
+      name: 'Laced Skirt',
+      image: { upload_id: 'product-image' },
+    });
+    cmaMocks.rawListItemTypes.mockResolvedValue({
+      data: [
+        {
+          id: 'product',
+          type: 'item_type',
+          attributes: {
+            api_key: 'product',
+            collection_appearance: 'table',
+            modular_block: false,
+            name: '📦 Product',
+            singleton: false,
+          },
+          relationships: {
+            image_preview_field: { data: null },
+            presentation_image_field: {
+              data: { id: 'image-field', type: 'field' },
+            },
+            presentation_title_field: {
+              data: { id: 'name-field', type: 'field' },
+            },
+            title_field: { data: null },
+          },
+        },
+      ],
+    });
+    cmaMocks.rawListFields.mockResolvedValue({
+      data: [
+        {
+          id: 'name-field',
+          type: 'field',
+          attributes: {
+            api_key: 'name',
+            field_type: 'string',
+            label: 'Name',
+            localized: false,
+            position: 1,
+          },
+          relationships: {
+            item_type: { data: { id: 'product', type: 'item_type' } },
+          },
+        },
+        {
+          id: 'image-field',
+          type: 'field',
+          attributes: {
+            api_key: 'image',
+            field_type: 'file',
+            label: 'Image',
+            localized: false,
+            position: 2,
+          },
+          relationships: {
+            item_type: { data: { id: 'product', type: 'item_type' } },
+          },
+        },
+      ],
+    });
+    cmaMocks.findUpload.mockResolvedValue({
+      id: 'product-image',
+      filename: 'laced-skirt.jpg',
+      mime_type: 'image/jpeg',
+      url: 'https://cdn.example/laced-skirt.jpg',
+    });
+    const loadItemTypeFields = vi.fn();
+    const host = createAgentMentionHost(
+      createContext({
+        itemTypes: {},
+        currentUserAccessToken: 'user-token',
+        cmaBaseUrl: 'https://site-api.datocms.com',
+        loadItemTypeFields,
+      }),
+    );
+
+    await expect(host.resolveRecord({ itemId })).resolves.toMatchObject({
+      id: itemId,
+      title: 'Laced Skirt',
+      modelId: 'product',
+      modelApiKey: 'product',
+      modelName: '📦 Product',
+      thumbnailUrl:
+        'https://cdn.example/laced-skirt.jpg?w=48&fit=max&auto=format&dpr=2&q=80',
+    });
+    expect(cmaMocks.rawListItemTypes).toHaveBeenCalledOnce();
+    expect(cmaMocks.rawListFields).toHaveBeenCalledWith('product');
+    expect(loadItemTypeFields).not.toHaveBeenCalled();
   });
 
   it('matches Record Comments permissions for assets, schemas, and readable records', () => {

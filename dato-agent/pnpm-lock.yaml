@@ -11,6 +11,9 @@ importers:
       '@anthropic-ai/sdk':
         specifier: ^0.115.0
         version: 0.115.0(zod@4.4.3)
+      '@datocms/cma-client':
+        specifier: ^5.6.0
+        version: 5.6.0
       '@datocms/cma-client-browser':
         specifier: ^5.6.0
         version: 5.6.0
