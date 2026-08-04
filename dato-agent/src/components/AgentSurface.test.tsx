@@ -10,6 +10,7 @@ import userEvent from '@testing-library/user-event';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MAX_CONVERSATION_MESSAGE_CHARACTERS } from '../lib/conversations';
+import type { AgentMentionHost } from '../lib/mentionHost';
 import {
   type AgentConnectionViewModel,
   type AgentConversationSummaryViewModel,
@@ -116,13 +117,22 @@ describe('AgentSurface', () => {
     expect(sendButton).toHaveAttribute('title', 'Send');
     expect(sendButton).not.toHaveTextContent('Send');
     expect(sendButton.querySelector('svg')).not.toBeNull();
-    fireEvent.change(composer, { target: { value: 'Describe this project' } });
+    fireEvent.paste(composer, {
+      clipboardData: {
+        getData: () => 'Describe this project',
+        types: ['text/plain'],
+      },
+    });
     fireEvent.keyDown(composer, { key: 'Enter', shiftKey: true });
     expect(onSubmit).not.toHaveBeenCalled();
 
     fireEvent.keyDown(composer, { key: 'Enter' });
-    expect(onSubmit).toHaveBeenCalledWith('Describe this project');
-    expect(composer).toHaveValue('');
+    expect(onSubmit).toHaveBeenCalledWith({
+      displayText: 'Describe this project',
+      providerText: 'Describe this project',
+      segments: [{ type: 'text', content: 'Describe this project' }],
+    });
+    expect(composer).toHaveTextContent('');
   });
 
   it('shows browser persistence failures next to the composer', () => {
@@ -166,7 +176,7 @@ describe('AgentSurface', () => {
 
     expect(
       screen.getByRole('textbox', { name: 'Message the DatoCMS agent' }),
-    ).toBeDisabled();
+    ).toHaveAttribute('aria-disabled', 'true');
     expect(screen.getByText('Working…')).toBeVisible();
     const stopButton = screen.getByRole('button', { name: 'Stop' });
     expect(stopButton).toHaveAttribute('title', 'Stop');
@@ -523,6 +533,189 @@ describe('AgentSurface', () => {
     );
   });
 
+  it('opens record, field, asset, model, and user mentions directly from user messages', async () => {
+    const user = userEvent.setup();
+    const onOpenRecord = vi.fn();
+    const onOpenField = vi.fn();
+    const onOpenAsset = vi.fn();
+    const openModel = vi.fn();
+    const openUser = vi.fn();
+    const mentionHost = {
+      currentUser: {
+        id: 'current-user',
+        name: 'Editor',
+        email: 'editor@example.com',
+        avatarUrl: null,
+        userType: 'user',
+      },
+      projectModels: [],
+      recordModels: [],
+      canMentionFields: true,
+      canMentionAssets: true,
+      canMentionModels: true,
+      loadProjectUsers: async () => [],
+      loadModelFields: async () => [],
+      selectAsset: async () => undefined,
+      selectRecord: async () => undefined,
+      openModel,
+      openUser,
+    } satisfies AgentMentionHost;
+
+    render(
+      <AgentSurface
+        connection={connected}
+        entries={[
+          {
+            id: 'user-with-mentions',
+            kind: 'message',
+            role: 'user',
+            content: 'Open Homepage #title Hero.jpg Page @Ada',
+            segments: [
+              { type: 'text', content: 'Open ' },
+              {
+                type: 'mention',
+                mention: {
+                  type: 'record',
+                  id: 'record-1',
+                  title: 'Homepage',
+                  modelId: 'model-1',
+                  modelApiKey: 'page',
+                  modelName: 'Page',
+                  modelEmoji: null,
+                  thumbnailUrl: null,
+                },
+              },
+              { type: 'text', content: ' ' },
+              {
+                type: 'mention',
+                mention: {
+                  type: 'field',
+                  apiKey: 'title',
+                  label: 'Title',
+                  localized: false,
+                  fieldPath: 'title',
+                },
+              },
+              { type: 'text', content: ' ' },
+              {
+                type: 'mention',
+                mention: {
+                  type: 'asset',
+                  id: 'upload-1',
+                  filename: 'Hero.jpg',
+                  url: '',
+                  thumbnailUrl: null,
+                  mimeType: 'image/jpeg',
+                },
+              },
+              { type: 'text', content: ' ' },
+              {
+                type: 'mention',
+                mention: {
+                  type: 'model',
+                  id: 'model-1',
+                  apiKey: 'page',
+                  name: 'Page',
+                  isBlockModel: false,
+                },
+              },
+              { type: 'text', content: ' ' },
+              {
+                type: 'mention',
+                mention: {
+                  type: 'user',
+                  id: 'user-1',
+                  name: 'Ada',
+                  email: 'ada@example.com',
+                  avatarUrl: null,
+                },
+              },
+            ],
+          },
+        ]}
+        mentionHost={mentionHost}
+        onOpenAsset={onOpenAsset}
+        onOpenField={onOpenField}
+        onOpenRecord={onOpenRecord}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Homepage' }));
+    expect(onOpenRecord).toHaveBeenCalledWith({
+      itemId: 'record-1',
+      itemTypeId: 'model-1',
+      title: 'Homepage',
+    });
+
+    await user.click(screen.getByRole('button', { name: /#title/i }));
+    expect(onOpenField).toHaveBeenCalledWith({
+      fieldPath: 'title',
+      title: 'Title',
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Hero.jpg' }));
+    expect(onOpenAsset).toHaveBeenCalledWith({
+      uploadId: 'upload-1',
+      title: 'Hero.jpg',
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Page' }));
+    expect(openModel).toHaveBeenCalledWith('model-1', false);
+
+    await user.click(screen.getByRole('button', { name: '@Ada' }));
+    expect(openUser).toHaveBeenCalledWith('user-1');
+  });
+
+  it('visibly disables inline mentions while the agent is working', async () => {
+    const user = userEvent.setup();
+    const onOpenRecord = vi.fn();
+
+    render(
+      <AgentSurface
+        connection={connected}
+        entries={[
+          {
+            id: 'user-mention-running',
+            kind: 'message',
+            role: 'user',
+            content: 'Open Homepage',
+            segments: [
+              { type: 'text', content: 'Open ' },
+              {
+                type: 'mention',
+                mention: {
+                  type: 'record',
+                  id: 'homepage',
+                  title: 'Homepage',
+                  modelId: 'page',
+                  modelApiKey: 'page',
+                  modelName: 'Page',
+                  modelEmoji: null,
+                  thumbnailUrl: null,
+                },
+              },
+            ],
+          },
+          {
+            id: 'working',
+            kind: 'activity',
+            phase: 'running',
+            activities: [],
+          },
+        ]}
+        isRunning
+        onOpenRecord={onOpenRecord}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    const mention = screen.getByRole('button', { name: 'Homepage' });
+    expect(mention).toBeDisabled();
+    await user.click(mention);
+    expect(onOpenRecord).not.toHaveBeenCalled();
+  });
+
   it('disables record results while the agent is still running', async () => {
     const user = userEvent.setup();
     const onOpenRecord = vi.fn();
@@ -543,7 +736,7 @@ describe('AgentSurface', () => {
       />,
     );
 
-    const openButton = screen.getByRole('button', { name: /Open record/i });
+    const openButton = screen.getByRole('button', { name: 'Open One' });
     expect(openButton).toBeDisabled();
     await user.click(openButton);
     expect(onOpenRecord).not.toHaveBeenCalled();
@@ -570,10 +763,10 @@ describe('AgentSurface', () => {
       'aria-busy',
       'true',
     );
-    expect(screen.getByRole('button', { name: /Open record/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Open One' })).toBeDisabled();
   });
 
-  it('hides a blank persisted assistant anchor without hiding its records', () => {
+  it('groups tool-only records into a Dato Agent author row', () => {
     render(
       <AgentSurface
         connection={connected}
@@ -596,10 +789,103 @@ describe('AgentSurface', () => {
       />,
     );
 
+    const agentTurn = screen.getByRole('article', { name: 'Dato agent' });
+    expect(within(agentTurn).getByText('Dato Agent')).toBeVisible();
+    expect(within(agentTurn).getByLabelText('Useful record')).toBeVisible();
+  });
+
+  it('keeps activity, references, approval, and response in one agent turn', () => {
+    const approval: UnsafeApprovalViewModel = {
+      id: 'approval-in-turn',
+      title: 'Publish Homepage',
+      description: 'This will publish the Homepage record.',
+      actionLabel: 'Publish',
+      status: 'pending',
+    };
+
+    render(
+      <AgentSurface
+        connection={connected}
+        entries={[
+          {
+            id: 'question',
+            kind: 'message',
+            role: 'user',
+            content: 'Publish the homepage',
+          },
+          {
+            id: 'activity-in-turn',
+            kind: 'activity',
+            phase: 'waiting',
+            activities: [
+              {
+                id: 'lookup',
+                label: 'Finding the Homepage',
+                status: 'success',
+              },
+            ],
+          },
+          {
+            id: 'record-in-turn',
+            kind: 'records',
+            title: 'Homepage',
+            records: [{ itemId: 'home', title: 'Homepage' }],
+          },
+          { id: 'approval-in-turn', kind: 'approval', approval },
+          {
+            id: 'response-in-turn',
+            kind: 'message',
+            role: 'assistant',
+            content: 'The Homepage is ready for approval.',
+          },
+        ]}
+        onApproveUnsafeAction={vi.fn()}
+        onOpenRecord={vi.fn()}
+        onRejectUnsafeAction={vi.fn()}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    const agentTurns = screen.getAllByRole('article', { name: 'Dato agent' });
+    expect(agentTurns).toHaveLength(1);
+    const agentTurn = agentTurns[0];
+    expect(within(agentTurn).getByText('Waiting for approval')).toBeVisible();
+    expect(within(agentTurn).getByLabelText('Homepage')).toBeVisible();
     expect(
-      screen.queryByRole('article', { name: 'Dato agent' }),
-    ).not.toBeInTheDocument();
-    expect(screen.getByLabelText('Useful record')).toBeVisible();
+      within(agentTurn).getByRole('group', { name: 'Publish Homepage' }),
+    ).toBeVisible();
+    expect(
+      within(agentTurn).getByText('The Homepage is ready for approval.'),
+    ).toBeVisible();
+  });
+
+  it('starts a fresh Dato Agent row after each user message', () => {
+    render(
+      <AgentSurface
+        connection={connected}
+        entries={[
+          { id: 'user-1', kind: 'message', role: 'user', content: 'First' },
+          {
+            id: 'agent-1',
+            kind: 'message',
+            role: 'assistant',
+            content: 'First response',
+          },
+          { id: 'user-2', kind: 'message', role: 'user', content: 'Second' },
+          {
+            id: 'agent-2',
+            kind: 'message',
+            role: 'assistant',
+            content: 'Second response',
+          },
+        ]}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByRole('article', { name: 'Dato agent' })).toHaveLength(
+      2,
+    );
   });
 
   it('shows a compact navigation error with its record results', () => {
@@ -733,7 +1019,7 @@ describe('AgentSurface', () => {
       />,
     );
 
-    expect(screen.getByRole('button', { name: /Open record/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Open Record' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Show Title' })).toBeDisabled();
     expect(
       screen.getByRole('button', { name: 'Open Hero.jpg' }),

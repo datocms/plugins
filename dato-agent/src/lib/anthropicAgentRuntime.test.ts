@@ -24,6 +24,8 @@ import {
   MAX_DISTINCT_MODEL_SCHEMAS_PER_TURN,
   MAX_PRESENTED_ASSETS,
   MAX_PRESENTED_FIELDS,
+  MAX_PRESENTED_MODELS,
+  MAX_PRESENTED_USERS,
   MAX_TOOL_RESULT_CHARACTERS_PER_TURN,
   normalizeAgentHistory,
 } from './agentRuntime';
@@ -625,6 +627,8 @@ describe('AnthropicAgentRuntime', () => {
     );
     expect(toolNames).not.toContain('present_fields');
     expect(toolNames).not.toContain('read_current_record_live_form_state');
+    expect(toolNames).not.toContain('present_models');
+    expect(toolNames).not.toContain('present_users');
     expect(toolNames).toContain('present_assets');
   });
 
@@ -1177,6 +1181,125 @@ describe('AnthropicAgentRuntime', () => {
         'Current form values read',
         'Adding asset links',
         'Asset links ready',
+      ]),
+    );
+  });
+
+  it('advertises and executes model and user references through strict host callbacks', async () => {
+    const anthropic = new QueueAnthropicClient([
+      message(
+        'msg-model-user-presentation',
+        [
+          toolUse('toolu-models', 'present_models', {
+            title: 'Relevant models',
+            models: [
+              { model_id: 'model-1', label: 'Article' },
+              { model_id: 'model-1', label: 'Duplicate' },
+              { model_id: 'block-1', label: null },
+            ],
+          }),
+          toolUse('toolu-users', 'present_users', {
+            title: 'Editors',
+            users: [
+              { user_id: 'user-1', label: 'Ada' },
+              { user_id: 'user-1', label: 'Duplicate' },
+              { user_id: 'sso-1', label: null },
+            ],
+          }),
+        ],
+        'tool_use',
+      ),
+      message('msg-model-user-presentation-done', [textBlock('Ready.')]),
+    ]);
+    const mcp = mcpClientWith();
+    const presentModels = vi.fn().mockResolvedValue({ presented: true });
+    const presentUsers = vi.fn().mockResolvedValue({ presented: true });
+    const runtime = runtimeWith(anthropic, mcp.client, {
+      navigation: {
+        openRecord: vi.fn(),
+        showRecords: vi.fn(),
+        presentRecords: vi.fn(),
+        presentFields: vi.fn(),
+        readCurrentRecordLiveFormState: vi.fn(),
+        presentAssets: vi.fn(),
+        presentModels,
+        presentUsers,
+      },
+    });
+
+    const { events, result } = await drain(
+      runtime.streamTurn({ message: 'Show the relevant models and editors.' }),
+    );
+
+    expect(presentModels).toHaveBeenCalledWith({
+      title: 'Relevant models',
+      models: [
+        { modelId: 'model-1', label: 'Article' },
+        { modelId: 'block-1' },
+      ],
+    });
+    expect(presentUsers).toHaveBeenCalledWith({
+      title: 'Editors',
+      users: [{ userId: 'user-1', label: 'Ada' }, { userId: 'sso-1' }],
+    });
+    expect(mcp.callTool).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      status: 'completed',
+      responseId: 'msg-model-user-presentation-done',
+      text: 'Ready.',
+    });
+    expect(
+      events
+        .filter(
+          (event): event is Extract<AgentRuntimeEvent, { type: 'activity' }> =>
+            event.type === 'activity',
+        )
+        .map((event) => event.activity.label),
+    ).toEqual(
+      expect.arrayContaining([
+        'Adding model references',
+        'Model references ready',
+        'Adding user references',
+        'User references ready',
+      ]),
+    );
+
+    expect(anthropic.requests[0]?.tools).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'present_models',
+          input_schema: expect.objectContaining({
+            properties: expect.objectContaining({
+              models: expect.objectContaining({
+                maxItems: MAX_PRESENTED_MODELS,
+              }),
+            }),
+          }),
+        }),
+        expect.objectContaining({
+          name: 'present_users',
+          input_schema: expect.objectContaining({
+            properties: expect.objectContaining({
+              users: expect.objectContaining({ maxItems: MAX_PRESENTED_USERS }),
+            }),
+          }),
+        }),
+      ]),
+    );
+    expect(lastMessageContent(anthropic.requests[1])).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'tool_result',
+          tool_use_id: 'toolu-models',
+          is_error: false,
+          content: JSON.stringify({ ok: true, presented: true }),
+        }),
+        expect.objectContaining({
+          type: 'tool_result',
+          tool_use_id: 'toolu-users',
+          is_error: false,
+          content: JSON.stringify({ ok: true, presented: true }),
+        }),
       ]),
     );
   });

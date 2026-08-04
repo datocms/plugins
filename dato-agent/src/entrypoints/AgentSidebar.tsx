@@ -21,6 +21,7 @@ import {
   readCurrentRecordFormState,
 } from '../lib/hostContext';
 import { resolveFieldsWithinDeadline } from '../lib/hostContextDeadline';
+import { createAgentMentionHost } from '../lib/mentionHost';
 import { createSidebarNavigator } from '../lib/navigation';
 import { usePersistedSidebarWidth } from '../lib/persistedWidth';
 import AgentFrame, { type AgentFrameProps } from './AgentFrame';
@@ -460,6 +461,9 @@ export default function AgentSidebar({ ctx }: Props) {
     ctx.currentUser.id,
     scopeId,
   ].join(':');
+  const mentionHost = createAgentMentionHost(ctx, {
+    currentModelId: ctx.itemType.id,
+  });
 
   return (
     <Canvas ctx={ctx} noAutoResizer>
@@ -480,6 +484,7 @@ export default function AgentSidebar({ ctx }: Props) {
         }
         onMigrationAttempted={onMigrationAttempted}
         navigator={createSidebarNavigator(ctx)}
+        mentionHost={mentionHost}
         config={normalizeConfig(ctx.plugin.attributes.parameters)}
         loadHostContext={loadHostContext}
         prepareCurrentFieldReferences={prepareCurrentFieldReferences}

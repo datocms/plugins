@@ -710,6 +710,50 @@ describe('conversation persistence', () => {
     expect(saved.title.length).toBeLessThanOrEqual(8);
   });
 
+  it('bounds persisted and restored message segments with the message limit', () => {
+    const storage = new MemoryStorage();
+    const store = createConversationStore(
+      { ...baseContext, scope: { type: 'custom', id: 'bounded-segments' } },
+      storage,
+      { maxMessageCharacters: 9 },
+    );
+    const saved = store.save(
+      conversation('segments', '2026-07-28T12:00:00.000Z', [
+        {
+          id: 'message-segments',
+          role: 'user',
+          text: 'Open Homepage and another record',
+          createdAt: '2026-07-28T12:00:00.000Z',
+          segments: [
+            { type: 'text', content: 'Open ' },
+            {
+              type: 'mention',
+              mention: {
+                type: 'record',
+                id: 'homepage',
+                title: 'Homepage',
+                modelId: 'page',
+                modelApiKey: 'page',
+                modelName: 'Page',
+                modelEmoji: null,
+                thumbnailUrl: null,
+              },
+            },
+            { type: 'text', content: ' and another record' },
+          ],
+        },
+      ]),
+    );
+
+    expect(saved.messages[0]?.text).toBe('Open Home');
+    expect(saved.messages[0]?.segments).toEqual([
+      { type: 'text', content: 'Open ' },
+    ]);
+    expect(store.get('segments')?.messages[0]?.segments).toEqual([
+      { type: 'text', content: 'Open ' },
+    ]);
+  });
+
   it('keeps every serialized scope and aggregate below conservative defaults', () => {
     expect(DEFAULT_MAX_SCOPE_CHARACTERS).toBeLessThan(
       DEFAULT_MAX_AGGREGATE_CHARACTERS,

@@ -20,6 +20,8 @@ import {
   MAX_MODEL_SCHEMA_OUTPUT_CHARACTERS,
   MAX_PRESENTED_ASSETS,
   MAX_PRESENTED_FIELDS,
+  MAX_PRESENTED_MODELS,
+  MAX_PRESENTED_USERS,
 } from './agentRuntime';
 import { REASONING_EFFORTS } from './config';
 import { MAX_CONVERSATION_MESSAGE_CHARACTERS } from './conversations';
@@ -496,6 +498,16 @@ describe('AgentRuntime', () => {
         },
       },
     });
+    expect(
+      request.tools?.find(
+        (tool) => tool.type === 'function' && tool.name === 'present_models',
+      ),
+    ).toBeUndefined();
+    expect(
+      request.tools?.find(
+        (tool) => tool.type === 'function' && tool.name === 'present_users',
+      ),
+    ).toBeUndefined();
   });
 
   it('does not advertise current-record field tools when the host surface lacks those capabilities', async () => {
@@ -998,6 +1010,120 @@ describe('AgentRuntime', () => {
         'Current form values read',
         'Adding asset links',
         'Asset links ready',
+      ]),
+    );
+  });
+
+  it('executes model and user links through strict host callbacks', async () => {
+    const presentModelsCall = {
+      type: 'function_call',
+      id: 'function-models',
+      call_id: 'call-models',
+      name: 'present_models',
+      arguments: JSON.stringify({
+        title: 'Relevant models',
+        models: [
+          { model_id: 'model-1', label: 'Article' },
+          { model_id: 'model-1', label: 'Duplicate' },
+          { model_id: 'block-1', label: null },
+        ],
+      }),
+      status: 'completed',
+    } satisfies ResponseFunctionToolCall;
+    const presentUsersCall = {
+      type: 'function_call',
+      id: 'function-users',
+      call_id: 'call-users',
+      name: 'present_users',
+      arguments: JSON.stringify({
+        title: 'Editors',
+        users: [
+          { user_id: 'user-1', label: 'Ada' },
+          { user_id: 'user-1', label: 'Duplicate' },
+          { user_id: 'sso-1', label: null },
+        ],
+      }),
+      status: 'completed',
+    } satisfies ResponseFunctionToolCall;
+    const client = new QueueResponsesClient([
+      eventsFor(
+        response('resp-model-user-presentation', [
+          presentModelsCall,
+          presentUsersCall,
+        ]),
+      ),
+      eventsFor(response('resp-model-user-presentation-done'), ['Ready.']),
+    ]);
+    const presentModels = vi.fn().mockResolvedValue({ presented: true });
+    const presentUsers = vi.fn().mockResolvedValue({ presented: true });
+    const runtime = runtimeWith(client, {
+      navigation: {
+        openRecord: vi.fn(),
+        showRecords: vi.fn(),
+        presentRecords: vi.fn(),
+        presentFields: vi.fn(),
+        readCurrentRecordLiveFormState: vi.fn(),
+        presentAssets: vi.fn(),
+        presentModels,
+        presentUsers,
+      },
+    });
+
+    const { events, result } = await drain(
+      runtime.streamTurn({ message: 'Show the relevant models and editors.' }),
+    );
+
+    expect(presentModels).toHaveBeenCalledWith({
+      title: 'Relevant models',
+      models: [
+        { modelId: 'model-1', label: 'Article' },
+        { modelId: 'block-1' },
+      ],
+    });
+    expect(presentUsers).toHaveBeenCalledWith({
+      title: 'Editors',
+      users: [{ userId: 'user-1', label: 'Ada' }, { userId: 'sso-1' }],
+    });
+    expect(result).toMatchObject({ status: 'completed', text: 'Ready.' });
+    expect(
+      events
+        .filter(
+          (event): event is Extract<AgentRuntimeEvent, { type: 'activity' }> =>
+            event.type === 'activity',
+        )
+        .map((event) => event.activity.label),
+    ).toEqual(
+      expect.arrayContaining([
+        'Adding model references',
+        'Model references ready',
+        'Adding user references',
+        'User references ready',
+      ]),
+    );
+
+    const firstRequestTools = client.requests[0]?.tools ?? [];
+    expect(firstRequestTools).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'function',
+          name: 'present_models',
+          parameters: expect.objectContaining({
+            properties: expect.objectContaining({
+              models: expect.objectContaining({
+                maxItems: MAX_PRESENTED_MODELS,
+              }),
+            }),
+          }),
+        }),
+        expect.objectContaining({
+          type: 'function',
+          name: 'present_users',
+          parameters: expect.objectContaining({
+            properties: expect.objectContaining({
+              users: expect.objectContaining({ maxItems: MAX_PRESENTED_USERS }),
+            }),
+          }),
+        }),
       ]),
     );
   });

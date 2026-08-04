@@ -5,6 +5,7 @@ import {
   type AgentAssetResultViewModel,
   type AgentConversationSummaryViewModel,
   type AgentFieldResultViewModel,
+  type AgentMentionsEntry,
   type AgentRecordResultViewModel,
   AgentSurface,
   type AgentTranscriptEntry,
@@ -21,6 +22,8 @@ import {
   type GetModelSchemaCallback,
   type NavigationCallbackResult,
   type PresentFieldsInput,
+  type PresentModelsInput,
+  type PresentUsersInput,
   type ReadCurrentRecordLiveFormStateInput,
 } from '../lib/agentRuntime';
 import { validateApprovalScope } from '../lib/approval';
@@ -41,6 +44,7 @@ import {
   type Conversation,
   type ConversationAssetResultGroup,
   type ConversationFieldResultGroup,
+  type ConversationMentionResultGroup,
   type ConversationMessage,
   type ConversationRecordResultGroup,
   type ConversationScope,
@@ -60,6 +64,15 @@ import {
   DIAGNOSTICS_SCHEMA_VERSION,
   serializeDiagnostics,
 } from '../lib/diagnostics';
+import type { AgentMentionHost } from '../lib/mentionHost';
+import {
+  type AgentComposerSubmission,
+  type CommentSegment,
+  type Mention,
+  mentionFromModel,
+  mentionFromUser,
+  segmentsProviderText,
+} from '../lib/mentions';
 import type {
   AgentNavigator,
   OpenAssetResult,
@@ -108,6 +121,7 @@ export type AgentFrameProps = {
   editorHasUnsavedChanges?: boolean;
   scope: ConversationScope;
   navigator: AgentNavigator;
+  mentionHost?: AgentMentionHost;
   config: AgentConfig;
   /**
    * Captures the latest bounded DatoCMS metadata when a user submits a
@@ -162,6 +176,8 @@ type PendingApproval = {
 type ActiveTurn = {
   id: string;
   message: string;
+  displayMessage: string;
+  segments: CommentSegment[];
   history: Array<{ role: 'user' | 'assistant'; text: string }>;
   entriesBefore: AgentTranscriptEntry[];
   conversationBefore: Conversation;
@@ -201,7 +217,7 @@ type ActiveTurn = {
 
 type RetryCandidate = {
   failureId: string;
-  message: string;
+  submission: AgentComposerSubmission;
   history: ActiveTurn['history'];
   entriesBefore: AgentTranscriptEntry[];
   conversationBefore: Conversation;
@@ -499,6 +515,92 @@ function settleAssetReceipt(
   );
 }
 
+function startRecordReceiptOpening(
+  entries: readonly AgentTranscriptEntry[],
+  entryId: string,
+): AgentTranscriptEntry[] {
+  return entries.map((entry) =>
+    entry.kind === 'records' && entry.id === entryId
+      ? { ...entry, error: undefined, opening: true }
+      : entry,
+  );
+}
+
+function settleRecordReceiptOpening(
+  entries: readonly AgentTranscriptEntry[],
+  entryId: string,
+  error: string | undefined,
+): AgentTranscriptEntry[] {
+  return entries.map((entry) =>
+    entry.kind === 'records' && entry.id === entryId
+      ? { ...entry, opening: false, error }
+      : entry,
+  );
+}
+
+function startFieldReceiptOpening(
+  entries: readonly AgentTranscriptEntry[],
+  entryId: string,
+  openingKey: string,
+): AgentTranscriptEntry[] {
+  return entries.map((entry) =>
+    entry.kind === 'fields' && entry.id === entryId
+      ? { ...entry, error: undefined, openingKey }
+      : entry,
+  );
+}
+
+function settleFieldReceiptOpening(
+  entries: readonly AgentTranscriptEntry[],
+  entryId: string,
+  error: string | undefined,
+): AgentTranscriptEntry[] {
+  return entries.map((entry) =>
+    entry.kind === 'fields' && entry.id === entryId
+      ? { ...entry, openingKey: undefined, error }
+      : entry,
+  );
+}
+
+function startAssetReceiptOpening(
+  entries: readonly AgentTranscriptEntry[],
+  entryId: string,
+  openingKey: string,
+): AgentTranscriptEntry[] {
+  return entries.map((entry) =>
+    entry.kind === 'assets' && entry.id === entryId
+      ? { ...entry, error: undefined, openingKey }
+      : entry,
+  );
+}
+
+function fieldReceiptCanOpen(
+  entries: readonly AgentTranscriptEntry[],
+  entryId: string,
+): boolean {
+  const receipt = entries.find(
+    (entry) => entry.kind === 'fields' && entry.id === entryId,
+  );
+  return receipt?.kind === 'fields' && !receipt.openingKey;
+}
+
+function assetReceiptCanOpen(
+  entries: readonly AgentTranscriptEntry[],
+  entryId: string,
+): boolean {
+  const receipt = entries.find(
+    (entry) => entry.kind === 'assets' && entry.id === entryId,
+  );
+  return receipt?.kind === 'assets' && !receipt.openingKey;
+}
+
+function directAssetCanOpen(
+  asset: AgentAssetResultViewModel,
+  hostActionPending: boolean,
+): boolean {
+  return !asset.deleted && !hostActionPending;
+}
+
 async function openAssetInHost(
   navigator: AgentNavigator,
   asset: AgentAssetResultViewModel,
@@ -517,6 +619,25 @@ async function openAssetInHost(
         ? `Could not open this asset. ${detail}`
         : 'Could not open this asset.',
     };
+  }
+}
+
+async function openFieldInHost(
+  openCurrentField: NonNullable<AgentFrameProps['openCurrentField']>,
+  field: AgentFieldResultViewModel,
+): Promise<string | undefined> {
+  try {
+    await openCurrentField({
+      fieldPath: field.fieldPath,
+      label: field.title,
+      locale: field.locale,
+    });
+    return undefined;
+  } catch (error) {
+    const detail = errorMessage(error).trim();
+    return detail
+      ? `Could not show this field. ${detail}`
+      : 'Could not show this field.';
   }
 }
 
@@ -611,6 +732,8 @@ function transcriptFromConversation(
       kind: 'message' as const,
       role: message.role,
       content: message.text,
+      createdAt: message.createdAt,
+      ...(message.segments ? { segments: message.segments } : {}),
       ...(message.interrupted ? { interrupted: true } : {}),
     },
     ...(message.recordResults ?? []).map((group) => ({
@@ -630,6 +753,12 @@ function transcriptFromConversation(
       kind: 'assets' as const,
       ...(group.title ? { title: group.title } : {}),
       assets: group.assets,
+    })),
+    ...(message.mentionResults ?? []).map((group) => ({
+      id: group.id,
+      kind: 'mentions' as const,
+      ...(group.title ? { title: group.title } : {}),
+      mentions: group.mentions,
     })),
   ]);
 }
@@ -716,6 +845,26 @@ function assetResultsFollowingMessage(
   return groups.length > 0 ? groups : undefined;
 }
 
+function mentionResultsFollowingMessage(
+  entries: readonly AgentTranscriptEntry[],
+  messageIndex: number,
+): ConversationMentionResultGroup[] | undefined {
+  const groups: ConversationMentionResultGroup[] = [];
+
+  for (const entry of entries.slice(messageIndex + 1)) {
+    if (entry.kind === 'message') break;
+    if (entry.kind === 'mentions') {
+      groups.push({
+        id: entry.id,
+        ...(entry.title ? { title: entry.title } : {}),
+        mentions: entry.mentions.map((mention) => ({ ...mention })),
+      });
+    }
+  }
+
+  return groups.length > 0 ? groups : undefined;
+}
+
 function conversationMessageFromTranscript(
   entries: readonly AgentTranscriptEntry[],
   entry: Extract<AgentTranscriptEntry, { kind: 'message' }>,
@@ -732,12 +881,16 @@ function conversationMessageFromTranscript(
   const assetResults = assistant
     ? assetResultsFollowingMessage(entries, index)
     : undefined;
+  const mentionResults = assistant
+    ? mentionResultsFollowingMessage(entries, index)
+    : undefined;
 
   if (
     !entry.content.trim() &&
     !recordResults &&
     !fieldResults &&
-    !assetResults
+    !assetResults &&
+    !mentionResults
   ) {
     return undefined;
   }
@@ -746,8 +899,16 @@ function conversationMessageFromTranscript(
     id: entry.id,
     role: entry.role,
     text: entry.content,
-    createdAt,
+    createdAt: entry.createdAt ?? createdAt,
   };
+
+  if (entry.segments?.length) {
+    message.segments = entry.segments.map((segment) =>
+      segment.type === 'text'
+        ? { ...segment }
+        : { type: 'mention', mention: { ...segment.mention } },
+    );
+  }
 
   if (assistant && (entry.interrupted || Boolean(entry.error))) {
     message.interrupted = true;
@@ -760,6 +921,9 @@ function conversationMessageFromTranscript(
   }
   if (assetResults) {
     message.assetResults = assetResults;
+  }
+  if (mentionResults) {
+    message.mentionResults = mentionResults;
   }
 
   return message;
@@ -788,6 +952,81 @@ function conversationMessagesFromTranscript(
   });
 
   return messages;
+}
+
+function conversationProviderText(message: ConversationMessage): string {
+  if (message.role === 'user' && message.segments?.length) {
+    return segmentsProviderText(message.segments);
+  }
+
+  if (message.role !== 'assistant') return message.text;
+
+  const references = [
+    ...(message.recordResults ?? []).flatMap((group) =>
+      group.records.map((record) => ({
+        type: 'record',
+        id: record.itemId,
+        ...(record.itemTypeId ? { modelId: record.itemTypeId } : {}),
+        label: record.title,
+      })),
+    ),
+    ...(message.fieldResults ?? []).flatMap((group) =>
+      group.fields.map((field) => ({
+        type: 'field',
+        fieldPath: field.fieldPath,
+        ...(field.locale ? { locale: field.locale } : {}),
+        label: field.title,
+      })),
+    ),
+    ...(message.assetResults ?? []).flatMap((group) =>
+      group.assets.map((asset) => ({
+        type: 'asset',
+        id: asset.uploadId,
+        label: asset.title,
+      })),
+    ),
+    ...(message.mentionResults ?? []).flatMap((group) =>
+      group.mentions.map(hostPresentedMentionReference),
+    ),
+  ];
+
+  return references.length > 0
+    ? `${message.text}\n\nHOST-PRESENTED DATOCMS REFERENCES\n${JSON.stringify(
+        references,
+      )}`
+    : message.text;
+}
+
+function hostPresentedMentionReference(mention: Mention) {
+  switch (mention.type) {
+    case 'user':
+      return { type: mention.type, id: mention.id, label: mention.name };
+    case 'field':
+      return {
+        type: mention.type,
+        fieldPath: mention.fieldPath,
+        ...(mention.locale ? { locale: mention.locale } : {}),
+        label: mention.label,
+      };
+    case 'asset':
+      return { type: mention.type, id: mention.id, label: mention.filename };
+    case 'record':
+      return {
+        type: mention.type,
+        id: mention.id,
+        modelId: mention.modelId,
+        modelApiKey: mention.modelApiKey,
+        label: mention.title,
+      };
+    case 'model':
+      return {
+        type: mention.type,
+        id: mention.id,
+        apiKey: mention.apiKey,
+        isBlockModel: mention.isBlockModel,
+        label: mention.name,
+      };
+  }
 }
 
 function loadStoredConversations(
@@ -917,6 +1156,27 @@ function recoverUnsafeDispatchJournal(
 
 // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: This frame coordinates the chat, OAuth, persistence, native navigation, and approval state that must share one React lifecycle.
 export default function AgentFrame(props: AgentFrameProps) {
+  const mentionHost =
+    props.mentionHost ??
+    ({
+      currentUser: {
+        id: props.currentUserId,
+        name: 'You',
+        email: '',
+        avatarUrl: null,
+        userType: 'user',
+      },
+      projectModels: [],
+      recordModels: [],
+      canMentionFields: false,
+      canMentionAssets: false,
+      canMentionModels: false,
+      loadProjectUsers: async () => [],
+      selectAsset: async () => undefined,
+      selectRecord: async () => undefined,
+      openUser: () => undefined,
+      openModel: () => undefined,
+    } satisfies AgentMentionHost);
   const surface: AgentSurfaceKind =
     props.surface ?? (props.currentRecord ? 'record' : 'project');
   const scopeType = props.scope.type;
@@ -1571,7 +1831,11 @@ export default function AgentFrame(props: AgentFrameProps) {
     retryCandidateRef.current = retryable
       ? {
           failureId,
-          message: turn.message,
+          submission: {
+            displayText: turn.displayMessage,
+            providerText: turn.message,
+            segments: turn.segments,
+          },
           history: turn.history,
           entriesBefore: turn.entriesBefore,
           conversationBefore: turn.conversationBefore,
@@ -1633,6 +1897,21 @@ export default function AgentFrame(props: AgentFrameProps) {
           uploadId: asset.uploadId,
           title: asset.label || `Asset ${asset.uploadId}`,
         })),
+      },
+    ]);
+  };
+
+  const appendMentions = (
+    title: string,
+    mentions: AgentMentionsEntry['mentions'],
+  ) => {
+    updateEntries((current) => [
+      ...current,
+      {
+        id: uid('mentions'),
+        kind: 'mentions',
+        title,
+        mentions,
       },
     ]);
   };
@@ -1763,6 +2042,47 @@ export default function AgentFrame(props: AgentFrameProps) {
             count: assets.length,
             message:
               'Clickable asset references were added to the chat. No asset was opened automatically.',
+          };
+        },
+        presentModels: ({ title, models }: PresentModelsInput) => {
+          const verified = models.map((reference) => {
+            const model = mentionHost.projectModels.find(
+              (candidate) => candidate.id === reference.modelId,
+            );
+            if (!model) {
+              throw new Error(
+                `Model ${JSON.stringify(reference.modelId)} is not available in the current project.`,
+              );
+            }
+            return mentionFromModel(model);
+          });
+          appendMentions(title, verified);
+          return {
+            presented: true,
+            count: verified.length,
+            message:
+              'Clickable model references were added to the chat. No schema was changed.',
+          };
+        },
+        presentUsers: async ({ title, users }: PresentUsersInput) => {
+          const directory = await mentionHost.loadProjectUsers();
+          const verified = users.map((reference) => {
+            const user = directory.find(
+              (candidate) => candidate.id === reference.userId,
+            );
+            if (!user) {
+              throw new Error(
+                `User ${JSON.stringify(reference.userId)} is not available in the current project.`,
+              );
+            }
+            return mentionFromUser(user);
+          });
+          appendMentions(title, verified);
+          return {
+            presented: true,
+            count: verified.length,
+            message:
+              'Clickable user references were added to the chat. No notification was sent.',
           };
         },
       },
@@ -1974,11 +2294,20 @@ export default function AgentFrame(props: AgentFrameProps) {
 
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: One guarded lifecycle keeps a turn's controller, runtime, persistence, and UI settlement atomic.
   async function submit(
-    rawMessage: string,
+    rawSubmission: AgentComposerSubmission | string,
     retryCandidate?: RetryCandidate,
   ): Promise<void> {
-    const message = rawMessage.trim();
-    if (running || !message.trim()) {
+    const submission: AgentComposerSubmission =
+      typeof rawSubmission === 'string'
+        ? {
+            displayText: rawSubmission.trim(),
+            providerText: rawSubmission.trim(),
+            segments: [{ type: 'text', content: rawSubmission.trim() }],
+          }
+        : rawSubmission;
+    const message = submission.providerText.trim();
+    const displayMessage = submission.displayText.trim();
+    if (running || !message || !displayMessage) {
       return;
     }
 
@@ -1991,7 +2320,10 @@ export default function AgentFrame(props: AgentFrameProps) {
             (!historyMessage.interrupted &&
               Boolean(historyMessage.text.trim())),
         )
-        .map(({ role, text }) => ({ role, text }));
+        .map((historyMessage) => ({
+          role: historyMessage.role,
+          text: conversationProviderText(historyMessage),
+        }));
     const entriesBefore = retryCandidate
       ? retryCandidate.entriesBefore
       : entriesRef.current.map((entry) =>
@@ -2019,6 +2351,8 @@ export default function AgentFrame(props: AgentFrameProps) {
     const turn: ActiveTurn = {
       id: uid('turn'),
       message,
+      displayMessage,
+      segments: submission.segments,
       history,
       entriesBefore,
       conversationBefore,
@@ -2055,7 +2389,9 @@ export default function AgentFrame(props: AgentFrameProps) {
         id: userEntryId,
         kind: 'message',
         role: 'user',
-        content: message.trim(),
+        content: displayMessage,
+        segments: submission.segments,
+        createdAt: startedAt,
       },
       {
         id: activityEntryId,
@@ -2069,6 +2405,7 @@ export default function AgentFrame(props: AgentFrameProps) {
         role: 'assistant',
         content: '',
         streaming: true,
+        createdAt: startedAt,
       },
     ]);
     const currentConversation = conversationRef.current;
@@ -2352,7 +2689,7 @@ export default function AgentFrame(props: AgentFrameProps) {
     // Claim the candidate before yielding so a double click can never start
     // two provider chains.
     retryCandidateRef.current = undefined;
-    await submit(candidate.message, candidate);
+    await submit(candidate.submission, candidate);
   };
 
   const copyFailureDiagnostics = async (failureId: string): Promise<void> => {
@@ -2480,7 +2817,7 @@ export default function AgentFrame(props: AgentFrameProps) {
               id: turn.id,
               userEntryId: turn.userEntryId,
               assistantEntryId: turn.assistantEntryId,
-              userMessage: turn.message,
+              userMessage: turn.displayMessage,
               provider: turn.provider,
               model: turn.model,
               startedAt: turn.startedAt,
@@ -3190,10 +3527,28 @@ export default function AgentFrame(props: AgentFrameProps) {
     return true;
   };
 
+  const openRecordDirectly = async (record: AgentRecordResultViewModel) => {
+    if (!beginHostAction()) return;
+    try {
+      await props.navigator.openRecord({
+        itemId: record.itemId,
+        itemTypeId: record.itemTypeId,
+        fieldPath: record.fieldPath,
+      });
+    } finally {
+      finishHostAction();
+    }
+  };
+
   const openRecord = async (
     record: AgentRecordResultViewModel,
-    entryId: string,
+    entryId?: string,
   ) => {
+    if (entryId === undefined) {
+      await openRecordDirectly(record);
+      return;
+    }
+
     const receipt = entriesRef.current.find(
       (entry) => entry.kind === 'records' && entry.id === entryId,
     );
@@ -3201,13 +3556,7 @@ export default function AgentFrame(props: AgentFrameProps) {
       return;
     }
 
-    updateEntries((current) =>
-      current.map((entry) =>
-        entry.kind === 'records' && entry.id === entryId
-          ? { ...entry, error: undefined, opening: true }
-          : entry,
-      ),
-    );
+    updateEntries((current) => startRecordReceiptOpening(current, entryId));
 
     let navigationError: string | undefined;
     try {
@@ -3224,73 +3573,57 @@ export default function AgentFrame(props: AgentFrameProps) {
     } finally {
       if (mountedRef.current) {
         updateEntries((current) =>
-          current.map((entry) =>
-            entry.kind === 'records' && entry.id === entryId
-              ? {
-                  ...entry,
-                  opening: false,
-                  error: navigationError,
-                }
-              : entry,
-          ),
+          settleRecordReceiptOpening(current, entryId, navigationError),
         );
       }
       finishHostAction();
     }
   };
 
-  const openField = async (
-    field: AgentFieldResultViewModel,
-    entryId: string,
-  ) => {
-    if (!props.openCurrentField || hostActionPendingRef.current) {
-      return;
-    }
-
-    const key = `${field.fieldPath}:${field.locale ?? ''}`;
-    const receipt = entriesRef.current.find(
-      (entry) => entry.kind === 'fields' && entry.id === entryId,
-    );
-    if (
-      receipt?.kind !== 'fields' ||
-      receipt.openingKey ||
-      !beginHostAction()
-    ) {
-      return;
-    }
-
-    updateEntries((current) =>
-      current.map((entry) =>
-        entry.kind === 'fields' && entry.id === entryId
-          ? { ...entry, error: undefined, openingKey: key }
-          : entry,
-      ),
-    );
-
-    let fieldError: string | undefined;
+  const openFieldDirectly = async (field: AgentFieldResultViewModel) => {
+    if (!props.openCurrentField || !beginHostAction()) return;
     try {
       await props.openCurrentField({
         fieldPath: field.fieldPath,
         label: field.title,
         locale: field.locale,
       });
-    } catch (error) {
-      const detail = errorMessage(error).trim();
-      fieldError = detail
-        ? `Could not show this field. ${detail}`
-        : 'Could not show this field.';
+    } finally {
+      finishHostAction();
+    }
+  };
+
+  const openField = async (
+    field: AgentFieldResultViewModel,
+    entryId?: string,
+  ) => {
+    const openCurrentField = props.openCurrentField;
+    if (!openCurrentField || hostActionPendingRef.current) {
+      return;
+    }
+
+    if (entryId === undefined) {
+      await openFieldDirectly(field);
+      return;
+    }
+
+    const key = `${field.fieldPath}:${field.locale ?? ''}`;
+    if (
+      !fieldReceiptCanOpen(entriesRef.current, entryId) ||
+      !beginHostAction()
+    ) {
+      return;
+    }
+
+    updateEntries((current) => startFieldReceiptOpening(current, entryId, key));
+
+    let fieldError: string | undefined;
+    try {
+      fieldError = await openFieldInHost(openCurrentField, field);
     } finally {
       if (mountedRef.current) {
         updateEntries((current) =>
-          current.map((entry) =>
-            entry.kind === 'fields' && entry.id === entryId
-              ? {
-                  ...entry,
-                  openingKey: undefined,
-                  error: fieldError,
-                }
-              : entry,
-          ),
+          settleFieldReceiptOpening(current, entryId, fieldError),
         );
       }
       finishHostAction();
@@ -3307,35 +3640,41 @@ export default function AgentFrame(props: AgentFrameProps) {
     });
   };
 
+  const openAssetDirectly = async (asset: AgentAssetResultViewModel) => {
+    if (!beginHostAction()) return;
+    try {
+      await props.navigator.openAsset({
+        uploadId: asset.uploadId,
+        label: asset.title,
+      });
+    } finally {
+      finishHostAction();
+    }
+  };
+
   const openAsset = async (
     asset: AgentAssetResultViewModel,
-    entryId: string,
+    entryId?: string,
   ) => {
-    if (asset.deleted || hostActionPendingRef.current) {
+    const canOpen = directAssetCanOpen(asset, hostActionPendingRef.current);
+    if (!canOpen) {
       return;
     }
 
-    const receipt = entriesRef.current.find(
-      (entry) => entry.kind === 'assets' && entry.id === entryId,
-    );
+    if (entryId === undefined) {
+      await openAssetDirectly(asset);
+      return;
+    }
+
     if (
-      receipt?.kind !== 'assets' ||
-      receipt.openingKey ||
+      !assetReceiptCanOpen(entriesRef.current, entryId) ||
       !beginHostAction()
     ) {
       return;
     }
 
     updateEntries((current) =>
-      current.map((entry) =>
-        entry.kind === 'assets' && entry.id === entryId
-          ? {
-              ...entry,
-              error: undefined,
-              openingKey: asset.uploadId,
-            }
-          : entry,
-      ),
+      startAssetReceiptOpening(current, entryId, asset.uploadId),
     );
 
     try {
@@ -3409,6 +3748,7 @@ export default function AgentFrame(props: AgentFrameProps) {
         datoCmsError: oauthError,
       }}
       entries={entries}
+      mentionHost={mentionHost}
       isRunning={running}
       autoApproveEnabled={autoApproveEnabled}
       autoApproveChanging={autoApproveChanging}

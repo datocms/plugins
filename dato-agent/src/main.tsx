@@ -1,5 +1,6 @@
 import { connect } from 'datocms-plugin-sdk';
 import 'datocms-react-ui/styles.css';
+import './recordComments/entrypoints/styles/tokens.css';
 import { lazy, Suspense } from 'react';
 import ApprovalDetailsModal from './entrypoints/ApprovalDetailsModal';
 import ConfigScreen from './entrypoints/ConfigScreen';

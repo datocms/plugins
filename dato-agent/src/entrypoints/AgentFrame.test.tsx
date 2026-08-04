@@ -3025,6 +3025,71 @@ describe('AgentFrame', () => {
     });
   });
 
+  it.each<AgentProvider>(['openai', 'anthropic'])(
+    'opens direct user-authored references without a receipt for %s',
+    async (provider) => {
+      const navigator = {
+        supportsRecordList: false,
+        openRecord: vi.fn().mockResolvedValue(undefined),
+        showRecords: vi.fn().mockResolvedValue(undefined),
+        openAsset: vi.fn().mockResolvedValue({ deleted: false }),
+      };
+      const openCurrentField = vi.fn().mockResolvedValue(undefined);
+      render(
+        <AgentFrame
+          {...props({
+            config: configForProvider(provider),
+            navigator,
+            currentRecord: {
+              id: 'current-record',
+              modelApiKey: 'page',
+              hasUnsavedChanges: false,
+            },
+            scope: { type: 'record', recordId: 'current-record' },
+            openCurrentField,
+          })}
+        />,
+      );
+
+      await act(async () => {
+        await mocks.surfaceProps?.onOpenRecord?.({
+          itemId: 'record-1',
+          itemTypeId: 'model-1',
+          title: 'Homepage',
+        });
+      });
+      expect(navigator.openRecord).toHaveBeenCalledWith({
+        itemId: 'record-1',
+        itemTypeId: 'model-1',
+        fieldPath: undefined,
+      });
+
+      await act(async () => {
+        await mocks.surfaceProps?.onOpenField?.({
+          fieldPath: 'title',
+          title: 'Title',
+          locale: 'en',
+        });
+      });
+      expect(openCurrentField).toHaveBeenCalledWith({
+        fieldPath: 'title',
+        label: 'Title',
+        locale: 'en',
+      });
+
+      await act(async () => {
+        await mocks.surfaceProps?.onOpenAsset?.({
+          uploadId: 'upload-1',
+          title: 'Hero.jpg',
+        });
+      });
+      expect(navigator.openAsset).toHaveBeenCalledWith({
+        uploadId: 'upload-1',
+        label: 'Hero.jpg',
+      });
+    },
+  );
+
   it('shows record receipt navigation errors without rejecting the click', async () => {
     const navigator = {
       supportsRecordList: false,

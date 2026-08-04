@@ -9,6 +9,7 @@ import {
   createModelSchemaResolver,
 } from '../lib/hostContext';
 import { resolveFieldsWithinDeadline } from '../lib/hostContextDeadline';
+import { createAgentMentionHost } from '../lib/mentionHost';
 import { createInspectorNavigator } from '../lib/navigation';
 import AgentFrame from './AgentFrame';
 
@@ -260,6 +261,7 @@ export default function AgentInspector({ ctx }: Props) {
     ctx.currentUser.id,
     'project',
   ].join(':');
+  const mentionHost = createAgentMentionHost(ctx);
 
   return (
     <Canvas ctx={ctx} noAutoResizer>
@@ -274,6 +276,7 @@ export default function AgentInspector({ ctx }: Props) {
         surface="project"
         scope={{ type: 'project' }}
         navigator={createInspectorNavigator(ctx)}
+        mentionHost={mentionHost}
         config={normalizeConfig(ctx.plugin.attributes.parameters)}
         loadHostContext={loadHostContext}
         getModelSchema={async ({ identifier, cursor }) => ({

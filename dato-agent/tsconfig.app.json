@@ -12,6 +12,13 @@
     "forceConsistentCasingInFileNames": true,
     "module": "ESNext",
     "moduleResolution": "Bundler",
+    "paths": {
+      "@/*": ["./src/recordComments/*"],
+      "@ctypes/*": ["./src/recordComments/entrypoints/types/*"],
+      "@hooks/*": ["./src/recordComments/entrypoints/hooks/*"],
+      "@styles/*": ["./src/recordComments/entrypoints/styles/*"],
+      "@utils/*": ["./src/recordComments/entrypoints/utils/*"]
+    },
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
@@ -20,4 +27,3 @@
   },
   "include": ["src"]
 }
-

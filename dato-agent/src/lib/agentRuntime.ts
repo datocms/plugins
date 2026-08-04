@@ -52,6 +52,8 @@ export const MAX_DISTINCT_MODEL_SCHEMAS_PER_TURN = 4;
 export const MAX_PRESENTED_FIELDS = 20;
 export const MAX_CURRENT_FORM_STATE_FIELDS = 10;
 export const MAX_PRESENTED_ASSETS = 20;
+export const MAX_PRESENTED_MODELS = 20;
+export const MAX_PRESENTED_USERS = 20;
 
 function boundedDiagnosticOutput(value: string): string {
   if (value.length <= MAX_TOOL_RESULT_CHARACTERS_PER_TURN) {
@@ -132,6 +134,26 @@ export interface PresentAssetsInput {
   assets: AssetReferenceInput[];
 }
 
+export interface ModelReferenceInput {
+  modelId: string;
+  label?: string;
+}
+
+export interface PresentModelsInput {
+  title: string;
+  models: ModelReferenceInput[];
+}
+
+export interface UserReferenceInput {
+  userId: string;
+  label?: string;
+}
+
+export interface PresentUsersInput {
+  title: string;
+  users: UserReferenceInput[];
+}
+
 export type NavigationCallbackResult =
   | undefined
   | string
@@ -155,6 +177,12 @@ export interface AgentNavigationCallbacks {
   ): NavigationCallbackResult | Promise<NavigationCallbackResult>;
   presentAssets(
     input: PresentAssetsInput,
+  ): NavigationCallbackResult | Promise<NavigationCallbackResult>;
+  presentModels?(
+    input: PresentModelsInput,
+  ): NavigationCallbackResult | Promise<NavigationCallbackResult>;
+  presentUsers?(
+    input: PresentUsersInput,
   ): NavigationCallbackResult | Promise<NavigationCallbackResult>;
 }
 
@@ -570,6 +598,71 @@ const ASSET_LIST_TOOL_PARAMETERS = {
   required: ['title', 'assets'],
 } as const;
 
+const MODEL_LIST_TOOL_PARAMETERS = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    title: {
+      type: 'string',
+      description: 'A short editor-friendly title for the model references.',
+    },
+    models: {
+      type: 'array',
+      minItems: 1,
+      maxItems: MAX_PRESENTED_MODELS,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          model_id: {
+            type: 'string',
+            description: 'The exact DatoCMS model or block-model ID.',
+          },
+          label: {
+            type: ['string', 'null'],
+            description: 'A concise model label, or null.',
+          },
+        },
+        required: ['model_id', 'label'],
+      },
+    },
+  },
+  required: ['title', 'models'],
+} as const;
+
+const USER_LIST_TOOL_PARAMETERS = {
+  type: 'object',
+  additionalProperties: false,
+  properties: {
+    title: {
+      type: 'string',
+      description: 'A short editor-friendly title for the user references.',
+    },
+    users: {
+      type: 'array',
+      minItems: 1,
+      maxItems: MAX_PRESENTED_USERS,
+      items: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          user_id: {
+            type: 'string',
+            description:
+              'The exact DatoCMS project-user, SSO-user, or owner ID.',
+          },
+          label: {
+            type: ['string', 'null'],
+            description: 'A concise user label, or null.',
+          },
+        },
+        required: ['user_id', 'label'],
+      },
+    },
+  },
+  required: ['title', 'users'],
+} as const;
+
 export const LOCAL_NAVIGATION_TOOLS = [
   {
     type: 'function',
@@ -639,6 +732,22 @@ export const LOCAL_NAVIGATION_TOOLS = [
     strict: true,
     parameters: ASSET_LIST_TOOL_PARAMETERS,
   },
+  {
+    type: 'function',
+    name: 'present_models',
+    description:
+      'Present one or more exact DatoCMS models or block models as clickable chat references. Use only model IDs already verified from the host context or DatoCMS tools. This changes no schema or content.',
+    strict: true,
+    parameters: MODEL_LIST_TOOL_PARAMETERS,
+  },
+  {
+    type: 'function',
+    name: 'present_users',
+    description:
+      'Present one or more exact DatoCMS project users as clickable chat references. Use only user IDs already verified through DatoCMS. These are references only: they do not notify anyone and change no project access.',
+    strict: true,
+    parameters: USER_LIST_TOOL_PARAMETERS,
+  },
 ] as const satisfies readonly FunctionTool[];
 
 function availableLocalTools(
@@ -650,6 +759,12 @@ function availableLocalTools(
     }
     if (tool.name === 'read_current_record_live_form_state') {
       return Boolean(navigation.readCurrentRecordLiveFormState);
+    }
+    if (tool.name === 'present_models') {
+      return Boolean(navigation.presentModels);
+    }
+    if (tool.name === 'present_users') {
+      return Boolean(navigation.presentUsers);
     }
     return true;
   });
@@ -1131,6 +1246,84 @@ function parsePresentAssetsInput(rawArguments: string): PresentAssetsInput {
   }
 
   return { title, assets };
+}
+
+function parsePresentModelsInput(rawArguments: string): PresentModelsInput {
+  const parsed = parseObjectArguments(rawArguments);
+  assertExactObjectKeys(
+    parsed,
+    ['title', 'models'],
+    'present_models arguments',
+  );
+  const title = normalizeBoundedNonEmptyString(parsed.title, 'title', 160);
+  if (!Array.isArray(parsed.models) || parsed.models.length === 0) {
+    throw new Error('models must contain at least one model.');
+  }
+  if (parsed.models.length > MAX_PRESENTED_MODELS) {
+    throw new Error(
+      `models must not contain more than ${MAX_PRESENTED_MODELS} entries.`,
+    );
+  }
+
+  const seen = new Set<string>();
+  const models: ModelReferenceInput[] = [];
+  for (const model of parsed.models) {
+    if (!model || typeof model !== 'object' || Array.isArray(model)) {
+      throw new Error('Each models entry must be an object.');
+    }
+    const candidate = model as ParsedObject;
+    assertExactObjectKeys(
+      candidate,
+      ['model_id', 'label'],
+      'Each models entry',
+    );
+    const modelId = normalizeBoundedNonEmptyString(
+      candidate.model_id,
+      'model_id',
+      128,
+    );
+    const label = normalizeNullableBoundedString(candidate.label, 'label', 200);
+    if (seen.has(modelId)) continue;
+    seen.add(modelId);
+    models.push({ modelId, ...(label ? { label } : {}) });
+  }
+
+  return { title, models };
+}
+
+function parsePresentUsersInput(rawArguments: string): PresentUsersInput {
+  const parsed = parseObjectArguments(rawArguments);
+  assertExactObjectKeys(parsed, ['title', 'users'], 'present_users arguments');
+  const title = normalizeBoundedNonEmptyString(parsed.title, 'title', 160);
+  if (!Array.isArray(parsed.users) || parsed.users.length === 0) {
+    throw new Error('users must contain at least one user.');
+  }
+  if (parsed.users.length > MAX_PRESENTED_USERS) {
+    throw new Error(
+      `users must not contain more than ${MAX_PRESENTED_USERS} entries.`,
+    );
+  }
+
+  const seen = new Set<string>();
+  const users: UserReferenceInput[] = [];
+  for (const user of parsed.users) {
+    if (!user || typeof user !== 'object' || Array.isArray(user)) {
+      throw new Error('Each users entry must be an object.');
+    }
+    const candidate = user as ParsedObject;
+    assertExactObjectKeys(candidate, ['user_id', 'label'], 'Each users entry');
+    const userId = normalizeBoundedNonEmptyString(
+      candidate.user_id,
+      'user_id',
+      128,
+    );
+    const label = normalizeNullableBoundedString(candidate.label, 'label', 200);
+    if (seen.has(userId)) continue;
+    seen.add(userId);
+    users.push({ userId, ...(label ? { label } : {}) });
+  }
+
+  return { title, users };
 }
 
 function parseGetModelSchemaInput(rawArguments: string): GetModelSchemaInput {
@@ -1824,6 +2017,10 @@ function localToolActivityLabel(
         return 'Reading current form values';
       case 'present_assets':
         return 'Adding asset links';
+      case 'present_models':
+        return 'Adding model references';
+      case 'present_users':
+        return 'Adding user references';
       default:
         return 'Running a local action';
     }
@@ -1841,6 +2038,10 @@ function localToolActivityLabel(
         return 'Current form values read';
       case 'present_assets':
         return 'Asset links ready';
+      case 'present_models':
+        return 'Model references ready';
+      case 'present_users':
+        return 'User references ready';
       default:
         return 'Records ready';
     }
@@ -1855,6 +2056,10 @@ function localToolActivityLabel(
       return 'Could not read current form values';
     case 'present_assets':
       return 'Could not add asset links';
+    case 'present_models':
+      return 'Could not add model references';
+    case 'present_users':
+      return 'Could not add user references';
     default:
       return 'Could not navigate the CMS';
   }
@@ -1971,6 +2176,28 @@ async function* executeLocalToolCalls({
         output = stringifyCallbackResult(result, {
           action: 'present_assets',
           count: parsed.assets.length,
+        });
+      } else if (call.name === 'present_models') {
+        if (!navigation.presentModels) {
+          throw new Error('Model references are not available in this chat.');
+        }
+        const parsed = parsePresentModelsInput(call.arguments);
+        activityArguments = parsed;
+        const result = await navigation.presentModels(parsed);
+        output = stringifyCallbackResult(result, {
+          action: 'present_models',
+          count: parsed.models.length,
+        });
+      } else if (call.name === 'present_users') {
+        if (!navigation.presentUsers) {
+          throw new Error('User references are not available in this chat.');
+        }
+        const parsed = parsePresentUsersInput(call.arguments);
+        activityArguments = parsed;
+        const result = await navigation.presentUsers(parsed);
+        output = stringifyCallbackResult(result, {
+          action: 'present_users',
+          count: parsed.users.length,
         });
       } else if (isSchemaCall && getModelSchema) {
         const parsed = parseGetModelSchemaInput(call.arguments);

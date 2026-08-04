@@ -8,17 +8,17 @@ import {
   TooltipDelayGroup,
   TooltipTrigger,
 } from 'datocms-react-ui';
-import {
-  type KeyboardEvent,
-  type RefObject,
-  useEffect,
-  useId,
-  useRef,
-  useState,
-} from 'react';
-import TextareaAutosize from 'react-textarea-autosize';
+import { type RefObject, useEffect, useId, useRef, useState } from 'react';
 import datoMarkUrl from '../assets/dato-mark.svg';
-import { MAX_CONVERSATION_MESSAGE_CHARACTERS } from '../lib/conversations';
+import type { AgentMentionHost } from '../lib/mentionHost';
+import type {
+  AgentComposerSubmission,
+  CommentSegment,
+  Mention,
+} from '../lib/mentions';
+import { fallbackAssetMention, fallbackRecordMention } from '../lib/mentions';
+import { MentionDisplay } from '../recordComments/entrypoints/components/shared/MentionDisplay';
+import commentStyles from '../recordComments/entrypoints/styles/comment.module.css';
 import {
   BoltIcon,
   ChatIcon,
@@ -30,12 +30,11 @@ import {
   HistoryIcon,
   PlusIcon,
   RetryIcon,
-  SendIcon,
-  StopIcon,
   WarningIcon,
 } from './AgentIcons';
 import styles from './AgentSurface.module.css';
 import { Markdown } from './Markdown';
+import { MentionComposer } from './MentionComposer';
 
 export type AgentConnectionStatus =
   | 'setup'
@@ -119,6 +118,20 @@ export type AgentAssetResultViewModel = {
   deleted?: boolean;
 };
 
+export type AgentModelResultViewModel = {
+  modelId: string;
+  apiKey: string;
+  title: string;
+  isBlockModel: boolean;
+};
+
+export type AgentUserResultViewModel = {
+  userId: string;
+  title: string;
+  email: string;
+  avatarUrl: string | null;
+};
+
 export type UnsafeApprovalStatus =
   | 'pending'
   | 'approving'
@@ -153,6 +166,8 @@ export type AgentMessageEntry = {
   streaming?: boolean;
   error?: string | boolean;
   interrupted?: boolean;
+  segments?: readonly CommentSegment[];
+  createdAt?: string;
   failure?: {
     id: string;
     retryable: boolean;
@@ -200,12 +215,21 @@ export type AgentApprovalEntry = {
   approval: UnsafeApprovalViewModel;
 };
 
+export type AgentMentionsEntry = {
+  id: string;
+  kind: 'mentions';
+  title?: string;
+  mentions: readonly Mention[];
+  error?: string;
+};
+
 export type AgentTranscriptEntry =
   | AgentMessageEntry
   | AgentActivityEntry
   | AgentRecordsEntry
   | AgentFieldsEntry
   | AgentAssetsEntry
+  | AgentMentionsEntry
   | AgentApprovalEntry;
 
 export type AgentSurfaceProps = {
@@ -214,7 +238,8 @@ export type AgentSurfaceProps = {
   isRunning?: boolean;
   composerDisabled?: boolean;
   composerPlaceholder?: string;
-  onSubmit: (message: string) => void;
+  onSubmit: (message: AgentComposerSubmission | string) => void;
+  mentionHost?: AgentMentionHost;
   onConnectDatoCms?: () => void;
   onDisconnectDatoCms?: () => void;
   recentConversations?: readonly AgentConversationSummaryViewModel[];
@@ -225,15 +250,15 @@ export type AgentSurfaceProps = {
   onStop?: () => void;
   onOpenRecord?: (
     record: AgentRecordResultViewModel,
-    entryId: string,
+    entryId?: string,
   ) => void | Promise<void>;
   onOpenField?: (
     field: AgentFieldResultViewModel,
-    entryId: string,
+    entryId?: string,
   ) => void | Promise<void>;
   onOpenAsset?: (
     asset: AgentAssetResultViewModel,
-    entryId: string,
+    entryId?: string,
   ) => void | Promise<void>;
   hostActionPending?: boolean;
   onReviewUnsafeAction?: (approval: UnsafeApprovalViewModel) => void;
@@ -618,7 +643,107 @@ function FailureActions({
   );
 }
 
-function MessageEntry({
+function mentionIdentity(mention: Mention) {
+  return mention.type === 'field'
+    ? `${mention.type}:${mention.fieldPath}:${mention.locale ?? ''}`
+    : `${mention.type}:${mention.id}`;
+}
+
+function withStableKeys<T>(
+  values: readonly T[],
+  identity: (value: T) => string,
+) {
+  const occurrences = new Map<string, number>();
+  const keyed: Array<{ key: string; value: T }> = [];
+  for (const value of values) {
+    const base = identity(value);
+    const occurrence = occurrences.get(base) ?? 0;
+    occurrences.set(base, occurrence + 1);
+    keyed.push({ key: `${base}:${occurrence}`, value });
+  }
+  return keyed;
+}
+
+function messageError(entry: AgentMessageEntry) {
+  if (typeof entry.error === 'string') return entry.error.trim() || undefined;
+  return entry.error || entry.interrupted
+    ? 'The response was interrupted.'
+    : undefined;
+}
+
+function MessageAvatar({
+  role,
+  mentionHost,
+  authorName,
+}: {
+  role: AgentMessageEntry['role'];
+  mentionHost: AgentMentionHost;
+  authorName: string;
+}) {
+  if (role === 'assistant') {
+    return (
+      <span className={`${commentStyles.avatar} ${styles.agentAvatar}`}>
+        <img alt="" aria-hidden="true" src={datoMarkUrl} />
+      </span>
+    );
+  }
+  if (mentionHost.currentUser.avatarUrl) {
+    return (
+      <img
+        alt=""
+        aria-hidden="true"
+        className={commentStyles.avatar}
+        src={mentionHost.currentUser.avatarUrl}
+      />
+    );
+  }
+  return (
+    <span className={`${commentStyles.avatar} ${styles.userAvatar}`}>
+      {authorName.slice(0, 1).toLocaleUpperCase()}
+    </span>
+  );
+}
+
+function UserMessageContent({
+  content,
+  currentUser,
+  disabled,
+  onOpenMention,
+  segments,
+}: {
+  content: string;
+  currentUser: AgentMentionHost['currentUser'];
+  disabled: boolean;
+  onOpenMention: (mention: Mention) => void;
+  segments?: readonly CommentSegment[];
+}) {
+  if (!segments?.length)
+    return <div className={commentStyles.text}>{content}</div>;
+
+  return (
+    <div className={commentStyles.text}>
+      {withStableKeys(segments, (segment) =>
+        segment.type === 'text'
+          ? `text:${segment.content.slice(0, 64)}`
+          : mentionIdentity(segment.mention),
+      ).map(({ key, value: segment }) =>
+        segment.type === 'text' ? (
+          <span key={key}>{segment.content}</span>
+        ) : (
+          <MentionDisplay
+            isClickable={!disabled}
+            key={key}
+            mention={segment.mention}
+            onClick={() => onOpenMention(segment.mention)}
+            projectUsers={[currentUser]}
+          />
+        ),
+      )}
+    </div>
+  );
+}
+
+function AssistantMessageContent({
   entry,
   onRetryFailedTurn,
   onCopyFailureDiagnostics,
@@ -627,41 +752,112 @@ function MessageEntry({
   onRetryFailedTurn?: AgentSurfaceProps['onRetryFailedTurn'];
   onCopyFailureDiagnostics?: AgentSurfaceProps['onCopyFailureDiagnostics'];
 }) {
-  const errorMessage =
-    typeof entry.error === 'string'
-      ? entry.error.trim() || undefined
-      : entry.error || entry.interrupted
-        ? 'The response was interrupted.'
-        : undefined;
+  const errorMessage = messageError(entry);
 
-  if (!entry.content && !errorMessage) {
-    return null;
-  }
+  if (!entry.content && !errorMessage) return null;
 
   return (
-    <article
-      className={
-        entry.role === 'user'
-          ? `${styles.message} ${styles.userMessage}`
-          : `${styles.message} ${styles.assistantMessage}${
-              errorMessage ? ` ${styles.assistantError}` : ''
-            }`
-      }
-      aria-label={entry.label ?? (entry.role === 'user' ? 'You' : 'Dato agent')}
-    >
-      {entry.content && <Markdown content={entry.content} />}
+    <div className={styles.agentTurnItem}>
+      {entry.content && (
+        <Markdown
+          className={styles.assistantMarkdown}
+          content={entry.content}
+        />
+      )}
       {errorMessage && (
         <p className={styles.inlineError} role="alert">
           {errorMessage}
         </p>
       )}
-      {entry.role === 'assistant' && errorMessage && entry.failure && (
+      {errorMessage && entry.failure && (
         <FailureActions
           failure={entry.failure}
           onCopyDiagnostics={onCopyFailureDiagnostics}
           onRetry={onRetryFailedTurn}
         />
       )}
+    </div>
+  );
+}
+
+function MessageEntry({
+  disabled,
+  entry,
+  mentionHost,
+  onOpenMention,
+  onRetryFailedTurn,
+  onCopyFailureDiagnostics,
+}: {
+  disabled: boolean;
+  entry: AgentMessageEntry;
+  mentionHost: AgentMentionHost;
+  onOpenMention: (mention: Mention) => void;
+  onRetryFailedTurn?: AgentSurfaceProps['onRetryFailedTurn'];
+  onCopyFailureDiagnostics?: AgentSurfaceProps['onCopyFailureDiagnostics'];
+}) {
+  const errorMessage = messageError(entry);
+
+  if (!entry.content && !errorMessage) {
+    return null;
+  }
+
+  const authorName =
+    entry.role === 'user' ? mentionHost.currentUser.name : 'Dato Agent';
+  const timestamp = entry.createdAt
+    ? new Intl.DateTimeFormat(undefined, {
+        hour: 'numeric',
+        minute: '2-digit',
+      }).format(new Date(entry.createdAt))
+    : undefined;
+
+  return (
+    <article
+      className={`${commentStyles.comment} ${styles.message}`}
+      aria-label={entry.label ?? (entry.role === 'user' ? 'You' : 'Dato agent')}
+    >
+      <div className={commentStyles.commentBody}>
+        <div className={commentStyles.avatarContainer}>
+          <MessageAvatar
+            authorName={authorName}
+            mentionHost={mentionHost}
+            role={entry.role}
+          />
+        </div>
+        <div className={commentStyles.content}>
+          <div className={commentStyles.header}>
+            <strong className={commentStyles.authorName}>{authorName}</strong>
+            {timestamp && (
+              <time
+                className={commentStyles.timestamp}
+                dateTime={entry.createdAt}
+              >
+                {timestamp}
+              </time>
+            )}
+          </div>
+          {entry.content && entry.role === 'user' && (
+            <UserMessageContent
+              content={entry.content}
+              currentUser={mentionHost.currentUser}
+              disabled={disabled}
+              onOpenMention={onOpenMention}
+              segments={entry.segments}
+            />
+          )}
+          {entry.role === 'assistant' && (
+            <AssistantMessageContent
+              entry={entry}
+              onCopyFailureDiagnostics={onCopyFailureDiagnostics}
+              onRetryFailedTurn={onRetryFailedTurn}
+            />
+          )}
+          {entry.role === 'user' && errorMessage && (
+            <p className={styles.inlineError} role="alert">
+              {errorMessage}
+            </p>
+          )}
+        </div>
+      </div>
     </article>
   );
 }
@@ -814,139 +1010,64 @@ function ActivityEntry({ entry }: { entry: AgentActivityEntry }) {
 function RecordsEntry({
   disabled,
   entry,
+  mentionHost,
   onOpenRecord,
 }: {
   disabled?: boolean;
   entry: AgentRecordsEntry;
+  mentionHost: AgentMentionHost;
   onOpenRecord?: AgentSurfaceProps['onOpenRecord'];
 }) {
-  const singleRecord =
-    entry.records.length === 1 ? entry.records[0] : undefined;
-  const content = (showOpenAffordance: boolean) => (
-    <>
-      <span>
-        {entry.title ??
-          `Showing ${entry.records.length} ${
-            entry.records.length === 1 ? 'record' : 'records'
-          }`}
-      </span>
-      <span className={styles.recordReceiptMeta}>
-        {entry.records.length}{' '}
-        {entry.records.length === 1 ? 'record' : 'records'}
-        {showOpenAffordance && <span aria-hidden="true"> →</span>}
-      </span>
-    </>
+  const modelsById = new Map(
+    mentionHost.projectModels.map((model) => [model.id, model]),
   );
 
   return (
     <aside
-      className={styles.recordReceipt}
-      aria-label={entry.title ?? 'Records'}
       aria-busy={entry.opening || undefined}
+      aria-label={entry.title ?? 'Records'}
+      className={styles.mentionReceipt}
     >
-      {singleRecord && onOpenRecord ? (
-        <button
-          disabled={disabled}
-          onClick={() => {
-            void Promise.resolve(onOpenRecord(singleRecord, entry.id)).catch(
-              () => undefined,
-            );
-          }}
-          type="button"
-        >
-          {content(true)}
-          <span className={styles.visuallyHidden}>Open record</span>
-        </button>
-      ) : (
-        <>
-          <div>{content(false)}</div>
-          {onOpenRecord && entry.records.length > 1 && (
-            <ul className={styles.recordResultList}>
-              {entry.records.map((record) => (
-                <li key={`${record.itemTypeId ?? 'record'}:${record.itemId}`}>
-                  <button
-                    aria-label={`Open ${record.title}`}
-                    disabled={disabled}
-                    onClick={() => {
-                      void Promise.resolve(
-                        onOpenRecord(record, entry.id),
-                      ).catch(() => undefined);
-                    }}
-                    type="button"
-                  >
-                    <span>{record.title}</span>
-                    <span aria-hidden="true">→</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </>
+      {entry.title && (
+        <span className={styles.mentionReceiptTitle}>{entry.title}</span>
       )}
-      {entry.error && (
-        <p className={styles.inlineError} role="alert">
-          {entry.error}
-        </p>
-      )}
-    </aside>
-  );
-}
-
-type ReferenceReceiptItem = {
-  key: string;
-  title: string;
-  meta?: string;
-  disabled?: boolean;
-  disabledLabel?: string;
-};
-
-function ReferenceReceipt({
-  disabled,
-  entry,
-  itemKind,
-  items,
-  onOpen,
-}: {
-  disabled?: boolean;
-  entry: AgentFieldsEntry | AgentAssetsEntry;
-  itemKind: 'field' | 'asset';
-  items: readonly ReferenceReceiptItem[];
-  onOpen?: (key: string) => void;
-}) {
-  return (
-    <aside
-      aria-busy={Boolean(entry.openingKey) || undefined}
-      aria-label={entry.title ?? `${itemKind}s`}
-      className={styles.recordReceipt}
-    >
-      <div>
-        <span>{entry.title ?? `Referenced ${itemKind}s`}</span>
-        <span className={styles.recordReceiptMeta}>
-          {items.length} {items.length === 1 ? itemKind : `${itemKind}s`}
-        </span>
+      <div className={styles.mentionReceiptItems}>
+        {entry.records.map((record) => {
+          const model = record.itemTypeId
+            ? modelsById.get(record.itemTypeId)
+            : undefined;
+          const mention = fallbackRecordMention({
+            id: record.itemId,
+            title: record.title,
+            ...(model
+              ? {
+                  model: {
+                    modelId: model.id,
+                    modelApiKey: model.apiKey,
+                    modelName: model.name,
+                    modelEmoji: null,
+                    isSingleton: false,
+                  },
+                }
+              : {}),
+          });
+          return (
+            <MentionDisplay
+              accessibleLabel={`Open ${record.title}`}
+              isClickable={!disabled && Boolean(onOpenRecord)}
+              key={`${record.itemTypeId ?? 'record'}:${record.itemId}`}
+              mention={mention}
+              onClick={() => {
+                if (!disabled && onOpenRecord) {
+                  void Promise.resolve(onOpenRecord(record, entry.id)).catch(
+                    () => undefined,
+                  );
+                }
+              }}
+            />
+          );
+        })}
       </div>
-      <ul className={styles.recordResultList}>
-        {items.map((item) => (
-          <li key={item.key}>
-            <button
-              aria-label={`${
-                itemKind === 'field' ? 'Show' : 'Open'
-              } ${item.title}`}
-              disabled={disabled || item.disabled || !onOpen}
-              onClick={() => onOpen?.(item.key)}
-              type="button"
-            >
-              <span>{item.title}</span>
-              <span>
-                {item.disabledLabel ??
-                  (entry.openingKey === item.key
-                    ? 'Opening…'
-                    : item.meta || '→')}
-              </span>
-            </button>
-          </li>
-        ))}
-      </ul>
       {entry.error && (
         <p className={styles.inlineError} role="alert">
           {entry.error}
@@ -966,31 +1087,40 @@ function FieldsEntry({
   onOpenField?: AgentSurfaceProps['onOpenField'];
 }) {
   return (
-    <ReferenceReceipt
-      disabled={disabled}
-      entry={entry}
-      itemKind="field"
-      items={entry.fields.map((field) => ({
-        key: `${field.fieldPath}:${field.locale ?? ''}`,
-        title: field.title,
-        ...(field.locale ? { meta: field.locale } : {}),
-      }))}
-      onOpen={
-        onOpenField
-          ? (key) => {
-              const field = entry.fields.find(
-                (candidate) =>
-                  `${candidate.fieldPath}:${candidate.locale ?? ''}` === key,
-              );
-              if (field) {
+    <aside
+      aria-busy={Boolean(entry.openingKey) || undefined}
+      aria-label={entry.title ?? 'Fields'}
+      className={styles.mentionReceipt}
+    >
+      {entry.title && (
+        <span className={styles.mentionReceiptTitle}>{entry.title}</span>
+      )}
+      <div className={styles.mentionReceiptItems}>
+        {entry.fields.map((field) => (
+          <MentionDisplay
+            accessibleLabel={`Show ${field.title}`}
+            isClickable={!disabled && Boolean(onOpenField)}
+            key={`${field.fieldPath}:${field.locale ?? ''}`}
+            mention={{
+              type: 'field',
+              apiKey: field.fieldPath.split('.').at(-1) || field.fieldPath,
+              label: field.title,
+              localized: Boolean(field.locale),
+              fieldPath: field.fieldPath,
+              ...(field.locale ? { locale: field.locale } : {}),
+            }}
+            onClick={() => {
+              if (!disabled && onOpenField) {
                 void Promise.resolve(onOpenField(field, entry.id)).catch(
                   () => undefined,
                 );
               }
-            }
-          : undefined
-      }
-    />
+            }}
+          />
+        ))}
+      </div>
+      {entry.error && <p className={styles.inlineError}>{entry.error}</p>}
+    </aside>
   );
 }
 
@@ -1004,30 +1134,89 @@ function AssetsEntry({
   onOpenAsset?: AgentSurfaceProps['onOpenAsset'];
 }) {
   return (
-    <ReferenceReceipt
-      disabled={disabled}
-      entry={entry}
-      itemKind="asset"
-      items={entry.assets.map((asset) => ({
-        key: asset.uploadId,
-        title: asset.title,
-        ...(asset.deleted ? { disabled: true, disabledLabel: 'Deleted' } : {}),
-      }))}
-      onOpen={
-        onOpenAsset
-          ? (key) => {
-              const asset = entry.assets.find(
-                (candidate) => candidate.uploadId === key,
-              );
-              if (asset && !asset.deleted) {
-                void Promise.resolve(onOpenAsset(asset, entry.id)).catch(
-                  () => undefined,
-                );
+    <aside
+      aria-busy={Boolean(entry.openingKey) || undefined}
+      aria-label={entry.title ?? 'Assets'}
+      className={styles.mentionReceipt}
+    >
+      {entry.title && (
+        <span className={styles.mentionReceiptTitle}>{entry.title}</span>
+      )}
+      <div className={styles.mentionReceiptItems}>
+        {entry.assets.map((asset) => (
+          <span className={styles.mentionReceiptItem} key={asset.uploadId}>
+            <MentionDisplay
+              accessibleLabel={`Open ${asset.title}`}
+              isClickable={!disabled && !asset.deleted && Boolean(onOpenAsset)}
+              mention={fallbackAssetMention(asset.uploadId, asset.title)}
+              onClick={() => {
+                if (!disabled && !asset.deleted && onOpenAsset) {
+                  void Promise.resolve(onOpenAsset(asset, entry.id)).catch(
+                    () => undefined,
+                  );
+                }
+              }}
+            />
+            {asset.deleted && (
+              <span className={styles.mentionReceiptState}>Deleted</span>
+            )}
+          </span>
+        ))}
+      </div>
+      {entry.error && <p className={styles.inlineError}>{entry.error}</p>}
+    </aside>
+  );
+}
+
+function MentionsEntry({
+  disabled,
+  entry,
+  mentionHost,
+}: {
+  disabled?: boolean;
+  entry: AgentMentionsEntry;
+  mentionHost: AgentMentionHost;
+}) {
+  return (
+    <aside
+      aria-label={entry.title ?? 'References'}
+      className={styles.mentionReceipt}
+    >
+      {entry.title && (
+        <span className={styles.mentionReceiptTitle}>{entry.title}</span>
+      )}
+      <div className={styles.mentionReceiptItems}>
+        {withStableKeys(entry.mentions, mentionIdentity).map(
+          ({ key, value: mention }) => (
+            <MentionDisplay
+              accessibleLabel={
+                mention.type === 'user'
+                  ? `Open ${mention.name}`
+                  : mention.type === 'model'
+                    ? `Open ${mention.name}`
+                    : undefined
               }
-            }
-          : undefined
-      }
-    />
+              isClickable={!disabled}
+              key={key}
+              mention={mention}
+              onClick={() => {
+                if (disabled) return;
+                if (mention.type === 'user') {
+                  void mentionHost.openUser(mention.id);
+                } else if (mention.type === 'model') {
+                  mentionHost.openModel(mention.id, mention.isBlockModel);
+                }
+              }}
+              projectUsers={entry.mentions.filter(
+                (candidate): candidate is Extract<Mention, { type: 'user' }> =>
+                  candidate.type === 'user',
+              )}
+            />
+          ),
+        )}
+      </div>
+      {entry.error && <p className={styles.inlineError}>{entry.error}</p>}
+    </aside>
   );
 }
 
@@ -1159,8 +1348,257 @@ function ApprovalEntry({
   );
 }
 
+type TranscriptGroup =
+  | { kind: 'user'; id: string; entry: AgentMessageEntry }
+  | { kind: 'agent'; id: string; entries: AgentTranscriptEntry[] };
+
+function groupTranscriptEntries(
+  entries: readonly AgentTranscriptEntry[],
+): TranscriptGroup[] {
+  const groups: TranscriptGroup[] = [];
+
+  for (const entry of entries) {
+    if (entry.kind === 'message' && entry.role === 'user') {
+      groups.push({ kind: 'user', id: `user:${entry.id}`, entry });
+      continue;
+    }
+
+    const previous = groups.at(-1);
+    if (previous?.kind === 'agent') {
+      previous.entries.push(entry);
+    } else {
+      groups.push({
+        kind: 'agent',
+        id: `agent:${entry.id}`,
+        entries: [entry],
+      });
+    }
+  }
+
+  return groups;
+}
+
+function agentEntryIsVisible(entry: AgentTranscriptEntry): boolean {
+  switch (entry.kind) {
+    case 'message':
+      return (
+        entry.role === 'assistant' &&
+        Boolean(entry.content || messageError(entry))
+      );
+    case 'activity':
+      return entry.phase === 'running' || entry.activities.length > 0;
+    case 'approval':
+      return !entry.approval.automatic || Boolean(entry.approval.error);
+    case 'records':
+      return Boolean(entry.title || entry.error || entry.records.length > 0);
+    case 'fields':
+      return Boolean(entry.title || entry.error || entry.fields.length > 0);
+    case 'assets':
+      return Boolean(entry.title || entry.error || entry.assets.length > 0);
+    case 'mentions':
+      return Boolean(entry.title || entry.error || entry.mentions.length > 0);
+  }
+}
+
+type TranscriptMentionActions = Pick<
+  AgentSurfaceProps,
+  'onOpenRecord' | 'onOpenField' | 'onOpenAsset'
+> & { mentionHost: AgentMentionHost };
+
+function ignoreHostActionFailure(result: void | Promise<void>) {
+  void Promise.resolve(result).catch(() => undefined);
+}
+
+function openTranscriptMention(
+  mention: Mention,
+  actions: TranscriptMentionActions,
+) {
+  switch (mention.type) {
+    case 'record':
+      if (!actions.onOpenRecord) return;
+      ignoreHostActionFailure(
+        actions.onOpenRecord({
+          itemId: mention.id,
+          itemTypeId: mention.modelId,
+          title: mention.title,
+        }),
+      );
+      return;
+    case 'field':
+      if (!actions.onOpenField) return;
+      ignoreHostActionFailure(
+        actions.onOpenField({
+          fieldPath: mention.fieldPath,
+          title: mention.label,
+          ...(mention.locale ? { locale: mention.locale } : {}),
+        }),
+      );
+      return;
+    case 'asset':
+      if (!actions.onOpenAsset) return;
+      ignoreHostActionFailure(
+        actions.onOpenAsset({ uploadId: mention.id, title: mention.filename }),
+      );
+      return;
+    case 'model':
+      actions.mentionHost.openModel(mention.id, mention.isBlockModel);
+      return;
+    case 'user':
+      ignoreHostActionFailure(actions.mentionHost.openUser(mention.id));
+  }
+}
+
+function AgentTurnEntry({
+  entries,
+  hostActionPending,
+  isRunning,
+  mentionHost,
+  onApproveUnsafeAction,
+  onCopyFailureDiagnostics,
+  onOpenAsset,
+  onOpenField,
+  onOpenRecord,
+  onRejectUnsafeAction,
+  onRetryFailedTurn,
+  onReviewUnsafeAction,
+}: {
+  entries: readonly AgentTranscriptEntry[];
+  hostActionPending?: boolean;
+  isRunning?: boolean;
+  mentionHost: AgentMentionHost;
+  onApproveUnsafeAction?: AgentSurfaceProps['onApproveUnsafeAction'];
+  onCopyFailureDiagnostics?: AgentSurfaceProps['onCopyFailureDiagnostics'];
+  onOpenAsset?: AgentSurfaceProps['onOpenAsset'];
+  onOpenField?: AgentSurfaceProps['onOpenField'];
+  onOpenRecord?: AgentSurfaceProps['onOpenRecord'];
+  onRejectUnsafeAction?: AgentSurfaceProps['onRejectUnsafeAction'];
+  onRetryFailedTurn?: AgentSurfaceProps['onRetryFailedTurn'];
+  onReviewUnsafeAction?: AgentSurfaceProps['onReviewUnsafeAction'];
+}) {
+  const visibleEntries = entries.filter(agentEntryIsVisible);
+  if (visibleEntries.length === 0) return null;
+
+  const timestampEntry = visibleEntries
+    .slice()
+    .reverse()
+    .find(
+      (entry): entry is AgentMessageEntry =>
+        entry.kind === 'message' && Boolean(entry.createdAt),
+    );
+  const timestamp = timestampEntry?.createdAt
+    ? new Intl.DateTimeFormat(undefined, {
+        hour: 'numeric',
+        minute: '2-digit',
+      }).format(new Date(timestampEntry.createdAt))
+    : undefined;
+  const label =
+    visibleEntries.find(
+      (entry): entry is AgentMessageEntry => entry.kind === 'message',
+    )?.label ?? 'Dato agent';
+
+  return (
+    <article
+      aria-label={label}
+      className={`${commentStyles.comment} ${styles.message}`}
+    >
+      <div className={commentStyles.commentBody}>
+        <div className={commentStyles.avatarContainer}>
+          <MessageAvatar
+            authorName="Dato Agent"
+            mentionHost={mentionHost}
+            role="assistant"
+          />
+        </div>
+        <div className={commentStyles.content}>
+          <div className={commentStyles.header}>
+            <strong className={commentStyles.authorName}>Dato Agent</strong>
+            {timestamp && timestampEntry?.createdAt && (
+              <time
+                className={commentStyles.timestamp}
+                dateTime={timestampEntry.createdAt}
+              >
+                {timestamp}
+              </time>
+            )}
+          </div>
+          <div className={styles.agentTurnContent}>
+            {visibleEntries.map((entry) => {
+              switch (entry.kind) {
+                case 'message':
+                  return (
+                    <AssistantMessageContent
+                      entry={entry}
+                      key={entry.id}
+                      onCopyFailureDiagnostics={onCopyFailureDiagnostics}
+                      onRetryFailedTurn={onRetryFailedTurn}
+                    />
+                  );
+                case 'activity':
+                  return <ActivityEntry entry={entry} key={entry.id} />;
+                case 'records':
+                  return (
+                    <RecordsEntry
+                      disabled={Boolean(
+                        isRunning || hostActionPending || entry.opening,
+                      )}
+                      entry={entry}
+                      key={entry.id}
+                      mentionHost={mentionHost}
+                      onOpenRecord={onOpenRecord}
+                    />
+                  );
+                case 'fields':
+                  return (
+                    <FieldsEntry
+                      disabled={Boolean(isRunning || hostActionPending)}
+                      entry={entry}
+                      key={entry.id}
+                      onOpenField={onOpenField}
+                    />
+                  );
+                case 'assets':
+                  return (
+                    <AssetsEntry
+                      disabled={Boolean(isRunning || hostActionPending)}
+                      entry={entry}
+                      key={entry.id}
+                      onOpenAsset={onOpenAsset}
+                    />
+                  );
+                case 'mentions':
+                  return (
+                    <MentionsEntry
+                      disabled={Boolean(isRunning || hostActionPending)}
+                      entry={entry}
+                      key={entry.id}
+                      mentionHost={mentionHost}
+                    />
+                  );
+                case 'approval':
+                  return (
+                    <ApprovalEntry
+                      approval={entry.approval}
+                      disabled={hostActionPending}
+                      key={entry.id}
+                      onApprove={onApproveUnsafeAction}
+                      onReject={onRejectUnsafeAction}
+                      onReview={onReviewUnsafeAction}
+                    />
+                  );
+                default:
+                  return null;
+              }
+            })}
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
 function Transcript({
   entries,
+  mentionHost,
   onOpenRecord,
   onOpenField,
   onOpenAsset,
@@ -1184,7 +1622,7 @@ function Transcript({
   | 'onCopyFailureDiagnostics'
   | 'isRunning'
   | 'hostActionPending'
->) {
+> & { mentionHost: AgentMentionHost }) {
   const transcriptRef = useRef<HTMLElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
@@ -1224,163 +1662,47 @@ function Transcript({
         {entries.length === 0 ? (
           <EmptyState />
         ) : (
-          entries.map((entry) => {
-            switch (entry.kind) {
-              case 'message':
-                return (
-                  <MessageEntry
-                    entry={entry}
-                    key={entry.id}
-                    onCopyFailureDiagnostics={onCopyFailureDiagnostics}
-                    onRetryFailedTurn={onRetryFailedTurn}
-                  />
-                );
-              case 'activity':
-                return <ActivityEntry entry={entry} key={entry.id} />;
-              case 'records':
-                return (
-                  <RecordsEntry
-                    disabled={Boolean(
-                      isRunning || hostActionPending || entry.opening,
-                    )}
-                    entry={entry}
-                    key={entry.id}
-                    onOpenRecord={onOpenRecord}
-                  />
-                );
-              case 'fields':
-                return (
-                  <FieldsEntry
-                    disabled={Boolean(isRunning || hostActionPending)}
-                    entry={entry}
-                    key={entry.id}
-                    onOpenField={onOpenField}
-                  />
-                );
-              case 'assets':
-                return (
-                  <AssetsEntry
-                    disabled={Boolean(isRunning || hostActionPending)}
-                    entry={entry}
-                    key={entry.id}
-                    onOpenAsset={onOpenAsset}
-                  />
-                );
-              case 'approval':
-                return (
-                  <ApprovalEntry
-                    approval={entry.approval}
-                    disabled={hostActionPending}
-                    key={entry.id}
-                    onApprove={onApproveUnsafeAction}
-                    onReject={onRejectUnsafeAction}
-                    onReview={onReviewUnsafeAction}
-                  />
-                );
-              default:
-                return null;
-            }
-          })
+          groupTranscriptEntries(entries).map((group) =>
+            group.kind === 'user' ? (
+              <MessageEntry
+                disabled={Boolean(isRunning || hostActionPending)}
+                entry={group.entry}
+                key={group.id}
+                mentionHost={mentionHost}
+                onOpenMention={(mention) => {
+                  if (isRunning || hostActionPending) return;
+                  openTranscriptMention(mention, {
+                    mentionHost,
+                    onOpenAsset,
+                    onOpenField,
+                    onOpenRecord,
+                  });
+                }}
+                onCopyFailureDiagnostics={onCopyFailureDiagnostics}
+                onRetryFailedTurn={onRetryFailedTurn}
+              />
+            ) : (
+              <AgentTurnEntry
+                entries={group.entries}
+                hostActionPending={hostActionPending}
+                isRunning={isRunning}
+                key={group.id}
+                mentionHost={mentionHost}
+                onApproveUnsafeAction={onApproveUnsafeAction}
+                onCopyFailureDiagnostics={onCopyFailureDiagnostics}
+                onOpenAsset={onOpenAsset}
+                onOpenField={onOpenField}
+                onOpenRecord={onOpenRecord}
+                onRejectUnsafeAction={onRejectUnsafeAction}
+                onRetryFailedTurn={onRetryFailedTurn}
+                onReviewUnsafeAction={onReviewUnsafeAction}
+              />
+            ),
+          )
         )}
         <div ref={endRef} />
       </div>
     </main>
-  );
-}
-
-function Composer({
-  draft,
-  setDraft,
-  onSubmit,
-  onStop,
-  disabled,
-  isRunning,
-  placeholder,
-  persistenceWarning,
-  textareaRef,
-}: {
-  draft: string;
-  setDraft: (draft: string) => void;
-  onSubmit: (message: string) => void;
-  onStop?: () => void;
-  disabled: boolean;
-  isRunning: boolean;
-  placeholder: string;
-  persistenceWarning?: string;
-  textareaRef: React.RefObject<HTMLTextAreaElement | null>;
-}) {
-  const composerId = useId();
-  const inputDisabled = disabled || isRunning;
-  const canSubmit = Boolean(draft.trim()) && !inputDisabled;
-
-  const submit = () => {
-    const message = draft.trim();
-
-    if (!message || !canSubmit) {
-      return;
-    }
-
-    onSubmit(message);
-    setDraft('');
-  };
-
-  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (
-      event.key === 'Enter' &&
-      !event.shiftKey &&
-      !event.nativeEvent.isComposing
-    ) {
-      event.preventDefault();
-      submit();
-    }
-  };
-
-  return (
-    <form
-      className={styles.composer}
-      onSubmit={(event) => {
-        event.preventDefault();
-        submit();
-      }}
-    >
-      <div className={styles.composerInner}>
-        <label className={styles.visuallyHidden} htmlFor={composerId}>
-          Message the DatoCMS agent
-        </label>
-        <div className={styles.composerBox}>
-          <TextareaAutosize
-            className={styles.composerInput}
-            disabled={inputDisabled}
-            id={composerId}
-            maxLength={MAX_CONVERSATION_MESSAGE_CHARACTERS}
-            maxRows={6}
-            minRows={1}
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={onKeyDown}
-            placeholder={placeholder}
-            ref={textareaRef}
-            value={draft}
-          />
-          <button
-            aria-label={isRunning ? 'Stop' : 'Send'}
-            className={`${styles.sendButton}${
-              isRunning ? ` ${styles.stopButton}` : ''
-            }`}
-            disabled={isRunning ? !onStop : !canSubmit}
-            onClick={isRunning ? onStop : undefined}
-            title={isRunning ? 'Stop' : 'Send'}
-            type={isRunning ? 'button' : 'submit'}
-          >
-            {isRunning ? <StopIcon /> : <SendIcon />}
-          </button>
-        </div>
-        {persistenceWarning && (
-          <p className={styles.composerWarning} role="alert">
-            {persistenceWarning}
-          </p>
-        )}
-      </div>
-    </form>
   );
 }
 
@@ -1481,6 +1803,7 @@ export function AgentSurface({
   composerDisabled = false,
   composerPlaceholder = 'Ask the agent to find, create, or update content…',
   onSubmit,
+  mentionHost,
   onConnectDatoCms,
   onDisconnectDatoCms,
   recentConversations = [],
@@ -1502,15 +1825,32 @@ export function AgentSurface({
   persistenceWarning,
   onAutoApproveChange,
 }: AgentSurfaceProps) {
-  const [draft, setDraft] = useState('');
+  const resolvedMentionHost =
+    mentionHost ??
+    ({
+      currentUser: {
+        id: 'current-user',
+        name: 'You',
+        email: '',
+        avatarUrl: null,
+        userType: 'user',
+      },
+      projectModels: [],
+      recordModels: [],
+      canMentionFields: false,
+      canMentionAssets: false,
+      canMentionModels: false,
+      loadProjectUsers: async () => [],
+      selectAsset: async () => undefined,
+      selectRecord: async () => undefined,
+      openUser: () => undefined,
+      openModel: () => undefined,
+    } satisfies AgentMentionHost);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [conversationActionPending, setConversationActionPending] =
     useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const settingsHeadingRef = useRef<HTMLHeadingElement>(null);
-  const wasConnectedRef = useRef(connection.status === 'connected');
-  const wasSettingsOpenRef = useRef(false);
-  const wasRunningRef = useRef(isRunning);
+  const composerRegionRef = useRef<HTMLDivElement>(null);
   const connected = connection.status === 'connected';
   const showCredentials = !connected || settingsOpen;
   const hasUnsettledApproval = entries.some(
@@ -1528,22 +1868,18 @@ export function AgentSurface({
     connection.datoCmsStatus === 'connecting';
 
   useEffect(() => {
-    const becameConnected = connected && !wasConnectedRef.current;
-
     if (settingsOpen) {
       settingsHeadingRef.current?.focus();
-    } else if (
-      wasSettingsOpenRef.current ||
-      becameConnected ||
-      (wasRunningRef.current && !isRunning)
-    ) {
-      textareaRef.current?.focus();
     }
+  }, [settingsOpen]);
 
-    wasConnectedRef.current = connected;
-    wasSettingsOpenRef.current = settingsOpen;
-    wasRunningRef.current = isRunning;
-  }, [connected, isRunning, settingsOpen]);
+  useEffect(() => {
+    if (!showCredentials && !isRunning && !composerDisabled) {
+      composerRegionRef.current
+        ?.querySelector<HTMLElement>('[role="textbox"]')
+        ?.focus();
+    }
+  }, [composerDisabled, isRunning, showCredentials]);
 
   const runConversationAction = async (
     action: () => boolean | undefined | Promise<boolean | undefined>,
@@ -1560,8 +1896,6 @@ export function AgentSurface({
       if (completed === false) {
         return;
       }
-
-      setDraft('');
 
       if (connected) {
         setSettingsOpen(false);
@@ -1624,6 +1958,7 @@ export function AgentSurface({
           <Transcript
             entries={entries}
             isRunning={isRunning}
+            mentionHost={resolvedMentionHost}
             onApproveUnsafeAction={onApproveUnsafeAction}
             onCopyFailureDiagnostics={onCopyFailureDiagnostics}
             onOpenAsset={onOpenAsset}
@@ -1634,17 +1969,47 @@ export function AgentSurface({
             onRetryFailedTurn={onRetryFailedTurn}
             onReviewUnsafeAction={onReviewUnsafeAction}
           />
-          <Composer
-            disabled={composerDisabled}
-            draft={draft}
-            isRunning={isRunning}
-            onStop={onStop}
-            onSubmit={onSubmit}
-            placeholder={composerPlaceholder}
-            persistenceWarning={persistenceWarning}
-            setDraft={setDraft}
-            textareaRef={textareaRef}
-          />
+          <div className={styles.composer} ref={composerRegionRef}>
+            <div className={styles.composerInner}>
+              <MentionComposer
+                disabled={composerDisabled}
+                host={resolvedMentionHost}
+                isRunning={isRunning}
+                navigation={{
+                  handleOpenAsset: async (assetId) => {
+                    await onOpenAsset?.({
+                      uploadId: assetId,
+                      title: `Asset ${assetId}`,
+                    });
+                  },
+                  handleOpenRecord: async (recordId, modelId) => {
+                    await onOpenRecord?.({
+                      itemId: recordId,
+                      itemTypeId: modelId,
+                      title: `Record ${recordId}`,
+                    });
+                  },
+                  handleScrollToField: async (
+                    fieldPath,
+                    _localized,
+                    locale,
+                  ) => {
+                    await onOpenField?.({
+                      fieldPath,
+                      title: fieldPath,
+                      ...(locale ? { locale } : {}),
+                    });
+                  },
+                  handleOpenModel: resolvedMentionHost.openModel,
+                  handleOpenUser: resolvedMentionHost.openUser,
+                }}
+                onStop={onStop}
+                onSubmit={onSubmit}
+                persistenceWarning={persistenceWarning}
+                placeholder={composerPlaceholder}
+              />
+            </div>
+          </div>
         </>
       )}
     </div>

@@ -20,6 +20,8 @@ export const MAX_FIELD_RESULT_GROUPS_PER_MESSAGE = 4;
 export const MAX_FIELD_RESULTS_PER_GROUP = 20;
 export const MAX_ASSET_RESULT_GROUPS_PER_MESSAGE = 4;
 export const MAX_ASSET_RESULTS_PER_GROUP = 20;
+export const MAX_MENTION_RESULT_GROUPS_PER_MESSAGE = 4;
+export const MAX_MENTION_RESULTS_PER_GROUP = 20;
 export const MAX_RECORD_RESULT_TITLE_CHARACTERS = 200;
 export const MAX_RECORD_RESULT_REFERENCE_CHARACTERS = 512;
 
@@ -73,6 +75,12 @@ export interface ConversationAssetResultGroup {
   assets: ConversationAssetResult[];
 }
 
+export interface ConversationMentionResultGroup {
+  id: string;
+  title?: string;
+  mentions: Mention[];
+}
+
 export interface ConversationMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -83,6 +91,8 @@ export interface ConversationMessage {
    * never be replayed to a provider as a completed assistant turn.
    */
   interrupted?: boolean;
+  /** Exact host-picked references used to render a user message. */
+  segments?: CommentSegment[];
   /**
    * Bounded, presentation-only record receipts emitted during this assistant
    * turn. They are restored in the chat UI but never replayed to a provider.
@@ -98,6 +108,8 @@ export interface ConversationMessage {
    * stale upload cannot be opened again after the chat is restored.
    */
   assetResults?: ConversationAssetResultGroup[];
+  /** Tool-verified model and user references emitted by the assistant. */
+  mentionResults?: ConversationMentionResultGroup[];
 }
 
 export interface Conversation {
@@ -612,16 +624,71 @@ function normalizeAssetResults(
   return groups.length > 0 ? groups : undefined;
 }
 
+function normalizeMentionResultGroup(
+  value: unknown,
+): ConversationMentionResultGroup | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+  const candidate = value as Record<string, unknown>;
+  const id = normalizeRecordResultReference(candidate.id);
+  if (!id || !Array.isArray(candidate.mentions)) return undefined;
+
+  const mentions = candidate.mentions
+    .flatMap((mention): Mention[] => {
+      const normalized = normalizeMention(mention);
+      return normalized ? [normalized] : [];
+    })
+    .filter((mention, index, all) => {
+      const key =
+        mention.type === 'field'
+          ? `${mention.type}:${mention.fieldPath}:${mention.locale ?? ''}`
+          : `${mention.type}:${mention.id}`;
+      return (
+        all.findIndex((candidateMention) => {
+          const candidateKey =
+            candidateMention.type === 'field'
+              ? `${candidateMention.type}:${candidateMention.fieldPath}:${candidateMention.locale ?? ''}`
+              : `${candidateMention.type}:${candidateMention.id}`;
+          return candidateKey === key;
+        }) === index
+      );
+    })
+    .slice(0, MAX_MENTION_RESULTS_PER_GROUP);
+  if (mentions.length === 0) return undefined;
+
+  const title = normalizeRecordResultTitle(candidate.title);
+  return { id, ...(title ? { title } : {}), mentions };
+}
+
+function normalizeMentionResults(
+  value: unknown,
+): ConversationMentionResultGroup[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const groups = value
+    .flatMap((group): ConversationMentionResultGroup[] => {
+      const normalized = normalizeMentionResultGroup(group);
+      return normalized ? [normalized] : [];
+    })
+    .filter(
+      (group, index, all) =>
+        all.findIndex((candidate) => candidate.id === group.id) === index,
+    )
+    .slice(0, MAX_MENTION_RESULT_GROUPS_PER_MESSAGE);
+  return groups.length > 0 ? groups : undefined;
+}
+
 function assistantReceiptResults(
   message: Record<string, unknown>,
 ): Pick<
   ConversationMessage,
-  'recordResults' | 'fieldResults' | 'assetResults'
+  'recordResults' | 'fieldResults' | 'assetResults' | 'mentionResults'
 > {
   return {
     recordResults: normalizeRecordResults(message.recordResults),
     fieldResults: normalizeFieldResults(message.fieldResults),
     assetResults: normalizeAssetResults(message.assetResults),
+    mentionResults: normalizeMentionResults(message.mentionResults),
   };
 }
 
@@ -658,6 +725,14 @@ function normalizeConversationMessage(
     createdAt: safeIsoDate(message.createdAt, createdAt),
   };
 
+  const segments = normalizeCommentSegments(
+    message.segments,
+    options.maxMessageCharacters,
+  );
+  if (segments) {
+    normalized.segments = segments;
+  }
+
   if (message.role !== 'assistant') {
     return normalized;
   }
@@ -665,7 +740,7 @@ function normalizeConversationMessage(
   if (message.interrupted === true) {
     normalized.interrupted = true;
   }
-  const { recordResults, fieldResults, assetResults } =
+  const { recordResults, fieldResults, assetResults, mentionResults } =
     assistantReceiptResults(message);
   if (recordResults) {
     normalized.recordResults = recordResults;
@@ -675,6 +750,9 @@ function normalizeConversationMessage(
   }
   if (assetResults) {
     normalized.assetResults = assetResults;
+  }
+  if (mentionResults) {
+    normalized.mentionResults = mentionResults;
   }
 
   return normalized;
@@ -850,6 +928,13 @@ function cloneConversations(
     ...conversation,
     messages: conversation.messages.map((message) => {
       const cloned: ConversationMessage = { ...message };
+      if (message.segments) {
+        cloned.segments = message.segments.map((segment) =>
+          segment.type === 'text'
+            ? { ...segment }
+            : { type: 'mention', mention: { ...segment.mention } },
+        );
+      }
       if (message.recordResults) {
         cloned.recordResults = message.recordResults.map((group) => ({
           ...group,
@@ -866,6 +951,12 @@ function cloneConversations(
         cloned.assetResults = message.assetResults.map((group) => ({
           ...group,
           assets: group.assets.map((asset) => ({ ...asset })),
+        }));
+      }
+      if (message.mentionResults) {
+        cloned.mentionResults = message.mentionResults.map((group) => ({
+          ...group,
+          mentions: group.mentions.map((mention) => ({ ...mention })),
         }));
       }
       return cloned;
@@ -911,6 +1002,7 @@ function removeOldestReceiptGroup(messages: ConversationMessage[]): boolean {
     'recordResults',
     'fieldResults',
     'assetResults',
+    'mentionResults',
   ] as const;
 
   for (const message of messages) {
@@ -1449,3 +1541,6 @@ export function createConversationStore(
     },
   };
 }
+
+import type { CommentSegment, Mention } from './mentions';
+import { normalizeCommentSegments, normalizeMention } from './mentions';

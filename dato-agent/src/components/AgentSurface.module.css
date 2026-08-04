@@ -472,10 +472,10 @@
 
 .transcriptInner {
   box-sizing: border-box;
-  width: min(calc(100% - 32px), 560px);
+  width: 100%;
   min-height: 100%;
   margin: 0 auto;
-  padding: 48px 0 32px;
+  padding: 44px 14px 18px;
 }
 
 .emptyState {
@@ -493,33 +493,63 @@
   font-size: var(--font-size-m);
 }
 
-.message,
 .activityDisclosure,
 .recordReceipt,
 .approvalCard {
-  margin: 0 0 var(--spacing-l);
+  margin: 0 0 var(--spacing-s);
 }
 
 .message {
-  line-height: 1.55;
+  margin: 0;
+  line-height: 1.5;
 }
 
-.userMessage {
-  width: fit-content;
-  max-width: 88%;
-  margin-left: auto;
-  padding: 10px 12px;
-  border-radius: 4px;
+.agentTurnContent,
+.agentTurnItem {
+  min-width: 0;
+}
+
+.agentTurnItem {
+  margin: 0 0 var(--spacing-s);
+}
+
+.agentTurnContent > :last-child {
+  margin-bottom: 0;
+}
+
+.assistantMarkdown {
+  font-size: var(--font-size-s);
+  line-height: 1.5;
+}
+
+.assistantMarkdown :is(p, ul, ol, pre, blockquote, table, h1, h2, h3, h4) {
+  margin-bottom: var(--spacing-s);
+}
+
+.assistantMarkdown li + li {
+  margin-top: var(--spacing-xs);
+}
+
+.agentAvatar,
+.userAvatar {
+  display: grid;
+  place-items: center;
+}
+
+.agentAvatar {
   background: var(--color--surface-muted);
 }
 
-.assistantMessage {
-  padding: 2px 0;
+.agentAvatar img {
+  width: 19px;
+  height: 19px;
 }
 
-.assistantError {
-  padding-left: var(--spacing-s);
-  border-left: 2px solid var(--color--danger-soft--border);
+.userAvatar {
+  color: var(--color--primary-soft--ink);
+  background: var(--color--primary-soft--surface);
+  font-size: var(--font-size-s);
+  font-weight: var(--font-weight-bold);
 }
 
 .failureActions {
@@ -910,14 +940,65 @@
 .composer {
   z-index: 2;
   flex: none;
-  border-top: 1px solid var(--color--border);
-  background: var(--color--surface-raised);
+  background: var(--color--surface);
 }
 
 .composerInner {
-  width: min(calc(100% - 32px), 560px);
+  box-sizing: border-box;
+  width: 100%;
   margin: 0 auto;
-  padding: 12px 0;
+  padding: 10px 14px 12px;
+}
+
+.mentionReceipt {
+  min-width: 0;
+  margin: 0 0 var(--spacing-s);
+  font-size: var(--font-size-s);
+}
+
+.mentionReceiptTitle {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--color--ink-subtle);
+  font-size: var(--font-size-xxs);
+  font-weight: 600;
+}
+
+.mentionReceiptItems {
+  display: flex;
+  max-height: 156px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 5px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: var(--color--scrollbar--fill) transparent;
+}
+
+.mentionReceiptItems > *,
+.mentionReceiptItems button {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.mentionReceiptItems > * {
+  display: inline-flex;
+}
+
+.mentionReceiptItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mentionReceiptState {
+  color: var(--color--ink-subtle);
+  font-size: var(--font-size-xxs);
+}
+
+.mentionReceipt .inlineError {
+  margin-top: 5px;
 }
 
 .composerBox {
@@ -1046,6 +1127,6 @@
 
   .transcriptInner,
   .composerInner {
-    width: min(calc(100% - 24px), 560px);
+    width: 100%;
   }
 }
