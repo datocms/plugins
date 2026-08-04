@@ -547,7 +547,7 @@ describe('AgentSurface', () => {
         id: 'current-user',
         name: 'Editor',
         email: 'editor@example.com',
-        avatarUrl: null,
+        avatarUrl: 'https://example.com/editor.png',
         userType: 'user',
       },
       projectOwnerId: 'project-owner',
@@ -663,6 +663,13 @@ describe('AgentSurface', () => {
         onSubmit={vi.fn()}
       />,
     );
+
+    const userMessage = screen.getByRole('article', { name: 'You' });
+    expect(within(userMessage).queryByText('Editor')).not.toBeInTheDocument();
+    expect(
+      userMessage.querySelector('img[src="https://example.com/editor.png"]'),
+    ).toBeNull();
+    expect(userMessage.querySelector('time')).toBeNull();
 
     await user.click(screen.getByRole('button', { name: 'Homepage' }));
     expect(onOpenRecord).toHaveBeenCalledWith({
@@ -799,7 +806,7 @@ describe('AgentSurface', () => {
     expect(screen.getByRole('button', { name: 'Open One' })).toBeDisabled();
   });
 
-  it('groups tool-only records into a Dato Agent author row', () => {
+  it('keeps tool-only records in an accessible agent turn', () => {
     render(
       <AgentSurface
         connection={connected}
@@ -823,7 +830,9 @@ describe('AgentSurface', () => {
     );
 
     const agentTurn = screen.getByRole('article', { name: 'Dato agent' });
-    expect(within(agentTurn).getByText('Dato Agent')).toBeVisible();
+    expect(within(agentTurn).queryByText('Dato Agent')).not.toBeInTheDocument();
+    expect(agentTurn.querySelector('img[aria-hidden="true"]')).toBeNull();
+    expect(agentTurn.querySelector('time')).toBeNull();
     expect(within(agentTurn).getByLabelText('Useful record')).toBeVisible();
   });
 
@@ -892,7 +901,7 @@ describe('AgentSurface', () => {
     ).toBeVisible();
   });
 
-  it('starts a fresh Dato Agent row after each user message', () => {
+  it('starts a fresh agent turn after each user message', () => {
     render(
       <AgentSurface
         connection={connected}
@@ -919,6 +928,39 @@ describe('AgentSurface', () => {
     expect(screen.getAllByRole('article', { name: 'Dato agent' })).toHaveLength(
       2,
     );
+  });
+
+  it('separates user and agent turns without visible identity headers', () => {
+    render(
+      <AgentSurface
+        connection={connected}
+        entries={[
+          {
+            id: 'user',
+            kind: 'message',
+            role: 'user',
+            content: 'Show the homepage',
+            createdAt: '2026-08-04T14:00:00.000Z',
+          },
+          {
+            id: 'agent',
+            kind: 'message',
+            role: 'assistant',
+            content: 'Here is the homepage.',
+            createdAt: '2026-08-04T14:01:00.000Z',
+          },
+        ]}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    const userTurn = screen.getByRole('article', { name: 'You' });
+    const agentTurn = screen.getByRole('article', { name: 'Dato agent' });
+    expect(userTurn.className).not.toBe(agentTurn.className);
+    expect(within(userTurn).queryByText('Dato Agent')).not.toBeInTheDocument();
+    expect(within(agentTurn).queryByText('Dato Agent')).not.toBeInTheDocument();
+    expect(userTurn.querySelector('img, time')).toBeNull();
+    expect(agentTurn.querySelector('img, time')).toBeNull();
   });
 
   it('shows a compact navigation error with its record results', () => {

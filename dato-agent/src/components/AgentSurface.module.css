@@ -500,8 +500,30 @@
 }
 
 .message {
-  margin: 0;
-  line-height: 1.5;
+  min-width: 0;
+  max-width: 100%;
+  margin: 0 0 var(--spacing-l);
+  line-height: 1.55;
+}
+
+.userMessage {
+  box-sizing: border-box;
+  width: fit-content;
+  max-width: 88%;
+  margin-left: auto;
+  padding: 10px 12px;
+  border-radius: 4px;
+  background: var(--color--surface-muted);
+  overflow-wrap: anywhere;
+}
+
+.assistantMessage {
+  padding: 2px 0;
+}
+
+.assistantError {
+  padding-left: var(--spacing-s);
+  border-left: 2px solid var(--color--danger-soft--border);
 }
 
 .agentTurnContent,
@@ -528,28 +550,6 @@
 
 .assistantMarkdown li + li {
   margin-top: var(--spacing-xs);
-}
-
-.agentAvatar,
-.userAvatar {
-  display: grid;
-  place-items: center;
-}
-
-.agentAvatar {
-  background: var(--color--surface-muted);
-}
-
-.agentAvatar img {
-  width: 19px;
-  height: 19px;
-}
-
-.userAvatar {
-  color: var(--color--primary-soft--ink);
-  background: var(--color--primary-soft--surface);
-  font-size: var(--font-size-s);
-  font-weight: var(--font-weight-bold);
 }
 
 .failureActions {

@@ -675,39 +675,6 @@ function messageError(entry: AgentMessageEntry) {
     : undefined;
 }
 
-function MessageAvatar({
-  role,
-  mentionHost,
-  authorName,
-}: {
-  role: AgentMessageEntry['role'];
-  mentionHost: AgentMentionHost;
-  authorName: string;
-}) {
-  if (role === 'assistant') {
-    return (
-      <span className={`${commentStyles.avatar} ${styles.agentAvatar}`}>
-        <img alt="" aria-hidden="true" src={datoMarkUrl} />
-      </span>
-    );
-  }
-  if (mentionHost.currentUser.avatarUrl) {
-    return (
-      <img
-        alt=""
-        aria-hidden="true"
-        className={commentStyles.avatar}
-        src={mentionHost.currentUser.avatarUrl}
-      />
-    );
-  }
-  return (
-    <span className={`${commentStyles.avatar} ${styles.userAvatar}`}>
-      {authorName.slice(0, 1).toLocaleUpperCase()}
-    </span>
-  );
-}
-
 function UserMessageContent({
   content,
   mentionHost,
@@ -815,63 +782,38 @@ function MessageEntry({
     return null;
   }
 
-  const authorName =
-    entry.role === 'user' ? mentionHost.currentUser.name : 'Dato Agent';
-  const timestamp = entry.createdAt
-    ? new Intl.DateTimeFormat(undefined, {
-        hour: 'numeric',
-        minute: '2-digit',
-      }).format(new Date(entry.createdAt))
-    : undefined;
-
   return (
     <article
-      className={`${commentStyles.comment} ${styles.message}`}
       aria-label={entry.label ?? (entry.role === 'user' ? 'You' : 'Dato agent')}
+      className={
+        entry.role === 'user'
+          ? `${styles.message} ${styles.userMessage}`
+          : `${styles.message} ${styles.assistantMessage}${
+              errorMessage ? ` ${styles.assistantError}` : ''
+            }`
+      }
     >
-      <div className={commentStyles.commentBody}>
-        <div className={commentStyles.avatarContainer}>
-          <MessageAvatar
-            authorName={authorName}
-            mentionHost={mentionHost}
-            role={entry.role}
-          />
-        </div>
-        <div className={commentStyles.content}>
-          <div className={commentStyles.header}>
-            <strong className={commentStyles.authorName}>{authorName}</strong>
-            {timestamp && (
-              <time
-                className={commentStyles.timestamp}
-                dateTime={entry.createdAt}
-              >
-                {timestamp}
-              </time>
-            )}
-          </div>
-          {entry.content && entry.role === 'user' && (
-            <UserMessageContent
-              content={entry.content}
-              mentionHost={mentionHost}
-              disabled={disabled}
-              onOpenMention={onOpenMention}
-              segments={entry.segments}
-            />
-          )}
-          {entry.role === 'assistant' && (
-            <AssistantMessageContent
-              entry={entry}
-              onCopyFailureDiagnostics={onCopyFailureDiagnostics}
-              onRetryFailedTurn={onRetryFailedTurn}
-            />
-          )}
-          {entry.role === 'user' && errorMessage && (
-            <p className={styles.inlineError} role="alert">
-              {errorMessage}
-            </p>
-          )}
-        </div>
-      </div>
+      {entry.content && entry.role === 'user' && (
+        <UserMessageContent
+          content={entry.content}
+          mentionHost={mentionHost}
+          disabled={disabled}
+          onOpenMention={onOpenMention}
+          segments={entry.segments}
+        />
+      )}
+      {entry.role === 'assistant' && (
+        <AssistantMessageContent
+          entry={entry}
+          onCopyFailureDiagnostics={onCopyFailureDiagnostics}
+          onRetryFailedTurn={onRetryFailedTurn}
+        />
+      )}
+      {entry.role === 'user' && errorMessage && (
+        <p className={styles.inlineError} role="alert">
+          {errorMessage}
+        </p>
+      )}
     </article>
   );
 }
@@ -1562,19 +1504,6 @@ function AgentTurnEntry({
   const visibleEntries = entries.filter(agentEntryIsVisible);
   if (visibleEntries.length === 0) return null;
 
-  const timestampEntry = visibleEntries
-    .slice()
-    .reverse()
-    .find(
-      (entry): entry is AgentMessageEntry =>
-        entry.kind === 'message' && Boolean(entry.createdAt),
-    );
-  const timestamp = timestampEntry?.createdAt
-    ? new Intl.DateTimeFormat(undefined, {
-        hour: 'numeric',
-        minute: '2-digit',
-      }).format(new Date(timestampEntry.createdAt))
-    : undefined;
   const label =
     visibleEntries.find(
       (entry): entry is AgentMessageEntry => entry.kind === 'message',
@@ -1583,98 +1512,76 @@ function AgentTurnEntry({
   return (
     <article
       aria-label={label}
-      className={`${commentStyles.comment} ${styles.message}`}
+      className={`${styles.message} ${styles.assistantMessage}`}
     >
-      <div className={commentStyles.commentBody}>
-        <div className={commentStyles.avatarContainer}>
-          <MessageAvatar
-            authorName="Dato Agent"
-            mentionHost={mentionHost}
-            role="assistant"
-          />
-        </div>
-        <div className={commentStyles.content}>
-          <div className={commentStyles.header}>
-            <strong className={commentStyles.authorName}>Dato Agent</strong>
-            {timestamp && timestampEntry?.createdAt && (
-              <time
-                className={commentStyles.timestamp}
-                dateTime={timestampEntry.createdAt}
-              >
-                {timestamp}
-              </time>
-            )}
-          </div>
-          <div className={styles.agentTurnContent}>
-            {visibleEntries.map((entry) => {
-              switch (entry.kind) {
-                case 'message':
-                  return (
-                    <AssistantMessageContent
-                      entry={entry}
-                      key={entry.id}
-                      onCopyFailureDiagnostics={onCopyFailureDiagnostics}
-                      onRetryFailedTurn={onRetryFailedTurn}
-                    />
-                  );
-                case 'activity':
-                  return <ActivityEntry entry={entry} key={entry.id} />;
-                case 'records':
-                  return (
-                    <RecordsEntry
-                      disabled={Boolean(
-                        isRunning || hostActionPending || entry.opening,
-                      )}
-                      entry={entry}
-                      key={entry.id}
-                      mentionHost={mentionHost}
-                      onOpenRecord={onOpenRecord}
-                    />
-                  );
-                case 'fields':
-                  return (
-                    <FieldsEntry
-                      disabled={Boolean(isRunning || hostActionPending)}
-                      entry={entry}
-                      key={entry.id}
-                      onOpenField={onOpenField}
-                    />
-                  );
-                case 'assets':
-                  return (
-                    <AssetsEntry
-                      disabled={Boolean(isRunning || hostActionPending)}
-                      entry={entry}
-                      key={entry.id}
-                      onOpenAsset={onOpenAsset}
-                    />
-                  );
-                case 'mentions':
-                  return (
-                    <MentionsEntry
-                      disabled={Boolean(isRunning || hostActionPending)}
-                      entry={entry}
-                      key={entry.id}
-                      mentionHost={mentionHost}
-                    />
-                  );
-                case 'approval':
-                  return (
-                    <ApprovalEntry
-                      approval={entry.approval}
-                      disabled={hostActionPending}
-                      key={entry.id}
-                      onApprove={onApproveUnsafeAction}
-                      onReject={onRejectUnsafeAction}
-                      onReview={onReviewUnsafeAction}
-                    />
-                  );
-                default:
-                  return null;
-              }
-            })}
-          </div>
-        </div>
+      <div className={styles.agentTurnContent}>
+        {visibleEntries.map((entry) => {
+          switch (entry.kind) {
+            case 'message':
+              return (
+                <AssistantMessageContent
+                  entry={entry}
+                  key={entry.id}
+                  onCopyFailureDiagnostics={onCopyFailureDiagnostics}
+                  onRetryFailedTurn={onRetryFailedTurn}
+                />
+              );
+            case 'activity':
+              return <ActivityEntry entry={entry} key={entry.id} />;
+            case 'records':
+              return (
+                <RecordsEntry
+                  disabled={Boolean(
+                    isRunning || hostActionPending || entry.opening,
+                  )}
+                  entry={entry}
+                  key={entry.id}
+                  mentionHost={mentionHost}
+                  onOpenRecord={onOpenRecord}
+                />
+              );
+            case 'fields':
+              return (
+                <FieldsEntry
+                  disabled={Boolean(isRunning || hostActionPending)}
+                  entry={entry}
+                  key={entry.id}
+                  onOpenField={onOpenField}
+                />
+              );
+            case 'assets':
+              return (
+                <AssetsEntry
+                  disabled={Boolean(isRunning || hostActionPending)}
+                  entry={entry}
+                  key={entry.id}
+                  onOpenAsset={onOpenAsset}
+                />
+              );
+            case 'mentions':
+              return (
+                <MentionsEntry
+                  disabled={Boolean(isRunning || hostActionPending)}
+                  entry={entry}
+                  key={entry.id}
+                  mentionHost={mentionHost}
+                />
+              );
+            case 'approval':
+              return (
+                <ApprovalEntry
+                  approval={entry.approval}
+                  disabled={hostActionPending}
+                  key={entry.id}
+                  onApprove={onApproveUnsafeAction}
+                  onReject={onRejectUnsafeAction}
+                  onReview={onReviewUnsafeAction}
+                />
+              );
+            default:
+              return null;
+          }
+        })}
       </div>
     </article>
   );
