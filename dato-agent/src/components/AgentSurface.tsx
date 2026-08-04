@@ -1107,6 +1107,7 @@ function AssetsEntry({
           <span className={styles.mentionReceiptItem} key={asset.uploadId}>
             <MentionDisplay
               accessibleLabel={`Open ${asset.title}`}
+              assetLayout="row"
               isClickable={!disabled && !asset.deleted && Boolean(onOpenAsset)}
               mention={
                 asset.mention ??
@@ -1171,6 +1172,7 @@ function MentionsEntry({
                         ? `Show details for ${mention.filename}`
                         : undefined
                 }
+                assetLayout="row"
                 isClickable={isOpenable}
                 isProjectOwner={isOwner}
                 key={key}

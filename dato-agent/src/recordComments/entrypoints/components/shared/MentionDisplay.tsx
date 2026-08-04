@@ -11,7 +11,11 @@ import { Tooltip, TooltipContent, TooltipTrigger } from 'datocms-react-ui';
 import { memo, useEffect, useId, useMemo, useState } from 'react';
 import { cn } from '@/utils/cn';
 import { getSessionLocalFile } from '../../../../lib/localFiles';
-import { ModelMentionIcon, RecordDocumentIcon } from '../Icons';
+import {
+  AssetMentionIcon,
+  ModelMentionIcon,
+  RecordDocumentIcon,
+} from '../Icons';
 
 function PortaledMentionTooltip({
   children,
@@ -45,6 +49,7 @@ type MentionDisplayProps = {
   tooltipId?: string;
   projectUsers?: UserInfo[];
   accessibleLabel?: string;
+  assetLayout?: 'preview' | 'row';
 };
 
 type AssetThumbnailMentionProps = {
@@ -231,7 +236,57 @@ type AssetMentionDisplayProps = {
   onClick: (e: React.MouseEvent) => void;
   isClickable: boolean;
   accessibleLabel?: string;
+  assetLayout: 'preview' | 'row';
 };
+
+function AssetRowMention({
+  mention,
+  tabIndex,
+  onClick,
+  tooltipId,
+  isClickable,
+  accessibleLabel,
+}: Omit<AssetMentionDisplayProps, 'assetLayout'>) {
+  const [thumbnailFailed, setThumbnailFailed] = useState(false);
+  const isVisualMedia =
+    mention.mimeType.startsWith('image/') ||
+    mention.mimeType.startsWith('video/');
+  const showThumbnail =
+    Boolean(mention.thumbnailUrl) && isVisualMedia && !thumbnailFailed;
+
+  return (
+    <span className={styles.assetMentionWrapper}>
+      <PortaledMentionTooltip content={mention.filename} tooltipId={tooltipId}>
+        <button
+          type="button"
+          tabIndex={tabIndex}
+          className={cn(styles.assetMention, styles.assetMentionRow)}
+          data-asset-layout="row"
+          aria-describedby={tooltipId}
+          aria-label={accessibleLabel}
+          disabled={!isClickable}
+          onClick={isClickable ? onClick : undefined}
+        >
+          {showThumbnail ? (
+            <img
+              src={mention.thumbnailUrl ?? ''}
+              alt=""
+              aria-hidden="true"
+              className={styles.assetMentionThumb}
+              onError={() => setThumbnailFailed(true)}
+            />
+          ) : (
+            <AssetMentionIcon
+              aria-hidden="true"
+              className={styles.assetMentionRowIcon}
+            />
+          )}
+          <span className={styles.assetMentionName}>{mention.filename}</span>
+        </button>
+      </PortaledMentionTooltip>
+    </span>
+  );
+}
 
 function AssetMentionDisplay({
   mention,
@@ -240,7 +295,21 @@ function AssetMentionDisplay({
   onClick,
   isClickable,
   accessibleLabel,
+  assetLayout,
 }: AssetMentionDisplayProps) {
+  if (assetLayout === 'row') {
+    return (
+      <AssetRowMention
+        mention={mention}
+        tabIndex={tabIndex}
+        onClick={onClick}
+        tooltipId={tooltipId}
+        isClickable={isClickable}
+        accessibleLabel={accessibleLabel}
+      />
+    );
+  }
+
   const isVisualMedia =
     mention.mimeType.startsWith('image/') ||
     mention.mimeType.startsWith('video/');
@@ -286,6 +355,7 @@ type LocalFileMentionDisplayProps = {
   onClick: (e: React.MouseEvent) => void;
   isClickable: boolean;
   accessibleLabel?: string;
+  assetLayout: 'preview' | 'row';
 };
 
 function LocalFileMentionDisplay({
@@ -453,6 +523,7 @@ const MentionDisplayComponent = ({
   tooltipId: externalTooltipId,
   projectUsers,
   accessibleLabel,
+  assetLayout = 'preview',
 }: MentionDisplayProps) => {
   const generatedId = useId();
   const tooltipId = externalTooltipId ?? `mention-tooltip-${generatedId}`;
@@ -519,6 +590,7 @@ const MentionDisplayComponent = ({
           onClick={handleClick}
           isClickable={isClickable}
           accessibleLabel={accessibleLabel}
+          assetLayout={assetLayout}
         />
       );
 
@@ -531,6 +603,7 @@ const MentionDisplayComponent = ({
           onClick={handleClick}
           isClickable={isClickable}
           accessibleLabel={accessibleLabel}
+          assetLayout={assetLayout}
         />
       );
 
@@ -573,6 +646,7 @@ export const MentionDisplay = memo(
     if (prevProps.onClick !== nextProps.onClick) return false;
     if (prevProps.projectUsers !== nextProps.projectUsers) return false;
     if (prevProps.accessibleLabel !== nextProps.accessibleLabel) return false;
+    if (prevProps.assetLayout !== nextProps.assetLayout) return false;
 
     return areMentionsEqual(prevProps.mention, nextProps.mention);
   },

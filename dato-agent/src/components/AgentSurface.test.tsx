@@ -1008,7 +1008,19 @@ describe('AgentSurface', () => {
             kind: 'assets',
             title: 'Referenced assets',
             assets: [
-              { uploadId: 'upload-1', title: 'Hero.jpg' },
+              {
+                uploadId: 'upload-1',
+                title: 'Hero.jpg',
+                mention: {
+                  type: 'asset',
+                  id: 'upload-1',
+                  filename: 'Hero.jpg',
+                  url: 'https://www.datocms-assets.com/hero.jpg',
+                  thumbnailUrl:
+                    'https://www.datocms-assets.com/hero.jpg?w=48&fit=max',
+                  mimeType: 'image/jpeg',
+                },
+              },
               {
                 uploadId: 'upload-deleted',
                 title: 'Old.jpg',
@@ -1034,11 +1046,17 @@ describe('AgentSurface', () => {
     );
 
     const assets = screen.getByLabelText('Referenced assets');
-    await user.click(
-      within(assets).getByRole('button', { name: 'Open Hero.jpg' }),
+    const heroAsset = within(assets).getByRole('button', {
+      name: 'Open Hero.jpg',
+    });
+    expect(heroAsset).toHaveAttribute('data-asset-layout', 'row');
+    expect(heroAsset.querySelector('img')).toHaveAttribute(
+      'src',
+      'https://www.datocms-assets.com/hero.jpg?w=48&fit=max',
     );
+    await user.click(heroAsset);
     expect(onOpenAsset).toHaveBeenCalledWith(
-      { uploadId: 'upload-1', title: 'Hero.jpg' },
+      expect.objectContaining({ uploadId: 'upload-1', title: 'Hero.jpg' }),
       'assets',
     );
     expect(

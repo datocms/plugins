@@ -1048,20 +1048,25 @@
 
 .mentionReceiptItems {
   display: flex;
-  max-height: 156px;
   flex-wrap: wrap;
   align-items: flex-start;
   gap: 5px;
-  overflow-x: hidden;
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  scrollbar-color: var(--color--scrollbar--fill) transparent;
 }
 
-.mentionReceiptItems > *,
-.mentionReceiptItems button {
+.mentionReceiptItems > * {
   min-width: 0;
   max-width: 100%;
+}
+
+.mentionReceiptItems button {
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  flex-wrap: nowrap;
+  align-items: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .mentionReceiptItems > * {
@@ -1070,11 +1075,19 @@
 
 .mentionReceiptItem {
   display: inline-flex;
+  max-width: 100%;
   align-items: center;
   gap: 4px;
+  white-space: nowrap;
+}
+
+.mentionReceiptItem > :first-child {
+  min-width: 0;
+  flex: 1 1 auto;
 }
 
 .mentionReceiptState {
+  flex: none;
   color: var(--color--ink-subtle);
   font-size: var(--font-size-xxs);
 }

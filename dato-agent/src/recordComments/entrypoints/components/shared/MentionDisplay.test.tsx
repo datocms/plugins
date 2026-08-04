@@ -246,6 +246,46 @@ describe('MentionDisplay', () => {
     expectPortaledTooltip(container, fallback, filename);
   });
 
+  it('uses a one-row asset layout only when explicitly requested', () => {
+    const filename = 'homepage-hero.jpg';
+    const thumbnailUrl =
+      'https://www.datocms-assets.com/homepage-hero.jpg?w=300&fit=max';
+    const mention = {
+      ...mentions.asset,
+      filename,
+      mimeType: 'image/jpeg',
+      thumbnailUrl,
+    };
+    const { rerender } = render(
+      <MentionDisplay accessibleLabel="Open homepage hero" mention={mention} />,
+    );
+
+    const preview = screen.getByRole('button', {
+      name: 'Open homepage hero',
+    });
+    expect(preview).not.toHaveAttribute('data-asset-layout');
+    expect(preview.querySelector('img')).toHaveAttribute('alt', filename);
+
+    rerender(
+      <MentionDisplay
+        accessibleLabel="Open homepage hero"
+        assetLayout="row"
+        mention={mention}
+      />,
+    );
+
+    const row = screen.getByRole('button', { name: 'Open homepage hero' });
+    const thumbnail = row.querySelector('img');
+    expect(row).toHaveAttribute('data-asset-layout', 'row');
+    expect(row).toHaveTextContent(filename);
+    expect(thumbnail).toHaveAttribute('src', thumbnailUrl);
+    expect(thumbnail).toHaveAttribute('alt', '');
+
+    fireEvent.error(thumbnail as HTMLImageElement);
+    expect(row.querySelector('img')).not.toBeInTheDocument();
+    expect(row.querySelector('svg')).toBeInTheDocument();
+  });
+
   it.each(Object.entries(mentions))(
     'does not invoke disabled %s references',
     (type, mention) => {
