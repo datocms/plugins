@@ -1,0 +1,16 @@
+.empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  box-sizing: border-box;
+  padding: var(--spacing-xl);
+  text-align: center;
+}
+
+.empty p {
+  margin: 0;
+  color: var(--color--ink-subtle);
+  font-size: var(--font-size-m);
+}

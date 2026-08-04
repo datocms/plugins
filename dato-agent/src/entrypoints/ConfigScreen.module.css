@@ -1,0 +1,27 @@
+.permissionNotice {
+  margin-bottom: var(--spacing-l);
+  padding: var(--spacing-m);
+  border: 1px solid var(--color--border);
+  border-radius: 4px;
+  background: var(--color--surface-muted);
+  color: var(--color--ink);
+  line-height: 1.45;
+}
+
+.retryButton {
+  appearance: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color--ink-link);
+  cursor: pointer;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.retryButton:focus-visible {
+  border-radius: 2px;
+  outline: 2px solid var(--color--focus--border);
+  outline-offset: 2px;
+}

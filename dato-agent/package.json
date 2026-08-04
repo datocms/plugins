@@ -1,0 +1,56 @@
+{
+  "name": "datocms-plugin-dato-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A beta natural-language DatoCMS agent with native record navigation",
+  "type": "module",
+  "datoCmsPlugin": {
+    "title": "Dato Agent (Beta)",
+    "coverImage": "docs/cover-1200x800.png",
+    "entryPoint": "dist/index.html"
+  },
+  "scripts": {
+    "dev": "vite --port 3000",
+    "build": "tsc -b && vite build",
+    "typecheck": "tsc -b",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "biome check ./src"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "datocms-plugin-sdk": "2.2.6",
+    "datocms-react-ui": "2.2.6",
+    "openai": "^6.48.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "react-markdown": "^10.1.0",
+    "react-textarea-autosize": "^8.5.9",
+    "remark-gfm": "^4.0.1"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.5.5",
+    "@testing-library/jest-dom": "^7.0.0",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^26.1.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
+    "jsdom": "^29.1.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.1.5",
+    "vitest": "^4.1.10"
+  },
+  "overrides": {
+    "datocms-react-ui": {
+      "react-intersection-observer": "^9.16.0",
+      "react": "$react",
+      "react-dom": "$react"
+    }
+  },
+  "allowScripts": {
+    "fsevents@2.3.3": true
+  }
+}
