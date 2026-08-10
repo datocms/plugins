@@ -281,6 +281,7 @@ export type AgentSurfaceProps = {
   autoApproveEnabled?: boolean;
   autoApproveChanging?: boolean;
   autoApproveError?: string;
+  autoApproveDisabledReason?: string;
   persistenceWarning?: string;
   onAutoApproveChange?: (
     enabled: boolean,
@@ -329,56 +330,65 @@ function DatoCmsConnectionField({
         onConnectDatoCms?.();
       }}
     >
-      <div className={styles.connectionRow}>
-        <span className={styles.datoMark}>
-          <img alt="" aria-hidden="true" src={datoMarkUrl} />
-        </span>
-        <strong className={styles.connectionLabel}>{connectedLabel}</strong>
-        <span className={styles.connectionActions}>
-          {datoCmsConnecting ? (
-            <span
-              aria-label="Connecting to DatoCMS"
-              className={styles.connectionSpinner}
-              role="status"
-            >
-              <Spinner size={16} />
-            </span>
-          ) : datoCmsConnected ? (
-            <>
+      <div>
+        <div className={styles.connectionRow}>
+          <span className={styles.datoMark}>
+            <img alt="" aria-hidden="true" src={datoMarkUrl} />
+          </span>
+          <strong className={styles.connectionLabel}>{connectedLabel}</strong>
+          <span className={styles.connectionActions}>
+            {datoCmsConnecting ? (
               <span
-                aria-label="Connected"
-                className={styles.connectedStatus}
-                role="img"
+                aria-label="Connecting to DatoCMS"
+                className={styles.connectionSpinner}
+                role="status"
               >
-                <CircleCheckIcon />
+                <Spinner size={16} />
               </span>
-              {onDisconnectDatoCms && (
-                <Tooltip placement="left">
-                  <TooltipTrigger>
-                    <button
-                      aria-label="Disconnect DatoCMS"
-                      className={`${styles.iconButton} ${styles.disconnectButton}`}
-                      onClick={onDisconnectDatoCms}
-                      type="button"
-                    >
-                      <DisconnectIcon />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent>Disconnect</TooltipContent>
-                </Tooltip>
-              )}
-            </>
-          ) : (
-            <Button
-              buttonSize="xxs"
-              buttonType="primary"
-              disabled={!onConnectDatoCms}
-              type="submit"
-            >
-              Connect
-            </Button>
-          )}
-        </span>
+            ) : datoCmsConnected ? (
+              <>
+                <span
+                  aria-label="Connected"
+                  className={styles.connectedStatus}
+                  role="img"
+                >
+                  <CircleCheckIcon />
+                </span>
+                {onDisconnectDatoCms && (
+                  <Tooltip placement="left">
+                    <TooltipTrigger>
+                      <button
+                        aria-label="Disconnect DatoCMS"
+                        className={`${styles.iconButton} ${styles.disconnectButton}`}
+                        onClick={onDisconnectDatoCms}
+                        type="button"
+                      >
+                        <DisconnectIcon />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent>Disconnect</TooltipContent>
+                  </Tooltip>
+                )}
+              </>
+            ) : (
+              <Button
+                buttonSize="xxs"
+                buttonType="primary"
+                disabled={!onConnectDatoCms}
+                type="submit"
+              >
+                Connect
+              </Button>
+            )}
+          </span>
+        </div>
+
+        {!datoCmsConnected && (
+          <p className={styles.authorizationNotice} role="note">
+            When DatoCMS asks which projects to authorize, select{' '}
+            <strong>only the project where this plugin is installed.</strong>
+          </p>
+        )}
       </div>
 
       {connection.datoCmsError && (
@@ -1769,6 +1779,7 @@ function UtilityControls({
   autoApproveEnabled,
   autoApproveChanging,
   autoApproveError,
+  autoApproveDisabledReason,
   disabled,
   onAutoApproveChange,
   onCloseChats,
@@ -1779,6 +1790,7 @@ function UtilityControls({
   autoApproveEnabled: boolean;
   autoApproveChanging: boolean;
   autoApproveError?: string;
+  autoApproveDisabledReason?: string;
   disabled: boolean;
   onAutoApproveChange?: (
     enabled: boolean,
@@ -1789,6 +1801,16 @@ function UtilityControls({
   if (!connected) {
     return null;
   }
+
+  const autoApproveLabel =
+    autoApproveDisabledReason ??
+    (autoApproveChanging
+      ? 'Confirming auto-approve'
+      : autoApproveEnabled
+        ? 'Turn off auto-approve'
+        : 'Turn on auto-approve');
+  const autoApproveDisabled =
+    disabled || Boolean(autoApproveDisabledReason) || !onAutoApproveChange;
 
   return (
     <div
@@ -1814,16 +1836,10 @@ function UtilityControls({
         <Tooltip placement="bottom">
           <TooltipTrigger>
             <button
-              aria-label={
-                autoApproveChanging
-                  ? 'Confirming auto-approve'
-                  : autoApproveEnabled
-                    ? 'Turn off auto-approve'
-                    : 'Turn on auto-approve'
-              }
+              aria-label={autoApproveLabel}
               aria-pressed={autoApproveEnabled}
               className={`${styles.autoApproveControl}${autoApproveEnabled ? ` ${styles.autoApproveControlEnabled}` : ''}`}
-              disabled={disabled || !onAutoApproveChange}
+              disabled={autoApproveDisabled}
               onClick={() => {
                 void onAutoApproveChange?.(!autoApproveEnabled);
               }}
@@ -1838,11 +1854,7 @@ function UtilityControls({
               )}
             </button>
           </TooltipTrigger>
-          <TooltipContent>
-            {autoApproveEnabled
-              ? 'Turn off auto-approve'
-              : 'Turn on auto-approve'}
-          </TooltipContent>
+          <TooltipContent>{autoApproveLabel}</TooltipContent>
         </Tooltip>
       )}
       {autoApproveError && !chatsOpen && (
@@ -1881,6 +1893,7 @@ export function AgentSurface({
   autoApproveEnabled = false,
   autoApproveChanging = false,
   autoApproveError,
+  autoApproveDisabledReason,
   persistenceWarning,
   onAutoApproveChange,
 }: AgentSurfaceProps) {
@@ -2030,6 +2043,7 @@ export function AgentSurface({
         autoApproveChanging={autoApproveChanging}
         autoApproveEnabled={autoApproveEnabled}
         autoApproveError={autoApproveError}
+        autoApproveDisabledReason={autoApproveDisabledReason}
         chatsOpen={settingsOpen}
         connected={connected}
         disabled={

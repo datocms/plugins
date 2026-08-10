@@ -1,7 +1,7 @@
 import type { ConfirmOptions } from 'datocms-plugin-sdk';
 
 export const AUTO_APPROVAL_STORAGE_VERSION = 1 as const;
-export const AUTO_APPROVAL_ACKNOWLEDGEMENT_VERSION = 1 as const;
+export const AUTO_APPROVAL_ACKNOWLEDGEMENT_VERSION = 2 as const;
 
 const AUTO_APPROVAL_KEY_PREFIX = 'dato-agent.auto-approval.v1';
 
@@ -29,8 +29,6 @@ export type AutoApprovalConfirmHost = {
 
 export type AutoApprovalConfirmationContext = {
   siteName: string;
-  environment: string;
-  isEnvironmentPrimary: boolean;
 };
 
 type StoredAutoApproval = {
@@ -134,7 +132,7 @@ export async function confirmEnableAutoApproval(
   const first = await host.openConfirm({
     title: 'Auto-approve is dangerous',
     content:
-      'Agents are non-deterministic: they can misunderstand instructions and make unexpected changes. Auto-approve runs those changes without review.',
+      'The Remote MCP can access the whole DatoCMS project through your account. It is not confined to the record or environment currently open in the CMS, and can perform destructive operations anywhere your permissions allow. Auto-approve runs those operations without review.',
     choices: [
       {
         label: 'Continue',
@@ -149,12 +147,9 @@ export async function confirmEnableAutoApproval(
     return false;
   }
 
-  const environmentLabel = context.isEnvironmentPrimary
-    ? 'Primary'
-    : context.environment;
   const second = await host.openConfirm({
     title: 'Accept the risk?',
-    content: `This is dangerous: the agent may create, update, publish, unpublish, or delete content in ${context.siteName} (${environmentLabel}) without asking. Its behavior is non-deterministic, so the result may differ from what you intended. Save any open record edits first.`,
+    content: `This is dangerous: Dato Agent may create, update, publish, unpublish, delete, or otherwise modify data anywhere in the ${context.siteName} project, including other environments, without asking. Changes may be difficult or impossible to undo, and the result may differ from what you intended.`,
     choices: [
       {
         label: 'Turn on auto-approve',

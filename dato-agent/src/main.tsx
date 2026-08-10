@@ -2,6 +2,7 @@ import { connect } from 'datocms-plugin-sdk';
 import 'datocms-react-ui/styles.css';
 import './recordComments/entrypoints/styles/tokens.css';
 import { lazy, Suspense } from 'react';
+import AgentUnavailableFrame from './entrypoints/AgentUnavailableFrame';
 import ApprovalDetailsModal from './entrypoints/ApprovalDetailsModal';
 import ConfigScreen from './entrypoints/ConfigScreen';
 import FileDetailsModal from './entrypoints/FileDetailsModal';
@@ -13,6 +14,7 @@ import { normalizeConfig } from './lib/config';
 import { FILE_DETAILS_MODAL_ID } from './lib/fileDetailsModal';
 import { inspectorRecordPaneWidth } from './lib/inspectorLayout';
 import { handleOAuthCallbackIfPresent } from './lib/oauth';
+import { canRoleUseDatoAgent } from './lib/permissions';
 import { DEFAULT_SIDEBAR_WIDTH, readSidebarWidth } from './lib/persistedWidth';
 import { render } from './utils/render';
 
@@ -42,7 +44,12 @@ try {
 
 if (!handledOAuthCallback) {
   connect({
-    mainNavigationTabs() {
+    mainNavigationTabs(ctx) {
+      const config = normalizeConfig(ctx.plugin.attributes.parameters);
+      if (!canRoleUseDatoAgent(config, ctx.currentRole?.id)) {
+        return [];
+      }
+
       return [
         {
           label: 'Agent (Beta)',
@@ -68,7 +75,10 @@ if (!handledOAuthCallback) {
 
     itemFormSidebars(_itemType, ctx) {
       const config = normalizeConfig(ctx.plugin.attributes.parameters);
-      if (!config.enableRecordSidebar) {
+      if (
+        !config.enableRecordSidebar ||
+        !canRoleUseDatoAgent(config, ctx.currentRole?.id)
+      ) {
         return [];
       }
 
@@ -87,6 +97,12 @@ if (!handledOAuthCallback) {
         return;
       }
 
+      const config = normalizeConfig(ctx.plugin.attributes.parameters);
+      if (!canRoleUseDatoAgent(config, ctx.currentRole?.id)) {
+        render(<AgentUnavailableFrame ctx={ctx} />);
+        return;
+      }
+
       render(
         <Suspense fallback={<LoadingFrame ctx={ctx} />}>
           <AgentSidebar ctx={ctx} />
@@ -99,6 +115,12 @@ if (!handledOAuthCallback) {
         return;
       }
 
+      const config = normalizeConfig(ctx.plugin.attributes.parameters);
+      if (!canRoleUseDatoAgent(config, ctx.currentRole?.id)) {
+        render(<AgentUnavailableFrame ctx={ctx} />);
+        return;
+      }
+
       render(
         <Suspense fallback={<LoadingFrame ctx={ctx} />}>
           <AgentInspector ctx={ctx} />
@@ -108,7 +130,14 @@ if (!handledOAuthCallback) {
 
     renderInspectorPanel(panelId, ctx) {
       if (panelId === 'dato-agent-empty') {
-        render(<InspectorEmptyPanel ctx={ctx} />);
+        const config = normalizeConfig(ctx.plugin.attributes.parameters);
+        render(
+          canRoleUseDatoAgent(config, ctx.currentRole?.id) ? (
+            <InspectorEmptyPanel ctx={ctx} />
+          ) : (
+            <AgentUnavailableFrame ctx={ctx} />
+          ),
+        );
       }
     },
 

@@ -11,7 +11,9 @@ import {
 import { resolveFieldsWithinDeadline } from '../lib/hostContextDeadline';
 import { createAgentMentionHost } from '../lib/mentionHost';
 import { createInspectorNavigator } from '../lib/navigation';
+import { canRoleUseDatoAgent } from '../lib/permissions';
 import AgentFrame from './AgentFrame';
+import AgentUnavailableFrame from './AgentUnavailableFrame';
 
 type Props = {
   ctx: RenderInspectorCtx;
@@ -147,7 +149,7 @@ async function loadMissingProjectFields(
   return [...fieldsById.values()];
 }
 
-export default function AgentInspector({ ctx }: Props) {
+function AuthorizedAgentInspector({ ctx }: Props) {
   const latestCtxRef = useRef(ctx);
   latestCtxRef.current = ctx;
   const projectFieldsPromiseRef = useRef<
@@ -288,11 +290,19 @@ export default function AgentInspector({ ctx }: Props) {
         onConfirmEnableAutoApprove={() =>
           confirmEnableAutoApproval(ctx, {
             siteName: ctx.site.attributes.name,
-            environment: ctx.environment,
-            isEnvironmentPrimary: ctx.isEnvironmentPrimary,
           })
         }
       />
     </Canvas>
+  );
+}
+
+export default function AgentInspector({ ctx }: Props) {
+  const config = normalizeConfig(ctx.plugin.attributes.parameters);
+
+  return canRoleUseDatoAgent(config, ctx.currentRole?.id) ? (
+    <AuthorizedAgentInspector ctx={ctx} />
+  ) : (
+    <AgentUnavailableFrame ctx={ctx} />
   );
 }

@@ -31,7 +31,10 @@ import {
   type PresentUsersInput,
   type ReadCurrentRecordLiveFormStateInput,
 } from '../lib/agentRuntime';
-import { validateApprovalScope } from '../lib/approval';
+import {
+  READ_ONLY_REJECTION_MESSAGE,
+  validateApprovalScope,
+} from '../lib/approval';
 import type { ApprovalDetailsDecision } from '../lib/approvalDetailsModal';
 import {
   type AutoApprovalScope,
@@ -76,6 +79,7 @@ import {
   getSessionLocalFile,
   hasSessionLocalFileBytes,
 } from '../lib/localFiles';
+import { DATOCMS_MCP_UNSAFE_SCRIPT_TOOL } from '../lib/mcpPolicy';
 import type { AgentMentionHost } from '../lib/mentionHost';
 import {
   type AgentComposerSubmission,
@@ -469,6 +473,37 @@ function settleUnsafeJournalClaimFailure(
   return entry;
 }
 
+function settleReadOnlyCancellationEntry(
+  entry: AgentTranscriptEntry,
+  turn: ActiveTurn,
+): AgentTranscriptEntry {
+  if (entry.id === turn.assistantEntryId && entry.kind === 'message') {
+    return {
+      ...entry,
+      ...(!entry.content.trim()
+        ? { content: READ_ONLY_REJECTION_MESSAGE }
+        : {}),
+      streaming: false,
+      interrupted: false,
+      error: undefined,
+    };
+  }
+
+  if (entry.id === turn.activityEntryId && entry.kind === 'activity') {
+    return {
+      ...entry,
+      phase: 'completed',
+      activities: entry.activities.map((activity) =>
+        activity.status === 'running'
+          ? { ...activity, status: 'cancelled' as const }
+          : activity,
+      ),
+    };
+  }
+
+  return entry;
+}
+
 function stringifyDetail(value: unknown): string | undefined {
   if (value === undefined) {
     return undefined;
@@ -682,6 +717,7 @@ function approvalViewModel(
     environment: string;
     isEnvironmentPrimary: boolean;
     scriptSessionId?: string;
+    readOnly?: boolean;
   },
 ): UnsafeApprovalViewModel {
   const parsed =
@@ -701,6 +737,7 @@ function approvalViewModel(
       serverLabel: pending.request.serverLabel,
     },
     scope,
+    { readOnly: scope.readOnly },
   );
   const status = pending.decision
     ? pending.decision.approve
@@ -1792,6 +1829,7 @@ export default function AgentFrame(props: AgentFrameProps) {
     () => createAutoApprovalStore(autoApprovalScope),
     [autoApprovalScope],
   );
+  const readOnlyRef = useRef(props.config.readOnly);
   const conversationStorageContext = useMemo(
     () => ({
       pluginId: props.pluginId,
@@ -1850,6 +1888,10 @@ export default function AgentFrame(props: AgentFrameProps) {
   const [oauthError, setOauthError] = useState<string>();
   const [autoApproveEnabled, setAutoApproveEnabled] = useState(() => {
     try {
+      if (props.config.readOnly) {
+        autoApprovalStore.setEnabled(false);
+        return false;
+      }
       return autoApprovalStore.isEnabled();
     } catch {
       return false;
@@ -1894,6 +1936,7 @@ export default function AgentFrame(props: AgentFrameProps) {
   >(undefined);
 
   autoApproveEnabledRef.current = autoApproveEnabled;
+  readOnlyRef.current = props.config.readOnly;
   oauthCredentialsRef.current = oauthCredentials;
   editorDirtyRef.current = Boolean(
     props.editorHasUnsavedChanges ?? props.currentRecord?.hasUnsavedChanges,
@@ -1950,7 +1993,11 @@ export default function AgentFrame(props: AgentFrameProps) {
 
       let enabled = false;
       try {
-        enabled = autoApprovalStore.isEnabled();
+        if (readOnlyRef.current) {
+          autoApprovalStore.setEnabled(false);
+        } else {
+          enabled = autoApprovalStore.isEnabled();
+        }
       } catch {
         enabled = false;
       }
@@ -1980,6 +2027,68 @@ export default function AgentFrame(props: AgentFrameProps) {
     pendingApprovalsRef.current = next;
     setPendingApprovals(next);
   };
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: This is a one-way policy transition keyed only by the persisted Read Only value and its session store. State helpers are synchronous ref-backed guards; adding the render-local dispatch function would retrigger this effect on every render.
+  useEffect(() => {
+    if (!props.config.readOnly) {
+      return;
+    }
+
+    autoApproveEnabledRef.current = false;
+    setAutoApproveEnabled(false);
+    setAutoApproveError(undefined);
+    try {
+      autoApprovalStore.setEnabled(false);
+    } catch {
+      // The live in-memory policy is authoritative even when session storage
+      // is unavailable.
+    }
+
+    const blocked = [...pendingApprovalsRef.current.values()].filter(
+      (pending) =>
+        pending.request.name === DATOCMS_MCP_UNSAFE_SCRIPT_TOOL &&
+        pending.decision?.approve !== false &&
+        !(
+          activeTurnRef.current?.unsafeOperationDispatched &&
+          approvalDispatchRef.current.has(pending.responseId)
+        ),
+    );
+    if (blocked.length === 0) {
+      return;
+    }
+
+    const blockedIds = new Set(
+      blocked.map((pending) => pending.request.approvalRequestId),
+    );
+    const responseIds = [
+      ...new Set(blocked.map((pending) => pending.responseId)),
+    ];
+    updatePendingApprovals((current) => {
+      const next = new Map(current);
+      for (const pending of blocked) {
+        next.set(pending.request.approvalRequestId, {
+          ...pending,
+          automatic: false,
+          decision: {
+            approvalRequestId: pending.request.approvalRequestId,
+            approve: false,
+            reason: READ_ONLY_REJECTION_MESSAGE,
+          },
+        });
+      }
+      return next;
+    });
+    updateEntries((current) =>
+      current.filter(
+        (entry) =>
+          entry.kind !== 'approval' || !blockedIds.has(entry.approval.id),
+      ),
+    );
+
+    for (const responseId of responseIds) {
+      void dispatchApprovalGroup(responseId);
+    }
+  }, [autoApprovalStore, props.config.readOnly]);
 
   const beginHostAction = (): boolean => {
     if (!mountedRef.current || hostActionPendingRef.current) {
@@ -2489,6 +2598,7 @@ export default function AgentFrame(props: AgentFrameProps) {
           thrownError,
           systemPrompt: buildSystemPrompt(systemContext, {
             additionalInstructions: props.config.additionalInstructions,
+            readOnly: props.config.readOnly,
           }),
         },
         transcript: entriesRef.current,
@@ -2663,9 +2773,12 @@ export default function AgentFrame(props: AgentFrameProps) {
 
   const hostCreateAsset = mentionHost.createAsset;
   const createDatoAsset: CreateDatoAssetCallback | undefined =
-    hostCreateAsset && mentionHost.canCreateAssets
+    !props.config.readOnly && hostCreateAsset && mentionHost.canCreateAssets
       ? // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Source validation, irreversible dispatch marking, and outcome-unknown handling form one asset-upload boundary.
         async (input, signal) => {
+          if (readOnlyRef.current) {
+            throw new Error(READ_ONLY_REJECTION_MESSAGE);
+          }
           const turn = activeTurnRef.current;
           if (!turn) {
             throw new Error('The active chat request is no longer available.');
@@ -2708,11 +2821,17 @@ export default function AgentFrame(props: AgentFrameProps) {
           let dispatched = false;
           let mention: Awaited<ReturnType<typeof hostCreateAsset>>;
           try {
+            if (readOnlyRef.current) {
+              throw new Error(READ_ONLY_REJECTION_MESSAGE);
+            }
             mention = await hostCreateAsset(source, {
               skipConfirmation:
                 autoApproveEnabledRef.current && !editorDirtyRef.current,
               signal,
               onUploadDispatch: () => {
+                if (readOnlyRef.current) {
+                  throw new Error(READ_ONLY_REJECTION_MESSAGE);
+                }
                 if (activeTurnRef.current !== turn) {
                   throw new Error(
                     'The active chat request is no longer available.',
@@ -2757,6 +2876,7 @@ export default function AgentFrame(props: AgentFrameProps) {
       modelMaxOutputTokens: activeModelMaxOutputTokens(props.config),
       reasoningEffort: activeReasoningEffort(props.config),
       fastMode: activeFastMode(props.config),
+      readOnly: props.config.readOnly,
       additionalInstructions: props.config.additionalInstructions,
       hostContext,
       getModelSchema: props.getModelSchema,
@@ -2905,16 +3025,30 @@ export default function AgentFrame(props: AgentFrameProps) {
     responseId: string,
     approval: AgentApprovalRequest,
   ) => {
+    const blockedByReadOnly =
+      readOnlyRef.current && approval.name === DATOCMS_MCP_UNSAFE_SCRIPT_TOOL;
     const pending: PendingApproval = {
       responseId,
       request: approval,
-      automatic: autoApproveEnabledRef.current,
+      automatic: blockedByReadOnly ? false : autoApproveEnabledRef.current,
+      ...(blockedByReadOnly
+        ? {
+            decision: {
+              approvalRequestId: approval.approvalRequestId,
+              approve: false,
+              reason: READ_ONLY_REJECTION_MESSAGE,
+            },
+          }
+        : {}),
     };
     updatePendingApprovals((current) => {
       const next = new Map(current);
       next.set(approval.approvalRequestId, pending);
       return next;
     });
+    if (blockedByReadOnly) {
+      return;
+    }
     updateEntries((current) => {
       if (
         current.some(
@@ -2928,7 +3062,10 @@ export default function AgentFrame(props: AgentFrameProps) {
         {
           id: `approval:${approval.approvalRequestId}`,
           kind: 'approval',
-          approval: approvalViewModel(pending, props),
+          approval: approvalViewModel(pending, {
+            ...props,
+            readOnly: readOnlyRef.current,
+          }),
         },
       ];
     });
@@ -3395,7 +3532,14 @@ export default function AgentFrame(props: AgentFrameProps) {
 
       if (mountedRef.current && activeTurnRef.current === turn) {
         if (result.status === 'approval_required') {
-          await autoApproveResponse(result.responseId);
+          if (readOnlyRef.current) {
+            const responseId = result.responseId;
+            if (responseId) {
+              await dispatchApprovalGroup(responseId);
+            }
+          } else {
+            await autoApproveResponse(result.responseId);
+          }
         } else {
           setRunning(false);
           activeTurnRef.current = undefined;
@@ -3546,21 +3690,89 @@ export default function AgentFrame(props: AgentFrameProps) {
     setRunning(false);
   }
 
+  function rejectReadOnlyUnsafeDispatch(
+    turn: ActiveTurn,
+    unsafeJournalId: string,
+    approvalRequestIds: readonly string[],
+  ): void {
+    if (!readOnlyRef.current) {
+      return;
+    }
+
+    if (!turn.unsafeOperationDispatched) {
+      try {
+        unsafeDispatchJournalStore.clear(unsafeJournalId);
+        turn.unsafeJournalId = undefined;
+      } catch {
+        // The network boundary remains blocked even when the now-unneeded
+        // armed journal cannot be removed.
+      }
+    } else {
+      try {
+        unsafeDispatchJournalStore.discardArmed(
+          unsafeJournalId,
+          approvalRequestIds,
+        );
+      } catch {
+        // Preserve the already-dispatched operation journal; the Remote MCP
+        // boundary is still blocked for the remaining armed operation.
+      }
+    }
+
+    throw new Error(READ_ONLY_REJECTION_MESSAGE);
+  }
+
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Group dispatch preserves one atomic, idempotent unsafe continuation and its outcome-unknown handling.
   async function dispatchApprovalGroup(responseId: string): Promise<void> {
     if (approvalDispatchRef.current.has(responseId)) {
       return;
     }
 
-    const group = [...pendingApprovalsRef.current.values()].filter(
+    let group = [...pendingApprovalsRef.current.values()].filter(
       (item) => item.responseId === responseId,
     );
-    if (group.length === 0 || group.some((item) => !item.decision)) {
+    if (group.length === 0) {
       return;
     }
 
     const runtime = runtimeRef.current;
     const turn = activeTurnRef.current;
+    if (readOnlyRef.current) {
+      const blockedIds = new Set<string>();
+      group = group.map((item) => {
+        if (item.request.name !== DATOCMS_MCP_UNSAFE_SCRIPT_TOOL) {
+          return item;
+        }
+        blockedIds.add(item.request.approvalRequestId);
+        return {
+          ...item,
+          automatic: false,
+          decision: {
+            approvalRequestId: item.request.approvalRequestId,
+            approve: false,
+            reason: READ_ONLY_REJECTION_MESSAGE,
+          },
+        };
+      });
+      if (blockedIds.size > 0) {
+        updatePendingApprovals((current) => {
+          const next = new Map(current);
+          for (const item of group) {
+            next.set(item.request.approvalRequestId, item);
+          }
+          return next;
+        });
+        updateEntries((current) =>
+          current.filter(
+            (entry) =>
+              entry.kind !== 'approval' || !blockedIds.has(entry.approval.id),
+          ),
+        );
+      }
+    }
+    if (group.some((item) => !item.decision)) {
+      return;
+    }
     const approvalIds = new Set(
       group.map((item) => item.request.approvalRequestId),
     );
@@ -3694,6 +3906,11 @@ export default function AgentFrame(props: AgentFrameProps) {
                   beforeDispatch: (
                     dispatchedApprovalIds: readonly string[],
                   ) => {
+                    rejectReadOnlyUnsafeDispatch(
+                      turn,
+                      unsafeJournalId,
+                      dispatchedApprovalIds,
+                    );
                     if (
                       activeTurnRef.current !== turn ||
                       controller.signal.aborted ||
@@ -3750,6 +3967,9 @@ export default function AgentFrame(props: AgentFrameProps) {
         error instanceof Error
           ? error.message
           : 'The result of this operation could not be confirmed.';
+      const readOnlyCancellation =
+        thrownMessage === READ_ONLY_REJECTION_MESSAGE &&
+        !turn.unsafeOperationDispatched;
       if (runtimeRef.current === runtime) {
         runtimeRef.current = undefined;
       }
@@ -3758,31 +3978,52 @@ export default function AgentFrame(props: AgentFrameProps) {
       if (activeTurnRef.current === turn) {
         activeTurnRef.current = undefined;
       }
-      updateEntries((current) =>
-        current.map((entry) => {
-          if (entry.id === turn.assistantEntryId && entry.kind === 'message') {
-            return {
-              ...entry,
-              streaming: false,
-              interrupted: true,
-              error: thrownMessage,
-            };
-          }
-          if (entry.id === turn.activityEntryId && entry.kind === 'activity') {
-            return {
-              ...entry,
-              phase: 'failed' as const,
-              activities: entry.activities.map((activity) =>
-                activity.status === 'running'
-                  ? { ...activity, status: 'error' as const }
-                  : activity,
-              ),
-            };
-          }
-          return entry;
-        }),
-      );
-      if (!turn.userStopped || turn.unsafeOperationDispatched) {
+      if (readOnlyCancellation) {
+        updateEntries((current) =>
+          current
+            .filter(
+              (entry) =>
+                entry.kind !== 'approval' ||
+                !approvalIds.has(entry.approval.id),
+            )
+            .map((entry) => settleReadOnlyCancellationEntry(entry, turn)),
+        );
+      } else {
+        updateEntries((current) =>
+          current.map((entry) => {
+            if (
+              entry.id === turn.assistantEntryId &&
+              entry.kind === 'message'
+            ) {
+              return {
+                ...entry,
+                streaming: false,
+                interrupted: true,
+                error: thrownMessage,
+              };
+            }
+            if (
+              entry.id === turn.activityEntryId &&
+              entry.kind === 'activity'
+            ) {
+              return {
+                ...entry,
+                phase: 'failed' as const,
+                activities: entry.activities.map((activity) =>
+                  activity.status === 'running'
+                    ? { ...activity, status: 'error' as const }
+                    : activity,
+                ),
+              };
+            }
+            return entry;
+          }),
+        );
+      }
+      if (
+        !readOnlyCancellation &&
+        (!turn.userStopped || turn.unsafeOperationDispatched)
+      ) {
         registerTerminalFailure(turn, {
           thrownError: error,
           source: 'approval_exception',
@@ -3965,6 +4206,7 @@ export default function AgentFrame(props: AgentFrameProps) {
           serverLabel: pending.request.serverLabel,
         },
         props,
+        { readOnly: readOnlyRef.current },
       );
       if (!validation.allowed) {
         pauseAutomaticApproval(responseId, validation.reason);
@@ -4072,6 +4314,7 @@ export default function AgentFrame(props: AgentFrameProps) {
         serverLabel: pending.request.serverLabel,
       },
       props,
+      { readOnly: readOnlyRef.current },
     );
     if (approve && !validation.allowed) {
       updateEntries((current) =>
@@ -4138,6 +4381,10 @@ export default function AgentFrame(props: AgentFrameProps) {
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Confirmation, busy-state revalidation, persistence, and fail-closed UI state form one activation transaction.
   async function changeAutoApprove(nextEnabled: boolean): Promise<boolean> {
     if (autoApproveChangeRef.current || hostActionPendingRef.current) {
+      return false;
+    }
+
+    if (nextEnabled && readOnlyRef.current) {
       return false;
     }
 
@@ -4590,6 +4837,11 @@ export default function AgentFrame(props: AgentFrameProps) {
       autoApproveEnabled={autoApproveEnabled}
       autoApproveChanging={autoApproveChanging}
       autoApproveError={autoApproveError}
+      autoApproveDisabledReason={
+        props.config.readOnly
+          ? 'Auto-approve is unavailable in Read Only mode.'
+          : undefined
+      }
       persistenceWarning={conversationPersistenceError}
       composerDisabled={
         setupNeeded ||
@@ -4629,7 +4881,9 @@ export default function AgentFrame(props: AgentFrameProps) {
       onReviewUnsafeAction={(approval) => void reviewApprovalDetails(approval)}
       onApproveUnsafeAction={(approval) => void decideApproval(approval, true)}
       onRejectUnsafeAction={(approval) => void decideApproval(approval, false)}
-      onAutoApproveChange={changeAutoApprove}
+      onAutoApproveChange={
+        props.config.readOnly ? undefined : changeAutoApprove
+      }
     />
   );
 }

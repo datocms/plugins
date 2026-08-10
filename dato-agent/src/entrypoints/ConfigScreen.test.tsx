@@ -15,6 +15,15 @@ const modelMocks = vi.hoisted(() => ({
   listProviderModels: vi.fn(),
 }));
 
+const cmaMocks = vi.hoisted(() => ({
+  buildClient: vi.fn(),
+  listRoles: vi.fn(),
+}));
+
+vi.mock('@datocms/cma-client-browser', () => ({
+  buildClient: cmaMocks.buildClient,
+}));
+
 vi.mock('../lib/providerModels', async (importOriginal) => {
   const original =
     await importOriginal<typeof import('../lib/providerModels')>();
@@ -104,43 +113,75 @@ vi.mock('datocms-react-ui', () => ({
     id: string;
     label: ReactNode;
     name: string;
-    onChange: (value: Option | null) => void;
+    onChange: (value: Option | readonly Option[] | null) => void;
     required?: boolean;
     selectInputProps?: {
       isDisabled?: boolean;
       isLoading?: boolean;
+      isMulti?: boolean;
       options?: Option[];
       required?: boolean;
     };
-    value?: Option | null;
-  }) => (
-    <div>
-      <label htmlFor={id}>{label}</label>
-      <select
-        aria-busy={selectInputProps?.isLoading}
-        disabled={selectInputProps?.isDisabled}
-        id={id}
-        name={name}
-        onChange={(event) =>
-          onChange(
-            selectInputProps?.options?.find(
-              (option) => option.value === event.target.value,
-            ) ?? null,
-          )
-        }
-        required={selectInputProps?.required || required}
-        value={value?.value ?? ''}
-      >
-        {selectInputProps?.options?.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-      {error && <span>{error}</span>}
-      {hint && <div>{hint}</div>}
-    </div>
-  ),
+    value?: Option | readonly Option[] | null;
+  }) => {
+    const selectedOptions = Array.isArray(value) ? value : value ? [value] : [];
+    const availableOptions = selectInputProps?.options ?? [];
+    const renderedOptions = [
+      ...availableOptions,
+      ...selectedOptions.filter(
+        (selected) =>
+          !availableOptions.some((option) => option.value === selected.value),
+      ),
+    ];
+
+    return (
+      <div>
+        <label htmlFor={id}>{label}</label>
+        <select
+          aria-busy={selectInputProps?.isLoading}
+          disabled={selectInputProps?.isDisabled}
+          id={id}
+          multiple={selectInputProps?.isMulti}
+          name={name}
+          onChange={(event) => {
+            if (selectInputProps?.isMulti) {
+              onChange(
+                Array.from(event.currentTarget.selectedOptions).flatMap(
+                  (selected) => {
+                    const option = renderedOptions.find(
+                      (candidate) => candidate.value === selected.value,
+                    );
+                    return option ? [option] : [];
+                  },
+                ),
+              );
+              return;
+            }
+
+            onChange(
+              availableOptions.find(
+                (option) => option.value === event.currentTarget.value,
+              ) ?? null,
+            );
+          }}
+          required={selectInputProps?.required || required}
+          value={
+            selectInputProps?.isMulti
+              ? selectedOptions.map((option) => option.value)
+              : (selectedOptions[0]?.value ?? '')
+          }
+        >
+          {renderedOptions.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        {error && <span>{error}</span>}
+        {hint && <div>{hint}</div>}
+      </div>
+    );
+  },
   SwitchField: ({
     hint,
     id,
@@ -246,14 +287,18 @@ const PARAMETERS = {
   anthropicReasoningEffort: 'high',
   anthropicFastMode: false,
   additionalInstructions: '',
+  readOnly: false,
   enableRecordSidebar: true,
+  allowedRoleIds: ['editor-role', 'reviewer-role'],
 };
 
 function createCtx({
   canEditSchema = true,
+  canManageUsers = true,
   parameters = PARAMETERS,
 }: {
   canEditSchema?: boolean;
+  canManageUsers?: boolean;
   parameters?: Record<string, unknown>;
 } = {}) {
   const updatePluginParameters = vi.fn().mockResolvedValue(undefined);
@@ -262,9 +307,18 @@ function createCtx({
   const ctx = {
     plugin: { attributes: { parameters } },
     currentRole: {
+      id: 'editor-role',
       attributes: { can_edit_schema: !canEditSchema },
-      meta: { final_permissions: { can_edit_schema: canEditSchema } },
+      meta: {
+        final_permissions: {
+          can_edit_schema: canEditSchema,
+          can_manage_users: canManageUsers,
+        },
+      },
     },
+    currentUserAccessToken: 'current-user-token',
+    environment: 'primary',
+    cmaBaseUrl: 'https://site-api.example.com',
     updatePluginParameters,
     notice,
     alert,
@@ -279,11 +333,26 @@ async function finishModelDiscovery() {
   });
 }
 
+async function finishRoleDiscovery() {
+  await act(async () => {
+    await Promise.resolve();
+  });
+}
+
 describe('ConfigScreen', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     modelMocks.listProviderModels.mockReset();
     modelMocks.listProviderModels.mockResolvedValue([OPENAI_MODEL]);
+    cmaMocks.buildClient.mockReset();
+    cmaMocks.listRoles.mockReset();
+    cmaMocks.listRoles.mockResolvedValue([
+      { id: 'editor-role', name: 'Editor' },
+      { id: 'reviewer-role', name: 'Reviewer' },
+    ]);
+    cmaMocks.buildClient.mockReturnValue({
+      roles: { list: cmaMocks.listRoles },
+    });
   });
 
   afterEach(() => {
@@ -420,6 +489,26 @@ describe('ConfigScreen', () => {
         anthropicFastMode: false,
       }),
     );
+  });
+
+  it('finishes saving without waiting for the success notice to dismiss', async () => {
+    const { ctx, notice, updatePluginParameters } = createCtx();
+    notice.mockReturnValue(new Promise(() => {}));
+    render(<ConfigScreen ctx={ctx} />);
+    await finishModelDiscovery();
+
+    fireEvent.change(screen.getByLabelText('Additional instructions'), {
+      target: { value: 'Use sentence case.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await act(async () => {});
+
+    expect(updatePluginParameters).toHaveBeenCalledOnce();
+    expect(notice).toHaveBeenCalledWith('Dato Agent (Beta) settings saved');
+    expect(
+      screen.getByRole('button', { name: 'Save settings' }),
+    ).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Saving…' })).toBeNull();
   });
 
   it('enables Anthropic fast mode only for supported Opus models', async () => {
@@ -617,8 +706,214 @@ describe('ConfigScreen', () => {
     expect(alert).not.toHaveBeenCalled();
   });
 
+  it('renders native permission fields in the required order', async () => {
+    const { ctx } = createCtx();
+    render(<ConfigScreen ctx={ctx} />);
+    await finishRoleDiscovery();
+
+    const section = screen
+      .getByRole('heading', { name: 'Permissions' })
+      .closest('section');
+    expect(section).not.toBeNull();
+    expect(
+      Array.from(
+        section?.querySelectorAll<HTMLInputElement | HTMLSelectElement>(
+          'input, select',
+        ) ?? [],
+      ).map((control) => control.id),
+    ).toEqual(['read-only', 'enable-record-sidebar', 'allowed-role-ids']);
+    expect(
+      screen.getByText(
+        'Project owners always have access. New roles must be added manually.',
+      ),
+    ).toBeVisible();
+  });
+
+  it('shows every current role as an unsaved first-run draft', async () => {
+    cmaMocks.listRoles.mockResolvedValue([
+      { id: 'account_role', name: 'Project owner' },
+      { id: 'editor-role', name: 'Editor' },
+      { id: 'reviewer-role', name: 'Reviewer' },
+    ]);
+    const { ctx, updatePluginParameters } = createCtx({
+      parameters: { ...PARAMETERS, allowedRoleIds: null },
+    });
+    render(<ConfigScreen ctx={ctx} />);
+    await finishRoleDiscovery();
+
+    const roles = screen.getByLabelText(
+      'All roles that can use DatoAgent',
+    ) as HTMLSelectElement;
+    expect(
+      Array.from(roles.selectedOptions).map((option) => option.value),
+    ).toEqual(['editor-role', 'reviewer-role']);
+    expect(screen.getByRole('button', { name: 'Save settings' })).toBeEnabled();
+    expect(cmaMocks.buildClient).toHaveBeenCalledWith({
+      apiToken: 'current-user-token',
+      environment: 'primary',
+      baseUrl: 'https://site-api.example.com',
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await act(async () => {});
+
+    expect(updatePluginParameters).toHaveBeenCalledWith(
+      expect.objectContaining({
+        allowedRoleIds: ['editor-role', 'reviewer-role'],
+      }),
+    );
+  });
+
+  it('saves explicit role subsets and does not opt new roles in', async () => {
+    cmaMocks.listRoles.mockResolvedValue([
+      { id: 'new-role', name: 'A newly created role' },
+      { id: 'editor-role', name: 'Editor' },
+    ]);
+    const { ctx, updatePluginParameters } = createCtx({
+      parameters: { ...PARAMETERS, allowedRoleIds: ['editor-role'] },
+    });
+    render(<ConfigScreen ctx={ctx} />);
+    await finishRoleDiscovery();
+
+    const roles = screen.getByLabelText(
+      'All roles that can use DatoAgent',
+    ) as HTMLSelectElement;
+    expect(
+      Array.from(roles.selectedOptions).map((option) => option.value),
+    ).toEqual(['editor-role']);
+
+    fireEvent.click(screen.getByLabelText('Read Only'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await act(async () => {});
+
+    expect(updatePluginParameters).toHaveBeenCalledWith(
+      expect.objectContaining({ allowedRoleIds: ['editor-role'] }),
+    );
+  });
+
+  it('supports explicitly clearing every collaborator role', async () => {
+    const { ctx, updatePluginParameters } = createCtx();
+    render(<ConfigScreen ctx={ctx} />);
+    await finishRoleDiscovery();
+
+    const roles = screen.getByLabelText(
+      'All roles that can use DatoAgent',
+    ) as HTMLSelectElement;
+    for (const option of roles.options) {
+      option.selected = false;
+    }
+    fireEvent.change(roles);
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await act(async () => {});
+
+    expect(updatePluginParameters).toHaveBeenCalledWith(
+      expect.objectContaining({ allowedRoleIds: [] }),
+    );
+  });
+
+  it('preserves deleted role IDs as removable fallback selections', async () => {
+    const { ctx, updatePluginParameters } = createCtx({
+      parameters: {
+        ...PARAMETERS,
+        allowedRoleIds: ['editor-role', 'removed-role'],
+      },
+    });
+    render(<ConfigScreen ctx={ctx} />);
+    await finishRoleDiscovery();
+
+    expect(
+      screen.getByRole('option', {
+        name: 'Unavailable role (removed-role)',
+      }),
+    ).toHaveProperty('selected', true);
+
+    fireEvent.click(screen.getByLabelText('Read Only'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await act(async () => {});
+
+    expect(updatePluginParameters).toHaveBeenCalledWith(
+      expect.objectContaining({
+        allowedRoleIds: ['editor-role', 'removed-role'],
+      }),
+    );
+
+    const roles = screen.getByLabelText(
+      'All roles that can use DatoAgent',
+    ) as HTMLSelectElement;
+    for (const option of roles.options) {
+      option.selected = option.value === 'editor-role';
+    }
+    fireEvent.change(roles);
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await act(async () => {});
+
+    expect(updatePluginParameters).toHaveBeenLastCalledWith(
+      expect.objectContaining({ allowedRoleIds: ['editor-role'] }),
+    );
+  });
+
+  it('keeps role permissions unchanged when loading fails and retries inline', async () => {
+    cmaMocks.listRoles.mockRejectedValueOnce(new Error('Temporary CMA error'));
+    const { ctx, updatePluginParameters } = createCtx({
+      parameters: { ...PARAMETERS, allowedRoleIds: ['editor-role'] },
+    });
+    render(<ConfigScreen ctx={ctx} />);
+    await finishRoleDiscovery();
+
+    expect(screen.getByText(/Temporary CMA error/)).toBeVisible();
+    expect(
+      screen.getByLabelText('All roles that can use DatoAgent'),
+    ).toBeDisabled();
+
+    fireEvent.click(screen.getByLabelText('Read Only'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await act(async () => {});
+    expect(updatePluginParameters).toHaveBeenCalledWith(
+      expect.objectContaining({ allowedRoleIds: ['editor-role'] }),
+    );
+
+    cmaMocks.listRoles.mockResolvedValueOnce([
+      { id: 'editor-role', name: 'Editor' },
+    ]);
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await finishRoleDiscovery();
+
+    expect(cmaMocks.listRoles).toHaveBeenCalledTimes(2);
+    expect(
+      screen.getByLabelText('All roles that can use DatoAgent'),
+    ).toBeEnabled();
+  });
+
+  it('does not request or edit the complete role list without user-management permission', async () => {
+    const { ctx, updatePluginParameters } = createCtx({
+      canManageUsers: false,
+      parameters: { ...PARAMETERS, allowedRoleIds: ['editor-role'] },
+    });
+    render(<ConfigScreen ctx={ctx} />);
+    await finishRoleDiscovery();
+
+    expect(cmaMocks.buildClient).not.toHaveBeenCalled();
+    expect(cmaMocks.listRoles).not.toHaveBeenCalled();
+    expect(
+      screen.getByLabelText('All roles that can use DatoAgent'),
+    ).toBeDisabled();
+    expect(
+      screen.getByText(/Only users who can manage collaborators/i),
+    ).toBeVisible();
+
+    fireEvent.click(screen.getByLabelText('Read Only'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await act(async () => {});
+    expect(updatePluginParameters).toHaveBeenCalledWith(
+      expect.objectContaining({ allowedRoleIds: ['editor-role'] }),
+    );
+  });
+
   it('disables every editable provider field for read-only roles', () => {
-    const { ctx } = createCtx({ canEditSchema: false });
+    const { ctx } = createCtx({
+      canEditSchema: false,
+      canManageUsers: false,
+    });
     render(<ConfigScreen ctx={ctx} />);
 
     expect(screen.getByLabelText('Vendor')).toBeDisabled();

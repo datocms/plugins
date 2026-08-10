@@ -235,6 +235,16 @@ type MentionPermission = {
   item_type?: string | null;
 };
 
+function permissionList<Permission extends MentionPermission>(
+  value: unknown,
+): Permission[] {
+  return Array.isArray(value)
+    ? (value.filter(
+        (entry) => entry !== null && typeof entry === 'object',
+      ) as Permission[])
+    : [];
+}
+
 function permissionMatches(
   permission: MentionPermission,
   environment: string,
@@ -270,9 +280,10 @@ function currentRole(ctx: MentionCtx): MentionCtx['currentRole'] | undefined {
 function canMentionAssets(ctx: MentionCtx): boolean {
   const role = currentRole(ctx);
   if (!role) return false;
+  const attributes = objectValue(role.attributes);
   return permissionGranted(
-    role.attributes.positive_upload_permissions ?? [],
-    role.attributes.negative_upload_permissions ?? [],
+    permissionList(attributes.positive_upload_permissions),
+    permissionList(attributes.negative_upload_permissions),
     ctx.environment,
   );
 }
@@ -285,17 +296,19 @@ function canCreateAssets(ctx: MentionCtx): boolean {
   const role = currentRole(ctx);
   if (!role || !ctx.currentUserAccessToken) return false;
 
-  const finalPermissions = objectValue(role.meta.final_permissions);
-  const positive = (
+  const attributes = objectValue(role.attributes);
+  const meta = objectValue(role.meta);
+  const finalPermissions = objectValue(meta.final_permissions);
+  const positive = permissionList<UploadPermission>(
     Array.isArray(finalPermissions.positive_upload_permissions)
       ? finalPermissions.positive_upload_permissions
-      : (role.attributes.positive_upload_permissions ?? [])
-  ) as UploadPermission[];
-  const negative = (
+      : attributes.positive_upload_permissions,
+  );
+  const negative = permissionList<UploadPermission>(
     Array.isArray(finalPermissions.negative_upload_permissions)
       ? finalPermissions.negative_upload_permissions
-      : (role.attributes.negative_upload_permissions ?? [])
-  ) as UploadPermission[];
+      : attributes.negative_upload_permissions,
+  );
   const matchesRootCreation = (permission: UploadPermission) =>
     permission.environment === ctx.environment &&
     (permission.action === 'all' || permission.action === 'create') &&
@@ -307,14 +320,19 @@ function canCreateAssets(ctx: MentionCtx): boolean {
 }
 
 function canMentionModels(ctx: MentionCtx): boolean {
-  return currentRole(ctx)?.meta.final_permissions.can_edit_schema ?? false;
+  const role = currentRole(ctx);
+  if (!role) return false;
+  const meta = objectValue(role.meta);
+  const finalPermissions = objectValue(meta.final_permissions);
+  return finalPermissions.can_edit_schema === true;
 }
 
 function readableModels(ctx: MentionCtx, models: readonly ModelInfo[]) {
   const role = currentRole(ctx);
   if (!role) return [];
-  const positive = role.attributes.positive_item_type_permissions ?? [];
-  const negative = role.attributes.negative_item_type_permissions ?? [];
+  const attributes = objectValue(role.attributes);
+  const positive = permissionList(attributes.positive_item_type_permissions);
+  const negative = permissionList(attributes.negative_item_type_permissions);
   return models.filter((model) =>
     permissionGranted(positive, negative, ctx.environment, model.id),
   );

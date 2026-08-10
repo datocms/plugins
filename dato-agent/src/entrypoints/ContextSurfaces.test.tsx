@@ -1,4 +1,4 @@
-import { cleanup, render, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import type {
   Field,
   ItemType,
@@ -186,6 +186,18 @@ function commonContext({
     environment: 'primary',
     isEnvironmentPrimary: true,
     currentUser: { id: 'editor-id' },
+    currentRole: {
+      id: 'account_role',
+      attributes: {
+        positive_upload_permissions: [],
+        negative_upload_permissions: [],
+        positive_item_type_permissions: [
+          { environment: 'primary', action: 'read', item_type: null },
+        ],
+        negative_item_type_permissions: [],
+      },
+      meta: { final_permissions: { can_edit_schema: true } },
+    },
     ui: { locale: 'en' },
     itemTypes: repository(itemTypes),
     fields: repository(fields),
@@ -737,4 +749,88 @@ describe('Agent host-dialog callbacks', () => {
       expect(settled).toBe(true);
     },
   );
+});
+
+describe('Agent role access', () => {
+  it('unmounts a stale inspector session when the current role loses access', () => {
+    const article = model({ id: 'article-id', apiKey: 'article' });
+    const base = inspectorContext({
+      itemTypes: [article],
+      fields: [],
+      loadItemTypeFields: vi.fn(async () => []),
+    });
+    const collaboratorRole = {
+      ...base.currentRole,
+      id: 'editor-role',
+    };
+    const allowed = {
+      ...base,
+      currentRole: collaboratorRole,
+      plugin: {
+        ...base.plugin,
+        attributes: {
+          ...base.plugin.attributes,
+          parameters: {
+            ...base.plugin.attributes.parameters,
+            allowedRoleIds: ['editor-role'],
+          },
+        },
+      },
+    } as RenderInspectorCtx;
+    const denied = {
+      ...allowed,
+      plugin: {
+        ...allowed.plugin,
+        attributes: {
+          ...allowed.plugin.attributes,
+          parameters: {
+            ...allowed.plugin.attributes.parameters,
+            allowedRoleIds: [],
+          },
+        },
+      },
+    } as RenderInspectorCtx;
+
+    const rendered = render(<AgentInspector ctx={allowed} />);
+    expect(screen.getByTestId('agent-frame')).toBeInTheDocument();
+
+    rendered.rerender(<AgentInspector ctx={denied} />);
+
+    expect(screen.queryByTestId('agent-frame')).not.toBeInTheDocument();
+    expect(
+      screen.getByText('Dato Agent is not available for your role.'),
+    ).toBeVisible();
+    expect(frameMocks.unmountCount).toBe(1);
+  });
+
+  it('fails closed for a directly rendered record sidebar', () => {
+    const article = model({ id: 'article-id', apiKey: 'article' });
+    const base = sidebarContext({
+      itemType: article,
+      itemTypes: [article],
+      fields: [],
+      loadItemTypeFields: vi.fn(async () => []),
+    });
+    const denied = {
+      ...base,
+      currentRole: { ...base.currentRole, id: 'editor-role' },
+      plugin: {
+        ...base.plugin,
+        attributes: {
+          ...base.plugin.attributes,
+          parameters: {
+            ...base.plugin.attributes.parameters,
+            allowedRoleIds: null,
+          },
+        },
+      },
+    } as RenderItemFormSidebarCtx;
+
+    render(<AgentSidebar ctx={denied} />);
+
+    expect(screen.queryByTestId('agent-frame')).not.toBeInTheDocument();
+    expect(
+      screen.getByText('Dato Agent is not available for your role.'),
+    ).toBeVisible();
+  });
 });

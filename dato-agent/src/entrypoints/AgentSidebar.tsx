@@ -26,8 +26,10 @@ import {
 import { resolveFieldsWithinDeadline } from '../lib/hostContextDeadline';
 import { createAgentMentionHost } from '../lib/mentionHost';
 import { createSidebarNavigator } from '../lib/navigation';
+import { canRoleUseDatoAgent } from '../lib/permissions';
 import { usePersistedSidebarWidth } from '../lib/persistedWidth';
 import AgentFrame, { type AgentFrameProps } from './AgentFrame';
+import AgentUnavailableFrame from './AgentUnavailableFrame';
 
 type Props = {
   ctx: RenderItemFormSidebarCtx;
@@ -232,7 +234,7 @@ function verifyCurrentFieldReference({
   };
 }
 
-export default function AgentSidebar({ ctx }: Props) {
+function AuthorizedAgentSidebar({ ctx }: Props) {
   usePersistedSidebarWidth(ctx.site.id);
   const mountedFormNonceRef = useRef<string | undefined>(undefined);
   if (!mountedFormNonceRef.current) {
@@ -520,11 +522,19 @@ export default function AgentSidebar({ ctx }: Props) {
         onConfirmEnableAutoApprove={() =>
           confirmEnableAutoApproval(ctx, {
             siteName: ctx.site.attributes.name,
-            environment: ctx.environment,
-            isEnvironmentPrimary: ctx.isEnvironmentPrimary,
           })
         }
       />
     </Canvas>
+  );
+}
+
+export default function AgentSidebar({ ctx }: Props) {
+  const config = normalizeConfig(ctx.plugin.attributes.parameters);
+
+  return canRoleUseDatoAgent(config, ctx.currentRole?.id) ? (
+    <AuthorizedAgentSidebar ctx={ctx} />
+  ) : (
+    <AgentUnavailableFrame ctx={ctx} />
   );
 }

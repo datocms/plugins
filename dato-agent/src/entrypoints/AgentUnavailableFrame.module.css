@@ -1,0 +1,15 @@
+.root {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  padding: var(--spacing-xl);
+  color: var(--color--ink-subtle);
+  font-size: var(--font-size-s);
+  text-align: center;
+}
+
+.root p {
+  margin: 0;
+}

@@ -707,6 +707,161 @@ describe('AgentRuntime', () => {
     ).toBeUndefined();
   });
 
+  it('keeps OpenAI reads and files available while blocking every Read Only mutation path', async () => {
+    const createCall = {
+      type: 'function_call',
+      id: 'function-read-only-asset',
+      call_id: 'call-read-only-asset',
+      name: 'create_dato_asset',
+      arguments: JSON.stringify({
+        source: 'attached_file',
+        attachment_id: 'local-file-123',
+        url: null,
+        filename: null,
+      }),
+      status: 'completed',
+    } satisfies ResponseFunctionToolCall;
+    const client = new QueueResponsesClient([
+      eventsFor(
+        response('resp-read-only-tools', [
+          scriptApproval('safe', 'approval-safe-read-only'),
+          scriptApproval('unsafe', 'approval-unsafe-read-only', {
+            no_execute: true,
+          }),
+          createCall,
+        ]),
+      ),
+      eventsFor(response('resp-read-only-done'), ['Here is what I found.']),
+    ]);
+    const createDatoAsset = vi.fn();
+    const runtime = runtimeWith(client, {
+      readOnly: true,
+      createDatoAsset,
+    });
+
+    const { events, result } = await drain(
+      runtime.streamTurn({ message: 'Inspect this project.' }),
+    );
+
+    const firstRequest = client.requests[0];
+    const mcpTool = firstRequest?.tools?.find((tool) => tool.type === 'mcp');
+    expect(
+      Array.isArray(mcpTool?.allowed_tools) ? mcpTool.allowed_tools : [],
+    ).toContain('upsert_and_execute_safe_script');
+    expect(
+      Array.isArray(mcpTool?.allowed_tools) ? mcpTool.allowed_tools : [],
+    ).not.toContain('upsert_and_execute_unsafe_script');
+    expect(firstRequest?.instructions).toContain('READ ONLY MODE');
+    expect(firstRequest?.instructions).not.toContain('create_dato_asset');
+    expect(
+      firstRequest?.tools?.some(
+        (tool) => tool.type === 'function' && tool.name === 'create_dato_asset',
+      ),
+    ).toBe(false);
+    expect(createDatoAsset).not.toHaveBeenCalled();
+    expect(events.some((event) => event.type === 'approval_required')).toBe(
+      false,
+    );
+
+    const continuationInput = client.requests[1]?.input;
+    expect(continuationInput).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'mcp_approval_response',
+          approval_request_id: 'approval-safe-read-only',
+          approve: true,
+        }),
+        expect.objectContaining({
+          type: 'mcp_approval_response',
+          approval_request_id: 'approval-unsafe-read-only',
+          approve: false,
+          reason: 'Read Only was enabled. No action was taken.',
+        }),
+        expect.objectContaining({
+          type: 'function_call_output',
+          call_id: 'call-read-only-asset',
+          output: expect.stringContaining(
+            'Read Only was enabled. No action was taken.',
+          ),
+        }),
+      ]),
+    );
+    expect(result).toMatchObject({
+      status: 'completed',
+      responseId: 'resp-read-only-done',
+      text: 'Here is what I found.',
+    });
+  });
+
+  it('cancels a pending OpenAI write before dispatch when Read Only becomes active', async () => {
+    const client = new QueueResponsesClient([
+      eventsFor(
+        response('resp-pending-before-read-only', [
+          scriptApproval('unsafe', 'approval-before-read-only'),
+        ]),
+      ),
+    ]);
+    const runtime = runtimeWith(client);
+    const first = await drain(
+      runtime.streamTurn({ message: 'Update the record.' }),
+    );
+    expect(first.result.status).toBe('approval_required');
+
+    (
+      runtime as unknown as {
+        readOnly: boolean;
+      }
+    ).readOnly = true;
+    const beforeDispatch = vi.fn();
+    const second = await drain(
+      runtime.continueApproval({
+        responseId: 'resp-pending-before-read-only',
+        approvalRequestId: 'approval-before-read-only',
+        approve: true,
+        unsafeDispatchCallbacks: { beforeDispatch },
+      }),
+    );
+
+    expect(second.result).toMatchObject({
+      status: 'failed',
+      error: {
+        code: 'invalid_request',
+        message: 'Read Only was enabled. No action was taken.',
+      },
+    });
+    expect(beforeDispatch).not.toHaveBeenCalled();
+    expect(client.requests).toHaveLength(1);
+  });
+
+  it('overrides stale Read Only history when a writable OpenAI chat resumes', async () => {
+    const client = new QueueResponsesClient([
+      eventsFor(response('resp-writable-resumed'), ['I can prepare that now.']),
+    ]);
+    const runtime = runtimeWith(client, { readOnly: false });
+
+    const { result } = await drain(
+      runtime.streamTurn({
+        message: 'Please make that change now.',
+        previousResponseId: 'resp-from-read-only-session',
+      }),
+    );
+
+    const request = client.requests[0];
+    expect(request?.previous_response_id).toBe('resp-from-read-only-session');
+    expect(request?.instructions).toContain('WRITABLE MODE');
+    expect(request?.instructions).toContain(
+      'overrides any earlier user, assistant, or tool message that says Read Only is enabled or writing tools are unavailable',
+    );
+    const mcpTool = request?.tools?.find((tool) => tool.type === 'mcp');
+    expect(
+      Array.isArray(mcpTool?.allowed_tools) ? mcpTool.allowed_tools : [],
+    ).toContain('upsert_and_execute_unsafe_script');
+    expect(result).toMatchObject({
+      status: 'completed',
+      responseId: 'resp-writable-resumed',
+    });
+  });
+
   it('does not advertise current-record field tools when the host surface lacks those capabilities', async () => {
     const client = new QueueResponsesClient([
       eventsFor(response('resp-no-current-record'), ['Ready']),

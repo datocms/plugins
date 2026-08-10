@@ -1592,6 +1592,9 @@ describe('AgentSurface', () => {
         name: 'Remember credentials on this device',
       }),
     ).not.toBeInTheDocument();
+    expect(screen.getByRole('note')).toHaveTextContent(
+      'select only the project where this plugin is installed',
+    );
 
     await user.click(screen.getByRole('button', { name: 'Connect' }));
     expect(onConnectDatoCms).toHaveBeenCalledOnce();
@@ -1619,6 +1622,7 @@ describe('AgentSurface', () => {
     expect(screen.getByText('Marketing website')).toBeVisible();
     expect(screen.getByRole('img', { name: 'Connected' })).toBeVisible();
     expect(screen.queryByText('Remote MCP connection')).not.toBeInTheDocument();
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('API key')).not.toBeInTheDocument();
     const disconnectButton = screen.getByRole('button', {
       name: 'Disconnect DatoCMS',
@@ -1875,6 +1879,24 @@ describe('AgentSurface', () => {
     expect(
       screen.getByRole('button', { name: 'Confirming auto-approve' }),
     ).toBeDisabled();
+  });
+
+  it('explains why auto-approve is unavailable in Read Only mode', () => {
+    render(
+      <AgentSurface
+        autoApproveDisabledReason="Auto-approve is unavailable in Read Only mode."
+        connection={connected}
+        entries={[]}
+        onAutoApproveChange={vi.fn()}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    const control = screen.getByRole('button', {
+      name: 'Auto-approve is unavailable in Read Only mode.',
+    });
+    expect(control).toBeDisabled();
+    expect(control).toHaveAttribute('aria-pressed', 'false');
   });
 
   it('hides automatic approval cards unless automatic execution fails', () => {

@@ -79,6 +79,32 @@ describe('normalizeConfig', () => {
     });
   });
 
+  it('normalizes permissions with fail-closed defaults and stable role IDs', () => {
+    expect(
+      normalizeConfig({
+        readOnly: true,
+        allowedRoleIds: [
+          ' reviewer-role ',
+          'editor-role',
+          'reviewer-role',
+          '',
+          123,
+        ],
+      }),
+    ).toMatchObject({
+      readOnly: true,
+      allowedRoleIds: ['editor-role', 'reviewer-role'],
+    });
+
+    expect(
+      normalizeConfig({ readOnly: 'true', allowedRoleIds: 'editor-role' }),
+    ).toMatchObject({
+      readOnly: false,
+      allowedRoleIds: null,
+    });
+    expect(normalizeConfig({ allowedRoleIds: [] }).allowedRoleIds).toEqual([]);
+  });
+
   it('uses the documented provider effort sets', () => {
     expect(REASONING_EFFORTS).toEqual([
       'none',
@@ -157,6 +183,8 @@ describe('normalizeConfig', () => {
         anthropicModel: 'claude-sonnet-5',
         anthropicModelMaxOutputTokens: 128_000,
         anthropicFastMode: true,
+        readOnly: true,
+        allowedRoleIds: ['reviewer-role', 'editor-role', 'editor-role'],
       },
     );
 
@@ -170,6 +198,8 @@ describe('normalizeConfig', () => {
       anthropicModel: 'claude-sonnet-5',
       anthropicModelMaxOutputTokens: 128_000,
       anthropicFastMode: true,
+      readOnly: true,
+      allowedRoleIds: ['editor-role', 'reviewer-role'],
     });
     expect(serialized).not.toHaveProperty('defaultSidebarWidth');
   });

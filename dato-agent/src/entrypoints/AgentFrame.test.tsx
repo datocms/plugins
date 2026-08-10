@@ -9,6 +9,7 @@ import type {
   AgentTurnResult,
   ContinueApprovalsArgs,
 } from '../lib/agentRuntime';
+import { READ_ONLY_REJECTION_MESSAGE } from '../lib/approval';
 import { createAutoApprovalStore } from '../lib/autoApproval';
 import { type AgentProvider, DEFAULT_CONFIG } from '../lib/config';
 import {
@@ -6126,5 +6127,329 @@ describe('AgentFrame', () => {
       });
     });
     expect(invalidatePresentationCache).toHaveBeenCalled();
+  });
+
+  it('clears session Auto and disables its control while Read Only is enabled', () => {
+    const frameProps = props({
+      config: {
+        ...DEFAULT_CONFIG,
+        openAiApiKey: 'sk-test-key',
+        readOnly: true,
+      },
+    });
+    enableAutoApproval(frameProps);
+
+    render(<AgentFrame {...frameProps} />);
+
+    expect(mocks.surfaceProps?.autoApproveEnabled).toBe(false);
+    expect(mocks.surfaceProps?.onAutoApproveChange).toBeUndefined();
+    expect(mocks.surfaceProps?.autoApproveDisabledReason).toBe(
+      'Auto-approve is unavailable in Read Only mode.',
+    );
+    expect(
+      createAutoApprovalStore({
+        pluginId: frameProps.pluginId,
+        siteId: frameProps.siteId,
+        environment: frameProps.environment,
+        currentUserId: frameProps.currentUserId,
+      }).isEnabled(),
+    ).toBe(false);
+  });
+
+  it('rejects a stale unsafe approval in Read Only mode without a card or journal', async () => {
+    const frameProps = props({
+      config: {
+        ...DEFAULT_CONFIG,
+        openAiApiKey: 'sk-test-key',
+        readOnly: true,
+      },
+      mentionHost: assetCreatingMentionHost(),
+    });
+    const approvalRequired = completedResult({
+      status: 'approval_required',
+      responseId: 'resp_read_only',
+      approvals: [unsafeApproval],
+    });
+    const completed = completedResult({
+      responseId: 'resp_read_only_done',
+      text: 'No action was taken.',
+    });
+    const submitApprovals = vi.fn(
+      async (
+        _args: ContinueApprovalsArgs,
+        onEvent?: (event: AgentRuntimeEvent) => void | Promise<void>,
+      ) => {
+        await onEvent?.({ type: 'turn_completed', result: completed });
+        return completed;
+      },
+    );
+    mocks.runtime = {
+      runTurn: vi.fn(
+        async (
+          _args: AgentTurnArgs,
+          onEvent?: (event: AgentRuntimeEvent) => void | Promise<void>,
+        ) => {
+          await onEvent?.({
+            type: 'approval_required',
+            responseId: 'resp_read_only',
+            approval: unsafeApproval,
+          });
+          await onEvent?.({ type: 'turn_completed', result: approvalRequired });
+          return approvalRequired;
+        },
+      ),
+      submitApprovals,
+    } as unknown as AgentRuntime;
+
+    render(<AgentFrame {...frameProps} />);
+    act(() => {
+      mocks.surfaceProps?.onSubmit('Update the title');
+    });
+
+    await waitFor(() => expect(submitApprovals).toHaveBeenCalledOnce());
+    expect(submitApprovals).toHaveBeenCalledWith(
+      expect.objectContaining({
+        decisions: [
+          {
+            approvalRequestId: unsafeApproval.approvalRequestId,
+            approve: false,
+            reason: READ_ONLY_REJECTION_MESSAGE,
+          },
+        ],
+      }),
+      expect.any(Function),
+    );
+    expect(
+      mocks.surfaceProps?.entries.some((entry) => entry.kind === 'approval'),
+    ).toBe(false);
+    expect(mocks.runtimeConfig).toMatchObject({ readOnly: true });
+    expect(mocks.runtimeConfig?.createDatoAsset).toBeUndefined();
+    expect(
+      createUnsafeDispatchJournalStore({
+        pluginId: frameProps.pluginId,
+        siteId: frameProps.siteId,
+        environment: frameProps.environment,
+        currentUserId: frameProps.currentUserId,
+        scope: frameProps.scope,
+      }).read(),
+    ).toBeUndefined();
+  });
+
+  it('cancels a pending approval when Read Only is enabled live', async () => {
+    const frameProps = props();
+    const completed = completedResult({ responseId: 'resp_cancelled_done' });
+    const submitApprovals = vi.fn(
+      async (
+        _args: ContinueApprovalsArgs,
+        onEvent?: (event: AgentRuntimeEvent) => void | Promise<void>,
+      ) => {
+        await onEvent?.({ type: 'turn_completed', result: completed });
+        return completed;
+      },
+    );
+    const approvalRequired = completedResult({
+      status: 'approval_required',
+      responseId: 'resp_cancelled',
+      approvals: [unsafeApproval],
+    });
+    mocks.runtime = {
+      runTurn: vi.fn(
+        async (
+          _args: AgentTurnArgs,
+          onEvent?: (event: AgentRuntimeEvent) => void | Promise<void>,
+        ) => {
+          await onEvent?.({
+            type: 'approval_required',
+            responseId: 'resp_cancelled',
+            approval: unsafeApproval,
+          });
+          await onEvent?.({ type: 'turn_completed', result: approvalRequired });
+          return approvalRequired;
+        },
+      ),
+      submitApprovals,
+    } as unknown as AgentRuntime;
+
+    const rendered = render(<AgentFrame {...frameProps} />);
+    act(() => {
+      mocks.surfaceProps?.onSubmit('Update the title');
+    });
+    await waitFor(() =>
+      expect(
+        mocks.surfaceProps?.entries.some((entry) => entry.kind === 'approval'),
+      ).toBe(true),
+    );
+
+    rendered.rerender(
+      <AgentFrame
+        {...frameProps}
+        config={{ ...frameProps.config, readOnly: true }}
+      />,
+    );
+
+    await waitFor(() => expect(submitApprovals).toHaveBeenCalledOnce());
+    expect(submitApprovals.mock.calls[0]?.[0].decisions).toEqual([
+      {
+        approvalRequestId: unsafeApproval.approvalRequestId,
+        approve: false,
+        reason: READ_ONLY_REJECTION_MESSAGE,
+      },
+    ]);
+    expect(
+      mocks.surfaceProps?.entries.some((entry) => entry.kind === 'approval'),
+    ).toBe(false);
+  });
+
+  it('blocks the final unsafe network boundary when Read Only changes after approval', async () => {
+    const frameProps = props();
+    const approvalRequired = completedResult({
+      status: 'approval_required',
+      responseId: 'resp_final_read_only_check',
+      approvals: [unsafeApproval],
+    });
+    let releaseDispatch: (() => void) | undefined;
+    const dispatchGate = new Promise<void>((resolve) => {
+      releaseDispatch = resolve;
+    });
+    const submitApprovals = vi.fn(async (args: ContinueApprovalsArgs) => {
+      await dispatchGate;
+      args.unsafeDispatchCallbacks?.beforeDispatch([
+        unsafeApproval.approvalRequestId,
+      ]);
+      return completedResult();
+    });
+    mocks.runtime = {
+      runTurn: vi.fn(
+        async (
+          _args: AgentTurnArgs,
+          onEvent?: (event: AgentRuntimeEvent) => void | Promise<void>,
+        ) => {
+          await onEvent?.({
+            type: 'approval_required',
+            responseId: 'resp_final_read_only_check',
+            approval: unsafeApproval,
+          });
+          await onEvent?.({ type: 'turn_completed', result: approvalRequired });
+          return approvalRequired;
+        },
+      ),
+      submitApprovals,
+      dispose: vi.fn(),
+    } as unknown as AgentRuntime;
+
+    const rendered = render(<AgentFrame {...frameProps} />);
+    act(() => {
+      mocks.surfaceProps?.onSubmit('Update the title');
+    });
+    await waitFor(() =>
+      expect(
+        mocks.surfaceProps?.entries.some((entry) => entry.kind === 'approval'),
+      ).toBe(true),
+    );
+    const approvalEntry = mocks.surfaceProps?.entries.find(
+      (entry) => entry.kind === 'approval',
+    );
+    act(() => {
+      if (approvalEntry?.kind === 'approval') {
+        mocks.surfaceProps?.onApproveUnsafeAction?.(approvalEntry.approval);
+      }
+    });
+    await waitFor(() => expect(submitApprovals).toHaveBeenCalledOnce());
+
+    rendered.rerender(
+      <AgentFrame
+        {...frameProps}
+        config={{ ...frameProps.config, readOnly: true }}
+      />,
+    );
+    await act(async () => {
+      releaseDispatch?.();
+      await dispatchGate;
+    });
+
+    await waitFor(() =>
+      expect(
+        mocks.surfaceProps?.entries.some(
+          (entry) =>
+            entry.kind === 'message' &&
+            entry.content === READ_ONLY_REJECTION_MESSAGE,
+        ),
+      ).toBe(true),
+    );
+    expect(
+      createUnsafeDispatchJournalStore({
+        pluginId: frameProps.pluginId,
+        siteId: frameProps.siteId,
+        environment: frameProps.environment,
+        currentUserId: frameProps.currentUserId,
+        scope: frameProps.scope,
+      }).read(),
+    ).toBeUndefined();
+  });
+
+  it('guards an already-created local asset callback when Read Only changes live', async () => {
+    let releaseUpload: (() => void) | undefined;
+    const uploadGate = new Promise<void>((resolve) => {
+      releaseUpload = resolve;
+    });
+    const createAsset = vi.fn<NonNullable<AgentMentionHost['createAsset']>>(
+      async (_input, options) => {
+        await uploadGate;
+        options?.onUploadDispatch?.();
+        return createdAssetMention('created-file', 'brief.pdf');
+      },
+    );
+    const frameProps = props({
+      mentionHost: assetCreatingMentionHost({ createAsset }),
+    });
+    let assetError: unknown;
+    const completed = completedResult({ responseId: 'resp_asset_read_only' });
+    mocks.runtime = {
+      runTurn: vi.fn(
+        async (
+          args: AgentTurnArgs,
+          onEvent?: (event: AgentRuntimeEvent) => void | Promise<void>,
+        ) => {
+          try {
+            await mocks.runtimeConfig?.createDatoAsset?.(
+              {
+                source: 'url',
+                url: 'https://example.com/brief.pdf',
+              },
+              args.signal,
+            );
+          } catch (error) {
+            assetError = error;
+          }
+          await onEvent?.({ type: 'turn_completed', result: completed });
+          return completed;
+        },
+      ),
+    } as unknown as AgentRuntime;
+
+    const rendered = render(<AgentFrame {...frameProps} />);
+    act(() => {
+      mocks.surfaceProps?.onSubmit('Create this PDF as an asset');
+    });
+    await waitFor(() => expect(createAsset).toHaveBeenCalledOnce());
+    expect(mocks.runtimeConfig?.createDatoAsset).toBeTypeOf('function');
+
+    rendered.rerender(
+      <AgentFrame
+        {...frameProps}
+        config={{ ...frameProps.config, readOnly: true }}
+      />,
+    );
+    await act(async () => {
+      releaseUpload?.();
+      await uploadGate;
+    });
+
+    await waitFor(() => expect(mocks.surfaceProps?.isRunning).toBe(false));
+    expect(assetError).toBeInstanceOf(Error);
+    expect((assetError as Error).message).toBe(READ_ONLY_REJECTION_MESSAGE);
+    expect(
+      mocks.surfaceProps?.entries.some((entry) => entry.kind === 'assets'),
+    ).toBe(false);
   });
 });

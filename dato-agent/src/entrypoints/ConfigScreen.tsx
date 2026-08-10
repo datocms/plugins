@@ -1,3 +1,4 @@
+import { buildClient } from '@datocms/cma-client-browser';
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import {
   Button,
@@ -35,6 +36,7 @@ import {
   withActiveModel,
   withActiveReasoningEffort,
 } from '../lib/config';
+import { ACCOUNT_ROLE_ID } from '../lib/permissions';
 import {
   listProviderModels,
   type ProviderModel,
@@ -62,9 +64,27 @@ type ModelOption = {
   value: string;
 };
 
+type RoleOption = {
+  label: string;
+  value: string;
+};
+
 type ModelDiscoveryState = {
   requestKey: string;
   models: ProviderModel[];
+  loading: boolean;
+  loaded: boolean;
+  error?: string;
+};
+
+type ProjectRole = {
+  id: string;
+  name: string;
+};
+
+type RoleDiscoveryState = {
+  requestKey: string;
+  roles: ProjectRole[];
   loading: boolean;
   loaded: boolean;
   error?: string;
@@ -167,6 +187,196 @@ function emptyDiscoveryState(requestKey: string): ModelDiscoveryState {
     loading: false,
     loaded: false,
   };
+}
+
+function emptyRoleDiscoveryState(requestKey: string): RoleDiscoveryState {
+  return {
+    requestKey,
+    roles: [],
+    loading: false,
+    loaded: false,
+  };
+}
+
+function roleDiscoveryRequestKey(
+  canManageUsers: boolean,
+  apiToken: string | undefined,
+  environment: string,
+  baseUrl: string,
+  retryAttempt: number,
+): string {
+  return JSON.stringify([
+    canManageUsers,
+    Boolean(apiToken),
+    environment,
+    baseUrl,
+    retryAttempt,
+  ]);
+}
+
+function useProjectRoles(
+  canManageUsers: boolean,
+  apiToken: string | undefined,
+  environment: string,
+  baseUrl: string,
+  retryAttempt: number,
+): RoleDiscoveryState {
+  const requestKey = roleDiscoveryRequestKey(
+    canManageUsers,
+    apiToken,
+    environment,
+    baseUrl,
+    retryAttempt,
+  );
+  const [state, setState] = useState<RoleDiscoveryState>(() =>
+    emptyRoleDiscoveryState(requestKey),
+  );
+
+  useEffect(() => {
+    if (!canManageUsers) {
+      setState(emptyRoleDiscoveryState(requestKey));
+      return;
+    }
+
+    if (!apiToken) {
+      setState({
+        ...emptyRoleDiscoveryState(requestKey),
+        error: 'The current user access token is unavailable.',
+      });
+      return;
+    }
+
+    let cancelled = false;
+    setState({
+      ...emptyRoleDiscoveryState(requestKey),
+      loading: true,
+    });
+
+    void (async () => {
+      try {
+        const client = buildClient({
+          apiToken,
+          environment,
+          baseUrl,
+        });
+        const roles = await client.roles.list();
+
+        if (cancelled) {
+          return;
+        }
+
+        setState({
+          requestKey,
+          roles: roles
+            .filter((role) => role.id !== ACCOUNT_ROLE_ID)
+            .map((role) => ({ id: role.id, name: role.name || role.id }))
+            .sort(
+              (left, right) =>
+                left.name.localeCompare(right.name) ||
+                left.id.localeCompare(right.id),
+            ),
+          loading: false,
+          loaded: true,
+        });
+      } catch (error) {
+        if (!cancelled) {
+          setState({
+            ...emptyRoleDiscoveryState(requestKey),
+            error: errorMessage(error),
+          });
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [apiToken, baseUrl, canManageUsers, environment, requestKey]);
+
+  return state.requestKey === requestKey
+    ? state
+    : emptyRoleDiscoveryState(requestKey);
+}
+
+function normalizedRoleIds(roleIds: readonly string[]): string[] {
+  return [
+    ...new Set(roleIds.map((roleId) => roleId.trim()).filter(Boolean)),
+  ].sort((left, right) => left.localeCompare(right));
+}
+
+function roleOptionsForSelection(
+  roleIds: readonly string[],
+  availableOptions: readonly RoleOption[],
+): RoleOption[] {
+  const optionsById = new Map(
+    availableOptions.map((option) => [option.value, option]),
+  );
+
+  return roleIds.map(
+    (roleId) =>
+      optionsById.get(roleId) ?? {
+        label: `Unavailable role (${roleId})`,
+        value: roleId,
+      },
+  );
+}
+
+type RoleSelectionState = {
+  implicitRoleDraftIds: string[];
+  selectedRoleOptions: RoleOption[];
+  hasUnsavedRoleSnapshot: boolean;
+};
+
+function buildRoleSelectionState(
+  allowedRoleIds: AgentConfig['allowedRoleIds'],
+  canManageUsers: boolean,
+  roleDiscovery: RoleDiscoveryState,
+  availableOptions: readonly RoleOption[],
+): RoleSelectionState {
+  const implicitRoleDraftIds = normalizedRoleIds(
+    roleDiscovery.roles.map((role) => role.id),
+  );
+  const hasUnsavedRoleSnapshot =
+    allowedRoleIds === null && canManageUsers && roleDiscovery.loaded;
+  const displayedAllowedRoleIds = hasUnsavedRoleSnapshot
+    ? implicitRoleDraftIds
+    : (allowedRoleIds ?? []);
+
+  return {
+    implicitRoleDraftIds,
+    selectedRoleOptions: roleOptionsForSelection(
+      displayedAllowedRoleIds,
+      availableOptions,
+    ),
+    hasUnsavedRoleSnapshot,
+  };
+}
+
+function configIsDirty(
+  config: AgentConfig,
+  savedFingerprint: string,
+  hasUnsavedRoleSnapshot: boolean,
+): boolean {
+  return (
+    configFingerprint(config) !== savedFingerprint || hasUnsavedRoleSnapshot
+  );
+}
+
+function configWithRoleSnapshot(
+  config: AgentConfig,
+  canManageUsers: boolean,
+  roleDiscovery: RoleDiscoveryState,
+  implicitRoleDraftIds: string[],
+): AgentConfig {
+  if (
+    config.allowedRoleIds !== null ||
+    !canManageUsers ||
+    !roleDiscovery.loaded
+  ) {
+    return config;
+  }
+
+  return { ...config, allowedRoleIds: implicitRoleDraftIds };
 }
 
 function useProviderModels(
@@ -593,9 +803,12 @@ export default function ConfigScreen({ ctx }: Props) {
   );
   const savedConfigFingerprintRef = useRef(configFingerprint(incomingConfig));
   const [modelRetryAttempt, setModelRetryAttempt] = useState(0);
+  const [roleRetryAttempt, setRoleRetryAttempt] = useState(0);
   const [saving, setSaving] = useState(false);
   const [attemptedSave, setAttemptedSave] = useState(false);
   const canEditSchema = ctx.currentRole.meta.final_permissions.can_edit_schema;
+  const canManageUsers =
+    ctx.currentRole.meta.final_permissions.can_manage_users;
   const apiKey = activeApiKey(config);
   const model = activeModel(config);
   const modelDiscovery = useProviderModels(
@@ -603,7 +816,36 @@ export default function ConfigScreen({ ctx }: Props) {
     apiKey,
     modelRetryAttempt,
   );
-  const isDirty = configFingerprint(config) !== savedConfigFingerprint;
+  const roleDiscovery = useProjectRoles(
+    canManageUsers,
+    ctx.currentUserAccessToken,
+    ctx.environment,
+    ctx.cmaBaseUrl,
+    roleRetryAttempt,
+  );
+  const roleOptions = useMemo<RoleOption[]>(
+    () =>
+      roleDiscovery.roles.map((role) => ({
+        label: role.name,
+        value: role.id,
+      })),
+    [roleDiscovery.roles],
+  );
+  const roleSelection = useMemo(
+    () =>
+      buildRoleSelectionState(
+        config.allowedRoleIds,
+        canManageUsers,
+        roleDiscovery,
+        roleOptions,
+      ),
+    [config.allowedRoleIds, canManageUsers, roleDiscovery, roleOptions],
+  );
+  const isDirty = configIsDirty(
+    config,
+    savedConfigFingerprint,
+    roleSelection.hasUnsavedRoleSnapshot,
+  );
 
   useEffect(() => {
     const previousSavedFingerprint = savedConfigFingerprintRef.current;
@@ -687,6 +929,8 @@ export default function ConfigScreen({ ctx }: Props) {
         Boolean(apiKey.trim() && !modelDiscovery.loaded)));
   const retryModelDiscovery = () =>
     setModelRetryAttempt((attempt) => attempt + 1);
+  const retryRoleDiscovery = () =>
+    setRoleRetryAttempt((attempt) => attempt + 1);
 
   const update = <Key extends keyof AgentConfig>(
     key: Key,
@@ -707,9 +951,15 @@ export default function ConfigScreen({ ctx }: Props) {
           (candidate) => candidate.id === activeModel(config),
         )
       : undefined;
-    const configForSave = selectedModelForSave
+    const providerConfigForSave = selectedModelForSave
       ? configWithSelectedModel(config, selectedModelForSave)
       : config;
+    const configForSave = configWithRoleSnapshot(
+      providerConfigForSave,
+      canManageUsers,
+      roleDiscovery,
+      roleSelection.implicitRoleDraftIds,
+    );
     const validationError = providerConfigurationChanged
       ? configurationValidationError(configForSave, modelDiscovery)
       : undefined;
@@ -729,7 +979,10 @@ export default function ConfigScreen({ ctx }: Props) {
       setSavedConfigFingerprint(nextFingerprint);
       setConfig(normalizedConfig);
       setAttemptedSave(false);
-      await ctx.notice('Dato Agent (Beta) settings saved');
+      void ctx.notice('Dato Agent (Beta) settings saved').catch(() => {
+        // The settings are already persisted. A delayed or failed toast must
+        // not keep the form in its saving state.
+      });
     } catch (error) {
       await ctx.alert(`Could not save settings: ${errorMessage(error)}`);
     } finally {
@@ -789,8 +1042,21 @@ export default function ConfigScreen({ ctx }: Props) {
             </FieldGroup>
           </Section>
 
-          <Section title="Record sidebar">
+          <Section title="Permissions">
             <FieldGroup>
+              <SwitchField
+                id="read-only"
+                name="read-only"
+                label="Read Only"
+                hint="Allows inspection and planning, but prevents the agent from changing project content or creating assets."
+                value={config.readOnly}
+                onChange={(value) => update('readOnly', value)}
+                switchInputProps={{
+                  name: 'read-only',
+                  value: config.readOnly,
+                  disabled: !canEditSchema || saving,
+                }}
+              />
               <SwitchField
                 id="enable-record-sidebar"
                 name="enable-record-sidebar"
@@ -803,6 +1069,60 @@ export default function ConfigScreen({ ctx }: Props) {
                   value: config.enableRecordSidebar,
                   disabled: !canEditSchema || saving,
                 }}
+              />
+              <SelectField<RoleOption, true, never>
+                id="allowed-role-ids"
+                name="allowed-role-ids"
+                label="All roles that can use DatoAgent"
+                hint={
+                  <>
+                    Project owners always have access. New roles must be added
+                    manually.
+                    {!canManageUsers && (
+                      <>
+                        {' '}
+                        Only users who can manage collaborators can change this
+                        list.
+                      </>
+                    )}
+                  </>
+                }
+                error={
+                  canManageUsers && roleDiscovery.error ? (
+                    <>
+                      Could not load project roles: {roleDiscovery.error}{' '}
+                      <button
+                        className={styles.retryButton}
+                        onClick={retryRoleDiscovery}
+                        type="button"
+                      >
+                        Retry
+                      </button>
+                    </>
+                  ) : undefined
+                }
+                placeholder="No collaborator roles selected"
+                value={roleSelection.selectedRoleOptions}
+                selectInputProps={{
+                  inputId: 'allowed-role-ids-input',
+                  'aria-label': 'All roles that can use DatoAgent',
+                  isMulti: true,
+                  options: roleOptions,
+                  isLoading: roleDiscovery.loading,
+                  isDisabled:
+                    !canEditSchema ||
+                    !canManageUsers ||
+                    saving ||
+                    roleDiscovery.loading ||
+                    !roleDiscovery.loaded ||
+                    Boolean(roleDiscovery.error),
+                }}
+                onChange={(options) =>
+                  update(
+                    'allowedRoleIds',
+                    normalizedRoleIds(options.map((option) => option.value)),
+                  )
+                }
               />
             </FieldGroup>
           </Section>

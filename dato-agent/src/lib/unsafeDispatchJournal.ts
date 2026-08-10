@@ -74,6 +74,10 @@ export interface UnsafeDispatchJournalStore {
     responseId: string,
     operations: UnsafeDispatchJournalOperationClaim[],
   ): UnsafeDispatchJournal;
+  discardArmed(
+    journalId: string,
+    approvalRequestIds: readonly string[],
+  ): UnsafeDispatchJournal | undefined;
   markDispatched(
     journalId: string,
     approvalRequestIds: readonly string[],
@@ -489,6 +493,50 @@ export function createUnsafeDispatchJournalStore(
           MAX_JOURNAL_ID_CHARACTERS,
         ),
         operations: [...current.operations, ...appended],
+        updatedAt: new Date().toISOString(),
+      });
+    },
+    discardArmed(journalId, approvalRequestIds) {
+      const storageTarget = target();
+      const current = readRawJournal(storageTarget, key);
+      if (!current || current.id !== journalId) {
+        throw new Error(
+          'The approved change no longer has a matching durable dispatch journal.',
+        );
+      }
+
+      const requested = new Set(approvalRequestIds);
+      if (
+        requested.size === 0 ||
+        requested.size !== approvalRequestIds.length ||
+        [...requested].some(
+          (id) =>
+            !current.operations.some(
+              (operation) =>
+                operation.approvalRequestId === id &&
+                operation.state === 'armed',
+            ),
+        )
+      ) {
+        throw new Error('Only armed unsafe operations can be discarded.');
+      }
+
+      const operations = current.operations.filter(
+        (operation) => !requested.has(operation.approvalRequestId),
+      );
+      if (operations.length === 0) {
+        storageTarget.removeItem(key);
+        if (storageTarget.getItem(key) !== null) {
+          throw new Error(
+            'The cancelled change journal could not be cleared from browser storage.',
+          );
+        }
+        return undefined;
+      }
+
+      return verifiedWrite(storageTarget, key, {
+        ...current,
+        operations,
         updatedAt: new Date().toISOString(),
       });
     },

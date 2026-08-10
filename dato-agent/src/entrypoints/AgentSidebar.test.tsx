@@ -140,6 +140,18 @@ function context({
     environment: 'primary',
     isEnvironmentPrimary: true,
     currentUser: { id: 'user' },
+    currentRole: {
+      id: 'account_role',
+      attributes: {
+        positive_upload_permissions: [],
+        negative_upload_permissions: [],
+        positive_item_type_permissions: [
+          { environment: 'primary', action: 'read', item_type: null },
+        ],
+        negative_item_type_permissions: [],
+      },
+      meta: { final_permissions: { can_edit_schema: true } },
+    },
     ui: { locale: 'en' },
     item: itemId ? { id: itemId } : null,
     itemType: model,

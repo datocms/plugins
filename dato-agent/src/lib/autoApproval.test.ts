@@ -71,7 +71,12 @@ describe('auto-approval persistence', () => {
       'not-json',
       JSON.stringify({ version: 0, acknowledgementVersion: 1, enabled: true }),
       JSON.stringify({ version: 1, acknowledgementVersion: 0, enabled: true }),
-      JSON.stringify({ version: 1, acknowledgementVersion: 1, enabled: false }),
+      JSON.stringify({ version: 1, acknowledgementVersion: 1, enabled: true }),
+      JSON.stringify({
+        version: 1,
+        acknowledgementVersion: AUTO_APPROVAL_ACKNOWLEDGEMENT_VERSION,
+        enabled: false,
+      }),
     ]) {
       storage.setItem(store.key, value);
       expect(store.isEnabled()).toBe(false);
@@ -94,8 +99,6 @@ describe('auto-approval persistence', () => {
 describe('auto-approval confirmation', () => {
   const context = {
     siteName: 'Marketing Website',
-    environment: 'primary',
-    isEnvironmentPrimary: true,
   };
 
   it('stops after the first cancellation', async () => {
@@ -134,7 +137,7 @@ describe('auto-approval confirmation', () => {
       expect.objectContaining({
         title: 'Auto-approve is dangerous',
         content: expect.stringMatching(
-          /non-deterministic.*unexpected changes/i,
+          /whole DatoCMS project.*not confined.*destructive operations/i,
         ),
         choices: [
           expect.objectContaining({ value: 'continue', intent: 'negative' }),
@@ -146,7 +149,7 @@ describe('auto-approval confirmation', () => {
       expect.objectContaining({
         title: 'Accept the risk?',
         content: expect.stringMatching(
-          /dangerous.*create, update, publish, unpublish, or delete.*non-deterministic/i,
+          /dangerous.*create, update, publish, unpublish, delete.*anywhere.*including other environments/i,
         ),
         choices: [
           expect.objectContaining({ value: 'enable', intent: 'negative' }),

@@ -47,7 +47,13 @@ export type AgentConfig = {
   anthropicReasoningEffort: AnthropicReasoningEffort;
   anthropicFastMode: boolean;
   additionalInstructions: string;
+  readOnly: boolean;
   enableRecordSidebar: boolean;
+  /**
+   * Collaborator roles allowed to use Dato Agent. Project owners are always
+   * allowed separately. `null` means this setting has not been configured yet.
+   */
+  allowedRoleIds: string[] | null;
 };
 
 export const DEFAULT_CONFIG: AgentConfig = {
@@ -62,7 +68,9 @@ export const DEFAULT_CONFIG: AgentConfig = {
   anthropicReasoningEffort: 'high',
   anthropicFastMode: false,
   additionalInstructions: '',
+  readOnly: false,
   enableRecordSidebar: true,
+  allowedRoleIds: null,
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -77,6 +85,20 @@ function positiveSafeInteger(value: unknown): number | null {
   return typeof value === 'number' && Number.isSafeInteger(value) && value > 0
     ? value
     : null;
+}
+
+function normalizeRoleIds(value: unknown): string[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  return [
+    ...new Set(
+      value
+        .map((entry) => trimmedString(entry))
+        .filter((entry) => entry.length > 0),
+    ),
+  ].sort((left, right) => left.localeCompare(right));
 }
 
 function normalizeProvider(value: unknown): AgentProvider {
@@ -121,10 +143,15 @@ export function normalizeConfig(parameters: unknown): AgentConfig {
     typeof source.additionalInstructions === 'string'
       ? source.additionalInstructions
       : DEFAULT_CONFIG.additionalInstructions;
+  const readOnly =
+    typeof source.readOnly === 'boolean'
+      ? source.readOnly
+      : DEFAULT_CONFIG.readOnly;
   const enableRecordSidebar =
     typeof source.enableRecordSidebar === 'boolean'
       ? source.enableRecordSidebar
       : DEFAULT_CONFIG.enableRecordSidebar;
+  const allowedRoleIds = normalizeRoleIds(source.allowedRoleIds);
 
   return {
     provider,
@@ -138,7 +165,9 @@ export function normalizeConfig(parameters: unknown): AgentConfig {
     anthropicReasoningEffort,
     anthropicFastMode,
     additionalInstructions,
+    readOnly,
     enableRecordSidebar,
+    allowedRoleIds,
   };
 }
 

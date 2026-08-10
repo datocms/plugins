@@ -392,6 +392,23 @@ describe('createAgentMentionHost', () => {
     expect(host.createAsset).toBeUndefined();
   });
 
+  it('fails closed when a host supplies incomplete role permission data', () => {
+    const article = itemType('article', 'Article');
+    const host = createAgentMentionHost(
+      createContext({
+        itemTypes: { article },
+        currentRole: { id: 'account_role' },
+      }),
+    );
+
+    expect(host.projectModels.map((model) => model.id)).toEqual(['article']);
+    expect(host.recordModels).toEqual([]);
+    expect(host.canMentionAssets).toBe(false);
+    expect(host.canMentionModels).toBe(false);
+    expect(host.canCreateAssets).toBe(false);
+    expect(host.createAsset).toBeUndefined();
+  });
+
   it('creates an asset from an attached file only after native confirmation', async () => {
     const openConfirm = vi.fn().mockResolvedValue('create');
     const dispatchOrder: string[] = [];

@@ -5,7 +5,7 @@ import type {
   FetchLike,
   Transport,
 } from '@modelcontextprotocol/sdk/shared/transport.js';
-import { DATOCMS_MCP_ALLOWED_TOOLS, DATOCMS_MCP_URL } from './mcpPolicy';
+import { DATOCMS_MCP_URL, datoCmsMcpAllowedTools } from './mcpPolicy';
 
 export const MAX_DATOCMS_MCP_TOOL_PAGES = 20;
 export const MAX_DATOCMS_MCP_RESULT_CHARACTERS = 60_000;
@@ -85,6 +85,8 @@ export interface CreateDatoMcpClientOptions {
   endpoint?: string | URL;
   fetch?: FetchLike;
   maxResultCharacters?: number;
+  /** Prevent unsafe-script discovery and dispatch at the transport boundary. */
+  readOnly?: boolean;
   /**
    * Test/proxy seam. Production callers should let the factory construct the
    * official MCP client and Streamable HTTP transport.
@@ -93,7 +95,6 @@ export interface CreateDatoMcpClientOptions {
   transport?: Transport;
 }
 
-const ALLOWED_TOOL_NAMES = new Set<string>(DATOCMS_MCP_ALLOWED_TOOLS);
 const SENSITIVE_KEY_PATTERN = /\bsk-[A-Za-z0-9_-]{12,}\b/g;
 const BEARER_PATTERN = /\b(Bearer\s+)[A-Za-z0-9._~+/-]+=*/gi;
 
@@ -323,6 +324,8 @@ class BrowserDatoMcpClient implements DatoMcpClient {
   private readonly client: DatoMcpSdkClient;
   private readonly transport: Transport;
   private readonly maxResultCharacters: number;
+  private readonly allowedTools: readonly string[];
+  private readonly allowedToolNames: ReadonlySet<string>;
   private connection?: Promise<void>;
   private tools?: Promise<readonly DatoMcpToolDescriptor[]>;
   private closeRequest?: Promise<void>;
@@ -330,6 +333,10 @@ class BrowserDatoMcpClient implements DatoMcpClient {
 
   constructor(accessToken: string, options: CreateDatoMcpClientOptions) {
     const token = normalizeAccessToken(accessToken);
+    this.allowedTools = datoCmsMcpAllowedTools({
+      readOnly: Boolean(options.readOnly),
+    });
+    this.allowedToolNames = new Set(this.allowedTools);
     this.maxResultCharacters = normalizeMaxResultCharacters(
       options.maxResultCharacters,
     );
@@ -411,7 +418,7 @@ class BrowserDatoMcpClient implements DatoMcpClient {
 
       for (const tool of result.tools) {
         if (
-          ALLOWED_TOOL_NAMES.has(tool.name) &&
+          this.allowedToolNames.has(tool.name) &&
           !found.has(tool.name) &&
           isRecord(tool.inputSchema)
         ) {
@@ -421,7 +428,7 @@ class BrowserDatoMcpClient implements DatoMcpClient {
 
       const nextCursor = result.nextCursor?.trim();
       if (!nextCursor) {
-        return DATOCMS_MCP_ALLOWED_TOOLS.flatMap((name) => {
+        return this.allowedTools.flatMap((name) => {
           const descriptor = found.get(name);
           return descriptor ? [descriptor] : [];
         });
@@ -448,7 +455,7 @@ class BrowserDatoMcpClient implements DatoMcpClient {
     this.ensureOpen();
     throwIfAborted(signal);
     const name = call.name.trim();
-    if (!ALLOWED_TOOL_NAMES.has(name)) {
+    if (!this.allowedToolNames.has(name)) {
       throw new Error(
         'This DatoCMS MCP operation is not allowed by the host application.',
       );

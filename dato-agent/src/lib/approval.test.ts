@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { validateApprovalScope, validateMcpToolCall } from './approval';
+import {
+  READ_ONLY_REJECTION_MESSAGE,
+  validateApprovalScope,
+  validateMcpToolCall,
+} from './approval';
 
 const sandbox = {
   siteId: 'site-123',
@@ -38,6 +42,43 @@ describe('validateMcpToolCall', () => {
       allowed: true,
       disposition: 'require_user_approval',
     });
+  });
+
+  it('blocks every unsafe script in Read Only mode, including no_execute', () => {
+    for (const noExecute of [undefined, false, true]) {
+      expect(
+        validateMcpToolCall(
+          {
+            name: 'upsert_and_execute_unsafe_script',
+            serverLabel: 'datocms',
+            arguments: JSON.stringify(
+              scriptArguments({
+                ...(noExecute === undefined ? {} : { no_execute: noExecute }),
+              }),
+            ),
+          },
+          sandbox,
+          { readOnly: true },
+        ),
+      ).toEqual({
+        allowed: false,
+        reason: READ_ONLY_REJECTION_MESSAGE,
+      });
+    }
+  });
+
+  it('keeps safe scripts available in Read Only mode', () => {
+    expect(
+      validateMcpToolCall(
+        {
+          name: 'upsert_and_execute_safe_script',
+          serverLabel: 'datocms',
+          arguments: JSON.stringify(scriptArguments()),
+        },
+        sandbox,
+        { readOnly: true },
+      ),
+    ).toMatchObject({ allowed: true, disposition: 'auto_approve' });
   });
 
   it('auto-approves read and safe calls only after host validation', () => {
@@ -270,6 +311,22 @@ describe('validateApprovalScope', () => {
     ).toMatchObject({
       allowed: false,
       reason: expect.stringContaining('does not require editor approval'),
+    });
+  });
+
+  it('rejects a pending unsafe approval when Read Only is enabled', () => {
+    expect(
+      validateApprovalScope(
+        {
+          name: 'upsert_and_execute_unsafe_script',
+          arguments: JSON.stringify(scriptArguments()),
+        },
+        sandbox,
+        { readOnly: true },
+      ),
+    ).toEqual({
+      allowed: false,
+      reason: READ_ONLY_REJECTION_MESSAGE,
     });
   });
 

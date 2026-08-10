@@ -226,6 +226,44 @@ describe('DatoMcpClient', () => {
     expect(sdk.callTool).not.toHaveBeenCalled();
   });
 
+  it('filters and blocks unsafe scripts at the transport boundary in Read Only mode', async () => {
+    const sdk = fakeSdkClient();
+    sdk.listTools.mockResolvedValue({
+      tools: [
+        {
+          name: 'upsert_and_execute_safe_script',
+          inputSchema: { type: 'object' },
+        },
+        {
+          name: 'upsert_and_execute_unsafe_script',
+          inputSchema: { type: 'object' },
+        },
+      ],
+    });
+    const client = createDatoMcpClient('oauth-token', {
+      client: sdk.client,
+      transport: fakeTransport(),
+      readOnly: true,
+    });
+
+    await expect(client.listTools()).resolves.toEqual([
+      expect.objectContaining({ name: 'upsert_and_execute_safe_script' }),
+    ]);
+    await expect(
+      client.callTool({
+        name: 'upsert_and_execute_unsafe_script',
+        arguments: { no_execute: true },
+      }),
+    ).rejects.toThrow('not allowed');
+    expect(sdk.callTool).not.toHaveBeenCalled();
+
+    await client.callTool({
+      name: 'upsert_and_execute_safe_script',
+      arguments: {},
+    });
+    expect(sdk.callTool).toHaveBeenCalledOnce();
+  });
+
   it('serializes text, resources, structured content, cycles, and empty results', () => {
     expect(
       serializeDatoMcpToolResult({

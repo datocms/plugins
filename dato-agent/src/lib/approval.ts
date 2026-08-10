@@ -1,7 +1,12 @@
 import {
   createDatoAgentScriptNamespace,
   DATOCMS_MCP_SERVER_LABEL,
+  DATOCMS_MCP_UNSAFE_SCRIPT_TOOL,
+  type DatoCmsMcpPolicyOptions,
 } from './mcpPolicy';
+
+export const READ_ONLY_REJECTION_MESSAGE =
+  'Read Only was enabled. No action was taken.' as const;
 
 export type ApprovalRequestLike = {
   name: string;
@@ -333,6 +338,7 @@ function validateViewScript(
 export function validateMcpToolCall(
   request: ApprovalRequestLike,
   scope: ProjectScope,
+  policy: DatoCmsMcpPolicyOptions = {},
 ): McpCallValidationResult {
   let parsed: unknown;
 
@@ -341,6 +347,10 @@ export function validateMcpToolCall(
     request.serverLabel !== DATOCMS_MCP_SERVER_LABEL
   ) {
     return invalid('The approval request came from an unexpected MCP server.');
+  }
+
+  if (policy.readOnly && request.name === DATOCMS_MCP_UNSAFE_SCRIPT_TOOL) {
+    return invalid(READ_ONLY_REJECTION_MESSAGE);
   }
 
   try {
@@ -404,8 +414,9 @@ export function validateMcpToolCall(
 export function validateApprovalScope(
   request: ApprovalRequestLike,
   scope: ProjectScope,
+  policy: DatoCmsMcpPolicyOptions = {},
 ): ApprovalScopeResult {
-  const validation = validateMcpToolCall(request, scope);
+  const validation = validateMcpToolCall(request, scope, policy);
 
   if (!validation.allowed) {
     return validation;

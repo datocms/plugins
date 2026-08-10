@@ -1064,6 +1064,167 @@ describe('AnthropicAgentRuntime', () => {
     expect(mcp.close).toHaveBeenCalledOnce();
   });
 
+  it('filters Anthropic tools and blocks forged mutation calls in Read Only mode', async () => {
+    const safeInput = {
+      ...unsafeScriptInput('read-content.ts'),
+      body: {
+        mode: 'full',
+        content: 'console.log(await client.items.rawList());',
+      },
+    };
+    const anthropic = new QueueAnthropicClient([
+      message(
+        'msg-read-only-tools',
+        [
+          toolUse(
+            'toolu-read-only-safe',
+            'upsert_and_execute_safe_script',
+            safeInput,
+          ),
+          toolUse(
+            'toolu-read-only-unsafe',
+            'upsert_and_execute_unsafe_script',
+            { ...unsafeScriptInput(), no_execute: true },
+          ),
+          toolUse('toolu-read-only-asset', 'create_dato_asset', {
+            source: 'url',
+            attachment_id: null,
+            url: 'https://example.com/file.pdf',
+            filename: 'file.pdf',
+          }),
+        ],
+        'tool_use',
+      ),
+      message('msg-read-only-complete', [textBlock('Here is what I found.')]),
+    ]);
+    const mcp = mcpClientWith();
+    const createDatoAsset = vi.fn();
+    const runtime = runtimeWith(anthropic, mcp.client, {
+      readOnly: true,
+      createDatoAsset,
+    });
+
+    const { events, result } = await drain(
+      runtime.streamTurn({ message: 'Inspect this project.' }),
+    );
+
+    const firstRequest = anthropic.requests[0];
+    const toolNames = (firstRequest?.tools ?? []).map((tool) => tool.name);
+    expect(toolNames).toContain('upsert_and_execute_safe_script');
+    expect(toolNames).not.toContain('upsert_and_execute_unsafe_script');
+    expect(toolNames).not.toContain('create_dato_asset');
+    expect(firstRequest?.system).toContain('READ ONLY MODE');
+    expect(firstRequest?.system).not.toContain('create_dato_asset');
+    expect(createDatoAsset).not.toHaveBeenCalled();
+    expect(mcp.callTool).toHaveBeenCalledOnce();
+    expect(mcp.callTool).toHaveBeenCalledWith(
+      {
+        name: 'upsert_and_execute_safe_script',
+        arguments: safeInput,
+      },
+      undefined,
+    );
+    expect(events.some((event) => event.type === 'approval_required')).toBe(
+      false,
+    );
+
+    const resultBlocks = lastMessageContent(anthropic.requests[1]);
+    expect(resultBlocks.filter(isToolResultBlock)).toHaveLength(3);
+    expect(JSON.stringify(resultBlocks)).toContain(
+      'Read Only was enabled. No action was taken.',
+    );
+    expect(result).toMatchObject({
+      status: 'completed',
+      responseId: 'msg-read-only-complete',
+      text: 'Here is what I found.',
+    });
+  });
+
+  it('cancels a pending Anthropic write before dispatch when Read Only becomes active', async () => {
+    const anthropic = new QueueAnthropicClient([
+      message(
+        'msg-pending-before-read-only',
+        [
+          toolUse(
+            'toolu-pending-before-read-only',
+            'upsert_and_execute_unsafe_script',
+            unsafeScriptInput(),
+          ),
+        ],
+        'tool_use',
+      ),
+    ]);
+    const mcp = mcpClientWith();
+    const runtime = runtimeWith(anthropic, mcp.client);
+    const first = await drain(
+      runtime.streamTurn({ message: 'Update the record.' }),
+    );
+    expect(first.result.status).toBe('approval_required');
+
+    (
+      runtime as unknown as {
+        readOnly: boolean;
+      }
+    ).readOnly = true;
+    const beforeDispatch = vi.fn();
+    const second = await drain(
+      runtime.continueApproval({
+        responseId: 'msg-pending-before-read-only',
+        approvalRequestId: 'toolu-pending-before-read-only',
+        approve: true,
+        unsafeDispatchCallbacks: { beforeDispatch },
+      }),
+    );
+
+    expect(second.result).toMatchObject({
+      status: 'failed',
+      error: {
+        code: 'invalid_request',
+        message: 'Read Only was enabled. No action was taken.',
+      },
+    });
+    expect(beforeDispatch).not.toHaveBeenCalled();
+    expect(mcp.callTool).not.toHaveBeenCalled();
+    expect(anthropic.requests).toHaveLength(1);
+  });
+
+  it('overrides stale Read Only history when a writable Anthropic chat resumes', async () => {
+    const anthropic = new QueueAnthropicClient([
+      message('msg-writable-resumed', [textBlock('I can prepare that now.')]),
+    ]);
+    const mcp = mcpClientWith();
+    const runtime = runtimeWith(anthropic, mcp.client, { readOnly: false });
+
+    const { result } = await drain(
+      runtime.streamTurn({
+        history: [
+          { role: 'user', text: 'Please update the homepage title.' },
+          {
+            role: 'assistant',
+            text: 'Writing tools are unavailable because Read Only is enabled.',
+          },
+        ],
+        message: 'Please make that change now.',
+      }),
+    );
+
+    const request = anthropic.requests[0];
+    expect(JSON.stringify(request?.messages)).toContain(
+      'Writing tools are unavailable because Read Only is enabled.',
+    );
+    expect(request?.system).toContain('WRITABLE MODE');
+    expect(request?.system).toContain(
+      'overrides any earlier user, assistant, or tool message that says Read Only is enabled or writing tools are unavailable',
+    );
+    expect((request?.tools ?? []).map((tool) => tool.name)).toContain(
+      'upsert_and_execute_unsafe_script',
+    );
+    expect(result).toMatchObject({
+      status: 'completed',
+      responseId: 'msg-writable-resumed',
+    });
+  });
+
   it('provides the same explicit host asset-creation tool and continuation behavior', async () => {
     const anthropic = new QueueAnthropicClient([
       message(

@@ -314,6 +314,19 @@
   line-height: 1.45;
 }
 
+.authorizationNotice {
+  margin: var(--spacing-s) 8px 0;
+  color: var(--color--ink-subtle);
+  font-size: var(--font-size-xs);
+  line-height: 1.45;
+}
+
+.authorizationNotice strong {
+  display: block;
+  color: var(--color--ink);
+  font-weight: var(--font-weight-bold);
+}
+
 .configurationNotice {
   display: flex;
   min-height: 34px;

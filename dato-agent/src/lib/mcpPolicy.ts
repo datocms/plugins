@@ -2,6 +2,8 @@ import type { Tool } from 'openai/resources/responses/responses';
 
 export const DATOCMS_MCP_URL = 'https://mcp.datocms.com/' as const;
 export const DATOCMS_MCP_SERVER_LABEL = 'datocms' as const;
+export const DATOCMS_MCP_UNSAFE_SCRIPT_TOOL =
+  'upsert_and_execute_unsafe_script' as const;
 
 /**
  * Project discovery and API-issue reporting are intentionally omitted. The agent
@@ -13,7 +15,7 @@ export const DATOCMS_MCP_ALLOWED_TOOLS = [
   'get_api_methods',
   'get_schema',
   'upsert_and_execute_safe_script',
-  'upsert_and_execute_unsafe_script',
+  DATOCMS_MCP_UNSAFE_SCRIPT_TOOL,
   'view_script',
   'whoami',
 ] as const;
@@ -38,6 +40,27 @@ export interface DatoCmsMcpProjectScope {
   scriptSessionId?: string;
 }
 
+export interface DatoCmsMcpPolicyOptions {
+  readOnly?: boolean;
+}
+
+export function datoCmsMcpAllowedTools(
+  options: DatoCmsMcpPolicyOptions = {},
+): string[] {
+  return options.readOnly
+    ? DATOCMS_MCP_ALLOWED_TOOLS.filter(
+        (name) => name !== DATOCMS_MCP_UNSAFE_SCRIPT_TOOL,
+      )
+    : [...DATOCMS_MCP_ALLOWED_TOOLS];
+}
+
+export function isDatoCmsMcpToolAllowed(
+  name: string,
+  options: DatoCmsMcpPolicyOptions = {},
+): boolean {
+  return datoCmsMcpAllowedTools(options).includes(name);
+}
+
 export function createDatoAgentScriptNamespace(
   scope: DatoCmsMcpProjectScope,
 ): string {
@@ -53,7 +76,10 @@ export function createDatoAgentScriptNamespace(
   return `script://dato-agent/${siteId}/${environment}/${sessionSegment}`;
 }
 
-export function createDatoCmsMcpTool(accessToken: string): Tool.Mcp {
+export function createDatoCmsMcpTool(
+  accessToken: string,
+  options: DatoCmsMcpPolicyOptions = {},
+): Tool.Mcp {
   const normalizedAccessToken = accessToken.trim();
 
   if (!normalizedAccessToken) {
@@ -67,7 +93,7 @@ export function createDatoCmsMcpTool(accessToken: string): Tool.Mcp {
       'DatoCMS project schema and content operations for the current project and environment.',
     server_url: DATOCMS_MCP_URL,
     authorization: normalizedAccessToken,
-    allowed_tools: [...DATOCMS_MCP_ALLOWED_TOOLS],
+    allowed_tools: datoCmsMcpAllowedTools(options),
     require_approval: DATOCMS_MCP_APPROVAL_POLICY,
   };
 }

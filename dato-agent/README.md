@@ -1,12 +1,17 @@
-Dato Agent is still in beta and can execute real write operations against your
-project. It may misunderstand a request and perform destructive operations
-that modify or delete project data and may be difficult or impossible to undo.
+Dato Agent is still in beta. The Remote MCP can access the whole DatoCMS project
+through the connected user's account; it is not confined to the record or
+environment currently open in the CMS. Within that user's permissions, it can
+read and change data across the project, including other environments, and can
+perform destructive operations that may be difficult or impossible to undo.
 Auto-approve lets those operations run without review. Manually approving an
 operation without reading its details carries the same risk.
 
-For now, we strongly recommend using this plugin only in a sandbox or test
-project/environment, never with production or irreplaceable content. Review
-every operation before approving it and keep recoverable backups.
+During the required DatoCMS connection, select only the project where this
+plugin is installed. Do not authorize any additional projects.
+
+For now, we strongly recommend using this plugin only with a dedicated sandbox
+or test project, never a production project or one containing irreplaceable
+data. Review every operation before approving it and keep recoverable backups.
 
 If you encounter any error, contact
 [support@datocms.com](mailto:support@datocms.com) and include your request, the
@@ -20,14 +25,16 @@ and prepare content changes.
 
 1. A project administrator selects OpenAI or Anthropic, adds the provider API
    key, and chooses a model in the plugin settings.
-2. Each user connects their own DatoCMS account.
+2. Each user connects their own DatoCMS account and, when asked which projects
+   to authorize, selects only the project where this plugin is installed.
 3. Open **Agent (Beta)** or the record sidebar and describe what you need.
 
-## Safety and privacy
+## Access, approvals, and privacy
 
-- The agent is limited to the current project, environment, and your DatoCMS
-  permissions.
-- Read-only actions can run automatically. Content changes require approval
-  unless auto-approve is enabled.
+- The Remote MCP can access the whole project, including other environments,
+  wherever the connected user's DatoCMS permissions allow it.
+- It can perform destructive operations throughout the project. Read-only
+  actions can run automatically; changes require approval unless auto-approve
+  is enabled.
 - The provider API key is configured for the project. Your DatoCMS connection
   and recent chats are stored in your browser.

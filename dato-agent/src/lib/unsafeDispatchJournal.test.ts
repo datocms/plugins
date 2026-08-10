@@ -149,6 +149,38 @@ describe('unsafe dispatch journal', () => {
     );
   });
 
+  it('discards only operations that were cancelled before dispatch', () => {
+    const storage = new MemoryStorage();
+    const store = createUnsafeDispatchJournalStore(context, storage);
+    store.claim(
+      claim({
+        operations: [
+          ...claim().operations,
+          {
+            approvalRequestId: 'approval-2',
+            name: 'upsert_and_execute_unsafe_script',
+            arguments: '{"site_id":"site"}',
+            automatic: false,
+          },
+        ],
+      }),
+    );
+    store.markDispatched('journal-1', ['approval-1']);
+    store.markConfirmed('journal-1', ['approval-1']);
+
+    expect(store.discardArmed('journal-1', ['approval-2'])).toMatchObject({
+      operations: [{ approvalRequestId: 'approval-1', state: 'confirmed' }],
+    });
+    expect(() => store.discardArmed('journal-1', ['approval-1'])).toThrow(
+      /only armed/i,
+    );
+
+    store.clear('journal-1');
+    store.claim(claim());
+    expect(store.discardArmed('journal-1', ['approval-1'])).toBeUndefined();
+    expect(store.read()).toBeUndefined();
+  });
+
   it('fails closed when a durable write cannot be verified', () => {
     const storage = new MemoryStorage();
     storage.setItem = () => {};

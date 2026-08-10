@@ -5,7 +5,10 @@ import {
   DATOCMS_MCP_ALLOWED_TOOLS,
   DATOCMS_MCP_APPROVAL_POLICY,
   DATOCMS_MCP_EXCLUDED_TOOLS,
+  DATOCMS_MCP_UNSAFE_SCRIPT_TOOL,
   DATOCMS_MCP_URL,
+  datoCmsMcpAllowedTools,
+  isDatoCmsMcpToolAllowed,
 } from './mcpPolicy';
 
 describe('DatoCMS MCP policy', () => {
@@ -26,6 +29,35 @@ describe('DatoCMS MCP policy', () => {
     for (const excludedTool of DATOCMS_MCP_EXCLUDED_TOOLS) {
       expect(tool.allowed_tools).not.toContain(excludedTool);
     }
+  });
+
+  it('removes only the unsafe script tool in Read Only mode', () => {
+    const allowedTools = datoCmsMcpAllowedTools({ readOnly: true });
+    const tool = createDatoCmsMcpTool('oauth-token', { readOnly: true });
+
+    expect(allowedTools).toEqual(
+      DATOCMS_MCP_ALLOWED_TOOLS.filter(
+        (name) => name !== DATOCMS_MCP_UNSAFE_SCRIPT_TOOL,
+      ),
+    );
+    expect(tool.allowed_tools).toEqual(allowedTools);
+    expect(allowedTools).toContain('upsert_and_execute_safe_script');
+    expect(allowedTools).not.toContain(DATOCMS_MCP_UNSAFE_SCRIPT_TOOL);
+    expect(
+      isDatoCmsMcpToolAllowed(DATOCMS_MCP_UNSAFE_SCRIPT_TOOL, {
+        readOnly: true,
+      }),
+    ).toBe(false);
+    expect(
+      isDatoCmsMcpToolAllowed('upsert_and_execute_safe_script', {
+        readOnly: true,
+      }),
+    ).toBe(true);
+  });
+
+  it('keeps the complete allowlist by default', () => {
+    expect(datoCmsMcpAllowedTools()).toEqual([...DATOCMS_MCP_ALLOWED_TOOLS]);
+    expect(isDatoCmsMcpToolAllowed(DATOCMS_MCP_UNSAFE_SCRIPT_TOOL)).toBe(true);
   });
 
   it('rejects a missing OAuth token', () => {
