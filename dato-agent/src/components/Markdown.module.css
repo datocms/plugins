@@ -1,0 +1,135 @@
+.root {
+  min-width: 0;
+  max-width: 100%;
+  color: inherit;
+  font: inherit;
+  overflow-wrap: anywhere;
+}
+
+.root > :first-child {
+  margin-top: 0;
+}
+
+.root > :last-child {
+  margin-bottom: 0;
+}
+
+.root p,
+.root ul,
+.root ol,
+.root pre,
+.root blockquote,
+.root table,
+.root h1,
+.root h2,
+.root h3,
+.root h4 {
+  margin: 0 0 var(--spacing-m);
+}
+
+.root h1,
+.root h2,
+.root h3,
+.root h4,
+.root strong,
+.root th {
+  font-weight: var(--font-weight-bold);
+}
+
+.root h1 {
+  font-size: var(--font-size-l);
+  line-height: 1.35;
+}
+
+.root h2,
+.root h3,
+.root h4 {
+  font-size: var(--font-size-m);
+  line-height: 1.4;
+}
+
+.root ul,
+.root ol {
+  padding-left: var(--spacing-l);
+}
+
+.root li + li {
+  margin-top: var(--spacing-s);
+}
+
+.root a {
+  color: var(--color--ink-link);
+  overflow-wrap: anywhere;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.root a:focus-visible {
+  border-radius: 3px;
+  outline: 3px solid var(--color--focus--outline);
+}
+
+.root code,
+.root pre {
+  font-family: var(--monospaced-font-family);
+}
+
+.root code {
+  padding: 1px 4px;
+  border: 1px solid var(--color--border);
+  border-radius: 3px;
+  background: var(--color--surface-muted);
+  font-size: 0.9em;
+  overflow-wrap: anywhere;
+}
+
+.root pre {
+  box-sizing: border-box;
+  max-width: 100%;
+  overflow-x: auto;
+  padding: var(--spacing-m);
+  border: 1px solid var(--color--border);
+  background: var(--color--surface-muted);
+  font-size: var(--font-size-s);
+  overflow-wrap: normal;
+  white-space: pre;
+}
+
+.root pre code {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-size: inherit;
+  overflow-wrap: normal;
+}
+
+.root blockquote {
+  padding-left: var(--spacing-m);
+  border-left: 3px solid var(--color--border-hover);
+  color: var(--color--ink-subtle);
+}
+
+.root table {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  white-space: nowrap;
+}
+
+.root th,
+.root td {
+  padding: var(--spacing-s);
+  border: 1px solid var(--color--border);
+  text-align: left;
+}
+
+.imageLink {
+  display: inline-block;
+  max-width: 100%;
+}
+
+.unavailableImage {
+  color: var(--color--ink-subtle);
+}

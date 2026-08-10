@@ -1,0 +1,105 @@
+.messages {
+  margin-top: 6px;
+}
+
+.messages:empty {
+  display: none;
+}
+
+.messages p {
+  margin: 0;
+  color: var(--color--ink-danger);
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
+}
+
+.messages p + p {
+  margin-top: 3px;
+}
+
+.fileDropOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-dropdown);
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  color: var(--color--primary-soft--ink);
+  background: var(--color--surface);
+  pointer-events: none;
+  animation: file-drop-fade-in 120ms var(--inertial-ease) both;
+}
+
+.fileDropFrame {
+  position: absolute;
+  inset: var(--spacing-m);
+  border: 2px dotted var(--color--primary-soft--border);
+  border-radius: 5px;
+}
+
+.fileDropFrame::before {
+  position: absolute;
+  inset: -2px;
+  content: "";
+  background:
+    linear-gradient(var(--color--primary-soft--ink) 0 0) top left / 20px 2px
+    no-repeat,
+    linear-gradient(var(--color--primary-soft--ink) 0 0) top left / 2px 20px
+    no-repeat,
+    linear-gradient(var(--color--primary-soft--ink) 0 0) top right / 20px 2px
+    no-repeat,
+    linear-gradient(var(--color--primary-soft--ink) 0 0) top right / 2px 20px
+    no-repeat,
+    linear-gradient(var(--color--primary-soft--ink) 0 0) bottom right / 20px 2px
+    no-repeat,
+    linear-gradient(var(--color--primary-soft--ink) 0 0) bottom right / 2px 20px
+    no-repeat,
+    linear-gradient(var(--color--primary-soft--ink) 0 0) bottom left / 20px 2px
+    no-repeat,
+    linear-gradient(var(--color--primary-soft--ink) 0 0) bottom left / 2px 20px
+    no-repeat;
+}
+
+.fileDropContent {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--spacing-s);
+  padding: var(--spacing-m);
+  text-align: center;
+}
+
+.fileDropContent strong {
+  font-size: var(--font-size-s);
+  font-weight: var(--font-weight-bold);
+}
+
+.fileDropIcon {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  color: var(--color--primary-soft--ink);
+}
+
+.fileDropIcon svg {
+  width: 22px;
+  height: 22px;
+}
+
+@keyframes file-drop-fade-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fileDropOverlay {
+    animation: none;
+  }
+}
