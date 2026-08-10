@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-dato-agent",
   "homepage": "https://github.com/datocms/plugins/tree/master/dato-agent#readme",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A beta natural-language DatoCMS agent with native record navigation",
   "author": "DatoCMS <support@datocms.com>",
   "license": "MIT",
