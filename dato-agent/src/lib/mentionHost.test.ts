@@ -227,6 +227,43 @@ describe('createAgentMentionHost', () => {
 
     await host.resolveRecord({ itemId: 'record-1' });
     expect(cmaMocks.findItem).toHaveBeenCalledTimes(1);
+
+    cmaMocks.findItem.mockResolvedValue({
+      id: 'record-1',
+      item_type: { id: 'article', type: 'item_type' },
+      title: 'Title after the write',
+      image: { upload_id: 'upload-3' },
+    });
+    cmaMocks.findUpload.mockImplementation(async (id: string) => ({
+      id,
+      filename: id === 'upload-2' ? 'updated-asset.png' : 'updated-preview.jpg',
+      mime_type: 'image/jpeg',
+      url: `https://cdn.example/updated-${id}`,
+    }));
+
+    await expect(
+      host.resolveRecord({ itemId: 'record-1' }),
+    ).resolves.toHaveProperty('title', 'Authoritative title');
+    await expect(
+      host.resolveAsset({ uploadId: 'upload-2' }),
+    ).resolves.toHaveProperty('filename', 'asset.pdf');
+
+    host.invalidatePresentationCache?.();
+
+    await expect(
+      host.resolveRecord({ itemId: 'record-1' }),
+    ).resolves.toMatchObject({
+      title: 'Title after the write',
+      thumbnailUrl:
+        'https://cdn.example/updated-upload-3?w=48&fit=max&auto=format&dpr=2&q=80',
+    });
+    await expect(
+      host.resolveAsset({ uploadId: 'upload-2' }),
+    ).resolves.toMatchObject({
+      filename: 'updated-asset.png',
+      mimeType: 'image/jpeg',
+    });
+    expect(cmaMocks.findItem).toHaveBeenCalledTimes(2);
   });
 
   it('loads missing model presentation metadata before rendering a record reference', async () => {
@@ -357,15 +394,17 @@ describe('createAgentMentionHost', () => {
 
   it('creates an asset from an attached file only after native confirmation', async () => {
     const openConfirm = vi.fn().mockResolvedValue('create');
-    cmaMocks.createUpload.mockReturnValue(
-      cancelableResult({
+    const dispatchOrder: string[] = [];
+    cmaMocks.createUpload.mockImplementation(() => {
+      dispatchOrder.push('upload');
+      return cancelableResult({
         id: 'new-upload',
         filename: 'brief.pdf',
         mime_type: 'application/pdf',
         mux_playback_id: null,
         url: 'https://cdn.example/new-upload',
-      }),
-    );
+      });
+    });
     const host = createAgentMentionHost(
       createContext({
         currentUserAccessToken: 'user-token',
@@ -396,11 +435,14 @@ describe('createAgentMentionHost', () => {
 
     expect(host.canCreateAssets).toBe(true);
     await expect(
-      host.createAsset?.({
-        source: 'file',
-        fileOrBlob: file,
-        filename: file.name,
-      }),
+      host.createAsset?.(
+        {
+          source: 'file',
+          fileOrBlob: file,
+          filename: file.name,
+        },
+        { onUploadDispatch: () => dispatchOrder.push('dispatch') },
+      ),
     ).resolves.toMatchObject({
       type: 'asset',
       id: 'new-upload',
@@ -423,9 +465,11 @@ describe('createAgentMentionHost', () => {
       fileOrBlob: file,
       filename: 'brief.pdf',
     });
+    expect(dispatchOrder).toEqual(['dispatch', 'upload']);
   });
 
   it('does not create an asset when the editor cancels confirmation', async () => {
+    const onUploadDispatch = vi.fn();
     const host = createAgentMentionHost(
       createContext({
         currentUserAccessToken: 'user-token',
@@ -446,12 +490,16 @@ describe('createAgentMentionHost', () => {
     );
 
     await expect(
-      host.createAsset?.({
-        source: 'file',
-        fileOrBlob: new Blob(['content']),
-        filename: 'notes.txt',
-      }),
+      host.createAsset?.(
+        {
+          source: 'file',
+          fileOrBlob: new Blob(['content']),
+          filename: 'notes.txt',
+        },
+        { onUploadDispatch },
+      ),
     ).rejects.toThrow('Asset creation was cancelled.');
+    expect(onUploadDispatch).not.toHaveBeenCalled();
     expect(cmaMocks.createUpload).not.toHaveBeenCalled();
   });
 

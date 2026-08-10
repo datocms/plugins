@@ -1183,13 +1183,25 @@ interface SingleResponseSummary {
   text: string;
   approvals: AgentApprovalRequest[];
   functionCalls: ResponseFunctionToolCall[];
+  mcpCallCount: number;
+}
+
+interface OpenAiLoopState {
+  accumulatedText: string;
+  nextContinuation: number;
+  lastResponseId?: string;
+  loadedModelSchemaIdentifiers: Set<string>;
+  toolCallCount: number;
+  approvalExecutionCredits: number;
 }
 
 interface RunLoopArgs {
   input: string | ResponseInput;
   previousResponseId?: string;
+  state: OpenAiLoopState;
   signal?: AbortSignal;
   onRequestDispatch?: () => void;
+  onProviderResponseCompleted?: () => void;
 }
 
 interface ParsedObject {
@@ -1199,7 +1211,15 @@ interface ParsedObject {
 interface PendingApprovalBundle {
   approvalIds: Set<string>;
   continuationInputs: ResponseInputItem[];
+  state: OpenAiLoopState;
   phase: 'ready' | 'dispatching' | 'outcome_unknown';
+}
+
+function cloneOpenAiLoopState(state: OpenAiLoopState): OpenAiLoopState {
+  return {
+    ...state,
+    loadedModelSchemaIdentifiers: new Set(state.loadedModelSchemaIdentifiers),
+  };
 }
 
 class AgentAbortError extends Error {
@@ -2870,6 +2890,13 @@ export class AgentRuntime implements AgentRuntimeHandle {
       return yield* this.runLoop({
         input,
         previousResponseId: args.previousResponseId?.trim() || undefined,
+        state: {
+          accumulatedText: '',
+          nextContinuation: 0,
+          loadedModelSchemaIdentifiers: new Set(),
+          toolCallCount: 0,
+          approvalExecutionCredits: 0,
+        },
         signal: args.signal,
       });
     } catch (cause) {
@@ -3009,12 +3036,29 @@ export class AgentRuntime implements AgentRuntimeHandle {
       .map((decision) => decision.approvalRequestId);
     const approvedUnsafeOperation = approvedIds.length > 0;
     let dispatched = false;
+    let providerOutcomeConfirmed = false;
     let settled = false;
     pending.phase = 'dispatching';
+    const state = cloneOpenAiLoopState(pending.state);
+    state.approvalExecutionCredits += approvedIds.length;
+
+    const confirmApprovedOperation = () => {
+      if (!approvedUnsafeOperation || providerOutcomeConfirmed) {
+        return;
+      }
+      providerOutcomeConfirmed = true;
+      try {
+        args.unsafeDispatchCallbacks?.confirmed?.(approvedIds);
+      } catch {
+        // The provider already returned a definitive result. A stale durable
+        // journal is safer than replacing that result with a storage error.
+      }
+    };
 
     const continuation = this.runLoop({
       input: [...approvalInputs, ...pending.continuationInputs],
       previousResponseId: responseId,
+      state,
       signal: args.signal,
       onRequestDispatch: () => {
         if (!dispatched && approvedUnsafeOperation) {
@@ -3022,6 +3066,10 @@ export class AgentRuntime implements AgentRuntimeHandle {
         }
         dispatched = true;
       },
+      // Confirm at the provider boundary, before runLoop can expose a later
+      // approval request. Otherwise auto-approval can race ahead and try to
+      // append its journal entry while this operation still says dispatched.
+      onProviderResponseCompleted: confirmApprovedOperation,
     });
 
     let result: AgentTurnResult;
@@ -3043,9 +3091,22 @@ export class AgentRuntime implements AgentRuntimeHandle {
         }
       }
 
+      if (providerOutcomeConfirmed) {
+        result = {
+          ...result,
+          confirmedApprovalIds: [
+            ...new Set([
+              ...(result.confirmedApprovalIds ?? []),
+              ...approvedIds,
+            ]),
+          ],
+        };
+      }
+
       if (
         approvedUnsafeOperation &&
         dispatched &&
+        !providerOutcomeConfirmed &&
         (result.status === 'failed' ||
           result.status === 'incomplete' ||
           result.status === 'aborted')
@@ -3065,13 +3126,12 @@ export class AgentRuntime implements AgentRuntimeHandle {
       } else if (!dispatched) {
         pending.phase = 'ready';
       } else {
-        if (approvedUnsafeOperation && result.status === 'completed') {
-          try {
-            args.unsafeDispatchCallbacks?.confirmed?.(approvedIds);
-          } catch {
-            // The write already returned. A stale durable journal is safer
-            // than replacing a definitive provider result with a storage error.
-          }
+        if (
+          approvedUnsafeOperation &&
+          (result.status === 'completed' ||
+            result.status === 'approval_required')
+        ) {
+          confirmApprovedOperation();
         }
         this.pendingApprovalBundles.delete(responseId);
       }
@@ -3134,7 +3194,15 @@ export class AgentRuntime implements AgentRuntimeHandle {
   private request(
     input: string | ResponseInput,
     previousResponseId?: string,
+    state?: OpenAiLoopState,
   ): ResponseCreateParamsStreaming {
+    const remainingToolCalls = Math.max(
+      0,
+      DEFAULT_MAX_TOOL_CALLS - (state?.toolCallCount ?? 0),
+    );
+    const approvalExecutionCredits = state?.approvalExecutionCredits ?? 0;
+    const toolBudgetExhausted =
+      remainingToolCalls === 0 && approvalExecutionCredits === 0;
     const request: ResponseCreateParamsStreaming & {
       max_tool_calls: number;
     } = {
@@ -3148,9 +3216,14 @@ export class AgentRuntime implements AgentRuntimeHandle {
         ? { previous_response_id: previousResponseId }
         : {}),
       tools: this.tools(),
-      tool_choice: 'auto',
+      tool_choice: toolBudgetExhausted ? 'none' : 'auto',
       parallel_tool_calls: false,
-      max_tool_calls: DEFAULT_MAX_TOOL_CALLS,
+      // Approved MCP calls were already counted when the model requested
+      // them, but the Responses API still needs capacity to execute them.
+      max_tool_calls: Math.max(
+        1,
+        remainingToolCalls + approvalExecutionCredits,
+      ),
       stream: true,
       store: true,
       reasoning:
@@ -3170,27 +3243,24 @@ export class AgentRuntime implements AgentRuntimeHandle {
   private async *runLoop({
     input: initialInput,
     previousResponseId: initialPreviousResponseId,
+    state,
     signal,
     onRequestDispatch,
+    onProviderResponseCompleted,
   }: RunLoopArgs): AsyncGenerator<AgentRuntimeEvent, AgentTurnResult> {
     let input = initialInput;
     let previousResponseId = initialPreviousResponseId;
-    let accumulatedText = '';
-    let lastResponseId = initialPreviousResponseId;
-    const loadedModelSchemaIdentifiers = new Set<string>();
+    state.lastResponseId ??= initialPreviousResponseId;
 
     try {
       throwIfAborted(signal);
 
-      for (
-        let continuation = 0;
-        continuation < this.maxContinuations;
-        continuation += 1
-      ) {
+      while (state.nextContinuation < this.maxContinuations) {
+        const continuation = state.nextContinuation;
         let summary: SingleResponseSummary;
         try {
           summary = yield* this.streamSingleResponse(
-            this.request(input, previousResponseId),
+            this.request(input, previousResponseId, state),
             continuation,
             signal,
             onRequestDispatch,
@@ -3198,20 +3268,30 @@ export class AgentRuntime implements AgentRuntimeHandle {
         } catch (cause) {
           throw new ProviderRequestFailure('openai', cause);
         }
+        if (summary.response.status === 'completed') {
+          onProviderResponseCompleted?.();
+        }
         // Event handlers can abort while consuming a final text/activity event
         // yielded after the provider stream itself has already terminated.
         // Re-check before turning that terminal response into tool calls or
         // approval requests, otherwise Stop can leave a stale approval behind.
         throwIfAborted(signal);
-        lastResponseId = summary.response.id;
-        accumulatedText += summary.text;
+        state.lastResponseId = summary.response.id;
+        state.accumulatedText += summary.text;
+
+        const approvalExecutionCredits = state.approvalExecutionCredits;
+        state.approvalExecutionCredits = 0;
+        state.toolCallCount +=
+          summary.functionCalls.length +
+          summary.approvals.length +
+          Math.max(0, summary.mcpCallCount - approvalExecutionCredits);
 
         if (summary.response.status === 'failed' || summary.response.error) {
           const error = responseError(summary.response, 'api_error');
           const result: AgentTurnResult = {
             status: 'failed',
             responseId: summary.response.id,
-            text: accumulatedText,
+            text: state.accumulatedText,
             approvals: [],
             continuationCount: continuation,
             error,
@@ -3230,7 +3310,7 @@ export class AgentRuntime implements AgentRuntimeHandle {
           const result: AgentTurnResult = {
             status: 'incomplete',
             responseId: summary.response.id,
-            text: accumulatedText,
+            text: state.accumulatedText,
             approvals: [],
             continuationCount: continuation,
             error,
@@ -3244,12 +3324,32 @@ export class AgentRuntime implements AgentRuntimeHandle {
           return result;
         }
 
+        if (state.toolCallCount > DEFAULT_MAX_TOOL_CALLS) {
+          const error: AgentRuntimeError = {
+            code: 'continuation_limit',
+            message:
+              'The agent stopped after too many tool calls. Try a more focused request.',
+            retryable: true,
+          };
+          const result: AgentTurnResult = {
+            status: 'failed',
+            responseId: summary.response.id,
+            text: state.accumulatedText,
+            approvals: [],
+            continuationCount: continuation,
+            error,
+          };
+          yield { type: 'error', responseId: summary.response.id, error };
+          yield { type: 'turn_completed', result };
+          return result;
+        }
+
         const localOutputs =
           summary.functionCalls.length > 0
             ? yield* this.executeLocalFunctionCalls(
                 summary.response.id,
                 summary.functionCalls,
-                loadedModelSchemaIdentifiers,
+                state.loadedModelSchemaIdentifiers,
                 signal,
               )
             : [];
@@ -3302,12 +3402,18 @@ export class AgentRuntime implements AgentRuntimeHandle {
           manualApprovals.push(approval);
         }
 
+        state.approvalExecutionCredits += automaticApprovalInputs.filter(
+          (approval) => approval.approve,
+        ).length;
+
         if (manualApprovals.length > 0) {
+          state.nextContinuation = continuation + 1;
           this.pendingApprovalBundles.set(summary.response.id, {
             approvalIds: new Set(
               manualApprovals.map((approval) => approval.approvalRequestId),
             ),
             continuationInputs: [...automaticApprovalInputs, ...localOutputs],
+            state: cloneOpenAiLoopState(state),
             phase: 'ready',
           });
 
@@ -3334,7 +3440,7 @@ export class AgentRuntime implements AgentRuntimeHandle {
           const result: AgentTurnResult = {
             status: 'approval_required',
             responseId: summary.response.id,
-            text: accumulatedText,
+            text: state.accumulatedText,
             approvals: manualApprovals,
             continuationCount: continuation,
           };
@@ -3351,7 +3457,7 @@ export class AgentRuntime implements AgentRuntimeHandle {
           const result: AgentTurnResult = {
             status: 'completed',
             responseId: summary.response.id,
-            text: accumulatedText,
+            text: state.accumulatedText,
             approvals: [],
             continuationCount: continuation,
           };
@@ -3361,6 +3467,7 @@ export class AgentRuntime implements AgentRuntimeHandle {
 
         input = continuationInputs;
         previousResponseId = summary.response.id;
+        state.nextContinuation = continuation + 1;
       }
 
       const error: AgentRuntimeError = {
@@ -3371,15 +3478,15 @@ export class AgentRuntime implements AgentRuntimeHandle {
       };
       const result: AgentTurnResult = {
         status: 'failed',
-        ...(lastResponseId ? { responseId: lastResponseId } : {}),
-        text: accumulatedText,
+        ...(state.lastResponseId ? { responseId: state.lastResponseId } : {}),
+        text: state.accumulatedText,
         approvals: [],
         continuationCount: this.maxContinuations,
         error,
       };
       yield {
         type: 'error',
-        ...(lastResponseId ? { responseId: lastResponseId } : {}),
+        ...(state.lastResponseId ? { responseId: state.lastResponseId } : {}),
         error,
       };
       yield { type: 'turn_completed', result };
@@ -3389,15 +3496,18 @@ export class AgentRuntime implements AgentRuntimeHandle {
       const aborted = error.code === 'aborted';
       const result: AgentTurnResult = {
         status: aborted ? 'aborted' : 'failed',
-        ...(lastResponseId ? { responseId: lastResponseId } : {}),
-        text: accumulatedText,
+        ...(state.lastResponseId ? { responseId: state.lastResponseId } : {}),
+        text: state.accumulatedText,
         approvals: [],
-        continuationCount: 0,
+        continuationCount: Math.min(
+          state.nextContinuation,
+          this.maxContinuations,
+        ),
         error,
       };
       yield {
         type: 'error',
-        ...(lastResponseId ? { responseId: lastResponseId } : {}),
+        ...(state.lastResponseId ? { responseId: state.lastResponseId } : {}),
         error,
       };
       yield { type: 'turn_completed', result };
@@ -3727,6 +3837,7 @@ export class AgentRuntime implements AgentRuntimeHandle {
       text,
       approvals: [...approvals.values()],
       functionCalls: [...functionCalls.values()],
+      mcpCallCount: mcpCalls.size,
     };
   }
 

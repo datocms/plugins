@@ -1,4 +1,5 @@
 import styles from '@styles/commentbar.module.css';
+import { Tooltip, TooltipContent, TooltipTrigger } from 'datocms-react-ui';
 import { memo, type ReactNode } from 'react';
 import { cn } from '@/utils/cn';
 
@@ -30,24 +31,25 @@ function ToolbarButtonComponent({
   buttonClassName,
 }: ToolbarButtonProps) {
   return (
-    <span className={styles.toolbarButtonWrapper}>
-      <button
-        type="button"
-        className={cn(
-          buttonClassName,
-          disabled && styles.toolbarButtonDisabled,
-        )}
-        onClick={disabled ? undefined : onClick}
-        disabled={disabled}
-        aria-label={ariaLabel}
-      >
-        {icon}
-      </button>
-      <span className={styles.toolbarTooltip}>
-        {tooltipText}
-        <span className={styles.toolbarTooltipArrow} />
-      </span>
-    </span>
+    <Tooltip placement="top">
+      <TooltipTrigger>
+        <span className={styles.toolbarTooltipTrigger}>
+          <button
+            type="button"
+            className={cn(
+              buttonClassName,
+              disabled && styles.toolbarButtonDisabled,
+            )}
+            onClick={disabled ? undefined : onClick}
+            disabled={disabled}
+            aria-label={ariaLabel}
+          >
+            {icon}
+          </button>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{tooltipText}</TooltipContent>
+    </Tooltip>
   );
 }
 

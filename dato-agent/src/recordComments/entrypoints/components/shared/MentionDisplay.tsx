@@ -50,6 +50,7 @@ type MentionDisplayProps = {
   projectUsers?: UserInfo[];
   accessibleLabel?: string;
   assetLayout?: 'preview' | 'row';
+  currentRecordId?: string;
 };
 
 type AssetThumbnailMentionProps = {
@@ -401,8 +402,26 @@ type RecordMentionDisplayProps = {
   tooltipId: string;
   onClick: (e: React.MouseEvent) => void;
   isClickable: boolean;
+  isCurrentRecord: boolean;
   accessibleLabel?: string;
 };
+
+function recordMentionTooltip(
+  mention: Extract<Mention, { type: 'record' }>,
+  isCurrentRecord: boolean,
+) {
+  if (isCurrentRecord) return 'Current record';
+  if (mention.isSingleton) return 'Singleton';
+  return mention.modelName;
+}
+
+function recordMentionAccessibleLabel(
+  displayTitle: string,
+  isCurrentRecord: boolean,
+  accessibleLabel?: string,
+) {
+  return isCurrentRecord ? `Current record: ${displayTitle}` : accessibleLabel;
+}
 
 function RecordMentionDisplay({
   mention,
@@ -410,6 +429,7 @@ function RecordMentionDisplay({
   tooltipId,
   onClick,
   isClickable,
+  isCurrentRecord,
   accessibleLabel,
 }: RecordMentionDisplayProps) {
   const { emoji: titleEmoji, textWithoutEmoji: cleanTitle } =
@@ -418,7 +438,8 @@ function RecordMentionDisplay({
     ? null
     : titleEmoji || mention.modelEmoji || (mention.isSingleton ? '📄' : null);
   const displayTitle = titleEmoji ? cleanTitle : mention.title;
-  const tooltipText = mention.isSingleton ? 'Singleton' : mention.modelName;
+  const tooltipText = recordMentionTooltip(mention, isCurrentRecord);
+  const canOpen = isClickable && !isCurrentRecord;
 
   return (
     <span className={styles.recordMentionWrapper}>
@@ -429,11 +450,16 @@ function RecordMentionDisplay({
           className={cn(
             styles.recordMention,
             !mention.thumbnailUrl && styles.recordMentionNoThumb,
+            isCurrentRecord && styles.recordMentionCurrent,
           )}
           aria-describedby={tooltipId}
-          aria-label={accessibleLabel}
-          disabled={!isClickable}
-          onClick={isClickable ? onClick : undefined}
+          aria-label={recordMentionAccessibleLabel(
+            displayTitle,
+            isCurrentRecord,
+            accessibleLabel,
+          )}
+          disabled={!canOpen}
+          onClick={canOpen ? onClick : undefined}
         >
           {mention.thumbnailUrl ? (
             <>
@@ -524,6 +550,7 @@ const MentionDisplayComponent = ({
   projectUsers,
   accessibleLabel,
   assetLayout = 'preview',
+  currentRecordId,
 }: MentionDisplayProps) => {
   const generatedId = useId();
   const tooltipId = externalTooltipId ?? `mention-tooltip-${generatedId}`;
@@ -615,6 +642,7 @@ const MentionDisplayComponent = ({
           tooltipId={tooltipId}
           onClick={handleClick}
           isClickable={isClickable}
+          isCurrentRecord={mention.id === currentRecordId}
           accessibleLabel={accessibleLabel}
         />
       );
@@ -647,6 +675,7 @@ export const MentionDisplay = memo(
     if (prevProps.projectUsers !== nextProps.projectUsers) return false;
     if (prevProps.accessibleLabel !== nextProps.accessibleLabel) return false;
     if (prevProps.assetLayout !== nextProps.assetLayout) return false;
+    if (prevProps.currentRecordId !== nextProps.currentRecordId) return false;
 
     return areMentionsEqual(prevProps.mention, nextProps.mention);
   },

@@ -83,8 +83,23 @@ const recentConversations: readonly AgentConversationSummaryViewModel[] = [
   },
   {
     id: 'older-chat',
-    title: 'This chat is outside the three-item limit',
+    title: 'Review campaign assets',
     updatedAtLabel: 'Monday',
+  },
+  {
+    id: 'fifth-chat',
+    title: 'Summarize recent changes',
+    updatedAtLabel: 'Last week',
+  },
+  {
+    id: 'sixth-chat',
+    title: 'Check product descriptions',
+    updatedAtLabel: 'Last week',
+  },
+  {
+    id: 'seventh-chat',
+    title: 'This chat is outside the six-item limit',
+    updatedAtLabel: 'Last month',
   },
 ];
 
@@ -103,9 +118,7 @@ describe('AgentSurface', () => {
     expect(
       screen.queryByText(/Enter to send|Shift\+Enter/i),
     ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Connection settings' }),
-    ).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Open chats' })).toBeVisible();
 
     const composer = screen.getByRole('textbox', {
       name: 'Message the DatoCMS agent',
@@ -178,13 +191,53 @@ describe('AgentSurface', () => {
     expect(
       screen.getByRole('textbox', { name: 'Message the DatoCMS agent' }),
     ).toHaveAttribute('aria-disabled', 'true');
-    expect(screen.getByText('Working…')).toBeVisible();
+    const working = screen.getByText('Working…');
+    expect(working).toBeVisible();
+    expect(working.closest('details')).toBeNull();
     const stopButton = screen.getByRole('button', { name: 'Stop' });
     expect(stopButton).toHaveAttribute('title', 'Stop');
     expect(stopButton).not.toHaveTextContent('Stop');
     expect(stopButton.querySelector('svg')).not.toBeNull();
     await user.click(stopButton);
     expect(onStop).toHaveBeenCalledOnce();
+  });
+
+  it('shows one quiet stopped marker for an interrupted turn with activity', () => {
+    render(
+      <AgentSurface
+        connection={connected}
+        entries={[
+          {
+            id: 'user',
+            kind: 'message',
+            role: 'user',
+            content: 'Find the best pages for me.',
+          },
+          {
+            id: 'activity',
+            kind: 'activity',
+            phase: 'cancelled',
+            activities: [
+              {
+                id: 'thinking',
+                label: 'Thinking',
+                status: 'cancelled',
+              },
+            ],
+          },
+          {
+            id: 'assistant',
+            kind: 'message',
+            role: 'assistant',
+            content: 'Stopped.',
+            interrupted: true,
+          },
+        ]}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    expect(screen.getAllByText('Stopped')).toHaveLength(1);
   });
 
   it('keeps recovered tool activity behind one quiet disclosure', async () => {
@@ -500,6 +553,7 @@ describe('AgentSurface', () => {
     render(
       <AgentSurface
         connection={connected}
+        currentRecordId="one"
         entries={[
           {
             id: 'records',
@@ -518,8 +572,8 @@ describe('AgentSurface', () => {
 
     const receipt = screen.getByLabelText('Matching articles');
     expect(
-      within(receipt).getByRole('button', { name: 'Open One' }),
-    ).toBeVisible();
+      within(receipt).getByRole('button', { name: 'Current record: One' }),
+    ).toBeDisabled();
     expect(
       within(receipt).getByRole('button', { name: 'Open Two' }),
     ).toBeVisible();
@@ -1132,9 +1186,7 @@ describe('AgentSurface', () => {
     expect(
       screen.getByRole('button', { name: 'Turn on auto-approve' }),
     ).toBeDisabled();
-    expect(
-      screen.getByRole('button', { name: 'Connection settings' }),
-    ).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Open chats' })).toBeDisabled();
   });
 
   it('shows partial responses together with string errors', () => {
@@ -1180,9 +1232,7 @@ describe('AgentSurface', () => {
     expect(
       screen.getByText('A partial response restored from history.'),
     ).toBeVisible();
-    expect(screen.getByText('The response was interrupted.')).toHaveRole(
-      'alert',
-    );
+    expect(screen.getByText('Stopped')).toHaveRole('status');
     expect(
       screen.queryByRole('button', { name: 'Try again' }),
     ).not.toBeInTheDocument();
@@ -1439,6 +1489,84 @@ describe('AgentSurface', () => {
     expect(scrollIntoView).toHaveBeenCalledOnce();
   });
 
+  it('reveals a newly submitted turn without following later deltas after the reader scrolls away', () => {
+    const { rerender } = render(
+      <AgentSurface
+        connection={connected}
+        entries={[
+          {
+            id: 'first-response',
+            kind: 'message',
+            role: 'assistant',
+            content: 'First response',
+          },
+        ]}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    const transcript = screen.getByRole('log');
+    Object.defineProperties(transcript, {
+      clientHeight: { configurable: true, value: 400 },
+      scrollHeight: { configurable: true, value: 1_000 },
+      scrollTop: { configurable: true, value: 100, writable: true },
+    });
+    scrollIntoView.mockClear();
+    fireEvent.scroll(transcript);
+
+    const userEntry = {
+      id: 'new-user-turn',
+      kind: 'message' as const,
+      role: 'user' as const,
+      content: 'Show me the latest posts',
+    };
+    rerender(
+      <AgentSurface
+        connection={connected}
+        entries={[
+          {
+            id: 'first-response',
+            kind: 'message',
+            role: 'assistant',
+            content: 'First response',
+          },
+          userEntry,
+        ]}
+        isRunning
+        onSubmit={vi.fn()}
+      />,
+    );
+    expect(scrollIntoView).toHaveBeenCalledOnce();
+
+    scrollIntoView.mockClear();
+    transcript.scrollTop = 100;
+    fireEvent.scroll(transcript);
+    rerender(
+      <AgentSurface
+        connection={connected}
+        entries={[
+          {
+            id: 'first-response',
+            kind: 'message',
+            role: 'assistant',
+            content: 'First response',
+          },
+          userEntry,
+          {
+            id: 'streaming-response',
+            kind: 'message',
+            role: 'assistant',
+            content: 'I found',
+            streaming: true,
+          },
+        ]}
+        isRunning
+        onSubmit={vi.fn()}
+      />,
+    );
+    expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+
   it('keeps OpenAI configuration out of the per-user connection flow', async () => {
     const user = userEvent.setup();
     const onConnectDatoCms = vi.fn();
@@ -1485,9 +1613,8 @@ describe('AgentSurface', () => {
       />,
     );
 
-    await user.click(
-      screen.getByRole('button', { name: 'Connection settings' }),
-    );
+    await user.click(screen.getByRole('button', { name: 'Open chats' }));
+    expect(screen.getByRole('button', { name: 'Back to chat' })).toBeVisible();
     expect(screen.getByRole('heading', { name: 'Connection' })).toHaveFocus();
     expect(screen.getByText('Marketing website')).toBeVisible();
     expect(screen.getByRole('img', { name: 'Connected' })).toBeVisible();
@@ -1502,7 +1629,7 @@ describe('AgentSurface', () => {
     expect(onDisconnectDatoCms).toHaveBeenCalledOnce();
   });
 
-  it('shows only three provided recent chats on the connection page', async () => {
+  it('shows only six provided recent chats on the connection page', async () => {
     const user = userEvent.setup();
     const onSelectConversation = vi.fn();
     const onStartNewChat = vi.fn();
@@ -1536,13 +1663,16 @@ describe('AgentSurface', () => {
     ).toBeVisible();
     expect(screen.getByText('Update the homepage')).toBeVisible();
     expect(screen.getByText('Find draft articles')).toBeVisible();
+    expect(screen.getByText('Review campaign assets')).toBeVisible();
+    expect(screen.getByText('Summarize recent changes')).toBeVisible();
+    expect(screen.getByText('Check product descriptions')).toBeVisible();
     expect(
       screen.queryByText('This project contains landing pages and articles.'),
     ).not.toBeInTheDocument();
     expect(screen.queryByText('Just now')).not.toBeInTheDocument();
     expect(screen.queryByText('Current')).not.toBeInTheDocument();
     expect(
-      screen.queryByText('This chat is outside the three-item limit'),
+      screen.queryByText('This chat is outside the six-item limit'),
     ).not.toBeInTheDocument();
 
     await user.click(
@@ -1575,9 +1705,7 @@ describe('AgentSurface', () => {
       />,
     );
 
-    await user.click(
-      screen.getByRole('button', { name: 'Connection settings' }),
-    );
+    await user.click(screen.getByRole('button', { name: 'Open chats' }));
     await user.click(
       screen.getByText('Update the homepage').closest('button') as HTMLElement,
     );
@@ -1586,14 +1714,37 @@ describe('AgentSurface', () => {
       screen.getByRole('textbox', { name: 'Message the DatoCMS agent' }),
     ).toHaveFocus();
 
-    await user.click(
-      screen.getByRole('button', { name: 'Connection settings' }),
-    );
+    await user.click(screen.getByRole('button', { name: 'Open chats' }));
     expect(
       screen.queryByRole('button', { name: 'Clear conversation' }),
     ).not.toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'New chat' }));
     expect(onStartNewChat).toHaveBeenCalledOnce();
+    expect(
+      screen.getByRole('textbox', { name: 'Message the DatoCMS agent' }),
+    ).toHaveFocus();
+  });
+
+  it('leaves the connected chat list with Back or Escape', async () => {
+    const user = userEvent.setup();
+
+    render(
+      <AgentSurface
+        connection={connected}
+        entries={[]}
+        onSubmit={vi.fn()}
+        recentConversations={recentConversations}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Open chats' }));
+    await user.click(screen.getByRole('button', { name: 'Back to chat' }));
+    expect(
+      screen.getByRole('textbox', { name: 'Message the DatoCMS agent' }),
+    ).toHaveFocus();
+
+    await user.click(screen.getByRole('button', { name: 'Open chats' }));
+    await user.keyboard('{Escape}');
     expect(
       screen.getByRole('textbox', { name: 'Message the DatoCMS agent' }),
     ).toHaveFocus();
@@ -1612,9 +1763,7 @@ describe('AgentSurface', () => {
       />,
     );
 
-    await user.click(
-      screen.getByRole('button', { name: 'Connection settings' }),
-    );
+    await user.click(screen.getByRole('button', { name: 'Open chats' }));
     await user.click(screen.getByRole('button', { name: 'New chat' }));
     expect(screen.getByRole('heading', { name: 'Connection' })).toBeVisible();
   });
@@ -1651,28 +1800,47 @@ describe('AgentSurface', () => {
         connection={connected}
         entries={[]}
         onAutoApproveChange={onAutoApproveChange}
+        onSelectConversation={vi.fn()}
         onSubmit={vi.fn()}
+        recentConversations={recentConversations}
       />,
     );
 
     const enableButton = screen.getByRole('button', {
       name: 'Turn on auto-approve',
     });
+    const utilityBar = screen.getByRole('toolbar', {
+      name: 'Chat controls',
+    });
+    const chatListButton = screen.getByRole('button', { name: 'Open chats' });
+    expect(utilityBar).toContainElement(enableButton);
+    expect(utilityBar).toContainElement(chatListButton);
+    expect(
+      chatListButton.compareDocumentPosition(enableButton) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(enableButton).toHaveAttribute('aria-pressed', 'false');
     expect(enableButton).toHaveTextContent('Auto');
+    expect(enableButton).not.toHaveTextContent('Danger!');
     await user.click(enableButton);
     expect(onAutoApproveChange).toHaveBeenCalledWith(true);
 
-    await user.click(
-      screen.getByRole('button', { name: 'Connection settings' }),
-    );
+    await user.click(screen.getByRole('button', { name: 'Open chats' }));
     expect(
       screen.queryByRole('button', { name: 'Turn on auto-approve' }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByRole('switch', { name: 'Auto-approve' }),
     ).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Back to chat' }));
+    expect(
+      screen.getByRole('toolbar', { name: 'Chat controls' }),
+    ).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Back to chat' })).toBeVisible();
+    await user.click(
+      screen
+        .getByText('Describe this project')
+        .closest('button') as HTMLElement,
+    );
 
     rerender(
       <AgentSurface
@@ -1688,6 +1856,7 @@ describe('AgentSurface', () => {
     });
     expect(disableButton).toHaveAttribute('aria-pressed', 'true');
     expect(disableButton).toHaveTextContent('Auto');
+    expect(disableButton).toHaveTextContent('Danger!');
     await user.click(disableButton);
     expect(onAutoApproveChange).toHaveBeenLastCalledWith(false);
   });
@@ -1761,17 +1930,25 @@ describe('AgentSurface', () => {
     );
   });
 
-  it('returns focus to the composer when leaving connection settings', async () => {
+  it('returns focus to the composer when leaving the chat list', async () => {
     const user = userEvent.setup();
 
     render(
-      <AgentSurface connection={connected} entries={[]} onSubmit={vi.fn()} />,
+      <AgentSurface
+        connection={connected}
+        entries={[]}
+        onSelectConversation={vi.fn()}
+        onSubmit={vi.fn()}
+        recentConversations={recentConversations}
+      />,
     );
 
+    await user.click(screen.getByRole('button', { name: 'Open chats' }));
     await user.click(
-      screen.getByRole('button', { name: 'Connection settings' }),
+      screen
+        .getByText('Describe this project')
+        .closest('button') as HTMLElement,
     );
-    await user.click(screen.getByRole('button', { name: 'Back to chat' }));
     expect(
       screen.getByRole('textbox', { name: 'Message the DatoCMS agent' }),
     ).toHaveFocus();
@@ -1798,27 +1975,67 @@ describe('AgentSurface', () => {
       />,
     );
 
-    expect(
-      screen.getByRole('button', { name: 'Connection settings' }),
-    ).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Open chats' })).toBeDisabled();
   });
 
-  it('restores composer focus after a turn finishes', () => {
+  it('does not steal focus when a turn that started elsewhere finishes', () => {
     const { rerender } = render(
-      <AgentSurface
-        connection={connected}
-        entries={[]}
-        isRunning
-        onSubmit={vi.fn()}
-      />,
+      <>
+        <button type="button">Outside action</button>
+        <AgentSurface
+          connection={connected}
+          entries={[]}
+          isRunning
+          onSubmit={vi.fn()}
+        />
+      </>,
     );
+
+    const outside = screen.getByRole('button', { name: 'Outside action' });
+    outside.focus();
+
+    rerender(
+      <>
+        <button type="button">Outside action</button>
+        <AgentSurface
+          connection={connected}
+          entries={[]}
+          isRunning={false}
+          onSubmit={vi.fn()}
+        />
+      </>,
+    );
+
+    expect(outside).toHaveFocus();
+  });
+
+  it('restores composer focus after a composer-submitted turn finishes', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    const { rerender } = render(
+      <AgentSurface connection={connected} entries={[]} onSubmit={onSubmit} />,
+    );
+
+    const composer = screen.getByRole('textbox', {
+      name: 'Message the DatoCMS agent',
+    });
+    await user.click(composer);
+    await user.keyboard('Tell me about this page{Enter}');
 
     rerender(
       <AgentSurface
         connection={connected}
         entries={[]}
+        isRunning
+        onSubmit={onSubmit}
+      />,
+    );
+    rerender(
+      <AgentSurface
+        connection={connected}
+        entries={[]}
         isRunning={false}
-        onSubmit={vi.fn()}
+        onSubmit={onSubmit}
       />,
     );
 

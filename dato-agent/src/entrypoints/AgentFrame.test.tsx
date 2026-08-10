@@ -390,6 +390,38 @@ describe('AgentFrame', () => {
     expect(mocks.surfaceProps?.composerDisabled).toBe(true);
   });
 
+  it('tracks the record open in the inspector and ignores repeated opens', async () => {
+    const openRecord = vi.fn().mockResolvedValue(undefined);
+    const frameProps = props({
+      surface: 'project',
+      navigator: {
+        supportsRecordList: true,
+        openRecord,
+        showRecords: vi.fn().mockResolvedValue(undefined),
+        openAsset: vi.fn().mockResolvedValue({ deleted: false }),
+      },
+    });
+    render(<AgentFrame {...frameProps} />);
+
+    expect(mocks.surfaceProps?.currentRecordId).toBeUndefined();
+    await act(async () => {
+      await mocks.surfaceProps?.onOpenRecord?.({
+        itemId: 'homepage',
+        title: 'Homepage',
+      });
+    });
+    expect(openRecord).toHaveBeenCalledOnce();
+    expect(mocks.surfaceProps?.currentRecordId).toBe('homepage');
+
+    await act(async () => {
+      await mocks.surfaceProps?.onOpenRecord?.({
+        itemId: 'homepage',
+        title: 'Homepage',
+      });
+    });
+    expect(openRecord).toHaveBeenCalledOnce();
+  });
+
   it('checkpoints the user message before the provider turn resolves', () => {
     const frameProps = props({
       currentUserId: `immediate-checkpoint-user-${testUser}`,
@@ -609,7 +641,7 @@ describe('AgentFrame', () => {
         scope: { type: 'custom' as const, id: 'new:article' },
       },
       expectedSurface: 'record',
-      expectedPlaceholder: 'Ask about this record…',
+      expectedPlaceholder: 'Ask about this…',
     },
     {
       name: 'project surface even when record metadata is present',
@@ -1016,9 +1048,12 @@ describe('AgentFrame', () => {
     );
     const submitApprovals = vi.fn(
       async (
-        _args: unknown,
+        args: ContinueApprovalsArgs,
         onEvent?: (event: AgentRuntimeEvent) => void | Promise<void>,
       ) => {
+        args.unsafeDispatchCallbacks?.beforeDispatch([
+          unsafeApproval.approvalRequestId,
+        ]);
         await onEvent?.({
           type: 'error',
           responseId: 'resp_unsafe_approval',
@@ -1494,10 +1529,7 @@ describe('AgentFrame', () => {
     await waitFor(() => expect(runTurn).toHaveBeenCalledTimes(2));
     expect(runTurn.mock.calls[1]?.[0]).toEqual(
       expect.objectContaining({
-        history: [
-          { role: 'user', text: 'Earlier request' },
-          { role: 'user', text: 'First request' },
-        ],
+        history: [{ role: 'user', text: 'Earlier request' }],
         previousResponseId: undefined,
       }),
     );
@@ -1892,10 +1924,7 @@ describe('AgentFrame', () => {
     await waitFor(() => expect(runTurn).toHaveBeenCalledTimes(2));
     expect(runTurn.mock.calls[1]?.[0]).toEqual(
       expect.objectContaining({
-        history: [
-          { role: 'user', text: 'Earlier request' },
-          { role: 'user', text: 'Update the title' },
-        ],
+        history: [{ role: 'user', text: 'Earlier request' }],
         previousResponseId: undefined,
       }),
     );
@@ -2537,9 +2566,12 @@ describe('AgentFrame', () => {
     );
     const submitApprovals = vi.fn(
       async (
-        _args: unknown,
+        args: ContinueApprovalsArgs,
         onEvent?: (event: AgentRuntimeEvent) => void | Promise<void>,
       ) => {
+        args.unsafeDispatchCallbacks?.beforeDispatch([
+          approval.approvalRequestId,
+        ]);
         await onEvent?.({
           type: 'error',
           responseId: 'resp_auto_failure',
@@ -2736,9 +2768,6 @@ describe('AgentFrame', () => {
           args.unsafeDispatchCallbacks?.beforeDispatch([
             firstApproval.approvalRequestId,
           ]);
-          args.unsafeDispatchCallbacks?.confirmed?.([
-            firstApproval.approvalRequestId,
-          ]);
           await onEvent?.({
             type: 'approval_required',
             responseId: 'resp_chain_two',
@@ -2749,9 +2778,6 @@ describe('AgentFrame', () => {
         }
 
         args.unsafeDispatchCallbacks?.beforeDispatch([
-          secondApproval.approvalRequestId,
-        ]);
-        args.unsafeDispatchCallbacks?.confirmed?.([
           secondApproval.approvalRequestId,
         ]);
         await onEvent?.({
@@ -2793,6 +2819,22 @@ describe('AgentFrame', () => {
     expect(submitApprovals.mock.calls[1]?.[0]).toEqual(
       expect.objectContaining({ responseId: 'resp_chain_two' }),
     );
+    expect(
+      mocks.surfaceProps?.entries.some(
+        (entry) =>
+          entry.kind === 'approval' &&
+          entry.approval.error?.includes('unconfirmed outcome'),
+      ),
+    ).toBe(false);
+
+    const journalStore = createUnsafeDispatchJournalStore({
+      pluginId: frameProps.pluginId,
+      siteId: frameProps.siteId,
+      environment: frameProps.environment,
+      currentUserId: frameProps.currentUserId,
+      scope: frameProps.scope,
+    });
+    await waitFor(() => expect(journalStore.read()).toBeUndefined());
   });
 
   it('recovers a confirmed bundle and unsent next bundle when the frame closes between them', async () => {
@@ -4555,7 +4597,7 @@ describe('AgentFrame', () => {
     });
   });
 
-  it('keeps a new empty chat out of history and prunes to three after its first turn', async () => {
+  it('keeps a new empty chat out of history and prunes to six after its first turn', async () => {
     const frameProps = props({ currentUserId: `new-chat-user-${testUser}` });
     const store = createConversationStore({
       pluginId: frameProps.pluginId,
@@ -4564,7 +4606,14 @@ describe('AgentFrame', () => {
       currentUserId: frameProps.currentUserId,
       scope: frameProps.scope,
     });
-    for (const [index, id] of ['oldest', 'middle', 'latest'].entries()) {
+    for (const [index, id] of [
+      'oldest',
+      'older',
+      'middle-older',
+      'middle',
+      'newer',
+      'latest',
+    ].entries()) {
       store.save(
         storedConversation({
           id,
@@ -4592,7 +4641,7 @@ describe('AgentFrame', () => {
     } as unknown as AgentRuntime;
 
     render(<AgentFrame {...frameProps} />);
-    expect(mocks.surfaceProps?.recentConversations).toHaveLength(3);
+    expect(mocks.surfaceProps?.recentConversations).toHaveLength(6);
 
     act(() => {
       mocks.surfaceProps?.onStartNewChat?.();
@@ -4606,7 +4655,10 @@ describe('AgentFrame', () => {
     });
     expect(store.list().map((chat) => chat.id)).toEqual([
       'latest',
+      'newer',
       'middle',
+      'middle-older',
+      'older',
       'oldest',
     ]);
 
@@ -4615,14 +4667,14 @@ describe('AgentFrame', () => {
     });
 
     await waitFor(() => {
-      expect(mocks.surfaceProps?.recentConversations).toHaveLength(3);
+      expect(mocks.surfaceProps?.recentConversations).toHaveLength(6);
       expect(
         mocks.surfaceProps?.recentConversations?.some(
           (chat) => chat.title === 'Fourth chat' && chat.isCurrent,
         ),
       ).toBe(true);
     });
-    expect(store.list()).toHaveLength(3);
+    expect(store.list()).toHaveLength(6);
     expect(store.list().some((chat) => chat.id === 'oldest')).toBe(false);
   });
 
@@ -5260,6 +5312,30 @@ describe('AgentFrame', () => {
     expect(
       mocks.surfaceProps?.entries.find((entry) => entry.kind === 'activity'),
     ).toMatchObject({ phase: 'cancelled' });
+    expect(
+      mocks.surfaceProps?.entries.find(
+        (entry) => entry.kind === 'message' && entry.role === 'assistant',
+      ),
+    ).toMatchObject({ content: 'Stopped.', interrupted: true });
+
+    const followUp = completedResult({ responseId: 'resp_after_stopped_turn' });
+    const followUpRun = vi.fn(
+      async (
+        _args: AgentTurnArgs,
+        onEvent?: (event: AgentRuntimeEvent) => void | Promise<void>,
+      ) => {
+        await onEvent?.({ type: 'turn_completed', result: followUp });
+        return followUp;
+      },
+    );
+    mocks.runtime = { runTurn: followUpRun } as unknown as AgentRuntime;
+    act(() => {
+      mocks.surfaceProps?.onSubmit('Can you help with something else?');
+    });
+    await waitFor(() => expect(followUpRun).toHaveBeenCalledOnce());
+    expect(followUpRun.mock.calls[0]?.[0].history).toEqual([
+      { role: 'user', text: 'Earlier question' },
+    ]);
   });
 
   it('passes the exact session File to the runtime for a current attachment', async () => {
@@ -5446,7 +5522,11 @@ describe('AgentFrame', () => {
         fileOrBlob: currentFile,
         filename: 'current.pdf',
       },
-      { signal: undefined, skipConfirmation: false },
+      expect.objectContaining({
+        signal: undefined,
+        skipConfirmation: false,
+        onUploadDispatch: expect.any(Function),
+      }),
     );
     expect(createAsset).toHaveBeenNthCalledWith(
       2,
@@ -5455,7 +5535,11 @@ describe('AgentFrame', () => {
         fileOrBlob: historicalFile,
         filename: 'renamed-history.pdf',
       },
-      { signal: undefined, skipConfirmation: false },
+      expect.objectContaining({
+        signal: undefined,
+        skipConfirmation: false,
+        onUploadDispatch: expect.any(Function),
+      }),
     );
     const receipts =
       mocks.surfaceProps?.entries.filter((entry) => entry.kind === 'assets') ??
@@ -5555,7 +5639,11 @@ describe('AgentFrame', () => {
         url: 'https://example.com/hero.png',
         filename: 'imported-hero.png',
       },
-      { signal, skipConfirmation: false },
+      expect.objectContaining({
+        signal,
+        skipConfirmation: false,
+        onUploadDispatch: expect.any(Function),
+      }),
     );
   });
 
@@ -5623,8 +5711,420 @@ describe('AgentFrame', () => {
           source: 'url',
           url: 'https://example.com/auto.png',
         },
-        { signal, skipConfirmation: expectedSkip },
+        expect.objectContaining({
+          signal,
+          skipConfirmation: expectedSkip,
+          onUploadDispatch: expect.any(Function),
+        }),
       );
     },
   );
+
+  it('pauses auto-approve while an editor-opened record dialog is pending', async () => {
+    const frameProps = props({
+      currentUserId: `auto-host-action-${testUser}`,
+    });
+    enableAutoApproval(frameProps);
+    let releaseApproval: (() => void) | undefined;
+    const approvalGate = new Promise<void>((resolve) => {
+      releaseApproval = resolve;
+    });
+    let closeRecord: (() => void) | undefined;
+    const recordDialog = new Promise<void>((resolve) => {
+      closeRecord = resolve;
+    });
+    const navigator = {
+      supportsRecordList: true,
+      openRecord: vi.fn(() => recordDialog),
+      showRecords: vi.fn().mockResolvedValue(undefined),
+      openAsset: vi.fn().mockResolvedValue({ deleted: false }),
+    };
+    const approval = unsafeApprovalWithId('approval_host_pending');
+    const approvalRequired = completedResult({
+      status: 'approval_required',
+      responseId: 'resp_host_pending',
+      approvals: [approval],
+    });
+    const submitApprovals = vi.fn();
+    mocks.runtime = {
+      runTurn: vi.fn(
+        async (
+          _args: AgentTurnArgs,
+          onEvent?: (event: AgentRuntimeEvent) => void | Promise<void>,
+        ) => {
+          await mocks.runtimeConfig?.navigation.presentRecords({
+            title: 'Homepage',
+            records: [{ itemId: 'homepage', label: 'Homepage' }],
+          });
+          await approvalGate;
+          await onEvent?.({
+            type: 'approval_required',
+            responseId: 'resp_host_pending',
+            approval,
+          });
+          await onEvent?.({
+            type: 'turn_completed',
+            result: approvalRequired,
+          });
+          return approvalRequired;
+        },
+      ),
+      submitApprovals,
+    } as unknown as AgentRuntime;
+
+    render(<AgentFrame {...frameProps} navigator={navigator} />);
+    act(() => {
+      mocks.surfaceProps?.onSubmit('Make the homepage title friendlier');
+    });
+    await waitFor(() =>
+      expect(
+        mocks.surfaceProps?.entries.some((entry) => entry.kind === 'records'),
+      ).toBe(true),
+    );
+    const receipt = mocks.surfaceProps?.entries.find(
+      (entry) => entry.kind === 'records',
+    );
+    if (receipt?.kind !== 'records') throw new Error('Expected a record link.');
+
+    let opening: void | Promise<void>;
+    act(() => {
+      opening = mocks.surfaceProps?.onOpenRecord?.(
+        receipt.records[0],
+        receipt.id,
+      );
+    });
+    expect(mocks.surfaceProps?.hostActionPending).toBe(true);
+    releaseApproval?.();
+
+    await waitFor(() => {
+      const approvalEntry = mocks.surfaceProps?.entries.find(
+        (entry) => entry.kind === 'approval',
+      );
+      expect(
+        approvalEntry?.kind === 'approval' && approvalEntry.approval.error,
+      ).toContain('Close the open DatoCMS dialog');
+    });
+    expect(submitApprovals).not.toHaveBeenCalled();
+
+    closeRecord?.();
+    await act(async () => {
+      await opening;
+    });
+  });
+
+  it('rechecks the host immediately before an auto-approved write is dispatched', async () => {
+    const frameProps = props({
+      currentUserId: `auto-final-host-check-${testUser}`,
+    });
+    enableAutoApproval(frameProps);
+    let continueDispatch: (() => void) | undefined;
+    const dispatchGate = new Promise<void>((resolve) => {
+      continueDispatch = resolve;
+    });
+    let closeRecord: (() => void) | undefined;
+    const recordDialog = new Promise<void>((resolve) => {
+      closeRecord = resolve;
+    });
+    const navigator = {
+      supportsRecordList: true,
+      openRecord: vi.fn(() => recordDialog),
+      showRecords: vi.fn().mockResolvedValue(undefined),
+      openAsset: vi.fn().mockResolvedValue({ deleted: false }),
+    };
+    const approval = unsafeApprovalWithId('approval_final_host_check');
+    const approvalRequired = completedResult({
+      status: 'approval_required',
+      responseId: 'resp_final_host_check',
+      approvals: [approval],
+    });
+    const submitApprovals = vi.fn(async (args: ContinueApprovalsArgs) => {
+      await dispatchGate;
+      args.unsafeDispatchCallbacks?.beforeDispatch([
+        approval.approvalRequestId,
+      ]);
+      return completedResult();
+    });
+    mocks.runtime = {
+      runTurn: vi.fn(
+        async (
+          _args: AgentTurnArgs,
+          onEvent?: (event: AgentRuntimeEvent) => void | Promise<void>,
+        ) => {
+          await mocks.runtimeConfig?.navigation.presentRecords({
+            title: 'Homepage',
+            records: [{ itemId: 'homepage', label: 'Homepage' }],
+          });
+          await onEvent?.({
+            type: 'approval_required',
+            responseId: 'resp_final_host_check',
+            approval,
+          });
+          await onEvent?.({
+            type: 'turn_completed',
+            result: approvalRequired,
+          });
+          return approvalRequired;
+        },
+      ),
+      submitApprovals,
+    } as unknown as AgentRuntime;
+
+    render(<AgentFrame {...frameProps} navigator={navigator} />);
+    act(() => {
+      mocks.surfaceProps?.onSubmit('Change the homepage title');
+    });
+    await waitFor(() => expect(submitApprovals).toHaveBeenCalledOnce());
+    const receipt = mocks.surfaceProps?.entries.find(
+      (entry) => entry.kind === 'records',
+    );
+    if (receipt?.kind !== 'records') throw new Error('Expected a record link.');
+
+    let opening: void | Promise<void>;
+    act(() => {
+      opening = mocks.surfaceProps?.onOpenRecord?.(
+        receipt.records[0],
+        receipt.id,
+      );
+    });
+    continueDispatch?.();
+
+    await waitFor(() => {
+      const approvalEntry = mocks.surfaceProps?.entries.find(
+        (entry) => entry.kind === 'approval',
+      );
+      expect(
+        approvalEntry?.kind === 'approval' && approvalEntry.approval.error,
+      ).toContain('was not sent');
+    });
+
+    closeRecord?.();
+    await act(async () => {
+      await opening;
+    });
+  });
+
+  it('lets an explicit asset click cancel queued automatic record navigation', async () => {
+    let finishTurn: (() => void) | undefined;
+    const turnGate = new Promise<void>((resolve) => {
+      finishTurn = resolve;
+    });
+    const navigator = {
+      supportsRecordList: true,
+      openRecord: vi.fn().mockResolvedValue(undefined),
+      showRecords: vi.fn().mockResolvedValue(undefined),
+      openAsset: vi.fn().mockResolvedValue({ deleted: false }),
+    };
+    const result = completedResult({ responseId: 'resp_explicit_asset' });
+    mocks.runtime = {
+      runTurn: vi.fn(
+        async (
+          _args: AgentTurnArgs,
+          onEvent?: (event: AgentRuntimeEvent) => void | Promise<void>,
+        ) => {
+          await mocks.runtimeConfig?.navigation.openRecord({
+            itemId: 'queued-record',
+            itemTypeId: 'page',
+          });
+          await mocks.runtimeConfig?.navigation.presentAssets({
+            title: 'Hero image',
+            assets: [{ uploadId: 'hero-image', label: 'Hero.jpg' }],
+          });
+          await turnGate;
+          await onEvent?.({ type: 'turn_completed', result });
+          return result;
+        },
+      ),
+    } as unknown as AgentRuntime;
+
+    render(<AgentFrame {...props({ navigator })} />);
+    act(() => {
+      mocks.surfaceProps?.onSubmit('Show me the hero image');
+    });
+    await waitFor(() =>
+      expect(
+        mocks.surfaceProps?.entries.some((entry) => entry.kind === 'assets'),
+      ).toBe(true),
+    );
+    const receipt = mocks.surfaceProps?.entries.find(
+      (entry) => entry.kind === 'assets',
+    );
+    if (receipt?.kind !== 'assets') throw new Error('Expected an asset link.');
+    await act(async () => {
+      await mocks.surfaceProps?.onOpenAsset?.(receipt.assets[0], receipt.id);
+    });
+    finishTurn?.();
+
+    await waitFor(() => expect(mocks.surfaceProps?.isRunning).toBe(false));
+    expect(navigator.openAsset).toHaveBeenCalledOnce();
+    expect(navigator.openRecord).not.toHaveBeenCalled();
+  });
+
+  it('does not retry a local asset upload whose result became uncertain', async () => {
+    const createAsset = vi.fn<NonNullable<AgentMentionHost['createAsset']>>(
+      async (_input, options) => {
+        options?.onUploadDispatch?.();
+        throw new Error('The upload connection closed.');
+      },
+    );
+    const mentionHost = assetCreatingMentionHost({ createAsset });
+    const result = completedResult({ responseId: 'resp_uncertain_asset' });
+    mocks.runtime = {
+      runTurn: vi.fn(
+        async (
+          args: AgentTurnArgs,
+          onEvent?: (event: AgentRuntimeEvent) => void | Promise<void>,
+        ) => {
+          const createDatoAsset = mocks.runtimeConfig?.createDatoAsset;
+          await expect(
+            createDatoAsset?.(
+              {
+                source: 'url',
+                url: 'https://example.com/hero.png',
+              },
+              args.signal,
+            ),
+          ).rejects.toThrow('may have completed');
+          await expect(
+            createDatoAsset?.(
+              {
+                source: 'url',
+                url: 'https://example.com/hero.png',
+              },
+              args.signal,
+            ),
+          ).rejects.toThrow('previous asset upload may have completed');
+          await onEvent?.({ type: 'turn_completed', result });
+          return result;
+        },
+      ),
+    } as unknown as AgentRuntime;
+
+    render(<AgentFrame {...props({ mentionHost })} />);
+    act(() => {
+      mocks.surfaceProps?.onSubmit('Use this image for the hero');
+    });
+
+    await waitFor(() => expect(mocks.surfaceProps?.isRunning).toBe(false));
+    expect(createAsset).toHaveBeenCalledOnce();
+  });
+
+  it('invalidates presentation caches before resolving receipts after a write', async () => {
+    let title = 'Homepage before change';
+    let cachedTitle: string | undefined = title;
+    const invalidatePresentationCache = vi.fn(() => {
+      cachedTitle = undefined;
+    });
+    const resolveRecord = vi.fn<AgentMentionHost['resolveRecord']>(
+      async ({ itemId }) => {
+        cachedTitle ??= title;
+        return {
+          type: 'record',
+          id: itemId,
+          title: cachedTitle,
+          modelId: 'page',
+          modelApiKey: 'page',
+          modelName: 'Page',
+          modelEmoji: null,
+          thumbnailUrl: null,
+        };
+      },
+    );
+    const mentionHost = assetCreatingMentionHost({
+      resolveRecord,
+      invalidatePresentationCache,
+    });
+    const frameProps = props({
+      currentUserId: `presentation-write-${testUser}`,
+      mentionHost,
+    });
+    const approval = unsafeApprovalWithId('approval_presentation_write');
+    const approvalRequired = completedResult({
+      status: 'approval_required',
+      responseId: 'resp_presentation_write',
+      approvals: [approval],
+    });
+    const completed = completedResult({
+      responseId: 'resp_presentation_complete',
+    });
+    const submitApprovals = vi.fn(
+      async (
+        args: ContinueApprovalsArgs,
+        onEvent?: (event: AgentRuntimeEvent) => void | Promise<void>,
+      ) => {
+        args.unsafeDispatchCallbacks?.beforeDispatch([
+          approval.approvalRequestId,
+        ]);
+        title = 'Homepage after change';
+        await onEvent?.({
+          type: 'activity',
+          responseId: completed.responseId,
+          activity: {
+            id: approval.approvalRequestId,
+            kind: 'mcp_tool',
+            status: 'completed',
+            label: 'Updating content',
+          },
+        });
+        await mocks.runtimeConfig?.navigation.presentRecords({
+          title: 'Updated page',
+          records: [{ itemId: 'homepage', itemTypeId: 'page' }],
+        });
+        args.unsafeDispatchCallbacks?.confirmed?.([approval.approvalRequestId]);
+        await onEvent?.({ type: 'turn_completed', result: completed });
+        return completed;
+      },
+    );
+    mocks.runtime = {
+      runTurn: vi.fn(
+        async (
+          _args: AgentTurnArgs,
+          onEvent?: (event: AgentRuntimeEvent) => void | Promise<void>,
+        ) => {
+          await onEvent?.({
+            type: 'approval_required',
+            responseId: 'resp_presentation_write',
+            approval,
+          });
+          await onEvent?.({
+            type: 'turn_completed',
+            result: approvalRequired,
+          });
+          return approvalRequired;
+        },
+      ),
+      submitApprovals,
+    } as unknown as AgentRuntime;
+
+    render(<AgentFrame {...frameProps} />);
+    act(() => {
+      mocks.surfaceProps?.onSubmit('Make the homepage title clearer');
+    });
+    await waitFor(() =>
+      expect(
+        mocks.surfaceProps?.entries.some(
+          (entry) =>
+            entry.kind === 'approval' && entry.approval.status === 'pending',
+        ),
+      ).toBe(true),
+    );
+    const approvalEntry = mocks.surfaceProps?.entries.find(
+      (entry) => entry.kind === 'approval',
+    );
+    act(() => {
+      if (approvalEntry?.kind === 'approval') {
+        mocks.surfaceProps?.onApproveUnsafeAction?.(approvalEntry.approval);
+      }
+    });
+
+    await waitFor(() => {
+      expect(
+        mocks.surfaceProps?.entries.find(
+          (entry) => entry.kind === 'records' && entry.title === 'Updated page',
+        ),
+      ).toMatchObject({
+        records: [{ title: 'Homepage after change' }],
+      });
+    });
+    expect(invalidatePresentationCache).toHaveBeenCalled();
+  });
 });

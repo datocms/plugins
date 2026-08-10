@@ -132,8 +132,9 @@ export async function confirmEnableAutoApproval(
   context: AutoApprovalConfirmationContext,
 ): Promise<boolean> {
   const first = await host.openConfirm({
-    title: 'Turn on auto-approve?',
-    content: 'The agent will run DatoCMS changes without asking first.',
+    title: 'Auto-approve is dangerous',
+    content:
+      'Agents are non-deterministic: they can misunderstand instructions and make unexpected changes. Auto-approve runs those changes without review.',
     choices: [
       {
         label: 'Continue',
@@ -152,8 +153,8 @@ export async function confirmEnableAutoApproval(
     ? 'Primary'
     : context.environment;
   const second = await host.openConfirm({
-    title: 'Allow changes without review?',
-    content: `This includes creating, updating, publishing, unpublishing, and deleting content in ${context.siteName} (${environmentLabel}). Save any open record edits first.`,
+    title: 'Accept the risk?',
+    content: `This is dangerous: the agent may create, update, publish, unpublish, or delete content in ${context.siteName} (${environmentLabel}) without asking. Its behavior is non-deterministic, so the result may differ from what you intended. Save any open record edits first.`,
     choices: [
       {
         label: 'Turn on auto-approve',

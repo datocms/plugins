@@ -8,8 +8,16 @@ import {
   TooltipDelayGroup,
   TooltipTrigger,
 } from 'datocms-react-ui';
-import { type RefObject, useEffect, useId, useRef, useState } from 'react';
+import {
+  type RefObject,
+  useCallback,
+  useEffect,
+  useId,
+  useRef,
+  useState,
+} from 'react';
 import datoMarkUrl from '../assets/dato-mark.svg';
+import { DEFAULT_MAX_CONVERSATIONS } from '../lib/conversations';
 import type { AgentMentionHost } from '../lib/mentionHost';
 import type {
   AgentComposerSubmission,
@@ -21,7 +29,6 @@ import { MentionDisplay } from '../recordComments/entrypoints/components/shared/
 import commentStyles from '../recordComments/entrypoints/styles/comment.module.css';
 import {
   BoltIcon,
-  ChatIcon,
   CheckIcon,
   CircleCheckIcon,
   ConnectionIcon,
@@ -239,6 +246,7 @@ export type AgentTranscriptEntry =
 export type AgentSurfaceProps = {
   connection: AgentConnectionViewModel;
   entries: readonly AgentTranscriptEntry[];
+  currentRecordId?: string;
   isRunning?: boolean;
   composerDisabled?: boolean;
   composerPlaceholder?: string;
@@ -396,7 +404,10 @@ function RecentChats({
   onStartNewChat?: () => void;
 }) {
   const headingId = useId();
-  const visibleConversations = conversations.slice(0, 3);
+  const visibleConversations = conversations.slice(
+    0,
+    DEFAULT_MAX_CONVERSATIONS,
+  );
 
   if (visibleConversations.length === 0 && !onStartNewChat) {
     return null;
@@ -442,9 +453,6 @@ function RecentChats({
                   title={title}
                   type="button"
                 >
-                  <span className={styles.recentChatIcon}>
-                    <ChatIcon />
-                  </span>
                   <strong className={styles.recentChatTitle}>{title}</strong>
                   {conversation.isCurrent && (
                     <span
@@ -462,8 +470,7 @@ function RecentChats({
         </ul>
       ) : (
         <div className={styles.noRecentChats}>
-          <ChatIcon />
-          <span>No chats</span>
+          <span>No chats yet</span>
         </div>
       )}
     </section>
@@ -670,19 +677,19 @@ function withStableKeys<T>(
 
 function messageError(entry: AgentMessageEntry) {
   if (typeof entry.error === 'string') return entry.error.trim() || undefined;
-  return entry.error || entry.interrupted
-    ? 'The response was interrupted.'
-    : undefined;
+  return entry.error ? 'The response was interrupted.' : undefined;
 }
 
 function UserMessageContent({
   content,
+  currentRecordId,
   mentionHost,
   disabled,
   onOpenMention,
   segments,
 }: {
   content: string;
+  currentRecordId?: string;
   mentionHost: AgentMentionHost;
   disabled: boolean;
   onOpenMention: (mention: Mention) => void;
@@ -702,6 +709,7 @@ function UserMessageContent({
           <span key={key}>{segment.content}</span>
         ) : (
           <MentionDisplay
+            currentRecordId={currentRecordId}
             isClickable={
               !disabled &&
               !(
@@ -728,22 +736,34 @@ function AssistantMessageContent({
   entry,
   onRetryFailedTurn,
   onCopyFailureDiagnostics,
+  suppressInterruptedNotice = false,
 }: {
   entry: AgentMessageEntry;
   onRetryFailedTurn?: AgentSurfaceProps['onRetryFailedTurn'];
   onCopyFailureDiagnostics?: AgentSurfaceProps['onCopyFailureDiagnostics'];
+  suppressInterruptedNotice?: boolean;
 }) {
   const errorMessage = messageError(entry);
+  const stoppedOnly =
+    entry.interrupted && !errorMessage && entry.content.trim() === 'Stopped.';
+  const showInterruptedNotice =
+    entry.interrupted && !errorMessage && !suppressInterruptedNotice;
+  const showContent = Boolean(entry.content) && !stoppedOnly;
 
-  if (!entry.content && !errorMessage) return null;
+  if (!showContent && !errorMessage && !showInterruptedNotice) return null;
 
   return (
     <div className={styles.agentTurnItem}>
-      {entry.content && (
+      {showContent && (
         <Markdown
           className={styles.assistantMarkdown}
           content={entry.content}
         />
+      )}
+      {showInterruptedNotice && (
+        <p className={styles.interruptedNotice} role="status">
+          Stopped
+        </p>
       )}
       {errorMessage && (
         <p className={styles.inlineError} role="alert">
@@ -762,6 +782,7 @@ function AssistantMessageContent({
 }
 
 function MessageEntry({
+  currentRecordId,
   disabled,
   entry,
   mentionHost,
@@ -770,6 +791,7 @@ function MessageEntry({
   onCopyFailureDiagnostics,
 }: {
   disabled: boolean;
+  currentRecordId?: string;
   entry: AgentMessageEntry;
   mentionHost: AgentMentionHost;
   onOpenMention: (mention: Mention) => void;
@@ -778,7 +800,7 @@ function MessageEntry({
 }) {
   const errorMessage = messageError(entry);
 
-  if (!entry.content && !errorMessage) {
+  if (!entry.content && !errorMessage && !entry.interrupted) {
     return null;
   }
 
@@ -796,6 +818,7 @@ function MessageEntry({
       {entry.content && entry.role === 'user' && (
         <UserMessageContent
           content={entry.content}
+          currentRecordId={currentRecordId}
           mentionHost={mentionHost}
           disabled={disabled}
           onOpenMention={onOpenMention}
@@ -932,8 +955,13 @@ function ActivityItem({
 }
 
 function ActivityEntry({ entry }: { entry: AgentActivityEntry }) {
-  if (entry.activities.length === 0 && entry.phase !== 'running') {
-    return null;
+  if (entry.activities.length === 0) {
+    return entry.phase === 'running' ? (
+      <div className={styles.activityStatus} role="status">
+        <Spinner size={14} />
+        <span>Working…</span>
+      </div>
+    ) : null;
   }
 
   const presentation = activityPresentation(entry);
@@ -964,12 +992,14 @@ function ActivityEntry({ entry }: { entry: AgentActivityEntry }) {
 }
 
 function RecordsEntry({
+  currentRecordId,
   disabled,
   entry,
   mentionHost,
   onOpenRecord,
 }: {
   disabled?: boolean;
+  currentRecordId?: string;
   entry: AgentRecordsEntry;
   mentionHost: AgentMentionHost;
   onOpenRecord?: AgentSurfaceProps['onOpenRecord'];
@@ -1012,6 +1042,7 @@ function RecordsEntry({
           return (
             <MentionDisplay
               accessibleLabel={`Open ${mention.title}`}
+              currentRecordId={currentRecordId}
               isClickable={!disabled && Boolean(onOpenRecord)}
               key={`${record.itemTypeId ?? 'record'}:${record.itemId}`}
               mention={mention}
@@ -1133,11 +1164,13 @@ function AssetsEntry({
 }
 
 function MentionsEntry({
+  currentRecordId,
   disabled,
   entry,
   mentionHost,
 }: {
   disabled?: boolean;
+  currentRecordId?: string;
   entry: AgentMentionsEntry;
   mentionHost: AgentMentionHost;
 }) {
@@ -1173,6 +1206,7 @@ function MentionsEntry({
                         : undefined
                 }
                 assetLayout="row"
+                currentRecordId={currentRecordId}
                 isClickable={isOpenable}
                 isProjectOwner={isOwner}
                 key={key}
@@ -1408,7 +1442,7 @@ function agentEntryIsVisible(entry: AgentTranscriptEntry): boolean {
     case 'message':
       return (
         entry.role === 'assistant' &&
-        Boolean(entry.content || messageError(entry))
+        Boolean(entry.content || messageError(entry) || entry.interrupted)
       );
     case 'activity':
       return entry.phase === 'running' || entry.activities.length > 0;
@@ -1423,6 +1457,19 @@ function agentEntryIsVisible(entry: AgentTranscriptEntry): boolean {
     case 'mentions':
       return Boolean(entry.title || entry.error || entry.mentions.length > 0);
   }
+}
+
+function findLatestUserEntryId(
+  entries: readonly AgentTranscriptEntry[],
+): string | undefined {
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (entry?.kind === 'message' && entry.role === 'user') {
+      return entry.id;
+    }
+  }
+
+  return undefined;
 }
 
 type TranscriptMentionActions = Pick<
@@ -1477,6 +1524,7 @@ function openTranscriptMention(
 }
 
 function AgentTurnEntry({
+  currentRecordId,
   entries,
   hostActionPending,
   mentionHost,
@@ -1490,6 +1538,7 @@ function AgentTurnEntry({
   onReviewUnsafeAction,
 }: {
   entries: readonly AgentTranscriptEntry[];
+  currentRecordId?: string;
   hostActionPending?: boolean;
   mentionHost: AgentMentionHost;
   onApproveUnsafeAction?: AgentSurfaceProps['onApproveUnsafeAction'];
@@ -1508,6 +1557,9 @@ function AgentTurnEntry({
     visibleEntries.find(
       (entry): entry is AgentMessageEntry => entry.kind === 'message',
     )?.label ?? 'Dato agent';
+  const hasCancelledActivity = visibleEntries.some(
+    (entry) => entry.kind === 'activity' && entry.phase === 'cancelled',
+  );
 
   return (
     <article
@@ -1524,6 +1576,7 @@ function AgentTurnEntry({
                   key={entry.id}
                   onCopyFailureDiagnostics={onCopyFailureDiagnostics}
                   onRetryFailedTurn={onRetryFailedTurn}
+                  suppressInterruptedNotice={hasCancelledActivity}
                 />
               );
             case 'activity':
@@ -1531,6 +1584,7 @@ function AgentTurnEntry({
             case 'records':
               return (
                 <RecordsEntry
+                  currentRecordId={currentRecordId}
                   disabled={Boolean(hostActionPending || entry.opening)}
                   entry={entry}
                   key={entry.id}
@@ -1559,6 +1613,7 @@ function AgentTurnEntry({
             case 'mentions':
               return (
                 <MentionsEntry
+                  currentRecordId={currentRecordId}
                   disabled={Boolean(hostActionPending)}
                   entry={entry}
                   key={entry.id}
@@ -1586,6 +1641,7 @@ function AgentTurnEntry({
 }
 
 function Transcript({
+  currentRecordId,
   entries,
   mentionHost,
   onOpenRecord,
@@ -1601,6 +1657,7 @@ function Transcript({
 }: Pick<
   AgentSurfaceProps,
   | 'entries'
+  | 'currentRecordId'
   | 'onOpenRecord'
   | 'onOpenField'
   | 'onOpenAsset'
@@ -1615,15 +1672,25 @@ function Transcript({
   const transcriptRef = useRef<HTMLElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const shouldAutoScrollRef = useRef(true);
+  const latestUserEntryId = findLatestUserEntryId(entries);
+  const previousLatestUserEntryIdRef = useRef(latestUserEntryId);
 
   useEffect(() => {
     void entries;
     void isRunning;
+    const hasNewUserTurn =
+      latestUserEntryId !== undefined &&
+      latestUserEntryId !== previousLatestUserEntryIdRef.current;
+    previousLatestUserEntryIdRef.current = latestUserEntryId;
+
+    if (hasNewUserTurn) {
+      shouldAutoScrollRef.current = true;
+    }
 
     if (shouldAutoScrollRef.current) {
       endRef.current?.scrollIntoView?.({ block: 'end' });
     }
-  }, [entries, isRunning]);
+  }, [entries, isRunning, latestUserEntryId]);
 
   return (
     <main
@@ -1654,6 +1721,7 @@ function Transcript({
           groupTranscriptEntries(entries).map((group) =>
             group.kind === 'user' ? (
               <MessageEntry
+                currentRecordId={currentRecordId}
                 disabled={Boolean(hostActionPending)}
                 entry={group.entry}
                 key={group.id}
@@ -1672,6 +1740,7 @@ function Transcript({
               />
             ) : (
               <AgentTurnEntry
+                currentRecordId={currentRecordId}
                 entries={group.entries}
                 hostActionPending={hostActionPending}
                 key={group.id}
@@ -1694,30 +1763,19 @@ function Transcript({
   );
 }
 
-function SettingsIcon() {
-  return (
-    <svg aria-hidden="true" className={styles.settingsIcon} viewBox="0 0 24 24">
-      <path
-        className={styles.settingsIconPath}
-        d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z"
-      />
-      <circle className={styles.settingsIconPath} cx="12" cy="12" r="3" />
-    </svg>
-  );
-}
-
 function UtilityControls({
   connected,
-  settingsOpen,
+  chatsOpen,
   autoApproveEnabled,
   autoApproveChanging,
   autoApproveError,
   disabled,
   onAutoApproveChange,
-  onToggleSettings,
+  onCloseChats,
+  onOpenChats,
 }: {
   connected: boolean;
-  settingsOpen: boolean;
+  chatsOpen: boolean;
   autoApproveEnabled: boolean;
   autoApproveChanging: boolean;
   autoApproveError?: string;
@@ -1725,15 +1783,34 @@ function UtilityControls({
   onAutoApproveChange?: (
     enabled: boolean,
   ) => boolean | Promise<boolean> | undefined;
-  onToggleSettings: () => void;
+  onCloseChats: () => void;
+  onOpenChats: () => void;
 }) {
   if (!connected) {
     return null;
   }
 
   return (
-    <div className={styles.utilityBar}>
-      {!settingsOpen && (
+    <div
+      aria-label="Chat controls"
+      className={styles.utilityBar}
+      role="toolbar"
+    >
+      <button
+        aria-label={chatsOpen ? 'Back to chat' : 'Open chats'}
+        className={styles.chatListButton}
+        disabled={disabled}
+        onClick={chatsOpen ? onCloseChats : onOpenChats}
+        title={chatsOpen ? 'Back to chat' : 'Chats'}
+        type="button"
+      >
+        {chatsOpen ? (
+          <BackIcon aria-hidden="true" height={13} width={13} />
+        ) : (
+          <HistoryIcon />
+        )}
+      </button>
+      {!chatsOpen && (
         <Tooltip placement="bottom">
           <TooltipTrigger>
             <button
@@ -1745,9 +1822,7 @@ function UtilityControls({
                     : 'Turn on auto-approve'
               }
               aria-pressed={autoApproveEnabled}
-              className={`${styles.autoApproveControl}${
-                autoApproveEnabled ? ` ${styles.autoApproveControlEnabled}` : ''
-              }`}
+              className={`${styles.autoApproveControl}${autoApproveEnabled ? ` ${styles.autoApproveControlEnabled}` : ''}`}
               disabled={disabled || !onAutoApproveChange}
               onClick={() => {
                 void onAutoApproveChange?.(!autoApproveEnabled);
@@ -1756,6 +1831,11 @@ function UtilityControls({
             >
               {autoApproveChanging ? <Spinner size={14} /> : <BoltIcon />}
               <span>Auto</span>
+              {autoApproveEnabled && (
+                <span aria-hidden="true" className={styles.autoApproveDanger}>
+                  Danger!
+                </span>
+              )}
             </button>
           </TooltipTrigger>
           <TooltipContent>
@@ -1765,17 +1845,7 @@ function UtilityControls({
           </TooltipContent>
         </Tooltip>
       )}
-      <button
-        aria-label={settingsOpen ? 'Back to chat' : 'Connection settings'}
-        className={styles.utilityButton}
-        disabled={disabled}
-        onClick={onToggleSettings}
-        title={settingsOpen ? 'Back to chat' : 'Connection settings'}
-        type="button"
-      >
-        {settingsOpen ? <BackIcon height={13} width={13} /> : <SettingsIcon />}
-      </button>
-      {autoApproveError && !settingsOpen && (
+      {autoApproveError && !chatsOpen && (
         <span className={styles.autoApproveToolbarError} role="alert">
           {autoApproveError}
         </span>
@@ -1787,6 +1857,7 @@ function UtilityControls({
 export function AgentSurface({
   connection,
   entries,
+  currentRecordId,
   isRunning = false,
   composerDisabled = false,
   composerPlaceholder = 'Ask the agent to find, create, or update content…',
@@ -1848,6 +1919,9 @@ export function AgentSurface({
     useState(false);
   const settingsHeadingRef = useRef<HTMLHeadingElement>(null);
   const composerRegionRef = useRef<HTMLDivElement>(null);
+  const focusComposerAfterSettingsRef = useRef(false);
+  const restoreComposerAfterRunRef = useRef(false);
+  const wasRunningRef = useRef(isRunning);
   const connected = connection.status === 'connected';
   const showCredentials = !connected || settingsOpen;
   const hasUnsettledApproval = entries.some(
@@ -1871,12 +1945,58 @@ export function AgentSurface({
   }, [settingsOpen]);
 
   useEffect(() => {
-    if (!showCredentials && !isRunning && !composerDisabled) {
+    if (
+      !showCredentials &&
+      !isRunning &&
+      !composerDisabled &&
+      focusComposerAfterSettingsRef.current
+    ) {
+      focusComposerAfterSettingsRef.current = false;
       composerRegionRef.current
         ?.querySelector<HTMLElement>('[role="textbox"]')
         ?.focus();
     }
   }, [composerDisabled, isRunning, showCredentials]);
+
+  useEffect(() => {
+    const turnFinished = wasRunningRef.current && !isRunning;
+    wasRunningRef.current = isRunning;
+
+    if (!turnFinished) {
+      return;
+    }
+
+    const shouldRestore = restoreComposerAfterRunRef.current;
+    restoreComposerAfterRunRef.current = false;
+    if (shouldRestore && !showCredentials && !composerDisabled) {
+      composerRegionRef.current
+        ?.querySelector<HTMLElement>('[role="textbox"]')
+        ?.focus();
+    }
+  }, [composerDisabled, isRunning, showCredentials]);
+
+  const closeSettings = useCallback(() => {
+    focusComposerAfterSettingsRef.current = true;
+    setSettingsOpen(false);
+  }, []);
+
+  useEffect(() => {
+    if (!settingsOpen || !connected) {
+      return;
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.defaultPrevented) {
+        return;
+      }
+
+      event.preventDefault();
+      closeSettings();
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [closeSettings, connected, settingsOpen]);
 
   const runConversationAction = async (
     action: () => boolean | undefined | Promise<boolean | undefined>,
@@ -1895,7 +2015,7 @@ export function AgentSurface({
       }
 
       if (connected) {
-        setSettingsOpen(false);
+        closeSettings();
       }
     } catch {
       return;
@@ -1910,16 +2030,19 @@ export function AgentSurface({
         autoApproveChanging={autoApproveChanging}
         autoApproveEnabled={autoApproveEnabled}
         autoApproveError={autoApproveError}
+        chatsOpen={settingsOpen}
         connected={connected}
         disabled={
-          isRunning ||
-          hasUnsettledApproval ||
-          autoApproveChanging ||
-          hostActionPending
+          settingsOpen
+            ? false
+            : isRunning ||
+              hasUnsettledApproval ||
+              autoApproveChanging ||
+              hostActionPending
         }
         onAutoApproveChange={onAutoApproveChange}
-        onToggleSettings={() => setSettingsOpen((open) => !open)}
-        settingsOpen={settingsOpen}
+        onCloseChats={closeSettings}
+        onOpenChats={() => setSettingsOpen(true)}
       />
 
       {showCredentials ? (
@@ -1953,6 +2076,7 @@ export function AgentSurface({
       ) : (
         <>
           <Transcript
+            currentRecordId={currentRecordId}
             entries={entries}
             isRunning={isRunning}
             mentionHost={resolvedMentionHost}
@@ -1969,6 +2093,7 @@ export function AgentSurface({
           <div className={styles.composer} ref={composerRegionRef}>
             <div className={styles.composerInner}>
               <MentionComposer
+                currentRecordId={currentRecordId}
                 disabled={composerDisabled}
                 host={resolvedMentionHost}
                 isRunning={isRunning}
@@ -1981,6 +2106,7 @@ export function AgentSurface({
                   },
                   handleOpenFile: resolvedMentionHost.openLocalFile,
                   handleOpenRecord: async (recordId, modelId) => {
+                    if (recordId === currentRecordId) return;
                     await onOpenRecord?.({
                       itemId: recordId,
                       itemTypeId: modelId,
@@ -2002,7 +2128,12 @@ export function AgentSurface({
                   handleOpenUser: resolvedMentionHost.openUser,
                 }}
                 onStop={onStop}
-                onSubmit={onSubmit}
+                onSubmit={(submission) => {
+                  restoreComposerAfterRunRef.current = Boolean(
+                    composerRegionRef.current?.contains(document.activeElement),
+                  );
+                  onSubmit(submission);
+                }}
                 persistenceWarning={persistenceWarning}
                 placeholder={composerPlaceholder}
               />

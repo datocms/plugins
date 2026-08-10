@@ -541,6 +541,32 @@ describe('ConfigScreen', () => {
     expect(screen.getByText('1 compatible model available.')).toBeVisible();
   });
 
+  it('saves unrelated settings when provider discovery is unavailable', async () => {
+    modelMocks.listProviderModels.mockRejectedValueOnce(
+      new Error('Temporary OpenAI error'),
+    );
+    const { ctx, updatePluginParameters } = createCtx();
+    render(<ConfigScreen ctx={ctx} />);
+
+    await finishModelDiscovery();
+    expect(screen.getByText(/Temporary OpenAI error/)).toBeVisible();
+
+    fireEvent.change(screen.getByLabelText('Additional instructions'), {
+      target: { value: 'Use the project editorial style.' },
+    });
+    expect(screen.getByRole('button', { name: 'Save settings' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await act(async () => {});
+
+    expect(updatePluginParameters).toHaveBeenCalledWith(
+      expect.objectContaining({
+        additionalInstructions: 'Use the project editorial style.',
+        model: PARAMETERS.model,
+        openAiApiKey: PARAMETERS.openAiApiKey,
+      }),
+    );
+  });
+
   it('synchronizes external settings without overwriting local edits', () => {
     const { ctx } = createCtx();
     const { rerender } = render(<ConfigScreen ctx={ctx} />);

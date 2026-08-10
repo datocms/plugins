@@ -13,7 +13,10 @@ import type {
 import { openApprovalDetailsModal } from '../lib/approvalDetailsModal';
 import { confirmEnableAutoApproval } from '../lib/autoApproval';
 import { normalizeConfig } from '../lib/config';
-import { migrateConversationScopeInBrowser } from '../lib/conversationScopeMigration';
+import {
+  migrateConversationScopeInBrowser,
+  pendingConversationScopeMigrationSourceInBrowser,
+} from '../lib/conversationScopeMigration';
 import type { ConversationScope } from '../lib/conversations';
 import {
   buildRecordHostContext,
@@ -243,8 +246,21 @@ export default function AgentSidebar({ ctx }: Props) {
   const latestCtxRef = useRef(ctx);
   latestCtxRef.current = ctx;
   const pendingNewRecordScopeRef = useRef<NewRecordScope | undefined>(
-    ctx.item ? undefined : newRecordScope,
+    undefined,
   );
+  const pendingNewRecordScopeInitializedRef = useRef(false);
+  if (!pendingNewRecordScopeInitializedRef.current) {
+    pendingNewRecordScopeInitializedRef.current = true;
+    pendingNewRecordScopeRef.current = ctx.item
+      ? pendingConversationScopeMigrationSourceInBrowser({
+          pluginId: ctx.plugin.id,
+          siteId: ctx.site.id,
+          environment: ctx.environment,
+          currentUserId: ctx.currentUser.id,
+          scope: { type: 'record', recordId: ctx.item.id },
+        })
+      : newRecordScope;
+  }
   if (!ctx.item) {
     pendingNewRecordScopeRef.current = newRecordScope;
   }

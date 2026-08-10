@@ -18,6 +18,10 @@ type MentionDropdownBaseProps<T> = {
   keyExtractor: (item: T) => string;
   position?: 'above' | 'below';
   searchSlot?: ReactNode;
+  statusMessage?: ReactNode;
+  statusAction?: ReactNode;
+  emptyAction?: ReactNode;
+  headerLeading?: ReactNode;
 };
 
 // Focus managed by TipTap; selectedRef used for scroll-into-view only
@@ -31,6 +35,10 @@ export function MentionDropdownBase<T>({
   keyExtractor,
   position = 'below',
   searchSlot,
+  statusMessage,
+  statusAction,
+  emptyAction,
+  headerLeading,
 }: MentionDropdownBaseProps<T>): ReactNode {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const selectedRef = useRef<HTMLButtonElement>(null);
@@ -43,30 +51,29 @@ export function MentionDropdownBase<T>({
     position === 'above' && styles.mentionDropdownAbove,
   );
 
-  if (items.length === 0 && !searchSlot) {
-    return (
-      <div ref={dropdownRef} className={dropdownClassName}>
-        <div className={styles.mentionEmpty}>{emptyMessage}</div>
-      </div>
-    );
-  }
-
   return (
     <div ref={dropdownRef} className={dropdownClassName}>
-      <div className={styles.mentionHeader}>{headerText}</div>
+      <div className={styles.mentionHeader}>
+        {headerLeading}
+        <span className={styles.mentionHeaderLabel}>{headerText}</span>
+      </div>
       {searchSlot}
+      {(statusMessage || statusAction) && items.length > 0 && (
+        <div aria-live="polite" className={styles.mentionStatus} role="status">
+          <span>{statusMessage}</span>
+          {statusAction}
+        </div>
+      )}
       {items.length === 0 ? (
-        <div className={styles.mentionEmpty}>{emptyMessage}</div>
+        <div aria-live="polite" className={styles.mentionEmpty} role="status">
+          <span>{emptyMessage}</span>
+          {emptyAction}
+        </div>
       ) : (
-        <div className={styles.mentionList}>
+        <div aria-label={headerText} className={styles.mentionList} role="menu">
           {items.map((item, index) => (
-            <div key={keyExtractor(item)}>
-              {renderItem(
-                item,
-                index,
-                index === selectedIndex,
-                index === selectedIndex ? selectedRef : { current: null },
-              )}
+            <div key={keyExtractor(item)} role="none">
+              {renderItem(item, index, index === selectedIndex, selectedRef)}
             </div>
           ))}
         </div>

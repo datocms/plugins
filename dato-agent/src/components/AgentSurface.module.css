@@ -13,25 +13,32 @@
 }
 
 .utilityBar {
-  position: absolute;
+  position: relative;
   z-index: 3;
-  top: 6px;
-  right: 6px;
   display: flex;
+  box-sizing: border-box;
+  width: 100%;
+  height: 44px;
+  flex: none;
   align-items: center;
+  justify-content: space-between;
   gap: 2px;
+  padding: 0 6px 0 0;
+  border-bottom: 1px solid var(--color--border);
+  background: var(--color--surface);
 }
 
-.utilityButton {
+.chatListButton {
   display: flex;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  align-self: stretch;
+  flex: none;
   align-items: center;
   justify-content: center;
-  padding: 7px;
+  padding: 0;
   border: 0;
-  border-radius: 4px;
-  color: var(--color--ink-subtle);
+  border-right: 1px solid var(--color--border);
+  color: var(--color--ink);
   background: transparent;
   cursor: pointer;
   transition:
@@ -58,6 +65,17 @@
 .autoApproveControlEnabled {
   color: var(--color--warning-soft--ink);
   background: var(--color--warning-soft--surface);
+}
+
+.autoApproveDanger {
+  padding: 1px 3px;
+  border: 1px solid var(--color--danger-soft--border);
+  border-radius: 3px;
+  color: var(--color--danger-soft--ink);
+  background: var(--color--danger-soft--surface);
+  font-size: var(--font-size-xxs);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.2;
 }
 
 .autoApproveControl svg {
@@ -87,8 +105,8 @@
 
 .autoApproveToolbarError {
   position: absolute;
-  top: 38px;
-  right: 0;
+  top: calc(100% + 4px);
+  right: 6px;
   width: max-content;
   max-width: min(260px, calc(100vw - 24px));
   padding: 5px 7px;
@@ -101,31 +119,23 @@
   line-height: 1.35;
 }
 
-.utilityButton svg {
-  width: 15px;
-  height: 15px;
-  fill: currentColor;
+.chatListButton svg {
+  width: 14px;
+  height: 14px;
 }
 
-.utilityButton .settingsIcon {
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.8;
-}
-
-.utilityButton:hover,
-.utilityButton:focus-visible {
+.chatListButton:hover,
+.chatListButton:focus-visible {
   color: var(--color--ink);
-  background: var(--color--surface-hover);
+  background: var(--color--surface-muted);
 }
 
-.utilityButton:focus-visible {
+.chatListButton:focus-visible {
   outline: 3px solid var(--color--focus--outline);
+  outline-offset: -3px;
 }
 
-.utilityButton:disabled {
+.chatListButton:disabled {
   color: var(--color--disabled--ink);
   cursor: default;
   background: transparent;
@@ -328,30 +338,30 @@
 }
 
 .recentChats {
-  margin-top: var(--spacing-l);
-  padding-top: var(--spacing-m);
+  margin-top: 18px;
+  padding-top: 14px;
   border-top: 1px solid var(--color--border);
   text-align: left;
 }
 
 .recentChatsHeader {
   display: flex;
-  min-height: 32px;
+  min-height: 28px;
   align-items: center;
   justify-content: space-between;
-  gap: var(--spacing-m);
+  gap: 8px;
 }
 
 .recentChatsTitle {
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
 }
 
 .recentChatsTitle > svg {
-  width: 15px;
-  height: 15px;
+  width: 14px;
+  height: 14px;
   flex: none;
   color: var(--color--ink-subtle);
 }
@@ -363,13 +373,17 @@
 }
 
 .newChatButton {
-  margin-right: -4px;
+  width: 28px;
+  height: 28px;
+  margin-right: -2px;
 }
 
 .recentChatsList {
-  margin: 4px 0 0;
+  margin: 6px 0 0;
   padding: 0;
-  border-top: 1px solid var(--color--border);
+  overflow: hidden;
+  border: 1px solid var(--color--border);
+  border-radius: 4px;
   list-style: none;
 }
 
@@ -377,18 +391,21 @@
   border-bottom: 1px solid var(--color--border);
 }
 
+.recentChatsList li:last-child {
+  border-bottom: 0;
+}
+
 .recentChat {
   display: grid;
   box-sizing: border-box;
   width: 100%;
-  min-height: 44px;
+  min-height: 40px;
   min-width: 0;
-  grid-template-columns: 18px minmax(0, 1fr) 16px;
+  grid-template-columns: minmax(0, 1fr) 14px;
   align-items: center;
-  gap: 9px;
-  padding: 7px 8px;
+  gap: 8px;
+  padding: 7px 10px;
   border: 0;
-  border-left: 2px solid transparent;
   color: var(--color--ink);
   background: transparent;
   font: inherit;
@@ -401,30 +418,18 @@
 }
 
 .recentChat[aria-current="page"] {
-  border-left-color: var(--color--selected--border);
-  background: var(--color--surface-muted);
+  color: var(--color--selected--ink);
+  background: var(--color--selected--surface);
+  box-shadow: inset 2px 0 var(--color--selected--border);
 }
 
 .recentChat[aria-current="page"]:hover:not(:disabled) {
-  background: var(--color--surface-muted);
+  background: var(--color--selected--surface-hover);
 }
 
 .recentChat:disabled {
   color: var(--color--disabled--ink);
   cursor: default;
-}
-
-.recentChatIcon {
-  display: grid;
-  width: 18px;
-  height: 18px;
-  place-items: center;
-  color: var(--color--ink-subtle);
-}
-
-.recentChatIcon svg {
-  width: 15px;
-  height: 15px;
 }
 
 .recentChatTitle {
@@ -437,33 +442,28 @@
 
 .currentChatIcon {
   display: grid;
-  width: 16px;
-  height: 16px;
+  width: 14px;
+  height: 14px;
   place-items: center;
-  color: var(--color--selected--border);
+  color: currentColor;
+  opacity: 0.75;
 }
 
 .currentChatIcon svg {
-  width: 15px;
-  height: 15px;
+  width: 13px;
+  height: 13px;
 }
 
 .noRecentChats {
   display: flex;
-  min-height: 44px;
+  min-height: 40px;
   align-items: center;
-  gap: 9px;
-  margin-top: 4px;
+  margin-top: 6px;
   padding: 0 10px;
-  border-top: 1px solid var(--color--border);
-  border-bottom: 1px solid var(--color--border);
+  border: 1px solid var(--color--border);
+  border-radius: 4px;
   color: var(--color--ink-subtle);
   font-size: var(--font-size-s);
-}
-
-.noRecentChats svg {
-  width: 15px;
-  height: 15px;
 }
 
 .transcript {
@@ -475,7 +475,7 @@
   width: 100%;
   min-height: 100%;
   margin: 0 auto;
-  padding: 44px 14px 18px;
+  padding: 14px 14px 18px;
 }
 
 .emptyState {
@@ -552,6 +552,13 @@
   margin-top: var(--spacing-xs);
 }
 
+.interruptedNotice {
+  margin: 0;
+  color: var(--color--ink-subtle);
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
+}
+
 .failureActions {
   display: flex;
   flex-wrap: wrap;
@@ -625,6 +632,17 @@
 }
 
 .activityDisclosure {
+  color: var(--color--ink-subtle);
+  font-size: var(--font-size-s);
+}
+
+.activityStatus {
+  display: flex;
+  width: fit-content;
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin: 0 0 var(--spacing-s);
+  padding: 2px 0;
   color: var(--color--ink-subtle);
   font-size: var(--font-size-s);
 }
@@ -961,32 +979,35 @@
 }
 
 .approvalDetailsButton {
-  display: inline-flex;
+  appearance: none;
+  display: inline;
   min-width: 0;
   max-width: 100%;
-  align-items: center;
   margin: 0;
-  padding: 2px 6px;
+  padding: 0;
   border: 0;
-  border-radius: 4px;
-  color: var(--color--primary-soft--ink);
-  background: var(--color--primary-soft--surface);
+  border-radius: 0;
+  color: var(--color--ink-subtle);
+  background: transparent;
   font: inherit;
   font-size: var(--font-size-s);
-  font-weight: 500;
+  font-weight: normal;
   line-height: 1.4;
+  text-align: left;
   cursor: pointer;
 }
 
 .approvalDetailsButton:hover,
 .approvalDetailsButton:focus-visible {
-  color: var(--color--primary-soft--ink);
-  background: var(--color--primary-soft--surface-hover);
-  text-decoration: none;
+  color: var(--color--ink);
+  background: transparent;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .approvalDetailsButton:focus-visible {
-  outline: 3px solid var(--color--focus--outline);
+  outline: 2px solid var(--color--focus--outline);
+  outline-offset: 2px;
 }
 
 .approvalDetailsButton:disabled {

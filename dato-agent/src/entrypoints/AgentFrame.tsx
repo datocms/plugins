@@ -205,6 +205,11 @@ type ActiveTurn = {
   autoApprovalBundleCount: number;
   userStopped: boolean;
   unsafeOperationDispatched: boolean;
+  localAssetDispatchState:
+    | 'idle'
+    | 'dispatching'
+    | 'confirmed'
+    | 'outcome_unknown';
   unsafeJournalId?: string;
   provider: AgentProvider;
   model: string;
@@ -401,6 +406,9 @@ function settleTurnEntry(
       turnStatus === 'aborted';
     return {
       ...entry,
+      ...(turnStatus === 'aborted' && !entry.content.trim()
+        ? { content: 'Stopped.' }
+        : {}),
       streaming: false,
       ...(interrupted ? { interrupted: true } : {}),
     };
@@ -1494,15 +1502,34 @@ function runtimeAttachments(
   });
 }
 
+function eligibleProviderHistoryMessages(
+  messages: readonly ConversationMessage[],
+): ConversationMessage[] {
+  const eligibleMessages: ConversationMessage[] = [];
+  for (const message of messages) {
+    if (message.role === 'assistant' && message.interrupted) {
+      // An interrupted assistant response is not valid provider history. Its
+      // immediately preceding user request belongs to the same unfinished
+      // exchange, so retaining only that request would ask the provider to
+      // answer it again before the editor's new message.
+      if (eligibleMessages.at(-1)?.role === 'user') {
+        eligibleMessages.pop();
+      }
+      continue;
+    }
+
+    if (message.role === 'user' || message.text.trim()) {
+      eligibleMessages.push(message);
+    }
+  }
+  return eligibleMessages;
+}
+
 function providerHistory(
   messages: readonly ConversationMessage[],
   currentAttachments: readonly AgentRuntimeAttachment[],
 ): AgentConversationHistoryMessage[] {
-  const eligibleMessages = messages.filter(
-    (message) =>
-      message.role === 'user' ||
-      (!message.interrupted && Boolean(message.text.trim())),
-  );
+  const eligibleMessages = eligibleProviderHistoryMessages(messages);
   const history = eligibleMessages.map(
     (message): AgentConversationHistoryMessage => ({
       role: message.role,
@@ -1834,6 +1861,8 @@ export default function AgentFrame(props: AgentFrameProps) {
     useState<string>();
   const [running, setRunning] = useState(false);
   const [hostActionPending, setHostActionPending] = useState(false);
+  const [currentInspectorRecordId, setCurrentInspectorRecordId] =
+    useState<string>();
   const [pendingApprovals, setPendingApprovals] = useState<
     Map<string, PendingApproval>
   >(new Map());
@@ -1846,6 +1875,7 @@ export default function AgentFrame(props: AgentFrameProps) {
   const retryCandidateRef = useRef<RetryCandidate | undefined>(undefined);
   const failureDiagnosticsRef = useRef(new Map<string, string>());
   const pendingNavigationRef = useRef<PendingNavigation[]>([]);
+  const currentInspectorRecordIdRef = useRef<string | undefined>(undefined);
   const hostActionPendingRef = useRef(false);
   const approvalDispatchRef = useRef(new Set<string>());
   const autoApprovalDispatchRef = useRef(new Set<string>());
@@ -1888,6 +1918,29 @@ export default function AgentFrame(props: AgentFrameProps) {
       }
     };
   }, []);
+
+  const openRecordInHost = async (target: RecordTarget) => {
+    if (
+      surface === 'project' &&
+      currentInspectorRecordIdRef.current === target.itemId
+    ) {
+      return;
+    }
+
+    await props.navigator.openRecord(target);
+    if (surface === 'project' && mountedRef.current) {
+      currentInspectorRecordIdRef.current = target.itemId;
+      setCurrentInspectorRecordId(target.itemId);
+    }
+  };
+
+  const showRecordsInHost = async (target: RecordListTarget) => {
+    await props.navigator.showRecords(target);
+    if (surface === 'project' && mountedRef.current) {
+      currentInspectorRecordIdRef.current = undefined;
+      setCurrentInspectorRecordId(undefined);
+    }
+  };
 
   useEffect(() => {
     const synchronizeAutoApproval = (event: StorageEvent) => {
@@ -2056,36 +2109,14 @@ export default function AgentFrame(props: AgentFrameProps) {
   const persistRestoredPresentationRef = useRef(persistRestoredPresentation);
   persistRestoredPresentationRef.current = persistRestoredPresentation;
 
-  useEffect(() => {
-    const activeConversationId = conversation.id;
+  const refreshPresentationEntries = async () => {
+    const activeConversationId = conversationRef.current.id;
     const presentationHost = mentionHostRef.current;
     const targets = restoredPresentationTargets(entriesRef.current);
     const needsFields = needsRestoredFieldPresentation(entriesRef.current);
     if (targets.length === 0 && !needsFields) return;
 
-    let cancelled = false;
-    const applyPresentations = ([results, fields]: [
-      PromiseSettledResult<ResolvedEntityMention>[],
-      ReadonlyMap<string, FieldInfo>,
-    ]) => {
-      if (cancelled || !mountedRef.current) return;
-      if (conversationRef.current.id !== activeConversationId) return;
-
-      const { records, assets } = resolvedPresentations(results);
-      if (records.size === 0 && assets.size === 0 && fields.size === 0) return;
-
-      const next = applyRestoredPresentation(
-        entriesRef.current,
-        records,
-        assets,
-        fields,
-      );
-      entriesRef.current = next;
-      setEntries(next);
-      if (!activeTurnRef.current) persistRestoredPresentationRef.current();
-    };
-
-    void Promise.all([
+    const [results, fields] = await Promise.all([
       Promise.allSettled(
         targets.map(async (target) =>
           target.type === 'record'
@@ -2094,11 +2125,30 @@ export default function AgentFrame(props: AgentFrameProps) {
         ),
       ),
       restoredFieldPresentations(presentationHost, needsFields),
-    ]).then(applyPresentations);
+    ]);
+    if (!mountedRef.current) return;
+    if (conversationRef.current.id !== activeConversationId) return;
 
-    return () => {
-      cancelled = true;
-    };
+    const { records, assets } = resolvedPresentations(results);
+    if (records.size === 0 && assets.size === 0 && fields.size === 0) return;
+
+    const next = applyRestoredPresentation(
+      entriesRef.current,
+      records,
+      assets,
+      fields,
+    );
+    entriesRef.current = next;
+    setEntries(next);
+    if (!activeTurnRef.current) persistRestoredPresentationRef.current();
+  };
+
+  const refreshPresentationEntriesRef = useRef(refreshPresentationEntries);
+  refreshPresentationEntriesRef.current = refreshPresentationEntries;
+
+  useEffect(() => {
+    void conversation.id;
+    void refreshPresentationEntriesRef.current();
   }, [conversation.id]);
 
   const checkpointInterruptedTurn = (
@@ -2109,7 +2159,7 @@ export default function AgentFrame(props: AgentFrameProps) {
       return;
     }
 
-    const interruptedText = 'The response was interrupted before it completed.';
+    const interruptedText = 'Stopped.';
     entriesRef.current = entriesRef.current.map((entry) => {
       if (entry.id === turn.assistantEntryId && entry.kind === 'message') {
         return {
@@ -2472,7 +2522,7 @@ export default function AgentFrame(props: AgentFrameProps) {
   ) => {
     const presentedRecords = await Promise.all(
       records.map(async (record) => {
-        const mention = await mentionHost.resolveRecord({
+        const mention = await mentionHostRef.current.resolveRecord({
           itemId: record.itemId,
           ...(record.itemTypeId ? { itemTypeId: record.itemTypeId } : {}),
           ...(record.label ? { label: record.label } : {}),
@@ -2520,7 +2570,7 @@ export default function AgentFrame(props: AgentFrameProps) {
   ) => {
     const presentedAssets = await Promise.all(
       assets.map(async (asset) => {
-        const mention = await mentionHost.resolveAsset(asset);
+        const mention = await mentionHostRef.current.resolveAsset(asset);
         return {
           uploadId: asset.uploadId,
           title: mention.filename,
@@ -2568,21 +2618,31 @@ export default function AgentFrame(props: AgentFrameProps) {
     };
   };
 
+  const cancelPendingNavigationForExplicitHostAction = () => {
+    // A deliberate editor click always wins over navigation the agent queued
+    // earlier in the same turn. Otherwise the queued action can unexpectedly
+    // replace the record or asset modal the editor just chose to inspect.
+    pendingNavigationRef.current = [];
+  };
+
   const flushPendingNavigation = async (turn: ActiveTurn) => {
     const pending = pendingNavigationRef.current.at(-1);
-    pendingNavigationRef.current = [];
-
     if (!pending) {
       return;
     }
+    if (!beginHostAction()) {
+      pendingNavigationRef.current = [];
+      return;
+    }
+    pendingNavigationRef.current = [];
 
     try {
       if (pending.type === 'openRecord') {
-        await props.navigator.openRecord(pending.target);
+        await openRecordInHost(pending.target);
         return;
       }
 
-      await props.navigator.showRecords(pending.target);
+      await showRecordsInHost(pending.target);
     } catch (error) {
       mergeActivity(turn.activityEntryId, {
         id: `navigation:${pending.type}`,
@@ -2596,16 +2656,27 @@ export default function AgentFrame(props: AgentFrameProps) {
             ? error.message
             : 'DatoCMS could not open this result.',
       });
+    } finally {
+      finishHostAction();
     }
   };
 
   const hostCreateAsset = mentionHost.createAsset;
   const createDatoAsset: CreateDatoAssetCallback | undefined =
     hostCreateAsset && mentionHost.canCreateAssets
-      ? async (input, signal) => {
+      ? // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Source validation, irreversible dispatch marking, and outcome-unknown handling form one asset-upload boundary.
+        async (input, signal) => {
           const turn = activeTurnRef.current;
           if (!turn) {
             throw new Error('The active chat request is no longer available.');
+          }
+          if (
+            turn.localAssetDispatchState === 'dispatching' ||
+            turn.localAssetDispatchState === 'outcome_unknown'
+          ) {
+            throw new Error(
+              'The previous asset upload may have completed, but its result could not be confirmed. Check the media library before trying again.',
+            );
           }
 
           const source =
@@ -2634,11 +2705,37 @@ export default function AgentFrame(props: AgentFrameProps) {
                   url: input.url,
                   ...(input.filename ? { filename: input.filename } : {}),
                 };
-          const mention = await hostCreateAsset(source, {
-            skipConfirmation:
-              autoApproveEnabledRef.current && !editorDirtyRef.current,
-            signal,
-          });
+          let dispatched = false;
+          let mention: Awaited<ReturnType<typeof hostCreateAsset>>;
+          try {
+            mention = await hostCreateAsset(source, {
+              skipConfirmation:
+                autoApproveEnabledRef.current && !editorDirtyRef.current,
+              signal,
+              onUploadDispatch: () => {
+                if (activeTurnRef.current !== turn) {
+                  throw new Error(
+                    'The active chat request is no longer available.',
+                  );
+                }
+                dispatched = true;
+                turn.localAssetDispatchState = 'dispatching';
+                turn.unsafeOperationDispatched = true;
+              },
+            });
+            if (dispatched) {
+              turn.localAssetDispatchState = 'confirmed';
+            }
+          } catch (error) {
+            if (dispatched) {
+              turn.localAssetDispatchState = 'outcome_unknown';
+              throw new Error(
+                'The asset upload may have completed, but its result could not be confirmed. Check the media library before trying again.',
+                { cause: error },
+              );
+            }
+            throw error;
+          }
           await appendAssetResults('Asset created', [
             { uploadId: mention.id, label: mention.filename },
           ]);
@@ -2857,6 +2954,18 @@ export default function AgentFrame(props: AgentFrameProps) {
         );
         break;
       case 'activity':
+        if (
+          turn.unsafeOperationDispatched &&
+          event.activity.kind === 'mcp_tool' &&
+          (event.activity.status === 'completed' ||
+            event.activity.status === 'failed')
+        ) {
+          // A write may have changed arbitrary record or asset presentation.
+          // Clear again when the exact remote call settles: hydration can have
+          // repopulated the cache while the request was in flight.
+          mentionHostRef.current.invalidatePresentationCache?.();
+          void refreshPresentationEntriesRef.current();
+        }
         mergeActivity(
           turn.activityEntryId,
           {
@@ -2923,16 +3032,7 @@ export default function AgentFrame(props: AgentFrameProps) {
               settledStatus,
             ),
           );
-          return settledTurnStatus === 'aborted'
-            ? settled.filter(
-                (entry) =>
-                  !(
-                    entry.id === turn.assistantEntryId &&
-                    entry.kind === 'message' &&
-                    !entry.content.trim()
-                  ),
-              )
-            : settled;
+          return settled;
         });
         if (settledTurnStatus !== 'approval_required') {
           if (
@@ -3053,6 +3153,7 @@ export default function AgentFrame(props: AgentFrameProps) {
       autoApprovalBundleCount: 0,
       userStopped: false,
       unsafeOperationDispatched: false,
+      localAssetDispatchState: 'idle',
       provider: props.config.provider,
       model: activeModel(props.config),
       startedAt,
@@ -3321,6 +3422,9 @@ export default function AgentFrame(props: AgentFrameProps) {
           if (entry.id === assistantEntryId && entry.kind === 'message') {
             return {
               ...entry,
+              ...(controller.signal.aborted && !entry.content.trim()
+                ? { content: message }
+                : {}),
               streaming: false,
               interrupted: true,
               ...(controller.signal.aborted ? {} : { error: message }),
@@ -3571,17 +3675,14 @@ export default function AgentFrame(props: AgentFrameProps) {
       const decisions = group.flatMap((item) =>
         item.decision ? [item.decision] : [],
       );
+      const automaticDispatch = approvedItems.some(
+        (item) => item.automatic === true,
+      );
       turn.approvalSubmissions.push({
         capturedAt: new Date().toISOString(),
         responseId,
         decisions,
       });
-      if (unsafeJournalId) {
-        // Retry must become unavailable as soon as an approved continuation is
-        // handed to the runtime. The journal still distinguishes an armed call
-        // from one that crossed the provider/Remote MCP transport boundary.
-        turn.unsafeOperationDispatched = true;
-      }
       result = await runtime.submitApprovals(
         {
           responseId,
@@ -3593,17 +3694,31 @@ export default function AgentFrame(props: AgentFrameProps) {
                   beforeDispatch: (
                     dispatchedApprovalIds: readonly string[],
                   ) => {
+                    if (
+                      activeTurnRef.current !== turn ||
+                      controller.signal.aborted ||
+                      hostActionPendingRef.current ||
+                      editorDirtyRef.current ||
+                      (automaticDispatch && !autoApproveEnabledRef.current)
+                    ) {
+                      throw new Error(
+                        'The change was not sent because the editor state changed. Close the open dialog and save or discard any unsaved changes before reviewing it again.',
+                      );
+                    }
                     unsafeDispatchJournalStore.markDispatched(
                       unsafeJournalId,
                       dispatchedApprovalIds,
                     );
                     turn.unsafeOperationDispatched = true;
+                    mentionHostRef.current.invalidatePresentationCache?.();
                   },
                   confirmed: (confirmedApprovalIds: readonly string[]) => {
                     unsafeDispatchJournalStore.markConfirmed(
                       unsafeJournalId,
                       confirmedApprovalIds,
                     );
+                    mentionHostRef.current.invalidatePresentationCache?.();
+                    void refreshPresentationEntriesRef.current();
                   },
                 },
               }
@@ -3613,7 +3728,7 @@ export default function AgentFrame(props: AgentFrameProps) {
       );
       if (unsafeJournalId) {
         const confirmedApprovalIds =
-          result.status === 'completed'
+          result.status === 'completed' || result.status === 'approval_required'
             ? approvedItems.map((item) => item.request.approvalRequestId)
             : (result.confirmedApprovalIds ?? []);
         if (confirmedApprovalIds.length > 0) {
@@ -3622,6 +3737,8 @@ export default function AgentFrame(props: AgentFrameProps) {
               unsafeJournalId,
               confirmedApprovalIds,
             );
+            mentionHostRef.current.invalidatePresentationCache?.();
+            void refreshPresentationEntriesRef.current();
           } catch {
             // Provider callbacks already record the narrowest durable state.
             // A stale dispatch marker is deliberately treated as uncertain.
@@ -3824,6 +3941,14 @@ export default function AgentFrame(props: AgentFrameProps) {
       return;
     }
 
+    if (hostActionPendingRef.current) {
+      pauseAutomaticApproval(
+        responseId,
+        'Auto-approve paused. Close the open DatoCMS dialog before continuing.',
+      );
+      return;
+    }
+
     if (turn.autoApprovalBundleCount >= MAX_AUTO_APPROVAL_BUNDLES_PER_TURN) {
       pauseAutomaticApproval(
         responseId,
@@ -3849,6 +3974,7 @@ export default function AgentFrame(props: AgentFrameProps) {
 
     if (
       editorDirtyRef.current ||
+      hostActionPendingRef.current ||
       !autoApproveEnabledRef.current ||
       activeTurnRef.current !== turn
     ) {
@@ -4226,8 +4352,9 @@ export default function AgentFrame(props: AgentFrameProps) {
 
   const openRecordDirectly = async (record: AgentRecordResultViewModel) => {
     if (!beginHostAction()) return;
+    cancelPendingNavigationForExplicitHostAction();
     try {
-      await props.navigator.openRecord({
+      await openRecordInHost({
         itemId: record.itemId,
         itemTypeId: record.itemTypeId,
         fieldPath: record.fieldPath,
@@ -4252,12 +4379,13 @@ export default function AgentFrame(props: AgentFrameProps) {
     if (receipt?.kind !== 'records' || receipt.opening || !beginHostAction()) {
       return;
     }
+    cancelPendingNavigationForExplicitHostAction();
 
     updateEntries((current) => startRecordReceiptOpening(current, entryId));
 
     let navigationError: string | undefined;
     try {
-      await props.navigator.openRecord({
+      await openRecordInHost({
         itemId: record.itemId,
         itemTypeId: record.itemTypeId,
         fieldPath: record.fieldPath,
@@ -4339,6 +4467,7 @@ export default function AgentFrame(props: AgentFrameProps) {
 
   const openAssetDirectly = async (asset: AgentAssetResultViewModel) => {
     if (!beginHostAction()) return;
+    cancelPendingNavigationForExplicitHostAction();
     try {
       await props.navigator.openAsset({
         uploadId: asset.uploadId,
@@ -4369,6 +4498,7 @@ export default function AgentFrame(props: AgentFrameProps) {
     ) {
       return;
     }
+    cancelPendingNavigationForExplicitHostAction();
 
     updateEntries((current) =>
       startAssetReceiptOpening(current, entryId, asset.uploadId),
@@ -4473,7 +4603,7 @@ export default function AgentFrame(props: AgentFrameProps) {
             ? 'Running the DatoCMS change…'
             : 'Review the proposed change before continuing'
           : surface === 'record'
-            ? 'Ask about this record…'
+            ? 'Ask about this…'
             : 'Ask about this project…'
       }
       onSubmit={(message) => void submit(message)}
@@ -4492,6 +4622,9 @@ export default function AgentFrame(props: AgentFrameProps) {
       onOpenAsset={openAsset}
       onOpenField={props.openCurrentField ? openField : undefined}
       onOpenRecord={openRecord}
+      currentRecordId={
+        surface === 'project' ? currentInspectorRecordId : undefined
+      }
       hostActionPending={hostActionPending}
       onReviewUnsafeAction={(approval) => void reviewApprovalDetails(approval)}
       onApproveUnsafeAction={(approval) => void decideApproval(approval, true)}

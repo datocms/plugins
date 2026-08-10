@@ -192,9 +192,14 @@
   min-width: 0;
 }
 
-/* Wrapper for tooltip positioning */
-.toolbarButtonWrapper {
-  position: relative;
+.toolbarActions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.toolbarTooltipTrigger {
   display: inline-flex;
 }
 
@@ -268,42 +273,6 @@
 .toolbarButtonDisabled:hover {
   color: var(--color--ink-subtle);
   background-color: transparent;
-}
-
-/* Toolbar tooltip styles */
-.toolbarTooltip {
-  position: absolute;
-  bottom: calc(100% + var(--space-1));
-  left: 50%;
-  transform: translateX(-50%);
-  padding: var(--radius-md) var(--space-1);
-  font-size: var(--font-size-xxs);
-  font-weight: 500;
-  color: var(--color--tooltip--ink);
-  background-color: var(--color--tooltip--surface);
-  border-radius: var(--radius-md);
-  white-space: nowrap;
-  opacity: 0;
-  visibility: hidden;
-  transition:
-    opacity 0.1s var(--material-ease),
-    visibility 0.1s var(--material-ease);
-  pointer-events: none;
-  z-index: var(--z-sticky);
-}
-
-.toolbarTooltipArrow {
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  border: var(--radius-md) solid transparent;
-  border-top-color: var(--color--tooltip--surface);
-}
-
-.toolbarButtonWrapper:hover .toolbarTooltip {
-  opacity: 1;
-  visibility: visible;
 }
 
 /* Send button */

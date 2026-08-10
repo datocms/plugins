@@ -30,6 +30,7 @@ function isCodeDetail(label: string): boolean {
 
 export default function ApprovalDetailsModal({ ctx }: Props) {
   const [resolving, setResolving] = useState<ApprovalDetailsDecision>();
+  const [resolveError, setResolveError] = useState<string>();
   const details = Array.isArray(ctx.parameters.details)
     ? ctx.parameters.details.filter(isApprovalDetail)
     : [];
@@ -43,8 +44,11 @@ export default function ApprovalDetailsModal({ ctx }: Props) {
     }
 
     setResolving(decision);
+    setResolveError(undefined);
     try {
       await ctx.resolve(decision);
+    } catch {
+      setResolveError('Could not save this decision. Try again.');
     } finally {
       setResolving(undefined);
     }
@@ -74,24 +78,31 @@ export default function ApprovalDetailsModal({ ctx }: Props) {
         ))}
 
         {canDecide && (
-          <div className={styles.actions}>
-            <Button
-              buttonSize="s"
-              buttonType="negative"
-              disabled={Boolean(resolving)}
-              onClick={() => void resolve('deny')}
-            >
-              Deny
-            </Button>
-            <Button
-              buttonSize="s"
-              buttonType="primary"
-              disabled={Boolean(resolving)}
-              onClick={() => void resolve('approve')}
-            >
-              Approve
-            </Button>
-          </div>
+          <>
+            {resolveError && (
+              <p className={styles.resolveError} role="alert">
+                {resolveError}
+              </p>
+            )}
+            <div className={styles.actions}>
+              <Button
+                buttonSize="s"
+                buttonType="negative"
+                disabled={Boolean(resolving)}
+                onClick={() => void resolve('deny')}
+              >
+                {resolving === 'deny' ? 'Denying…' : 'Deny'}
+              </Button>
+              <Button
+                buttonSize="s"
+                buttonType="primary"
+                disabled={Boolean(resolving)}
+                onClick={() => void resolve('approve')}
+              >
+                {resolving === 'approve' ? 'Approving…' : 'Approve'}
+              </Button>
+            </div>
+          </>
         )}
       </div>
     </Canvas>

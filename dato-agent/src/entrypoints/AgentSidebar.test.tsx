@@ -6,9 +6,12 @@ import type {
 } from 'datocms-plugin-sdk';
 import { type ReactNode, useRef } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { migrateConversationScope } from '../lib/conversationScopeMigration';
 import {
   type Conversation,
+  conversationStorageKey,
   createConversationStore,
+  type StorageLike,
 } from '../lib/conversations';
 import type { AgentFrameProps } from './AgentFrame';
 import AgentSidebar from './AgentSidebar';
@@ -328,6 +331,83 @@ describe('AgentSidebar local current-form capabilities', () => {
       'second-new-record-chat',
     ]);
     expect(localStorage.getItem(firstSourceStore.key)).toBeNull();
+  });
+
+  it('recovers a transiently failed new-record migration when the saved record is reopened', async () => {
+    const title = field('title', 'title');
+    const sourceScope = {
+      type: 'custom' as const,
+      id: 'new:model:previous-mount',
+    };
+    const targetScope = {
+      type: 'record' as const,
+      recordId: 'record-after-reopen',
+    };
+    const storageIdentity = {
+      pluginId: 'plugin',
+      siteId: 'site',
+      environment: 'primary',
+      currentUserId: 'user',
+    };
+    const sourceContext = { ...storageIdentity, scope: sourceScope };
+    const targetContext = { ...storageIdentity, scope: targetScope };
+    const sourceStore = createConversationStore(sourceContext);
+    sourceStore.save({
+      id: 'new-record-chat',
+      title: 'New record chat',
+      createdAt: '2026-07-30T10:00:00.000Z',
+      updatedAt: '2026-07-30T10:00:00.000Z',
+      messages: [
+        {
+          id: 'message-1',
+          role: 'user',
+          text: 'Help me finish this page',
+          createdAt: '2026-07-30T10:00:00.000Z',
+        },
+      ],
+    });
+
+    const targetKey = conversationStorageKey(targetContext);
+    let failTargetWrite = true;
+    const transientStorage: StorageLike = {
+      get length() {
+        return localStorage.length;
+      },
+      getItem: (key) => localStorage.getItem(key),
+      key: (index) => localStorage.key(index),
+      setItem: (key, value) => {
+        if (failTargetWrite && key === targetKey) {
+          throw new Error('temporary target write failure');
+        }
+        localStorage.setItem(key, value);
+      },
+      removeItem: (key) => localStorage.removeItem(key),
+    };
+
+    expect(
+      migrateConversationScope(sourceContext, targetContext, transientStorage),
+    ).toBe('failed');
+    failTargetWrite = false;
+
+    render(
+      <AgentSidebar
+        ctx={context({
+          fields: [title],
+          formValues: { title: 'Saved page' },
+          itemId: targetScope.recordId,
+        })}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(mocks.frameProps?.scope).toEqual(targetScope);
+      expect(
+        createConversationStore(targetContext)
+          .list()
+          .map((item) => item.id),
+      ).toEqual(['new-record-chat']);
+      expect(localStorage.getItem(sourceStore.key)).toBeNull();
+    });
   });
 
   it('verifies field references, reads bounded live values, and only scrolls on click', async () => {

@@ -9,6 +9,7 @@ type MentionChipProps = {
   isInComposer?: boolean;
   /** Optional project users for resolving user mention name overrides */
   projectUsers?: UserInfo[];
+  currentRecordId?: string;
 };
 
 /** Renders a styled mention chip. Memoized; MentionDisplay handles deep comparison. */
@@ -17,6 +18,7 @@ const MentionChipComponent = ({
   onClick,
   isInComposer = false,
   projectUsers,
+  currentRecordId,
 }: MentionChipProps) => {
   const handleClick = (e: React.MouseEvent) => {
     onClick?.(mention, e);
@@ -28,6 +30,7 @@ const MentionChipComponent = ({
       onClick={handleClick}
       tabIndex={isInComposer ? -1 : 0}
       projectUsers={projectUsers}
+      currentRecordId={currentRecordId}
     />
   );
 };

@@ -6,6 +6,7 @@ type ProjectDataContextType = {
   projectModels: ModelInfo[];
   modelFields: FieldInfo[];
   currentUserId: string;
+  currentRecordId?: string;
 };
 
 const ProjectDataContext = createContext<ProjectDataContextType | null>(null);
@@ -16,10 +17,17 @@ export function ProjectDataProvider({
   projectModels,
   modelFields,
   currentUserId,
+  currentRecordId,
 }: ProjectDataContextType & { children: ReactNode }) {
   const value = useMemo(
-    () => ({ projectUsers, projectModels, modelFields, currentUserId }),
-    [projectUsers, projectModels, modelFields, currentUserId],
+    () => ({
+      projectUsers,
+      projectModels,
+      modelFields,
+      currentUserId,
+      currentRecordId,
+    }),
+    [projectUsers, projectModels, modelFields, currentUserId, currentRecordId],
   );
 
   return (

@@ -131,6 +131,27 @@ function configFingerprint(config: AgentConfig): string {
   return JSON.stringify(config);
 }
 
+function providerConfigurationFingerprint(config: AgentConfig): string {
+  return JSON.stringify(
+    config.provider === 'openai'
+      ? {
+          provider: config.provider,
+          apiKey: config.openAiApiKey,
+          model: config.model,
+          reasoningEffort: config.reasoningEffort,
+          fastMode: config.openAiFastMode,
+        }
+      : {
+          provider: config.provider,
+          apiKey: config.anthropicApiKey,
+          model: config.anthropicModel,
+          modelMaxOutputTokens: config.anthropicModelMaxOutputTokens,
+          reasoningEffort: config.anthropicReasoningEffort,
+          fastMode: config.anthropicFastMode,
+        },
+  );
+}
+
 function discoveryRequestKey(
   provider: AgentProvider,
   apiKey: string,
@@ -565,6 +586,7 @@ export default function ConfigScreen({ ctx }: Props) {
   );
   const incomingConfigRef = useRef(incomingConfig);
   incomingConfigRef.current = incomingConfig;
+  const savedConfigRef = useRef(incomingConfig);
   const [config, setConfig] = useState<AgentConfig>(() => incomingConfig);
   const [savedConfigFingerprint, setSavedConfigFingerprint] = useState(() =>
     configFingerprint(incomingConfig),
@@ -592,6 +614,7 @@ export default function ConfigScreen({ ctx }: Props) {
         : current,
     );
     savedConfigFingerprintRef.current = incomingConfigFingerprint;
+    savedConfigRef.current = incomingConfigRef.current;
     setSavedConfigFingerprint(incomingConfigFingerprint);
   }, [incomingConfigFingerprint]);
 
@@ -658,8 +681,10 @@ export default function ConfigScreen({ ctx }: Props) {
   const saveDisabled =
     saving ||
     !isDirty ||
-    modelDiscovery.loading ||
-    Boolean(apiKey.trim() && !modelDiscovery.loaded);
+    (providerConfigurationFingerprint(config) !==
+      providerConfigurationFingerprint(savedConfigRef.current) &&
+      (modelDiscovery.loading ||
+        Boolean(apiKey.trim() && !modelDiscovery.loaded)));
   const retryModelDiscovery = () =>
     setModelRetryAttempt((attempt) => attempt + 1);
 
@@ -674,16 +699,20 @@ export default function ConfigScreen({ ctx }: Props) {
     }
 
     setAttemptedSave(true);
-    const selectedModelForSave = modelDiscovery.models.find(
-      (candidate) => candidate.id === activeModel(config),
-    );
+    const providerConfigurationChanged =
+      providerConfigurationFingerprint(config) !==
+      providerConfigurationFingerprint(savedConfigRef.current);
+    const selectedModelForSave = providerConfigurationChanged
+      ? modelDiscovery.models.find(
+          (candidate) => candidate.id === activeModel(config),
+        )
+      : undefined;
     const configForSave = selectedModelForSave
       ? configWithSelectedModel(config, selectedModelForSave)
       : config;
-    const validationError = configurationValidationError(
-      configForSave,
-      modelDiscovery,
-    );
+    const validationError = providerConfigurationChanged
+      ? configurationValidationError(configForSave, modelDiscovery)
+      : undefined;
     if (validationError) {
       return;
     }
@@ -696,6 +725,7 @@ export default function ConfigScreen({ ctx }: Props) {
       );
       const nextFingerprint = configFingerprint(normalizedConfig);
       savedConfigFingerprintRef.current = nextFingerprint;
+      savedConfigRef.current = normalizedConfig;
       setSavedConfigFingerprint(nextFingerprint);
       setConfig(normalizedConfig);
       setAttemptedSave(false);

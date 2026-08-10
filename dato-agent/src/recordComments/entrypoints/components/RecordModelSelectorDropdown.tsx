@@ -2,7 +2,9 @@ import type { ModelInfo } from '@hooks/useMentions';
 import styles from '@styles/comment.module.css';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { cn } from '@/utils/cn';
+import { RecordMentionIcon } from './Icons';
 import { MentionDropdownBase } from './shared/MentionDropdownBase';
+import { MentionDropdownOptionContent } from './shared/MentionDropdownOptionContent';
 
 type RecordModelSelectorDropdownProps = {
   models: ModelInfo[];
@@ -84,7 +86,9 @@ const RecordModelSelectorDropdown = ({
     <div className={styles.recordModelSearchWrapper} onKeyDown={handleKeyDown}>
       <input
         aria-label="Search record models"
+        autoComplete="off"
         ref={inputRef}
+        spellCheck={false}
         type="text"
         className={styles.recordModelSearchInput}
         placeholder="Search models..."
@@ -101,7 +105,7 @@ const RecordModelSelectorDropdown = ({
     <MentionDropdownBase
       items={filteredModels}
       emptyMessage={emptyMessage}
-      headerText="Select a Model"
+      headerText="Records"
       selectedIndex={selectedIndex}
       onClose={onClose}
       position={position}
@@ -115,16 +119,20 @@ const RecordModelSelectorDropdown = ({
             styles.mentionOption,
             isSelected && styles.mentionOptionSelected,
           )}
+          role="menuitem"
           onMouseDown={(e) => {
             e.preventDefault();
-            onSelect(model);
           }}
+          onClick={() => onSelect(model)}
           onMouseEnter={() => setSelectedIndex(index)}
         >
-          <span className={styles.mentionModelInfo}>
-            <span className={styles.mentionModelName}>{model.name}</span>
-          </span>
-          <span className={styles.mentionFieldApiKey}>${model.apiKey}</span>
+          <MentionDropdownOptionContent
+            leading={<RecordMentionIcon aria-hidden="true" />}
+            title={model.name}
+            trailing={
+              <span className={styles.mentionFieldApiKey}>${model.apiKey}</span>
+            }
+          />
         </button>
       )}
     />

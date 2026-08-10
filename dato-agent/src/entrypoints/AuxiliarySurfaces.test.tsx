@@ -89,6 +89,26 @@ describe('auxiliary surfaces', () => {
     },
   );
 
+  it('keeps approval actions available after the decision cannot be saved', async () => {
+    const resolve = vi.fn().mockRejectedValue(new Error('Frame closed'));
+    const ctx = {
+      parameters: {
+        canDecide: true,
+        details: [{ label: 'Target', value: 'Homepage' }],
+      },
+      resolve,
+    } as unknown as RenderModalCtx;
+
+    render(<ApprovalDetailsModal ctx={ctx} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Could not save this decision. Try again.',
+    );
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Deny' })).toBeEnabled();
+  });
+
   it('distinguishes a session-local file from a DatoCMS asset', () => {
     const availableCtx = {
       parameters: {

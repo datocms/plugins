@@ -4,12 +4,28 @@ import type {
 } from './mentions';
 
 const filesById = new Map<string, File>();
+let retainedFileBytes = 0;
 let fallbackId = 0;
 
 export const MAX_LOCAL_FILES_PER_MESSAGE = 5;
 export const MAX_LOCAL_FILE_BYTES = 20 * 1024 * 1024;
 export const MAX_LOCAL_IMAGE_FILE_BYTES = 10 * 1024 * 1024;
 export const MAX_LOCAL_FILES_TOTAL_BYTES = 25 * 1024 * 1024;
+export const MAX_SESSION_LOCAL_FILES = 50;
+export const MAX_SESSION_LOCAL_FILE_BYTES = 250 * 1024 * 1024;
+
+function enforceSessionFileBounds(): void {
+  while (
+    filesById.size > MAX_SESSION_LOCAL_FILES ||
+    retainedFileBytes > MAX_SESSION_LOCAL_FILE_BYTES
+  ) {
+    const oldest = filesById.entries().next().value;
+    if (!oldest) break;
+    const [id, file] = oldest;
+    filesById.delete(id);
+    retainedFileBytes -= file.size;
+  }
+}
 
 export function localFileMaximumBytes(mimeType: string): number {
   return mimeType.startsWith('image/')
@@ -44,6 +60,8 @@ export function registerLocalFile(file: File): LocalFileMention {
   while (filesById.has(id)) id = createLocalFileId();
 
   filesById.set(id, file);
+  retainedFileBytes += file.size;
+  enforceSessionFileBounds();
   return {
     type: 'file',
     id,
@@ -55,7 +73,12 @@ export function registerLocalFile(file: File): LocalFileMention {
 }
 
 export function getSessionLocalFile(id: string): File | undefined {
-  return filesById.get(id);
+  const file = filesById.get(id);
+  if (file) {
+    filesById.delete(id);
+    filesById.set(id, file);
+  }
+  return file;
 }
 
 export function hasSessionLocalFileBytes(id: string): boolean {
@@ -65,4 +88,5 @@ export function hasSessionLocalFileBytes(id: string): boolean {
 /** Test-only cleanup; browser navigation naturally releases the registry. */
 export function clearSessionLocalFiles(): void {
   filesById.clear();
+  retainedFileBytes = 0;
 }

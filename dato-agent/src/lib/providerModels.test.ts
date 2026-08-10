@@ -103,6 +103,28 @@ describe('provider model discovery', () => {
     ]);
   });
 
+  it('prefers the newest dated OpenAI snapshot within each model family', async () => {
+    const fetchModels = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse({
+        data: [
+          { id: 'gpt-5.6-sol-2026-05-01' },
+          { id: 'gpt-5.6-terra-2026-04-01' },
+          { id: 'gpt-5.6-terra-2026-07-15' },
+          { id: 'gpt-5.6-sol-2026-08-01' },
+        ],
+      }),
+    );
+
+    await expect(
+      listOpenAiProviderModels('sk-project', undefined, fetchModels),
+    ).resolves.toMatchObject([
+      { id: 'gpt-5.6-terra-2026-07-15' },
+      { id: 'gpt-5.6-terra-2026-04-01' },
+      { id: 'gpt-5.6-sol-2026-08-01' },
+      { id: 'gpt-5.6-sol-2026-05-01' },
+    ]);
+  });
+
   it('paginates Anthropic models and uses returned capabilities and labels', async () => {
     const fetchModels = vi
       .fn<typeof fetch>()

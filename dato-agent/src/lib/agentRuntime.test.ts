@@ -15,6 +15,7 @@ import {
   createAgentRuntime,
   DEFAULT_AGENT_MODEL,
   DEFAULT_MAX_CONTINUATIONS,
+  DEFAULT_MAX_TOOL_CALLS,
   MAX_AGENT_ATTACHMENTS_PER_MESSAGE,
   MAX_CURRENT_FORM_STATE_FIELDS,
   MAX_DISTINCT_MODEL_SCHEMAS_PER_TURN,
@@ -1833,6 +1834,94 @@ describe('AgentRuntime', () => {
     expect(client.requests).toHaveLength(2);
   });
 
+  it('confirms an approved write before exposing the next sequential approval', async () => {
+    const firstApproval = scriptApproval('unsafe', 'approval-sequential-1');
+    const secondApproval = scriptApproval('unsafe', 'approval-sequential-2');
+    const client = new QueueResponsesClient([
+      eventsFor(response('resp_sequential_1', [firstApproval])),
+      eventsFor(response('resp_sequential_2', [secondApproval])),
+      eventsFor(response('resp_sequential_done'), ['Both changes completed']),
+    ]);
+    const runtime = runtimeWith(client);
+    const firstBeforeDispatch = vi.fn();
+    const settlementOrder: string[] = [];
+    const firstConfirmed = vi.fn(() => {
+      settlementOrder.push('first-confirmed');
+    });
+    const secondBeforeDispatch = vi.fn();
+    const secondConfirmed = vi.fn();
+
+    const first = await drain(
+      runtime.streamTurn({ message: 'Apply both changes' }),
+    );
+    expect(first.result).toMatchObject({
+      status: 'approval_required',
+      responseId: 'resp_sequential_1',
+    });
+
+    const secondEvents: AgentRuntimeEvent[] = [];
+    let secondResult: AgentTurnResult | undefined;
+    const secondContinuation = runtime.continueApproval({
+      responseId: 'resp_sequential_1',
+      approvalRequestId: firstApproval.id,
+      approve: true,
+      unsafeDispatchCallbacks: {
+        beforeDispatch: firstBeforeDispatch,
+        confirmed: firstConfirmed,
+      },
+    });
+    while (true) {
+      // biome-ignore lint/performance/noAwaitInLoops: Event ordering is the behavior under test.
+      const next = await secondContinuation.next();
+      if (next.done) {
+        secondResult = next.value;
+        break;
+      }
+      secondEvents.push(next.value);
+      if (next.value.type === 'approval_required') {
+        settlementOrder.push('second-approval-exposed');
+      }
+    }
+
+    expect(secondResult).toMatchObject({
+      status: 'approval_required',
+      responseId: 'resp_sequential_2',
+      confirmedApprovalIds: [firstApproval.id],
+    });
+    expect(
+      secondEvents.some((event) => event.type === 'approval_required'),
+    ).toBe(true);
+    expect(settlementOrder).toEqual([
+      'first-confirmed',
+      'second-approval-exposed',
+    ]);
+    expect(firstBeforeDispatch).toHaveBeenCalledWith([firstApproval.id]);
+    expect(firstConfirmed).toHaveBeenCalledOnce();
+    expect(firstConfirmed).toHaveBeenCalledWith([firstApproval.id]);
+
+    const completed = await drain(
+      runtime.continueApproval({
+        responseId: 'resp_sequential_2',
+        approvalRequestId: secondApproval.id,
+        approve: true,
+        unsafeDispatchCallbacks: {
+          beforeDispatch: secondBeforeDispatch,
+          confirmed: secondConfirmed,
+        },
+      }),
+    );
+
+    expect(completed.result).toMatchObject({
+      status: 'completed',
+      responseId: 'resp_sequential_done',
+      text: 'Both changes completed',
+    });
+    expect(secondBeforeDispatch).toHaveBeenCalledWith([secondApproval.id]);
+    expect(secondConfirmed).toHaveBeenCalledOnce();
+    expect(secondConfirmed).toHaveBeenCalledWith([secondApproval.id]);
+    expect(client.requests).toHaveLength(3);
+  });
+
   it('does not send an approved continuation when durable journaling fails', async () => {
     const approval = scriptApproval('unsafe', 'approval-journal-failure');
     const client = new QueueResponsesClient([
@@ -1904,6 +1993,83 @@ describe('AgentRuntime', () => {
         output: expect.stringContaining('"apiKey":"article"'),
       }),
     ]);
+  });
+
+  it('preserves continuation, schema, and tool-call budgets across approval', async () => {
+    const approval = scriptApproval('unsafe', 'approval-after-schemas');
+    const initialSchemaCalls = Array.from(
+      { length: MAX_DISTINCT_MODEL_SCHEMAS_PER_TURN },
+      (_, index) =>
+        modelSchemaCall(
+          { identifier: `model_${index}`, cursor: null },
+          `schema-before-approval-${index}`,
+        ),
+    );
+    const schemaAfterApproval = modelSchemaCall(
+      { identifier: 'model_after_approval', cursor: null },
+      'schema-after-approval',
+    );
+    const client = new QueueResponsesClient([
+      eventsFor(
+        response('resp_budget_approval', [...initialSchemaCalls, approval]),
+      ),
+      eventsFor(response('resp_budget_after_approval', [schemaAfterApproval])),
+      eventsFor(response('must_not_run'), ['Unexpected extra continuation.']),
+    ]);
+    const getModelSchema = vi.fn(async ({ identifier }) => ({
+      model: identifier,
+      fields: [],
+    }));
+    const runtime = runtimeWith(client, {
+      getModelSchema,
+      maxContinuations: 2,
+    });
+
+    const pending = await drain(
+      runtime.streamTurn({ message: 'Check the fields, then update it.' }),
+    );
+    expect(pending.result).toMatchObject({
+      status: 'approval_required',
+      responseId: 'resp_budget_approval',
+      continuationCount: 0,
+    });
+
+    const settled = await drain(
+      runtime.continueApproval({
+        responseId: 'resp_budget_approval',
+        approvalRequestId: approval.id,
+        approve: false,
+      }),
+    );
+
+    expect(client.requests).toHaveLength(2);
+    expect(
+      (
+        client.requests[1] as ResponseCreateParamsStreaming & {
+          max_tool_calls?: number;
+        }
+      ).max_tool_calls,
+    ).toBe(DEFAULT_MAX_TOOL_CALLS - MAX_DISTINCT_MODEL_SCHEMAS_PER_TURN - 1);
+    expect(getModelSchema).toHaveBeenCalledTimes(
+      MAX_DISTINCT_MODEL_SCHEMAS_PER_TURN,
+    );
+    expect(
+      settled.events.some(
+        (event) =>
+          event.type === 'activity' &&
+          event.activity.id === 'schema-after-approval' &&
+          event.activity.status === 'failed' &&
+          event.activity.error?.includes(
+            'items.rawList search with filter.query',
+          ),
+      ),
+    ).toBe(true);
+    expect(settled.result).toMatchObject({
+      status: 'failed',
+      responseId: 'resp_budget_after_approval',
+      continuationCount: 2,
+      error: { code: 'continuation_limit' },
+    });
   });
 
   it('does not expose an approval until its response is terminal', async () => {
@@ -1985,6 +2151,7 @@ describe('AgentRuntime', () => {
           approve: true,
         },
       ],
+      max_tool_calls: DEFAULT_MAX_TOOL_CALLS,
     });
   });
 

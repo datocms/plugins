@@ -1,7 +1,9 @@
 import type { ModelInfo } from '@hooks/useMentions';
 import styles from '@styles/comment.module.css';
 import { cn } from '@/utils/cn';
+import { ModelMentionIcon } from './Icons';
 import { MentionDropdownBase } from './shared/MentionDropdownBase';
+import { MentionDropdownOptionContent } from './shared/MentionDropdownOptionContent';
 
 type ModelMentionDropdownProps = {
   models: ModelInfo[];
@@ -10,6 +12,7 @@ type ModelMentionDropdownProps = {
   onSelect: (model: ModelInfo) => void;
   onClose: () => void;
   position?: 'above' | 'below';
+  onSelectedIndexChange?: (index: number) => void;
 };
 
 const ModelMentionDropdown = ({
@@ -19,6 +22,7 @@ const ModelMentionDropdown = ({
   onSelect,
   onClose,
   position = 'below',
+  onSelectedIndexChange,
 }: ModelMentionDropdownProps) => {
   const emptyMessage = query
     ? `No models matching "${query}"`
@@ -33,7 +37,7 @@ const ModelMentionDropdown = ({
       onClose={onClose}
       position={position}
       keyExtractor={(model) => model.id}
-      renderItem={(model, _index, isSelected, selectedRef) => (
+      renderItem={(model, index, isSelected, selectedRef) => (
         <button
           ref={isSelected ? selectedRef : null}
           type="button"
@@ -41,19 +45,28 @@ const ModelMentionDropdown = ({
             styles.mentionOption,
             isSelected && styles.mentionOptionSelected,
           )}
+          role="menuitem"
           onMouseDown={(e) => {
             // Prevent blur on textarea
             e.preventDefault();
-            onSelect(model);
           }}
+          onClick={() => onSelect(model)}
+          onMouseEnter={() => onSelectedIndexChange?.(index)}
         >
-          <span className={styles.mentionModelInfo}>
-            <span className={styles.mentionModelName}>{model.name}</span>
-            {model.isBlockModel && (
-              <span className={styles.mentionModelBadge}>Block</span>
-            )}
-          </span>
-          <span className={styles.mentionFieldApiKey}>${model.apiKey}</span>
+          <MentionDropdownOptionContent
+            leading={<ModelMentionIcon aria-hidden="true" />}
+            title={model.name}
+            trailing={
+              <span className={styles.mentionOptionMeta}>
+                {model.isBlockModel && (
+                  <span className={styles.mentionModelBadge}>Block</span>
+                )}
+                <span className={styles.mentionFieldApiKey}>
+                  ${model.apiKey}
+                </span>
+              </span>
+            }
+          />
         </button>
       )}
     />

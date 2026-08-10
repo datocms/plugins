@@ -105,8 +105,8 @@ describe('conversation persistence', () => {
     expect(projectKey).toContain('user-1');
   });
 
-  it('keeps only the three newest conversations in each scoped path by default', () => {
-    expect(DEFAULT_MAX_CONVERSATIONS).toBe(3);
+  it('keeps only the six newest conversations in each scoped path by default', () => {
+    expect(DEFAULT_MAX_CONVERSATIONS).toBe(6);
 
     const storage = new MemoryStorage();
     const retentionContext = { ...baseContext, siteId: 'retention-site' };
@@ -131,13 +131,13 @@ describe('conversation persistence', () => {
     for (const { name, context } of contexts) {
       const store = createConversationStore(context, storage);
 
-      for (const [index, hour] of [10, 11, 12, 13].entries()) {
+      for (const [index, hour] of [10, 11, 12, 13, 14, 15, 16].entries()) {
         store.save(
           conversation(`${name}-${index + 1}`, `2026-07-28T${hour}:00:00.000Z`),
         );
       }
 
-      const expectedIds = [`${name}-4`, `${name}-3`, `${name}-2`];
+      const expectedIds = [7, 6, 5, 4, 3, 2].map((index) => `${name}-${index}`);
       expect(store.list().map((item) => item.id)).toEqual(expectedIds);
 
       const persisted = JSON.parse(storage.getItem(store.key) ?? '{}') as {
@@ -149,13 +149,13 @@ describe('conversation persistence', () => {
     }
   });
 
-  it('physically prunes browser data written before the three-chat limit', () => {
+  it('physically prunes browser data written before the six-chat limit', () => {
     const storage = new MemoryStorage();
     const store = createConversationStore(
       { ...baseContext, siteId: 'legacy-retention-site' },
       storage,
     );
-    const conversations = [10, 11, 12, 13].map((hour, index) =>
+    const conversations = [10, 11, 12, 13, 14, 15, 16, 17].map((hour, index) =>
       conversation(`legacy-${index + 1}`, `2026-07-28T${hour}:00:00.000Z`),
     );
     storage.setItem(
@@ -167,18 +167,24 @@ describe('conversation persistence', () => {
     );
 
     expect(store.list().map((item) => item.id)).toEqual([
+      'legacy-8',
+      'legacy-7',
+      'legacy-6',
+      'legacy-5',
       'legacy-4',
       'legacy-3',
-      'legacy-2',
     ]);
 
     const persisted = JSON.parse(storage.getItem(store.key) ?? '{}') as {
       conversations?: Conversation[];
     };
     expect(persisted.conversations?.map((item) => item.id)).toEqual([
+      'legacy-8',
+      'legacy-7',
+      'legacy-6',
+      'legacy-5',
       'legacy-4',
       'legacy-3',
-      'legacy-2',
     ]);
   });
 

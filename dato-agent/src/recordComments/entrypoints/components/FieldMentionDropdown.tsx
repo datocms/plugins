@@ -1,9 +1,12 @@
 import type { FieldInfo } from '@hooks/useMentions';
 import styles from '@styles/comment.module.css';
 import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
+import { BackIcon } from 'datocms-react-ui';
 import { useEffect } from 'react';
 import { cn } from '@/utils/cn';
+import { FieldMentionIcon } from './Icons';
 import { MentionDropdownBase } from './shared/MentionDropdownBase';
+import { MentionDropdownOptionContent } from './shared/MentionDropdownOptionContent';
 
 type FieldMentionDropdownProps = {
   fields: FieldInfo[];
@@ -119,10 +122,21 @@ export default function FieldMentionDropdown({
     return (
       <MentionDropdownBase
         emptyMessage="No locales available"
-        headerText={`Select locale for ${localeField.label}`}
+        headerLeading={
+          <button
+            aria-label="Back to fields"
+            className={styles.mentionBackButton}
+            onClick={() => onClearPendingField?.()}
+            onMouseDown={(event) => event.preventDefault()}
+            type="button"
+          >
+            <BackIcon height={10} width={6} />
+          </button>
+        }
+        headerText={`Locale · ${localeField.label}`}
         items={locales}
         keyExtractor={(locale) => locale}
-        onClose={() => onClearPendingField?.()}
+        onClose={onClose}
         position={position}
         renderItem={(locale, _index, isSelected, selectedRef) => (
           <button
@@ -130,10 +144,11 @@ export default function FieldMentionDropdown({
               styles.mentionOption,
               isSelected && styles.mentionOptionSelected,
             )}
+            role="menuitem"
             onMouseDown={(event) => {
               event.preventDefault();
-              onSelect(localeField, locale);
             }}
+            onClick={() => onSelect(localeField, locale)}
             onMouseEnter={() => onSelectedIndexChange?.(_index)}
             ref={isSelected ? selectedRef : null}
             type="button"
@@ -141,7 +156,7 @@ export default function FieldMentionDropdown({
             <span className={styles.mentionLocaleBadge}>
               {locale.toUpperCase()}
             </span>
-            <span className={styles.mentionFieldLabel}>{locale}</span>
+            <span className={styles.mentionOptionTitle}>{locale}</span>
           </button>
         )}
         selectedIndex={Math.min(selectedIndex, Math.max(0, locales.length - 1))}
@@ -152,6 +167,16 @@ export default function FieldMentionDropdown({
   const emptyMessage = isLoading
     ? 'Loading fields…'
     : errorMessage || (query ? `No fields matching "${query}"` : 'No fields');
+  const retryAction =
+    errorMessage && onRetry ? (
+      <button
+        className={styles.mentionRetryButton}
+        onClick={onRetry}
+        type="button"
+      >
+        Retry
+      </button>
+    ) : undefined;
 
   return (
     <MentionDropdownBase
@@ -167,33 +192,40 @@ export default function FieldMentionDropdown({
             styles.mentionOption,
             isSelected && styles.mentionOptionSelected,
           )}
+          role="menuitem"
           onMouseDown={(event) => {
             event.preventDefault();
+          }}
+          onClick={() => {
             if (field.localized && (field.availableLocales?.length ?? 0) > 1) {
               onSelect(field);
               return;
             }
             onSelect(field, field.availableLocales?.[0]);
           }}
+          onMouseEnter={() => onSelectedIndexChange?.(_index)}
           ref={isSelected ? selectedRef : null}
           type="button"
         >
-          <span className={styles.mentionFieldLabel}>{field.displayLabel}</span>
-          <span className={styles.mentionFieldApiKey}>#{field.apiKey}</span>
+          <MentionDropdownOptionContent
+            leading={<FieldMentionIcon aria-hidden="true" />}
+            title={field.displayLabel}
+            trailing={
+              <span className={styles.mentionFieldApiKey}>#{field.apiKey}</span>
+            }
+          />
         </button>
       )}
-      searchSlot={
-        errorMessage && onRetry ? (
-          <button
-            className={styles.mentionRetryButton}
-            onClick={onRetry}
-            type="button"
-          >
-            Retry
-          </button>
-        ) : undefined
-      }
+      emptyAction={retryAction}
       selectedIndex={selectedIndex}
+      statusAction={retryAction}
+      statusMessage={
+        isLoading
+          ? 'Loading fields…'
+          : errorMessage
+            ? 'Couldn’t refresh fields.'
+            : undefined
+      }
     />
   );
 }

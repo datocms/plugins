@@ -132,7 +132,10 @@ describe('auto-approval confirmation', () => {
     expect(openConfirm).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
-        title: 'Turn on auto-approve?',
+        title: 'Auto-approve is dangerous',
+        content: expect.stringMatching(
+          /non-deterministic.*unexpected changes/i,
+        ),
         choices: [
           expect.objectContaining({ value: 'continue', intent: 'negative' }),
         ],
@@ -141,9 +144,9 @@ describe('auto-approval confirmation', () => {
     expect(openConfirm).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
-        title: 'Allow changes without review?',
-        content: expect.stringContaining(
-          'creating, updating, publishing, unpublishing, and deleting',
+        title: 'Accept the risk?',
+        content: expect.stringMatching(
+          /dangerous.*create, update, publish, unpublish, or delete.*non-deterministic/i,
         ),
         choices: [
           expect.objectContaining({ value: 'enable', intent: 'negative' }),

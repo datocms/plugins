@@ -207,6 +207,26 @@ describe('MentionDisplay', () => {
     expect(onClick).toHaveBeenCalledOnce();
   });
 
+  it('disables and grays the currently open record with a clear tooltip', () => {
+    const onClick = vi.fn();
+    const { container } = render(
+      <MentionDisplay
+        currentRecordId={mentions.record.id}
+        mention={mentions.record}
+        onClick={onClick}
+      />,
+    );
+    const button = screen.getByRole('button', {
+      name: 'Current record: Homepage',
+    });
+
+    expect(button).toBeDisabled();
+    expect(button.className).toContain('recordMentionCurrent');
+    expectPortaledTooltip(container, button, 'Current record');
+    fireEvent.click(button);
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
   it('renders a visual asset thumbnail and falls back to a portaled filename tooltip on image failure', () => {
     const onClick = vi.fn();
     const filename = 'homepage-hero.jpg';

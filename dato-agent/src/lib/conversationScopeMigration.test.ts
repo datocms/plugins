@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { migrateConversationScope } from './conversationScopeMigration';
+import {
+  migrateConversationScope,
+  pendingConversationScopeMigrationSource,
+} from './conversationScopeMigration';
 import {
   type Conversation,
   type ConversationStorageContext,
@@ -105,7 +108,12 @@ describe('conversation scope migration', () => {
       migrateConversationScope(sourceContext, targetContext, storage),
     ).toBe('migrated');
     expect(new Set(targetStore.list().map((item) => item.id))).toEqual(
-      new Set(['source-older', 'source-newer', 'target-newest']),
+      new Set([
+        'source-older',
+        'source-newer',
+        'target-newest',
+        'target-older',
+      ]),
     );
   });
 
@@ -123,6 +131,32 @@ describe('conversation scope migration', () => {
     ).toBe('failed');
     expect(storage.getItem(sourceStore.key)).toBe(sourceBefore);
     expect(storage.getItem(targetStore.key)).toBe(targetBefore);
+  });
+
+  it('leaves a recoverable marker after a transient copy failure and clears it after retry', () => {
+    const storage = new MemoryStorage();
+    const sourceStore = createConversationStore(sourceContext, storage);
+    const targetStore = createConversationStore(targetContext, storage);
+    sourceStore.save(conversation('source-chat', '2026-07-30T09:00:00.000Z'));
+    storage.failSetFor = targetStore.key;
+
+    expect(
+      migrateConversationScope(sourceContext, targetContext, storage),
+    ).toBe('failed');
+    expect(
+      pendingConversationScopeMigrationSource(targetContext, storage),
+    ).toEqual(sourceContext.scope);
+    expect(sourceStore.list().map((item) => item.id)).toEqual(['source-chat']);
+
+    storage.failSetFor = undefined;
+    expect(
+      migrateConversationScope(sourceContext, targetContext, storage),
+    ).toBe('migrated');
+    expect(
+      pendingConversationScopeMigrationSource(targetContext, storage),
+    ).toBeUndefined();
+    expect(targetStore.list().map((item) => item.id)).toEqual(['source-chat']);
+    expect(storage.getItem(sourceStore.key)).toBeNull();
   });
 
   it('rolls back the destination and index when clearing the source fails', () => {

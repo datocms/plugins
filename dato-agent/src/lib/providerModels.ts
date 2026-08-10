@@ -96,6 +96,43 @@ function openAiModelPriority(modelId: string): number {
   return 4;
 }
 
+function datedOpenAiModelParts(modelId: string): {
+  familyPriority: number;
+  date: string;
+} {
+  const match = modelId.match(
+    /^gpt-5\.6(?:-(sol|terra|luna))?-(\d{4}-\d{2}-\d{2})$/,
+  );
+  const familyPriority =
+    match?.[1] === 'terra'
+      ? 0
+      : match?.[1] === 'sol'
+        ? 1
+        : match?.[1] === 'luna'
+          ? 2
+          : 3;
+  return { familyPriority, date: match?.[2] ?? '' };
+}
+
+function compareOpenAiModels(left: string, right: string): number {
+  const leftPriority = openAiModelPriority(left);
+  const rightPriority = openAiModelPriority(right);
+  if (leftPriority !== rightPriority) {
+    return leftPriority - rightPriority;
+  }
+  if (leftPriority < 4) {
+    return left.localeCompare(right);
+  }
+
+  const leftDated = datedOpenAiModelParts(left);
+  const rightDated = datedOpenAiModelParts(right);
+  return (
+    leftDated.familyPriority - rightDated.familyPriority ||
+    rightDated.date.localeCompare(leftDated.date) ||
+    left.localeCompare(right)
+  );
+}
+
 function extractOpenAiModels(payload: unknown): ProviderModel[] {
   if (!isRecord(payload) || !Array.isArray(payload.data)) {
     throw new Error('OpenAI returned an invalid model list.');
@@ -111,11 +148,7 @@ function extractOpenAiModels(payload: unknown): ProviderModel[] {
 
   return Array.from(new Set(modelIds))
     .filter(isCompatibleOpenAiAgentModel)
-    .sort(
-      (left, right) =>
-        openAiModelPriority(left) - openAiModelPriority(right) ||
-        left.localeCompare(right),
-    )
+    .sort(compareOpenAiModels)
     .map((id) => ({
       id,
       label: id,

@@ -57,6 +57,11 @@ export type AgentMentionHost = {
     itemTypeId?: string;
     label?: string;
   }) => Promise<RecordMention>;
+  /**
+   * Clears successful record and asset presentation lookups after a CMS write.
+   * Unsafe scripts can affect arbitrary entities, so invalidation is global.
+   */
+  invalidatePresentationCache?: () => void;
   createAsset?: (
     input: AgentAssetCreationInput,
     options?: AgentAssetCreationOptions,
@@ -82,6 +87,8 @@ export type AgentAssetCreationOptions = {
   /** Session-wide auto approve can bypass this one native confirmation. */
   skipConfirmation?: boolean;
   signal?: AbortSignal;
+  /** Runs immediately before the first irreversible upload request is made. */
+  onUploadDispatch?: () => void;
 };
 
 export const MAX_LOCAL_ASSET_URL_BYTES = 50 * 1024 * 1024;
@@ -660,6 +667,7 @@ async function createAssetWithClient({
   options.signal?.throwIfAborted();
   const { fileOrBlob } = await assetCreationSource(input, options.signal);
   options.signal?.throwIfAborted();
+  options.onUploadDispatch?.();
 
   const uploadRequest = client.uploads.createFromFileOrBlob({
     fileOrBlob,
@@ -984,6 +992,10 @@ export function createAgentMentionHost(
     },
     resolveAsset,
     resolveRecord,
+    invalidatePresentationCache: () => {
+      resolvedRecords.clear();
+      resolvedAssets.clear();
+    },
     ...(createAsset ? { createAsset } : {}),
     openLocalFile: async (file) => {
       await openFileDetailsModal(ctx, file, hasSessionLocalFileBytes(file.id));

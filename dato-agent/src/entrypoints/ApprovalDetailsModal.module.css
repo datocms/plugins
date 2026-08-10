@@ -63,6 +63,17 @@
   border-top: 1px solid var(--color--border);
 }
 
+.resolveError {
+  margin: var(--spacing-m) 0 0;
+  color: var(--color--ink-danger);
+  font-size: var(--font-size-s);
+  line-height: 1.4;
+}
+
+.resolveError + .actions {
+  margin-top: var(--spacing-s);
+}
+
 @media (max-width: 560px) {
   .metadata {
     grid-template-columns: 1fr;

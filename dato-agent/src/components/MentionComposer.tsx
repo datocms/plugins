@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { MAX_CONVERSATION_MESSAGE_CHARACTERS } from '../lib/conversations';
 import {
   localFileDescriptorFromMention,
@@ -16,6 +17,7 @@ import {
   segmentsProviderText,
 } from '../lib/mentions';
 import ComposerToolbar from '../recordComments/entrypoints/components/ComposerToolbar';
+import { FileUploadIcon } from '../recordComments/entrypoints/components/Icons';
 import RecordModelSelectorDropdown from '../recordComments/entrypoints/components/RecordModelSelectorDropdown';
 import {
   TipTapComposer,
@@ -34,6 +36,7 @@ import styles from './MentionComposer.module.css';
 type MentionComposerProps = {
   host: AgentMentionHost;
   navigation: NavigationCallbacks;
+  currentRecordId?: string;
   disabled: boolean;
   isRunning: boolean;
   placeholder: string;
@@ -44,6 +47,10 @@ type MentionComposerProps = {
 
 function mentionCount(segments: readonly CommentSegment[]) {
   return segments.filter((segment) => segment.type === 'mention').length;
+}
+
+function dragIncludesFiles(event: DragEvent): boolean {
+  return Array.from(event.dataTransfer?.types ?? []).includes('Files');
 }
 
 const LOCAL_FILE_REJECTION_MESSAGES = {
@@ -116,6 +123,7 @@ function selectAllowedLocalFiles(
 export function MentionComposer({
   host,
   navigation,
+  currentRecordId,
   disabled,
   isRunning,
   placeholder,
@@ -125,7 +133,10 @@ export function MentionComposer({
 }: MentionComposerProps) {
   const composerRef = useRef<TipTapComposerRef>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const fileDragDepthRef = useRef(0);
   const [segments, setSegments] = useState<CommentSegment[]>([]);
+  const segmentsRef = useRef(segments);
+  const [isDraggingFiles, setDraggingFiles] = useState(false);
   const [projectUsers, setProjectUsers] = useState<UserInfo[]>([
     host.currentUser,
   ]);
@@ -152,10 +163,15 @@ export function MentionComposer({
   const usersRequestRef = useRef<Promise<void> | null>(null);
   const fieldsRequestRef = useRef<Promise<void> | null>(null);
   inputDisabledRef.current = inputDisabled;
+  segmentsRef.current = segments;
   const canSubmit = !inputDisabled && !empty && !tooLong && !tooManyMentions;
 
   useEffect(() => {
-    if (inputDisabled) setRecordModelSelectorOpen(false);
+    if (inputDisabled) {
+      fileDragDepthRef.current = 0;
+      setDraggingFiles(false);
+      setRecordModelSelectorOpen(false);
+    }
   }, [inputDisabled]);
 
   const loadUsers = useCallback(
@@ -270,22 +286,78 @@ export function MentionComposer({
     }
   }, [host]);
 
-  const selectLocalFiles = useCallback(
-    (files: FileList | null) => {
-      if (inputDisabledRef.current || !files?.length) return;
+  const selectLocalFiles = useCallback((files: FileList | null) => {
+    if (inputDisabledRef.current || !files?.length) return;
 
-      setPickerError(undefined);
-      const currentSegments = composerRef.current?.getSegments() ?? segments;
-      const { acceptedFiles, error } = selectAllowedLocalFiles(
-        files,
-        currentSegments,
-      );
-      composerRef.current?.insertMentions(acceptedFiles.map(registerLocalFile));
-      if (error) setPickerError(error);
-      composerRef.current?.focus();
-    },
-    [segments],
-  );
+    setPickerError(undefined);
+    const currentSegments =
+      composerRef.current?.getSegments() ?? segmentsRef.current;
+    const { acceptedFiles, error } = selectAllowedLocalFiles(
+      files,
+      currentSegments,
+    );
+    composerRef.current?.insertMentions(acceptedFiles.map(registerLocalFile));
+    if (error) setPickerError(error);
+    composerRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    const resetFileDrag = () => {
+      fileDragDepthRef.current = 0;
+      setDraggingFiles(false);
+    };
+
+    const handleDragEnter = (event: DragEvent) => {
+      if (!dragIncludesFiles(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (inputDisabledRef.current) return;
+      fileDragDepthRef.current += 1;
+      setDraggingFiles(true);
+    };
+
+    const handleDragOver = (event: DragEvent) => {
+      if (!dragIncludesFiles(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = inputDisabledRef.current
+          ? 'none'
+          : 'copy';
+      }
+    };
+
+    const handleDragLeave = (event: DragEvent) => {
+      if (fileDragDepthRef.current === 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      fileDragDepthRef.current = Math.max(0, fileDragDepthRef.current - 1);
+      if (fileDragDepthRef.current === 0) setDraggingFiles(false);
+    };
+
+    const handleDrop = (event: DragEvent) => {
+      if (!dragIncludesFiles(event)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const files = event.dataTransfer?.files ?? null;
+      resetFileDrag();
+      if (!inputDisabledRef.current) selectLocalFiles(files);
+    };
+
+    window.addEventListener('dragenter', handleDragEnter, true);
+    window.addEventListener('dragover', handleDragOver, true);
+    window.addEventListener('dragleave', handleDragLeave, true);
+    window.addEventListener('dragend', resetFileDrag, true);
+    window.addEventListener('drop', handleDrop, true);
+
+    return () => {
+      window.removeEventListener('dragenter', handleDragEnter, true);
+      window.removeEventListener('dragover', handleDragOver, true);
+      window.removeEventListener('dragleave', handleDragLeave, true);
+      window.removeEventListener('dragend', resetFileDrag, true);
+      window.removeEventListener('drop', handleDrop, true);
+    };
+  }, [selectLocalFiles]);
 
   const selectRecord = useCallback(
     async (model: AgentMentionHost['recordModels'][number]) => {
@@ -309,6 +381,7 @@ export function MentionComposer({
   return (
     <ProjectDataProvider
       currentUserId={host.currentUser.id}
+      currentRecordId={currentRecordId}
       modelFields={modelFields}
       projectModels={host.projectModels}
       projectUsers={projectUsers}
@@ -391,19 +464,29 @@ export function MentionComposer({
             isRunning={isRunning}
             isSendDisabled={!canSubmit}
             onAssetClick={() => {
+              composerRef.current?.discardPendingMentionCommand();
+              setRecordModelSelectorOpen(false);
               void selectAsset();
             }}
-            onFieldClick={() =>
-              composerRef.current?.triggerMentionType('field')
-            }
+            onFieldClick={() => {
+              setRecordModelSelectorOpen(false);
+              composerRef.current?.triggerMentionType('field');
+            }}
             onFileClick={() => fileInputRef.current?.click()}
-            onModelClick={() =>
-              composerRef.current?.triggerMentionType('model')
-            }
-            onRecordClick={() => setRecordModelSelectorOpen(true)}
+            onModelClick={() => {
+              setRecordModelSelectorOpen(false);
+              composerRef.current?.triggerMentionType('model');
+            }}
+            onRecordClick={() => {
+              composerRef.current?.discardPendingMentionCommand();
+              setRecordModelSelectorOpen(true);
+            }}
             onSendClick={submit}
             onStopClick={onStop}
-            onUserClick={() => composerRef.current?.triggerMentionType('user')}
+            onUserClick={() => {
+              setRecordModelSelectorOpen(false);
+              composerRef.current?.triggerMentionType('user');
+            }}
           />
         </div>
 
@@ -422,6 +505,21 @@ export function MentionComposer({
           {pickerError && <p role="alert">{pickerError}</p>}
           {persistenceWarning && <p role="alert">{persistenceWarning}</p>}
         </div>
+
+        {isDraggingFiles &&
+          !inputDisabled &&
+          createPortal(
+            <div className={styles.fileDropOverlay} role="status">
+              <span aria-hidden="true" className={styles.fileDropFrame} />
+              <span className={styles.fileDropContent}>
+                <span className={styles.fileDropIcon}>
+                  <FileUploadIcon />
+                </span>
+                <strong>Drop the file here</strong>
+              </span>
+            </div>,
+            document.body,
+          )}
       </NavigationCallbacksProvider>
     </ProjectDataProvider>
   );

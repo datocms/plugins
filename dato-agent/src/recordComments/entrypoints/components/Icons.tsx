@@ -73,6 +73,21 @@ export function DeleteIcon(props: IconProps) {
   );
 }
 
+export function CloseIcon(props: IconProps) {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 16 16"
+      fill="currentColor"
+      aria-hidden="true"
+      {...props}
+    >
+      <path d="M3.646 3.646a.5.5 0 0 1 .708 0L8 7.293l3.646-3.647a.5.5 0 0 1 .708.708L8.707 8l3.647 3.646a.5.5 0 0 1-.708.708L8 8.707l-3.646 3.647a.5.5 0 0 1-.708-.708L7.293 8 3.646 4.354a.5.5 0 0 1 0-.708Z" />
+    </svg>
+  );
+}
+
 export function UserMentionIcon(props: IconProps) {
   return (
     <svg viewBox="0 0 16 16" fill="currentColor" {...props}>

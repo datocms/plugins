@@ -1,7 +1,9 @@
 import type { UserInfo } from '@hooks/useMentions';
 import styles from '@styles/comment.module.css';
 import { cn } from '@/utils/cn';
+import { UserMentionIcon } from './Icons';
 import { MentionDropdownBase } from './shared/MentionDropdownBase';
+import { MentionDropdownOptionContent } from './shared/MentionDropdownOptionContent';
 
 type UserMentionDropdownProps = {
   users: UserInfo[];
@@ -13,6 +15,7 @@ type UserMentionDropdownProps = {
   isLoading?: boolean;
   errorMessage?: string | null;
   onRetry?: () => void;
+  onSelectedIndexChange?: (index: number) => void;
 };
 
 const UserMentionDropdown = ({
@@ -25,13 +28,14 @@ const UserMentionDropdown = ({
   isLoading = false,
   errorMessage = null,
   onRetry,
+  onSelectedIndexChange,
 }: UserMentionDropdownProps) => {
   const emptyMessage = isLoading
     ? 'Loading people…'
     : errorMessage ||
       (query ? `No users matching "${query}"` : 'No users available');
 
-  const searchSlot =
+  const emptyAction =
     errorMessage && onRetry ? (
       <button
         className={styles.mentionRetryButton}
@@ -40,10 +44,6 @@ const UserMentionDropdown = ({
       >
         Retry
       </button>
-    ) : isLoading && users.length > 0 ? (
-      <div aria-live="polite" className={styles.mentionEmpty} role="status">
-        Loading people…
-      </div>
     ) : undefined;
 
   return (
@@ -55,8 +55,16 @@ const UserMentionDropdown = ({
       onClose={onClose}
       position={position}
       keyExtractor={(user) => user.id}
-      searchSlot={searchSlot}
-      renderItem={(user, _index, isSelected, selectedRef) => (
+      emptyAction={emptyAction}
+      statusAction={errorMessage ? emptyAction : undefined}
+      statusMessage={
+        isLoading
+          ? 'Loading people…'
+          : errorMessage
+            ? 'Couldn’t refresh people.'
+            : undefined
+      }
+      renderItem={(user, index, isSelected, selectedRef) => (
         <button
           ref={isSelected ? selectedRef : null}
           type="button"
@@ -64,20 +72,31 @@ const UserMentionDropdown = ({
             styles.mentionOption,
             isSelected && styles.mentionOptionSelected,
           )}
+          role="menuitem"
           onMouseDown={(e) => {
             // Prevent blur on textarea
             e.preventDefault();
-            onSelect(user);
           }}
+          onClick={() => onSelect(user)}
+          onMouseEnter={() => onSelectedIndexChange?.(index)}
         >
-          {user.avatarUrl && (
-            <img
-              src={user.avatarUrl}
-              alt={`Avatar for ${user.name}`}
-              className={styles.mentionUserAvatar}
-            />
-          )}
-          <span className={styles.mentionUserName}>{user.name}</span>
+          <MentionDropdownOptionContent
+            description={user.email}
+            leading={
+              user.avatarUrl ? (
+                <img
+                  src={user.avatarUrl}
+                  alt=""
+                  className={styles.mentionUserAvatar}
+                />
+              ) : (
+                <span className={styles.mentionUserAvatarFallback}>
+                  <UserMentionIcon aria-hidden="true" />
+                </span>
+              )
+            }
+            title={user.name}
+          />
         </button>
       )}
     />

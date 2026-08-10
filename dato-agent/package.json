@@ -1,24 +1,38 @@
 {
   "name": "datocms-plugin-dato-agent",
+  "homepage": "https://github.com/datocms/plugins/tree/master/dato-agent#readme",
   "version": "0.1.0",
-  "private": true,
   "description": "A beta natural-language DatoCMS agent with native record navigation",
+  "author": "DatoCMS <support@datocms.com>",
+  "license": "MIT",
+  "keywords": [
+    "datocms",
+    "datocms-plugin",
+    "agent",
+    "content-management"
+  ],
   "type": "module",
   "datoCmsPlugin": {
     "title": "Dato Agent (Beta)",
     "coverImage": "docs/cover-1200x800.png",
+    "previewImage": "docs/preview.mp4",
     "entryPoint": "dist/index.html",
     "permissions": [
       "currentUserAccessToken"
     ]
   },
+  "files": [
+    "dist",
+    "docs"
+  ],
   "scripts": {
     "dev": "vite --port 3000",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",
     "test": "vitest run",
     "test:watch": "vitest",
-    "lint": "biome check ./src"
+    "lint": "biome check ./src",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",

@@ -1,4 +1,5 @@
 import styles from '@styles/commentbar.module.css';
+import { Tooltip, TooltipContent, TooltipTrigger } from 'datocms-react-ui';
 import { cn } from '@/utils/cn';
 import {
   AssetMentionIcon,
@@ -104,15 +105,6 @@ const ComposerToolbar = ({
         />
 
         <ToolbarButton
-          icon={FileIcon}
-          tooltipText="File from computer"
-          onClick={onFileClick}
-          ariaLabel="Upload files from computer"
-          buttonClassName={cn(styles.toolbarButton, styles.toolbarButtonAsset)}
-          disabled={disabled}
-        />
-
-        <ToolbarButton
           icon={ModelIcon}
           tooltipText={canMentionModels ? 'Model' : 'No schema access'}
           onClick={onModelClick}
@@ -126,22 +118,37 @@ const ComposerToolbar = ({
         />
       </div>
 
-      <span className={styles.toolbarButtonWrapper}>
-        <button
-          type="button"
-          className={cn(styles.sendButton, isRunning && styles.stopButton)}
-          onClick={isRunning ? onStopClick : onSendClick}
-          disabled={isRunning ? !onStopClick : disabled || isSendDisabled}
-          aria-label={isRunning ? 'Stop' : 'Send'}
-          title={isRunning ? 'Stop' : 'Send'}
-        >
-          {isRunning ? StopIconElement : SendIconElement}
-        </button>
-        <span className={styles.toolbarTooltip}>
-          {isRunning ? 'Stop' : 'Send'}
-          <span className={styles.toolbarTooltipArrow} />
-        </span>
-      </span>
+      <div className={styles.toolbarActions}>
+        <ToolbarButton
+          icon={FileIcon}
+          tooltipText="File from computer"
+          onClick={onFileClick}
+          ariaLabel="Upload files from computer"
+          buttonClassName={cn(styles.toolbarButton, styles.toolbarButtonAsset)}
+          disabled={disabled}
+        />
+
+        <Tooltip placement="top">
+          <TooltipTrigger>
+            <span className={styles.toolbarTooltipTrigger}>
+              <button
+                type="button"
+                className={cn(
+                  styles.sendButton,
+                  isRunning && styles.stopButton,
+                )}
+                onClick={isRunning ? onStopClick : onSendClick}
+                disabled={isRunning ? !onStopClick : disabled || isSendDisabled}
+                aria-label={isRunning ? 'Stop' : 'Send'}
+                title={isRunning ? 'Stop' : 'Send'}
+              >
+                {isRunning ? StopIconElement : SendIconElement}
+              </button>
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>{isRunning ? 'Stop' : 'Send'}</TooltipContent>
+        </Tooltip>
+      </div>
     </div>
   );
 };

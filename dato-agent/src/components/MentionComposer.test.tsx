@@ -128,12 +128,14 @@ function createHost(
 function renderComposer(
   host: AgentMentionHost,
   options: {
+    currentRecordId?: string;
     disabled?: boolean;
     onSubmit?: (submission: AgentComposerSubmission) => void;
   } = {},
 ) {
   return render(
     <MentionComposer
+      currentRecordId={options.currentRecordId}
       disabled={options.disabled ?? false}
       host={host}
       isRunning={false}
@@ -176,9 +178,25 @@ describe('MentionComposer', () => {
 
     const input = screen.getByLabelText('Choose files from computer');
     const click = vi.spyOn(input, 'click');
-    await user.click(
-      screen.getByRole('button', { name: 'Upload files from computer' }),
+    const fileButton = screen.getByRole('button', {
+      name: 'Upload files from computer',
+    });
+    const sendButton = screen.getByRole('button', { name: 'Send' });
+    const assetButton = screen.getByRole('button', {
+      name: 'Asset mentions unavailable - no upload permissions',
+    });
+    expect(fileButton.parentElement?.parentElement).toBe(
+      sendButton.parentElement?.parentElement,
     );
+    expect(fileButton.parentElement?.parentElement).not.toBe(
+      assetButton.parentElement?.parentElement,
+    );
+    expect(
+      fileButton.compareDocumentPosition(sendButton) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    await user.click(fileButton);
     expect(click).toHaveBeenCalledOnce();
 
     const pdf = new File(['PDF bytes'], 'brief.pdf', {
@@ -217,6 +235,80 @@ describe('MentionComposer', () => {
     expect(submission.providerText).toContain(
       'HOST-ATTACHED LOCAL FILES (NOT DATOCMS ASSETS)',
     );
+  });
+
+  it('shows a drop state and attaches files dropped anywhere in the chat', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    renderComposer(createHost(), { onSubmit });
+    const file = new File(['Campaign brief'], 'drop.pdf', {
+      type: 'application/pdf',
+    });
+    const dataTransfer = {
+      dropEffect: 'none',
+      files: [file],
+      types: ['Files'],
+    };
+
+    fireEvent.dragEnter(window, { dataTransfer });
+    expect(screen.getByText('Drop the file here')).toBeVisible();
+
+    fireEvent.dragOver(window, { dataTransfer });
+    expect(dataTransfer.dropEffect).toBe('copy');
+
+    fireEvent.drop(window, { dataTransfer });
+    expect(screen.queryByText('Drop the file here')).not.toBeInTheDocument();
+    expect(await screen.findByText('drop.pdf')).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: 'Send' }));
+    const submission = onSubmit.mock.calls[0]?.[0] as AgentComposerSubmission;
+    const attachment = submission.attachments?.[0];
+    expect(attachment?.filename).toBe('drop.pdf');
+    expect(getSessionLocalFile(attachment?.id ?? '')).toBe(file);
+  });
+
+  it('removes an attached computer file from the composer', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    renderComposer(createHost(), { onSubmit });
+    const input = screen.getByLabelText('Choose files from computer');
+
+    await user.upload(
+      input,
+      new File(['Draft brief'], 'draft-brief.pdf', {
+        type: 'application/pdf',
+      }),
+    );
+
+    const removeButton = await screen.findByRole('button', {
+      name: 'Remove draft-brief.pdf',
+    });
+    expect(removeButton).toBeVisible();
+    await user.click(removeButton);
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('button', { name: 'Remove draft-brief.pdf' }),
+      ).not.toBeInTheDocument(),
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Send' }));
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it('does not show or accept file drops while the composer is disabled', () => {
+    renderComposer(createHost(), { disabled: true });
+    const file = new File(['Draft'], 'draft.txt', { type: 'text/plain' });
+    const dataTransfer = {
+      dropEffect: 'copy',
+      files: [file],
+      types: ['Files'],
+    };
+
+    fireEvent.dragEnter(window, { dataTransfer });
+    expect(screen.queryByText('Drop the file here')).not.toBeInTheDocument();
+    fireEvent.drop(window, { dataTransfer });
+    expect(screen.queryByText('draft.txt')).not.toBeInTheDocument();
   });
 
   it('rejects empty, oversized, and excess local files before registration', async () => {
@@ -306,12 +398,10 @@ describe('MentionComposer', () => {
     expect(screen.queryByText('Summary')).not.toBeInTheDocument();
     fireEvent.keyDown(editor, { key: 'Enter' });
 
-    expect(screen.getByText('Select locale for Title')).toBeVisible();
+    expect(screen.getByText('Locale · Title')).toBeVisible();
     fireEvent.keyDown(editor, { key: 'ArrowDown' });
     fireEvent.keyDown(editor, { key: 'Enter' });
-    expect(
-      screen.queryByText('Select locale for Title'),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText('Locale · Title')).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Send' }));
     const submission = onSubmit.mock.calls[0]?.[0] as AgentComposerSubmission;
@@ -329,6 +419,111 @@ describe('MentionComposer', () => {
         fieldType: 'string',
       },
     });
+  });
+
+  it('selects toolbar mention options through ordinary button clicks', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    const host = createHost();
+    renderComposer(host, { onSubmit });
+
+    await user.click(screen.getByRole('button', { name: 'Mention user' }));
+    await user.click(
+      await screen.findByRole('menuitem', { name: /Bob Builder/ }),
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Mention model' }));
+    await user.click(screen.getByRole('menuitem', { name: /Page\$page/ }));
+
+    await user.click(screen.getByRole('button', { name: 'Mention field' }));
+    await user.click(
+      await screen.findByRole('menuitem', { name: 'Summary#summary' }),
+    );
+
+    await user.click(screen.getByRole('button', { name: 'Send' }));
+    const submission = onSubmit.mock.calls[0]?.[0] as AgentComposerSubmission;
+    expect(
+      submission.segments.flatMap((segment) =>
+        segment.type === 'mention' ? [segment.mention.type] : [],
+      ),
+    ).toEqual(['user', 'model', 'field']);
+  });
+
+  it('removes an abandoned user command when switching to a record reference', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    const host = createHost({
+      selectRecord: vi.fn(async () => ({
+        type: 'record' as const,
+        id: 'homepage',
+        title: 'Homepage',
+        modelId: pageModel.id,
+        modelApiKey: pageModel.apiKey,
+        modelName: pageModel.name,
+        modelEmoji: null,
+        thumbnailUrl: null,
+      })),
+    });
+    renderComposer(host, { onSubmit });
+
+    const editor = screen.getByRole('textbox', {
+      name: 'Message the DatoCMS agent',
+    });
+    await user.click(screen.getByRole('button', { name: 'Mention user' }));
+    expect(await screen.findByRole('menu', { name: 'People' })).toBeVisible();
+    expect(editor).toHaveTextContent('/user');
+
+    await user.click(screen.getByRole('button', { name: 'Mention record' }));
+
+    expect(
+      screen.queryByRole('menu', { name: 'People' }),
+    ).not.toBeInTheDocument();
+    expect(editor).not.toHaveTextContent('/user');
+    expect(
+      screen.getByRole('textbox', { name: 'Search record models' }),
+    ).toBeVisible();
+
+    await user.click(screen.getByRole('menuitem', { name: /Page\$page/ }));
+    expect(await screen.findByText('Homepage')).toBeVisible();
+    expect(editor).not.toHaveTextContent('/user');
+
+    await user.click(screen.getByRole('button', { name: 'Send' }));
+    const submission = onSubmit.mock.calls[0]?.[0] as AgentComposerSubmission;
+    expect(
+      submission.segments.flatMap((segment) =>
+        segment.type === 'mention' ? [segment.mention.type] : [],
+      ),
+    ).toEqual(['record']);
+  });
+
+  it('replaces a pending toolbar command when another reference type is chosen', async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    renderComposer(createHost(), { onSubmit });
+
+    const editor = screen.getByRole('textbox', {
+      name: 'Message the DatoCMS agent',
+    });
+    await user.click(screen.getByRole('button', { name: 'Mention user' }));
+    expect(await screen.findByRole('menu', { name: 'People' })).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: 'Mention model' }));
+
+    expect(
+      screen.queryByRole('menu', { name: 'People' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('menu', { name: 'Models' })).toBeVisible();
+    expect(editor).not.toHaveTextContent('/user');
+    expect(editor).toHaveTextContent('/model');
+
+    await user.click(screen.getByRole('menuitem', { name: /Page\$page/ }));
+    await user.click(screen.getByRole('button', { name: 'Send' }));
+    const submission = onSubmit.mock.calls[0]?.[0] as AgentComposerSubmission;
+    expect(
+      submission.segments.flatMap((segment) =>
+        segment.type === 'mention' ? [segment.mention.type] : [],
+      ),
+    ).toEqual(['model']);
   });
 
   it('uses all models for model mentions but only readable models for records', async () => {
@@ -356,6 +551,35 @@ describe('MentionComposer', () => {
     await waitFor(() => {
       expect(host.selectRecord).toHaveBeenCalledWith(pageModel);
     });
+  });
+
+  it('keeps a reference to the currently open record disabled', async () => {
+    const user = userEvent.setup();
+    const handleOpenRecord = vi.mocked(navigation.handleOpenRecord);
+    handleOpenRecord.mockClear();
+    const host = createHost({
+      selectRecord: vi.fn(async () => ({
+        type: 'record' as const,
+        id: 'homepage',
+        title: 'Homepage',
+        modelId: pageModel.id,
+        modelApiKey: pageModel.apiKey,
+        modelName: pageModel.name,
+        modelEmoji: null,
+        thumbnailUrl: null,
+      })),
+    });
+    renderComposer(host, { currentRecordId: 'homepage' });
+
+    await user.click(screen.getByRole('button', { name: 'Mention record' }));
+    await user.click(screen.getByText('Page'));
+
+    const currentRecord = await screen.findByRole('button', {
+      name: 'Current record: Homepage',
+    });
+    expect(currentRecord).toBeDisabled();
+    fireEvent.click(currentRecord);
+    expect(handleOpenRecord).not.toHaveBeenCalled();
   });
 
   it('does not submit or select a mention while an IME composition is active', async () => {

@@ -102,6 +102,7 @@ type TipTapComposerProps = {
 export type TipTapComposerRef = {
   focus: () => void;
   clear: () => void;
+  discardPendingMentionCommand: () => void;
   insertMention: (mention: Mention) => void;
   insertMentions: (mentions: readonly Mention[]) => void;
   insertText: (text: string) => void;
@@ -299,6 +300,17 @@ export const TipTapComposer = forwardRef<
     }, [selectedItemIndex]);
 
     const editorRef = useRef<Editor | null>(null);
+
+    const discardActiveSlashCommand = useCallback(() => {
+      const currentEditor = editorRef.current;
+      const currentCommand = activeSlashCommandRef.current;
+
+      if (currentEditor && currentCommand) {
+        currentEditor.chain().focus().deleteRange(currentCommand.range).run();
+      }
+
+      closeMentionMenus();
+    }, [closeMentionMenus]);
 
     const registerFieldKeyHandler = useCallback(
       (handler: (key: string) => boolean) => {
@@ -712,14 +724,18 @@ export const TipTapComposer = forwardRef<
           }
 
           case 'Escape':
-            closeMentionMenus();
+            discardActiveSlashCommand();
             return true;
 
           default:
             return false;
         }
       },
-      [closeMentionMenus, getAvailableMatchingCommands, handleSelectCommand],
+      [
+        discardActiveSlashCommand,
+        getAvailableMatchingCommands,
+        handleSelectCommand,
+      ],
     );
 
     const handleTypeSelectionNavigationKey = useCallback(
@@ -762,7 +778,7 @@ export const TipTapComposer = forwardRef<
           }
 
           case 'Escape':
-            closeMentionMenus();
+            discardActiveSlashCommand();
             return true;
 
           default:
@@ -770,7 +786,7 @@ export const TipTapComposer = forwardRef<
         }
       },
       [
-        closeMentionMenus,
+        discardActiveSlashCommand,
         getFilteredListForType,
         insertSelectedItemFromKeyboard,
       ],
@@ -1144,8 +1160,8 @@ export const TipTapComposer = forwardRef<
     );
 
     const handleCloseDropdown = useCallback(() => {
-      closeMentionMenus();
-    }, [closeMentionMenus]);
+      discardActiveSlashCommand();
+    }, [discardActiveSlashCommand]);
 
     // Update editor text when field navigation path changes
     const handleFieldPathChange = useCallback((breadcrumb: string) => {
@@ -1199,6 +1215,10 @@ export const TipTapComposer = forwardRef<
         clear: () => {
           closeMentionMenus();
           editor?.chain().clearContent().run();
+        },
+
+        discardPendingMentionCommand: () => {
+          discardActiveSlashCommand();
         },
 
         insertMention: (mention: Mention) => {
@@ -1294,17 +1314,30 @@ export const TipTapComposer = forwardRef<
           if (!editor || disabledRef.current || !isCommandAvailable(type))
             return;
 
-          // Focus editor and get current cursor position
+          // Replace an abandoned mention command instead of appending another
+          // slash command beside it. This also covers keyboard-triggered toolbar
+          // buttons, where the dropdown's outside-click handler does not run.
+          const replacementPosition = activeSlashCommandRef.current?.range.from;
+          discardActiveSlashCommand();
+
+          // Focus editor and get the insertion position. When replacing a
+          // pending command, retain the position where that command started.
           editor.chain().focus().run();
-          const cursorPos = editor.state.selection.$from.parent.inlineContent
-            ? editor.state.selection.from
-            : TextSelection.atEnd(editor.state.doc).from;
+          const cursorPos =
+            replacementPosition ??
+            (editor.state.selection.$from.parent.inlineContent
+              ? editor.state.selection.from
+              : TextSelection.atEnd(editor.state.doc).from);
           const precedingCharacter =
             cursorPos <= 1
               ? ''
               : editor.state.doc.textBetween(cursorPos - 1, cursorPos);
           const leadingSpace =
-            precedingCharacter && !/\s/.test(precedingCharacter) ? ' ' : '';
+            replacementPosition === undefined &&
+            precedingCharacter &&
+            !/\s/.test(precedingCharacter)
+              ? ' '
+              : '';
 
           // Go through the same TipTap suggestion lifecycle as a typed slash
           // command so toolbar-triggered menus share filtering and keyboard UX.
@@ -1320,7 +1353,12 @@ export const TipTapComposer = forwardRef<
             .run();
         },
       }),
-      [closeMentionMenus, editor, isCommandAvailable],
+      [
+        closeMentionMenus,
+        discardActiveSlashCommand,
+        editor,
+        isCommandAvailable,
+      ],
     );
 
     const segmentsRef = useRef(segments);
@@ -1365,6 +1403,7 @@ export const TipTapComposer = forwardRef<
               selectedIndex={selectedCommandIndex}
               onSelect={handleSelectCommand}
               onClose={handleCloseDropdown}
+              onSelectedIndexChange={setSelectedCommandIndex}
               position={dropdownPosition}
             />
           )}
@@ -1382,6 +1421,7 @@ export const TipTapComposer = forwardRef<
                 errorMessage={userMentionsError}
                 isLoading={userMentionsLoading}
                 onRetry={onUserMentionsRetry}
+                onSelectedIndexChange={setSelectedItemIndex}
               />
             )}
 
@@ -1417,6 +1457,7 @@ export const TipTapComposer = forwardRef<
                 onSelect={handleSelectModel}
                 onClose={handleCloseDropdown}
                 position={dropdownPosition}
+                onSelectedIndexChange={setSelectedItemIndex}
               />
             )}
         </div>
