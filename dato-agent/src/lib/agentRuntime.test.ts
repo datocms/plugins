@@ -12,6 +12,7 @@ import {
   type AgentRuntimeAttachment,
   type AgentRuntimeEvent,
   type AgentTurnResult,
+  createAgentRepairPolicy,
   createAgentRuntime,
   DEFAULT_AGENT_MODEL,
   DEFAULT_MAX_CONTINUATIONS,
@@ -25,9 +26,14 @@ import {
   MAX_PRESENTED_FIELDS,
   MAX_PRESENTED_MODELS,
   MAX_PRESENTED_USERS,
+  repairPolicyViolation,
 } from './agentRuntime';
 import { REASONING_EFFORTS } from './config';
 import { MAX_CONVERSATION_MESSAGE_CHARACTERS } from './conversations';
+import {
+  DATO_SCRIPT_OUTCOME_MARKER_PREFIX,
+  type DatoScriptOutcomeV1,
+} from './datoScriptOutcome';
 
 function response(
   id: string,
@@ -133,10 +139,70 @@ function scriptApproval(
             ? 'console.log(await client.items.rawList());'
             : 'await client.items.update("item-1", { title: "Updated" });',
       },
-      method_tokens: ['method-token'],
+      method_tokens: [
+        `m.items.${variant === 'safe' ? 'rawList' : 'update'}.signature`,
+      ],
       ...overrides,
     }),
   };
+}
+
+function completedApprovedScriptCall(
+  approval: ResponseOutputItem.McpApprovalRequest,
+  id = `call-${approval.id}`,
+): ResponseOutputItem.McpCall {
+  return {
+    type: 'mcp_call',
+    id,
+    server_label: approval.server_label,
+    name: approval.name,
+    arguments: approval.arguments,
+    approval_request_id: approval.id,
+    status: 'completed',
+    output: 'Script completed.',
+  };
+}
+
+function completedViewScriptCall(
+  scriptName: string,
+  id = 'call-view-script',
+): ResponseOutputItem.McpCall {
+  return {
+    type: 'mcp_call',
+    id,
+    server_label: 'datocms',
+    name: 'view_script',
+    arguments: JSON.stringify({ name: scriptName }),
+    status: 'completed',
+    output: 'const current = true;',
+  };
+}
+
+function scriptOutcome(
+  scriptName: string,
+  overrides: Partial<DatoScriptOutcomeV1> = {},
+): DatoScriptOutcomeV1 {
+  return {
+    version: 1,
+    kind: 'dato_script_outcome',
+    status: 'failed',
+    failureCode: 'typescript_compilation',
+    executionState: 'not_started',
+    projectChangeState: 'none',
+    recovery: 'fix_and_review',
+    scriptName,
+    message: 'The TypeScript did not compile.',
+    ...overrides,
+  };
+}
+
+function outcomeMarker(
+  outcome: DatoScriptOutcomeV1,
+  diagnostic = 'TypeScript compilation failed.\nLine 3 is invalid.',
+): string {
+  return `${DATO_SCRIPT_OUTCOME_MARKER_PREFIX}${JSON.stringify(
+    outcome,
+  )}\n${diagnostic}`;
 }
 
 function assistantMessage(
@@ -256,6 +322,29 @@ class QueueResponsesClient implements AgentResponsesClient {
       for (const event of events) {
         yield event;
       }
+    })();
+  }
+}
+
+class ThrowingResponsesClient implements AgentResponsesClient {
+  readonly requests: ResponseCreateParamsStreaming[] = [];
+
+  constructor(
+    private readonly queued: Array<{
+      events: ResponseStreamEvent[];
+      failure?: Error;
+    }>,
+  ) {}
+
+  async create(
+    params: ResponseCreateParamsStreaming,
+  ): Promise<AsyncIterable<ResponseStreamEvent>> {
+    this.requests.push(params);
+    const queued = this.queued.shift();
+    if (!queued) throw new Error('No fake response was queued.');
+    return (async function* stream() {
+      for (const event of queued.events) yield event;
+      if (queued.failure) throw queued.failure;
     })();
   }
 }
@@ -707,6 +796,119 @@ describe('AgentRuntime', () => {
     ).toBeUndefined();
   });
 
+  it('refines an OpenAI MCP activity under the same ID when streamed arguments finish', async () => {
+    const responseId = 'resp-activity-labels';
+    const callId = 'mcp-search-records';
+    const parsedArguments = {
+      site_id: 'site-1',
+      environment: 'sandbox-1',
+      name: 'script://dato-agent/site-1/sandbox-1/search-records.ts',
+      body: {
+        mode: 'full',
+        content:
+          'await client.items.rawList({ filter: { query: "web development" } });',
+      },
+      method_tokens: ['m.items.rawList.signature'],
+    };
+    const argumentsJson = JSON.stringify(parsedArguments);
+    const initialCall = {
+      type: 'mcp_call',
+      id: callId,
+      server_label: 'datocms',
+      name: 'upsert_and_execute_safe_script',
+      arguments: '',
+      status: 'in_progress',
+    } satisfies ResponseOutputItem.McpCall;
+    const completedCall = {
+      ...initialCall,
+      arguments: argumentsJson,
+      status: 'completed',
+      output: '{"records":[]}',
+    } satisfies ResponseOutputItem.McpCall;
+    const finalResponse = response(responseId, [completedCall]);
+    const client = new QueueResponsesClient([
+      [
+        {
+          type: 'response.created',
+          response: response(responseId, [], 'in_progress'),
+          sequence_number: 0,
+        },
+        {
+          type: 'response.output_item.added',
+          output_index: 0,
+          item: initialCall,
+          sequence_number: 1,
+        },
+        {
+          type: 'response.mcp_call_arguments.done',
+          item_id: callId,
+          output_index: 0,
+          arguments: argumentsJson,
+          sequence_number: 2,
+        },
+        {
+          type: 'response.mcp_call.in_progress',
+          item_id: callId,
+          output_index: 0,
+          sequence_number: 3,
+        },
+        {
+          type: 'response.mcp_call.completed',
+          item_id: callId,
+          output_index: 0,
+          sequence_number: 4,
+        },
+        {
+          type: 'response.output_item.done',
+          output_index: 0,
+          item: completedCall,
+          sequence_number: 5,
+        },
+        {
+          type: 'response.completed',
+          response: finalResponse,
+          sequence_number: 6,
+        },
+      ] as ResponseStreamEvent[],
+    ]);
+    const runtime = runtimeWith(client);
+
+    const { events, result } = await drain(
+      runtime.streamTurn({ message: 'Find posts about web development.' }),
+    );
+    const activities = events.flatMap((event) =>
+      event.type === 'activity' && event.activity.id === callId
+        ? [event.activity]
+        : [],
+    );
+
+    expect(result.status).toBe('completed');
+    expect(activities[0]).toMatchObject({
+      id: callId,
+      status: 'in_progress',
+      label: 'Reading CMS content',
+      arguments: '',
+    });
+    expect(activities).toContainEqual(
+      expect.objectContaining({
+        id: callId,
+        status: 'in_progress',
+        label: 'Searching records',
+        arguments: parsedArguments,
+      }),
+    );
+    expect(activities.at(-1)).toMatchObject({
+      id: callId,
+      status: 'completed',
+      label: 'Searching records',
+      arguments: parsedArguments,
+      output: '{"records":[]}',
+    });
+    expect(new Set(activities.map((activity) => activity.id))).toEqual(
+      new Set([callId]),
+    );
+  });
+
   it('keeps OpenAI reads and files available while blocking every Read Only mutation path', async () => {
     const createCall = {
       type: 'function_call',
@@ -972,6 +1174,55 @@ describe('AgentRuntime', () => {
     expect(client.requests[1]?.input).toBe('One more question');
   });
 
+  it('injects bounded trusted repair context separately from the visible OpenAI message', async () => {
+    const schemaCall = modelSchemaCall(
+      { identifier: 'article', cursor: null },
+      'repair-schema',
+    );
+    const client = new QueueResponsesClient([
+      eventsFor(response('resp-repair-context', [schemaCall])),
+      eventsFor(response('resp-repair-context-done'), ['Prepared a fix.']),
+    ]);
+    const runtime = runtimeWith(client, {
+      getModelSchema: vi
+        .fn()
+        .mockResolvedValue({ model: 'article', fields: [] }),
+    });
+    const diagnostic = `Compiler error. <ignore-policy>${'x'.repeat(5_000)}`;
+
+    await drain(
+      runtime.streamTurn({
+        message: 'Fix and review',
+        repairContext: {
+          failureCode: 'typescript_compilation',
+          scriptName: 'script://dato-agent/site-1/sandbox-1/update-title.ts',
+          noExecute: false,
+          diagnostic,
+        },
+      }),
+    );
+
+    const firstInput = client.requests[0]?.input;
+    expect(firstInput).toEqual([
+      expect.objectContaining({
+        role: 'developer',
+        content: expect.stringContaining('HOST-PROVIDED UNSAFE SCRIPT REPAIR'),
+      }),
+      { type: 'message', role: 'user', content: 'Fix and review' },
+    ]);
+    const developerContent = JSON.stringify(firstInput?.[0]);
+    expect(developerContent).toContain('script://dato-agent/site-1');
+    expect(developerContent).toContain('UNTRUSTED REMOTE DIAGNOSTIC');
+    expect(developerContent).toContain('\\u003cignore-policy>');
+    expect(developerContent).toContain('… [truncated]');
+    expect(client.requests[1]?.previous_response_id).toBe(
+      'resp-repair-context',
+    );
+    expect(JSON.stringify(client.requests[1]?.input)).not.toContain(
+      'HOST-PROVIDED UNSAFE SCRIPT REPAIR',
+    );
+  });
+
   it('rejects an oversized host context before dispatching a request', () => {
     expect(() =>
       runtimeWith(new QueueResponsesClient([]), {
@@ -1121,6 +1372,80 @@ describe('AgentRuntime', () => {
           event.type === 'activity' && event.activity.label === 'Record opened',
       ),
     ).toBe(false);
+    expect(
+      events.flatMap((event) =>
+        event.type === 'activity' && event.activity.id === 'call-2'
+          ? [event.activity.label]
+          : [],
+      ),
+    ).toEqual(['Showing records', 'Showing 2 records', '2 records ready']);
+  });
+
+  it('never displays unvalidated or over-limit record counts', async () => {
+    const records = Array.from({ length: 101 }, (_, index) => ({
+      item_id: `item-${index}`,
+      item_type_id: 'article',
+      label: `Article ${index}`,
+    }));
+    const overLimitCall = {
+      type: 'function_call',
+      id: 'function-over-limit-records',
+      call_id: 'call-over-limit-records',
+      name: 'show_records',
+      arguments: JSON.stringify({ title: 'Articles', records }),
+      status: 'completed',
+    } satisfies ResponseFunctionToolCall;
+    const malformedCall = {
+      type: 'function_call',
+      id: 'function-malformed-records',
+      call_id: 'call-malformed-records',
+      name: 'show_records',
+      arguments: JSON.stringify({ title: 'Articles', records: '101 records' }),
+      status: 'completed',
+    } satisfies ResponseFunctionToolCall;
+    const client = new QueueResponsesClient([
+      eventsFor(response('resp-over-limit-records', [overLimitCall])),
+      eventsFor(response('resp-malformed-records', [malformedCall])),
+      eventsFor(response('resp-record-counts-done'), ['Done']),
+    ]);
+    const showRecords = vi.fn().mockResolvedValue(undefined);
+    const runtime = runtimeWith(client, {
+      navigation: {
+        openRecord: vi.fn(),
+        showRecords,
+        presentRecords: vi.fn(),
+        presentFields: vi.fn(),
+        readCurrentRecordLiveFormState: vi.fn(),
+        presentAssets: vi.fn(),
+      },
+    });
+
+    const { events, result } = await drain(
+      runtime.streamTurn({ message: 'Show these records.' }),
+    );
+
+    expect(result.status).toBe('completed');
+    expect(showRecords).toHaveBeenCalledOnce();
+    expect(showRecords.mock.calls[0]?.[0].records).toHaveLength(100);
+    expect(
+      events.flatMap((event) =>
+        event.type === 'activity' &&
+        event.activity.id === 'call-over-limit-records'
+          ? [event.activity.label]
+          : [],
+      ),
+    ).toEqual(['Showing records', 'Showing 100 records', '100 records ready']);
+    expect(
+      events.flatMap((event) =>
+        event.type === 'activity' &&
+        event.activity.id === 'call-malformed-records'
+          ? [event.activity.label]
+          : [],
+      ),
+    ).toEqual(['Showing records', 'Could not navigate the CMS']);
+    expect(
+      events.map((event) => JSON.stringify(event)).join('\n'),
+    ).not.toContain('Showing 101 records');
   });
 
   it('advertises and executes the explicit host asset-creation tool when available', async () => {
@@ -1306,7 +1631,7 @@ describe('AgentRuntime', () => {
         id: 'call-present',
         kind: 'navigation',
         status: 'completed',
-        label: 'Record links ready',
+        label: '2 record links ready',
         toolName: 'present_records',
         output: JSON.stringify({ ok: true, presented: true }),
       }),
@@ -1452,12 +1777,12 @@ describe('AgentRuntime', () => {
         .map((event) => event.activity.label),
     ).toEqual(
       expect.arrayContaining([
-        'Adding field links',
-        'Field links ready',
-        'Reading current form values',
-        'Current form values read',
-        'Adding asset links',
-        'Asset links ready',
+        'Adding 3 field links',
+        '3 field links ready',
+        'Reading 2 current form values',
+        '2 current form values read',
+        'Adding 2 asset links',
+        '2 asset links ready',
       ]),
     );
   });
@@ -1542,10 +1867,10 @@ describe('AgentRuntime', () => {
         .map((event) => event.activity.label),
     ).toEqual(
       expect.arrayContaining([
-        'Adding model references',
-        'Model references ready',
-        'Adding user references',
-        'User references ready',
+        'Adding 2 model references',
+        '2 model references ready',
+        'Adding 2 user references',
+        '2 user references ready',
       ]),
     );
 
@@ -1734,14 +2059,16 @@ describe('AgentRuntime', () => {
     });
     expect(result.status).toBe('completed');
     expect(
-      events.some(
-        (event) =>
-          event.type === 'activity' &&
-          event.activity.kind === 'schema' &&
-          event.activity.status === 'completed' &&
-          event.activity.label === 'Model fields loaded',
+      events.flatMap((event) =>
+        event.type === 'activity' && event.activity.kind === 'schema'
+          ? [event.activity.label]
+          : [],
       ),
-    ).toBe(true);
+    ).toEqual([
+      'Reading model fields',
+      'Reading Article fields',
+      'Article fields loaded',
+    ]);
   });
 
   it('bounds distinct model schema enumeration and directs the model back to global search', async () => {
@@ -1891,7 +2218,7 @@ describe('AgentRuntime', () => {
           mode: 'full',
           content: 'await client.items.update("item-1", { title: "Updated" });',
         },
-        method_tokens: ['method-token'],
+        method_tokens: ['m.items.update.signature'],
       }),
     } satisfies ResponseOutputItem.McpApprovalRequest;
     const client = new QueueResponsesClient([
@@ -1924,13 +2251,22 @@ describe('AgentRuntime', () => {
             content:
               'await client.items.update("item-1", { title: "Updated" });',
           },
-          method_tokens: ['method-token'],
+          method_tokens: ['m.items.update.signature'],
         },
       },
     ]);
     expect(
       first.events.some((event) => event.type === 'approval_required'),
     ).toBe(true);
+    expect(first.events).toContainEqual({
+      type: 'activity',
+      responseId: 'resp_approval',
+      activity: expect.objectContaining({
+        id: 'approval-1',
+        status: 'waiting',
+        label: 'Preparing record updates',
+      }),
+    });
 
     const second = await drain(
       runtime.continueApproval({
@@ -1963,15 +2299,71 @@ describe('AgentRuntime', () => {
 
   it('journals an approved continuation before transport and confirms it after completion', async () => {
     const approval = scriptApproval('unsafe', 'approval-journal');
+    const approvedCallId = 'mcp-approved-journal';
+    const approvedCall = {
+      type: 'mcp_call',
+      id: approvedCallId,
+      server_label: 'datocms',
+      name: 'upsert_and_execute_unsafe_script',
+      arguments: approval.arguments,
+      status: 'completed',
+      output: '{"ok":true}',
+    } satisfies ResponseOutputItem.McpCall;
     const client = new QueueResponsesClient([
       eventsFor(response('resp_journal', [approval])),
-      eventsFor(response('resp_journal_done'), ['Updated']),
+      [
+        {
+          type: 'response.created',
+          response: response('resp_journal_done', [], 'in_progress'),
+          sequence_number: 0,
+        },
+        {
+          type: 'response.output_item.added',
+          output_index: 0,
+          item: { ...approvedCall, arguments: '', status: 'in_progress' },
+          sequence_number: 1,
+        },
+        {
+          type: 'response.mcp_call_arguments.done',
+          item_id: approvedCallId,
+          output_index: 0,
+          arguments: approval.arguments,
+          sequence_number: 2,
+        },
+        {
+          type: 'response.mcp_call.in_progress',
+          item_id: approvedCallId,
+          output_index: 0,
+          sequence_number: 3,
+        },
+        {
+          type: 'response.mcp_call.completed',
+          item_id: approvedCallId,
+          output_index: 0,
+          sequence_number: 4,
+        },
+        {
+          type: 'response.output_text.delta',
+          response_id: 'resp_journal_done',
+          item_id: 'message-resp_journal_done',
+          output_index: 1,
+          content_index: 0,
+          delta: 'Updated',
+          logprobs: [],
+          sequence_number: 5,
+        },
+        {
+          type: 'response.completed',
+          response: response('resp_journal_done', [approvedCall]),
+          sequence_number: 6,
+        },
+      ] as ResponseStreamEvent[],
     ]);
     const runtime = runtimeWith(client);
     const beforeDispatch = vi.fn();
     const confirmed = vi.fn();
 
-    await drain(runtime.streamTurn({ message: 'Update it' }));
+    const first = await drain(runtime.streamTurn({ message: 'Update it' }));
     const result = await drain(
       runtime.continueApproval({
         responseId: 'resp_journal',
@@ -1987,6 +2379,22 @@ describe('AgentRuntime', () => {
     expect(confirmed).toHaveBeenCalledOnce();
     expect(confirmed).toHaveBeenCalledWith([approval.id]);
     expect(client.requests).toHaveLength(2);
+    expect(
+      first.events.some(
+        (event) =>
+          event.type === 'activity' &&
+          event.activity.label === 'Updating records',
+      ),
+    ).toBe(false);
+    expect(result.events).toContainEqual({
+      type: 'activity',
+      responseId: 'resp_journal_done',
+      activity: expect.objectContaining({
+        id: approvedCallId,
+        status: 'in_progress',
+        label: 'Updating records',
+      }),
+    });
   });
 
   it('confirms an approved write before exposing the next sequential approval', async () => {
@@ -1994,8 +2402,18 @@ describe('AgentRuntime', () => {
     const secondApproval = scriptApproval('unsafe', 'approval-sequential-2');
     const client = new QueueResponsesClient([
       eventsFor(response('resp_sequential_1', [firstApproval])),
-      eventsFor(response('resp_sequential_2', [secondApproval])),
-      eventsFor(response('resp_sequential_done'), ['Both changes completed']),
+      eventsFor(
+        response('resp_sequential_2', [
+          completedApprovedScriptCall(firstApproval),
+          secondApproval,
+        ]),
+      ),
+      eventsFor(
+        response('resp_sequential_done', [
+          completedApprovedScriptCall(secondApproval),
+        ]),
+        ['Both changes completed'],
+      ),
     ]);
     const runtime = runtimeWith(client);
     const firstBeforeDispatch = vi.fn();
@@ -2104,6 +2522,1120 @@ describe('AgentRuntime', () => {
       error: { code: 'api_error' },
     });
     expect(client.requests).toHaveLength(1);
+  });
+
+  it('emits a repairable approval outcome before exposing the agent corrected unsafe call', async () => {
+    const approval = scriptApproval('unsafe', 'approval-needs-fix');
+    const parsed = JSON.parse(approval.arguments) as { name: string };
+    const corrected = scriptApproval('unsafe', 'approval-corrected', {
+      name: parsed.name,
+      body: {
+        mode: 'full',
+        content: 'await client.items.update("item-1", { title: "Corrected" });',
+      },
+    });
+    const marker = outcomeMarker(scriptOutcome(parsed.name));
+    const failedCall = {
+      type: 'mcp_call',
+      id: 'mcp-needs-fix',
+      server_label: 'datocms',
+      name: 'upsert_and_execute_unsafe_script',
+      arguments: approval.arguments,
+      approval_request_id: approval.id,
+      status: 'failed',
+      error: marker,
+      output: marker,
+    } satisfies ResponseOutputItem.McpCall;
+    const client = new QueueResponsesClient([
+      eventsFor(response('resp-needs-fix', [approval])),
+      eventsFor(response('resp-corrected-review', [failedCall, corrected])),
+    ]);
+    const runtime = runtimeWith(client);
+
+    await drain(runtime.streamTurn({ message: 'Update the title.' }));
+    const continued = await drain(
+      runtime.continueApproval({
+        responseId: 'resp-needs-fix',
+        approvalRequestId: approval.id,
+        approve: true,
+        unsafeDispatchCallbacks: { beforeDispatch: vi.fn() },
+      }),
+    );
+
+    const outcomeIndex = continued.events.findIndex(
+      (event) => event.type === 'approval_outcome',
+    );
+    const replacementIndex = continued.events.findIndex(
+      (event) =>
+        event.type === 'approval_required' &&
+        event.approval.approvalRequestId === corrected.id,
+    );
+    expect(outcomeIndex).toBeGreaterThanOrEqual(0);
+    expect(replacementIndex).toBeGreaterThan(outcomeIndex);
+    expect(continued.events[outcomeIndex]).toEqual({
+      type: 'approval_outcome',
+      responseId: 'resp-corrected-review',
+      approvalOutcome: expect.objectContaining({
+        approvalRequestId: approval.id,
+        toolName: 'upsert_and_execute_unsafe_script',
+        kind: 'failed_before_execution',
+        diagnostic: 'TypeScript compilation failed.\nLine 3 is invalid.',
+        remoteOutcome: expect.objectContaining({
+          failureCode: 'typescript_compilation',
+          scriptName: parsed.name,
+        }),
+      }),
+    });
+    expect(continued.result).toMatchObject({
+      status: 'approval_required',
+      confirmedApprovalIds: [approval.id],
+      approvals: [expect.objectContaining({ approvalRequestId: corrected.id })],
+      approvalOutcomes: [
+        expect.objectContaining({
+          approvalRequestId: approval.id,
+          kind: 'failed_before_execution',
+        }),
+      ],
+    });
+  });
+
+  it.each(['failed', 'incomplete'] as const)(
+    'retains and confirms an exact repairable result from a %s OpenAI response',
+    async (responseStatus) => {
+      const approval = scriptApproval(
+        'unsafe',
+        `approval-${responseStatus}-envelope`,
+      );
+      const scriptName = (JSON.parse(approval.arguments) as { name: string })
+        .name;
+      const marker = outcomeMarker(scriptOutcome(scriptName));
+      const failedCall = {
+        ...completedApprovedScriptCall(approval),
+        status: 'failed',
+        error: marker,
+        output: marker,
+      } satisfies ResponseOutputItem.McpCall;
+      const confirmed = vi.fn();
+      const runtime = runtimeWith(
+        new QueueResponsesClient([
+          eventsFor(response(`resp-${responseStatus}-initial`, [approval])),
+          eventsFor(
+            response(
+              `resp-${responseStatus}-result`,
+              [failedCall],
+              responseStatus,
+            ),
+          ),
+        ]),
+      );
+
+      await drain(runtime.streamTurn({ message: 'Update it.' }));
+      const continued = await drain(
+        runtime.continueApproval({
+          responseId: `resp-${responseStatus}-initial`,
+          approvalRequestId: approval.id,
+          approve: true,
+          unsafeDispatchCallbacks: {
+            beforeDispatch: vi.fn(),
+            confirmed,
+          },
+        }),
+      );
+
+      expect(continued.result).toMatchObject({
+        status: responseStatus,
+        confirmedApprovalIds: [approval.id],
+        approvalOutcomes: [
+          expect.objectContaining({
+            approvalRequestId: approval.id,
+            kind: 'failed_before_execution',
+          }),
+        ],
+      });
+      expect(confirmed).toHaveBeenCalledOnce();
+      expect(confirmed).toHaveBeenCalledWith([approval.id]);
+      expect(
+        continued.events.findIndex(
+          (event) => event.type === 'approval_outcome',
+        ),
+      ).toBeLessThan(
+        continued.events.findIndex((event) => event.type === 'turn_completed'),
+      );
+    },
+  );
+
+  it('confirms only the exact returned call from a completed grouped envelope', async () => {
+    const first = scriptApproval('unsafe', 'approval-grouped-exact-a', {
+      name: 'script://dato-agent/site-1/sandbox-1/grouped-a.ts',
+    });
+    const second = scriptApproval('unsafe', 'approval-grouped-exact-b', {
+      name: 'script://dato-agent/site-1/sandbox-1/grouped-b.ts',
+    });
+    const confirmed = vi.fn();
+    const runtime = runtimeWith(
+      new QueueResponsesClient([
+        eventsFor(response('resp-grouped-exact', [first, second])),
+        eventsFor(
+          response('resp-grouped-exact-result', [
+            completedApprovedScriptCall(first),
+          ]),
+        ),
+      ]),
+    );
+
+    await drain(runtime.streamTurn({ message: 'Update both.' }));
+    const continued = await drain(
+      runtime.continueApprovals({
+        responseId: 'resp-grouped-exact',
+        decisions: [
+          { approvalRequestId: first.id, approve: true },
+          { approvalRequestId: second.id, approve: true },
+        ],
+        unsafeDispatchCallbacks: { beforeDispatch: vi.fn(), confirmed },
+      }),
+    );
+
+    expect(confirmed).toHaveBeenCalledOnce();
+    expect(confirmed).toHaveBeenCalledWith([first.id]);
+    expect(continued.result).toMatchObject({
+      status: 'failed',
+      confirmedApprovalIds: [first.id],
+      error: { code: 'unsafe_outcome_unknown', retryable: false },
+      approvalOutcomes: [
+        expect.objectContaining({
+          approvalRequestId: second.id,
+          kind: 'unknown',
+        }),
+      ],
+    });
+  });
+
+  it('uses a unique exact OpenAI call fingerprint when approval_request_id is absent', async () => {
+    const approval = scriptApproval('unsafe', 'approval-fingerprint');
+    const parsed = JSON.parse(approval.arguments) as { name: string };
+    const marker = outcomeMarker(
+      scriptOutcome(parsed.name, {
+        failureCode: 'execution',
+        executionState: 'started',
+        projectChangeState: 'possible',
+        recovery: 'none',
+        message: 'The script stopped after execution began.',
+      }),
+      'Script execution failed.\nThe CMA call returned an error.',
+    );
+    const failedCall = {
+      type: 'mcp_call',
+      id: 'mcp-fingerprint',
+      server_label: 'datocms',
+      name: 'upsert_and_execute_unsafe_script',
+      arguments: approval.arguments,
+      status: 'failed',
+      error: marker,
+      output: marker,
+    } satisfies ResponseOutputItem.McpCall;
+    const runtime = runtimeWith(
+      new QueueResponsesClient([
+        eventsFor(response('resp-fingerprint', [approval])),
+        eventsFor(response('resp-fingerprint-done', [failedCall])),
+      ]),
+    );
+
+    await drain(runtime.streamTurn({ message: 'Update it.' }));
+    const continued = await drain(
+      runtime.continueApproval({
+        responseId: 'resp-fingerprint',
+        approvalRequestId: approval.id,
+        approve: true,
+        unsafeDispatchCallbacks: { beforeDispatch: vi.fn() },
+      }),
+    );
+
+    expect(continued.result.approvalOutcomes).toEqual([
+      expect.objectContaining({
+        approvalRequestId: approval.id,
+        kind: 'failed_after_execution',
+      }),
+    ]);
+  });
+
+  it('correlates a direct OpenAI approval ID despite provider JSON formatting changes', async () => {
+    const approval = scriptApproval('unsafe', 'approval-direct-formatted');
+    const parsed = JSON.parse(approval.arguments) as { name: string };
+    const marker = outcomeMarker(scriptOutcome(parsed.name));
+    const failedCall = {
+      ...completedApprovedScriptCall(approval),
+      arguments: JSON.stringify(JSON.parse(approval.arguments), null, 2),
+      status: 'failed',
+      error: marker,
+      output: marker,
+    } satisfies ResponseOutputItem.McpCall;
+    const runtime = runtimeWith(
+      new QueueResponsesClient([
+        eventsFor(response('resp-direct-formatted', [approval])),
+        eventsFor(response('resp-direct-formatted-done', [failedCall])),
+      ]),
+    );
+
+    await drain(runtime.streamTurn({ message: 'Update it.' }));
+    const continued = await drain(
+      runtime.continueApproval({
+        responseId: 'resp-direct-formatted',
+        approvalRequestId: approval.id,
+        approve: true,
+        unsafeDispatchCallbacks: { beforeDispatch: vi.fn() },
+      }),
+    );
+
+    expect(continued.result).toMatchObject({
+      confirmedApprovalIds: [approval.id],
+      approvalOutcomes: [
+        expect.objectContaining({
+          approvalRequestId: approval.id,
+          kind: 'failed_before_execution',
+        }),
+      ],
+    });
+  });
+
+  it.each([
+    ['direct approval ID', true],
+    ['unique immutable fallback', false],
+  ] as const)(
+    'classifies duplicate OpenAI results for one approval as unknown via %s',
+    async (_label, direct) => {
+      const approval = scriptApproval(
+        'unsafe',
+        `approval-duplicate-${direct ? 'direct' : 'fallback'}`,
+      );
+      const scriptName = (JSON.parse(approval.arguments) as { name: string })
+        .name;
+      const marker = outcomeMarker(scriptOutcome(scriptName));
+      const repairableCall = {
+        ...completedApprovedScriptCall(approval, 'mcp-duplicate-repairable'),
+        ...(direct ? {} : { approval_request_id: undefined }),
+        status: 'failed',
+        error: marker,
+        output: marker,
+      } satisfies ResponseOutputItem.McpCall;
+      const successCall = {
+        ...completedApprovedScriptCall(approval, 'mcp-duplicate-success'),
+        ...(direct ? {} : { approval_request_id: undefined }),
+      } satisfies ResponseOutputItem.McpCall;
+      const runtime = runtimeWith(
+        new QueueResponsesClient([
+          eventsFor(response('resp-duplicate-result', [approval])),
+          eventsFor(
+            response('resp-duplicate-result-done', [
+              successCall,
+              repairableCall,
+            ]),
+          ),
+        ]),
+      );
+
+      await drain(runtime.streamTurn({ message: 'Update it.' }));
+      const continued = await drain(
+        runtime.continueApproval({
+          responseId: 'resp-duplicate-result',
+          approvalRequestId: approval.id,
+          approve: true,
+          unsafeDispatchCallbacks: { beforeDispatch: vi.fn() },
+        }),
+      );
+
+      expect(continued.result).toMatchObject({
+        status: 'failed',
+        confirmedApprovalIds: [approval.id],
+        approvalOutcomes: [
+          expect.objectContaining({
+            approvalRequestId: approval.id,
+            kind: 'unknown',
+          }),
+        ],
+        error: { code: 'unsafe_outcome_unknown' },
+      });
+      expect(continued.result.approvalOutcomes?.[0]?.remoteOutcome).toBe(
+        undefined,
+      );
+    },
+  );
+
+  it('classifies a tied malformed failure contract as unknown even with completed status', async () => {
+    const approval = scriptApproval('unsafe', 'approval-malformed-outcome');
+    const failedCall = {
+      type: 'mcp_call',
+      id: 'mcp-malformed-outcome',
+      server_label: 'datocms',
+      name: 'upsert_and_execute_unsafe_script',
+      arguments: approval.arguments,
+      approval_request_id: approval.id,
+      status: 'completed',
+      output: `${DATO_SCRIPT_OUTCOME_MARKER_PREFIX}{"version":2}\nBroken contract`,
+    } satisfies ResponseOutputItem.McpCall;
+    const runtime = runtimeWith(
+      new QueueResponsesClient([
+        eventsFor(response('resp-malformed-outcome', [approval])),
+        eventsFor(response('resp-malformed-outcome-done', [failedCall])),
+      ]),
+    );
+
+    await drain(runtime.streamTurn({ message: 'Update it.' }));
+    const continued = await drain(
+      runtime.continueApproval({
+        responseId: 'resp-malformed-outcome',
+        approvalRequestId: approval.id,
+        approve: true,
+        unsafeDispatchCallbacks: { beforeDispatch: vi.fn() },
+      }),
+    );
+
+    expect(continued.result.approvalOutcomes).toEqual([
+      expect.objectContaining({
+        approvalRequestId: approval.id,
+        kind: 'unknown',
+      }),
+    ]);
+  });
+
+  it.each([
+    ['a malformed second contract', 'malformed'],
+    ['a conflicting valid second contract', 'conflicting'],
+  ] as const)(
+    'fails closed when OpenAI output and error contain %s',
+    async (_label, variant) => {
+      const approval = scriptApproval(
+        'unsafe',
+        `approval-dual-contract-${variant}`,
+      );
+      const scriptName = (JSON.parse(approval.arguments) as { name: string })
+        .name;
+      const firstMarker = outcomeMarker(scriptOutcome(scriptName));
+      const secondMarker =
+        variant === 'malformed'
+          ? `${DATO_SCRIPT_OUTCOME_MARKER_PREFIX}{broken}\nBad contract`
+          : outcomeMarker(
+              scriptOutcome(scriptName, {
+                failureCode: 'method_verification',
+                message: 'Tokens did not verify.',
+              }),
+            );
+      const failedCall = {
+        ...completedApprovedScriptCall(approval),
+        status: 'failed',
+        error: firstMarker,
+        output: secondMarker,
+      } satisfies ResponseOutputItem.McpCall;
+      const runtime = runtimeWith(
+        new QueueResponsesClient([
+          eventsFor(response(`resp-dual-${variant}`, [approval])),
+          eventsFor(response(`resp-dual-${variant}-done`, [failedCall])),
+        ]),
+      );
+
+      await drain(runtime.streamTurn({ message: 'Update it.' }));
+      const continued = await drain(
+        runtime.continueApproval({
+          responseId: `resp-dual-${variant}`,
+          approvalRequestId: approval.id,
+          approve: true,
+          unsafeDispatchCallbacks: { beforeDispatch: vi.fn() },
+        }),
+      );
+
+      expect(continued.result.approvalOutcomes).toEqual([
+        expect.objectContaining({
+          approvalRequestId: approval.id,
+          kind: 'unknown',
+        }),
+      ]);
+      expect(continued.result.approvalOutcomes?.[0]?.remoteOutcome).toBe(
+        undefined,
+      );
+    },
+  );
+
+  it('recognizes only the exact rolling OpenAI compilation heading as repairable', async () => {
+    const approval = scriptApproval('unsafe', 'approval-legacy-compilation');
+    const legacyCall = {
+      type: 'mcp_call',
+      id: 'mcp-legacy-compilation',
+      server_label: 'datocms',
+      name: 'upsert_and_execute_unsafe_script',
+      arguments: approval.arguments,
+      approval_request_id: approval.id,
+      status: 'completed',
+      output:
+        '# Script saved, but compilation failed\nThe TypeScript has an invalid field.',
+    } satisfies ResponseOutputItem.McpCall;
+    const runtime = runtimeWith(
+      new QueueResponsesClient([
+        eventsFor(response('resp-legacy-compilation', [approval])),
+        eventsFor(response('resp-legacy-compilation-done', [legacyCall])),
+      ]),
+    );
+
+    await drain(runtime.streamTurn({ message: 'Update it.' }));
+    const continued = await drain(
+      runtime.continueApproval({
+        responseId: 'resp-legacy-compilation',
+        approvalRequestId: approval.id,
+        approve: true,
+        unsafeDispatchCallbacks: { beforeDispatch: vi.fn() },
+      }),
+    );
+
+    expect(continued.result.approvalOutcomes).toEqual([
+      expect.objectContaining({
+        approvalRequestId: approval.id,
+        kind: 'failed_before_execution',
+        remoteOutcome: expect.objectContaining({
+          failureCode: 'typescript_compilation',
+        }),
+      }),
+    ]);
+  });
+
+  it('fails closed for an ambiguous exact OpenAI fingerprint without enabling recovery', async () => {
+    const first = scriptApproval('unsafe', 'approval-ambiguous-a');
+    const second = scriptApproval('unsafe', 'approval-ambiguous-b');
+    const scriptName = (JSON.parse(first.arguments) as { name: string }).name;
+    const marker = outcomeMarker(scriptOutcome(scriptName));
+    const failedCall = {
+      type: 'mcp_call',
+      id: 'mcp-ambiguous',
+      server_label: 'datocms',
+      name: 'upsert_and_execute_unsafe_script',
+      arguments: first.arguments,
+      status: 'failed',
+      error: marker,
+      output: marker,
+    } satisfies ResponseOutputItem.McpCall;
+    const runtime = runtimeWith(
+      new QueueResponsesClient([
+        eventsFor(response('resp-ambiguous', [first, second])),
+        eventsFor(response('resp-ambiguous-done', [failedCall])),
+      ]),
+    );
+
+    await drain(runtime.streamTurn({ message: 'Update two records.' }));
+    const confirmed = vi.fn();
+    const continued = await drain(
+      runtime.continueApprovals({
+        responseId: 'resp-ambiguous',
+        decisions: [
+          { approvalRequestId: first.id, approve: true },
+          { approvalRequestId: second.id, approve: true },
+        ],
+        unsafeDispatchCallbacks: { beforeDispatch: vi.fn(), confirmed },
+      }),
+    );
+
+    expect(continued.result.approvalOutcomes).toEqual([
+      expect.objectContaining({
+        approvalRequestId: first.id,
+        kind: 'unknown',
+      }),
+      expect.objectContaining({
+        approvalRequestId: second.id,
+        kind: 'unknown',
+      }),
+    ]);
+    expect(
+      continued.result.approvalOutcomes?.every(
+        (outcome) => outcome.remoteOutcome === undefined,
+      ),
+    ).toBe(true);
+    expect(continued.result).toMatchObject({
+      status: 'failed',
+      error: { code: 'unsafe_outcome_unknown' },
+    });
+    expect(continued.result.confirmedApprovalIds).toBeUndefined();
+    expect(confirmed).not.toHaveBeenCalled();
+  });
+
+  it('stops after an exact non-repairable outcome without exposing a later unsafe approval', async () => {
+    const first = scriptApproval('unsafe', 'approval-stop-after-outcome');
+    const later = scriptApproval('unsafe', 'approval-must-not-be-exposed', {
+      name: 'script://dato-agent/site-1/sandbox-1/later.ts',
+    });
+    const scriptName = (JSON.parse(first.arguments) as { name: string }).name;
+    const marker = outcomeMarker(
+      scriptOutcome(scriptName, {
+        failureCode: 'execution',
+        executionState: 'started',
+        projectChangeState: 'possible',
+        recovery: 'none',
+      }),
+    );
+    const failedCall = {
+      ...completedApprovedScriptCall(first),
+      status: 'failed',
+      error: marker,
+      output: marker,
+    } satisfies ResponseOutputItem.McpCall;
+    const runtime = runtimeWith(
+      new QueueResponsesClient([
+        eventsFor(response('resp-stop-after-outcome', [first])),
+        eventsFor(
+          response('resp-stop-after-outcome-result', [failedCall, later]),
+        ),
+      ]),
+    );
+
+    await drain(runtime.streamTurn({ message: 'Update it.' }));
+    const continued = await drain(
+      runtime.continueApproval({
+        responseId: 'resp-stop-after-outcome',
+        approvalRequestId: first.id,
+        approve: true,
+        unsafeDispatchCallbacks: { beforeDispatch: vi.fn() },
+      }),
+    );
+
+    expect(continued.result).toMatchObject({
+      status: 'failed',
+      confirmedApprovalIds: [first.id],
+      error: { code: 'unsafe_outcome_unknown', retryable: false },
+    });
+    expect(
+      continued.events.some(
+        (event) =>
+          event.type === 'approval_required' &&
+          event.approval.approvalRequestId === later.id,
+      ),
+    ).toBe(false);
+  });
+
+  it('confirms and reports an exact unsafe outcome before a stream error terminal', async () => {
+    const approval = scriptApproval('unsafe', 'approval-stream-terminal');
+    const scriptName = (JSON.parse(approval.arguments) as { name: string })
+      .name;
+    const marker = outcomeMarker(scriptOutcome(scriptName));
+    const failedCall = {
+      ...completedApprovedScriptCall(approval),
+      status: 'failed',
+      error: marker,
+      output: marker,
+    } satisfies ResponseOutputItem.McpCall;
+    const client = new ThrowingResponsesClient([
+      { events: eventsFor(response('resp-stream-terminal', [approval])) },
+      {
+        events: [
+          {
+            type: 'response.created',
+            response: response(
+              'resp-stream-terminal-result',
+              [],
+              'in_progress',
+            ),
+            sequence_number: 0,
+          },
+          {
+            type: 'response.output_item.done',
+            output_index: 0,
+            item: failedCall,
+            sequence_number: 1,
+          } as unknown as ResponseStreamEvent,
+        ],
+        failure: new Error('stream disconnected after the MCP result'),
+      },
+    ]);
+    const runtime = runtimeWith(client);
+    const confirmed = vi.fn();
+
+    await drain(runtime.streamTurn({ message: 'Update it.' }));
+    const continued = await drain(
+      runtime.continueApproval({
+        responseId: 'resp-stream-terminal',
+        approvalRequestId: approval.id,
+        approve: true,
+        unsafeDispatchCallbacks: { beforeDispatch: vi.fn(), confirmed },
+      }),
+    );
+
+    expect(confirmed).toHaveBeenCalledWith([approval.id]);
+    expect(continued.result).toMatchObject({
+      status: 'failed',
+      responseId: 'resp-stream-terminal-result',
+      confirmedApprovalIds: [approval.id],
+      approvalOutcomes: [
+        expect.objectContaining({
+          approvalRequestId: approval.id,
+          kind: 'failed_before_execution',
+        }),
+      ],
+      error: { code: 'api_error' },
+    });
+    expect(
+      continued.events.findIndex((event) => event.type === 'approval_outcome'),
+    ).toBeLessThan(
+      continued.events.findIndex((event) => event.type === 'turn_completed'),
+    );
+  });
+
+  it('does not accept a repaired OpenAI approval after viewing the wrong script', async () => {
+    const original = scriptApproval('unsafe', 'approval-repair-original');
+    const originalArguments = JSON.parse(original.arguments) as {
+      name: string;
+      body: { mode: 'full'; content: string };
+    };
+    const corrected = scriptApproval('unsafe', 'approval-repair-corrected', {
+      name: originalArguments.name,
+      body: {
+        mode: 'full',
+        content: `${originalArguments.body.content}\n// corrected`,
+      },
+    });
+    const repairContext = {
+      failureCode: 'script_validation' as const,
+      scriptName: originalArguments.name,
+      noExecute: false,
+      diagnostic: 'Unknown field.',
+    };
+    const repairPolicy = createAgentRepairPolicy(
+      { name: original.name, arguments: original.arguments },
+      repairContext,
+    );
+    if (!repairPolicy) throw new Error('Expected repair policy.');
+    const client = new QueueResponsesClient([
+      eventsFor(
+        response('resp-repair-before-view', [
+          completedViewScriptCall(
+            'script://dato-agent/site-1/sandbox-1/wrong.ts',
+          ),
+          corrected,
+        ]),
+      ),
+      eventsFor(response('resp-repair-before-view-denied'), ['Not sent.']),
+    ]);
+    const runtime = runtimeWith(client);
+
+    const turn = await drain(
+      runtime.streamTurn({
+        message: 'Fix and review',
+        repairContext,
+        repairPolicy,
+      }),
+    );
+
+    expect(turn.result.status).toBe('completed');
+    expect(
+      turn.events.some((event) => event.type === 'approval_required'),
+    ).toBe(false);
+    expect(client.requests).toHaveLength(2);
+    expect(client.requests[1]?.input).toEqual([
+      expect.objectContaining({
+        type: 'mcp_approval_response',
+        approval_request_id: corrected.id,
+        approve: false,
+        reason: expect.stringContaining('view_script'),
+      }),
+    ]);
+  });
+
+  it('accepts a new full repaired OpenAI call only after viewing the exact protected script', async () => {
+    const original = scriptApproval('unsafe', 'approval-repair-viewed');
+    const originalArguments = JSON.parse(original.arguments) as {
+      name: string;
+      body: { mode: 'full'; content: string };
+    };
+    const corrected = scriptApproval(
+      'unsafe',
+      'approval-repair-viewed-corrected',
+      {
+        name: originalArguments.name,
+        body: {
+          mode: 'full',
+          content: `${originalArguments.body.content}\n// corrected`,
+        },
+        method_tokens: ['m.items.update.fresh-signature'],
+      },
+    );
+    const repairContext = {
+      failureCode: 'script_validation' as const,
+      scriptName: originalArguments.name,
+      noExecute: false,
+      diagnostic: 'Unknown field.',
+    };
+    const repairPolicy = createAgentRepairPolicy(
+      { name: original.name, arguments: original.arguments },
+      repairContext,
+    );
+    if (!repairPolicy) throw new Error('Expected repair policy.');
+    const client = new QueueResponsesClient([
+      eventsFor(
+        response('resp-repair-viewed', [
+          completedViewScriptCall(originalArguments.name),
+          corrected,
+        ]),
+      ),
+    ]);
+    const runtime = runtimeWith(client);
+
+    const turn = await drain(
+      runtime.streamTurn({
+        message: 'Fix and review',
+        repairContext,
+        repairPolicy,
+      }),
+    );
+
+    expect(turn.result).toMatchObject({
+      status: 'approval_required',
+      approvals: [expect.objectContaining({ approvalRequestId: corrected.id })],
+    });
+  });
+
+  it('rejects a repaired OpenAI approval that precedes its view_script proof', async () => {
+    const original = scriptApproval('unsafe', 'approval-repair-order-origin');
+    const originalArguments = JSON.parse(original.arguments) as {
+      name: string;
+      body: { mode: 'full'; content: string };
+    };
+    const corrected = scriptApproval('unsafe', 'approval-repair-before-view', {
+      name: originalArguments.name,
+      body: {
+        mode: 'full',
+        content: `${originalArguments.body.content}\n// corrected`,
+      },
+    });
+    const repairContext = {
+      failureCode: 'script_validation' as const,
+      scriptName: originalArguments.name,
+      noExecute: false,
+      diagnostic: 'Unknown field.',
+    };
+    const repairPolicy = createAgentRepairPolicy(
+      { name: original.name, arguments: original.arguments },
+      repairContext,
+    );
+    if (!repairPolicy) throw new Error('Expected repair policy.');
+    const client = new QueueResponsesClient([
+      eventsFor(
+        response('resp-repair-order', [
+          corrected,
+          completedViewScriptCall(originalArguments.name),
+        ]),
+      ),
+      eventsFor(response('resp-repair-order-denied'), ['Not sent.']),
+    ]);
+    const runtime = runtimeWith(client);
+
+    const turn = await drain(
+      runtime.streamTurn({
+        message: 'Fix and review',
+        repairContext,
+        repairPolicy,
+      }),
+    );
+
+    expect(turn.result.status).toBe('completed');
+    expect(
+      turn.events.some((event) => event.type === 'approval_required'),
+    ).toBe(false);
+    expect(client.requests[1]?.input).toEqual([
+      expect.objectContaining({
+        type: 'mcp_approval_response',
+        approval_request_id: corrected.id,
+        approve: false,
+        reason: expect.stringContaining('view_script'),
+      }),
+    ]);
+  });
+
+  it('does not expose the same corrected OpenAI call again after it fails before execution', async () => {
+    const original = scriptApproval('unsafe', 'approval-repair-repeat-origin');
+    const originalArguments = JSON.parse(original.arguments) as {
+      name: string;
+      body: { mode: 'full'; content: string };
+    };
+    const corrected = scriptApproval('unsafe', 'approval-repair-repeat-one', {
+      name: originalArguments.name,
+      body: {
+        mode: 'full',
+        content: `${originalArguments.body.content}\n// corrected once`,
+      },
+    });
+    const repeated = {
+      ...corrected,
+      id: 'approval-repair-repeat-two',
+    } satisfies ResponseOutputItem.McpApprovalRequest;
+    const repairContext = {
+      failureCode: 'script_validation' as const,
+      scriptName: originalArguments.name,
+      noExecute: false,
+      diagnostic: 'Unknown field.',
+    };
+    const repairPolicy = createAgentRepairPolicy(
+      { name: original.name, arguments: original.arguments },
+      repairContext,
+    );
+    if (!repairPolicy) throw new Error('Expected repair policy.');
+    const marker = outcomeMarker(scriptOutcome(originalArguments.name));
+    const failedCorrectedCall = {
+      ...completedApprovedScriptCall(corrected),
+      status: 'failed',
+      error: marker,
+      output: marker,
+    } satisfies ResponseOutputItem.McpCall;
+    const client = new QueueResponsesClient([
+      eventsFor(
+        response('resp-repair-repeat-ready', [
+          completedViewScriptCall(originalArguments.name),
+          corrected,
+        ]),
+      ),
+      eventsFor(
+        response('resp-repair-repeat-failed', [failedCorrectedCall, repeated]),
+      ),
+      eventsFor(response('resp-repair-repeat-done'), ['Prepared a new plan.']),
+    ]);
+    const runtime = runtimeWith(client);
+
+    const first = await drain(
+      runtime.streamTurn({
+        message: 'Fix and review',
+        repairContext,
+        repairPolicy,
+      }),
+    );
+    expect(first.result.status).toBe('approval_required');
+    const continued = await drain(
+      runtime.continueApproval({
+        responseId: 'resp-repair-repeat-ready',
+        approvalRequestId: corrected.id,
+        approve: true,
+        unsafeDispatchCallbacks: { beforeDispatch: vi.fn() },
+      }),
+    );
+
+    expect(continued.result).toMatchObject({
+      status: 'completed',
+      confirmedApprovalIds: [corrected.id],
+      approvalOutcomes: [
+        expect.objectContaining({
+          approvalRequestId: corrected.id,
+          kind: 'failed_before_execution',
+        }),
+      ],
+    });
+    expect(
+      continued.events.some(
+        (event) =>
+          event.type === 'approval_required' &&
+          event.approval.approvalRequestId === repeated.id,
+      ),
+    ).toBe(false);
+    expect(client.requests[2]?.input).toEqual([
+      expect.objectContaining({
+        type: 'mcp_approval_response',
+        approval_request_id: repeated.id,
+        approve: false,
+        reason: expect.stringContaining('already failed unchanged'),
+      }),
+    ]);
+  });
+
+  it('blocks an unchanged unsafe OpenAI retry in an ordinary turn and accepts a materially corrected call', async () => {
+    const original = scriptApproval('unsafe', 'approval-ordinary-repeat-one');
+    const originalArguments = JSON.parse(original.arguments) as {
+      name: string;
+      body: { mode: 'full'; content: string };
+    };
+    const repeated = {
+      ...original,
+      id: 'approval-ordinary-repeat-two',
+    } satisfies ResponseOutputItem.McpApprovalRequest;
+    const corrected = scriptApproval(
+      'unsafe',
+      'approval-ordinary-repeat-corrected',
+      {
+        name: originalArguments.name,
+        body: {
+          mode: 'full',
+          content: `${originalArguments.body.content}\n// materially corrected`,
+        },
+      },
+    );
+    const marker = outcomeMarker(scriptOutcome(originalArguments.name));
+    const failedOriginalCall = {
+      ...completedApprovedScriptCall(original),
+      status: 'failed',
+      error: marker,
+      output: marker,
+    } satisfies ResponseOutputItem.McpCall;
+    const client = new QueueResponsesClient([
+      eventsFor(response('resp-ordinary-repeat-ready', [original])),
+      eventsFor(
+        response('resp-ordinary-repeat-failed', [failedOriginalCall, repeated]),
+      ),
+      eventsFor(response('resp-ordinary-repeat-corrected', [corrected])),
+    ]);
+    const runtime = runtimeWith(client);
+
+    await drain(runtime.streamTurn({ message: 'Update the title.' }));
+    const continued = await drain(
+      runtime.continueApproval({
+        responseId: 'resp-ordinary-repeat-ready',
+        approvalRequestId: original.id,
+        approve: true,
+        unsafeDispatchCallbacks: { beforeDispatch: vi.fn() },
+      }),
+    );
+
+    expect(continued.result).toMatchObject({
+      status: 'approval_required',
+      confirmedApprovalIds: [original.id],
+      approvals: [expect.objectContaining({ approvalRequestId: corrected.id })],
+      approvalOutcomes: [
+        expect.objectContaining({
+          approvalRequestId: original.id,
+          kind: 'failed_before_execution',
+        }),
+      ],
+    });
+    expect(
+      continued.events.some(
+        (event) =>
+          event.type === 'approval_required' &&
+          event.approval.approvalRequestId === repeated.id,
+      ),
+    ).toBe(false);
+    expect(client.requests[2]?.input).toEqual([
+      expect.objectContaining({
+        type: 'mcp_approval_response',
+        approval_request_id: repeated.id,
+        approve: false,
+        reason: expect.stringContaining('already failed unchanged'),
+      }),
+    ]);
+  });
+
+  it('normalizes repaired call identity and preserves execution intent', () => {
+    const original = scriptApproval('unsafe', 'approval-repair-identity', {
+      method_tokens: ['token-b', 'token-a', 'token-a'],
+    });
+    const parsed = JSON.parse(original.arguments) as Record<string, unknown>;
+    const context = {
+      failureCode: 'script_validation' as const,
+      scriptName: parsed.name as string,
+      noExecute: false,
+      diagnostic: 'Invalid field.',
+    };
+    const policy = createAgentRepairPolicy(
+      { name: original.name, arguments: original.arguments },
+      context,
+    );
+    if (!policy) throw new Error('Expected repair policy.');
+
+    expect(
+      repairPolicyViolation(
+        {
+          name: original.name,
+          arguments: JSON.stringify({
+            ...parsed,
+            no_execute: false,
+            method_tokens: ['token-a', 'token-b'],
+          }),
+        },
+        policy,
+      ),
+    ).toContain('identical');
+    expect(
+      repairPolicyViolation(
+        {
+          name: original.name,
+          arguments: JSON.stringify({
+            ...parsed,
+            method_tokens: ['token-a', 'token-b', 'token-fresh'],
+          }),
+        },
+        policy,
+      ),
+    ).toBeUndefined();
+    expect(
+      repairPolicyViolation(
+        {
+          name: original.name,
+          arguments: JSON.stringify({ ...parsed, no_execute: true }),
+        },
+        policy,
+      ),
+    ).toContain('execution intent');
+    expect(
+      repairPolicyViolation(
+        {
+          name: original.name,
+          arguments: JSON.stringify({
+            ...parsed,
+            name: 'script://dato-agent/site-1/sandbox-1/other.ts',
+          }),
+        },
+        policy,
+      ),
+    ).toContain('same protected script');
+  });
+
+  it('keeps OpenAI safe-script correction inside the same turn without approval outcomes', async () => {
+    const argumentsJson = JSON.stringify({
+      site_id: 'site-1',
+      environment: 'sandbox-1',
+      name: 'script://dato-agent/site-1/sandbox-1/read.ts',
+      body: {
+        mode: 'full',
+        content: 'console.log(await client.items.rawList());',
+      },
+      method_tokens: ['m.items.rawList.signature'],
+    });
+    const failedSafeCall = {
+      type: 'mcp_call',
+      id: 'mcp-safe-failed',
+      server_label: 'datocms',
+      name: 'upsert_and_execute_safe_script',
+      arguments: argumentsJson,
+      status: 'failed',
+      error: 'Correct the page limit.',
+      output: 'Correct the page limit.',
+    } satisfies ResponseOutputItem.McpCall;
+    const correctedSafeCall = {
+      ...failedSafeCall,
+      id: 'mcp-safe-corrected',
+      status: 'completed',
+      error: null,
+      output: '{"records":[]}',
+    } satisfies ResponseOutputItem.McpCall;
+    const runtime = runtimeWith(
+      new QueueResponsesClient([
+        eventsFor(
+          response('resp-safe-self-corrected', [
+            failedSafeCall,
+            correctedSafeCall,
+            assistantMessage({
+              type: 'output_text',
+              text: 'I found the records.',
+              annotations: [],
+            }),
+          ]),
+        ),
+      ]),
+    );
+
+    const completed = await drain(
+      runtime.streamTurn({ message: 'Find relevant records.' }),
+    );
+
+    expect(completed.result).toMatchObject({
+      status: 'completed',
+      text: 'I found the records.',
+    });
+    expect(completed.result.approvalOutcomes).toBeUndefined();
+    expect(
+      completed.events.some(
+        (event) =>
+          event.type === 'approval_outcome' ||
+          event.type === 'approval_required',
+      ),
+    ).toBe(false);
   });
 
   it('preserves local schema output while an unsafe MCP call awaits approval', async () => {
@@ -2490,7 +4022,12 @@ describe('AgentRuntime', () => {
           continuationStarted?.();
           return (async function* stream() {
             await continuationGate;
-            yield* eventsFor(response('resp_in_flight_done'), ['Done']);
+            yield* eventsFor(
+              response('resp_in_flight_done', [
+                completedApprovedScriptCall(approval),
+              ]),
+              ['Done'],
+            );
           })();
         }
         throw new Error('Unexpected duplicate approval request.');

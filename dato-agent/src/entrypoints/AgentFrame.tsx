@@ -13,12 +13,16 @@ import {
 } from '../components/AgentSurface';
 import {
   type AgentApprovalDecision,
+  type AgentApprovalOutcome,
   type AgentApprovalRequest,
   type AgentConversationHistoryMessage,
+  type AgentRepairContext,
+  type AgentRepairPolicy,
   type AgentRuntimeAttachment,
   type AgentRuntimeEvent,
   type AgentTurnResult,
   type AgentTurnStatus,
+  createAgentRepairPolicy,
   createAgentRuntime,
   type FieldReferenceInput,
   type GetModelSchemaCallback,
@@ -30,6 +34,7 @@ import {
   type PresentModelsInput,
   type PresentUsersInput,
   type ReadCurrentRecordLiveFormStateInput,
+  repairPolicyViolation,
 } from '../lib/agentRuntime';
 import {
   READ_ONLY_REJECTION_MESSAGE,
@@ -209,6 +214,11 @@ type ActiveTurn = {
   autoApprovalBundleCount: number;
   userStopped: boolean;
   unsafeOperationDispatched: boolean;
+  dispatchedApprovalIds: string[];
+  cancelledBeforeDispatchApprovalIds: string[];
+  cancelledBeforeDispatchReason?:
+    | 'prior_outcome_uncertain'
+    | 'editor_state_changed';
   localAssetDispatchState:
     | 'idle'
     | 'dispatching'
@@ -232,6 +242,8 @@ type ActiveTurn = {
     responseId: string;
     decisions: AgentApprovalDecision[];
   }>;
+  approvalOutcomes: AgentApprovalOutcome[];
+  confirmedApprovalIds: string[];
   hostContexts: Array<{
     capturedAt: string;
     text: string;
@@ -240,6 +252,10 @@ type ActiveTurn = {
   previousResponseId?: string;
   injectHostContext?: boolean;
   hostContextFingerprint?: string;
+  repairContext?: AgentRepairContext;
+  repairPolicy?: AgentRepairPolicy;
+  repairPolicyIdentity?: string;
+  repairOauthAccessToken?: string;
 };
 
 type RetryCandidate = {
@@ -249,6 +265,17 @@ type RetryCandidate = {
   entriesBefore: AgentTranscriptEntry[];
   conversationBefore: Conversation;
   userEntryId: string;
+  repairContext?: AgentRepairContext;
+  repairPolicy?: AgentRepairPolicy;
+};
+
+type UnsafeRepairCandidate = {
+  approvalRequestId: string;
+  outcome: Extract<AgentApprovalOutcome, { kind: 'failed_before_execution' }>;
+  request: AgentApprovalRequest;
+  state: 'staged' | 'available' | 'starting';
+  turnId: string;
+  repairTurnId?: string;
 };
 
 type PendingNavigation =
@@ -504,6 +531,71 @@ function settleReadOnlyCancellationEntry(
   return entry;
 }
 
+function withoutApprovalRecovery(
+  entries: readonly AgentTranscriptEntry[],
+): AgentTranscriptEntry[] {
+  return entries.map((entry) => {
+    if (entry.kind !== 'approval' || !entry.approval.recovery) return entry;
+    const { recovery: _recovery, ...approval } = entry.approval;
+    return { ...entry, approval };
+  });
+}
+
+const DURABLE_UNSAFE_OUTCOME_NOTICES = {
+  unknown:
+    'Outcome needs checking. The change may have run. Check DatoCMS before trying again.',
+  failedAfterExecution:
+    'Change may be incomplete. Some project content may have changed. Check DatoCMS before trying again.',
+  failedBeforeExecution:
+    'This operation didn’t run. It made no project content changes.',
+  successfulInterruption:
+    'The approved DatoCMS operation completed, but the agent’s final reply was interrupted.',
+} as const;
+
+function durableUnsafeOutcomeNotice(
+  turn: ActiveTurn,
+  assistantEntry:
+    | Extract<AgentTranscriptEntry, { kind: 'message' }>
+    | undefined,
+  allowSuccessfulInterruptionNotice = true,
+): string | undefined {
+  const exactOutcomes = turn.approvalOutcomes.filter((outcome) =>
+    turn.confirmedApprovalIds.includes(outcome.approvalRequestId),
+  );
+  if (exactOutcomes.some((outcome) => outcome.kind === 'unknown')) {
+    return DURABLE_UNSAFE_OUTCOME_NOTICES.unknown;
+  }
+  if (
+    exactOutcomes.some((outcome) => outcome.kind === 'failed_after_execution')
+  ) {
+    return DURABLE_UNSAFE_OUTCOME_NOTICES.failedAfterExecution;
+  }
+  if (
+    exactOutcomes.some((outcome) => outcome.kind === 'failed_before_execution')
+  ) {
+    return DURABLE_UNSAFE_OUTCOME_NOTICES.failedBeforeExecution;
+  }
+  if (
+    allowSuccessfulInterruptionNotice &&
+    turn.confirmedApprovalIds.length > 0 &&
+    (!assistantEntry?.content.trim() ||
+      assistantEntry.interrupted ||
+      Boolean(assistantEntry.error))
+  ) {
+    return DURABLE_UNSAFE_OUTCOME_NOTICES.successfulInterruption;
+  }
+  return undefined;
+}
+
+function persistedTranscriptMessageText(
+  entry: Extract<AgentTranscriptEntry, { kind: 'message' }>,
+): string {
+  const content = entry.content.trim();
+  const notice = entry.durableOutcomeNotice?.trim();
+  if (!notice || content.includes(notice)) return entry.content;
+  return content ? `${content}\n\n${notice}` : notice;
+}
+
 function stringifyDetail(value: unknown): string | undefined {
   if (value === undefined) {
     return undefined;
@@ -720,16 +812,6 @@ function approvalViewModel(
     readOnly?: boolean;
   },
 ): UnsafeApprovalViewModel {
-  const parsed =
-    typeof pending.request.parsedArguments === 'object' &&
-    pending.request.parsedArguments !== null &&
-    !Array.isArray(pending.request.parsedArguments)
-      ? (pending.request.parsedArguments as Record<string, unknown>)
-      : {};
-  const body =
-    typeof parsed.body === 'object' && parsed.body !== null
-      ? (parsed.body as Record<string, unknown>)
-      : {};
   const validation = validateApprovalScope(
     {
       name: pending.request.name,
@@ -739,6 +821,11 @@ function approvalViewModel(
     scope,
     { readOnly: scope.readOnly },
   );
+  const parsed = validation.parsedArguments ?? {};
+  const body =
+    typeof parsed.body === 'object' && parsed.body !== null
+      ? (parsed.body as Record<string, unknown>)
+      : {};
   const status = pending.decision
     ? pending.decision.approve
       ? 'approving'
@@ -759,6 +846,14 @@ function approvalViewModel(
     status,
     automatic: pending.automatic,
     ...(validation.allowed ? {} : { error: validation.reason }),
+    ...(typeof body.content === 'string'
+      ? {
+          script: {
+            language: 'typescript' as const,
+            source: body.content,
+          },
+        }
+      : {}),
     details: [
       { label: 'Project', value: String(parsed.site_id ?? 'Not provided') },
       {
@@ -770,17 +865,6 @@ function approvalViewModel(
       { label: 'Operation', value: pending.request.name },
       ...(typeof parsed.name === 'string'
         ? [{ label: 'Saved script', value: parsed.name }]
-        : []),
-      ...(typeof body.content === 'string'
-        ? [{ label: 'Generated TypeScript', value: body.content }]
-        : []),
-      ...(Array.isArray(body.replacements)
-        ? [
-            {
-              label: 'Script patch',
-              value: stringifyDetail(body.replacements) ?? 'Patch details',
-            },
-          ]
         : []),
     ],
   };
@@ -1341,6 +1425,7 @@ function conversationMessageFromTranscript(
   index: number,
   createdAt: string,
 ): ConversationMessage | undefined {
+  const persistedText = persistedTranscriptMessageText(entry);
   const assistant = entry.role === 'assistant';
   const recordResults = assistant
     ? recordResultsFollowingMessage(entries, index)
@@ -1356,7 +1441,7 @@ function conversationMessageFromTranscript(
     : undefined;
 
   if (
-    !entry.content.trim() &&
+    !persistedText.trim() &&
     !recordResults &&
     !fieldResults &&
     !assetResults &&
@@ -1368,7 +1453,7 @@ function conversationMessageFromTranscript(
   const message: ConversationMessage = {
     id: entry.id,
     role: entry.role,
-    text: entry.content,
+    text: persistedText,
     createdAt: entry.createdAt ?? createdAt,
   };
 
@@ -1657,18 +1742,11 @@ function unsafeDispatchRecoveryMessage(journal: UnsafeDispatchJournal): string {
   const hasConfirmedOutcome = journal.operations.some(
     (operation) => operation.state === 'confirmed',
   );
-  const hasUnsentOperation = journal.operations.some(
-    (operation) => operation.state === 'armed',
-  );
-
   if (hasUnknownOutcome) {
     return 'An approved DatoCMS change may already have run, but the chat closed before its result was confirmed. Check the affected content before trying the same change again.';
   }
-  if (hasConfirmedOutcome && hasUnsentOperation) {
-    return 'Part of the approved DatoCMS change finished before the chat closed. The remaining operations were not sent. Check the affected content before trying it again.';
-  }
   if (hasConfirmedOutcome) {
-    return 'The approved DatoCMS change finished, but the final reply was interrupted. Check DatoCMS for the result.';
+    return 'The approved DatoCMS operation returned a result, but the chat closed before that result could be safely restored. Check DatoCMS before trying it again.';
   }
 
   return 'The chat closed before this approved DatoCMS change was sent. No change was made.';
@@ -1915,6 +1993,18 @@ export default function AgentFrame(props: AgentFrameProps) {
   const abortRef = useRef<AbortController | undefined>(undefined);
   const activeTurnRef = useRef<ActiveTurn | undefined>(undefined);
   const retryCandidateRef = useRef<RetryCandidate | undefined>(undefined);
+  const unsafeRepairCandidateRef = useRef<UnsafeRepairCandidate | undefined>(
+    undefined,
+  );
+  const repairPolicyIdentity = JSON.stringify({
+    config: props.config,
+    currentUserId: props.currentUserId,
+    environment: props.environment,
+    siteId: props.siteId,
+    scope: stableScope,
+  });
+  const repairPolicyIdentityRef = useRef(repairPolicyIdentity);
+  const liveRepairPolicyIdentityRef = useRef(repairPolicyIdentity);
   const failureDiagnosticsRef = useRef(new Map<string, string>());
   const pendingNavigationRef = useRef<PendingNavigation[]>([]);
   const currentInspectorRecordIdRef = useRef<string | undefined>(undefined);
@@ -1937,6 +2027,7 @@ export default function AgentFrame(props: AgentFrameProps) {
 
   autoApproveEnabledRef.current = autoApproveEnabled;
   readOnlyRef.current = props.config.readOnly;
+  liveRepairPolicyIdentityRef.current = repairPolicyIdentity;
   oauthCredentialsRef.current = oauthCredentials;
   editorDirtyRef.current = Boolean(
     props.editorHasUnsavedChanges ?? props.currentRecord?.hasUnsavedChanges,
@@ -1955,6 +2046,7 @@ export default function AgentFrame(props: AgentFrameProps) {
       void runtimeRef.current?.dispose?.();
       runtimeRef.current = undefined;
       retryCandidateRef.current = undefined;
+      unsafeRepairCandidateRef.current = undefined;
       failureDiagnosticsRef.current.clear();
       if (oauthPopupRef.current && !oauthPopupRef.current.closed) {
         oauthPopupRef.current.close();
@@ -2018,6 +2110,300 @@ export default function AgentFrame(props: AgentFrameProps) {
     setEntries(next);
   };
 
+  const retireUnsafeRepairCandidate = (approvalRequestId?: string): void => {
+    const candidate = unsafeRepairCandidateRef.current;
+    if (
+      approvalRequestId &&
+      candidate &&
+      candidate.approvalRequestId !== approvalRequestId
+    ) {
+      return;
+    }
+
+    const retiredId = approvalRequestId ?? candidate?.approvalRequestId;
+    unsafeRepairCandidateRef.current = undefined;
+    if (!retiredId) return;
+
+    updateEntries((current) =>
+      current.map((entry) => {
+        if (
+          entry.kind !== 'approval' ||
+          entry.approval.id !== retiredId ||
+          !entry.approval.recovery
+        ) {
+          return entry;
+        }
+        const { recovery: _recovery, ...approval } = entry.approval;
+        return { ...entry, approval };
+      }),
+    );
+  };
+
+  const confirmUnsafeJournalOperations = (
+    turn: ActiveTurn,
+    approvalRequestIds: readonly string[],
+  ): void => {
+    const confirmedApprovalIds = [...new Set(approvalRequestIds)].filter(
+      Boolean,
+    );
+    if (confirmedApprovalIds.length === 0) return;
+
+    turn.confirmedApprovalIds = [
+      ...new Set([...turn.confirmedApprovalIds, ...confirmedApprovalIds]),
+    ];
+    if (!turn.unsafeJournalId) return;
+
+    try {
+      unsafeDispatchJournalStore.markConfirmed(
+        turn.unsafeJournalId,
+        confirmedApprovalIds,
+      );
+      mentionHostRef.current.invalidatePresentationCache?.();
+      void refreshPresentationEntriesRef.current();
+    } catch {
+      // Keep a stale journal fail-closed. Recovery is not exposed while a
+      // durable dispatched operation remains unresolved.
+    }
+  };
+
+  const releaseConfirmedUnsafeJournal = (
+    turn: ActiveTurn,
+    { allowSuccessfulInterruptionNotice = true } = {},
+    // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Durable outcome persistence, read-back verification, and journal release intentionally stay in one fail-closed transaction.
+  ): boolean => {
+    try {
+      const durableJournal = unsafeDispatchJournalStore.read();
+      if (!durableJournal) {
+        turn.unsafeJournalId = undefined;
+        return true;
+      }
+      if (
+        !turn.unsafeJournalId ||
+        durableJournal.id !== turn.unsafeJournalId ||
+        durableJournal.operations.some(
+          (operation) => operation.state !== 'confirmed',
+        )
+      ) {
+        return false;
+      }
+
+      const assistantEntry = entriesRef.current.find(
+        (entry): entry is Extract<AgentTranscriptEntry, { kind: 'message' }> =>
+          entry.id === turn.assistantEntryId && entry.kind === 'message',
+      );
+      if (!assistantEntry) return false;
+      const durableNotice = durableUnsafeOutcomeNotice(
+        turn,
+        assistantEntry,
+        allowSuccessfulInterruptionNotice,
+      );
+      if (durableNotice) {
+        updateEntries((current) =>
+          current.map((entry) =>
+            entry.id === turn.assistantEntryId && entry.kind === 'message'
+              ? { ...entry, durableOutcomeNotice: durableNotice }
+              : entry,
+          ),
+        );
+      }
+
+      const expectedAssistantEntry = entriesRef.current.find(
+        (entry): entry is Extract<AgentTranscriptEntry, { kind: 'message' }> =>
+          entry.id === turn.assistantEntryId && entry.kind === 'message',
+      );
+      if (!expectedAssistantEntry) return false;
+      const expectedText = persistedTranscriptMessageText(
+        expectedAssistantEntry,
+      );
+      if (!expectedText.trim()) return false;
+
+      persistConversation({});
+      const durableConversation = conversationStore.get(
+        conversationRef.current.id,
+      );
+      const durableAssistantMessage = durableConversation?.messages.find(
+        (message) => message.id === turn.assistantEntryId,
+      );
+      if (durableAssistantMessage?.text !== expectedText) {
+        return false;
+      }
+
+      const verifiedJournal = unsafeDispatchJournalStore.read();
+      if (
+        !turn.unsafeJournalId ||
+        verifiedJournal?.id !== turn.unsafeJournalId ||
+        verifiedJournal.operations.some(
+          (operation) => operation.state !== 'confirmed',
+        )
+      ) {
+        return false;
+      }
+
+      unsafeDispatchJournalStore.clear(turn.unsafeJournalId);
+      turn.unsafeJournalId = undefined;
+      return unsafeDispatchJournalStore.read() === undefined;
+    } catch {
+      return false;
+    }
+  };
+
+  const recordApprovalOutcome = (
+    outcome: AgentApprovalOutcome,
+    turn: ActiveTurn,
+  ): void => {
+    turn.approvalOutcomes = [
+      ...turn.approvalOutcomes.filter(
+        (candidate) =>
+          candidate.approvalRequestId !== outcome.approvalRequestId,
+      ),
+      outcome,
+    ];
+    const currentCandidate = unsafeRepairCandidateRef.current;
+    if (
+      currentCandidate &&
+      currentCandidate.approvalRequestId !== outcome.approvalRequestId
+    ) {
+      retireUnsafeRepairCandidate(currentCandidate.approvalRequestId);
+    }
+
+    updateEntries((current) =>
+      current.map((entry) => {
+        if (
+          entry.kind !== 'approval' ||
+          entry.approval.id !== outcome.approvalRequestId
+        ) {
+          return entry;
+        }
+        const { recovery: _recovery, ...approval } = entry.approval;
+        return {
+          ...entry,
+          approval: {
+            ...approval,
+            outcome: {
+              kind: outcome.kind,
+              diagnostic: outcome.diagnostic,
+            },
+          },
+        };
+      }),
+    );
+
+    if (outcome.kind !== 'failed_before_execution') {
+      retireUnsafeRepairCandidate(outcome.approvalRequestId);
+      return;
+    }
+
+    const pending = pendingApprovalsRef.current.get(outcome.approvalRequestId);
+    const submittedApprovalIds = new Set(
+      turn.approvalSubmissions.flatMap((submission) =>
+        submission.decisions.map((decision) => decision.approvalRequestId),
+      ),
+    );
+    const replacementApprovalAlreadyExists = [
+      ...pendingApprovalsRef.current.keys(),
+    ].some(
+      (approvalRequestId) =>
+        approvalRequestId !== outcome.approvalRequestId &&
+        !submittedApprovalIds.has(approvalRequestId),
+    );
+    if (
+      !pending ||
+      pending.request.name !== DATOCMS_MCP_UNSAFE_SCRIPT_TOOL ||
+      replacementApprovalAlreadyExists ||
+      readOnlyRef.current
+    ) {
+      retireUnsafeRepairCandidate(outcome.approvalRequestId);
+      return;
+    }
+
+    const retained = unsafeRepairCandidateRef.current;
+    if (retained?.approvalRequestId === outcome.approvalRequestId) {
+      retained.outcome = outcome;
+      return;
+    }
+
+    unsafeRepairCandidateRef.current = {
+      approvalRequestId: outcome.approvalRequestId,
+      outcome,
+      request: { ...pending.request },
+      state: 'staged',
+      turnId: turn.id,
+    };
+  };
+
+  const activateUnsafeRepairCandidate = (turn: ActiveTurn): void => {
+    const candidate = unsafeRepairCandidateRef.current;
+    if (
+      !candidate ||
+      candidate.turnId !== turn.id ||
+      candidate.state !== 'staged'
+    ) {
+      return;
+    }
+
+    const lastSubmission = turn.approvalSubmissions.at(-1);
+    const approvedDecisionIds =
+      lastSubmission?.decisions
+        .filter((decision) => decision.approve)
+        .map((decision) => decision.approvalRequestId) ?? [];
+    const allApprovedOperationsConfirmed = approvedDecisionIds.every(
+      (approvalRequestId) =>
+        turn.confirmedApprovalIds.includes(approvalRequestId),
+    );
+    const siblingHasUncertainOrPossibleChanges = turn.approvalOutcomes.some(
+      (outcome) =>
+        outcome.approvalRequestId !== candidate.approvalRequestId &&
+        (outcome.kind === 'failed_after_execution' ||
+          outcome.kind === 'unknown'),
+    );
+    const isLatestApprovedOperation = approvedDecisionIds.includes(
+      candidate.approvalRequestId,
+    );
+    if (
+      !isLatestApprovedOperation ||
+      !allApprovedOperationsConfirmed ||
+      siblingHasUncertainOrPossibleChanges ||
+      readOnlyRef.current ||
+      !activeApiKey(props.config).trim() ||
+      !activeModel(props.config).trim() ||
+      !oauthCredentialsRef.current?.token?.accessToken ||
+      !releaseConfirmedUnsafeJournal(turn)
+    ) {
+      retireUnsafeRepairCandidate(candidate.approvalRequestId);
+      return;
+    }
+
+    candidate.state = 'available';
+    updateEntries((current) =>
+      current.map((entry) =>
+        entry.kind === 'approval' &&
+        entry.approval.id === candidate.approvalRequestId
+          ? {
+              ...entry,
+              approval: {
+                ...entry.approval,
+                recovery: { status: 'available' as const },
+              },
+            }
+          : entry,
+      ),
+    );
+  };
+
+  const settleActivatedRepairTurn = (turn: ActiveTurn): void => {
+    const candidate = unsafeRepairCandidateRef.current;
+    if (candidate?.state === 'starting' && candidate.repairTurnId === turn.id) {
+      retireUnsafeRepairCandidate(candidate.approvalRequestId);
+    }
+  };
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: The serialized identity is the sole policy trigger; the ref-backed retire helper must not retrigger this effect on every render.
+  useEffect(() => {
+    if (repairPolicyIdentityRef.current === repairPolicyIdentity) return;
+    repairPolicyIdentityRef.current = repairPolicyIdentity;
+    retireUnsafeRepairCandidate();
+  }, [repairPolicyIdentity]);
+
   const updatePendingApprovals = (
     updater: (
       current: Map<string, PendingApproval>,
@@ -2033,6 +2419,8 @@ export default function AgentFrame(props: AgentFrameProps) {
     if (!props.config.readOnly) {
       return;
     }
+
+    retireUnsafeRepairCandidate();
 
     autoApproveEnabledRef.current = false;
     setAutoApproveEnabled(false);
@@ -2112,6 +2500,7 @@ export default function AgentFrame(props: AgentFrameProps) {
     const runtime = runtimeRef.current;
     activeTurnRef.current = undefined;
     retryCandidateRef.current = undefined;
+    unsafeRepairCandidateRef.current = undefined;
     failureDiagnosticsRef.current.clear();
     abortRef.current = undefined;
     controller?.abort();
@@ -2298,6 +2687,7 @@ export default function AgentFrame(props: AgentFrameProps) {
   };
   checkpointActiveTurnRef.current = checkpointInterruptedTurn;
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: OAuth storage identity is the sole external trigger; recovery invalidation uses the current ref-backed helper.
   useEffect(() => {
     const credentialIdentity = (credentials: OAuthCredentials | null) =>
       credentials?.token
@@ -2325,6 +2715,8 @@ export default function AgentFrame(props: AgentFrameProps) {
       ) {
         return;
       }
+
+      retireUnsafeRepairCandidate();
 
       const activeTurn = activeTurnRef.current;
       if (activeTurn && !activeTurn.unsafeOperationDispatched) {
@@ -2591,8 +2983,14 @@ export default function AgentFrame(props: AgentFrameProps) {
           hostContexts: turn.hostContexts,
           userStopped: turn.userStopped,
           unsafeOperationDispatched: turn.unsafeOperationDispatched,
+          dispatchedApprovalIds: turn.dispatchedApprovalIds,
+          cancelledBeforeDispatchApprovalIds:
+            turn.cancelledBeforeDispatchApprovalIds,
+          cancelledBeforeDispatchReason: turn.cancelledBeforeDispatchReason,
           autoApprovalBundleCount: turn.autoApprovalBundleCount,
           approvalSubmissions: turn.approvalSubmissions,
+          approvalOutcomes: turn.approvalOutcomes,
+          confirmedApprovalIds: turn.confirmedApprovalIds,
           completionResult: result,
           events: turn.events,
           thrownError,
@@ -2619,9 +3017,11 @@ export default function AgentFrame(props: AgentFrameProps) {
               : {}),
           },
           history: turn.history,
-          entriesBefore: turn.entriesBefore,
+          entriesBefore: withoutApprovalRecovery(turn.entriesBefore),
           conversationBefore: turn.conversationBefore,
           userEntryId: turn.userEntryId,
+          ...(turn.repairContext ? { repairContext: turn.repairContext } : {}),
+          ...(turn.repairPolicy ? { repairPolicy: turn.repairPolicy } : {}),
         }
       : undefined;
   };
@@ -3025,18 +3425,32 @@ export default function AgentFrame(props: AgentFrameProps) {
     responseId: string,
     approval: AgentApprovalRequest,
   ) => {
+    const repairCandidate = unsafeRepairCandidateRef.current;
+    if (
+      repairCandidate &&
+      repairCandidate.approvalRequestId !== approval.approvalRequestId
+    ) {
+      retireUnsafeRepairCandidate(repairCandidate.approvalRequestId);
+    }
     const blockedByReadOnly =
       readOnlyRef.current && approval.name === DATOCMS_MCP_UNSAFE_SCRIPT_TOOL;
+    const repairViolation = repairPolicyViolation(
+      { name: approval.name, arguments: approval.arguments },
+      activeTurnRef.current?.repairPolicy,
+    );
+    const blockedReason = blockedByReadOnly
+      ? READ_ONLY_REJECTION_MESSAGE
+      : repairViolation;
     const pending: PendingApproval = {
       responseId,
       request: approval,
-      automatic: blockedByReadOnly ? false : autoApproveEnabledRef.current,
-      ...(blockedByReadOnly
+      automatic: blockedReason ? false : autoApproveEnabledRef.current,
+      ...(blockedReason
         ? {
             decision: {
               approvalRequestId: approval.approvalRequestId,
               approve: false,
-              reason: READ_ONLY_REJECTION_MESSAGE,
+              reason: blockedReason,
             },
           }
         : {}),
@@ -3046,7 +3460,7 @@ export default function AgentFrame(props: AgentFrameProps) {
       next.set(approval.approvalRequestId, pending);
       return next;
     });
-    if (blockedByReadOnly) {
+    if (blockedReason) {
       return;
     }
     updateEntries((current) => {
@@ -3124,6 +3538,9 @@ export default function AgentFrame(props: AgentFrameProps) {
       case 'approval_required':
         addApprovalEntry(event.responseId, event.approval);
         break;
+      case 'approval_outcome':
+        recordApprovalOutcome(event.approvalOutcome, turn);
+        break;
       case 'error':
         if (
           event.error.code === 'aborted' ||
@@ -3143,6 +3560,24 @@ export default function AgentFrame(props: AgentFrameProps) {
         );
         break;
       case 'turn_completed': {
+        confirmUnsafeJournalOperations(
+          turn,
+          event.result.confirmedApprovalIds ?? [],
+        );
+        for (const outcome of event.result.approvalOutcomes ?? []) {
+          recordApprovalOutcome(outcome, turn);
+        }
+        if (
+          event.result.status !== 'approval_required' ||
+          turn.approvalOutcomes.some((outcome) =>
+            turn.confirmedApprovalIds.includes(outcome.approvalRequestId),
+          )
+        ) {
+          releaseConfirmedUnsafeJournal(turn, {
+            allowSuccessfulInterruptionNotice:
+              event.result.status !== 'approval_required',
+          });
+        }
         const settledTurnStatus =
           turn.userStopped && !turn.unsafeOperationDispatched
             ? ('aborted' as const)
@@ -3181,6 +3616,8 @@ export default function AgentFrame(props: AgentFrameProps) {
               source: 'turn',
             });
           }
+          activateUnsafeRepairCandidate(turn);
+          settleActivatedRepairTurn(turn);
           setRunning(false);
           activeTurnRef.current = undefined;
           const finishedRuntime = runtimeRef.current;
@@ -3225,6 +3662,10 @@ export default function AgentFrame(props: AgentFrameProps) {
   async function submit(
     rawSubmission: AgentComposerSubmission | string,
     retryCandidate?: RetryCandidate,
+    repairContext:
+      | AgentRepairContext
+      | undefined = retryCandidate?.repairContext,
+    repairPolicy: AgentRepairPolicy | undefined = retryCandidate?.repairPolicy,
   ): Promise<void> {
     const submission: AgentComposerSubmission =
       typeof rawSubmission === 'string'
@@ -3240,6 +3681,10 @@ export default function AgentFrame(props: AgentFrameProps) {
     const displayMessage = submission.displayText.trim();
     if (running || !message || !displayMessage) {
       return;
+    }
+
+    if (!repairContext && !retryCandidate) {
+      retireUnsafeRepairCandidate();
     }
 
     // The visible mention list is the authority for which browser files belong
@@ -3290,6 +3735,8 @@ export default function AgentFrame(props: AgentFrameProps) {
       autoApprovalBundleCount: 0,
       userStopped: false,
       unsafeOperationDispatched: false,
+      dispatchedApprovalIds: [],
+      cancelledBeforeDispatchApprovalIds: [],
       localAssetDispatchState: 'idle',
       provider: props.config.provider,
       model: activeModel(props.config),
@@ -3300,8 +3747,23 @@ export default function AgentFrame(props: AgentFrameProps) {
       diagnosticEventsDropped: 0,
       events: [],
       approvalSubmissions: [],
+      approvalOutcomes: [],
+      confirmedApprovalIds: [],
       hostContexts: [],
+      ...(repairContext
+        ? {
+            repairContext,
+            ...(repairPolicy ? { repairPolicy } : {}),
+            repairPolicyIdentity,
+            repairOauthAccessToken:
+              oauthCredentialsRef.current?.token?.accessToken ?? '',
+          }
+        : {}),
     };
+    const claimedRepairCandidate = unsafeRepairCandidateRef.current;
+    if (repairContext && claimedRepairCandidate?.state === 'starting') {
+      claimedRepairCandidate.repairTurnId = turn.id;
+    }
     const retryBaselineEntryIds = new Set([
       ...entriesBefore.map((entry) => entry.id),
       userEntryId,
@@ -3382,11 +3844,13 @@ export default function AgentFrame(props: AgentFrameProps) {
       const hostContext = props.loadHostContext
         ? await loadFreshHostContext()
         : undefined;
-      const previousResponseId = reusableOpenAiResponseId(
-        conversationRef.current,
-        turn.provider,
-        turn.model,
-      );
+      const previousResponseId = repairContext
+        ? undefined
+        : reusableOpenAiResponseId(
+            conversationRef.current,
+            turn.provider,
+            turn.model,
+          );
       const injectHostContext = Boolean(
         hostContext &&
           (turn.provider === 'anthropic' ||
@@ -3420,6 +3884,8 @@ export default function AgentFrame(props: AgentFrameProps) {
             attachments,
             previousResponseId,
             injectHostContext,
+            ...(repairContext ? { repairContext } : {}),
+            ...(repairPolicy ? { repairPolicy } : {}),
             signal: controller.signal,
           },
           async (event) => {
@@ -3511,6 +3977,8 @@ export default function AgentFrame(props: AgentFrameProps) {
             attachments,
             previousResponseId: undefined,
             injectHostContext: Boolean(retryHostContext),
+            ...(repairContext ? { repairContext } : {}),
+            ...(repairPolicy ? { repairPolicy } : {}),
             signal: controller.signal,
           },
           (event) => observeRuntimeEvent(event, turn),
@@ -3532,13 +4000,21 @@ export default function AgentFrame(props: AgentFrameProps) {
 
       if (mountedRef.current && activeTurnRef.current === turn) {
         if (result.status === 'approval_required') {
-          if (readOnlyRef.current) {
-            const responseId = result.responseId;
-            if (responseId) {
-              await dispatchApprovalGroup(responseId);
-            }
+          const responseId = result.responseId;
+          const responseApprovals = responseId
+            ? [...pendingApprovalsRef.current.values()].filter(
+                (item) => item.responseId === responseId,
+              )
+            : [];
+          if (
+            responseId &&
+            (readOnlyRef.current ||
+              (responseApprovals.length > 0 &&
+                responseApprovals.every((item) => item.decision)))
+          ) {
+            await dispatchApprovalGroup(responseId);
           } else {
-            await autoApproveResponse(result.responseId);
+            await autoApproveResponse(responseId);
           }
         } else {
           setRunning(false);
@@ -3603,6 +4079,7 @@ export default function AgentFrame(props: AgentFrameProps) {
           source: 'runtime_exception',
         });
       }
+      settleActivatedRepairTurn(turn);
       persistConversation({});
     } finally {
       if (abortRef.current === controller) {
@@ -3630,6 +4107,7 @@ export default function AgentFrame(props: AgentFrameProps) {
     // Claim the candidate before yielding so a double click can never start
     // two provider chains.
     retryCandidateRef.current = undefined;
+    retireUnsafeRepairCandidate();
     await submit(candidate.submission, candidate);
   };
 
@@ -3690,15 +4168,40 @@ export default function AgentFrame(props: AgentFrameProps) {
     setRunning(false);
   }
 
-  function rejectReadOnlyUnsafeDispatch(
+  function rejectUnsafeDispatchBeforeNetwork(
     turn: ActiveTurn,
     unsafeJournalId: string,
     approvalRequestIds: readonly string[],
-  ): void {
-    if (!readOnlyRef.current) {
-      return;
-    }
+    message: string,
+  ): never {
+    cancelUnsafeDispatchBeforeNetwork(
+      turn,
+      unsafeJournalId,
+      approvalRequestIds,
+    );
+    throw new Error(message);
+  }
 
+  function cancelUnsafeDispatchBeforeNetwork(
+    turn: ActiveTurn,
+    unsafeJournalId: string,
+    approvalRequestIds: readonly string[],
+    reason:
+      | 'prior_outcome_uncertain'
+      | 'editor_state_changed' = 'editor_state_changed',
+  ): void {
+    turn.cancelledBeforeDispatchApprovalIds = [
+      ...new Set([
+        ...turn.cancelledBeforeDispatchApprovalIds,
+        ...approvalRequestIds,
+      ]),
+    ];
+    if (
+      reason === 'prior_outcome_uncertain' ||
+      !turn.cancelledBeforeDispatchReason
+    ) {
+      turn.cancelledBeforeDispatchReason = reason;
+    }
     if (!turn.unsafeOperationDispatched) {
       try {
         unsafeDispatchJournalStore.clear(unsafeJournalId);
@@ -3718,8 +4221,20 @@ export default function AgentFrame(props: AgentFrameProps) {
         // boundary is still blocked for the remaining armed operation.
       }
     }
+  }
 
-    throw new Error(READ_ONLY_REJECTION_MESSAGE);
+  function rejectReadOnlyUnsafeDispatch(
+    turn: ActiveTurn,
+    unsafeJournalId: string,
+    approvalRequestIds: readonly string[],
+  ): void {
+    if (!readOnlyRef.current) return;
+    rejectUnsafeDispatchBeforeNetwork(
+      turn,
+      unsafeJournalId,
+      approvalRequestIds,
+      READ_ONLY_REJECTION_MESSAGE,
+    );
   }
 
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Group dispatch preserves one atomic, idempotent unsafe continuation and its outcome-unknown handling.
@@ -3906,19 +4421,60 @@ export default function AgentFrame(props: AgentFrameProps) {
                   beforeDispatch: (
                     dispatchedApprovalIds: readonly string[],
                   ) => {
+                    const repairViolation = dispatchedApprovalIds
+                      .map((approvalRequestId) =>
+                        group.find(
+                          (item) =>
+                            item.request.approvalRequestId ===
+                            approvalRequestId,
+                        ),
+                      )
+                      .filter(
+                        (item): item is PendingApproval => item !== undefined,
+                      )
+                      .map((item) =>
+                        repairPolicyViolation(
+                          {
+                            name: item.request.name,
+                            arguments: item.request.arguments,
+                          },
+                          turn.repairPolicy,
+                        ),
+                      )
+                      .find((reason): reason is string => Boolean(reason));
+                    if (repairViolation) {
+                      rejectUnsafeDispatchBeforeNetwork(
+                        turn,
+                        unsafeJournalId,
+                        dispatchedApprovalIds,
+                        repairViolation,
+                      );
+                    }
                     rejectReadOnlyUnsafeDispatch(
                       turn,
                       unsafeJournalId,
                       dispatchedApprovalIds,
+                    );
+                    const repairBoundaryChanged = Boolean(
+                      turn.repairContext &&
+                        (turn.repairPolicyIdentity !==
+                          liveRepairPolicyIdentityRef.current ||
+                          !turn.repairOauthAccessToken ||
+                          turn.repairOauthAccessToken !==
+                            oauthCredentialsRef.current?.token?.accessToken),
                     );
                     if (
                       activeTurnRef.current !== turn ||
                       controller.signal.aborted ||
                       hostActionPendingRef.current ||
                       editorDirtyRef.current ||
+                      repairBoundaryChanged ||
                       (automaticDispatch && !autoApproveEnabledRef.current)
                     ) {
-                      throw new Error(
+                      rejectUnsafeDispatchBeforeNetwork(
+                        turn,
+                        unsafeJournalId,
+                        dispatchedApprovalIds,
                         'The change was not sent because the editor state changed. Close the open dialog and save or discard any unsaved changes before reviewing it again.',
                       );
                     }
@@ -3926,16 +4482,28 @@ export default function AgentFrame(props: AgentFrameProps) {
                       unsafeJournalId,
                       dispatchedApprovalIds,
                     );
+                    turn.dispatchedApprovalIds = [
+                      ...new Set([
+                        ...turn.dispatchedApprovalIds,
+                        ...dispatchedApprovalIds,
+                      ]),
+                    ];
                     turn.unsafeOperationDispatched = true;
                     mentionHostRef.current.invalidatePresentationCache?.();
                   },
                   confirmed: (confirmedApprovalIds: readonly string[]) => {
-                    unsafeDispatchJournalStore.markConfirmed(
+                    confirmUnsafeJournalOperations(turn, confirmedApprovalIds);
+                  },
+                  cancelledBeforeDispatch: (
+                    cancelledApprovalIds: readonly string[],
+                    reason,
+                  ) => {
+                    cancelUnsafeDispatchBeforeNetwork(
+                      turn,
                       unsafeJournalId,
-                      confirmedApprovalIds,
+                      cancelledApprovalIds,
+                      reason,
                     );
-                    mentionHostRef.current.invalidatePresentationCache?.();
-                    void refreshPresentationEntriesRef.current();
                   },
                 },
               }
@@ -3944,23 +4512,7 @@ export default function AgentFrame(props: AgentFrameProps) {
         (event) => observeRuntimeEvent(event, turn),
       );
       if (unsafeJournalId) {
-        const confirmedApprovalIds =
-          result.status === 'completed' || result.status === 'approval_required'
-            ? approvedItems.map((item) => item.request.approvalRequestId)
-            : (result.confirmedApprovalIds ?? []);
-        if (confirmedApprovalIds.length > 0) {
-          try {
-            unsafeDispatchJournalStore.markConfirmed(
-              unsafeJournalId,
-              confirmedApprovalIds,
-            );
-            mentionHostRef.current.invalidatePresentationCache?.();
-            void refreshPresentationEntriesRef.current();
-          } catch {
-            // Provider callbacks already record the narrowest durable state.
-            // A stale dispatch marker is deliberately treated as uncertain.
-          }
-        }
+        confirmUnsafeJournalOperations(turn, result.confirmedApprovalIds ?? []);
       }
     } catch (error) {
       thrownMessage =
@@ -4042,31 +4594,40 @@ export default function AgentFrame(props: AgentFrameProps) {
     }
 
     if (
-      unsafeJournalId &&
-      result?.status === 'completed' &&
-      activeTurnRef.current !== turn
+      turn.cancelledBeforeDispatchApprovalIds.length > 0 &&
+      turn.dispatchedApprovalIds.length > 0
     ) {
-      try {
-        const durableJournal = unsafeDispatchJournalStore.read();
-        const durableConversation = conversationStore.get(
-          conversationRef.current.id,
-        );
-        const durableAssistantReply = durableConversation?.messages.find(
-          (message) => message.id === turn.assistantEntryId,
-        );
-        if (
-          durableJournal?.id === unsafeJournalId &&
-          durableJournal.operations.every(
-            (operation) => operation.state === 'confirmed',
-          ) &&
-          durableAssistantReply?.text.trim()
-        ) {
-          unsafeDispatchJournalStore.clear(unsafeJournalId);
-          turn.unsafeJournalId = undefined;
-        }
-      } catch {
-        // Keep the journal. Recovery must remain conservative if either the
-        // terminal reply or the journal cleanup cannot be verified.
+      const cancellationNotice =
+        turn.cancelledBeforeDispatchReason === 'prior_outcome_uncertain'
+          ? 'A later approved operation was not sent because an earlier change may be incomplete. Check DatoCMS before trying again.'
+          : 'A later approved change was not sent because the editor state changed.';
+      updateEntries((current) =>
+        current.map((entry) =>
+          entry.id === turn.assistantEntryId &&
+          entry.kind === 'message' &&
+          !entry.content.includes(cancellationNotice)
+            ? {
+                ...entry,
+                content: entry.content.trim()
+                  ? `${entry.content.trim()}\n\n${cancellationNotice}`
+                  : cancellationNotice,
+              }
+            : entry,
+        ),
+      );
+      persistConversation({});
+    }
+
+    if (unsafeJournalId && activeTurnRef.current !== turn) {
+      const assistantEntry = entriesRef.current.find(
+        (entry): entry is Extract<AgentTranscriptEntry, { kind: 'message' }> =>
+          entry.id === turn.assistantEntryId && entry.kind === 'message',
+      );
+      const hasRequiredOutcomeNotice = Boolean(
+        durableUnsafeOutcomeNotice(turn, assistantEntry),
+      );
+      if (result?.status === 'completed' || hasRequiredOutcomeNotice) {
+        releaseConfirmedUnsafeJournal(turn);
       }
     }
 
@@ -4077,6 +4638,15 @@ export default function AgentFrame(props: AgentFrameProps) {
       }
       return next;
     });
+    const resultOutcomes = new Map(
+      [...turn.approvalOutcomes, ...(result?.approvalOutcomes ?? [])].map(
+        (outcome) => [outcome.approvalRequestId, outcome],
+      ),
+    );
+    const confirmedApprovalIds = new Set([
+      ...turn.confirmedApprovalIds,
+      ...(result?.confirmedApprovalIds ?? []),
+    ]);
     updateEntries((current) =>
       // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Each decision is settled from the definitive runtime result without re-exposing unsafe actions.
       current.map((entry) => {
@@ -4101,8 +4671,40 @@ export default function AgentFrame(props: AgentFrameProps) {
           };
         }
         if (
-          result?.confirmedApprovalIds?.includes(item.request.approvalRequestId)
+          turn.cancelledBeforeDispatchApprovalIds.includes(
+            item.request.approvalRequestId,
+          )
         ) {
+          return {
+            ...entry,
+            approval: {
+              ...entry.approval,
+              status: 'error' as const,
+              error:
+                turn.cancelledBeforeDispatchReason === 'prior_outcome_uncertain'
+                  ? 'This operation was not sent because an earlier change may be incomplete.'
+                  : 'This operation was not sent because the editor state changed.',
+            },
+          };
+        }
+        const resultOutcome = resultOutcomes.get(
+          item.request.approvalRequestId,
+        );
+        if (resultOutcome) {
+          return {
+            ...entry,
+            approval: {
+              ...entry.approval,
+              status: 'approved' as const,
+              error: undefined,
+              outcome: {
+                kind: resultOutcome.kind,
+                diagnostic: resultOutcome.diagnostic,
+              },
+            },
+          };
+        }
+        if (confirmedApprovalIds.has(item.request.approvalRequestId)) {
           return {
             ...entry,
             approval: {
@@ -4118,6 +4720,25 @@ export default function AgentFrame(props: AgentFrameProps) {
           result.status === 'incomplete' ||
           result.status === 'aborted'
         ) {
+          if (
+            turn.dispatchedApprovalIds.includes(item.request.approvalRequestId)
+          ) {
+            return {
+              ...entry,
+              approval: {
+                ...entry.approval,
+                status: 'approved' as const,
+                error: undefined,
+                outcome: {
+                  kind: 'unknown' as const,
+                  diagnostic:
+                    thrownMessage ??
+                    result?.error?.message ??
+                    'The result could not be confirmed.',
+                },
+              },
+            };
+          }
           return {
             ...entry,
             approval: {
@@ -4141,13 +4762,28 @@ export default function AgentFrame(props: AgentFrameProps) {
       }),
     );
 
+    if (result?.status !== 'approval_required') {
+      activateUnsafeRepairCandidate(turn);
+      settleActivatedRepairTurn(turn);
+    }
+
     if (
       result?.status === 'approval_required' &&
       result.responseId &&
       activeTurnRef.current === turn
     ) {
       persistConversation({});
-      await autoApproveResponse(result.responseId);
+      const responseApprovals = [
+        ...pendingApprovalsRef.current.values(),
+      ].filter((item) => item.responseId === result?.responseId);
+      if (
+        responseApprovals.length > 0 &&
+        responseApprovals.every((item) => item.decision)
+      ) {
+        await dispatchApprovalGroup(result.responseId);
+      } else {
+        await autoApproveResponse(result.responseId);
+      }
       return;
     }
 
@@ -4516,6 +5152,7 @@ export default function AgentFrame(props: AgentFrameProps) {
     }
 
     retryCandidateRef.current = undefined;
+    retireUnsafeRepairCandidate();
     updateEntries((current) =>
       current.map((entry) =>
         entry.kind === 'message' && entry.failure?.retryable
@@ -4801,6 +5438,193 @@ export default function AgentFrame(props: AgentFrameProps) {
     }
   };
 
+  const repairUnsafeApproval =
+    // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Recovery activation intentionally keeps every live policy, identity, and dispatch guard in one fail-closed transaction.
+    async (approval: UnsafeApprovalViewModel): Promise<void> => {
+      const candidate = unsafeRepairCandidateRef.current;
+      if (
+        !candidate ||
+        candidate.approvalRequestId !== approval.id ||
+        candidate.state !== 'available'
+      ) {
+        return;
+      }
+
+      const showGuardMessage = (message: string) => {
+        updateEntries((current) =>
+          current.map((entry) =>
+            entry.kind === 'approval' && entry.approval.id === approval.id
+              ? {
+                  ...entry,
+                  approval: { ...entry.approval, error: message },
+                }
+              : entry,
+          ),
+        );
+      };
+
+      if (readOnlyRef.current) {
+        retireUnsafeRepairCandidate(candidate.approvalRequestId);
+        return;
+      }
+      if (
+        running ||
+        activeTurnRef.current ||
+        pendingApprovalsRef.current.size > 0 ||
+        approvalDispatchRef.current.size > 0 ||
+        autoApprovalDispatchRef.current.size > 0
+      ) {
+        showGuardMessage(
+          'Finish the current request before preparing this fix.',
+        );
+        return;
+      }
+      try {
+        if (unsafeDispatchJournalStore.read()) {
+          showGuardMessage(
+            'Check the previous change outcome before preparing another change.',
+          );
+          return;
+        }
+      } catch {
+        showGuardMessage(
+          'The previous change outcome could not be verified. Check DatoCMS before preparing another change.',
+        );
+        return;
+      }
+      if (hostActionPendingRef.current || autoApproveChangeRef.current) {
+        showGuardMessage('Close the open dialog before preparing this fix.');
+        return;
+      }
+      if (editorDirtyRef.current) {
+        showGuardMessage(
+          'Save or discard the unsaved record changes before preparing this fix.',
+        );
+        return;
+      }
+      if (
+        !activeApiKey(props.config).trim() ||
+        !activeModel(props.config).trim()
+      ) {
+        showGuardMessage(
+          'Configure the AI provider before preparing this fix.',
+        );
+        return;
+      }
+      if (!oauthCredentialsRef.current?.token?.accessToken || oauthConnecting) {
+        showGuardMessage('Reconnect DatoCMS before preparing this fix.');
+        return;
+      }
+
+      const validation = validateApprovalScope(
+        {
+          name: candidate.request.name,
+          arguments: candidate.request.arguments,
+          serverLabel: candidate.request.serverLabel,
+        },
+        props,
+        { readOnly: readOnlyRef.current },
+      );
+      const parsed = validation.parsedArguments;
+      const parsedRecord =
+        parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+          ? (parsed as Record<string, unknown>)
+          : undefined;
+      const remoteOutcome = candidate.outcome.remoteOutcome;
+      if (
+        !validation.allowed ||
+        !parsedRecord ||
+        parsedRecord.name !== remoteOutcome.scriptName ||
+        remoteOutcome.executionState !== 'not_started' ||
+        remoteOutcome.projectChangeState !== 'none' ||
+        remoteOutcome.recovery !== 'fix_and_review'
+      ) {
+        retireUnsafeRepairCandidate(candidate.approvalRequestId);
+        return;
+      }
+
+      if (
+        unsafeRepairCandidateRef.current !== candidate ||
+        candidate.state !== 'available' ||
+        readOnlyRef.current ||
+        activeTurnRef.current ||
+        approvalDispatchRef.current.size > 0 ||
+        hostActionPendingRef.current ||
+        editorDirtyRef.current
+      ) {
+        return;
+      }
+
+      const fixWithAuto = autoApproveEnabledRef.current;
+      const visibleMessage = fixWithAuto ? 'Fix with Auto' : 'Fix and review';
+      const repairContext: AgentRepairContext = {
+        failureCode: remoteOutcome.failureCode,
+        scriptName: remoteOutcome.scriptName,
+        noExecute: parsedRecord.no_execute === true,
+        diagnostic: candidate.outcome.diagnostic.slice(0, 4_000),
+      };
+      const repairPolicy = createAgentRepairPolicy(
+        {
+          name: candidate.request.name,
+          arguments: candidate.request.arguments,
+        },
+        repairContext,
+      );
+      if (!repairPolicy) {
+        retireUnsafeRepairCandidate(candidate.approvalRequestId);
+        return;
+      }
+      candidate.state = 'starting';
+      updateEntries((current) =>
+        current.map((entry) =>
+          entry.kind === 'approval' &&
+          entry.approval.id === candidate.approvalRequestId
+            ? {
+                ...entry,
+                approval: {
+                  ...entry.approval,
+                  error: undefined,
+                  recovery: { status: 'starting' as const },
+                },
+              }
+            : entry,
+        ),
+      );
+
+      await submit(
+        {
+          displayText: visibleMessage,
+          providerText: visibleMessage,
+          segments: [{ type: 'text', content: visibleMessage }],
+        },
+        undefined,
+        repairContext,
+        repairPolicy,
+      );
+
+      if (
+        unsafeRepairCandidateRef.current === candidate &&
+        candidate.state === 'starting' &&
+        !candidate.repairTurnId
+      ) {
+        candidate.state = 'available';
+        updateEntries((current) =>
+          current.map((entry) =>
+            entry.kind === 'approval' &&
+            entry.approval.id === candidate.approvalRequestId
+              ? {
+                  ...entry,
+                  approval: {
+                    ...entry.approval,
+                    recovery: { status: 'available' as const },
+                  },
+                }
+              : entry,
+          ),
+        );
+      }
+    };
+
   const hasProviderConfiguration = Boolean(
     activeApiKey(props.config).trim() && activeModel(props.config).trim(),
   );
@@ -4881,6 +5705,7 @@ export default function AgentFrame(props: AgentFrameProps) {
       onReviewUnsafeAction={(approval) => void reviewApprovalDetails(approval)}
       onApproveUnsafeAction={(approval) => void decideApproval(approval, true)}
       onRejectUnsafeAction={(approval) => void decideApproval(approval, false)}
+      onRepairUnsafeAction={(approval) => void repairUnsafeApproval(approval)}
       onAutoApproveChange={
         props.config.readOnly ? undefined : changeAutoApprove
       }

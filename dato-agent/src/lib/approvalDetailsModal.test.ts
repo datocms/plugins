@@ -11,6 +11,14 @@ function approval(
     description: 'Update the Homepage title.',
     actionLabel: 'Approve',
     details: [{ label: 'Target', value: 'Homepage' }],
+    script: {
+      language: 'typescript',
+      source: 'await client.items.update("homepage", { title: "Hello" });',
+    },
+    outcome: {
+      kind: 'failed_before_execution',
+      diagnostic: 'TypeScript compilation failed.',
+    },
     status,
   };
 }
@@ -27,6 +35,15 @@ describe('openApprovalDetailsModal', () => {
         parameters: {
           canDecide: true,
           details: [{ label: 'Target', value: 'Homepage' }],
+          script: {
+            language: 'typescript',
+            source:
+              'await client.items.update("homepage", { title: "Hello" });',
+          },
+          outcome: {
+            kind: 'failed_before_execution',
+            diagnostic: 'TypeScript compilation failed.',
+          },
         },
       }),
     );

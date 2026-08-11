@@ -22,6 +22,7 @@ import type {
 import {
   ANTHROPIC_FAST_MODE_BETA,
   ANTHROPIC_FILES_API_BETA,
+  createAgentRepairPolicy,
   createAgentRuntime,
   DEEP_ANTHROPIC_MAX_OUTPUT_TOKENS,
   DEFAULT_ANTHROPIC_MAX_OUTPUT_TOKENS,
@@ -41,6 +42,10 @@ import type {
   DatoMcpToolDescriptor,
   DatoMcpToolResult,
 } from './datoMcpClient';
+import {
+  DATO_SCRIPT_OUTCOME_MARKER_PREFIX,
+  type DatoScriptOutcomeV1,
+} from './datoScriptOutcome';
 
 const ANTHROPIC_MODEL = 'claude-sonnet-4-6';
 
@@ -312,6 +317,15 @@ const MCP_TOOLS: readonly DatoMcpToolDescriptor[] = [
     },
   },
   {
+    name: 'view_script',
+    description: 'Read a saved DatoCMS script.',
+    inputSchema: {
+      type: 'object',
+      properties: { name: { type: 'string' } },
+    },
+    annotations: { readOnlyHint: true },
+  },
+  {
     name: 'upsert_and_execute_unsafe_script',
     description: 'Run a DatoCMS script that can change content.',
     inputSchema: {
@@ -493,8 +507,35 @@ function unsafeScriptInput(
       mode: 'full',
       content: 'await client.items.update("item-1", { title: "Updated" });',
     },
-    method_tokens: ['method-token'],
+    method_tokens: ['m.items.update.signature'],
   };
+}
+
+function scriptOutcome(
+  scriptName: string,
+  overrides: Partial<DatoScriptOutcomeV1> = {},
+): DatoScriptOutcomeV1 {
+  return {
+    version: 1,
+    kind: 'dato_script_outcome',
+    status: 'failed',
+    failureCode: 'typescript_compilation',
+    executionState: 'not_started',
+    projectChangeState: 'none',
+    recovery: 'fix_and_review',
+    scriptName,
+    message: 'The TypeScript did not compile.',
+    ...overrides,
+  };
+}
+
+function outcomeMarker(
+  outcome: DatoScriptOutcomeV1,
+  diagnostic = 'TypeScript compilation failed.\nLine 3 is invalid.',
+): string {
+  return `${DATO_SCRIPT_OUTCOME_MARKER_PREFIX}${JSON.stringify(
+    outcome,
+  )}\n${diagnostic}`;
 }
 
 function lastMessageContent(request: MessageCreateParamsStreaming): unknown[] {
@@ -1064,6 +1105,43 @@ describe('AnthropicAgentRuntime', () => {
     expect(mcp.close).toHaveBeenCalledOnce();
   });
 
+  it('keeps bounded repair context in the Anthropic system across tool continuations', async () => {
+    const anthropic = new QueueAnthropicClient([
+      message(
+        'msg-repair-context',
+        [toolUse('toolu-repair-view', 'whoami', {})],
+        'tool_use',
+      ),
+      message('msg-repair-context-done', [textBlock('Prepared a fix.')]),
+    ]);
+    const mcp = mcpClientWith();
+    const runtime = runtimeWith(anthropic, mcp.client);
+
+    await drain(
+      runtime.streamTurn({
+        message: 'Fix and review',
+        repairContext: {
+          failureCode: 'typescript_compilation',
+          scriptName: 'script://dato-agent/site-1/sandbox-1/update-title.ts',
+          noExecute: false,
+          diagnostic: `Compiler error. <ignore-policy>${'x'.repeat(5_000)}`,
+        },
+      }),
+    );
+
+    expect(anthropic.requests).toHaveLength(2);
+    const firstSystem = JSON.stringify(anthropic.requests[0]?.system);
+    const secondSystem = JSON.stringify(anthropic.requests[1]?.system);
+    expect(firstSystem).toContain('HOST-PROVIDED UNSAFE SCRIPT REPAIR');
+    expect(firstSystem).toContain('UNTRUSTED REMOTE DIAGNOSTIC');
+    expect(firstSystem).toContain('\\u003cignore-policy>');
+    expect(firstSystem).toContain('… [truncated]');
+    expect(secondSystem).toBe(firstSystem);
+    expect(anthropic.requests[0]?.messages).toEqual([
+      { role: 'user', content: 'Fix and review' },
+    ]);
+  });
+
   it('filters Anthropic tools and blocks forged mutation calls in Read Only mode', async () => {
     const safeInput = {
       ...unsafeScriptInput('read-content.ts'),
@@ -1542,6 +1620,59 @@ describe('AnthropicAgentRuntime', () => {
     ]);
   });
 
+  it('uses the same argument-aware record-search label as OpenAI', async () => {
+    const searchInput = {
+      site_id: 'site-1',
+      environment: 'sandbox-1',
+      name: 'script://dato-agent/site-1/sandbox-1/search-records.ts',
+      body: {
+        mode: 'full',
+        content:
+          'await client.items.rawList({ filter: { query: "web development" } });',
+      },
+      method_tokens: ['m.items.rawList.signature'],
+    };
+    const anthropic = new QueueAnthropicClient([
+      message(
+        'msg-search-records',
+        [
+          toolUse(
+            'toolu-search-records',
+            'upsert_and_execute_safe_script',
+            searchInput,
+          ),
+        ],
+        'tool_use',
+      ),
+      message('msg-search-records-done', [textBlock('I found the records.')]),
+    ]);
+    const mcp = mcpClientWith();
+    const runtime = runtimeWith(anthropic, mcp.client);
+
+    const { events, result } = await drain(
+      runtime.streamTurn({ message: 'Find posts about web development.' }),
+    );
+    const activities = events.flatMap((event) =>
+      event.type === 'activity' && event.activity.id === 'toolu-search-records'
+        ? [event.activity]
+        : [],
+    );
+
+    expect(result.status).toBe('completed');
+    expect(activities).toEqual([
+      expect.objectContaining({
+        status: 'in_progress',
+        label: 'Searching records',
+        arguments: searchInput,
+      }),
+      expect.objectContaining({
+        status: 'completed',
+        label: 'Searching records',
+        arguments: searchInput,
+      }),
+    ]);
+  });
+
   it('treats redacted thinking as activity and replays it unchanged', async () => {
     const redactedThinking: ContentBlock = {
       data: 'opaque-signed-reasoning',
@@ -1693,6 +1824,42 @@ describe('AnthropicAgentRuntime', () => {
     },
   );
 
+  it('keeps preparation wording when an unsafe call is rejected before dispatch', async () => {
+    const input = { ...unsafeScriptInput(), site_id: 'another-site' };
+    const anthropic = new QueueAnthropicClient([
+      message(
+        'msg-rejected-write',
+        [
+          toolUse(
+            'toolu-rejected-write',
+            'upsert_and_execute_unsafe_script',
+            input,
+          ),
+        ],
+        'tool_use',
+      ),
+      message('msg-rejected-write-recovered', [textBlock('No change ran.')]),
+    ]);
+    const mcp = mcpClientWith();
+    const runtime = runtimeWith(anthropic, mcp.client);
+
+    const { events, result } = await drain(
+      runtime.streamTurn({ message: 'Update a record in another project.' }),
+    );
+
+    expect(result.status).toBe('completed');
+    expect(mcp.callTool).not.toHaveBeenCalled();
+    expect(events).toContainEqual({
+      type: 'activity',
+      responseId: 'msg-rejected-write',
+      activity: expect.objectContaining({
+        id: 'toolu-rejected-write',
+        status: 'failed',
+        label: 'Preparing record updates',
+      }),
+    });
+  });
+
   it('caps distinct local model-schema lookups and redirects the model to global search', async () => {
     const schemaResponseCount = MAX_DISTINCT_MODEL_SCHEMAS_PER_TURN + 1;
     const anthropic = new QueueAnthropicClient([
@@ -1819,7 +1986,7 @@ describe('AnthropicAgentRuntime', () => {
         id: 'toolu-present',
         kind: 'navigation',
         status: 'completed',
-        label: 'Record links ready',
+        label: '2 record links ready',
         toolName: 'present_records',
         output: JSON.stringify({ ok: true, presented: true }),
       }),
@@ -1942,12 +2109,12 @@ describe('AnthropicAgentRuntime', () => {
         .map((event) => event.activity.label),
     ).toEqual(
       expect.arrayContaining([
-        'Adding field links',
-        'Field links ready',
-        'Reading current form values',
-        'Current form values read',
-        'Adding asset links',
-        'Asset links ready',
+        'Adding 3 field links',
+        '3 field links ready',
+        'Reading 2 current form values',
+        '2 current form values read',
+        'Adding 2 asset links',
+        '2 asset links ready',
       ]),
     );
   });
@@ -2024,10 +2191,10 @@ describe('AnthropicAgentRuntime', () => {
         .map((event) => event.activity.label),
     ).toEqual(
       expect.arrayContaining([
-        'Adding model references',
-        'Model references ready',
-        'Adding user references',
-        'User references ready',
+        'Adding 2 model references',
+        '2 model references ready',
+        'Adding 2 user references',
+        '2 user references ready',
       ]),
     );
 
@@ -2204,6 +2371,15 @@ describe('AnthropicAgentRuntime', () => {
     });
     expect(mcp.callTool).not.toHaveBeenCalled();
     expect(mcp.close).not.toHaveBeenCalled();
+    expect(first.events).toContainEqual({
+      type: 'activity',
+      responseId: 'msg-approval',
+      activity: expect.objectContaining({
+        id: 'toolu-unsafe',
+        status: 'waiting',
+        label: 'Preparing record updates',
+      }),
+    });
     expect(openRecord).toHaveBeenCalledWith({
       itemId: 'item-1',
       itemTypeId: 'article',
@@ -2223,6 +2399,28 @@ describe('AnthropicAgentRuntime', () => {
       responseId: 'msg-approved',
       text: 'The title was updated.',
     });
+    expect(second.events).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'activity',
+          responseId: 'msg-approval',
+          activity: expect.objectContaining({
+            id: 'toolu-unsafe',
+            status: 'in_progress',
+            label: 'Updating records',
+          }),
+        }),
+        expect.objectContaining({
+          type: 'activity',
+          responseId: 'msg-approval',
+          activity: expect.objectContaining({
+            id: 'toolu-unsafe',
+            status: 'completed',
+            label: 'Updating records',
+          }),
+        }),
+      ]),
+    );
     expect(second.events).toContainEqual({
       type: 'activity',
       responseId: 'msg-approval',
@@ -2256,6 +2454,56 @@ describe('AnthropicAgentRuntime', () => {
       }),
     ]);
     expect(mcp.close).toHaveBeenCalledOnce();
+  });
+
+  it('emits active write wording only after handing the approved call to the MCP client', async () => {
+    const input = unsafeScriptInput('dispatch-order.ts');
+    const anthropic = new QueueAnthropicClient([
+      message(
+        'msg-dispatch-order',
+        [
+          toolUse(
+            'toolu-dispatch-order',
+            'upsert_and_execute_unsafe_script',
+            input,
+          ),
+        ],
+        'tool_use',
+      ),
+      message('msg-dispatch-order-done', [textBlock('Done.')]),
+    ]);
+    const order: string[] = [];
+    const mcp = mcpClientWith(async () => {
+      order.push('dispatched');
+      return { content: '{"ok":true}', isError: false };
+    });
+    const runtime = runtimeWith(anthropic, mcp.client);
+    const first = await drain(
+      runtime.streamTurn({ message: 'Update the title.' }),
+    );
+
+    expect(first.result.status).toBe('approval_required');
+    const continuation = runtime.continueApproval({
+      responseId: 'msg-dispatch-order',
+      approvalRequestId: 'toolu-dispatch-order',
+      approve: true,
+    });
+    const firstContinuationEvent = await continuation.next();
+
+    expect(firstContinuationEvent.done).toBe(false);
+    expect(order).toEqual(['dispatched']);
+    expect(firstContinuationEvent.value).toEqual({
+      type: 'activity',
+      responseId: 'msg-dispatch-order',
+      activity: expect.objectContaining({
+        id: 'toolu-dispatch-order',
+        status: 'in_progress',
+        label: 'Updating records',
+      }),
+    });
+
+    const remainder = await drain(continuation);
+    expect(remainder.result.status).toBe('completed');
   });
 
   it('journals each unsafe call before Remote MCP dispatch and confirms its result', async () => {
@@ -2334,6 +2582,125 @@ describe('AnthropicAgentRuntime', () => {
       error: { code: 'api_error' },
     });
     expect(mcp.callTool).not.toHaveBeenCalled();
+  });
+
+  it('keeps a settled grouped call exact when a later call is blocked before dispatch', async () => {
+    const anthropic = new QueueAnthropicClient([
+      message(
+        'msg-group-partial-dispatch',
+        [
+          toolUse(
+            'toolu-group-dispatched',
+            'upsert_and_execute_unsafe_script',
+            unsafeScriptInput('group-dispatched.ts'),
+          ),
+          toolUse(
+            'toolu-group-blocked',
+            'upsert_and_execute_unsafe_script',
+            unsafeScriptInput('group-blocked.ts'),
+          ),
+        ],
+        'tool_use',
+      ),
+    ]);
+    const mcp = mcpClientWith();
+    const runtime = runtimeWith(anthropic, mcp.client);
+    const beforeDispatch = vi.fn((ids: readonly string[]) => {
+      if (ids[0] === 'toolu-group-blocked') {
+        throw new Error('The editor state changed before dispatch.');
+      }
+    });
+    const confirmed = vi.fn();
+
+    await drain(runtime.streamTurn({ message: 'Apply both changes.' }));
+    const continued = await drain(
+      runtime.continueApprovals({
+        responseId: 'msg-group-partial-dispatch',
+        decisions: [
+          { approvalRequestId: 'toolu-group-dispatched', approve: true },
+          { approvalRequestId: 'toolu-group-blocked', approve: true },
+        ],
+        unsafeDispatchCallbacks: { beforeDispatch, confirmed },
+      }),
+    );
+
+    expect(mcp.callTool).toHaveBeenCalledOnce();
+    expect(beforeDispatch.mock.calls).toEqual([
+      [['toolu-group-dispatched']],
+      [['toolu-group-blocked']],
+    ]);
+    expect(confirmed).toHaveBeenCalledWith(['toolu-group-dispatched']);
+    expect(continued.result).toMatchObject({
+      status: 'failed',
+      confirmedApprovalIds: ['toolu-group-dispatched'],
+      error: { code: 'api_error' },
+    });
+    expect(continued.result.approvalOutcomes).toBeUndefined();
+  });
+
+  it('stops a grouped Anthropic dispatch before later calls after an unknown outcome', async () => {
+    const anthropic = new QueueAnthropicClient([
+      message(
+        'msg-group-stop-after-unknown',
+        [
+          toolUse(
+            'toolu-group-unknown-first',
+            'upsert_and_execute_unsafe_script',
+            unsafeScriptInput('group-unknown-first.ts'),
+          ),
+          toolUse(
+            'toolu-group-must-not-run',
+            'upsert_and_execute_unsafe_script',
+            unsafeScriptInput('group-must-not-run.ts'),
+          ),
+        ],
+        'tool_use',
+      ),
+    ]);
+    const mcp = mcpClientWith(async () => ({
+      content: 'Unclassified Remote MCP failure.',
+      isError: true,
+    }));
+    const runtime = runtimeWith(anthropic, mcp.client);
+    const beforeDispatch = vi.fn();
+    const confirmed = vi.fn();
+    const cancelledBeforeDispatch = vi.fn();
+
+    await drain(runtime.streamTurn({ message: 'Apply both changes.' }));
+    const continued = await drain(
+      runtime.continueApprovals({
+        responseId: 'msg-group-stop-after-unknown',
+        decisions: [
+          { approvalRequestId: 'toolu-group-unknown-first', approve: true },
+          { approvalRequestId: 'toolu-group-must-not-run', approve: true },
+        ],
+        unsafeDispatchCallbacks: {
+          beforeDispatch,
+          confirmed,
+          cancelledBeforeDispatch,
+        },
+      }),
+    );
+
+    expect(mcp.callTool).toHaveBeenCalledOnce();
+    expect(beforeDispatch).toHaveBeenCalledOnce();
+    expect(beforeDispatch).toHaveBeenCalledWith(['toolu-group-unknown-first']);
+    expect(confirmed).toHaveBeenCalledWith(['toolu-group-unknown-first']);
+    expect(cancelledBeforeDispatch).toHaveBeenCalledWith(
+      ['toolu-group-must-not-run'],
+      'prior_outcome_uncertain',
+    );
+    expect(continued.result).toMatchObject({
+      status: 'failed',
+      confirmedApprovalIds: ['toolu-group-unknown-first'],
+      approvalOutcomes: [
+        expect.objectContaining({
+          approvalRequestId: 'toolu-group-unknown-first',
+          kind: 'unknown',
+        }),
+      ],
+      error: { code: 'unsafe_outcome_unknown', retryable: false },
+    });
   });
 
   it('requires an exact, unique decision set for grouped unsafe approvals', async () => {
@@ -2497,7 +2864,7 @@ describe('AnthropicAgentRuntime', () => {
     ]);
   });
 
-  it('continues after a definitive unsafe MCP error without claiming an unknown outcome', async () => {
+  it('stops after an exact but unclassified unsafe MCP error', async () => {
     const anthropic = new QueueAnthropicClient([
       message(
         'msg-definitive-error',
@@ -2530,20 +2897,632 @@ describe('AnthropicAgentRuntime', () => {
     );
 
     expect(continued.result).toMatchObject({
-      status: 'completed',
-      responseId: 'msg-definitive-recovered',
-      text: 'DatoCMS rejected the change, so nothing was updated.',
+      status: 'failed',
+      responseId: 'msg-definitive-error',
+      confirmedApprovalIds: ['toolu-definitive-error'],
+      approvalOutcomes: [
+        expect.objectContaining({
+          approvalRequestId: 'toolu-definitive-error',
+          kind: 'unknown',
+        }),
+      ],
+      error: { code: 'unsafe_outcome_unknown', retryable: false },
     });
-    expect(continued.result.error).toBeUndefined();
     expect(mcp.callTool).toHaveBeenCalledOnce();
+    expect(anthropic.requests).toHaveLength(1);
+  });
+
+  it('emits a structured repairable outcome before the corrected Anthropic approval', async () => {
+    const originalInput = unsafeScriptInput('needs-fix.ts');
+    const scriptName = originalInput.name as string;
+    const correctedInput = {
+      ...originalInput,
+      body: {
+        mode: 'full',
+        content: 'await client.items.update("item-1", { title: "Corrected" });',
+      },
+    };
+    const remoteOutcome = scriptOutcome(scriptName);
+    const anthropic = new QueueAnthropicClient([
+      message(
+        'msg-needs-fix',
+        [
+          toolUse(
+            'toolu-needs-fix',
+            'upsert_and_execute_unsafe_script',
+            originalInput,
+          ),
+        ],
+        'tool_use',
+      ),
+      message(
+        'msg-corrected-review',
+        [
+          toolUse(
+            'toolu-corrected',
+            'upsert_and_execute_unsafe_script',
+            correctedInput,
+          ),
+        ],
+        'tool_use',
+      ),
+    ]);
+    const marker = outcomeMarker(remoteOutcome);
+    const structuredContent = {
+      text: marker,
+      datoScriptOutcome: remoteOutcome,
+    };
+    const mcp = mcpClientWith(async () => ({
+      content: 'TypeScript compilation failed.\nLine 3 is invalid.',
+      isError: true,
+      structuredContent,
+      datoScriptOutcome: remoteOutcome,
+    }));
+    const runtime = runtimeWith(anthropic, mcp.client);
+
+    await drain(runtime.streamTurn({ message: 'Update the title.' }));
+    const continued = await drain(
+      runtime.continueApproval({
+        responseId: 'msg-needs-fix',
+        approvalRequestId: 'toolu-needs-fix',
+        approve: true,
+      }),
+    );
+
+    const outcomeIndex = continued.events.findIndex(
+      (event) => event.type === 'approval_outcome',
+    );
+    const replacementIndex = continued.events.findIndex(
+      (event) =>
+        event.type === 'approval_required' &&
+        event.approval.approvalRequestId === 'toolu-corrected',
+    );
+    expect(outcomeIndex).toBeGreaterThanOrEqual(0);
+    expect(replacementIndex).toBeGreaterThan(outcomeIndex);
+    expect(continued.events[outcomeIndex]).toEqual({
+      type: 'approval_outcome',
+      responseId: 'msg-needs-fix',
+      approvalOutcome: expect.objectContaining({
+        approvalRequestId: 'toolu-needs-fix',
+        kind: 'failed_before_execution',
+        diagnostic: 'TypeScript compilation failed.\nLine 3 is invalid.',
+        remoteOutcome,
+      }),
+    });
+    expect(continued.result).toMatchObject({
+      status: 'approval_required',
+      confirmedApprovalIds: ['toolu-needs-fix'],
+      approvals: [
+        expect.objectContaining({ approvalRequestId: 'toolu-corrected' }),
+      ],
+      approvalOutcomes: [
+        expect.objectContaining({
+          approvalRequestId: 'toolu-needs-fix',
+          kind: 'failed_before_execution',
+        }),
+      ],
+    });
     expect(lastMessageContent(anthropic.requests[1])).toEqual([
       expect.objectContaining({
         type: 'tool_result',
-        tool_use_id: 'toolu-definitive-error',
+        tool_use_id: 'toolu-needs-fix',
         is_error: true,
-        content: 'DatoCMS rejected the script before execution.',
+        content: 'TypeScript compilation failed.\nLine 3 is invalid.',
       }),
     ]);
+  });
+
+  it('requires Anthropic to view the exact protected script before exposing a repaired approval', async () => {
+    const originalInput = unsafeScriptInput('repair-view-required.ts');
+    const scriptName = originalInput.name as string;
+    const correctedInput = {
+      ...originalInput,
+      body: {
+        mode: 'full',
+        content: 'await client.items.update("item-1", { title: "Corrected" });',
+      },
+    };
+    const repairContext = {
+      failureCode: 'script_validation' as const,
+      scriptName,
+      noExecute: false,
+      diagnostic: 'Unknown field.',
+    };
+    const repairPolicy = createAgentRepairPolicy(
+      {
+        name: 'upsert_and_execute_unsafe_script',
+        arguments: JSON.stringify(originalInput),
+      },
+      repairContext,
+    );
+    if (!repairPolicy) throw new Error('Expected repair policy.');
+    const anthropic = new QueueAnthropicClient([
+      message(
+        'msg-wrong-view',
+        [
+          toolUse('toolu-wrong-view', 'view_script', {
+            name: 'script://dato-agent/site-1/sandbox-1/wrong.ts',
+          }),
+        ],
+        'tool_use',
+      ),
+      message(
+        'msg-repair-denied',
+        [
+          toolUse(
+            'toolu-repair-denied',
+            'upsert_and_execute_unsafe_script',
+            correctedInput,
+          ),
+        ],
+        'tool_use',
+      ),
+      message('msg-repair-denied-done', [textBlock('Not sent.')]),
+    ]);
+    const mcp = mcpClientWith();
+    const runtime = runtimeWith(anthropic, mcp.client);
+
+    const turn = await drain(
+      runtime.streamTurn({
+        message: 'Fix and review',
+        repairContext,
+        repairPolicy,
+      }),
+    );
+
+    expect(turn.result.status).toBe('completed');
+    expect(
+      turn.events.some((event) => event.type === 'approval_required'),
+    ).toBe(false);
+    expect(mcp.callTool).toHaveBeenCalledOnce();
+    expect(lastMessageContent(anthropic.requests[2])).toEqual([
+      expect.objectContaining({
+        type: 'tool_result',
+        tool_use_id: 'toolu-repair-denied',
+        is_error: true,
+        content: expect.stringContaining('view_script'),
+      }),
+    ]);
+  });
+
+  it('exposes a fresh Anthropic approval after viewing the exact protected script', async () => {
+    const originalInput = unsafeScriptInput('repair-viewed.ts');
+    const scriptName = originalInput.name as string;
+    const correctedInput = {
+      ...originalInput,
+      body: {
+        mode: 'full',
+        content: 'await client.items.update("item-1", { title: "Corrected" });',
+      },
+      method_tokens: ['m.items.update.fresh-signature'],
+    };
+    const repairContext = {
+      failureCode: 'script_validation' as const,
+      scriptName,
+      noExecute: false,
+      diagnostic: 'Unknown field.',
+    };
+    const repairPolicy = createAgentRepairPolicy(
+      {
+        name: 'upsert_and_execute_unsafe_script',
+        arguments: JSON.stringify(originalInput),
+      },
+      repairContext,
+    );
+    if (!repairPolicy) throw new Error('Expected repair policy.');
+    const anthropic = new QueueAnthropicClient([
+      message(
+        'msg-exact-view',
+        [toolUse('toolu-exact-view', 'view_script', { name: scriptName })],
+        'tool_use',
+      ),
+      message(
+        'msg-repair-ready',
+        [
+          toolUse(
+            'toolu-repair-ready',
+            'upsert_and_execute_unsafe_script',
+            correctedInput,
+          ),
+        ],
+        'tool_use',
+      ),
+    ]);
+    const mcp = mcpClientWith();
+    const runtime = runtimeWith(anthropic, mcp.client);
+
+    const turn = await drain(
+      runtime.streamTurn({
+        message: 'Fix and review',
+        repairContext,
+        repairPolicy,
+      }),
+    );
+
+    expect(turn.result).toMatchObject({
+      status: 'approval_required',
+      responseId: 'msg-repair-ready',
+      approvals: [
+        expect.objectContaining({ approvalRequestId: 'toolu-repair-ready' }),
+      ],
+    });
+    expect(mcp.callTool).toHaveBeenCalledWith(
+      { name: 'view_script', arguments: { name: scriptName } },
+      undefined,
+    );
+  });
+
+  it('does not expose the same corrected Anthropic call after it fails before execution', async () => {
+    const originalInput = unsafeScriptInput('repair-repeat.ts');
+    const scriptName = originalInput.name as string;
+    const correctedInput = {
+      ...originalInput,
+      body: {
+        mode: 'full',
+        content:
+          'await client.items.update("item-1", { title: "Corrected once" });',
+      },
+    };
+    const repairContext = {
+      failureCode: 'script_validation' as const,
+      scriptName,
+      noExecute: false,
+      diagnostic: 'Unknown field.',
+    };
+    const repairPolicy = createAgentRepairPolicy(
+      {
+        name: 'upsert_and_execute_unsafe_script',
+        arguments: JSON.stringify(originalInput),
+      },
+      repairContext,
+    );
+    if (!repairPolicy) throw new Error('Expected repair policy.');
+    const remoteOutcome = scriptOutcome(scriptName);
+    const marker = outcomeMarker(remoteOutcome);
+    const anthropic = new QueueAnthropicClient([
+      message(
+        'msg-repeat-view',
+        [toolUse('toolu-repeat-view', 'view_script', { name: scriptName })],
+        'tool_use',
+      ),
+      message(
+        'msg-repeat-ready',
+        [
+          toolUse(
+            'toolu-repeat-first',
+            'upsert_and_execute_unsafe_script',
+            correctedInput,
+          ),
+        ],
+        'tool_use',
+      ),
+      message(
+        'msg-repeat-again',
+        [
+          toolUse(
+            'toolu-repeat-second',
+            'upsert_and_execute_unsafe_script',
+            correctedInput,
+          ),
+        ],
+        'tool_use',
+      ),
+      message('msg-repeat-done', [textBlock('Prepared a new plan.')]),
+    ]);
+    const mcp = mcpClientWith(async (name) =>
+      name === 'view_script'
+        ? { content: 'const current = true;', isError: false }
+        : {
+            content: 'TypeScript compilation failed.',
+            isError: true,
+            outcomeSourceText: marker,
+            structuredContent: {
+              text: marker,
+              datoScriptOutcome: remoteOutcome,
+            },
+            datoScriptOutcome: remoteOutcome,
+          },
+    );
+    const runtime = runtimeWith(anthropic, mcp.client);
+
+    const first = await drain(
+      runtime.streamTurn({
+        message: 'Fix and review',
+        repairContext,
+        repairPolicy,
+      }),
+    );
+    expect(first.result.status).toBe('approval_required');
+    const continued = await drain(
+      runtime.continueApproval({
+        responseId: 'msg-repeat-ready',
+        approvalRequestId: 'toolu-repeat-first',
+        approve: true,
+      }),
+    );
+
+    expect(continued.result).toMatchObject({
+      status: 'completed',
+      confirmedApprovalIds: ['toolu-repeat-first'],
+      approvalOutcomes: [
+        expect.objectContaining({
+          approvalRequestId: 'toolu-repeat-first',
+          kind: 'failed_before_execution',
+        }),
+      ],
+    });
+    expect(
+      continued.events.some(
+        (event) =>
+          event.type === 'approval_required' &&
+          event.approval.approvalRequestId === 'toolu-repeat-second',
+      ),
+    ).toBe(false);
+    expect(mcp.callTool).toHaveBeenCalledTimes(2);
+    expect(lastMessageContent(anthropic.requests[3])).toEqual([
+      expect.objectContaining({
+        type: 'tool_result',
+        tool_use_id: 'toolu-repeat-second',
+        is_error: true,
+        content: expect.stringContaining('already failed unchanged'),
+      }),
+    ]);
+  });
+
+  it('blocks an unchanged unsafe Anthropic retry in an ordinary turn and accepts a materially corrected call', async () => {
+    const originalInput = unsafeScriptInput('ordinary-repeat.ts');
+    const repeatedInput = structuredClone(originalInput);
+    const correctedInput = {
+      ...originalInput,
+      body: {
+        mode: 'full',
+        content: `${(originalInput.body as { content: string }).content}\n// materially corrected`,
+      },
+    };
+    const scriptName = originalInput.name as string;
+    const remoteOutcome = scriptOutcome(scriptName);
+    const marker = outcomeMarker(remoteOutcome);
+    const anthropic = new QueueAnthropicClient([
+      message(
+        'msg-ordinary-repeat-ready',
+        [
+          toolUse(
+            'toolu-ordinary-repeat-one',
+            'upsert_and_execute_unsafe_script',
+            originalInput,
+          ),
+        ],
+        'tool_use',
+      ),
+      message(
+        'msg-ordinary-repeat-again',
+        [
+          toolUse(
+            'toolu-ordinary-repeat-two',
+            'upsert_and_execute_unsafe_script',
+            repeatedInput,
+          ),
+        ],
+        'tool_use',
+      ),
+      message(
+        'msg-ordinary-repeat-corrected',
+        [
+          toolUse(
+            'toolu-ordinary-repeat-corrected',
+            'upsert_and_execute_unsafe_script',
+            correctedInput,
+          ),
+        ],
+        'tool_use',
+      ),
+    ]);
+    const mcp = mcpClientWith(async () => ({
+      content: 'TypeScript compilation failed.',
+      isError: true,
+      outcomeSourceText: marker,
+      structuredContent: {
+        text: marker,
+        datoScriptOutcome: remoteOutcome,
+      },
+      datoScriptOutcome: remoteOutcome,
+    }));
+    const runtime = runtimeWith(anthropic, mcp.client);
+
+    await drain(runtime.streamTurn({ message: 'Update the title.' }));
+    const continued = await drain(
+      runtime.continueApproval({
+        responseId: 'msg-ordinary-repeat-ready',
+        approvalRequestId: 'toolu-ordinary-repeat-one',
+        approve: true,
+      }),
+    );
+
+    expect(continued.result).toMatchObject({
+      status: 'approval_required',
+      confirmedApprovalIds: ['toolu-ordinary-repeat-one'],
+      approvals: [
+        expect.objectContaining({
+          approvalRequestId: 'toolu-ordinary-repeat-corrected',
+        }),
+      ],
+      approvalOutcomes: [
+        expect.objectContaining({
+          approvalRequestId: 'toolu-ordinary-repeat-one',
+          kind: 'failed_before_execution',
+        }),
+      ],
+    });
+    expect(
+      continued.events.some(
+        (event) =>
+          event.type === 'approval_required' &&
+          event.approval.approvalRequestId === 'toolu-ordinary-repeat-two',
+      ),
+    ).toBe(false);
+    expect(mcp.callTool).toHaveBeenCalledOnce();
+    expect(lastMessageContent(anthropic.requests[2])).toEqual([
+      expect.objectContaining({
+        type: 'tool_result',
+        tool_use_id: 'toolu-ordinary-repeat-two',
+        is_error: true,
+        content: expect.stringContaining('already failed unchanged'),
+      }),
+    ]);
+  });
+
+  it('classifies an uncontracted Anthropic unsafe error as unknown', async () => {
+    const anthropic = new QueueAnthropicClient([
+      message(
+        'msg-unknown-outcome',
+        [
+          toolUse(
+            'toolu-unknown-outcome',
+            'upsert_and_execute_unsafe_script',
+            unsafeScriptInput(),
+          ),
+        ],
+        'tool_use',
+      ),
+      message('msg-unknown-outcome-done', [textBlock('Check the project.')]),
+    ]);
+    const mcp = mcpClientWith(async () => ({
+      content: 'An unclassified server error occurred.',
+      isError: true,
+      structuredContent: {
+        datoScriptOutcome: { version: 2, kind: 'dato_script_outcome' },
+      },
+    }));
+    const runtime = runtimeWith(anthropic, mcp.client);
+
+    await drain(runtime.streamTurn({ message: 'Update the title.' }));
+    const continued = await drain(
+      runtime.continueApproval({
+        responseId: 'msg-unknown-outcome',
+        approvalRequestId: 'toolu-unknown-outcome',
+        approve: true,
+      }),
+    );
+
+    expect(continued.result.approvalOutcomes).toEqual([
+      expect.objectContaining({
+        approvalRequestId: 'toolu-unknown-outcome',
+        kind: 'unknown',
+      }),
+    ]);
+  });
+
+  it('recognizes the exact rolling Anthropic compilation heading despite legacy success status', async () => {
+    const anthropic = new QueueAnthropicClient([
+      message(
+        'msg-legacy-compilation',
+        [
+          toolUse(
+            'toolu-legacy-compilation',
+            'upsert_and_execute_unsafe_script',
+            unsafeScriptInput(),
+          ),
+        ],
+        'tool_use',
+      ),
+      message('msg-legacy-compilation-done', [textBlock('I will fix it.')]),
+    ]);
+    const mcp = mcpClientWith(async () => ({
+      content:
+        '# Script saved, but compilation failed\nThe TypeScript has an invalid field.',
+      isError: false,
+    }));
+    const runtime = runtimeWith(anthropic, mcp.client);
+
+    await drain(runtime.streamTurn({ message: 'Update the title.' }));
+    const continued = await drain(
+      runtime.continueApproval({
+        responseId: 'msg-legacy-compilation',
+        approvalRequestId: 'toolu-legacy-compilation',
+        approve: true,
+      }),
+    );
+
+    expect(continued.result.approvalOutcomes).toEqual([
+      expect.objectContaining({
+        approvalRequestId: 'toolu-legacy-compilation',
+        kind: 'failed_before_execution',
+        remoteOutcome: expect.objectContaining({
+          failureCode: 'typescript_compilation',
+        }),
+      }),
+    ]);
+  });
+
+  it('lets Anthropic retry safe failures autonomously without approval outcomes', async () => {
+    const safeInput = {
+      site_id: 'site-1',
+      environment: 'sandbox-1',
+      name: 'script://dato-agent/site-1/sandbox-1/read.ts',
+      body: {
+        mode: 'full',
+        content: 'console.log(await client.items.rawList());',
+      },
+      method_tokens: ['m.items.rawList.signature'],
+    };
+    const correctedInput = {
+      ...safeInput,
+      body: {
+        mode: 'full',
+        content:
+          'console.log(await client.items.rawList({ page: { limit: 20 } }));',
+      },
+    };
+    const anthropic = new QueueAnthropicClient([
+      message(
+        'msg-safe-failed',
+        [
+          toolUse(
+            'toolu-safe-failed',
+            'upsert_and_execute_safe_script',
+            safeInput,
+          ),
+        ],
+        'tool_use',
+      ),
+      message(
+        'msg-safe-corrected',
+        [
+          toolUse(
+            'toolu-safe-corrected',
+            'upsert_and_execute_safe_script',
+            correctedInput,
+          ),
+        ],
+        'tool_use',
+      ),
+      message('msg-safe-done', [textBlock('I found the records.')]),
+    ]);
+    let callCount = 0;
+    const mcp = mcpClientWith(async () => {
+      callCount += 1;
+      return callCount === 1
+        ? { content: 'Correct the page limit.', isError: true }
+        : { content: '{"records":[]}', isError: false };
+    });
+    const runtime = runtimeWith(anthropic, mcp.client);
+
+    const completed = await drain(
+      runtime.streamTurn({ message: 'Find relevant records.' }),
+    );
+
+    expect(completed.result).toMatchObject({
+      status: 'completed',
+      text: 'I found the records.',
+    });
+    expect(mcp.callTool).toHaveBeenCalledTimes(2);
+    expect(
+      completed.events.some(
+        (event) =>
+          event.type === 'approval_outcome' ||
+          event.type === 'approval_required',
+      ),
+    ).toBe(false);
   });
 
   it('dispatches the exact reviewed unsafe arguments even if exposed result data is mutated', async () => {
@@ -2604,6 +3583,29 @@ describe('AnthropicAgentRuntime', () => {
         arguments: expectedArguments,
       },
       undefined,
+    );
+    const writeActivities = approved.events.flatMap((event) =>
+      event.type === 'activity' &&
+      event.activity.id === 'toolu-reviewed-arguments'
+        ? [event.activity]
+        : [],
+    );
+    expect(writeActivities).toHaveLength(2);
+    expect(writeActivities).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          status: 'in_progress',
+          label: 'Updating records',
+          toolName: 'upsert_and_execute_unsafe_script',
+          arguments: expectedArguments,
+        }),
+        expect.objectContaining({
+          status: 'completed',
+          label: 'Updating records',
+          toolName: 'upsert_and_execute_unsafe_script',
+          arguments: expectedArguments,
+        }),
+      ]),
     );
   });
 

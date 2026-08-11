@@ -5,6 +5,11 @@ import type {
   FetchLike,
   Transport,
 } from '@modelcontextprotocol/sdk/shared/transport.js';
+import {
+  type DatoScriptOutcomeV1,
+  extractDatoScriptOutcome,
+  stripDatoScriptOutcomeMarker,
+} from './datoScriptOutcome';
 import { DATOCMS_MCP_URL, datoCmsMcpAllowedTools } from './mcpPolicy';
 
 export const MAX_DATOCMS_MCP_TOOL_PAGES = 20;
@@ -38,6 +43,10 @@ export interface DatoMcpToolDescriptor {
 export interface DatoMcpToolResult {
   content: string;
   isError: boolean;
+  structuredContent?: unknown;
+  datoScriptOutcome?: DatoScriptOutcomeV1;
+  /** Exact transport text retained only when display normalization changes it. */
+  outcomeSourceText?: string;
 }
 
 export interface DatoMcpCall {
@@ -215,13 +224,32 @@ export function serializeDatoMcpToolResult(
       : candidate.structuredContent !== undefined
         ? safeJson(candidate.structuredContent)
         : safeJson(result);
+  // Outcome markers and rolling-compatibility headings are byte-zero
+  // contracts. Preserve the assembled transport text for extraction; trimming
+  // first would turn an indented/spoofed marker into a trusted one.
+  const rawContent = serialized || 'DatoCMS returned no content.';
+  const extractedOutcome = extractDatoScriptOutcome({
+    text: rawContent,
+    ...(candidate.structuredContent !== undefined
+      ? { structuredContent: candidate.structuredContent }
+      : {}),
+  });
+  const normalizedDisplayContent =
+    stripDatoScriptOutcomeMarker(rawContent).trim() ||
+    'DatoCMS returned no content.';
 
   return {
     isError,
-    content: boundedText(
-      serialized?.trim() || 'DatoCMS returned no content.',
-      maxCharacters,
-    ),
+    content: boundedText(normalizedDisplayContent, maxCharacters),
+    ...(rawContent !== normalizedDisplayContent
+      ? { outcomeSourceText: rawContent }
+      : {}),
+    ...(candidate.structuredContent !== undefined
+      ? { structuredContent: candidate.structuredContent }
+      : {}),
+    ...(extractedOutcome.outcome
+      ? { datoScriptOutcome: extractedOutcome.outcome }
+      : {}),
   };
 }
 

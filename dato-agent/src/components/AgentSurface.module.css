@@ -930,6 +930,65 @@
   flex: 1 1 120px;
 }
 
+.approvalOutcomeCard {
+  padding: var(--spacing-m);
+}
+
+.approvalOutcomeHeader {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 24px minmax(0, 1fr);
+  align-items: start;
+  gap: var(--spacing-s);
+}
+
+.approvalOutcomeBody {
+  min-width: 0;
+}
+
+.approvalOutcomeBody strong,
+.approvalOutcomeBody p {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+
+.approvalOutcomeBody strong {
+  display: block;
+  color: var(--color--ink);
+  font-size: var(--font-size-s);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.35;
+}
+
+.approvalOutcomeBody p {
+  margin: var(--spacing-xs) 0 0;
+  color: var(--color--ink-subtle);
+  font-size: var(--font-size-s);
+  line-height: 1.4;
+}
+
+.approvalOutcomeBody .approvalOutcomeGuard {
+  color: var(--color--ink-danger);
+}
+
+.approvalOutcomeFooter {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-s);
+  margin-top: var(--spacing-m);
+  padding-top: var(--spacing-s);
+  border-top: 1px solid var(--color--border);
+}
+
+.approvalRepairAction {
+  min-width: 0;
+  margin-left: auto;
+}
+
 .approvalHeader {
   display: grid;
   min-width: 0;
@@ -952,6 +1011,11 @@
 .approvalIcon svg {
   width: 14px;
   height: 14px;
+}
+
+.approvalIconWarning {
+  color: var(--color--warning-soft--ink);
+  background: var(--color--warning-soft--surface);
 }
 
 .approvalBody {
@@ -1257,5 +1321,19 @@
   .transcriptInner,
   .composerInner {
     width: 100%;
+  }
+
+  .approvalOutcomeFooter {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .approvalRepairAction,
+  .approvalRepairAction > button {
+    width: 100%;
+  }
+
+  .approvalRepairAction {
+    margin-left: 0;
   }
 }

@@ -152,6 +152,10 @@ describe('buildSystemPrompt', () => {
     );
     expect(prompt).toContain('Never repeat a failed call unchanged');
     expect(prompt).toContain(
+      'Do not ask the editor to press retry for an operation that does not need approval',
+    );
+    expect(prompt).toContain('continue autonomously in the same turn');
+    expect(prompt).toContain(
       'Unsafe calls must always send the complete TypeScript source',
     );
     expect(prompt).toContain(
@@ -259,6 +263,15 @@ describe('buildSystemPrompt', () => {
     );
     expect(prompt).toContain('create_dato_asset');
     expect(prompt).toContain('Use the unsafe script tool');
+    expect(prompt).toContain(
+      'host-validated recovery metadata proving execution did not start',
+    );
+    expect(prompt).toContain(
+      'The corrected source is a new operation: the previous approval never authorizes it',
+    );
+    expect(prompt).toContain(
+      'Never retry an unsafe script when its result says execution started',
+    );
     expect(prompt).not.toContain('READ ONLY MODE');
   });
 

@@ -21,6 +21,8 @@ export async function openApprovalDetailsModal(
     initialHeight: 560,
     parameters: {
       details: approval.details ?? [],
+      ...(approval.script ? { script: approval.script } : {}),
+      ...(approval.outcome ? { outcome: approval.outcome } : {}),
       canDecide,
     },
   });

@@ -2,6 +2,7 @@ import { act, cleanup, render, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentSurfaceProps } from '../components/AgentSurface';
 import type {
+  AgentApprovalOutcome,
   AgentRuntime,
   AgentRuntimeConfig,
   AgentRuntimeEvent,
@@ -272,6 +273,11 @@ const unsafeApproval = {
   parsedArguments: {
     site_id: 'site',
     name: 'script://dato-agent/site/primary/update-title.ts',
+    body: {
+      mode: 'full',
+      content: 'await client.items.update("item", { title: "New" });',
+    },
+    method_tokens: ['token'],
   },
 };
 
@@ -292,8 +298,281 @@ function unsafeApprovalWithId(id: string) {
     parsedArguments: {
       site_id: 'site',
       name: scriptName,
+      body: {
+        mode: 'full',
+        content: `await client.items.update("${id}", { title: "New" });`,
+      },
+      method_tokens: ['token'],
     },
   };
+}
+
+function repairableApprovalOutcome(
+  approval = unsafeApproval,
+): Extract<AgentApprovalOutcome, { kind: 'failed_before_execution' }> {
+  const parsedArguments = approval.parsedArguments as { name: string };
+  const diagnostic =
+    '# Script saved with validation errors\n\nUnknown field `headline`.';
+  return {
+    approvalRequestId: approval.approvalRequestId,
+    toolName: approval.name,
+    diagnostic,
+    kind: 'failed_before_execution',
+    remoteOutcome: {
+      version: 1,
+      kind: 'dato_script_outcome',
+      status: 'failed',
+      failureCode: 'script_validation',
+      executionState: 'not_started',
+      projectChangeState: 'none',
+      recovery: 'fix_and_review',
+      scriptName: parsedArguments.name,
+      message: diagnostic,
+    },
+  };
+}
+
+function nonRepairableApprovalOutcome(
+  kind: 'failed_after_execution' | 'unknown',
+  approval = unsafeApproval,
+): AgentApprovalOutcome {
+  return {
+    approvalRequestId: approval.approvalRequestId,
+    toolName: approval.name,
+    diagnostic:
+      kind === 'failed_after_execution'
+        ? 'The script started before the error was returned.'
+        : 'The script outcome could not be classified safely.',
+    kind,
+  };
+}
+
+type RuntimeEventObserver = (event: AgentRuntimeEvent) => void | Promise<void>;
+
+function configureApprovalOutcomeRuntime({
+  approval = unsafeApproval,
+  outcome,
+  followupApproval,
+  repairTurn,
+}: {
+  approval?: typeof unsafeApproval;
+  outcome: AgentApprovalOutcome;
+  followupApproval?: ReturnType<typeof unsafeApprovalWithId>;
+  repairTurn?: (
+    args: AgentTurnArgs,
+    onEvent: RuntimeEventObserver | undefined,
+    attempt: number,
+  ) => Promise<AgentTurnResult>;
+}) {
+  const initialResult = completedResult({
+    status: 'approval_required',
+    responseId: 'resp_repair_initial',
+    approvals: [approval],
+  });
+  const continuationResult = completedResult({
+    status: followupApproval ? 'approval_required' : 'completed',
+    responseId: followupApproval
+      ? 'resp_repair_followup'
+      : 'resp_repair_outcome',
+    text: 'The proposed script needs a correction.',
+    approvals: followupApproval ? [followupApproval] : [],
+    confirmedApprovalIds: [approval.approvalRequestId],
+    approvalOutcomes: [outcome],
+  });
+  const runTurn = vi.fn(
+    async (args: AgentTurnArgs, onEvent?: RuntimeEventObserver) => {
+      if (runTurn.mock.calls.length === 1) {
+        await onEvent?.({
+          type: 'approval_required',
+          responseId: 'resp_repair_initial',
+          approval,
+        });
+        await onEvent?.({ type: 'turn_completed', result: initialResult });
+        return initialResult;
+      }
+
+      const attempt = runTurn.mock.calls.length - 1;
+      if (repairTurn) {
+        return repairTurn(args, onEvent, attempt);
+      }
+      const repaired = completedResult({
+        responseId: `resp_repair_turn_${attempt}`,
+        text: 'A corrected change is ready for review.',
+      });
+      await onEvent?.({ type: 'turn_completed', result: repaired });
+      return repaired;
+    },
+  );
+  const submitApprovals = vi.fn(
+    async (
+      args: ContinueApprovalsArgs,
+      onEvent?: RuntimeEventObserver,
+    ): Promise<AgentTurnResult> => {
+      args.unsafeDispatchCallbacks?.beforeDispatch([
+        approval.approvalRequestId,
+      ]);
+      await onEvent?.({
+        type: 'approval_outcome',
+        responseId: continuationResult.responseId,
+        approvalOutcome: outcome,
+      });
+      if (followupApproval) {
+        await onEvent?.({
+          type: 'approval_required',
+          responseId: continuationResult.responseId ?? '',
+          approval: followupApproval,
+        });
+      }
+      args.unsafeDispatchCallbacks?.confirmed?.([approval.approvalRequestId]);
+      await onEvent?.({
+        type: 'turn_completed',
+        result: continuationResult,
+      });
+      return continuationResult;
+    },
+  );
+
+  mocks.runtime = {
+    runTurn,
+    submitApprovals,
+  } as unknown as AgentRuntime;
+
+  return { continuationResult, runTurn, submitApprovals };
+}
+
+function configureGroupedOutcomeRuntime({
+  approvals,
+  outcomes,
+  confirmedApprovalIds = approvals.map(
+    (approval) => approval.approvalRequestId,
+  ),
+  status = 'failed',
+  text = '',
+}: {
+  approvals: ReturnType<typeof unsafeApprovalWithId>[];
+  outcomes: AgentApprovalOutcome[];
+  confirmedApprovalIds?: string[];
+  status?: 'completed' | 'failed';
+  text?: string;
+}) {
+  const initial = completedResult({
+    status: 'approval_required',
+    responseId: 'resp_grouped_outcomes',
+    approvals,
+  });
+  const result = completedResult({
+    status,
+    responseId: 'resp_grouped_outcomes_done',
+    text,
+    approvals: [],
+    confirmedApprovalIds,
+    approvalOutcomes: outcomes,
+    ...(status === 'failed'
+      ? {
+          error: {
+            code: 'unsafe_outcome_unknown' as const,
+            message: 'Check DatoCMS before trying another write.',
+            retryable: false,
+          },
+        }
+      : {}),
+  });
+  const submitApprovals = vi.fn(
+    async (
+      args: ContinueApprovalsArgs,
+      onEvent?: RuntimeEventObserver,
+    ): Promise<AgentTurnResult> => {
+      const approvedIds = args.decisions
+        .filter((decision) => decision.approve)
+        .map((decision) => decision.approvalRequestId);
+      args.unsafeDispatchCallbacks?.beforeDispatch(approvedIds);
+      args.unsafeDispatchCallbacks?.confirmed?.(confirmedApprovalIds);
+      for (const approvalOutcome of outcomes) {
+        // biome-ignore lint/performance/noAwaitInLoops: Runtime events are deliberately delivered in provider order.
+        await onEvent?.({
+          type: 'approval_outcome',
+          responseId: result.responseId,
+          approvalOutcome,
+        });
+      }
+      if (result.error) {
+        await onEvent?.({
+          type: 'error',
+          responseId: result.responseId,
+          error: result.error,
+        });
+      }
+      await onEvent?.({ type: 'turn_completed', result });
+      return result;
+    },
+  );
+  mocks.runtime = {
+    runTurn: vi.fn(
+      async (_args: AgentTurnArgs, onEvent?: RuntimeEventObserver) => {
+        for (const approval of approvals) {
+          // biome-ignore lint/performance/noAwaitInLoops: Approval event order is part of this grouped-operation test.
+          await onEvent?.({
+            type: 'approval_required',
+            responseId: initial.responseId ?? '',
+            approval,
+          });
+        }
+        await onEvent?.({ type: 'turn_completed', result: initial });
+        return initial;
+      },
+    ),
+    submitApprovals,
+  } as unknown as AgentRuntime;
+  return { result, submitApprovals };
+}
+
+async function submitAndApproveAllPending(message: string): Promise<void> {
+  act(() => mocks.surfaceProps?.onSubmit(message));
+  await waitFor(() => {
+    const approvals =
+      mocks.surfaceProps?.entries.filter(
+        (entry) => entry.kind === 'approval',
+      ) ?? [];
+    expect(approvals.length).toBeGreaterThan(1);
+  });
+  const approvals =
+    mocks.surfaceProps?.entries.flatMap((entry) =>
+      entry.kind === 'approval' ? [entry.approval] : [],
+    ) ?? [];
+  for (const approval of approvals) {
+    // biome-ignore lint/performance/noAwaitInLoops: User approvals must be submitted serially to preserve the visible interaction order.
+    await act(async () => {
+      await mocks.surfaceProps?.onApproveUnsafeAction?.(approval);
+    });
+  }
+}
+
+async function submitAndApproveCurrentOperation(
+  approvalRequestId = unsafeApproval.approvalRequestId,
+): Promise<void> {
+  act(() => {
+    mocks.surfaceProps?.onSubmit('Update the title');
+  });
+  await waitFor(() => {
+    expect(
+      mocks.surfaceProps?.entries.some(
+        (entry) =>
+          entry.kind === 'approval' &&
+          entry.approval.id === approvalRequestId &&
+          entry.approval.status === 'pending',
+      ),
+    ).toBe(true);
+  });
+  const approvalEntry = mocks.surfaceProps?.entries.find(
+    (entry) =>
+      entry.kind === 'approval' && entry.approval.id === approvalRequestId,
+  );
+  if (approvalEntry?.kind !== 'approval') {
+    throw new Error('Expected an approval entry.');
+  }
+  act(() => {
+    mocks.surfaceProps?.onApproveUnsafeAction?.(approvalEntry.approval);
+  });
 }
 
 async function startApprovalTurn({
@@ -765,6 +1044,81 @@ describe('AgentFrame', () => {
     });
   });
 
+  it('replaces a streamed generic activity label under the same activity ID', async () => {
+    let finishTurn: (() => void) | undefined;
+    const finishGate = new Promise<void>((resolve) => {
+      finishTurn = resolve;
+    });
+    const refinedArguments = {
+      body: { mode: 'full', content: '[hidden in the collapsed activity]' },
+      method_tokens: ['m.items.rawList.signature'],
+    };
+    const result = completedResult({ responseId: 'resp-refined-activity' });
+    mocks.runtime = {
+      runTurn: vi.fn(
+        async (
+          _args: unknown,
+          onEvent?: (event: AgentRuntimeEvent) => void | Promise<void>,
+        ) => {
+          await onEvent?.({
+            type: 'activity',
+            responseId: 'resp-refined-activity',
+            activity: {
+              id: 'mcp-search',
+              kind: 'mcp_tool',
+              status: 'in_progress',
+              label: 'Reading CMS content',
+              toolName: 'upsert_and_execute_safe_script',
+              arguments: '',
+            },
+          });
+          await onEvent?.({
+            type: 'activity',
+            responseId: 'resp-refined-activity',
+            activity: {
+              id: 'mcp-search',
+              kind: 'mcp_tool',
+              status: 'in_progress',
+              label: 'Searching records',
+              toolName: 'upsert_and_execute_safe_script',
+              arguments: refinedArguments,
+            },
+          });
+          await finishGate;
+          await onEvent?.({ type: 'turn_completed', result });
+          return result;
+        },
+      ),
+    } as unknown as AgentRuntime;
+
+    render(<AgentFrame {...props()} />);
+    act(() => {
+      mocks.surfaceProps?.onSubmit('Find records');
+    });
+
+    await waitFor(() => {
+      const activityEntry = mocks.surfaceProps?.entries.find(
+        (entry) => entry.kind === 'activity',
+      );
+      if (activityEntry?.kind !== 'activity') {
+        throw new Error('Expected an activity entry.');
+      }
+      const matching = activityEntry.activities.filter(
+        (activity) => activity.id === 'mcp-search',
+      );
+      expect(matching).toHaveLength(1);
+      expect(matching[0]).toMatchObject({
+        label: 'Searching records',
+        detail: JSON.stringify(refinedArguments, null, 2),
+      });
+    });
+    await act(async () => {
+      finishTurn?.();
+      await finishGate;
+    });
+    await waitFor(() => expect(mocks.surfaceProps?.isRunning).toBe(false));
+  });
+
   it('adds a host snapshot once per response chain and refreshes it when context changes', async () => {
     let snapshot = {
       text: 'surface=standalone\nproject_map|complete=true',
@@ -1098,8 +1452,14 @@ describe('AgentFrame', () => {
       (entry) => entry.kind === 'approval',
     );
     expect(
-      settledApproval?.kind === 'approval' && settledApproval.approval.error,
-    ).toContain('not found');
+      settledApproval?.kind === 'approval' && settledApproval.approval,
+    ).toMatchObject({
+      status: 'approved',
+      outcome: {
+        kind: 'unknown',
+        diagnostic: expect.stringContaining('not found'),
+      },
+    });
     expect(
       mocks.surfaceProps?.entries.find(
         (entry) => entry.kind === 'message' && entry.role === 'assistant',
@@ -1600,6 +1960,778 @@ describe('AgentFrame', () => {
     });
   });
 
+  it('offers a repairable pre-execution failure and starts a fresh repair turn', async () => {
+    const outcome = repairableApprovalOutcome();
+    const { runTurn, submitApprovals } = configureApprovalOutcomeRuntime({
+      outcome,
+    });
+    const frameProps = props();
+    seedDatoConnection(frameProps);
+    render(<AgentFrame {...frameProps} />);
+
+    await submitAndApproveCurrentOperation();
+
+    await waitFor(() => {
+      const entry = mocks.surfaceProps?.entries.find(
+        (candidate) =>
+          candidate.kind === 'approval' &&
+          candidate.approval.id === unsafeApproval.approvalRequestId,
+      );
+      expect(entry?.kind === 'approval' && entry.approval).toMatchObject({
+        status: 'approved',
+        outcome: {
+          kind: 'failed_before_execution',
+          diagnostic: outcome.diagnostic,
+        },
+        recovery: { status: 'available' },
+      });
+    });
+    expect(
+      createUnsafeDispatchJournalStore({
+        pluginId: frameProps.pluginId,
+        siteId: frameProps.siteId,
+        environment: frameProps.environment,
+        currentUserId: frameProps.currentUserId,
+        scope: frameProps.scope,
+      }).read(),
+    ).toBeUndefined();
+
+    const failedApproval = mocks.surfaceProps?.entries.find(
+      (entry) =>
+        entry.kind === 'approval' &&
+        entry.approval.id === unsafeApproval.approvalRequestId,
+    );
+    if (failedApproval?.kind !== 'approval') {
+      throw new Error('Expected the failed approval entry.');
+    }
+    await act(async () => {
+      await mocks.surfaceProps?.onRepairUnsafeAction?.(failedApproval.approval);
+    });
+
+    await waitFor(() => expect(runTurn).toHaveBeenCalledTimes(2));
+    expect(runTurn.mock.calls[1]?.[0]).toEqual(
+      expect.objectContaining({
+        message: 'Fix and review',
+        previousResponseId: undefined,
+        repairContext: {
+          failureCode: 'script_validation',
+          scriptName: 'script://dato-agent/site/primary/update-title.ts',
+          noExecute: false,
+          diagnostic: outcome.diagnostic,
+        },
+      }),
+    );
+    expect(submitApprovals).toHaveBeenCalledOnce();
+    expect(
+      mocks.surfaceProps?.entries.some(
+        (entry) =>
+          entry.kind === 'message' &&
+          entry.role === 'user' &&
+          entry.content === 'Fix and review',
+      ),
+    ).toBe(true);
+  });
+
+  it('claims Fix and review atomically when it is clicked twice', async () => {
+    let releaseRepair: (() => void) | undefined;
+    const repairGate = new Promise<void>((resolve) => {
+      releaseRepair = resolve;
+    });
+    const outcome = repairableApprovalOutcome();
+    const { runTurn, submitApprovals } = configureApprovalOutcomeRuntime({
+      outcome,
+      repairTurn: async (_args, onEvent) => {
+        await repairGate;
+        const result = completedResult({
+          responseId: 'resp_single_repair',
+          text: 'The corrected script is ready.',
+        });
+        await onEvent?.({ type: 'turn_completed', result });
+        return result;
+      },
+    });
+    const frameProps = props();
+    seedDatoConnection(frameProps);
+    render(<AgentFrame {...frameProps} />);
+    await submitAndApproveCurrentOperation();
+    await waitFor(() => {
+      const entry = mocks.surfaceProps?.entries.find(
+        (candidate) =>
+          candidate.kind === 'approval' &&
+          candidate.approval.recovery?.status === 'available',
+      );
+      expect(entry).toBeTruthy();
+    });
+
+    const failedApproval = mocks.surfaceProps?.entries.find(
+      (entry) => entry.kind === 'approval' && entry.approval.recovery?.status,
+    );
+    if (failedApproval?.kind !== 'approval') {
+      throw new Error('Expected a repairable approval entry.');
+    }
+    act(() => {
+      mocks.surfaceProps?.onRepairUnsafeAction?.(failedApproval.approval);
+      mocks.surfaceProps?.onRepairUnsafeAction?.(failedApproval.approval);
+    });
+
+    await waitFor(() => expect(runTurn).toHaveBeenCalledTimes(2));
+    expect(submitApprovals).toHaveBeenCalledOnce();
+    const startingApproval = mocks.surfaceProps?.entries.find(
+      (entry) =>
+        entry.kind === 'approval' &&
+        entry.approval.id === unsafeApproval.approvalRequestId,
+    );
+    expect(
+      startingApproval?.kind === 'approval' &&
+        startingApproval.approval.recovery?.status,
+    ).toBe('starting');
+
+    await act(async () => {
+      releaseRepair?.();
+      await repairGate;
+    });
+    await waitFor(() => expect(mocks.surfaceProps?.isRunning).toBe(false));
+    expect(runTurn).toHaveBeenCalledTimes(2);
+  });
+
+  it('persists a repairable outcome notice for reload without duplicating the live card', async () => {
+    const outcome = repairableApprovalOutcome();
+    configureApprovalOutcomeRuntime({ outcome });
+    const frameProps = props({
+      currentUserId: `durable-repair-notice-${testUser}`,
+    });
+    seedDatoConnection(frameProps);
+    const rendered = render(<AgentFrame {...frameProps} />);
+
+    await submitAndApproveCurrentOperation();
+    await waitFor(() =>
+      expect(
+        mocks.surfaceProps?.entries.some(
+          (entry) =>
+            entry.kind === 'approval' &&
+            entry.approval.recovery?.status === 'available',
+        ),
+      ).toBe(true),
+    );
+    const durableNotice =
+      'This operation didn’t run. It made no project content changes.';
+    expect(
+      mocks.surfaceProps?.entries.some(
+        (entry) =>
+          entry.kind === 'message' && entry.content.includes(durableNotice),
+      ),
+    ).toBe(false);
+
+    const store = createConversationStore({
+      pluginId: frameProps.pluginId,
+      siteId: frameProps.siteId,
+      environment: frameProps.environment,
+      currentUserId: frameProps.currentUserId,
+      scope: frameProps.scope,
+    });
+    expect(
+      store
+        .list()[0]
+        ?.messages.some(
+          (message) =>
+            message.role === 'assistant' &&
+            message.text.includes(durableNotice),
+        ),
+    ).toBe(true);
+
+    rendered.unmount();
+    mocks.runtime = {
+      runTurn: vi.fn(),
+      submitApprovals: vi.fn(),
+    } as unknown as AgentRuntime;
+    render(<AgentFrame {...frameProps} />);
+    expect(
+      mocks.surfaceProps?.entries.some(
+        (entry) =>
+          entry.kind === 'message' && entry.content.includes(durableNotice),
+      ),
+    ).toBe(true);
+  });
+
+  it('suppresses an old repair action when the continuation already proposes a newer approval', async () => {
+    const outcome = repairableApprovalOutcome();
+    const followupApproval = unsafeApprovalWithId('approval_corrected');
+    const { submitApprovals } = configureApprovalOutcomeRuntime({
+      outcome,
+      followupApproval,
+    });
+    const frameProps = props();
+    seedDatoConnection(frameProps);
+    render(<AgentFrame {...frameProps} />);
+
+    await submitAndApproveCurrentOperation();
+
+    await waitFor(() => expect(submitApprovals).toHaveBeenCalledOnce());
+    const oldEntry = mocks.surfaceProps?.entries.find(
+      (entry) =>
+        entry.kind === 'approval' &&
+        entry.approval.id === unsafeApproval.approvalRequestId,
+    );
+    expect(oldEntry?.kind === 'approval' && oldEntry.approval).toMatchObject({
+      status: 'approved',
+      outcome: { kind: 'failed_before_execution' },
+    });
+    expect(
+      oldEntry?.kind === 'approval' && oldEntry.approval.recovery,
+    ).toBeUndefined();
+    expect(
+      mocks.surfaceProps?.entries.find(
+        (entry) =>
+          entry.kind === 'approval' &&
+          entry.approval.id === followupApproval.approvalRequestId,
+      ),
+    ).toMatchObject({
+      approval: { status: 'pending' },
+    });
+    const followupEntry = mocks.surfaceProps?.entries.find(
+      (entry) =>
+        entry.kind === 'approval' &&
+        entry.approval.id === followupApproval.approvalRequestId,
+    );
+    expect(
+      followupEntry?.kind === 'approval' && followupEntry.approval.recovery,
+    ).toBeUndefined();
+  });
+
+  it.each(['failed_after_execution', 'unknown'] as const)(
+    'does not offer Fix and review for a %s outcome',
+    async (kind) => {
+      const outcome = nonRepairableApprovalOutcome(kind);
+      configureApprovalOutcomeRuntime({ outcome });
+      const frameProps = props();
+      seedDatoConnection(frameProps);
+      render(<AgentFrame {...frameProps} />);
+
+      await submitAndApproveCurrentOperation();
+
+      await waitFor(() => {
+        const entry = mocks.surfaceProps?.entries.find(
+          (candidate) =>
+            candidate.kind === 'approval' &&
+            candidate.approval.id === unsafeApproval.approvalRequestId,
+        );
+        expect(entry?.kind === 'approval' && entry.approval).toMatchObject({
+          status: 'approved',
+          outcome: { kind, diagnostic: outcome.diagnostic },
+        });
+        expect(
+          entry?.kind === 'approval' && entry.approval.recovery,
+        ).toBeUndefined();
+      });
+      expect(
+        createUnsafeDispatchJournalStore({
+          pluginId: frameProps.pluginId,
+          siteId: frameProps.siteId,
+          environment: frameProps.environment,
+          currentUserId: frameProps.currentUserId,
+          scope: frameProps.scope,
+        }).read(),
+      ).toBeUndefined();
+    },
+  );
+
+  it.each(['repair-first', 'unknown-first'] as const)(
+    'suppresses grouped recovery when an exact sibling outcome is unknown (%s)',
+    async (eventOrder) => {
+      const approvals = [
+        unsafeApprovalWithId(`approval_group_repair_${eventOrder}`),
+        unsafeApprovalWithId(`approval_group_unknown_${eventOrder}`),
+      ];
+      const repairable = repairableApprovalOutcome(approvals[0]);
+      const unknown = nonRepairableApprovalOutcome('unknown', approvals[1]);
+      const outcomes =
+        eventOrder === 'repair-first'
+          ? [repairable, unknown]
+          : [unknown, repairable];
+      const { submitApprovals } = configureGroupedOutcomeRuntime({
+        approvals,
+        outcomes,
+      });
+      const frameProps = props({
+        currentUserId: `grouped-outcome-${eventOrder}-${testUser}`,
+      });
+      seedDatoConnection(frameProps);
+      render(<AgentFrame {...frameProps} />);
+
+      await submitAndApproveAllPending('Update both records');
+      await waitFor(() => expect(submitApprovals).toHaveBeenCalledOnce());
+
+      expect(
+        mocks.surfaceProps?.entries.some(
+          (entry) =>
+            entry.kind === 'approval' && entry.approval.recovery !== undefined,
+        ),
+      ).toBe(false);
+      expect(
+        createUnsafeDispatchJournalStore({
+          pluginId: frameProps.pluginId,
+          siteId: frameProps.siteId,
+          environment: frameProps.environment,
+          currentUserId: frameProps.currentUserId,
+          scope: frameProps.scope,
+        }).read(),
+      ).toBeUndefined();
+      const store = createConversationStore({
+        pluginId: frameProps.pluginId,
+        siteId: frameProps.siteId,
+        environment: frameProps.environment,
+        currentUserId: frameProps.currentUserId,
+        scope: frameProps.scope,
+      });
+      expect(
+        store
+          .list()[0]
+          ?.messages.some((message) =>
+            message.text.includes('Outcome needs checking.'),
+          ),
+      ).toBe(true);
+    },
+  );
+
+  it('keeps grouped recovery unavailable while a sibling dispatch remains unconfirmed', async () => {
+    const approvals = [
+      unsafeApprovalWithId('approval_group_repair_confirmed'),
+      unsafeApprovalWithId('approval_group_unconfirmed'),
+    ];
+    const repairable = repairableApprovalOutcome(approvals[0]);
+    const { submitApprovals } = configureGroupedOutcomeRuntime({
+      approvals,
+      outcomes: [repairable],
+      confirmedApprovalIds: [approvals[0].approvalRequestId],
+    });
+    const frameProps = props({
+      currentUserId: `grouped-unconfirmed-${testUser}`,
+    });
+    seedDatoConnection(frameProps);
+    render(<AgentFrame {...frameProps} />);
+
+    await submitAndApproveAllPending('Update both records');
+    await waitFor(() => expect(submitApprovals).toHaveBeenCalledOnce());
+
+    expect(
+      mocks.surfaceProps?.entries.some(
+        (entry) =>
+          entry.kind === 'approval' && entry.approval.recovery !== undefined,
+      ),
+    ).toBe(false);
+    expect(
+      createUnsafeDispatchJournalStore({
+        pluginId: frameProps.pluginId,
+        siteId: frameProps.siteId,
+        environment: frameProps.environment,
+        currentUserId: frameProps.currentUserId,
+        scope: frameProps.scope,
+      })
+        .read()
+        ?.operations.map((operation) => operation.state),
+    ).toEqual(['confirmed', 'dispatched']);
+  });
+
+  it('discards an armed grouped sibling when the runtime stops it before dispatch', async () => {
+    const approvals = [
+      unsafeApprovalWithId('approval_group_unknown_sent'),
+      unsafeApprovalWithId('approval_group_cancelled_before_dispatch'),
+    ];
+    const unknown = nonRepairableApprovalOutcome('unknown', approvals[0]);
+    const initial = completedResult({
+      status: 'approval_required',
+      responseId: 'resp_group_cancel_sibling',
+      approvals,
+    });
+    const failed = completedResult({
+      status: 'failed',
+      responseId: 'resp_group_cancel_sibling_done',
+      confirmedApprovalIds: [approvals[0].approvalRequestId],
+      approvalOutcomes: [unknown],
+      error: {
+        code: 'unsafe_outcome_unknown',
+        message: 'Check DatoCMS before trying another write.',
+        retryable: false,
+      },
+    });
+    const failure = failed.error;
+    if (!failure) throw new Error('Expected grouped failure.');
+    const submitApprovals = vi.fn(
+      async (args: ContinueApprovalsArgs, onEvent?: RuntimeEventObserver) => {
+        args.unsafeDispatchCallbacks?.beforeDispatch([
+          approvals[0].approvalRequestId,
+        ]);
+        args.unsafeDispatchCallbacks?.confirmed?.([
+          approvals[0].approvalRequestId,
+        ]);
+        args.unsafeDispatchCallbacks?.cancelledBeforeDispatch?.(
+          [approvals[1].approvalRequestId],
+          'prior_outcome_uncertain',
+        );
+        await onEvent?.({
+          type: 'approval_outcome',
+          responseId: failed.responseId,
+          approvalOutcome: unknown,
+        });
+        await onEvent?.({
+          type: 'error',
+          responseId: failed.responseId,
+          error: failure,
+        });
+        await onEvent?.({ type: 'turn_completed', result: failed });
+        return failed;
+      },
+    );
+    mocks.runtime = {
+      runTurn: vi.fn(
+        async (_args: AgentTurnArgs, onEvent?: RuntimeEventObserver) => {
+          for (const approval of approvals) {
+            // biome-ignore lint/performance/noAwaitInLoops: Approval event order is part of this grouped-operation test.
+            await onEvent?.({
+              type: 'approval_required',
+              responseId: initial.responseId ?? '',
+              approval,
+            });
+          }
+          await onEvent?.({ type: 'turn_completed', result: initial });
+          return initial;
+        },
+      ),
+      submitApprovals,
+    } as unknown as AgentRuntime;
+    const frameProps = props({
+      currentUserId: `group-cancel-sibling-${testUser}`,
+    });
+    seedDatoConnection(frameProps);
+    render(<AgentFrame {...frameProps} />);
+
+    await submitAndApproveAllPending('Update both records');
+    await waitFor(() => expect(submitApprovals).toHaveBeenCalledOnce());
+
+    const blocked = mocks.surfaceProps?.entries.find(
+      (entry) =>
+        entry.kind === 'approval' &&
+        entry.approval.id === approvals[1].approvalRequestId,
+    );
+    expect(blocked?.kind === 'approval' && blocked.approval.status).toBe(
+      'error',
+    );
+    expect(blocked?.kind === 'approval' && blocked.approval.error).toContain(
+      'was not sent because an earlier change may be incomplete',
+    );
+    expect(
+      blocked?.kind === 'approval' && blocked.approval.outcome,
+    ).toBeUndefined();
+    expect(
+      mocks.surfaceProps?.entries.some(
+        (entry) =>
+          entry.kind === 'message' &&
+          entry.content.includes(
+            'A later approved operation was not sent because an earlier change may be incomplete.',
+          ),
+      ),
+    ).toBe(true);
+    expect(
+      createUnsafeDispatchJournalStore({
+        pluginId: frameProps.pluginId,
+        siteId: frameProps.siteId,
+        environment: frameProps.environment,
+        currentUserId: frameProps.currentUserId,
+        scope: frameProps.scope,
+      }).read(),
+    ).toBeUndefined();
+  });
+
+  it('uses operation-scoped durable wording when a sibling change succeeds', async () => {
+    const approvals = [
+      unsafeApprovalWithId('approval_group_scoped_failure'),
+      unsafeApprovalWithId('approval_group_scoped_success'),
+    ];
+    const repairable = repairableApprovalOutcome(approvals[0]);
+    const { submitApprovals } = configureGroupedOutcomeRuntime({
+      approvals,
+      outcomes: [repairable],
+      status: 'completed',
+      text: 'The other operation completed.',
+    });
+    const frameProps = props({
+      currentUserId: `grouped-scoped-notice-${testUser}`,
+    });
+    seedDatoConnection(frameProps);
+    render(<AgentFrame {...frameProps} />);
+
+    await submitAndApproveAllPending('Update both records');
+    await waitFor(() => expect(submitApprovals).toHaveBeenCalledOnce());
+
+    const store = createConversationStore({
+      pluginId: frameProps.pluginId,
+      siteId: frameProps.siteId,
+      environment: frameProps.environment,
+      currentUserId: frameProps.currentUserId,
+      scope: frameProps.scope,
+    });
+    const assistantText = store
+      .list()[0]
+      ?.messages.find((message) => message.role === 'assistant')?.text;
+    expect(assistantText).toContain(
+      'This operation didn’t run. It made no project content changes.',
+    );
+    expect(assistantText).not.toContain(
+      'The change didn’t run. No project content was changed.',
+    );
+  });
+
+  it('preserves repair context when a transient repair turn is retried', async () => {
+    const outcome = repairableApprovalOutcome();
+    const transientFailure = {
+      code: 'api_error' as const,
+      message: 'The repair request was interrupted before any new change.',
+      retryable: true,
+    };
+    const { runTurn, submitApprovals } = configureApprovalOutcomeRuntime({
+      outcome,
+      repairTurn: async (_args, onEvent, attempt) => {
+        if (attempt === 1) {
+          const failed = completedResult({
+            status: 'failed',
+            responseId: 'resp_failed_repair',
+            error: transientFailure,
+          });
+          await onEvent?.({
+            type: 'error',
+            responseId: 'resp_failed_repair',
+            error: transientFailure,
+          });
+          await onEvent?.({ type: 'turn_completed', result: failed });
+          return failed;
+        }
+        const completed = completedResult({
+          responseId: 'resp_retried_repair',
+          text: 'The corrected script is ready.',
+        });
+        await onEvent?.({ type: 'turn_completed', result: completed });
+        return completed;
+      },
+    });
+    const frameProps = props();
+    seedDatoConnection(frameProps);
+    render(<AgentFrame {...frameProps} />);
+    await submitAndApproveCurrentOperation();
+    await waitFor(() => {
+      expect(
+        mocks.surfaceProps?.entries.some(
+          (entry) =>
+            entry.kind === 'approval' &&
+            entry.approval.recovery?.status === 'available',
+        ),
+      ).toBe(true);
+    });
+
+    const failedApproval = mocks.surfaceProps?.entries.find(
+      (entry) =>
+        entry.kind === 'approval' &&
+        entry.approval.recovery?.status === 'available',
+    );
+    if (failedApproval?.kind !== 'approval') {
+      throw new Error('Expected a repairable approval entry.');
+    }
+    await act(async () => {
+      await mocks.surfaceProps?.onRepairUnsafeAction?.(failedApproval.approval);
+    });
+
+    const failureEntry = await waitFor(() => {
+      const entry = mocks.surfaceProps?.entries.find(
+        (candidate) =>
+          candidate.kind === 'message' &&
+          candidate.role === 'assistant' &&
+          candidate.failure?.retryable,
+      );
+      if (entry?.kind !== 'message' || !entry.failure) {
+        throw new Error('Expected a retryable repair failure.');
+      }
+      return entry;
+    });
+    const initialRepairContext = runTurn.mock.calls[1]?.[0].repairContext;
+    expect(initialRepairContext).toEqual({
+      failureCode: 'script_validation',
+      scriptName: 'script://dato-agent/site/primary/update-title.ts',
+      noExecute: false,
+      diagnostic: outcome.diagnostic,
+    });
+    const failureId = failureEntry.failure?.id;
+    if (!failureId) throw new Error('Expected retry diagnostics.');
+    expect(
+      mocks.surfaceProps?.entries.some(
+        (entry) =>
+          entry.kind === 'approval' && entry.approval.recovery !== undefined,
+      ),
+    ).toBe(false);
+
+    await act(async () => {
+      await mocks.surfaceProps?.onRetryFailedTurn?.(failureId);
+    });
+
+    await waitFor(() => expect(runTurn).toHaveBeenCalledTimes(3));
+    expect(runTurn.mock.calls[2]?.[0].repairContext).toEqual(
+      initialRepairContext,
+    );
+    expect(submitApprovals).toHaveBeenCalledOnce();
+    expect(
+      mocks.surfaceProps?.entries.some(
+        (entry) =>
+          entry.kind === 'approval' && entry.approval.recovery !== undefined,
+      ),
+    ).toBe(false);
+  });
+
+  it('keeps session Auto enabled and starts the repair as Fix with Auto', async () => {
+    const frameProps = props();
+    seedDatoConnection(frameProps);
+    enableAutoApproval(frameProps);
+    const outcome = repairableApprovalOutcome();
+    const { runTurn, submitApprovals } = configureApprovalOutcomeRuntime({
+      outcome,
+    });
+    render(<AgentFrame {...frameProps} />);
+
+    act(() => {
+      mocks.surfaceProps?.onSubmit('Update the title');
+    });
+    await waitFor(() => {
+      const entry = mocks.surfaceProps?.entries.find(
+        (candidate) =>
+          candidate.kind === 'approval' &&
+          candidate.approval.recovery?.status === 'available',
+      );
+      expect(entry?.kind === 'approval' && entry.approval.automatic).toBe(true);
+    });
+
+    const failedApproval = mocks.surfaceProps?.entries.find(
+      (entry) =>
+        entry.kind === 'approval' &&
+        entry.approval.recovery?.status === 'available',
+    );
+    if (failedApproval?.kind !== 'approval') {
+      throw new Error('Expected an auto-approved repairable operation.');
+    }
+    await act(async () => {
+      await mocks.surfaceProps?.onRepairUnsafeAction?.(failedApproval.approval);
+    });
+
+    await waitFor(() => expect(runTurn).toHaveBeenCalledTimes(2));
+    expect(runTurn.mock.calls[1]?.[0]).toMatchObject({
+      message: 'Fix with Auto',
+      repairContext: {
+        failureCode: 'script_validation',
+        scriptName: 'script://dato-agent/site/primary/update-title.ts',
+        noExecute: false,
+        diagnostic: outcome.diagnostic,
+      },
+    });
+    expect(submitApprovals).toHaveBeenCalledOnce();
+    expect(mocks.surfaceProps?.autoApproveEnabled).toBe(true);
+  });
+
+  it('retires a repair action when Read Only is enabled live', async () => {
+    const frameProps = props();
+    seedDatoConnection(frameProps);
+    const outcome = repairableApprovalOutcome();
+    const { runTurn } = configureApprovalOutcomeRuntime({ outcome });
+    const rendered = render(<AgentFrame {...frameProps} />);
+    await submitAndApproveCurrentOperation();
+    await waitFor(() => {
+      expect(
+        mocks.surfaceProps?.entries.some(
+          (entry) =>
+            entry.kind === 'approval' &&
+            entry.approval.recovery?.status === 'available',
+        ),
+      ).toBe(true);
+    });
+
+    const staleApproval = mocks.surfaceProps?.entries.find(
+      (entry) =>
+        entry.kind === 'approval' &&
+        entry.approval.recovery?.status === 'available',
+    );
+    if (staleApproval?.kind !== 'approval') {
+      throw new Error('Expected a repairable approval.');
+    }
+    rendered.rerender(
+      <AgentFrame
+        {...frameProps}
+        config={{ ...frameProps.config, readOnly: true }}
+      />,
+    );
+
+    await waitFor(() => {
+      const current = mocks.surfaceProps?.entries.find(
+        (entry) =>
+          entry.kind === 'approval' &&
+          entry.approval.id === staleApproval.approval.id,
+      );
+      expect(
+        current?.kind === 'approval' && current.approval.recovery,
+      ).toBeUndefined();
+    });
+    act(() => {
+      mocks.surfaceProps?.onRepairUnsafeAction?.(staleApproval.approval);
+    });
+    await act(async () => Promise.resolve());
+    expect(runTurn).toHaveBeenCalledOnce();
+  });
+
+  it('keeps a repair from starting while the record form has unsaved changes', async () => {
+    const frameProps = props({
+      surface: 'record',
+      currentRecord: { id: 'item', modelApiKey: 'page' },
+      editorHasUnsavedChanges: false,
+      scope: { type: 'record', recordId: 'item' },
+    });
+    seedDatoConnection(frameProps);
+    const outcome = repairableApprovalOutcome();
+    const { runTurn } = configureApprovalOutcomeRuntime({ outcome });
+    const rendered = render(<AgentFrame {...frameProps} />);
+    await submitAndApproveCurrentOperation();
+    await waitFor(() => {
+      expect(
+        mocks.surfaceProps?.entries.some(
+          (entry) =>
+            entry.kind === 'approval' &&
+            entry.approval.recovery?.status === 'available',
+        ),
+      ).toBe(true);
+    });
+
+    rendered.rerender(<AgentFrame {...frameProps} editorHasUnsavedChanges />);
+    const failedApproval = mocks.surfaceProps?.entries.find(
+      (entry) =>
+        entry.kind === 'approval' &&
+        entry.approval.recovery?.status === 'available',
+    );
+    if (failedApproval?.kind !== 'approval') {
+      throw new Error('Expected a repairable approval.');
+    }
+    act(() => {
+      mocks.surfaceProps?.onRepairUnsafeAction?.(failedApproval.approval);
+    });
+
+    await waitFor(() => {
+      const current = mocks.surfaceProps?.entries.find(
+        (entry) =>
+          entry.kind === 'approval' &&
+          entry.approval.id === failedApproval.approval.id,
+      );
+      expect(current?.kind === 'approval' && current.approval.error).toContain(
+        'Save or discard',
+      );
+      expect(
+        current?.kind === 'approval' && current.approval.recovery?.status,
+      ).toBe('available');
+    });
+    expect(runTurn).toHaveBeenCalledOnce();
+  });
+
   it('recovers a dispatched approval after unmount without replaying it', async () => {
     const frameProps = props({
       currentUserId: `unsafe-recovery-user-${testUser}`,
@@ -1684,6 +2816,108 @@ describe('AgentFrame', () => {
       );
       await Promise.resolve();
     });
+  });
+
+  it('uses a conservative recovery notice when a confirmed journal survived a crash', () => {
+    const frameProps = props({
+      currentUserId: `unsafe-durable-notice-recovery-${testUser}`,
+    });
+    const storageContext = {
+      pluginId: frameProps.pluginId,
+      siteId: frameProps.siteId,
+      environment: frameProps.environment,
+      currentUserId: frameProps.currentUserId,
+      scope: frameProps.scope,
+    };
+    const conversationStore = createConversationStore(storageContext);
+    const journalStore = createUnsafeDispatchJournalStore(storageContext);
+    const createdAt = '2026-08-11T08:00:00.000Z';
+    const persistedNotice =
+      'Outcome needs checking. The change may have run. Check DatoCMS before trying again.';
+    const recoveryNotice =
+      'The approved DatoCMS operation returned a result, but the chat closed before that result could be safely restored. Check DatoCMS before trying it again.';
+    conversationStore.save({
+      id: 'conversation-durable-outcome',
+      title: 'Update the homepage',
+      createdAt,
+      updatedAt: createdAt,
+      messages: [
+        {
+          id: 'user-durable-outcome',
+          role: 'user',
+          text: 'Update the homepage',
+          createdAt,
+        },
+        {
+          id: 'assistant-durable-outcome',
+          role: 'assistant',
+          text: persistedNotice,
+          createdAt,
+        },
+      ],
+    });
+    journalStore.claim({
+      id: 'journal-durable-outcome',
+      conversation: {
+        id: 'conversation-durable-outcome',
+        title: 'Update the homepage',
+        createdAt,
+      },
+      turn: {
+        id: 'turn-durable-outcome',
+        userEntryId: 'user-durable-outcome',
+        assistantEntryId: 'assistant-durable-outcome',
+        userMessage: 'Update the homepage',
+        provider: 'openai',
+        model: 'gpt-test',
+        startedAt: createdAt,
+      },
+      responseId: 'response-durable-outcome',
+      scope: frameProps.scope,
+      operations: [
+        {
+          approvalRequestId: 'approval-durable-outcome',
+          name: 'upsert_and_execute_unsafe_script',
+          arguments: '{"name":"script://durable.ts"}',
+          automatic: false,
+        },
+      ],
+    });
+    journalStore.markDispatched('journal-durable-outcome', [
+      'approval-durable-outcome',
+    ]);
+    journalStore.markConfirmed('journal-durable-outcome', [
+      'approval-durable-outcome',
+    ]);
+    mocks.runtime = {
+      runTurn: vi.fn(),
+      submitApprovals: vi.fn(),
+    } as unknown as AgentRuntime;
+
+    render(<AgentFrame {...frameProps} />);
+
+    expect(
+      mocks.surfaceProps?.entries.some(
+        (entry) =>
+          entry.kind === 'message' &&
+          entry.role === 'assistant' &&
+          entry.content === recoveryNotice,
+      ),
+    ).toBe(true);
+    expect(
+      mocks.surfaceProps?.entries.some(
+        (entry) =>
+          entry.kind === 'message' &&
+          entry.role === 'assistant' &&
+          entry.content === persistedNotice,
+      ),
+    ).toBe(false);
+    expect(
+      conversationStore
+        .get('conversation-durable-outcome')
+        ?.messages.some((message) => message.text === recoveryNotice),
+    ).toBe(true);
+    expect(journalStore.read()).toBeUndefined();
   });
 
   it('keeps a mounted failed dispatch journal until reload reports the unknown outcome', async () => {
@@ -1803,6 +3037,15 @@ describe('AgentFrame', () => {
       ).toContain('was not sent');
     });
     expect(submitApprovals).not.toHaveBeenCalled();
+    const failedApproval = mocks.surfaceProps?.entries.find(
+      (entry) => entry.kind === 'approval',
+    );
+    expect(
+      failedApproval?.kind === 'approval' && failedApproval.approval.outcome,
+    ).toBeUndefined();
+    expect(
+      failedApproval?.kind === 'approval' && failedApproval.approval.recovery,
+    ).toBeUndefined();
   });
 
   it('rebuilds history when an approval continuation throws', async () => {
@@ -2077,6 +3320,12 @@ describe('AgentFrame', () => {
       );
     });
     expect(mocks.runtime?.submitApprovals).not.toHaveBeenCalled();
+    const blockedApproval = mocks.surfaceProps?.entries.find(
+      (entry) => entry.kind === 'approval',
+    );
+    expect(
+      blockedApproval?.kind === 'approval' && blockedApproval.approval.recovery,
+    ).toBeUndefined();
   });
 
   it('turns auto-approve on only after confirmation and disables it immediately', async () => {
@@ -2140,6 +3389,96 @@ describe('AgentFrame', () => {
       await first;
     });
     expect(mocks.surfaceProps?.autoApproveEnabled).toBe(true);
+  });
+
+  it('keeps the exact TypeScript source separate from approval metadata', async () => {
+    render(<AgentFrame {...props()} />);
+    await startApprovalTurn();
+
+    const approvalEntry = mocks.surfaceProps?.entries.find(
+      (entry) => entry.kind === 'approval',
+    );
+    if (approvalEntry?.kind !== 'approval') {
+      throw new Error('Expected an approval entry.');
+    }
+
+    expect(approvalEntry.approval.script).toEqual({
+      language: 'typescript',
+      source: 'await client.items.update("item", { title: "New" });',
+    });
+    expect(approvalEntry.approval.details).toEqual([
+      { label: 'Project', value: 'site' },
+      { label: 'Environment', value: 'Primary' },
+      { label: 'Operation', value: 'upsert_and_execute_unsafe_script' },
+      {
+        label: 'Saved script',
+        value: 'script://dato-agent/site/primary/update-title.ts',
+      },
+    ]);
+  });
+
+  it('previews the exact raw approval arguments instead of a divergent parsed copy', async () => {
+    const rawSource =
+      'await client.items.update("item", { title: "Raw request" });';
+    const approvalWithDivergentParsedArguments = {
+      ...unsafeApproval,
+      arguments: JSON.stringify({
+        site_id: 'site',
+        name: 'script://dato-agent/site/primary/raw-request.ts',
+        body: { mode: 'full', content: rawSource },
+        method_tokens: ['token'],
+      }),
+      parsedArguments: {
+        site_id: 'different-site',
+        name: 'script://dato-agent/different/forged-preview.ts',
+        body: {
+          mode: 'full',
+          content: 'await client.items.delete("record-hidden-from-preview");',
+        },
+        method_tokens: ['forged-token'],
+      },
+    };
+    const result = completedResult({
+      status: 'approval_required',
+      responseId: 'resp_raw_approval',
+      approvals: [approvalWithDivergentParsedArguments],
+    });
+    mocks.runtime = {
+      runTurn: vi.fn(async (_args, onEvent) => {
+        await onEvent?.({
+          type: 'approval_required',
+          responseId: 'resp_raw_approval',
+          approval: approvalWithDivergentParsedArguments,
+        });
+        await onEvent?.({ type: 'turn_completed', result });
+        return result;
+      }),
+      submitApprovals: vi.fn(),
+    } as unknown as AgentRuntime;
+
+    render(<AgentFrame {...props()} />);
+    await act(async () => {
+      mocks.surfaceProps?.onSubmit('Prepare the raw request.');
+    });
+
+    const approvalEntry = mocks.surfaceProps?.entries.find(
+      (entry) => entry.kind === 'approval',
+    );
+    if (approvalEntry?.kind !== 'approval') {
+      throw new Error('Expected an approval entry.');
+    }
+    expect(approvalEntry.approval.script?.source).toBe(rawSource);
+    expect(approvalEntry.approval.details).toContainEqual({
+      label: 'Project',
+      value: 'site',
+    });
+    expect(approvalEntry.approval.details).toContainEqual({
+      label: 'Saved script',
+      value: 'script://dato-agent/site/primary/raw-request.ts',
+    });
+    expect(JSON.stringify(approvalEntry.approval)).not.toContain(
+      'record-hidden-from-preview',
+    );
   });
 
   it('blocks receipts and auto-approve while approval details are open', async () => {
@@ -2769,16 +4108,26 @@ describe('AgentFrame', () => {
           args.unsafeDispatchCallbacks?.beforeDispatch([
             firstApproval.approvalRequestId,
           ]);
+          args.unsafeDispatchCallbacks?.confirmed?.([
+            firstApproval.approvalRequestId,
+          ]);
           await onEvent?.({
             type: 'approval_required',
             responseId: 'resp_chain_two',
             approval: secondApproval,
           });
-          await onEvent?.({ type: 'turn_completed', result: secondRequired });
-          return secondRequired;
+          const settledFirst = {
+            ...secondRequired,
+            confirmedApprovalIds: [firstApproval.approvalRequestId],
+          };
+          await onEvent?.({ type: 'turn_completed', result: settledFirst });
+          return settledFirst;
         }
 
         args.unsafeDispatchCallbacks?.beforeDispatch([
+          secondApproval.approvalRequestId,
+        ]);
+        args.unsafeDispatchCallbacks?.confirmed?.([
           secondApproval.approvalRequestId,
         ]);
         await onEvent?.({
@@ -2786,8 +4135,12 @@ describe('AgentFrame', () => {
           responseId: 'resp_chain_completed',
           delta: 'Both changes completed.',
         });
-        await onEvent?.({ type: 'turn_completed', result: completed });
-        return completed;
+        const settledSecond = {
+          ...completed,
+          confirmedApprovalIds: [secondApproval.approvalRequestId],
+        };
+        await onEvent?.({ type: 'turn_completed', result: settledSecond });
+        return settledSecond;
       },
     );
     mocks.runtime = {
@@ -2836,6 +4189,128 @@ describe('AgentFrame', () => {
       scope: frameProps.scope,
     });
     await waitFor(() => expect(journalStore.read()).toBeUndefined());
+  });
+
+  it('settles a dispatched grouped operation when a later sibling is blocked before network', async () => {
+    const frameProps = props({
+      currentUserId: `grouped-partial-boundary-${testUser}`,
+    });
+    seedDatoConnection(frameProps);
+    enableAutoApproval(frameProps);
+    const approvals = [
+      unsafeApprovalWithId('approval_group_boundary_sent'),
+      unsafeApprovalWithId('approval_group_boundary_blocked'),
+    ];
+    const approvalRequired = completedResult({
+      status: 'approval_required',
+      responseId: 'resp_group_boundary',
+      approvals,
+    });
+    let firstSettled: (() => void) | undefined;
+    const firstSettledPromise = new Promise<void>((resolve) => {
+      firstSettled = resolve;
+    });
+    let releaseSecond: (() => void) | undefined;
+    const secondGate = new Promise<void>((resolve) => {
+      releaseSecond = resolve;
+    });
+    const submitApprovals = vi.fn(
+      async (args: ContinueApprovalsArgs): Promise<AgentTurnResult> => {
+        args.unsafeDispatchCallbacks?.beforeDispatch([
+          approvals[0].approvalRequestId,
+        ]);
+        args.unsafeDispatchCallbacks?.confirmed?.([
+          approvals[0].approvalRequestId,
+        ]);
+        firstSettled?.();
+        await secondGate;
+        args.unsafeDispatchCallbacks?.beforeDispatch([
+          approvals[1].approvalRequestId,
+        ]);
+        throw new Error('The blocked operation must not cross the network.');
+      },
+    );
+    mocks.runtime = {
+      runTurn: vi.fn(
+        async (_args: AgentTurnArgs, onEvent?: RuntimeEventObserver) => {
+          for (const approval of approvals) {
+            // biome-ignore lint/performance/noAwaitInLoops: Approval event order is part of this grouped-operation test.
+            await onEvent?.({
+              type: 'approval_required',
+              responseId: 'resp_group_boundary',
+              approval,
+            });
+          }
+          await onEvent?.({
+            type: 'turn_completed',
+            result: approvalRequired,
+          });
+          return approvalRequired;
+        },
+      ),
+      submitApprovals,
+    } as unknown as AgentRuntime;
+
+    const rendered = render(<AgentFrame {...frameProps} />);
+    act(() => mocks.surfaceProps?.onSubmit('Update both records'));
+    await firstSettledPromise;
+    rendered.rerender(
+      <AgentFrame
+        {...frameProps}
+        config={{ ...frameProps.config, readOnly: true }}
+      />,
+    );
+    await act(async () => {
+      releaseSecond?.();
+      await secondGate;
+    });
+
+    await waitFor(() => {
+      const sent = mocks.surfaceProps?.entries.find(
+        (entry) =>
+          entry.kind === 'approval' &&
+          entry.approval.id === approvals[0].approvalRequestId,
+      );
+      const blocked = mocks.surfaceProps?.entries.find(
+        (entry) =>
+          entry.kind === 'approval' &&
+          entry.approval.id === approvals[1].approvalRequestId,
+      );
+      expect(sent?.kind === 'approval' && sent.approval.status).toBe(
+        'approved',
+      );
+      expect(blocked?.kind === 'approval' && blocked.approval.status).toBe(
+        'error',
+      );
+      expect(
+        blocked?.kind === 'approval' && blocked.approval.outcome,
+      ).toBeUndefined();
+    });
+    expect(
+      createUnsafeDispatchJournalStore({
+        pluginId: frameProps.pluginId,
+        siteId: frameProps.siteId,
+        environment: frameProps.environment,
+        currentUserId: frameProps.currentUserId,
+        scope: frameProps.scope,
+      }).read(),
+    ).toBeUndefined();
+    const store = createConversationStore({
+      pluginId: frameProps.pluginId,
+      siteId: frameProps.siteId,
+      environment: frameProps.environment,
+      currentUserId: frameProps.currentUserId,
+      scope: frameProps.scope,
+    });
+    expect(
+      store
+        .list()[0]
+        ?.messages.some((message) =>
+          message.text.includes(
+            'The approved DatoCMS operation completed, but the agent’s final reply was interrupted.',
+          ),
+        ),
+    ).toBe(true);
   });
 
   it('recovers a confirmed bundle and unsent next bundle when the frame closes between them', async () => {
@@ -2930,7 +4405,7 @@ describe('AgentFrame', () => {
         (entry) =>
           entry.kind === 'message' &&
           entry.role === 'assistant' &&
-          entry.content.includes('remaining operations were not sent'),
+          entry.content.includes('returned a result'),
       ),
     ).toBeTruthy();
     expect(replacementRuntime.runTurn).not.toHaveBeenCalled();

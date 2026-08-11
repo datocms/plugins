@@ -7,6 +7,10 @@ import {
   MAX_DATOCMS_MCP_TOOL_PAGES,
   serializeDatoMcpToolResult,
 } from './datoMcpClient';
+import {
+  DATO_SCRIPT_OUTCOME_MARKER_PREFIX,
+  type DatoScriptOutcomeV1,
+} from './datoScriptOutcome';
 
 function fakeTransport(): Transport {
   return {
@@ -295,6 +299,7 @@ describe('DatoMcpClient', () => {
     ).toEqual({
       isError: false,
       content: '{"count":2,"ok":true}',
+      structuredContent: { count: 2, ok: true },
     });
 
     const cyclic: Record<string, unknown> = { ok: true };
@@ -303,6 +308,120 @@ describe('DatoMcpClient', () => {
     expect(serializeDatoMcpToolResult(undefined)).toEqual({
       isError: false,
       content: 'DatoCMS returned no content.',
+    });
+  });
+
+  it('retains structured content and strips a validated script-outcome marker', () => {
+    const datoScriptOutcome: DatoScriptOutcomeV1 = {
+      version: 1,
+      kind: 'dato_script_outcome',
+      status: 'failed',
+      failureCode: 'typescript_compilation',
+      executionState: 'not_started',
+      projectChangeState: 'none',
+      recovery: 'fix_and_review',
+      scriptName: 'script://dato-agent/site/primary/update.ts',
+      message: 'The TypeScript did not compile.',
+    };
+    const marker = `${DATO_SCRIPT_OUTCOME_MARKER_PREFIX}${JSON.stringify(
+      datoScriptOutcome,
+    )}\nTypeScript compilation failed.\nLine 3 is invalid.`;
+    const structuredContent = { text: marker, datoScriptOutcome };
+
+    expect(
+      serializeDatoMcpToolResult({
+        isError: true,
+        content: [{ type: 'text', text: marker }],
+        structuredContent,
+      }),
+    ).toEqual({
+      isError: true,
+      content: 'TypeScript compilation failed.\nLine 3 is invalid.',
+      outcomeSourceText: marker,
+      structuredContent,
+      datoScriptOutcome,
+    });
+  });
+
+  it('retains raw marker text and rejects conflicting structured outcomes', () => {
+    const markerOutcome: DatoScriptOutcomeV1 = {
+      version: 1,
+      kind: 'dato_script_outcome',
+      status: 'failed',
+      failureCode: 'script_validation',
+      executionState: 'not_started',
+      projectChangeState: 'none',
+      recovery: 'fix_and_review',
+      scriptName: 'script://dato-agent/site/primary/update.ts',
+      message: 'Validation failed.',
+    };
+    const structuredOutcome: DatoScriptOutcomeV1 = {
+      ...markerOutcome,
+      failureCode: 'typescript_compilation',
+    };
+    const marker = `${DATO_SCRIPT_OUTCOME_MARKER_PREFIX}${JSON.stringify(
+      markerOutcome,
+    )}\nValidation failed.`;
+    const structuredContent = {
+      text: marker,
+      datoScriptOutcome: structuredOutcome,
+    };
+
+    expect(
+      serializeDatoMcpToolResult({
+        isError: true,
+        content: [{ type: 'text', text: marker }],
+        structuredContent,
+      }),
+    ).toEqual({
+      isError: true,
+      content: 'Validation failed.',
+      outcomeSourceText: marker,
+      structuredContent,
+    });
+  });
+
+  it('does not promote indented marker or legacy text into a byte-zero outcome contract', () => {
+    const datoScriptOutcome: DatoScriptOutcomeV1 = {
+      version: 1,
+      kind: 'dato_script_outcome',
+      status: 'failed',
+      failureCode: 'script_validation',
+      executionState: 'not_started',
+      projectChangeState: 'none',
+      recovery: 'fix_and_review',
+      scriptName: 'script://dato-agent/site/primary/update.ts',
+      message: 'The script did not validate.',
+    };
+    const marker = `${DATO_SCRIPT_OUTCOME_MARKER_PREFIX}${JSON.stringify(
+      datoScriptOutcome,
+    )}\nValidation failed.`;
+
+    expect(
+      serializeDatoMcpToolResult({
+        isError: true,
+        content: [{ type: 'text', text: ` ${marker}` }],
+      }),
+    ).toEqual({
+      isError: true,
+      content: marker,
+      outcomeSourceText: ` ${marker}`,
+    });
+    expect(
+      serializeDatoMcpToolResult({
+        isError: true,
+        content: [
+          {
+            type: 'text',
+            text: ' # Script saved with validation errors\nUnknown field.',
+          },
+        ],
+      }),
+    ).toEqual({
+      isError: true,
+      content: '# Script saved with validation errors\nUnknown field.',
+      outcomeSourceText:
+        ' # Script saved with validation errors\nUnknown field.',
     });
   });
 

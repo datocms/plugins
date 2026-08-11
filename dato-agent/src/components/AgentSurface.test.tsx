@@ -408,7 +408,7 @@ describe('AgentSurface', () => {
     expect(screen.getByText('Couldn’t complete this request')).toBeVisible();
   });
 
-  it('requires explicit approval for content changes and renders code exactly', async () => {
+  it('requires explicit approval and keeps TypeScript in the details modal', async () => {
     const user = userEvent.setup();
     const onApprove = vi.fn();
     const onReject = vi.fn();
@@ -418,12 +418,10 @@ describe('AgentSurface', () => {
       title: 'Update three article titles',
       description: 'This will change the title field on three records.',
       actionLabel: 'Run title normalization',
-      details: [
-        {
-          label: 'Generated TypeScript',
-          value: 'await client.items.update("123", { title: "Hello" });',
-        },
-      ],
+      script: {
+        language: 'typescript',
+        source: 'await client.items.update("123", { title: "Hello" });',
+      },
       status: 'pending',
     };
 
@@ -544,6 +542,151 @@ describe('AgentSurface', () => {
     expect(screen.getByText('Denied. No action was taken.')).toHaveRole(
       'status',
     );
+  });
+
+  it('offers a fresh repair turn only for a definitely unexecuted change', async () => {
+    const user = userEvent.setup();
+    const onRepair = vi.fn();
+    const approval: UnsafeApprovalViewModel = {
+      id: 'repairable-approval',
+      title: 'Update the Homepage',
+      description: 'This will update one record.',
+      actionLabel: 'Update Homepage',
+      status: 'approved',
+      outcome: {
+        kind: 'failed_before_execution',
+        diagnostic: 'TypeScript compilation failed.',
+      },
+      recovery: { status: 'available' },
+      script: {
+        language: 'typescript',
+        source: 'await client.items.update("homepage", {});',
+      },
+    };
+
+    render(
+      <AgentSurface
+        connection={connected}
+        entries={[{ id: 'repairable-entry', kind: 'approval', approval }]}
+        onRepairUnsafeAction={onRepair}
+        onReviewUnsafeAction={vi.fn()}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText('Change didn’t run')).toBeVisible();
+    expect(screen.getByText('No project content was changed.')).toBeVisible();
+    expect(screen.queryByText('Approved.')).not.toBeInTheDocument();
+    const repair = screen.getByRole('button', { name: 'Fix and review' });
+    await user.click(repair);
+    expect(onRepair).toHaveBeenCalledWith(approval);
+    expect(
+      screen.getByRole('button', { name: 'Review details' }),
+    ).toBeVisible();
+  });
+
+  it('makes Auto explicit for repairable automatic failures', () => {
+    render(
+      <AgentSurface
+        autoApproveEnabled
+        connection={connected}
+        entries={[
+          {
+            id: 'automatic-repairable-entry',
+            kind: 'approval',
+            approval: {
+              id: 'automatic-repairable',
+              title: 'Update records',
+              description: 'Update records.',
+              actionLabel: 'Update',
+              automatic: true,
+              status: 'approved',
+              outcome: { kind: 'failed_before_execution' },
+              recovery: { status: 'available' },
+            },
+          },
+        ]}
+        onRepairUnsafeAction={vi.fn()}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    const repair = screen.getByRole('button', {
+      name: /Fix with Auto.*Auto is on.*may run automatically/i,
+    });
+    expect(repair).toHaveTextContent(
+      'Fix with Auto. Auto is on. The corrected operation may run automatically.',
+    );
+  });
+
+  it.each([
+    [
+      'failed_after_execution' as const,
+      'Change may be incomplete',
+      'Some project content may have changed. Check DatoCMS before trying again.',
+    ],
+    [
+      'unknown' as const,
+      'Outcome needs checking',
+      'The change may have run. Check DatoCMS before trying again.',
+    ],
+  ])('does not offer repair for %s outcomes', (kind, title, description) => {
+    render(
+      <AgentSurface
+        connection={connected}
+        entries={[
+          {
+            id: `outcome-${kind}`,
+            kind: 'approval',
+            approval: {
+              id: `approval-${kind}`,
+              title: 'Update records',
+              description: 'Update records.',
+              actionLabel: 'Update',
+              status: 'approved',
+              outcome: { kind },
+            },
+          },
+        ]}
+        onRepairUnsafeAction={vi.fn()}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(title)).toBeVisible();
+    expect(screen.getByText(description)).toBeVisible();
+    expect(
+      screen.queryByRole('button', { name: /Fix/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('locks a claimed repair action while the correction turn starts', () => {
+    render(
+      <AgentSurface
+        connection={connected}
+        entries={[
+          {
+            id: 'starting-repair',
+            kind: 'approval',
+            approval: {
+              id: 'starting-repair-approval',
+              title: 'Update records',
+              description: 'Update records.',
+              actionLabel: 'Update',
+              status: 'approved',
+              outcome: { kind: 'failed_before_execution' },
+              recovery: { status: 'starting' },
+            },
+          },
+        ]}
+        onRepairUnsafeAction={vi.fn()}
+        onSubmit={vi.fn()}
+      />,
+    );
+
+    expect(
+      screen.getByRole('button', { name: 'Preparing fix…' }),
+    ).toBeDisabled();
   });
 
   it('keeps every record in a multi-record result individually accessible', async () => {

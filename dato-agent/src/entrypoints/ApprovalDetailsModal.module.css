@@ -2,6 +2,148 @@
   min-width: 0;
 }
 
+.outcomeNotice {
+  margin: 0 0 var(--spacing-l);
+  padding: var(--spacing-s) var(--spacing-m);
+  border-left: 3px solid var(--color--warning-soft--border);
+  color: var(--color--warning-soft--ink);
+  background: var(--color--warning-soft--surface);
+}
+
+.outcomeNotice strong,
+.outcomeNotice p {
+  overflow-wrap: anywhere;
+}
+
+.outcomeNotice strong {
+  display: block;
+  font-size: var(--font-size-s);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.35;
+}
+
+.outcomeNotice p {
+  margin: var(--spacing-xs) 0 0;
+  font-size: var(--font-size-s);
+  line-height: 1.4;
+}
+
+.technicalError {
+  margin-top: var(--spacing-s);
+  color: var(--color--ink-subtle);
+  font-size: var(--font-size-xs);
+}
+
+.technicalError summary {
+  width: fit-content;
+  cursor: pointer;
+}
+
+.technicalError summary:hover,
+.technicalError summary:focus-visible {
+  color: var(--color--ink);
+}
+
+.technicalError summary:focus-visible {
+  border-radius: 3px;
+  outline: 2px solid var(--color--focus--outline);
+  outline-offset: 2px;
+}
+
+.technicalError pre {
+  overflow: auto;
+  max-height: 180px;
+  margin: var(--spacing-s) 0 0;
+  padding: var(--spacing-s);
+  border: 1px solid var(--color--border);
+  border-radius: 4px;
+  background: var(--color--code--surface);
+  color: var(--color--code--ink);
+  font-family: var(--monospaced-font-family);
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+.summary {
+  margin: 0 0 var(--spacing-l);
+}
+
+.summary h2,
+.codeSection h2 {
+  margin: 0 0 var(--spacing-s);
+  color: var(--color--ink-subtle);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  text-transform: uppercase;
+}
+
+.summaryText,
+.summaryWarning,
+.summaryFailure p {
+  margin: 0;
+  line-height: 1.45;
+}
+
+.summaryText {
+  font-size: var(--font-size-m);
+}
+
+.summaryWarning {
+  margin-top: var(--spacing-s);
+  color: var(--color--ink-subtle);
+  font-size: var(--font-size-xs);
+}
+
+.summaryFailure {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-m);
+}
+
+.summaryFailure p {
+  color: var(--color--ink-subtle);
+  font-size: var(--font-size-s);
+}
+
+.summaryShimmer {
+  display: grid;
+  gap: var(--spacing-s);
+  max-width: 560px;
+}
+
+.summaryShimmer span {
+  height: 10px;
+  border-radius: 3px;
+  background: linear-gradient(
+    90deg,
+    var(--color--surface-muted) 25%,
+    var(--color--surface-hover) 50%,
+    var(--color--surface-muted) 75%
+  );
+  background-size: 200% 100%;
+  animation: summary-shimmer 1.4s var(--material-ease) infinite;
+}
+
+.summaryShimmer span:nth-child(2) {
+  width: 88%;
+}
+
+.summaryShimmer span:nth-child(3) {
+  width: 64%;
+}
+
+@keyframes summary-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+
+  to {
+    background-position: -200% 0;
+  }
+}
+
 .metadata {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -13,8 +155,7 @@
   min-width: 0;
 }
 
-.metadata dt,
-.codeSection h2 {
+.metadata dt {
   margin: 0 0 var(--spacing-s);
   color: var(--color--ink-subtle);
   font-size: var(--font-size-xs);
@@ -36,12 +177,12 @@
   margin-top: 0;
 }
 
-.codeSection pre {
+.codeBlock {
   box-sizing: border-box;
   overflow: auto;
   max-height: min(58vh, 520px);
   margin: 0;
-  padding: var(--spacing-m);
+  padding: var(--spacing-m) var(--spacing-m) var(--spacing-m) 0;
   border-radius: 5px;
   background: var(--color--code--surface);
   color: var(--color--code--ink);
@@ -50,7 +191,28 @@
   font-weight: var(--monospaced-font-weight);
   letter-spacing: var(--monospaced-letter-spacing);
   line-height: 1.4;
+  tab-size: 2;
   white-space: pre;
+}
+
+.codeLine {
+  min-width: 100%;
+}
+
+.codeLine::before {
+  content: attr(data-line-number);
+  display: inline-block;
+  box-sizing: border-box;
+  min-width: 5ch;
+  padding-left: var(--spacing-m);
+  color: var(--color--code--ink);
+  text-align: right;
+  opacity: 0.45;
+  user-select: none;
+}
+
+.codeLineContent {
+  padding-left: var(--spacing-m);
 }
 
 .actions {
@@ -77,5 +239,17 @@
 @media (max-width: 560px) {
   .metadata {
     grid-template-columns: 1fr;
+  }
+
+  .summaryFailure {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .summaryShimmer span {
+    animation: none;
+    background: var(--color--surface-muted);
   }
 }

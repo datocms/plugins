@@ -156,12 +156,29 @@ export type UnsafeApprovalDetail = {
   value: string;
 };
 
+export type UnsafeApprovalScript = {
+  language: 'typescript';
+  source: string;
+};
+
+export type UnsafeApprovalOutcomeViewModel = {
+  kind: 'failed_before_execution' | 'failed_after_execution' | 'unknown';
+  diagnostic?: string;
+};
+
+export type UnsafeApprovalRecoveryViewModel = {
+  status: 'available' | 'starting';
+};
+
 export type UnsafeApprovalViewModel = {
   id: string;
   title: string;
   description: string;
   actionLabel: string;
   details?: readonly UnsafeApprovalDetail[];
+  script?: UnsafeApprovalScript;
+  outcome?: UnsafeApprovalOutcomeViewModel;
+  recovery?: UnsafeApprovalRecoveryViewModel;
   status: UnsafeApprovalStatus;
   error?: string;
   automatic?: boolean;
@@ -177,6 +194,12 @@ export type AgentMessageEntry = {
   streaming?: boolean;
   error?: string | boolean;
   interrupted?: boolean;
+  /**
+   * Host-authored terminal notice persisted with the assistant message but
+   * deliberately omitted from the live transcript while its outcome card is
+   * visible. After reload it is restored as ordinary assistant text.
+   */
+  durableOutcomeNotice?: string;
   segments?: readonly CommentSegment[];
   createdAt?: string;
   failure?: {
@@ -276,6 +299,7 @@ export type AgentSurfaceProps = {
   onReviewUnsafeAction?: (approval: UnsafeApprovalViewModel) => void;
   onApproveUnsafeAction?: (approval: UnsafeApprovalViewModel) => void;
   onRejectUnsafeAction?: (approval: UnsafeApprovalViewModel) => void;
+  onRepairUnsafeAction?: (approval: UnsafeApprovalViewModel) => void;
   onRetryFailedTurn?: (failureId: string) => void | Promise<void>;
   onCopyFailureDiagnostics?: (failureId: string) => Promise<void>;
   autoApproveEnabled?: boolean;
@@ -1269,7 +1293,9 @@ function ApprovalFooter({
   onApprove?: (approval: UnsafeApprovalViewModel) => void;
   onReject?: (approval: UnsafeApprovalViewModel) => void;
 }) {
-  const hasDetails = Boolean(approval.details?.length && onReview);
+  const hasDetails = Boolean(
+    (approval.details?.length || approval.script) && onReview,
+  );
   if (!hasDetails && !canDecide) {
     return null;
   }
@@ -1311,24 +1337,125 @@ function ApprovalFooter({
   );
 }
 
+function ApprovalOutcomeEntry({
+  approval,
+  autoApproveEnabled,
+  disabled,
+  onReview,
+  onRepair,
+}: {
+  approval: UnsafeApprovalViewModel;
+  autoApproveEnabled: boolean;
+  disabled?: boolean;
+  onReview?: (approval: UnsafeApprovalViewModel) => void;
+  onRepair?: (approval: UnsafeApprovalViewModel) => void;
+}) {
+  const titleId = useId();
+  const outcome = approval.outcome;
+
+  if (!outcome) return null;
+
+  const presentation = {
+    failed_before_execution: {
+      title: 'Change didn’t run',
+      description: 'No project content was changed.',
+    },
+    failed_after_execution: {
+      title: 'Change may be incomplete',
+      description:
+        'Some project content may have changed. Check DatoCMS before trying again.',
+    },
+    unknown: {
+      title: 'Outcome needs checking',
+      description:
+        'The change may have run. Check DatoCMS before trying again.',
+    },
+  }[outcome.kind];
+  const canRepair = Boolean(approval.recovery && onRepair);
+  const repairStarting = approval.recovery?.status === 'starting';
+  const repairLabel = repairStarting
+    ? 'Preparing fix…'
+    : autoApproveEnabled
+      ? 'Fix with Auto'
+      : 'Fix and review';
+
+  return (
+    <section
+      aria-labelledby={titleId}
+      className={`${styles.approvalCard} ${styles.approvalOutcomeCard}`}
+      role="group"
+    >
+      <div className={styles.approvalOutcomeHeader} role="status">
+        <span
+          aria-hidden="true"
+          className={`${styles.approvalIcon} ${styles.approvalIconWarning}`}
+        >
+          <WarningIcon />
+        </span>
+        <div className={styles.approvalOutcomeBody}>
+          <strong id={titleId}>{presentation.title}</strong>
+          <p>{presentation.description}</p>
+          {approval.error && (
+            <p className={styles.approvalOutcomeGuard}>{approval.error}</p>
+          )}
+        </div>
+      </div>
+      <div className={styles.approvalOutcomeFooter}>
+        {(approval.details?.length || approval.script) && onReview && (
+          <button
+            aria-haspopup="dialog"
+            className={styles.approvalDetailsButton}
+            disabled={disabled}
+            onClick={() => onReview(approval)}
+            type="button"
+          >
+            Review details
+          </button>
+        )}
+        {canRepair && (
+          <div className={styles.approvalRepairAction}>
+            <Button
+              buttonSize="xs"
+              buttonType="primary"
+              disabled={Boolean(disabled || repairStarting)}
+              onClick={() => onRepair?.(approval)}
+            >
+              {repairLabel}
+              {autoApproveEnabled && !repairStarting && (
+                <span className={styles.visuallyHidden}>
+                  . Auto is on. The corrected operation may run automatically.
+                </span>
+              )}
+            </Button>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function ApprovalEntry({
   approval,
+  autoApproveEnabled,
   disabled,
   onReview,
   onApprove,
   onReject,
+  onRepair,
 }: {
   approval: UnsafeApprovalViewModel;
+  autoApproveEnabled: boolean;
   disabled?: boolean;
   onReview?: (approval: UnsafeApprovalViewModel) => void;
   onApprove?: (approval: UnsafeApprovalViewModel) => void;
   onReject?: (approval: UnsafeApprovalViewModel) => void;
+  onRepair?: (approval: UnsafeApprovalViewModel) => void;
 }) {
   const titleId = useId();
   const descriptionId = useId();
   const statusId = useId();
 
-  if (approval.automatic && !approval.error) {
+  if (approval.automatic && !approval.error && !approval.outcome) {
     return null;
   }
 
@@ -1346,6 +1473,18 @@ function ApprovalEntry({
   const isResolved =
     approval.status === 'approved' || approval.status === 'rejected';
 
+  if (isResolved && approval.outcome) {
+    return (
+      <ApprovalOutcomeEntry
+        approval={approval}
+        autoApproveEnabled={autoApproveEnabled}
+        disabled={disabled}
+        onRepair={onRepair}
+        onReview={onReview}
+      />
+    );
+  }
+
   if (isResolved) {
     return (
       <section
@@ -1359,7 +1498,7 @@ function ApprovalEntry({
         <p className={styles.approvalResolution} role="status">
           {statusMessage}
         </p>
-        {approval.details && approval.details.length > 0 && onReview && (
+        {(approval.details?.length || approval.script) && onReview && (
           <button
             aria-haspopup="dialog"
             className={styles.approvalDetailsButton}
@@ -1457,7 +1596,10 @@ function agentEntryIsVisible(entry: AgentTranscriptEntry): boolean {
     case 'activity':
       return entry.phase === 'running' || entry.activities.length > 0;
     case 'approval':
-      return !entry.approval.automatic || Boolean(entry.approval.error);
+      return (
+        !entry.approval.automatic ||
+        Boolean(entry.approval.error || entry.approval.outcome)
+      );
     case 'records':
       return Boolean(entry.title || entry.error || entry.records.length > 0);
     case 'fields':
@@ -1534,6 +1676,7 @@ function openTranscriptMention(
 }
 
 function AgentTurnEntry({
+  autoApproveEnabled,
   currentRecordId,
   entries,
   hostActionPending,
@@ -1544,10 +1687,12 @@ function AgentTurnEntry({
   onOpenField,
   onOpenRecord,
   onRejectUnsafeAction,
+  onRepairUnsafeAction,
   onRetryFailedTurn,
   onReviewUnsafeAction,
 }: {
   entries: readonly AgentTranscriptEntry[];
+  autoApproveEnabled: boolean;
   currentRecordId?: string;
   hostActionPending?: boolean;
   mentionHost: AgentMentionHost;
@@ -1557,6 +1702,7 @@ function AgentTurnEntry({
   onOpenField?: AgentSurfaceProps['onOpenField'];
   onOpenRecord?: AgentSurfaceProps['onOpenRecord'];
   onRejectUnsafeAction?: AgentSurfaceProps['onRejectUnsafeAction'];
+  onRepairUnsafeAction?: AgentSurfaceProps['onRepairUnsafeAction'];
   onRetryFailedTurn?: AgentSurfaceProps['onRetryFailedTurn'];
   onReviewUnsafeAction?: AgentSurfaceProps['onReviewUnsafeAction'];
 }) {
@@ -1634,10 +1780,12 @@ function AgentTurnEntry({
               return (
                 <ApprovalEntry
                   approval={entry.approval}
+                  autoApproveEnabled={autoApproveEnabled}
                   disabled={hostActionPending}
                   key={entry.id}
                   onApprove={onApproveUnsafeAction}
                   onReject={onRejectUnsafeAction}
+                  onRepair={onRepairUnsafeAction}
                   onReview={onReviewUnsafeAction}
                 />
               );
@@ -1651,6 +1799,7 @@ function AgentTurnEntry({
 }
 
 function Transcript({
+  autoApproveEnabled,
   currentRecordId,
   entries,
   mentionHost,
@@ -1660,6 +1809,7 @@ function Transcript({
   onReviewUnsafeAction,
   onApproveUnsafeAction,
   onRejectUnsafeAction,
+  onRepairUnsafeAction,
   onRetryFailedTurn,
   onCopyFailureDiagnostics,
   isRunning,
@@ -1667,6 +1817,7 @@ function Transcript({
 }: Pick<
   AgentSurfaceProps,
   | 'entries'
+  | 'autoApproveEnabled'
   | 'currentRecordId'
   | 'onOpenRecord'
   | 'onOpenField'
@@ -1674,6 +1825,7 @@ function Transcript({
   | 'onReviewUnsafeAction'
   | 'onApproveUnsafeAction'
   | 'onRejectUnsafeAction'
+  | 'onRepairUnsafeAction'
   | 'onRetryFailedTurn'
   | 'onCopyFailureDiagnostics'
   | 'isRunning'
@@ -1750,6 +1902,7 @@ function Transcript({
               />
             ) : (
               <AgentTurnEntry
+                autoApproveEnabled={Boolean(autoApproveEnabled)}
                 currentRecordId={currentRecordId}
                 entries={group.entries}
                 hostActionPending={hostActionPending}
@@ -1761,6 +1914,7 @@ function Transcript({
                 onOpenField={onOpenField}
                 onOpenRecord={onOpenRecord}
                 onRejectUnsafeAction={onRejectUnsafeAction}
+                onRepairUnsafeAction={onRepairUnsafeAction}
                 onRetryFailedTurn={onRetryFailedTurn}
                 onReviewUnsafeAction={onReviewUnsafeAction}
               />
@@ -1888,6 +2042,7 @@ export function AgentSurface({
   onReviewUnsafeAction,
   onApproveUnsafeAction,
   onRejectUnsafeAction,
+  onRepairUnsafeAction,
   onRetryFailedTurn,
   onCopyFailureDiagnostics,
   autoApproveEnabled = false,
@@ -2090,6 +2245,7 @@ export function AgentSurface({
       ) : (
         <>
           <Transcript
+            autoApproveEnabled={autoApproveEnabled}
             currentRecordId={currentRecordId}
             entries={entries}
             isRunning={isRunning}
@@ -2101,6 +2257,7 @@ export function AgentSurface({
             onOpenRecord={onOpenRecord}
             hostActionPending={hostActionPending}
             onRejectUnsafeAction={onRejectUnsafeAction}
+            onRepairUnsafeAction={onRepairUnsafeAction}
             onRetryFailedTurn={onRetryFailedTurn}
             onReviewUnsafeAction={onReviewUnsafeAction}
           />
