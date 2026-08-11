@@ -69,10 +69,11 @@ Frontend API endpoints must:
 - Implement validation via `isValidResponse()` guard
 
 ### CSP Requirements
-If frontend implements Content Security Policy, must include:
+If the frontend sends a `frame-ancestors` directive, it must allow both the exact DatoCMS project origin and the plugin CDN because browsers check every ancestor in the nested iframe chain:
 ```
-Content-Security-Policy: frame-ancestors 'self' https://plugins-cdn.datocms.com;
+Content-Security-Policy: frame-ancestors 'self' https://your-project.admin.datocms.com https://plugins-cdn.datocms.com;
 ```
+Use the custom DatoCMS admin origin instead when applicable. If `frame-ancestors` is absent, do not add it solely for Web Previews.
 
 ### State Persistence
 - Sidebar width persists via `utils/persistedWidth.ts` (localStorage keyed by site ID)
@@ -145,7 +146,7 @@ When enabled:
 ## Troubleshooting
 
 ### Preview not loading
-1. Check CSP headers on frontend (must allow `https://plugins-cdn.datocms.com`)
+1. If the frontend sends `frame-ancestors`, check that it allows both the exact DatoCMS project origin and `https://plugins-cdn.datocms.com`
 2. Verify API endpoint returns valid JSON (use browser network inspector)
 3. Check CORS headers on API endpoint
 4. Look for validation errors in `isValidResponse()`

@@ -91,11 +91,15 @@ Configure iframe permissions and security settings:
 
 ## Content Security Policy
 
-⚠️ For side-by-side previews to work, if your website implements a [Content Security Policy `frame-ancestors` directive](https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP), you need to add `https://plugins-cdn.datocms.com` to your list of allowed sources:
+⚠️ If your website sends a [Content Security Policy `frame-ancestors` directive](https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP), side-by-side previews require it to allow both `https://plugins-cdn.datocms.com` and the exact origin from which editors access your DatoCMS project. This is normally `https://<PROJECT-SUBDOMAIN>.admin.datocms.com`; use your custom DatoCMS admin origin instead if your project has one.
+
+Browsers check every ancestor in the nested iframe chain, so allowing only the plugin CDN is not sufficient. For example, replace `your-project` below with your project's actual subdomain:
 
 ```
-Content-Security-Policy: frame-ancestors 'self' https://plugins-cdn.datocms.com;
+Content-Security-Policy: frame-ancestors 'self' https://your-project.admin.datocms.com https://plugins-cdn.datocms.com;
 ```
+
+If your website does not send a `frame-ancestors` directive, no CSP change is required for Web Previews.
 
 ## The Preview Links API endpoint
 
@@ -226,7 +230,6 @@ We suggest you look at the code of our [official Starter Kit](https://github.com
 * Enable Draft Mode route (and optional disable route): [`src/pages/api/draft-mode/enable/index.ts`](https://github.com/datocms/astro-starter-kit/blob/main/src/pages/api/draft-mode/enable/index.ts) and [`src/pages/api/draft-mode/disable/index.ts`](https://github.com/datocms/astro-starter-kit/blob/main/src/pages/api/draft-mode/disable/index.ts)
 
 The preview link URLs also include a `token` query parameter that the plugin would send to the API endpoint, like `https://www.mywebsite.com/api/preview-links?token=some-secret-ish-string`. The `token` is a string of your choice that just has to match in both the plugin settings and [in your frontend's environment variables](https://github.com/datocms/astro-starter-kit/blob/main/src/pages/api/preview-links/index.ts#L33-L35). While not encryption, this token is an easy way to limit access to your preview content.
-
 
 
 
