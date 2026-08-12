@@ -19,6 +19,11 @@ export type UseContentLinkConnectionReturn = {
   connection: ContentLinkConnectionState;
 };
 
+type ActiveIframeConnection = {
+  destroy: () => void;
+  element: HTMLIFrameElement;
+};
+
 /**
  * Hook to manage Penpal connection with the preview iframe
  * Establishes bidirectional communication between Studio and Website
@@ -33,10 +38,7 @@ export default function useContentLinkConnection({
     type: 'connecting',
   });
 
-  const iframeStateRef = useRef<{
-    destroy?: () => void;
-    element: HTMLIFrameElement;
-  } | null>(null);
+  const iframeStateRef = useRef<ActiveIframeConnection | null>(null);
 
   const handleOnInit = useMethodProxy(() => {
     return onInit();
@@ -70,48 +72,56 @@ export default function useContentLinkConnection({
         return;
       }
 
-      if (iframeStateRef.current) {
-        iframeStateRef.current.destroy?.();
-        iframeStateRef.current = null;
-      }
+      const previousConnection = iframeStateRef.current;
+      iframeStateRef.current = null;
+      setConnection({ type: 'connecting' });
+      previousConnection?.destroy();
 
       if (!element) {
-        setConnection({ type: 'connecting' });
         return;
       }
 
-      iframeStateRef.current = { element };
+      try {
+        const { promise, destroy } = connectToChild<ContentLinkMethods>({
+          iframe: element,
+          methods: {
+            openItem: handleOpenItem,
+            onStateChange: handleStateChange,
+            onInit: handleOnInit,
+            onPing: handleOnPing,
+          },
+          timeout: 20000,
+        });
 
-      (async () => {
-        try {
-          const { promise, destroy } = await connectToChild<ContentLinkMethods>(
-            {
-              iframe: element,
-              methods: {
-                openItem: handleOpenItem,
-                onStateChange: handleStateChange,
-                onInit: handleOnInit,
-                onPing: handleOnPing,
-              },
-              timeout: 20000,
-            },
-          );
+        const activeConnection: ActiveIframeConnection = {
+          destroy,
+          element,
+        };
+        iframeStateRef.current = activeConnection;
 
-          if (
-            iframeStateRef.current &&
-            iframeStateRef.current.element === element
-          ) {
-            iframeStateRef.current.destroy = destroy;
+        void (async () => {
+          try {
+            const child = await promise;
+
+            if (iframeStateRef.current !== activeConnection) {
+              destroy();
+              return;
+            }
+
+            setConnection({ type: 'connected', methods: child });
+          } catch (error) {
+            if (iframeStateRef.current !== activeConnection) {
+              return;
+            }
+
+            console.error('Penpal connection failed:', error);
+            setConnection({ type: 'failed' });
           }
-
-          const child = await promise;
-
-          setConnection({ type: 'connected', methods: child });
-        } catch (error) {
-          console.error('Penpal connection failed:', error);
-          setConnection({ type: 'failed' });
-        }
-      })();
+        })();
+      } catch (error) {
+        console.error('Penpal connection failed:', error);
+        setConnection({ type: 'failed' });
+      }
     },
     [handleOnInit, handleOnPing, handleOpenItem, handleStateChange],
   );

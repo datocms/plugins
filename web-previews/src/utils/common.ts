@@ -2,7 +2,7 @@ import type {
   RenderItemFormSidebarCtx,
   RenderItemFormSidebarPanelCtx,
 } from 'datocms-plugin-sdk';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   useDeepCompareCallback,
   useDeepCompareEffect,
@@ -76,6 +76,7 @@ export function useStatusByFrontend(
   const [statusByFrontend, setStatusByFrontend] = useState<
     Record<string, FrontendStatus | undefined> | undefined
   >();
+  const requestGenerationRef = useRef(0);
 
   const { frontends: rawFrontends } = normalizeParameters(
     ctx.plugin.attributes.parameters as Parameters,
@@ -113,12 +114,19 @@ export function useStatusByFrontend(
 
   const run = useDeepCompareCallback(
     async (frontends: Frontend[]) => {
+      const requestGeneration = ++requestGenerationRef.current;
+
       if (!payloadBody) {
-        setStatusByFrontend(
-          Object.fromEntries(
-            frontends.map((frontend) => [frontend.name, { previewLinks: [] }]),
-          ),
-        );
+        if (requestGeneration === requestGenerationRef.current) {
+          setStatusByFrontend(
+            Object.fromEntries(
+              frontends.map((frontend) => [
+                frontend.name,
+                { previewLinks: [] },
+              ]),
+            ),
+          );
+        }
         return;
       }
 
@@ -126,7 +134,11 @@ export function useStatusByFrontend(
         frontends.map((frontend) => makeRequest(frontend, payloadBody)),
       );
 
-      setStatusByFrontend(Object.fromEntries(results));
+      // A slower response for an older saved record must not overwrite the
+      // links returned for a newer save.
+      if (requestGeneration === requestGenerationRef.current) {
+        setStatusByFrontend(Object.fromEntries(results));
+      }
     },
     [payloadBody],
   );

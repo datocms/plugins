@@ -33,7 +33,10 @@ export const FrontendPreviewLinks = ({
             <DropdownOption
               key={previewLink.url}
               onClick={() => onSelectPreviewLink(previewLinkWithFrontend)}
-              active={currentPreviewLink?.url === previewLink.url}
+              active={
+                currentPreviewLink?.frontendName === frontend.name &&
+                currentPreviewLink.url === previewLink.url
+              }
             >
               {previewLink.label}
             </DropdownOption>

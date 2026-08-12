@@ -1,75 +1,10 @@
 import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
 import { useEffect } from 'react';
-import type { Frontend, PreviewLinkWithFrontend } from '../../types';
 import {
   type EditUrlInfo,
   SYMBOL_FOR_PRIMARY_ENVIRONMENT,
 } from '../../utils/contentLink/types';
 import useContentLinkConnection from '../../utils/contentLink/useContentLinkConnection';
-
-export type SidebarVisualEditingInfo = {
-  iframeUrl: string;
-  alreadyInDraftMode: boolean;
-};
-
-function safeRedirectPath(
-  redirect: string,
-  draftModeUrl: URL,
-): string | undefined {
-  const url = new URL(redirect, draftModeUrl.origin);
-
-  if (url.origin !== draftModeUrl.origin) {
-    return undefined;
-  }
-
-  return `${url.pathname}${url.search}${url.hash}`;
-}
-
-/**
- * Resolves any preview link belonging to a visual-editing frontend to a URL
- * that enables draft mode for the same page. Published preview links normally
- * point to a disable-draft-mode helper, so checking only for the configured
- * enable route would incorrectly reject fully published records.
- */
-export function sidebarVisualEditingInfo(
-  link: PreviewLinkWithFrontend | undefined,
-  frontend: Frontend | undefined,
-): SidebarVisualEditingInfo | undefined {
-  const enableDraftModeUrl = frontend?.visualEditing?.enableDraftModeUrl;
-  if (!link || !enableDraftModeUrl) {
-    return undefined;
-  }
-
-  try {
-    const previewUrl = new URL(link.url);
-    const draftModeUrl = new URL(enableDraftModeUrl);
-    const redirect = previewUrl.searchParams.get('redirect');
-
-    const path = redirect
-      ? safeRedirectPath(redirect, draftModeUrl)
-      : previewUrl.origin === draftModeUrl.origin &&
-          previewUrl.pathname !== draftModeUrl.pathname
-        ? `${previewUrl.pathname}${previewUrl.search}${previewUrl.hash}`
-        : undefined;
-
-    if (!path) {
-      return undefined;
-    }
-
-    draftModeUrl.searchParams.set('redirect', path);
-
-    return {
-      iframeUrl: draftModeUrl.toString(),
-      // Preview endpoints can use another deployment hostname while sharing
-      // the configured draft-mode route. The route itself is what determines
-      // whether the iframe has already enabled draft content.
-      alreadyInDraftMode:
-        previewUrl.pathname === draftModeUrl.pathname && redirect !== null,
-    };
-  } catch {
-    return undefined;
-  }
-}
 
 // Same pattern the Inspector sends to @datocms/content-link on init: it tells
 // the website how to recognise a DatoCMS edit URL and extract its parts.
@@ -98,7 +33,7 @@ function itemEditorUrl(ctx: RenderItemFormSidebarCtx, info: EditUrlInfo) {
  */
 export function useSidebarContentLink(
   ctx: RenderItemFormSidebarCtx,
-  editModeEnabled: boolean,
+  clickToEditEnabled: boolean | undefined,
 ) {
   const currentEnvironmentId = ctx.isEnvironmentPrimary
     ? SYMBOL_FOR_PRIMARY_ENVIRONMENT
@@ -128,16 +63,38 @@ export function useSidebarContentLink(
   // stays alive when the selected preview is already in draft mode; published
   // previews are reloaded through the draft-mode route before connecting.
   useEffect(() => {
-    if (connection.type !== 'connected') {
+    if (
+      connection.type !== 'connected' ||
+      clickToEditEnabled === undefined
+    ) {
       return;
     }
 
-    connection.methods.setClickToEditEnabled(
-      editModeEnabled
-        ? { enabled: true, flash: { scrollToNearestTarget: false } }
-        : { enabled: false },
-    );
-  }, [connection, editModeEnabled]);
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        await connection.methods.setClickToEditEnabled(
+          clickToEditEnabled
+            ? { enabled: true, flash: { scrollToNearestTarget: false } }
+            : { enabled: false },
+        );
+      } catch (error) {
+        const connectionWasDestroyed =
+          error instanceof Error &&
+          'code' in error &&
+          error.code === 'ERR_CONNECTION_DESTROYED';
+
+        if (!cancelled && !connectionWasDestroyed) {
+          console.error('[Web Previews] Could not update edit mode:', error);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [connection, clickToEditEnabled]);
 
   return { iframeRef };
 }

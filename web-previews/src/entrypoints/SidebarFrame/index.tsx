@@ -8,7 +8,6 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import type { RenderItemFormSidebarCtx } from 'datocms-plugin-sdk';
 import { Canvas, Spinner } from 'datocms-react-ui';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useDeepCompareEffect } from 'use-deep-compare';
 import { BrowserWrapper } from '../../components/Browser/BrowserWrapper';
 import styles from '../../components/Browser/BrowserWrapper/styles.module.css';
 import { IframeContainer } from '../../components/Browser/IframeContainer';
@@ -29,18 +28,22 @@ import {
 import { useStatusByFrontend } from '../../utils/common';
 import { usePersistedSidebarVisualEditing } from '../../utils/persistedSidebarVisualEditing';
 import { usePersistedSidebarWidth } from '../../utils/persistedWidth';
-import {
-  extractRedirectFromDraftModePreviewUrl,
-  inspectorUrl,
-} from '../../utils/urls';
+import { inspectorUrl } from '../../utils/urls';
 import { PreviewLinkSelector } from './PreviewLinkSelector';
 import {
+  hasDraftPreviewLink,
+  reconcilePreviewLinkSelection,
   sidebarVisualEditingInfo,
-  useSidebarContentLink,
-} from './useSidebarContentLink';
+} from './previewLinkSelection';
+import { useSidebarContentLink } from './useSidebarContentLink';
 
 type PropTypes = {
   ctx: RenderItemFormSidebarCtx;
+};
+
+type PreviewLinkSelection = {
+  previewLinks: PreviewLinkWithFrontend[];
+  selectedPreviewLink: PreviewLinkWithFrontend | undefined;
 };
 
 const SidebarFrame = ({ ctx }: PropTypes) => {
@@ -73,45 +76,11 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
   );
 
   const [frontends, statusByFrontend] = useStatusByFrontend(ctx);
-  const [currentPreviewLink, setCurrentPreviewLink] = useState<
-    PreviewLinkWithFrontend | undefined
-  >();
 
   usePersistedSidebarWidth(ctx.site);
 
   const [editModeEnabled, setEditModeEnabled] =
     usePersistedSidebarVisualEditing(ctx.site);
-
-  const { iframeRef } = useSidebarContentLink(ctx, editModeEnabled);
-
-  const currentFrontend = currentPreviewLink
-    ? frontends.find((f) => f.name === currentPreviewLink.frontendName)
-    : undefined;
-
-  const currentSidebarVisualEditing = sidebarVisualEditingInfo(
-    currentPreviewLink,
-    currentFrontend,
-  );
-  const currentLinkSupportsVisualEditing = Boolean(
-    currentSidebarVisualEditing,
-  );
-
-  const iframeUrl =
-    currentPreviewLink &&
-    editModeEnabled &&
-    currentSidebarVisualEditing &&
-    !currentSidebarVisualEditing.alreadyInDraftMode
-      ? currentSidebarVisualEditing.iframeUrl
-      : currentPreviewLink?.url;
-
-  const connectContentLink = Boolean(
-    currentSidebarVisualEditing &&
-      (editModeEnabled || currentSidebarVisualEditing.alreadyInDraftMode),
-  );
-
-  const editModeTooltip = currentLinkSupportsVisualEditing
-    ? 'Click elements in the preview to open their record editor'
-    : "This preview link's frontend doesn't support visual editing";
 
   const allPreviewLinksWithFrontend = useMemo(() => {
     if (!statusByFrontend) return [];
@@ -129,11 +98,97 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
     );
   }, [statusByFrontend]);
 
-  useDeepCompareEffect(() => {
-    if (allPreviewLinksWithFrontend.length > 0) {
-      setCurrentPreviewLink(allPreviewLinksWithFrontend[0]);
-    }
-  }, [allPreviewLinksWithFrontend]);
+  const [previewLinkSelection, setPreviewLinkSelection] =
+    useState<PreviewLinkSelection>({
+      previewLinks: [],
+      selectedPreviewLink: undefined,
+    });
+
+  let synchronizedPreviewLinkSelection = previewLinkSelection;
+
+  if (previewLinkSelection.previewLinks !== allPreviewLinksWithFrontend) {
+    synchronizedPreviewLinkSelection = {
+      previewLinks: allPreviewLinksWithFrontend,
+      selectedPreviewLink: reconcilePreviewLinkSelection({
+        selectedPreviewLink: previewLinkSelection.selectedPreviewLink,
+        previousPreviewLinks: previewLinkSelection.previewLinks,
+        previewLinks: allPreviewLinksWithFrontend,
+        frontends,
+        editModeEnabled,
+      }),
+    };
+
+    // Guarded render-time synchronization makes React rerender this component
+    // before committing its children. The iframe therefore never sees the
+    // stale Published selection after a real Draft link appears.
+    setPreviewLinkSelection(synchronizedPreviewLinkSelection);
+  }
+
+  const currentPreviewLink =
+    synchronizedPreviewLinkSelection.selectedPreviewLink;
+
+  const handlePreviewLinkChange = useCallback(
+    (selectedPreviewLink: PreviewLinkWithFrontend) => {
+      // Remember which response the manual selection came from. If Published
+      // is chosen while Draft already exists, later refreshes must preserve it.
+      setPreviewLinkSelection({
+        previewLinks: allPreviewLinksWithFrontend,
+        selectedPreviewLink,
+      });
+    },
+    [allPreviewLinksWithFrontend],
+  );
+
+  const currentFrontend = currentPreviewLink
+    ? frontends.find((f) => f.name === currentPreviewLink.frontendName)
+    : undefined;
+
+  const currentSidebarVisualEditing = sidebarVisualEditingInfo(
+    currentPreviewLink,
+    currentFrontend,
+  );
+  const currentLinkHasDraftAlternative = hasDraftPreviewLink(
+    currentPreviewLink,
+    allPreviewLinksWithFrontend,
+    currentFrontend,
+  );
+  const currentLinkSupportsVisualEditing = Boolean(
+    currentSidebarVisualEditing && !currentLinkHasDraftAlternative,
+  );
+
+  const editModeActive = Boolean(
+    editModeEnabled && currentLinkSupportsVisualEditing,
+  );
+
+  // Keep the API-provided link selected in the menu, but show the URL that the
+  // iframe actually loads while a non-draft preview is made editable.
+  const effectivePreviewLink =
+    currentPreviewLink &&
+    editModeActive &&
+    currentSidebarVisualEditing &&
+    !currentSidebarVisualEditing.alreadyInDraftMode
+      ? {
+          ...currentPreviewLink,
+          label: `Editable preview (from ${currentPreviewLink.label})`,
+          url: currentSidebarVisualEditing.iframeUrl,
+        }
+      : currentPreviewLink;
+
+  const connectContentLink = Boolean(
+    currentSidebarVisualEditing &&
+      (editModeActive || currentSidebarVisualEditing.alreadyInDraftMode),
+  );
+
+  const { iframeRef } = useSidebarContentLink(
+    ctx,
+    connectContentLink ? editModeActive : undefined,
+  );
+
+  const editModeTooltip = currentLinkHasDraftAlternative
+    ? 'Switch to the draft version to enter edit mode'
+    : currentLinkSupportsVisualEditing
+      ? 'Click elements in the preview to open their record editor'
+      : "This preview link's frontend doesn't support visual editing";
 
   useEffect(() => {
     const reloadSettings = currentPreviewLink?.reloadPreviewOnRecordUpdate;
@@ -170,10 +225,11 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
                 frontends={frontends}
                 statusByFrontend={statusByFrontend}
                 currentPreviewLink={currentPreviewLink}
-                onChange={setCurrentPreviewLink}
+                effectivePreviewLink={effectivePreviewLink}
+                onChange={handlePreviewLinkChange}
               />
             </ToolbarSlot>
-            {currentPreviewLink && (
+            {currentPreviewLink && effectivePreviewLink && (
               <>
                 <ToolbarButton
                   icon={faArrowsRotate}
@@ -185,19 +241,7 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
                     {(() => {
                       if (!currentPreviewLink) return null;
 
-                      const frontend = frontends.find(
-                        (f) => f.name === currentPreviewLink.frontendName,
-                      );
-                      if (!frontend?.visualEditing?.enableDraftModeUrl)
-                        return null;
-
-                      const visualEditingPath =
-                        extractRedirectFromDraftModePreviewUrl(
-                          currentPreviewLink.url,
-                          frontend.visualEditing.enableDraftModeUrl,
-                        );
-
-                      if (!visualEditingPath) return null;
+                      if (!currentSidebarVisualEditing) return null;
 
                       return (
                         <ButtonGroupButton
@@ -205,7 +249,7 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
                           onClick={() => {
                             ctx.navigateTo(
                               inspectorUrl(ctx, {
-                                path: visualEditingPath,
+                                path: currentSidebarVisualEditing.path,
                                 frontend: currentPreviewLink.frontendName,
                               }),
                             );
@@ -218,7 +262,9 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
                     <ButtonGroupButton
                       tooltip="Copy URL to clipboard"
                       onClick={() => {
-                        navigator.clipboard.writeText(currentPreviewLink.url);
+                        navigator.clipboard.writeText(
+                          effectivePreviewLink.url,
+                        );
                         ctx.notice('URL saved in clipboard!');
                       }}
                     >
@@ -227,7 +273,7 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
                     <ButtonGroupButton
                       tooltip="Visit URL"
                       onClick={() => {
-                        window.open(currentPreviewLink.url, '_blank');
+                        window.open(effectivePreviewLink.url, '_blank');
                       }}
                     >
                       <FontAwesomeIcon icon={faExternalLinkAlt} />
@@ -236,7 +282,7 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
                 </ToolbarSlot>
                 <ToolbarSlot withLeftBorder>
                   <EditModeToggle
-                    value={editModeEnabled}
+                    value={editModeActive}
                     disabled={!currentLinkSupportsVisualEditing}
                     tooltip={editModeTooltip}
                     onChange={setEditModeEnabled}
@@ -246,7 +292,7 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
             )}
           </Toolbar>
 
-          {currentPreviewLink && iframeUrl && (
+          {currentPreviewLink && effectivePreviewLink && (
             <>
               {currentViewport === 'custom' && (
                 <ViewportCustomizer
@@ -256,8 +302,8 @@ const SidebarFrame = ({ ctx }: PropTypes) => {
               )}
 
               <IframeContainer
-                key={`${iframeUrl}-${reloadCounter}`}
-                src={iframeUrl}
+                key={`${effectivePreviewLink.url}-${reloadCounter}`}
+                src={effectivePreviewLink.url}
                 iframeRef={connectContentLink ? iframeRef : undefined}
                 allow={iframeAllowAttribute}
                 sizing={
