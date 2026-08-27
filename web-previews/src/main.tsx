@@ -25,6 +25,10 @@ connect({
       ctx.plugin.attributes.parameters as Parameters,
     );
 
+    if (!params.showVisualTab) {
+      return [];
+    }
+
     const visualEditingFrontends = getVisualEditingFrontends(params);
 
     return visualEditingFrontends.length > 0

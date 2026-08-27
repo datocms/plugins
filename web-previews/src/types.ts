@@ -32,6 +32,7 @@ export type RawViewport = {
 
 export type Parameters = {
   frontends?: RawFrontend[];
+  showVisualTab?: boolean;
   startOpen?: boolean;
   defaultSidebarWidth?: string;
   previewLinksSidebarDisabled?: boolean;
@@ -67,6 +68,7 @@ export type VisualEditingSettings = {
 
 export type NormalizedParameters = {
   frontends: Frontend[];
+  showVisualTab: boolean;
   previewLinksSidebarPanel?: { startOpen: boolean };
   previewLinksSidebar?: { defaultWidth: number };
   iframeAllowAttribute: string | undefined;
@@ -84,6 +86,7 @@ export const MAX_VIEWPORT_DIMENSION = 3840;
 
 export function normalizeParameters({
   frontends,
+  showVisualTab,
   startOpen,
   defaultSidebarWidth,
   previewLinksSidebarDisabled,
@@ -109,6 +112,7 @@ export function normalizeParameters({
             }
           : undefined,
       })) || [],
+    showVisualTab: typeof showVisualTab === 'boolean' ? showVisualTab : true,
     // If not explicitly disabled (backwards compatible), create the sidebar panel config
     previewLinksSidebarPanel: previewLinksSidebarPanelDisabled
       ? undefined
@@ -141,6 +145,7 @@ export function normalizeParameters({
 
 export function denormalizeParameters({
   frontends,
+  showVisualTab,
   previewLinksSidebarPanel,
   previewLinksSidebar,
   iframeAllowAttribute,
@@ -175,6 +180,7 @@ export function denormalizeParameters({
 
       return rawFrontend;
     }),
+    showVisualTab,
     startOpen: previewLinksSidebarPanel?.startOpen,
     defaultSidebarWidth: previewLinksSidebar?.defaultWidth.toString(),
     previewLinksSidebarDisabled: !previewLinksSidebar,

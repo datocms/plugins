@@ -238,10 +238,10 @@ export default function ConfigScreen({ ctx }: PropTypes) {
                 )}
               </FieldArray>
             </Section>
-            <Section title="Record Sidebar display settings">
+            <Section title="Display settings">
               <p>
-                Configure display options for preview links shown in the sidebar
-                and panel.
+                Choose where Web Previews appears in the main navigation and
+                record editor.
               </p>
               <PreviewLinksSettings values={values} />
             </Section>

@@ -10,6 +10,21 @@ type Props = {
 export function PreviewLinksSettings({ values }: Props) {
   return (
     <FieldGroup>
+      {/* Visual Tab Toggle */}
+      <div className={s.featureSection}>
+        <Field name="showVisualTab">
+          {({ input, meta: { error } }) => (
+            <SwitchField
+              id="showVisualTab"
+              label="Show Visual tab"
+              hint="Show the Visual tab in the main navigation when at least one frontend supports Visual Editing"
+              error={error}
+              {...input}
+            />
+          )}
+        </Field>
+      </div>
+
       {/* Sidebar Panel Toggle */}
       <div className={s.featureSection}>
         <FieldGroup>
@@ -68,11 +83,11 @@ export function PreviewLinksSettings({ values }: Props) {
               <SwitchField
                 id="previewLinksSidebarEnabled"
                 name="previewLinksSidebarEnabled"
-                label="Enable Preview Links full-preview sidebar"
+                label="Show Web Previews tab inside records"
                 hint={
                   <>
-                    Show a full "Website preview" sidebar with an iframe preview
-                    of the selected URL.{' '}
+                    Show the "Website preview" tab in record editors, with an
+                    iframe preview of the selected URL.{' '}
                     <a
                       href="https://www.datocms.com/marketplace/plugins/i/datocms-plugin-web-previews#full-preview-sidebar"
                       target="_blank"
