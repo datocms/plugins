@@ -47,6 +47,13 @@ The plugin performs a GET request to the URL specified in the settings, passing 
 - `sandboxEnvironmentId` the environment ID (only passed if the record belongs to a sandbox environment)
 - `locale` the preferred locale
 
+If the endpoint is protected by a secret, add it under **Custom headers** in the
+plugin settings instead of putting it in the endpoint URL: an URL ends up in
+proxy logs, and is shown in clear text to everyone who can open the plugin
+settings. Note that a custom header makes the request non-simple, so the
+endpoint must also answer the CORS preflight `OPTIONS` request and list the
+header in `Access-Control-Allow-Headers`.
+
 The endpoint is expected to return a 200 response, with the following JSON structure:
 
 ```json

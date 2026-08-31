@@ -1,3 +1,24 @@
 .inspector {
   margin-top: var(--spacing-l);
 }
+
+.deletableItem {
+  border: 1px solid var(--color--border);
+  padding: var(--spacing-m);
+  border-radius: 4px;
+}
+
+.deletableItemAction {
+  padding-top: var(--spacing-m);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.headerGrid {
+  display: flex;
+  gap: var(--spacing-m);
+}
+
+.headerGrid > div {
+  flex: 1;
+}

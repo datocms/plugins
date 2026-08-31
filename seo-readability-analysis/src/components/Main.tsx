@@ -6,7 +6,12 @@ import * as helpers from 'yoastseo/build/helpers';
 import Paper from 'yoastseo/build/values/Paper';
 import AnalysisWorkerWrapper from 'yoastseo/build/worker/AnalysisWorkerWrapper';
 import createWorker from 'yoastseo/build/worker/createWorker';
-import type { Analysis, AnalysisAssessment, ValidParameters } from '../types';
+import type {
+  Analysis,
+  AnalysisAssessment,
+  CustomHeader,
+  ValidParameters,
+} from '../types';
 import Results from './Results';
 import ScoreIcon from './ScoreIcon';
 import Seo from './Seo';
@@ -100,13 +105,33 @@ const normalizeFieldValue = (
     : [],
 });
 
+const buildCustomHeaders = (
+  serializedCustomHeaders: string | undefined,
+): Headers => {
+  const headers = new Headers();
+
+  if (!serializedCustomHeaders) {
+    return headers;
+  }
+
+  for (const { name, value } of JSON.parse(
+    serializedCustomHeaders,
+  ) as CustomHeader[]) {
+    headers.set(name, value);
+  }
+
+  return headers;
+};
+
 const serializeFieldValue = (
   value: Partial<FieldValue> | null | undefined,
 ): string => JSON.stringify(normalizeFieldValue(value));
 
 const Main = ({ ctx }: PropTypes) => {
-  const { htmlGeneratorUrl } = ctx.plugin.attributes
+  const { htmlGeneratorUrl, customHeaders } = ctx.plugin.attributes
     .parameters as ValidParameters;
+
+  const serializedCustomHeaders = JSON.stringify(customHeaders);
 
   const rawFieldValue = get(ctx.formValues, ctx.fieldPath) as string | null;
   const fieldValue = rawFieldValue
@@ -180,7 +205,9 @@ const Main = ({ ctx }: PropTypes) => {
 
       url.searchParams.set('locale', locale);
 
-      const request = await fetch(url.toString());
+      const request = await fetch(url.toString(), {
+        headers: buildCustomHeaders(serializedCustomHeaders),
+      });
 
       if (request.status !== 200) {
         throw new Error(`Endpoint returned status ${request.status}`);
@@ -211,6 +238,7 @@ const Main = ({ ctx }: PropTypes) => {
     }
   }, [
     htmlGeneratorUrl,
+    serializedCustomHeaders,
     item?.id,
     itemType.id,
     itemType.attributes.api_key,
@@ -324,12 +352,7 @@ const Main = ({ ctx }: PropTypes) => {
     }, 200);
 
     return () => window.clearTimeout(timeoutId);
-  }, [
-    keyword,
-    synonyms,
-    relatedKeywords,
-    comparableRawFieldValue,
-  ]);
+  }, [keyword, synonyms, relatedKeywords, comparableRawFieldValue]);
 
   const validRelatedIndices = relatedKeywords
     .map((related, i) => ({ related, i }))

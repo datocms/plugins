@@ -1,7 +1,13 @@
 export type FirstInstallationParameters = Record<string, never>;
 
+export type CustomHeader = {
+  name: string;
+  value: string;
+};
+
 export type ValidParameters = {
   htmlGeneratorUrl: string;
+  customHeaders?: CustomHeader[];
   autoApplyToFieldsWithApiKey?: string | null;
 };
 
