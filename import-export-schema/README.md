@@ -31,7 +31,7 @@ Powerful, safe schema migration for DatoCMS. Export models/blocks and plugins as
 
 - Start a new export (Schema > Export)
   - The landing panel lets you either pick specific starting models/blocks or go straight to “Export entire schema”.
-  - Use the multi-select to seed the graph; the graph animates selections for small/medium schemas, while large schemas (>60 nodes) fall back to the list view with search, metrics (counts, components, cycles), and “Why included?” explanations.
+  - Use the multi-select to seed the graph; small/medium schemas render the interactive graph, while large schemas (>60 nodes) show a warning and keep the dependency/export actions available without rendering the canvas.
   - “Select all dependencies” adds related models/blocks/plugins in bulk and logs a notice showing how many were added; “Unselect dependencies” removes the auto-added ones.
   - Plugin dependencies come from installed plugin lookups; if the CMA call fails you’ll see a warning so you know selections may be incomplete.
 
@@ -53,7 +53,7 @@ Powerful, safe schema migration for DatoCMS. Export models/blocks and plugins as
   - For models/blocks: choose “Reuse existing” or “Rename” with inline validation for name/API key (preset suggestions are provided for fast renames).
   - For plugins: choose “Reuse existing” or “Skip”.
   - Use “Show only unresolved conflicts” to focus the list; entities marked “reuse” drop out of the graph/list so you stay focused on what will be created.
-  - The import graph mirrors the export graph for smaller selections and switches to the list view with metrics/search once the node count crosses the same 60-node threshold.
+  - The import graph mirrors the export graph for smaller selections. Above the same 60-node threshold, the conflict form remains available while the canvas shows a warning and an explicit “Render it anyway” option.
 
 - Run the import
   - Imports are additive: new models/blocks/fields/fieldsets/plugins are created with fresh IDs, and existing assets are touched only when you explicitly reuse them.
@@ -66,7 +66,7 @@ Powerful, safe schema migration for DatoCMS. Export models/blocks and plugins as
 ## Notes & Limits
 
 - Plugin detection: editor/addon plugins used by fields are included when “Select all dependencies” is used. If the installed plugin list cannot be fetched you’ll see a one-time banner (per session) so you know detection may be incomplete.
-- Graph threshold: when the graph would exceed ~60 nodes the UI switches to the large-selection layout with search, metrics (counts/components/cycles), and “Why included?” reasoning instead of rendering an unreadable canvas.
+- Graph threshold: when the graph would exceed ~60 nodes the UI shows a warning instead of rendering an unreadable canvas. Dependency selection and export remain available, and you can still render the graph explicitly.
 - Rate limiting & throttling: long operations show a stall notice if progress pauses, and `ProjectSchema` throttles CMA calls by default (override with something like `localStorage.setItem('schemaThrottleMax', '8')`; valid values are 1–15 for local debugging).
 - Appearance portability: if an editor plugin is not selected, that field falls back to a valid built‑in editor; addons are included only if selected or already installed.
 - Debug logging: run `localStorage.setItem('schemaDebug', '1')` in the iframe console to enable detailed `debugLog` output.
@@ -104,7 +104,7 @@ Powerful, safe schema migration for DatoCMS. Export models/blocks and plugins as
 
 ## Troubleshooting
 
-- “Why did the graph disappear?” Large selections now show a warning instead of auto-rendering; click “Render it anyway” to view the full graph.
+- “Why did the graph disappear?” Large selections show a warning instead of auto-rendering. You can still select dependencies and export from the warning screen, or click “Render it anyway” to view the full graph.
 - “Fields lost their editor?” If you don’t include a custom editor plugin in the export/import, the plugin selects a safe, built‑in editor so the field remains valid in the target project.
 - “Plugin dependencies were skipped?” Check for the banner warning about incomplete plugin detection and rerun “Select all dependencies” after reopening the page once the CMA call succeeds.
 - “Cancel didn’t stop immediately?” The import/export pipeline stops at the next safe checkpoint; keep the overlay open until it confirms cancellation.

@@ -1,6 +1,8 @@
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import { useCallback } from 'react';
-import buildExportDoc from '@/entrypoints/ExportPage/buildExportDoc';
+import buildExportDoc, {
+  calculateExportProgressTotal,
+} from '@/entrypoints/ExportPage/buildExportDoc';
 import { useLongTask } from '@/shared/tasks/useLongTask';
 import { downloadJSON } from '@/utils/downloadJson';
 import type { ProjectSchema } from '@/utils/ProjectSchema';
@@ -41,13 +43,15 @@ export function useSchemaExportTask({
       fileName,
     }: RunExportArgs) => {
       try {
-        const total = pluginIds.length + itemTypeIds.length * 2;
+        const total = calculateExportProgressTotal(
+          itemTypeIds.length,
+          pluginIds.length,
+        );
         task.controller.start({
           done: 0,
           total,
           label: 'Preparing export…',
         });
-        let done = 0;
 
         const exportDoc = await buildExportDoc(
           schema,
@@ -55,10 +59,7 @@ export function useSchemaExportTask({
           itemTypeIds,
           pluginIds,
           {
-            onProgress: (label: string) => {
-              done += 1;
-              task.controller.setProgress({ done, total, label });
-            },
+            onProgress: (progress) => task.controller.setProgress(progress),
             shouldCancel: () => task.controller.isCancelRequested(),
           },
         );

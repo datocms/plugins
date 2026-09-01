@@ -12,9 +12,88 @@ import type { ProjectSchema } from '@/utils/ProjectSchema';
 import type { ExportDocV2 } from '@/utils/types';
 
 type BuildExportDocOptions = {
-  onProgress?: (label: string) => void;
+  onProgress?: (update: ExportProgressUpdate) => void;
   shouldCancel?: () => boolean;
 };
+
+export type ExportProgressUpdate = {
+  done: number;
+  total: number;
+  label: string;
+};
+
+type ProgressReporter = {
+  report: (label: string) => void;
+  stop: () => void;
+};
+
+export function calculateExportProgressTotal(
+  itemTypeCount: number,
+  pluginCount: number,
+): number {
+  return itemTypeCount + pluginCount;
+}
+
+/**
+ * Process a bounded number of models at once while retaining their requested order.
+ * This avoids filling the lower-level request queue with every model's first request
+ * before any one model can finish and produce a meaningful progress update.
+ */
+async function mapWithConcurrency<Input, Output>(
+  inputs: Input[],
+  concurrency: number,
+  mapper: (input: Input, index: number) => Promise<Output>,
+): Promise<Output[]> {
+  if (inputs.length === 0) return [];
+
+  const results = new Array<Output>(inputs.length);
+  const workerCount = Math.min(
+    inputs.length,
+    Math.max(1, Math.floor(concurrency)),
+  );
+  let nextIndex = 0;
+  let stopped = false;
+
+  const runWorker = async (): Promise<void> => {
+    if (stopped) return;
+
+    const index = nextIndex;
+    if (index >= inputs.length) return;
+    nextIndex += 1;
+
+    try {
+      results[index] = await mapper(inputs[index], index);
+    } catch (error) {
+      stopped = true;
+      throw error;
+    }
+
+    return runWorker();
+  };
+
+  await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
+  return results;
+}
+
+/** Keep concurrent export work on one monotonic progress counter. */
+function createProgressReporter(
+  total: number,
+  onProgress: BuildExportDocOptions['onProgress'],
+): ProgressReporter {
+  let done = 0;
+  let active = true;
+
+  return {
+    report(label) {
+      if (!active) return;
+      done += 1;
+      onProgress?.({ done, total, label });
+    },
+    stop() {
+      active = false;
+    },
+  };
+}
 
 /**
  * Strip validator references pointing to item types outside the export selection.
@@ -91,17 +170,18 @@ async function buildExportableItemTypeData(
 async function fetchExportPlugins(
   schema: ProjectSchema,
   pluginIdsToExport: string[],
-  onProgress: ((label: string) => void) | undefined,
+  reportProgress: (label: string) => void,
   shouldCancel: (() => boolean) | undefined,
 ) {
-  if (shouldCancel?.()) throw new Error('Export cancelled');
-  const plugins = await Promise.all(
-    pluginIdsToExport.map((id) => schema.getPluginById(id)),
+  return Promise.all(
+    pluginIdsToExport.map(async (id) => {
+      if (shouldCancel?.()) throw new Error('Export cancelled');
+      const plugin = await schema.getPluginById(id);
+      if (shouldCancel?.()) throw new Error('Export cancelled');
+      reportProgress(`Plugin: ${plugin.attributes.name}`);
+      return plugin;
+    }),
   );
-  for (const plugin of plugins) {
-    onProgress?.(`Plugin: ${plugin.attributes.name}`);
-  }
-  return plugins;
 }
 
 /**
@@ -116,55 +196,69 @@ export default async function buildExportDoc(
   options: BuildExportDocOptions = {},
 ): Promise<ExportDocV2> {
   const { onProgress, shouldCancel } = options;
+  const progress = createProgressReporter(
+    calculateExportProgressTotal(
+      itemTypeIdsToExport.length,
+      pluginIdsToExport.length,
+    ),
+    onProgress,
+  );
   const doc: ExportDocV2 = {
     version: '2',
     rootItemTypeId: initialItemTypeId,
     entities: [],
   };
 
-  const plugins = await fetchExportPlugins(
-    schema,
-    pluginIdsToExport,
-    onProgress,
-    shouldCancel,
-  );
-  for (const plugin of plugins) {
-    doc.entities.push(plugin);
-  }
-
-  if (shouldCancel?.()) throw new Error('Export cancelled');
-
-  const itemTypes = await Promise.all(
-    itemTypeIdsToExport.map((id) => schema.getItemTypeById(id)),
-  );
-
-  if (shouldCancel?.()) throw new Error('Export cancelled');
-
-  // Build all item type data in parallel (fields, fieldsets, appearance trimming).
-  const allItemTypeData = await Promise.all(
-    itemTypes.map((itemTypeToExport) =>
-      buildExportableItemTypeData(
-        schema,
-        itemTypeToExport,
-        itemTypeIdsToExport,
-        pluginIdsToExport,
-        shouldCancel,
-      ),
-    ),
-  );
-
-  for (const { itemType, fieldsets, exportableFields } of allItemTypeData) {
-    onProgress?.(`Model/Block: ${itemType.attributes.name}`);
-    onProgress?.(`Fields/Fieldsets for ${itemType.attributes.name}`);
-
-    doc.entities.push(itemType);
-    for (const fieldset of fieldsets) {
-      doc.entities.push(fieldset);
+  try {
+    const plugins = await fetchExportPlugins(
+      schema,
+      pluginIdsToExport,
+      progress.report,
+      shouldCancel,
+    );
+    for (const plugin of plugins) {
+      doc.entities.push(plugin);
     }
-    for (const exportableField of exportableFields) {
-      doc.entities.push(exportableField);
-    }
-  }
 
-  return doc;
+    if (shouldCancel?.()) throw new Error('Export cancelled');
+
+    // A model counts as complete only after its fields, fieldsets, and appearances are ready.
+    const allItemTypeData = await mapWithConcurrency(
+      itemTypeIdsToExport,
+      schema.maxConcurrentRequests,
+      async (id) => {
+        if (shouldCancel?.()) throw new Error('Export cancelled');
+        const itemTypeToExport = await schema.getItemTypeById(id);
+        if (shouldCancel?.()) throw new Error('Export cancelled');
+
+        const exportableData = await buildExportableItemTypeData(
+          schema,
+          itemTypeToExport,
+          itemTypeIdsToExport,
+          pluginIdsToExport,
+          shouldCancel,
+        );
+        if (shouldCancel?.()) throw new Error('Export cancelled');
+        progress.report(`Model/Block: ${itemTypeToExport.attributes.name}`);
+        return exportableData;
+      },
+    );
+
+    for (const { itemType, fieldsets, exportableFields } of allItemTypeData) {
+      doc.entities.push(itemType);
+      for (const fieldset of fieldsets) {
+        doc.entities.push(fieldset);
+      }
+      for (const exportableField of exportableFields) {
+        doc.entities.push(exportableField);
+      }
+    }
+
+    return doc;
+  } catch (error) {
+    // Other promises may still settle after one concurrent request fails.
+    // Ignore late updates once error or cancellation handling has started.
+    progress.stop();
+    throw error;
+  }
 }

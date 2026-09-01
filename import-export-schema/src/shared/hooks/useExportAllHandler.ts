@@ -1,6 +1,8 @@
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import { useCallback } from 'react';
-import buildExportDoc from '@/entrypoints/ExportPage/buildExportDoc';
+import buildExportDoc, {
+  calculateExportProgressTotal,
+} from '@/entrypoints/ExportPage/buildExportDoc';
 import type { LongTaskController } from '@/shared/tasks/useLongTask';
 import { downloadJSON } from '@/utils/downloadJson';
 import type { ProjectSchema } from '@/utils/ProjectSchema';
@@ -45,19 +47,18 @@ export function useExportAllHandler({ ctx, schema, task }: Options) {
       // Use the first regular model as root to match older exports; fall back to any.
       const preferredRoot =
         allTypes.find((t) => !t.attributes.modular_block) || allTypes[0];
-      const total = allPlugins.length + allTypes.length * 2;
+      const total = calculateExportProgressTotal(
+        allTypes.length,
+        allPlugins.length,
+      );
       task.setProgress({ done: 0, total, label: 'Preparing export…' });
-      let done = 0;
       const exportDoc = await buildExportDoc(
         schema,
         preferredRoot.id,
         allTypes.map((t) => t.id),
         allPlugins.map((p) => p.id),
         {
-          onProgress: (label: string) => {
-            done += 1;
-            task.setProgress({ done, total, label });
-          },
+          onProgress: (progress) => task.setProgress(progress),
           shouldCancel: () => task.isCancelRequested(),
         },
       );

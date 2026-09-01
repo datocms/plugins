@@ -69,9 +69,8 @@ export default function Inner({
   );
 
   // Track the current selection while ensuring initial models stay checked.
-  const [selectedItemTypeIds, setSelectedItemTypeIds] = useState<string[]>(
-    initialItemTypeIds,
-  );
+  const [selectedItemTypeIds, setSelectedItemTypeIds] =
+    useState<string[]>(initialItemTypeIds);
   const [selectedPluginIds, setSelectedPluginIds] = useState<string[]>([]);
   const [selectingDependencies, setSelectingDependencies] = useState(false);
   // Remember which dependencies were auto-selected so we can undo the action later.
@@ -438,34 +437,16 @@ export default function Inner({
                       }}
                     >
                       {showGraph ? (
-                        <>
-                          <GraphCanvas
-                            graph={{ nodes: graphNodes, edges: graph.edges }}
-                            nodeTypes={nodeTypes}
-                            edgeTypes={edgeTypes}
-                            onNodeClick={
-                              onNodeClick as unknown as NodeMouseHandler
-                            }
-                            style={{ width: '100%', height: '100%' }}
-                            fitView
-                          />
-                          <DependencyActionsPanel
-                            selectingDependencies={selectingDependencies}
-                            areAllDependenciesSelected={
-                              areAllDependenciesSelected
-                            }
-                            selectedItemCount={selectedItemTypeIds.length}
-                            onSelectAllDependencies={
-                              handleSelectAllDependencies
-                            }
-                            onUnselectAllDependencies={
-                              handleUnselectAllDependencies
-                            }
-                            onExport={() =>
-                              onExport(selectedItemTypeIds, selectedPluginIds)
-                            }
-                          />
-                        </>
+                        <GraphCanvas
+                          graph={{ nodes: graphNodes, edges: graph.edges }}
+                          nodeTypes={nodeTypes}
+                          edgeTypes={edgeTypes}
+                          onNodeClick={
+                            onNodeClick as unknown as NodeMouseHandler
+                          }
+                          style={{ width: '100%', height: '100%' }}
+                          fitView
+                        />
                       ) : graph ? (
                         <div
                           style={{
@@ -492,6 +473,20 @@ export default function Inner({
                           </Button>
                         </div>
                       ) : null}
+                      <DependencyActionsPanel
+                        selectingDependencies={selectingDependencies}
+                        areAllDependenciesSelected={areAllDependenciesSelected}
+                        selectedItemCount={
+                          selectedItemTypeIds.length + selectedPluginIds.length
+                        }
+                        onSelectAllDependencies={handleSelectAllDependencies}
+                        onUnselectAllDependencies={
+                          handleUnselectAllDependencies
+                        }
+                        onExport={() =>
+                          onExport(selectedItemTypeIds, selectedPluginIds)
+                        }
+                      />
                     </EntitiesToExportContext.Provider>
                   </div>
                 </section>

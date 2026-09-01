@@ -46,6 +46,11 @@ export class ProjectSchema {
     }
   }
 
+  /** Let higher-level task queues match the configured CMA request concurrency. */
+  get maxConcurrentRequests(): number {
+    return this.throttleMax;
+  }
+
   private async withThrottle<T>(fn: () => Promise<T>): Promise<T> {
     if (this.throttleActive >= this.throttleMax) {
       await new Promise<void>((resolve) => this.throttleQueue.push(resolve));
