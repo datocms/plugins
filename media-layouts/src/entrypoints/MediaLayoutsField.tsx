@@ -1,4 +1,4 @@
-import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
+import type { RenderFieldExtensionCtx, Upload } from 'datocms-plugin-sdk';
 import { Canvas } from 'datocms-react-ui';
 import { useCallback } from 'react';
 import EmptyState from '../components/EmptyState';
@@ -98,24 +98,14 @@ export default function MediaLayoutsField({ ctx }: Props) {
 
   // Helper to create a new MediaLayoutItem from an upload
   const createMediaLayoutItem = useCallback(
-    (upload: {
-      id: string;
-      attributes: Record<string, unknown>;
-    }): MediaLayoutItem => {
+    (upload: Upload): MediaLayoutItem => {
       const attrs = upload.attributes;
-      const metadata = (
-        attrs.default_field_metadata as Record<
-          string,
-          {
-            alt?: string | null;
-            title?: string | null;
-            focal_point?: { x: number; y: number } | null;
-          }
-        >
-      )?.[ctx.locale];
+      // `default_field_metadata` is field-keyed (`{ alt: { en } }`): the locale
+      // sits under each metadata field, and `focal_point` isn't localized.
+      const metadata = attrs.default_field_metadata;
 
-      const originalWidth = (attrs.width as number) ?? null;
-      const originalHeight = (attrs.height as number) ?? null;
+      const originalWidth = attrs.width ?? null;
+      const originalHeight = attrs.height ?? null;
 
       const height = calculateOutputHeight(
         defaults.width,
@@ -128,15 +118,15 @@ export default function MediaLayoutsField({ ctx }: Props) {
       return {
         _itemId: `${upload.id}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
         uploadId: upload.id,
-        url: attrs.url as string,
-        filename: attrs.filename as string,
-        format: (attrs.format as string) ?? null,
-        size: attrs.size as number,
-        alt: metadata?.alt ?? null,
-        title: metadata?.title ?? null,
+        url: attrs.url,
+        filename: attrs.filename,
+        format: attrs.format ?? null,
+        size: attrs.size,
+        alt: metadata.alt[ctx.locale] ?? null,
+        title: metadata.title[ctx.locale] ?? null,
         ...(enableCssClass ? { cssClass: '' } : {}),
         ...(enableLazyLoading ? { lazyLoading: false } : {}),
-        focalPoint: metadata?.focal_point ?? null,
+        focalPoint: metadata.focal_point ?? null,
         aspectRatio: defaults.aspectRatio,
         width: defaults.width,
         height,

@@ -45,6 +45,7 @@ export default function SingleAssetEditor({
         title: item.title,
         focal_point: item.focalPoint,
         custom_data: {},
+        poster_time: null,
       },
       ctx.locale,
     );

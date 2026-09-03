@@ -65,6 +65,7 @@ export default function GalleryEditor({
           title: item.title,
           focal_point: item.focalPoint,
           custom_data: {},
+          poster_time: null,
         },
         ctx.locale,
       );

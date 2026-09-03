@@ -1,4 +1,4 @@
-import type { RenderFieldExtensionCtx, Upload } from 'datocms-plugin-sdk';
+import type { RenderFieldExtensionCtx } from 'datocms-plugin-sdk';
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import type {
   LayoutConfig,
@@ -50,9 +50,10 @@ export default function SlotEditor({
       const result = await ctx.selectUpload({ multiple: false });
       if (!result) return;
 
-      const upload = result as Upload;
-      const attrs = upload.attributes;
-      const metadata = attrs.default_field_metadata[ctx.locale] || {};
+      const attrs = result.attributes;
+      // `default_field_metadata` is field-keyed (`{ alt: { en } }`): the locale
+      // sits under each metadata field, and `focal_point` isn't localized.
+      const metadata = attrs.default_field_metadata;
 
       const height = calculateOutputHeight(
         slot.width,
@@ -64,13 +65,13 @@ export default function SlotEditor({
 
       const newAssignment: SlotAssignment = {
         slotId: slot.id,
-        uploadId: upload.id,
+        uploadId: result.id,
         url: attrs.url,
         filename: attrs.filename,
         format: attrs.format ?? null,
         size: attrs.size,
-        alt: metadata.alt || null,
-        title: metadata.title || null,
+        alt: metadata.alt[ctx.locale] || null,
+        title: metadata.title[ctx.locale] || null,
         ...(enableCssClass ? { cssClass: '' } : {}),
         ...(enableLazyLoading ? { lazyLoading: false } : {}),
         focalPoint: metadata.focal_point || null,
@@ -122,6 +123,7 @@ export default function SlotEditor({
           title: assignment.title,
           focal_point: assignment.focalPoint,
           custom_data: {},
+          poster_time: null,
         },
         ctx.locale,
       );

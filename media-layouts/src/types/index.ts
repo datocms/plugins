@@ -139,7 +139,11 @@ export type ValidFieldParams =
       enableLazyLoading: boolean;
     };
 
-// Upload data from DatoCMS API
+// A raw upload payload, as `client.uploads.rawFind` returns it. Raw methods
+// don't normalize `default_field_metadata`, so its shape depends on whether the
+// environment has the non-localized focal points opt-in — hence it's left out:
+// nothing here reads it, and uploads that carry metadata reach the plugin
+// through `ctx`, already field-keyed, typed as the SDK's own `Upload`.
 export type UploadAttributes = {
   filename: string;
   url: string;
@@ -147,15 +151,6 @@ export type UploadAttributes = {
   height: number | null;
   format: string | null;
   size: number;
-  default_field_metadata: Record<
-    string,
-    {
-      alt: string | null;
-      title: string | null;
-      custom_data: Record<string, unknown>;
-      focal_point: { x: number; y: number } | null;
-    }
-  >;
 };
 
 export type Upload = {
