@@ -48,7 +48,7 @@ import type {
 } from '../operations/types';
 import type { RawField } from '../presentation/fields';
 import { formatDate } from '../presentation/formatters';
-import type { RawUpload } from '../presentation/previews';
+import type { Upload } from '../presentation/previews';
 import { createPresentationResolver } from '../presentation/resolver';
 import {
   getItemStatus,
@@ -119,18 +119,20 @@ async function loadItemsById(
 async function loadUploadsById(
   client: Client,
   ids: readonly string[],
-): Promise<RawUpload[]> {
+): Promise<Upload[]> {
   const uniqueIds = [...new Set(ids)].filter(Boolean);
   const responses = await Promise.all(
     chunks(uniqueIds, 200).map((batch) =>
-      client.uploads.rawList({
+      // The simple method, not `rawList`: it normalizes
+      // `default_field_metadata` to the field-keyed shape on every environment.
+      client.uploads.list({
         filter: { ids: batch.join(',') },
         page: { limit: batch.length, offset: 0 },
       }),
     ),
   );
 
-  return responses.flatMap((response) => response.data);
+  return responses.flat();
 }
 
 function itemDate(value: unknown, locale: string, timeZone: string): string {

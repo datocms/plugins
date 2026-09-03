@@ -1,7 +1,7 @@
-import type { RawApiTypes } from '@datocms/cma-client-browser';
+import type { ApiTypes } from '@datocms/cma-client-browser';
 import type { LatLonValue, RgbaColor } from './formatters';
 
-export type RawUpload = RawApiTypes.Upload;
+export type Upload = ApiTypes.Upload;
 
 export type FocalPoint = {
   x: number;
@@ -65,16 +65,12 @@ export function parseUploadFieldValue(value: unknown): UploadFieldValue | null {
   };
 }
 
-function focalPointFromUpload(
-  upload: RawUpload,
-  _locales: readonly string[],
-  _preferredLocale?: string,
-): FocalPoint | null {
-  return asFocalPoint(upload.attributes.default_field_metadata.focal_point);
+function focalPointFromUpload(upload: Upload): FocalPoint | null {
+  return asFocalPoint(upload.default_field_metadata.focal_point);
 }
 
-function posterTimeFromUpload(upload: RawUpload): number | null {
-  return upload.attributes.default_field_metadata.poster_time;
+function posterTimeFromUpload(upload: Upload): number | null {
+  return upload.default_field_metadata.poster_time;
 }
 
 function appendCropParameters(
@@ -117,7 +113,7 @@ function appendCropParameters(
 }
 
 export function buildUploadThumbnail(
-  upload: RawUpload,
+  upload: Upload,
   options: {
     locales: readonly string[];
     preferredLocale?: string;
@@ -128,17 +124,14 @@ export function buildUploadThumbnail(
     height?: number;
   },
 ): PresentationImage | null {
-  const attributes = upload.attributes;
-  const focalPoint =
-    options.focalPoint ??
-    focalPointFromUpload(upload, options.locales, options.preferredLocale);
+  const focalPoint = options.focalPoint ?? focalPointFromUpload(upload);
   const posterTime = options.posterTime ?? posterTimeFromUpload(upload);
-  const mux = Boolean(attributes.mux_playback_id);
-  const baseUrl = attributes.mux_playback_id
-    ? `https://image.mux.com/${attributes.mux_playback_id}/thumbnail.jpg`
-    : attributes.url ||
+  const mux = Boolean(upload.mux_playback_id);
+  const baseUrl = upload.mux_playback_id
+    ? `https://image.mux.com/${upload.mux_playback_id}/thumbnail.jpg`
+    : upload.url ||
       (options.imgixHost
-        ? `https://${options.imgixHost}/${attributes.path.replace(/^\//, '')}`
+        ? `https://${options.imgixHost}/${upload.path.replace(/^\//, '')}`
         : null);
 
   if (!baseUrl) {
@@ -152,7 +145,7 @@ export function buildUploadThumbnail(
       focalPoint,
       posterTime,
       mux,
-      cacheKey: attributes.md5 || attributes.updated_at,
+      cacheKey: upload.md5 || upload.updated_at,
     }),
     uploadId: upload.id,
     focalPoint,

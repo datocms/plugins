@@ -1,4 +1,4 @@
-import type { RawApiTypes } from '@datocms/cma-client-browser';
+import type { ApiTypes } from '@datocms/cma-client-browser';
 import { describe, expect, it, vi } from 'vitest';
 import type { RawItem, RawItemType } from '../types';
 import {
@@ -266,21 +266,19 @@ describe('status, validity, and thumbnails', () => {
   it('builds cropped upload URLs with record focal point', () => {
     const upload = {
       id: 'upload-1',
-      attributes: {
-        url: 'https://assets.example/image.jpg',
-        path: '/image.jpg',
-        md5: '1234567890',
-        mux_playback_id: null,
-        updated_at: null,
-        default_field_metadata: {
-          alt: {},
-          title: {},
-          custom_data: {},
-          focal_point: null,
-          poster_time: null,
-        },
+      url: 'https://assets.example/image.jpg',
+      path: '/image.jpg',
+      md5: '1234567890',
+      mux_playback_id: null,
+      updated_at: null,
+      default_field_metadata: {
+        alt: {},
+        title: {},
+        custom_data: {},
+        focal_point: null,
+        poster_time: null,
       },
-    } as unknown as RawApiTypes.Upload;
+    } as unknown as ApiTypes.Upload;
 
     const result = buildUploadThumbnail(upload, {
       locales: ['en'],

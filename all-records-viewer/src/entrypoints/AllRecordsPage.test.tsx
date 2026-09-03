@@ -15,7 +15,7 @@ import AllRecordsPage from './AllRecordsPage';
 
 const cmaMocks = vi.hoisted(() => ({
   rawList: vi.fn(),
-  uploadRawList: vi.fn(),
+  uploadList: vi.fn(),
   workflowFind: vi.fn(),
   rawBulkPublish: vi.fn(),
   rawBulkUnpublish: vi.fn(),
@@ -32,7 +32,7 @@ vi.mock('@datocms/cma-client-browser', () => ({
       rawBulkDestroy: cmaMocks.rawBulkDestroy,
       rawBulkMoveToStage: cmaMocks.rawBulkMoveToStage,
     },
-    uploads: { rawList: cmaMocks.uploadRawList },
+    uploads: { list: cmaMocks.uploadList },
     workflows: { find: cmaMocks.workflowFind },
   }),
 }));
@@ -165,10 +165,7 @@ function titleField(): RawField {
 
 beforeEach(() => {
   cmaMocks.rawList.mockResolvedValue({ data: [], meta: { total_count: 0 } });
-  cmaMocks.uploadRawList.mockResolvedValue({
-    data: [],
-    meta: { total_count: 0 },
-  });
+  cmaMocks.uploadList.mockResolvedValue([]);
 });
 
 afterEach(() => {

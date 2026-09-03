@@ -15,7 +15,7 @@ import {
   generateMapPreview,
   type PresentationImage,
   parseUploadFieldValue,
-  type RawUpload,
+  type Upload,
 } from './previews';
 import {
   getItemStatus,
@@ -31,14 +31,14 @@ export type PresentationLoaders = {
   loadItemTypes?: (ids: readonly string[]) => Promise<readonly RawItemType[]>;
   loadFields?: (itemTypeIds: readonly string[]) => Promise<readonly RawField[]>;
   loadItems?: (ids: readonly string[]) => Promise<readonly RawItem[]>;
-  loadUploads?: (ids: readonly string[]) => Promise<readonly RawUpload[]>;
+  loadUploads?: (ids: readonly string[]) => Promise<readonly Upload[]>;
 };
 
 export type PresentationResolverOptions = PresentationLoaders & {
   itemTypes?: readonly RawItemType[];
   fields?: readonly RawField[];
   items?: readonly RawItem[];
-  uploads?: readonly RawUpload[];
+  uploads?: readonly Upload[];
   locales: readonly string[];
   preferredLocale?: string;
   timeZone?: string;
