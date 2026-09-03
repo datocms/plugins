@@ -1,9 +1,4 @@
-import {
-  buildClient,
-  type Client,
-  type UploadLocaleKeyedDefaultFieldMetadata,
-  type UploadLocaleKeyedDefaultFieldMetadataInRequest,
-} from '@datocms/cma-client-browser';
+import { buildClient, type Client } from '@datocms/cma-client-browser';
 import type {
   ExecuteFieldDropdownActionCtx,
   ExecuteUploadsDropdownActionCtx,
@@ -83,14 +78,6 @@ type UploadMetadataUpdate = NonNullable<
 type LocalizedAltUpdate = NonNullable<UploadMetadataUpdate['alt']>;
 
 type FieldKeyedUploadMetadata = CmaUpload['default_field_metadata'];
-
-type RuntimeUploadMetadata =
-  | FieldKeyedUploadMetadata
-  | UploadLocaleKeyedDefaultFieldMetadata;
-
-type RuntimeUploadMetadataUpdate =
-  | UploadMetadataUpdate
-  | UploadLocaleKeyedDefaultFieldMetadataInRequest;
 
 type GenerationFeedbackCtx = Pick<ExecuteFieldDropdownActionCtx, 'customToast'>;
 
@@ -500,22 +487,14 @@ function uploadLabel(upload: CmaUpload): string {
   return upload.filename.trim() || upload.id;
 }
 
-function uploadMetadata(upload: CmaUpload): RuntimeUploadMetadata {
-  return upload.default_field_metadata as unknown as RuntimeUploadMetadata;
-}
-
-function isFieldKeyedUploadMetadata(
-  metadata: RuntimeUploadMetadata,
-): metadata is FieldKeyedUploadMetadata {
-  return 'focal_point' in metadata;
+// The `uploads` simple methods speak one shape on every environment —
+// field-keyed (`{ alt: { en } }`) — so no runtime shape detection is needed.
+function uploadMetadata(upload: CmaUpload): FieldKeyedUploadMetadata {
+  return upload.default_field_metadata;
 }
 
 function uploadAltForLocale(upload: CmaUpload, locale: string): unknown {
-  const metadata = uploadMetadata(upload);
-
-  return isFieldKeyedUploadMetadata(metadata)
-    ? metadata.alt[locale]
-    : metadata[locale]?.alt;
+  return uploadMetadata(upload).alt[locale];
 }
 
 function selectedUploadLabel(upload: Upload): string {
@@ -542,35 +521,21 @@ function buildUploadMetadataUpdate(
   upload: CmaUpload,
   alts: Map<string, string>,
   mode: AltGenerationMode,
-): { metadata: RuntimeUploadMetadataUpdate; updatedAltCount: number } {
+): { metadata: UploadMetadataUpdate; updatedAltCount: number } {
   const metadata = uploadMetadata(upload);
-  const fieldKeyed = isFieldKeyedUploadMetadata(metadata);
-  const fieldKeyedAlts: LocalizedAltUpdate = fieldKeyed
-    ? { ...metadata.alt }
-    : {};
-  const localeKeyedUpdate: UploadLocaleKeyedDefaultFieldMetadataInRequest = {};
+  const updatedAlts: LocalizedAltUpdate = { ...metadata.alt };
   let updatedAltCount = 0;
 
   for (const [locale, alt] of alts) {
-    const currentAlt = fieldKeyed
-      ? metadata.alt[locale]
-      : metadata[locale]?.alt;
-    if (mode === 'missing-only' && hasAltText(currentAlt)) {
+    if (mode === 'missing-only' && hasAltText(metadata.alt[locale])) {
       continue;
     }
 
-    if (fieldKeyed) {
-      fieldKeyedAlts[locale] = alt;
-    } else {
-      localeKeyedUpdate[locale] = { alt };
-    }
+    updatedAlts[locale] = alt;
     updatedAltCount += 1;
   }
 
-  return {
-    metadata: fieldKeyed ? { alt: fieldKeyedAlts } : localeKeyedUpdate,
-    updatedAltCount,
-  };
+  return { metadata: { alt: updatedAlts }, updatedAltCount };
 }
 
 async function confirmUploadOverwrite(
@@ -716,7 +681,7 @@ async function updateUploadAlts(
 
       if (updatedAltCount > 0) {
         await client.uploads.update(latestUpload.id, {
-          default_field_metadata: metadata as UploadMetadataUpdate,
+          default_field_metadata: metadata,
         });
       }
 

@@ -32,7 +32,7 @@
     "docs"
   ],
   "dependencies": {
-    "@datocms/cma-client-browser": "^5.5.4",
+    "@datocms/cma-client-browser": "^6.1.0",
     "datocms-plugin-sdk": "^2.2.2",
     "datocms-react-ui": "^2.2.4",
     "lodash": "^4.17.23",

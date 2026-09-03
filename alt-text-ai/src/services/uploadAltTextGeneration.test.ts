@@ -18,16 +18,6 @@ vi.mock('../providers/factory', () => ({
 
 type CmaUpload = Awaited<ReturnType<Client['uploads']['find']>>;
 
-type LegacyUploadMetadata = Record<
-  string,
-  {
-    alt: string | null;
-    title: string | null;
-    custom_data: Record<string, unknown>;
-    focal_point: { x: number; y: number } | null;
-  }
->;
-
 function selectedUpload(id: string, filename = `${id}.jpg`): Upload {
   return {
     id,
@@ -61,16 +51,6 @@ function cmaUpload(
       poster_time: null,
     },
   } as CmaUpload;
-}
-
-function legacyCmaUpload(
-  id: string,
-  defaultFieldMetadata: LegacyUploadMetadata,
-): CmaUpload {
-  return {
-    ...cmaUpload(id),
-    default_field_metadata: defaultFieldMetadata,
-  } as unknown as CmaUpload;
 }
 
 function requireUpload(
@@ -317,50 +297,6 @@ describe('runAltGenerationForUploads', () => {
     });
     expect(notice).toHaveBeenCalledWith(
       '2 alt texts generated for 1 asset with OpenAI.',
-    );
-  });
-
-  it('reads and updates legacy locale-keyed upload metadata', async () => {
-    const current = legacyCmaUpload('legacy', {
-      en: {
-        alt: 'Existing English',
-        title: 'Existing title',
-        custom_data: { credit: 'Photographer' },
-        focal_point: { x: 0.2, y: 0.8 },
-      },
-      it: {
-        alt: null,
-        title: 'Titolo esistente',
-        custom_data: { credit: 'Fotografo' },
-        focal_point: null,
-      },
-    });
-    const uploadsFind = vi.fn<Client['uploads']['find']>();
-    uploadsFind.mockResolvedValue(current);
-    const uploadsUpdate = vi.fn<Client['uploads']['update']>();
-    uploadsUpdate.mockResolvedValue(current);
-    const generate = vi.fn<AltTextProvider['generate']>();
-    generate.mockImplementation(async ({ locale }) => `Generated ${locale}`);
-    mockDependencies(uploadsFind, uploadsUpdate, generate);
-    const { ctx, notice } = uploadContext();
-
-    await runAltGenerationForUploads(
-      ctx,
-      [selectedUpload('legacy')],
-      'missing-only',
-    );
-
-    expect(generate).toHaveBeenCalledOnce();
-    expect(generate).toHaveBeenCalledWith(
-      expect.objectContaining({ assetId: 'legacy', locale: 'it' }),
-    );
-    expect(uploadsUpdate).toHaveBeenCalledWith('legacy', {
-      default_field_metadata: {
-        it: { alt: 'Generated it' },
-      },
-    });
-    expect(notice).toHaveBeenCalledWith(
-      '1 alt text generated for 1 asset with OpenAI.',
     );
   });
 
