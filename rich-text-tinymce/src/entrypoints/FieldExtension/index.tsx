@@ -53,36 +53,25 @@ type Props = {
   ctx: RenderFieldExtensionCtx;
 };
 
-type UploadFile = Upload & {
-  default_field_metadata?: Record<
-    string,
-    { alt?: string | null; title?: string | null }
-  >;
-  attributes?: {
-    default_field_metadata?: Record<
-      string,
-      { alt?: string | null; title?: string | null }
-    >;
-  };
-};
-
 function buildImgTagForFile(
-  file: UploadFile,
+  file: Upload,
   locale: string,
   ctx: RenderFieldExtensionCtx,
 ) {
-  const metadata =
-    (file.default_field_metadata ?? file.attributes?.default_field_metadata)?.[
-      locale
-    ];
+  // `default_field_metadata` is field-keyed (`{ alt: { en } }`): the locale sits
+  // one level below each metadata field, not above it.
+  const { alt, title } = file.attributes.default_field_metadata;
+  const localizedAlt = alt[locale];
+  const localizedTitle = title[locale];
+
   let text = '<img ';
 
-  if (metadata?.alt) {
-    text += `alt="${metadata.alt}" `;
+  if (localizedAlt) {
+    text += `alt="${localizedAlt}" `;
   }
 
-  if (metadata?.title) {
-    text += `title="${metadata.title}" `;
+  if (localizedTitle) {
+    text += `title="${localizedTitle}" `;
   }
 
   text += `src="${imgixThumbUrl({ imageishThing: file, ctx })}" />`;
