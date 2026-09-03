@@ -23,7 +23,7 @@
   "dependencies": {
     "datocms-plugin-sdk": "^2.2.2",
     "datocms-react-ui": "^2.2.4",
-    "datocms-structured-text-slate-utils": "^5.1.8",
+    "datocms-structured-text-slate-utils": "^6.0.1",
     "lodash-es": "^4.17.23",
     "react": "^19.2.4",
     "react-dom": "^19.2.4"
