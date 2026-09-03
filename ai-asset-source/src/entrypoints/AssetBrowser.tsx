@@ -1,4 +1,8 @@
-import type { NewUpload, RenderAssetSourceCtx } from 'datocms-plugin-sdk';
+import type {
+  NewUpload,
+  NewUploadDefaultFieldMetadata,
+  RenderAssetSourceCtx,
+} from 'datocms-plugin-sdk';
 import { Button, Spinner, useCtx } from 'datocms-react-ui';
 import {
   type ChangeEvent,
@@ -85,8 +89,6 @@ type SelectedImage = {
 type BatchSelectionContext = RenderAssetSourceCtx & {
   selectMultiple?: (newUploads: NewUpload[]) => void;
 };
-
-type DefaultFieldMetadata = NonNullable<NewUpload['default_field_metadata']>;
 
 type UserFeedback = {
   kind: 'error' | 'notice';
@@ -895,19 +897,16 @@ function buildUpload(
   };
 }
 
+// The field-keyed shape: `alt` keyed by locale, and nothing else — the
+// locale-keyed one required `title` and `custom_data`, so every generated asset
+// also carried an empty title and empty custom data.
 function buildDefaultFieldMetadata(
   locales: string[],
   prompt: string,
-): DefaultFieldMetadata {
-  return locales.reduce<DefaultFieldMetadata>((metadata, locale) => {
-    metadata[locale] = {
-      alt: prompt,
-      title: null,
-      custom_data: {},
-    };
-
-    return metadata;
-  }, {} as DefaultFieldMetadata);
+): NewUploadDefaultFieldMetadata {
+  return {
+    alt: Object.fromEntries(locales.map((locale) => [locale, prompt])),
+  };
 }
 
 function selectUploads(ctx: RenderAssetSourceCtx, uploads: NewUpload[]): void {
