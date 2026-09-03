@@ -40,9 +40,6 @@ function uploadToAsset(upload: SimpleSchemaTypes.Upload): Asset {
     basename: upload.basename || '',
     width: upload.width || undefined,
     height: upload.height || undefined,
-    alt: upload.default_field_metadata?.en?.alt || undefined,
-    title: upload.default_field_metadata?.en?.title || undefined,
-    customData: upload.default_field_metadata?.en?.custom_data || {},
     tags: upload.tags || [],
   };
 }

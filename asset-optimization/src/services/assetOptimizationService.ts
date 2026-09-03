@@ -84,16 +84,6 @@ async function processAsset(
     await client.uploads.createFromFileOrBlob({
       fileOrBlob: optimizedImageBlob,
       filename: asset.basename,
-      onProgress: () => {
-        // Progress callback can be used to update upload progress if needed
-      },
-      default_field_metadata: {
-        en: {
-          alt: asset.alt || '',
-          title: asset.title || '',
-          custom_data: asset.customData || {},
-        },
-      },
       tags: asset.tags || [],
     });
 
@@ -292,9 +282,6 @@ export async function optimizeAssets(
         basename: upload.basename || '',
         width: upload.width || undefined,
         height: upload.height || undefined,
-        alt: upload.default_field_metadata?.en?.alt || undefined,
-        title: upload.default_field_metadata?.en?.title || undefined,
-        customData: upload.default_field_metadata?.en?.custom_data || {},
         tags: upload.tags || [],
       };
     }

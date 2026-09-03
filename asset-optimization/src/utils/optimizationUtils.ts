@@ -14,9 +14,6 @@ export interface Asset {
   basename: string;
   width?: number;
   height?: number;
-  alt?: string;
-  title?: string;
-  customData?: Record<string, unknown>;
   tags?: string[];
   originalSize?: number;
   optimizedSize?: number;
