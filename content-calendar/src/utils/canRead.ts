@@ -63,6 +63,25 @@ function itemRules(permissions: Permissions) {
 const byAction = (action: string, rule: ItemTypeRule) =>
   rule.action === 'all' || rule.action === action;
 
+type OnCreator = 'anyone' | 'self' | 'role';
+
+/**
+ * Reads a rule's `on_creator`.
+ *
+ * Each permission entry is a discriminated union on `action`, and only the
+ * per-action members declare `on_creator` — the `action: 'all'` member exposes
+ * it through its index signature, as `unknown`. `Omit` doesn't distribute over
+ * unions, so `ItemTypeRule` collapses to the common keys and the property
+ * arrives untyped whatever the action is. Hence the runtime check.
+ */
+const onCreator = (rule: ItemTypeRule): OnCreator | undefined => {
+  const value = (rule as { on_creator?: unknown }).on_creator;
+
+  return value === 'anyone' || value === 'self' || value === 'role'
+    ? value
+    : undefined;
+};
+
 const byItemType = (
   itemTypeId: SchemaTypes.ItemTypeIdentity,
   workflowId: SchemaTypes.WorkflowIdentity | undefined,
@@ -88,17 +107,18 @@ export function canReadAtLeastSomeItem(
     rules
       .map((rule, positive) => {
         const sets: string[][] = [];
+        const ruleOnCreator = onCreator(rule);
 
-        if (!rule.on_creator) {
+        if (!ruleOnCreator) {
           throw new Error('this should not happen');
         }
 
         sets.push(
           // se ho una regola negativa "anyone", mi cancella qualsiasi
           // regola positiva esistente
-          !positive && rule.on_creator === 'anyone'
+          !positive && ruleOnCreator === 'anyone'
             ? ['anyone', 'role', 'self']
-            : [rule.on_creator],
+            : [ruleOnCreator],
         );
 
         return cartesianProduct(sets);
