@@ -28,8 +28,8 @@
   },
   "dependencies": {
     "@types/lodash-es": "^4.17.12",
-    "datocms-plugin-sdk": "2.2.1",
-    "datocms-react-ui": "2.2.1",
+    "datocms-plugin-sdk": "^2.3.0",
+    "datocms-react-ui": "^2.2.7",
     "final-form": "^5.0.0",
     "final-form-arrays": "^4.0.1",
     "lodash-es": "^4.17.23",
