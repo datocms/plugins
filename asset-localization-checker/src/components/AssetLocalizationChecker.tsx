@@ -1,4 +1,4 @@
-import type { Upload } from '@datocms/cma-client/dist/types/generated/SimpleSchemaTypes';
+import type { ApiTypes } from '@datocms/cma-client-browser';
 import { buildClient } from '@datocms/cma-client-browser';
 import type {
   FileFieldValue,
@@ -49,7 +49,7 @@ export const AssetLocalizationChecker = ({
   } = ctx;
 
   // All hooks must be declared before any conditional return
-  const [fetchedImageData, setFetchedImageData] = useState<Upload>();
+  const [fetchedImageData, setFetchedImageData] = useState<ApiTypes.Upload>();
 
   // Build a stable client reference from token; client is null when token is absent
   const client = useMemo(() => {
@@ -81,17 +81,19 @@ export const AssetLocalizationChecker = ({
       return {};
     }
 
+    // `default_field_metadata` is field-keyed (`{ alt: { en } }`): the locale
+    // lives one level down, under each metadata field.
+    const { alt, title } = fetchedImageData.default_field_metadata;
+
     return Object.fromEntries(
       localesInThisRecord.map((loc) => {
-        const { title, alt } = fetchedImageData.default_field_metadata[loc];
-
         return [
           loc,
           {
             code: loc,
             label: humanReadableLocale(loc),
-            alt,
-            title,
+            alt: alt[loc] ?? null,
+            title: title[loc] ?? null,
           },
         ];
       }),

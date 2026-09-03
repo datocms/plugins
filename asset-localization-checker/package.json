@@ -29,7 +29,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@datocms/cma-client-browser": "^4.0.2",
+    "@datocms/cma-client-browser": "^6.1.0",
     "datocms-plugin-sdk": "^2.2.2",
     "datocms-react-ui": "^2.2.4",
     "react": "^19.2.4",
