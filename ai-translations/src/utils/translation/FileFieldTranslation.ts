@@ -20,10 +20,13 @@ import { findExactLocaleKey } from './SharedFieldUtils';
 import { translateArray } from './translateArray';
 import type { StreamCallbacks, TranslationProvider } from './types';
 
-type UploadDefaultFieldMetadata = Record<
-  string,
-  { alt?: string; title?: string }
->;
+// Field-keyed (`{ alt: { en } }`), which is what the `uploads` simple methods
+// hand back on every environment — the client converts the legacy locale-keyed
+// payload for us.
+type UploadDefaultFieldMetadata = {
+  alt?: Record<string, string | null>;
+  title?: Record<string, string | null>;
+};
 
 const uploadDefaultMetadataCache = new Map<
   string,
@@ -49,12 +52,7 @@ async function fetchUploadDefaultMetadata(
         baseUrl: cmaBaseUrl,
       });
       const upload = await client.uploads.find(uploadId);
-      const metadata = (upload as { default_field_metadata?: unknown })
-        .default_field_metadata;
-      if (!metadata || typeof metadata !== 'object') {
-        return undefined;
-      }
-      return metadata as UploadDefaultFieldMetadata;
+      return upload.default_field_metadata;
     } catch (error) {
       logger.warning('Failed to fetch upload default metadata', {
         uploadId,
@@ -208,29 +206,31 @@ async function enrichFromUploadDefaults(
   );
   if (!defaultMetadata) return { altSource, titleSource };
 
-  const localeKey = findExactLocaleKey(
-    defaultMetadata as Record<string, unknown>,
-    fromLocale,
-  );
-  const localeMetadata = localeKey ? defaultMetadata[localeKey] : undefined;
-  if (!localeMetadata || typeof localeMetadata !== 'object') {
-    return { altSource, titleSource };
-  }
-
-  const enrichedAlt =
-    !altSource &&
-    typeof localeMetadata.alt === 'string' &&
-    localeMetadata.alt.trim()
-      ? localeMetadata.alt
-      : altSource;
-  const enrichedTitle =
-    !titleSource &&
-    typeof localeMetadata.title === 'string' &&
-    localeMetadata.title.trim()
-      ? localeMetadata.title
-      : titleSource;
+  const enrichedAlt = altSource
+    ? altSource
+    : (localizedMetadataValue(defaultMetadata.alt, fromLocale) ?? altSource);
+  const enrichedTitle = titleSource
+    ? titleSource
+    : (localizedMetadataValue(defaultMetadata.title, fromLocale) ??
+      titleSource);
 
   return { altSource: enrichedAlt, titleSource: enrichedTitle };
+}
+
+/**
+ * Reads one locale out of a field-keyed metadata entry (`alt`, `title`),
+ * matching the locale case-insensitively and ignoring blank values.
+ */
+function localizedMetadataValue(
+  byLocale: Record<string, string | null> | undefined,
+  localeCode: string,
+): string | undefined {
+  if (!byLocale || typeof byLocale !== 'object') return undefined;
+
+  const localeKey = findExactLocaleKey(byLocale, localeCode);
+  const value = localeKey ? byLocale[localeKey] : undefined;
+
+  return typeof value === 'string' && value.trim() ? value : undefined;
 }
 
 /**

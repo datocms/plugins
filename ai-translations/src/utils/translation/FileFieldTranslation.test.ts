@@ -193,10 +193,8 @@ describe('FileFieldTranslation', () => {
     ]);
     mockUploadsFind.mockResolvedValue({
       default_field_metadata: {
-        en: {
-          alt: 'Alt EN default',
-          title: 'Title EN default',
-        },
+        alt: { en: 'Alt EN default' },
+        title: { en: 'Title EN default' },
       },
     });
 
