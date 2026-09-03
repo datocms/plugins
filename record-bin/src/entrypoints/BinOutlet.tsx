@@ -145,6 +145,7 @@ const executeRestoreWithoutLambda = async ({
   parsedRecordBody,
   currentUserAccessToken,
   environment,
+  cmaBaseUrl,
   debugLogger,
   alertFn,
   noticeFn,
@@ -154,8 +155,9 @@ const executeRestoreWithoutLambda = async ({
 }: {
   trashRecordId: string;
   parsedRecordBody: unknown;
-  currentUserAccessToken: string | null;
+  currentUserAccessToken: string | undefined;
   environment: string;
+  cmaBaseUrl: string | undefined;
   debugLogger: DebugLogger;
   alertFn: (message: string) => Promise<unknown>;
   noticeFn: (message: string) => void;
@@ -172,7 +174,7 @@ const executeRestoreWithoutLambda = async ({
     parsedResponse = await restoreRecordWithoutLambda({
       currentUserAccessToken,
       currentEnvironment: environment,
-      cmaBaseUrl: ctx.cmaBaseUrl,
+      cmaBaseUrl,
       recordBody: parsedRecordBody,
       trashRecordID: trashRecordId,
     });
@@ -382,6 +384,7 @@ const BinOutlet = ({ ctx }: { ctx: RenderItemFormOutletCtx }) => {
         parsedRecordBody,
         currentUserAccessToken: ctx.currentUserAccessToken,
         environment: ctx.environment,
+        cmaBaseUrl: ctx.cmaBaseUrl,
         debugLogger,
         alertFn,
         noticeFn,

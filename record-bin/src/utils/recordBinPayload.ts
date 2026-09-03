@@ -11,9 +11,11 @@ const parseUnknownPayload = (payload: unknown): unknown => {
   return JSON.parse(payload);
 };
 
-const looksLikeEntityPayload = (
-  value: unknown,
-): value is Record<string, unknown> =>
+// Not a type predicate: it answers "does this record look like a bare entity?",
+// and the type it would narrow to (`Record<string, unknown>`) is the one the
+// caller already has — so declaring it as a guard collapsed the else-branch to
+// `never`.
+const looksLikeEntityPayload = (value: unknown): boolean =>
   isRecord(value) &&
   typeof value.type === 'string' &&
   isRecord(value.relationships) &&

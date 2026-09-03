@@ -329,7 +329,7 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   const [connectionErrorDetails, setConnectionErrorDetails] = useState<
     string[]
   >(
-    hasInitialConnectionErrorDetails
+    hasInitialConnectionErrorDetails && initialConnectionState
       ? getLambdaConnectionErrorDetails(initialConnectionState)
       : [],
   );
@@ -1096,7 +1096,6 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
               }}
             >
               <Dropdown
-                style={{ flex: '1 1 0' }}
                 renderTrigger={({ onClick }) => (
                   <Button
                     buttonType="muted"
@@ -1208,6 +1207,8 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
                   hint="If you do not know what Serverless Functions are, keep this disabled"
                   value={isLambdaFullModeEnabled}
                   switchInputProps={{
+                    name: 'lambdaMode',
+                    value: isLambdaFullModeEnabled,
                     disabled: lambdaSetupDisabled,
                   }}
                   onChange={(newValue) => {

@@ -24,7 +24,7 @@ afterEach(() => {
 describe('verifyLambdaHealth', () => {
   it('accepts a valid health handshake response', async () => {
     const fetchMock = vi.fn(
-      async () =>
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
         new Response(
           JSON.stringify({
             ok: true,
@@ -71,7 +71,7 @@ describe('verifyLambdaHealth', () => {
 
   it('accepts a Netlify deployment URL', async () => {
     const fetchMock = vi.fn(
-      async () =>
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
         new Response(
           JSON.stringify({
             ok: true,
@@ -101,7 +101,7 @@ describe('verifyLambdaHealth', () => {
 
   it('accepts a hostname-only URL by prepending https', async () => {
     const fetchMock = vi.fn(
-      async () =>
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
         new Response(
           JSON.stringify({
             ok: true,
@@ -179,7 +179,7 @@ describe('verifyLambdaHealth', () => {
 
   it('fails when endpoint returns non-200 status', async () => {
     const fetchMock = vi.fn(
-      async () =>
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
         new Response(
           JSON.stringify({
             ok: false,
@@ -208,7 +208,8 @@ describe('verifyLambdaHealth', () => {
 
   it('fails when endpoint returns invalid JSON', async () => {
     const fetchMock = vi.fn(
-      async () => new Response('not-json', { status: 200 }),
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
+        new Response('not-json', { status: 200 }),
     );
     vi.stubGlobal('fetch', fetchMock as unknown as typeof fetch);
 
@@ -225,7 +226,7 @@ describe('verifyLambdaHealth', () => {
 
   it('fails when JSON does not match expected MPI response', async () => {
     const fetchMock = vi.fn(
-      async () =>
+      async (_input: RequestInfo | URL, _init?: RequestInit) =>
         new Response(
           JSON.stringify({
             ok: true,

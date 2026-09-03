@@ -1,3 +1,4 @@
+import type { ApiTypes } from '@datocms/cma-client-browser';
 import { buildClient } from '@datocms/cma-client-browser';
 
 export const RECORD_BIN_WEBHOOK_NAME = '🗑️ Record Bin';
@@ -7,7 +8,9 @@ const MANAGED_RECORD_BIN_WEBHOOK_NAMES = [
   LEGACY_RECORD_BIN_WEBHOOK_NAME,
 ] as const;
 
-const RECORD_BIN_WEBHOOK_EVENTS = [
+// Typed against the schema: `events` wants the literal unions (`'item'`,
+// `'delete'`), and an untyped literal widens them to `string`.
+const RECORD_BIN_WEBHOOK_EVENTS: ApiTypes.WebhookCreateSchema['events'] = [
   {
     entity_type: 'item',
     event_types: ['delete'],
