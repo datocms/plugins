@@ -1,4 +1,6 @@
-import type { Environment } from '@datocms/cma-client/dist/types/generated/ApiTypes';
+import type { ApiTypes } from '@datocms/cma-client-browser';
+
+type Environment = ApiTypes.Environment;
 
 type EnvItemsProps = {
   env: Environment;

@@ -1,10 +1,13 @@
-import type { EnvironmentInstancesTargetSchema } from '@datocms/cma-client/dist/types/generated/ApiTypes';
+import type { ApiTypes } from '@datocms/cma-client-browser';
 import { ApiError, buildClient, LogLevel } from '@datocms/cma-client-browser';
 import type { RenderUploadSidebarPanelCtx } from 'datocms-plugin-sdk';
 import { Button, Canvas, Spinner } from 'datocms-react-ui';
 import { useEffect, useMemo, useState } from 'react';
 import { sortByEnvUpdateTime } from '../utils/sortByEnvUpdateTime.ts';
 import { EnvItem } from './EnvItem.tsx';
+
+type EnvironmentInstancesTargetSchema =
+  ApiTypes.EnvironmentInstancesTargetSchema;
 
 type EnvUploadLookupResult =
   | { found: true; envId: string }
