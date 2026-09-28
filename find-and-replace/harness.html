@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="en" data-color-scheme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Find and Replace harness</title>
+    <!-- Dev-only preview host (npm run harness). Never part of the build. -->
+    <script>
+      document.documentElement.dataset.colorScheme =
+        new URLSearchParams(location.search).get('scheme') === 'dark'
+          ? 'dark'
+          : 'light';
+    </script>
+    <link rel="stylesheet" href="/src/dev/harness/datocms-tokens.css" />
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: var(--color--surface);
+        color: var(--color--ink);
+        font:
+          14px/1.5 system-ui,
+          -apple-system,
+          'Segoe UI',
+          sans-serif;
+      }
+
+      .hx-toolbar {
+        padding: 8px 16px;
+        border-bottom: 1px solid var(--color--border);
+        background: var(--color--surface-raised);
+      }
+
+      .hx-toolbar__row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 8px 20px;
+      }
+
+      .hx-title {
+        font-weight: 600;
+      }
+
+      .hx-group {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 2px 6px;
+      }
+
+      .hx-group__label {
+        color: var(--color--ink-subtle);
+      }
+
+      .hx-link {
+        padding: 0 4px;
+        border-radius: 4px;
+        color: var(--color--ink-link);
+        text-decoration: none;
+      }
+
+      .hx-link:hover {
+        text-decoration: underline;
+      }
+
+      .hx-link[aria-current='true'] {
+        background: var(--color--selected--surface);
+        color: var(--color--selected--ink);
+        font-weight: 600;
+      }
+
+      .hx-link:focus-visible,
+      .hx-button:focus-visible,
+      .hx-toast button:focus-visible {
+        outline: 4px solid var(--color--focus--outline);
+      }
+
+      .hx-button {
+        padding: 2px 10px;
+        border: 1px solid var(--color--border);
+        border-radius: 4px;
+        background: var(--color--surface);
+        color: var(--color--ink);
+        font: inherit;
+        cursor: pointer;
+      }
+
+      .hx-button:hover {
+        border-color: var(--color--border-hover);
+      }
+
+      .hx-description {
+        margin: 4px 0 0;
+        color: var(--color--ink-subtle);
+      }
+
+      .hx-stage {
+        padding: 0;
+      }
+
+      .hx-frame {
+        display: block;
+        border: 0;
+        outline: 1px dashed var(--color--border);
+      }
+
+      .hx-toasts {
+        position: fixed;
+        right: 24px;
+        bottom: 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        width: 360px;
+        max-width: calc(100vw - 48px);
+      }
+
+      .hx-toast {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 12px 12px 12px 16px;
+        border: 1px solid var(--color--border);
+        border-left: 4px solid var(--color--ink-success);
+        border-radius: 4px;
+        background: var(--color--surface-raised);
+        color: var(--color--ink);
+        box-shadow: var(--shadow--floating);
+      }
+
+      .hx-toast--alert {
+        border-left-color: var(--color--ink-danger);
+      }
+
+      .hx-toast--warning {
+        border-left-color: var(--color--ink-warning);
+      }
+
+      .hx-toast__message {
+        flex: 1;
+        margin: 0;
+      }
+
+      .hx-toast button {
+        border: 0;
+        border-radius: 4px;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        cursor: pointer;
+      }
+
+      .hx-toast__cta {
+        padding: 0 8px;
+        font-weight: 600;
+        text-decoration: underline;
+      }
+
+      .hx-toast__close {
+        padding: 0 4px;
+      }
+
+      .hx-backdrop {
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background: var(--color--backdrop--surface);
+      }
+
+      .hx-confirm {
+        width: 480px;
+        max-width: 100%;
+        padding: 24px;
+        border-radius: 8px;
+        background: var(--color--surface-raised);
+        color: var(--color--ink);
+        box-shadow: var(--shadow--floating);
+      }
+
+      .hx-confirm__title {
+        margin: 0 0 8px;
+        font-size: 18px;
+      }
+
+      .hx-confirm__content {
+        margin: 0;
+        white-space: pre-line;
+      }
+
+      .hx-confirm__actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-top: 24px;
+      }
+
+      .hx-confirm__button--negative {
+        border-color: var(--color--danger--surface);
+        background: var(--color--danger--surface);
+        color: var(--color--danger--ink);
+      }
+
+      .hx-confirm__button--positive {
+        border-color: var(--color--primary--surface);
+        background: var(--color--primary--surface);
+        color: var(--color--primary--ink);
+      }
+    </style>
+  </head>
+  <body>
+    <script type="module" src="/src/dev/harness/host.ts"></script>
+  </body>
+</html>
