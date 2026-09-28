@@ -30,7 +30,7 @@ The scan reads the latest saved version of every record in the current environme
 
 To scan only some models or locales, click **Choose what to scan…**, turn on the limits you need and pick what to include. **Scan links** keeps using that choice until you change it.
 
-<img src="docs/choose-scope.png" width="560" alt="The Choose what to scan dialog, limited to the Author, Blog Post and Testimonial models in English and German">
+<img src="https://raw.githubusercontent.com/datocms/plugins/master/broken-link-checker/docs/choose-scope.png" width="560" alt="The Choose what to scan dialog, limited to the Author, Blog Post and Testimonial models in English and German">
 
 ## Check a single record
 
@@ -42,7 +42,7 @@ Open a record, expand **Broken links** in its sidebar and click **Check links**.
 
 Every result comes with a short explanation, on the Link checker page and in the record sidebar alike.
 
-<img src="docs/record-statuses.png" width="320" alt="Four results in the record sidebar: a broken link, an invalid link, a link blocked by rate limiting and a reachable link, each with its explanation">
+<img src="https://raw.githubusercontent.com/datocms/plugins/master/broken-link-checker/docs/record-statuses.png" width="320" alt="Four results in the record sidebar: a broken link, an invalid link, a link blocked by rate limiting and a reachable link, each with its explanation">
 
 | Status | What it means |
 | --- | --- |

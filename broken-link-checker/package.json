@@ -1,7 +1,7 @@
 {
   "name": "datocms-plugin-broken-link-checker",
   "homepage": "https://github.com/datocms/plugins/tree/master/broken-link-checker#readme",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": "DatoCMS <support@datocms.com>",
   "description": "Find broken website links in records and across your DatoCMS project.",
   "keywords": [
