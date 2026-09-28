@@ -1,12 +1,68 @@
 import { CheckQueue } from '../checking/queue';
 import { prepareUrl } from '../checking/url';
-import type { ExtractionResult, LinkGroup, ScanReport } from '../types';
+import { cacheGroupFacts, GroupFactsBuilder } from '../report/view';
+import type {
+  CheckResult,
+  ExtractionResult,
+  LinkGroup,
+  LinkOccurrence,
+  PreparedUrl,
+  ScanReport,
+} from '../types';
+
+/** A URL as the session collects it; reports get snapshots of it. */
+type Entry = {
+  key: string;
+  prepared: PreparedUrl;
+  result: CheckResult;
+  /** Appended to in place until a report holds it, then copied before it grows. */
+  occurrences: LinkOccurrence[];
+  /** A report holds `occurrences`. */
+  published: boolean;
+  /**
+   * Only for URLs found more than once: a report reads the facts of a URL
+   * found once as cheaply as it would read them here.
+   */
+  facts?: GroupFactsBuilder;
+  /** The last snapshot, reused until the entry changes. */
+  group?: LinkGroup;
+};
+
+const MIN_FLUSH_DELAY_MS = 80;
+const MAX_FLUSH_DELAY_MS = 2_000;
+
+/**
+ * How long to wait before publishing the next report. Every report is filtered,
+ * counted and rendered in full, so a large one is published less often.
+ */
+export function flushDelay(size: number): number {
+  return Math.min(
+    MAX_FLUSH_DELAY_MS,
+    Math.max(MIN_FLUSH_DELAY_MS, Math.round(size / 1_000)),
+  );
+}
+
+function snapshot(entry: Entry): LinkGroup {
+  if (!entry.published) {
+    if (entry.facts) cacheGroupFacts(entry.occurrences, entry.facts.facts());
+    entry.published = true;
+  }
+  entry.group ??= {
+    key: entry.key,
+    prepared: entry.prepared,
+    result: entry.result,
+    occurrences: entry.occurrences,
+    stale: false,
+  };
+  return entry.group;
+}
 
 export class ScanSession {
-  private groups = new Map<string, LinkGroup>();
+  private entries = new Map<string, Entry>();
   private queue: CheckQueue;
   private warnings = new Set<string>();
   private recordsScanned = 0;
+  private occurrenceCount = 0;
   private discovering = true;
   private state: ScanReport['state'] = 'running';
   private startedAt = new Date().toISOString();
@@ -24,8 +80,11 @@ export class ScanSession {
       signal,
       onResult: (result) => {
         if (this.disposed) return;
-        const group = this.groups.get(result.key);
-        if (group) this.groups.set(result.key, { ...group, result });
+        const entry = this.entries.get(result.key);
+        if (entry) {
+          entry.result = result;
+          entry.group = undefined;
+        }
         this.schedule();
       },
     });
@@ -37,23 +96,32 @@ export class ScanSession {
     for (const warning of extraction.warnings) this.warnings.add(warning);
     for (const occurrence of extraction.occurrences) {
       const prepared = prepareUrl(occurrence.url);
-      const existing = this.groups.get(prepared.key);
+      const existing = this.entries.get(prepared.key);
       if (existing) {
-        this.groups.set(prepared.key, {
-          ...existing,
-          occurrences: [...existing.occurrences, occurrence],
-        });
+        if (existing.published) {
+          existing.occurrences = existing.occurrences.slice();
+          existing.published = false;
+        }
+        if (!existing.facts) {
+          existing.facts = new GroupFactsBuilder();
+          for (const earlier of existing.occurrences)
+            existing.facts.add(earlier);
+        }
+        existing.occurrences.push(occurrence);
+        existing.facts.add(occurrence);
+        existing.group = undefined;
       } else {
-        this.groups.set(prepared.key, {
+        this.entries.set(prepared.key, {
           key: prepared.key,
           prepared,
           result: { ...prepared },
           occurrences: [occurrence],
-          stale: false,
+          published: false,
         });
         if (prepared.status === 'queued') this.queue.enqueue(prepared);
       }
     }
+    this.occurrenceCount += extraction.occurrences.length;
     this.schedule();
   }
 
@@ -83,8 +151,11 @@ export class ScanSession {
   }
 
   private schedule() {
-    if (this.disposed) return;
-    if (!this.timer) this.timer = setTimeout(() => this.flush(), 80);
+    if (this.disposed || this.timer) return;
+    this.timer = setTimeout(
+      () => this.flush(),
+      flushDelay(this.occurrenceCount + this.entries.size),
+    );
   }
 
   flush() {
@@ -97,7 +168,7 @@ export class ScanSession {
       finishedAt: this.finishedAt,
       recordsScanned: this.recordsScanned,
       discovering: this.discovering,
-      groups: [...this.groups.values()],
+      groups: Array.from(this.entries.values(), snapshot),
       warnings: [...this.warnings],
       scope: this.scope,
     });

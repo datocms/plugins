@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { groupFacts } from '../report/view';
 import type { ExtractionResult, LinkOccurrence, ScanReport } from '../types';
-import { ScanSession } from './session';
+import { flushDelay, ScanSession } from './session';
 
 function occurrence(
   url: string,
@@ -185,6 +186,77 @@ describe('ScanSession', () => {
     expect(earlier.recordsScanned).toBe(1);
     expect(earlier.groups[0].occurrences).toHaveLength(1);
     expect(latest().groups[0].occurrences).toHaveLength(2);
+    session.dispose();
+  });
+
+  it('reuses unchanged groups between reports and copies a group that grows', () => {
+    const { session, latest } = fixture();
+    session.addRecord(
+      extraction([occurrence('/one', 'one'), occurrence('/two', 'two')]),
+    );
+    session.flush();
+    const [one, two] = latest().groups;
+    session.addRecord(extraction([occurrence('/one', 'three', 'record-2')]));
+    session.flush();
+    const [grown, unchanged] = latest().groups;
+    expect(unchanged).toBe(two);
+    expect(grown).not.toBe(one);
+    expect(one.occurrences.map((entry) => entry.id)).toEqual(['one']);
+    expect(grown.occurrences.map((entry) => entry.id)).toEqual([
+      'one',
+      'three',
+    ]);
+    // The facts the session collected match facts read from scratch.
+    expect(groupFacts(grown)).toEqual(
+      groupFacts({ ...grown, occurrences: [...grown.occurrences] }),
+    );
+    expect(groupFacts(grown).recordCount).toBe(2);
+    session.dispose();
+  });
+
+  it('keeps the occurrences array of a group whose check result changes', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(new Response(null, { status: 200 })),
+    );
+    const { session, latest } = fixture();
+    session.addRecord(extraction([occurrence('https://example.com/', 'one')]));
+    session.flush();
+    const before = latest().groups[0];
+    await vi.waitFor(() => {
+      session.flush();
+      expect(latest().groups[0].result.status).toBe('reachable');
+    });
+    expect(latest().groups[0]).not.toBe(before);
+    expect(latest().groups[0].occurrences).toBe(before.occurrences);
+    await session.finish();
+    session.dispose();
+  });
+
+  it('publishes large reports less often', () => {
+    expect(flushDelay(0)).toBe(80);
+    expect(flushDelay(50_000)).toBe(80);
+    expect(flushDelay(500_000)).toBe(500);
+    expect(flushDelay(50_000_000)).toBe(2_000);
+  });
+
+  it('waits longer before publishing a report that has grown large', () => {
+    vi.useFakeTimers();
+    const { session, reports } = fixture();
+    session.addRecord(
+      extraction(
+        Array.from({ length: 200_000 }, (_, i) =>
+          occurrence('/everywhere', `link-${i}`),
+        ),
+      ),
+    );
+    vi.advanceTimersByTime(199);
+    expect(reports).toHaveLength(0);
+    vi.advanceTimersByTime(1);
+    expect(reports).toHaveLength(1);
+    expect(reports[0].groups[0].occurrences).toHaveLength(200_000);
     session.dispose();
   });
 });

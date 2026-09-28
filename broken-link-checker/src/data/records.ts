@@ -51,33 +51,38 @@ function cancellable<T>(request: Promise<T>, signal?: AbortSignal): Promise<T> {
   });
 }
 
+const INCONSISTENT_PAGES =
+  'The API returned inconsistent record pagination. Run the scan again.';
+
+/**
+ * Requests a reading may make beyond three for every page of records, to step
+ * back after deletions. Past that, records change too often to keep up with:
+ * the reading goes on without checking that each page follows on from the one
+ * before.
+ */
+const SPARE_REQUESTS = 50;
+
 function pageTotal(
   response: { data: NestedRecord[]; meta: { total_count: number } },
   offset: number,
-  expectedTotal?: number,
 ): number {
   const total = response.meta?.total_count;
   if (
     !Array.isArray(response.data) ||
     !Number.isSafeInteger(total) ||
-    total < 0
+    total < 0 ||
+    response.data.some((record) => !record?.id)
   ) {
     throw new Error(
       'The API returned an incomplete record page. Run the scan again.',
     );
   }
-  if (expectedTotal !== undefined && total !== expectedTotal) {
-    throw new Error(
-      'The record count changed during the scan. Run the scan again for a complete result.',
-    );
-  }
+  // An empty page past the end is consistent: records were deleted since the page before.
   if (
     response.data.length > RECORDS_PAGE_SIZE ||
-    offset + response.data.length > total
+    (response.data.length > 0 && offset + response.data.length > total)
   ) {
-    throw new Error(
-      'The API returned inconsistent record pagination. Run the scan again.',
-    );
+    throw new Error(INCONSISTENT_PAGES);
   }
   if (response.data.length === 0 && offset < total) {
     throw new Error(
@@ -87,15 +92,33 @@ function pageTotal(
   return total;
 }
 
-/** Reads one bounded page at a time; never silently treats a truncated response as complete. */
+/**
+ * Reads one bounded page at a time, in ID order; never silently treats a
+ * truncated response as complete.
+ *
+ * Records added or deleted during the reading shift the pages. Each page starts
+ * with the last record of the page before, so a page that holds a record already
+ * read follows on from it. One that doesn't means records before it were
+ * deleted, and the reading steps back until it reaches records already read:
+ * first by as many records as were deleted, then twice as far each time.
+ * Records are yielded once each.
+ *
+ * If records change too often to keep up with, the reading still goes to the
+ * end, then throws to say some records may be missing.
+ */
 export async function* readRecords(
   client: Pick<Client, 'items'>,
   modelId: string,
   signal?: AbortSignal,
 ): AsyncGenerator<NestedRecord> {
-  let offset = 0;
-  let expectedTotal: number | undefined;
   const seen = new Set<string>();
+  let offset = 0;
+  let requests = 0;
+  let lastTotal = 0;
+  let largestTotal = 0;
+  /** How far the last page stepped back; 0 when it followed on. */
+  let stepBack = 0;
+  let unchecked = false;
 
   while (true) {
     throwIfAborted(signal);
@@ -111,20 +134,42 @@ export async function* readRecords(
       signal,
     );
     throwIfAborted(signal);
-    const total = pageTotal(response, offset, expectedTotal);
-    expectedTotal = total;
+    const total = pageTotal(response, offset);
+    requests += 1;
+    const deleted = Math.max(0, lastTotal - total);
+    lastTotal = total;
+    largestTotal = Math.max(largestTotal, total);
+    const followsOn =
+      offset === 0 ||
+      unchecked ||
+      response.data.some((record) => seen.has(record.id));
+    if (!followsOn) {
+      const budget =
+        3 * Math.ceil(largestTotal / (RECORDS_PAGE_SIZE - 1)) + SPARE_REQUESTS;
+      if (requests > budget) unchecked = true;
+      else {
+        stepBack = stepBack === 0 ? deleted + 1 : stepBack * 2;
+        offset = Math.max(0, Math.min(offset, total) - stepBack);
+        continue;
+      }
+    }
+    stepBack = 0;
     for (const record of response.data) {
       throwIfAborted(signal);
-      if (!record.id || seen.has(record.id)) {
-        throw new Error(
-          'Records changed during pagination. Run the scan again for a complete result.',
-        );
-      }
+      if (seen.has(record.id)) continue;
       seen.add(record.id);
       yield record;
     }
-    offset += response.data.length;
-    if (offset >= total) return;
+    const end = offset + response.data.length;
+    if (end >= total) break;
+    // The next page starts with this page's last record.
+    if (response.data.length < 2) throw new Error(INCONSISTENT_PAGES);
+    offset = end - 1;
+  }
+  if (unchecked) {
+    throw new Error(
+      'Records were added or deleted so often during the scan that some may be missing. Run the scan again for a complete result.',
+    );
   }
 }
 

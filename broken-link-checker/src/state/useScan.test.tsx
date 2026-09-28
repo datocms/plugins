@@ -51,6 +51,31 @@ function requireGroup(groups: LinkGroup[] | undefined): LinkGroup {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('useScan', () => {
+  it('keeps the groups a session reuses between reports', async () => {
+    const gate = deferred<void>();
+    const { result } = renderHook(() => useScan('main:user-1'));
+    let scan: Promise<void> | undefined;
+    await act(async () => {
+      scan = result.current.start('Records', async (session) => {
+        session.addRecord(record('/one', 'record-1'));
+        session.addRecord(record('/two', 'record-2'));
+        session.flush();
+        await gate.promise;
+        session.addRecord(record('/one', 'record-3'));
+      });
+    });
+    const [one, two] = result.current.report?.groups ?? [];
+    await act(async () => {
+      gate.resolve();
+      await scan;
+    });
+    const [grown, unchanged] = result.current.report?.groups ?? [];
+    expect(result.current.report?.state).toBe('complete');
+    expect(unchanged).toBe(two);
+    expect(grown).not.toBe(one);
+    expect(grown.occurrences).toHaveLength(2);
+  });
+
   it('marks empty reports stale and resets the flag only on a fresh scan', async () => {
     const { result } = renderHook(() => useScan('main:user-1'));
     await act(async () => {

@@ -10,6 +10,7 @@ import {
   DEFAULT_FILTERS,
   type Filters,
   filterGroups,
+  GroupFactsBuilder,
   groupFacts,
   hasFragment,
   isDefaultFilters,
@@ -394,6 +395,48 @@ describe('record usage', () => {
     expect(groupFacts(grown).recordCount).toBe(2);
     expect(hasFragment(entry)).toBe(false);
     expect(hasFragment(grown)).toBe(true);
+  });
+
+  it('collects facts one occurrence at a time without changing facts already handed out', () => {
+    const url = 'https://e.example/';
+    const builder = new GroupFactsBuilder();
+    builder.add(occurrence({ url, recordId: 'r1' }));
+    const first = builder.facts();
+    expect(builder.facts()).toBe(first);
+    builder.add(
+      occurrence({
+        url: `${url}#Top`,
+        recordId: 'r2',
+        modelId: 'news',
+        modelName: 'News',
+        locale: 'it',
+      }),
+    );
+    builder.add(
+      occurrence({
+        url,
+        recordId: 'r2',
+        modelId: 'news',
+        modelName: 'Renamed',
+      }),
+    );
+    expect(first).toEqual({
+      recordCount: 1,
+      models: new Map([['page', 'page']]),
+      locales: new Set(['en']),
+      lowerUrls: [url],
+      fragment: false,
+    });
+    expect(builder.facts()).toEqual({
+      recordCount: 2,
+      models: new Map([
+        ['page', 'page'],
+        ['news', 'News'],
+      ]),
+      locales: new Set(['en', 'it']),
+      lowerUrls: [url, `${url}#top`, url],
+      fragment: true,
+    });
   });
 });
 

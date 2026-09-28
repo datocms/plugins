@@ -25,19 +25,58 @@ async function collect(client: Pick<Client, 'items'>, signal?: AbortSignal) {
   return records;
 }
 
+/** Zero-padded, so the IDs sort as the API orders them. */
+function ids(from: number, count: number): string[] {
+  return Array.from({ length: count }, (_, i) =>
+    String(from + i).padStart(5, '0'),
+  );
+}
+
+/**
+ * Serves `initial` in ID order like the CMA. `change` runs before each request
+ * and may add or delete records, as editors do during a scan.
+ */
+function fakeCma(
+  initial: string[],
+  change?: (records: string[], request: number) => void,
+) {
+  const records = [...initial];
+  const offsets: number[] = [];
+  const rawList = vi.fn(
+    async (query: { page: { offset: number; limit: number } }) => {
+      change?.(records, offsets.length);
+      records.sort();
+      const { offset, limit } = query.page;
+      offsets.push(offset);
+      return {
+        data: records.slice(offset, offset + limit).map(record),
+        meta: { total_count: records.length },
+      };
+    },
+  );
+  return { client: mockClient(rawList), rawList, offsets, records };
+}
+
+function remove(records: string[], ...removed: string[]) {
+  for (const id of removed) records.splice(records.indexOf(id), 1);
+}
+
+async function collectIds(client: Pick<Client, 'items'>) {
+  return (await collect(client)).map((item) => item.id);
+}
+
+/** Every record there from start to end was read, and no record twice. */
+function expectComplete(read: string[], kept: string[]) {
+  expect(new Set(read).size).toBe(read.length);
+  expect(kept.filter((id) => !read.includes(id))).toEqual([]);
+}
+
 describe('readRecords', () => {
-  it('loads bounded pages with nested current values, including invalid records', async () => {
-    const first = Array.from({ length: 30 }, (_, i) => record(String(i)));
-    const rawList = vi
-      .fn()
-      .mockResolvedValueOnce({ data: first, meta: { total_count: 32 } })
-      .mockResolvedValueOnce({
-        data: [record('30'), record('31')],
-        meta: { total_count: 32 },
-      });
-    expect(await collect(mockClient(rawList))).toHaveLength(32);
+  it('loads overlapping bounded pages with nested current values, including invalid records', async () => {
+    const { client, rawList } = fakeCma(ids(0, 32));
+    expect(await collectIds(client)).toEqual(ids(0, 32));
     expect(rawList.mock.calls.map(([query]) => query)).toEqual(
-      [0, 30].map((offset) => ({
+      [0, 29].map((offset) => ({
         nested: true,
         version: 'current',
         filter: { type: 'article' },
@@ -45,6 +84,12 @@ describe('readRecords', () => {
         page: { offset, limit: 30 },
       })),
     );
+  });
+
+  it('reads a page that ends the collection exactly once', async () => {
+    const { client, offsets } = fakeCma(ids(0, 30));
+    expect(await collectIds(client)).toEqual(ids(0, 30));
+    expect(offsets).toEqual([0]);
   });
 
   it('stops after an empty collection', async () => {
@@ -56,15 +101,168 @@ describe('readRecords', () => {
   });
 
   it.each([
+    {
+      name: 'a record deleted before the page',
+      change: (records: string[]) => remove(records, '00003'),
+      kept: ids(0, 100).filter((id) => id !== '00003'),
+    },
+    {
+      name: 'a few records deleted before the page',
+      change: (records: string[]) => remove(records, '00003', '00007', '00011'),
+      kept: ids(0, 100).filter(
+        (id) => !['00003', '00007', '00011'].includes(id),
+      ),
+    },
+    {
+      name: 'the record the next page starts with deleted',
+      change: (records: string[]) => remove(records, '00029'),
+      kept: ids(0, 100).filter((id) => id !== '00029'),
+    },
+    {
+      name: 'more records deleted before the page than a page holds',
+      change: (records: string[]) => remove(records, ...ids(5, 45)),
+      kept: [...ids(0, 5), ...ids(50, 50)],
+    },
+    {
+      name: 'every record already read deleted',
+      change: (records: string[]) => remove(records, ...ids(0, 30)),
+      kept: ids(30, 70),
+    },
+    {
+      name: 'a record added before the page',
+      change: (records: string[]) => records.push('00003a'),
+      kept: ids(0, 100),
+    },
+    {
+      name: 'more records added before the page than a page holds',
+      change: (records: string[]) =>
+        records.push(...ids(0, 40).map((id) => `00010-${id}`)),
+      kept: ids(0, 100),
+    },
+    {
+      name: 'records added and deleted before the page in equal numbers',
+      change: (records: string[]) => {
+        remove(records, '00002', '00004');
+        records.push('00005a', '00006a');
+      },
+      kept: ids(0, 100).filter((id) => id !== '00002' && id !== '00004'),
+    },
+  ])('reads every remaining record after $name', async ({ change, kept }) => {
+    const { client } = fakeCma(ids(0, 100), (records, request) => {
+      if (request === 1) change(records);
+    });
+    expectComplete(await collectIds(client), kept);
+  });
+
+  it('steps back when deletions leave the next page past the end', async () => {
+    const { client } = fakeCma(ids(0, 31), (records, request) => {
+      if (request === 1) remove(records, '00002', '00005', '00008');
+    });
+    expectComplete(
+      await collectIds(client),
+      ids(0, 31).filter((id) => !['00002', '00005', '00008'].includes(id)),
+    );
+  });
+
+  it('steps back over a large deletion of records already read', async () => {
+    const { client } = fakeCma(ids(0, 600), (records, request) => {
+      if (request === 12) remove(records, ...ids(0, 349));
+    });
+    expectComplete(await collectIds(client), ids(349, 251));
+  });
+
+  it('keeps up when a record already read is deleted before every page', async () => {
+    const deleted: string[] = [];
+    const { client, rawList } = fakeCma(ids(0, 1000), (records, request) => {
+      if (request > 0) deleted.push(...records.splice(0, 1));
+    });
+    expectComplete(
+      await collectIds(client),
+      ids(0, 1000).filter((id) => !deleted.includes(id)),
+    );
+    // Twice the requests of an unchanged collection at most: no false warning.
+    expect(rawList.mock.calls.length).toBeLessThan(2 * Math.ceil(1000 / 29));
+  });
+
+  it('reads records added past the page', async () => {
+    const { client } = fakeCma(ids(0, 40), (records, request) => {
+      if (request === 1) records.push('00039a', '99999');
+    });
+    expect(await collectIds(client)).toEqual([
+      ...ids(0, 40),
+      '00039a',
+      '99999',
+    ]);
+  });
+
+  it.each(
+    Array.from({ length: 20 }, (_, i) => i + 1),
+  )('reads every record that stays while records keep being added and deleted (seed %i)', async (seed) => {
+    let state = seed;
+    // Mulberry32: deterministic, so a failure can be replayed from its seed.
+    const random = (below: number) => {
+      state = (state + 0x6d2b79f5) | 0;
+      let t = Math.imul(state ^ (state >>> 15), 1 | state);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return Math.floor((((t ^ (t >>> 14)) >>> 0) / 2 ** 32) * below);
+    };
+    const initial = ids(0, 600);
+    const deleted = new Set<string>();
+    let added = 0;
+    const { client } = fakeCma(initial, (records) => {
+      for (let n = random(6); n > 0 && records.length > 0; n -= 1) {
+        const [id] = records.splice(random(records.length), 1);
+        deleted.add(id);
+      }
+      for (let n = random(4); n > 0; n -= 1) {
+        added += 1;
+        records.push(`${String(random(600)).padStart(5, '0')}-new-${added}`);
+      }
+    });
+    expectComplete(
+      await collectIds(client),
+      initial.filter((id) => !deleted.has(id)),
+    );
+  });
+
+  it('reads to the end and then says records may be missing when they change too often to keep up with', async () => {
+    let request = 0;
+    // Every response holds records never seen before, so no page follows on.
+    const rawList = vi.fn(
+      async (query: { page: { offset: number; limit: number } }) => {
+        request += 1;
+        const { offset, limit } = query.page;
+        return {
+          data: ids(offset, Math.min(limit, 100 - offset)).map((id) =>
+            record(`${request}-${id}`),
+          ),
+          meta: { total_count: 100 },
+        };
+      },
+    );
+    const read: string[] = [];
+    await expect(async () => {
+      for await (const item of readRecords(mockClient(rawList), 'article'))
+        read.push(item.id);
+    }).rejects.toThrow(/some may be missing/);
+    expect(read.some((id) => id.endsWith('00099'))).toBe(true);
+    expect(rawList.mock.calls.length).toBeLessThan(100);
+  });
+
+  it.each([
     { data: [], meta: { total_count: 2 } },
     { data: [record('b')], meta: { total_count: 3 } },
-    { data: [record('a')], meta: { total_count: 2 } },
-  ])('rejects inconsistent pagination %# instead of reporting completion', async (second) => {
+    {
+      data: Array.from({ length: 31 }, (_, i) => record(String(i))),
+      meta: { total_count: 40 },
+    },
+    { data: [{ ...record('c'), id: '' }], meta: { total_count: 3 } },
+  ])('rejects an inconsistent page %# instead of reporting completion', async (second) => {
     const rawList = vi
       .fn()
       .mockResolvedValueOnce({
-        data: [record('a')],
-        meta: { total_count: 2 },
+        data: [record('a'), record('b')],
+        meta: { total_count: 3 },
       })
       .mockResolvedValueOnce(second);
     await expect(collect(mockClient(rawList))).rejects.toThrow(

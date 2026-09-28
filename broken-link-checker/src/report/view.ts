@@ -95,39 +95,117 @@ export function resultExplanation(result: CheckResult): string | undefined {
 
 export type GroupFacts = {
   recordCount: number;
-  modelIds: ReadonlySet<string>;
+  /** Model names by ID, each as its first occurrence names it. */
+  models: ReadonlyMap<string, string>;
   locales: ReadonlySet<string>;
   /** Lowercased occurrence URLs, index-aligned with `occurrences`. */
-  lowerUrls: string[];
+  lowerUrls: readonly string[];
   fragment: boolean;
 };
 
-// Sessions replace the occurrences array whenever a group grows, and every flush
-// re-spreads the group objects, so the array identity is the stable cache key.
+const NO_MODELS: ReadonlyMap<string, string> = new Map();
+const NO_LOCALES: ReadonlySet<string> = new Set();
+// Most URLs appear in one model and one locale: groups share those, as facts never change.
+const oneModel = new Map<string, ReadonlyMap<string, string>>();
+const oneLocale = new Map<string, ReadonlySet<string>>();
+
+function withModel(
+  models: ReadonlyMap<string, string>,
+  id: string,
+  name: string,
+): ReadonlyMap<string, string> {
+  if (models.size > 0) return new Map(models).set(id, name);
+  const key = `${id}\n${name}`;
+  let shared = oneModel.get(key);
+  if (!shared) {
+    shared = new Map([[id, name]]);
+    oneModel.set(key, shared);
+  }
+  return shared;
+}
+
+function withLocale(
+  locales: ReadonlySet<string>,
+  locale: string,
+): ReadonlySet<string> {
+  if (locales.size > 0) return new Set(locales).add(locale);
+  let shared = oneLocale.get(locale);
+  if (!shared) {
+    shared = new Set([locale]);
+    oneLocale.set(locale, shared);
+  }
+  return shared;
+}
+
+/**
+ * Collects a group's facts one occurrence at a time, so a group that keeps
+ * growing during a scan isn't read again from the start for every report.
+ * Facts it has handed out never change: the map, set and list they hold are
+ * replaced, not changed, when more occurrences arrive.
+ */
+export class GroupFactsBuilder {
+  private firstRecord?: string;
+  /** Only once a second record appears. */
+  private records?: Set<string>;
+  private lowerUrls: string[] = [];
+  private models = NO_MODELS;
+  private locales = NO_LOCALES;
+  private fragment = false;
+  private latest?: GroupFacts;
+
+  add(occurrence: LinkOccurrence): void {
+    if (this.latest) {
+      this.lowerUrls = this.lowerUrls.slice();
+      this.latest = undefined;
+    }
+    const record = recordKey(occurrence);
+    if (this.records) this.records.add(record);
+    else if (this.firstRecord === undefined) this.firstRecord = record;
+    else if (record !== this.firstRecord)
+      this.records = new Set([this.firstRecord, record]);
+    if (!this.models.has(occurrence.modelId))
+      this.models = withModel(
+        this.models,
+        occurrence.modelId,
+        occurrence.modelName,
+      );
+    if (occurrence.locale && !this.locales.has(occurrence.locale))
+      this.locales = withLocale(this.locales, occurrence.locale);
+    this.lowerUrls.push(occurrence.url.toLowerCase());
+    if (occurrence.url.includes('#')) this.fragment = true;
+  }
+
+  facts(): GroupFacts {
+    this.latest ??= {
+      recordCount:
+        this.records?.size ?? (this.firstRecord === undefined ? 0 : 1),
+      models: this.models,
+      locales: this.locales,
+      lowerUrls: this.lowerUrls,
+      fragment: this.fragment,
+    };
+    return this.latest;
+  }
+}
+
+// A group's occurrences array is never changed once it is in a report: a group
+// that grows gets a new array, so the array identity is the stable cache key.
 const factsCache = new WeakMap<readonly LinkOccurrence[], GroupFacts>();
+
+/** Lets a session that already collected the facts of `occurrences` skip reading them again. */
+export function cacheGroupFacts(
+  occurrences: readonly LinkOccurrence[],
+  facts: GroupFacts,
+): void {
+  factsCache.set(occurrences, facts);
+}
 
 export function groupFacts(group: LinkGroup): GroupFacts {
   const cached = factsCache.get(group.occurrences);
   if (cached) return cached;
-  const records = new Set<string>();
-  const modelIds = new Set<string>();
-  const locales = new Set<string>();
-  const lowerUrls: string[] = [];
-  let fragment = false;
-  for (const occurrence of group.occurrences) {
-    records.add(recordKey(occurrence));
-    modelIds.add(occurrence.modelId);
-    if (occurrence.locale) locales.add(occurrence.locale);
-    lowerUrls.push(occurrence.url.toLowerCase());
-    if (occurrence.url.includes('#')) fragment = true;
-  }
-  const facts = {
-    recordCount: records.size,
-    modelIds,
-    locales,
-    lowerUrls,
-    fragment,
-  };
+  const builder = new GroupFactsBuilder();
+  for (const occurrence of group.occurrences) builder.add(occurrence);
+  const facts = builder.facts();
   factsCache.set(group.occurrences, facts);
   return facts;
 }
@@ -154,7 +232,7 @@ function matchesOccurrences(group: LinkGroup, filters: Filters): boolean {
   const { modelId, locale } = filters;
   const query = filters.query.toLowerCase();
   const facts = groupFacts(group);
-  if (modelId && !facts.modelIds.has(modelId)) return false;
+  if (modelId && !facts.models.has(modelId)) return false;
   if (locale && !facts.locales.has(locale)) return false;
   if (!modelId && !locale)
     return !query || facts.lowerUrls.some((url) => url.includes(query));
@@ -239,6 +317,15 @@ export function reportDimensions(
   const models = new Map<string, string>();
   const locales = new Set<string>();
   for (const group of groups) {
+    // A URL that grew during a scan comes with its facts; most are found once
+    // or twice and are quicker to read directly.
+    const facts = factsCache.get(group.occurrences);
+    if (facts) {
+      for (const [id, name] of facts.models)
+        if (!models.has(id)) models.set(id, name);
+      for (const locale of facts.locales) locales.add(locale);
+      continue;
+    }
     for (const occurrence of group.occurrences) {
       if (!models.has(occurrence.modelId))
         models.set(occurrence.modelId, occurrence.modelName);

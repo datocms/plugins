@@ -96,14 +96,16 @@ export function useScan(contextKey: string) {
         publish({
           ...next,
           stale: allStale.current || staleRecords.current.size > 0,
-          groups: next.groups.map((group) => ({
-            ...group,
-            stale:
+          groups: next.groups.map((group) => {
+            const stale =
               allStale.current ||
-              group.occurrences.some((occurrence) =>
-                staleRecords.current.has(occurrence.recordId ?? ''),
-              ),
-          })),
+              (staleRecords.current.size > 0 &&
+                group.occurrences.some((occurrence) =>
+                  staleRecords.current.has(occurrence.recordId ?? ''),
+                ));
+            // A session reuses unchanged groups between reports: keep them as they are.
+            return stale === group.stale ? group : { ...group, stale };
+          }),
         });
       });
       activeSession.current = session;
