@@ -1,0 +1,106 @@
+/* src/kit-fixes.css: global (not a CSS module), imported right after 'datocms-react-ui/styles.css' */
+
+/* Buttons (always). Pair with the wrapper in src/ui/Button.tsx. */
+/* Icons take the button's own ink, as in the dashboard (the kit paints them ink-link on every type). */
+.dl-kit-button.dl-kit-button svg {
+  fill: currentColor;
+  color: currentColor;
+}
+/* A keyboard focus ring. The dashboard draws none; don't copy that gap. */
+.dl-kit-button:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 4px var(--color--focus--outline);
+}
+/* The kit (like the dashboard) fills a focused primary with surface-active (pigment-350 at hue 270),
+   and Chrome focuses a button on click, so a clicked primary stays pale with ~2.3:1 white text.
+   Keep that fill for :active only. */
+.dl-kit-button--primary.dl-kit-button--primary:not(:disabled):focus:not(
+    :active
+  ) {
+  background-color: var(--color--primary--surface);
+}
+.dl-kit-button--primary.dl-kit-button--primary:not(:disabled):focus:hover:not(
+    :active
+  ) {
+  background-color: var(--color--primary--surface-hover);
+}
+
+/* Toolbar title (always), with the Toolbar and ToolbarStack props below. */
+.dl-toolbar__title {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: var(--font-size-l);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.3;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+@media (min-width: 480px) {
+  .dl-toolbar__title {
+    font-size: var(--font-size-xl);
+  }
+}
+
+/* Red option-action icon (always): the kit paints it danger--ink (white) on a neutral row. */
+.dl-kit-danger-icon.dl-kit-danger-icon {
+  fill: var(--color--danger-soft--ink);
+  color: var(--color--danger-soft--ink);
+}
+
+/* Tooltip anchor (always): TooltipTrigger needs a DOM child that takes its ref and handlers. */
+.dl-tooltip-anchor {
+  display: inline-block;
+  border-radius: 4px;
+}
+.dl-tooltip-anchor:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 4px var(--color--focus--outline);
+}
+
+/* Parity: swap fills on hover instead of fading. */
+.dl-kit-button.dl-kit-button:hover,
+.dl-kit-button.dl-kit-button:focus,
+.dl-kit-button.dl-kit-button:active {
+  opacity: 1;
+}
+.dl-kit-button--muted:not(:disabled):hover {
+  background-color: var(--color--primary-soft--surface-hover);
+}
+.dl-kit-button--muted:not(:disabled):active {
+  background-color: var(--color--primary-soft--surface-active);
+}
+
+/* Parity: form text, on every surface of the plugin. */
+.dl-kit-form-parity label[class^="_formLabel_"]:not([class*="--error_"]) {
+  color: var(--color--ink);
+}
+.dl-kit-form-parity [class^="_fieldHint_"],
+.dl-kit-form-parity [class^="_fieldError_"] {
+  font-size: var(--font-size-s);
+}
+.dl-kit-form-parity [class^="_fieldError_"]::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 50%;
+  background-color: var(--color--danger--surface);
+}
+
+/* Parity: tooltip text reads like the dashboard's 250px centered tooltip. */
+.dl-tooltip-text {
+  max-width: 250px;
+  font-size: 0.9em;
+  line-height: 1.2;
+  text-align: center;
+  text-wrap: balance;
+}
+
+/* Parity: <div className="dl-kit-panels"> …SidebarPanel… </div>: caret up while open */
+.dl-kit-panels [class^="_SidebarPanel__header__chevron_"] svg {
+  transform: rotate(180deg);
+}

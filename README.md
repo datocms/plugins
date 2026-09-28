@@ -21,6 +21,7 @@ This repository provides examples of real DatoCMS plugins developed using the of
 - [Asset Optimization](https://github.com/datocms/plugins/blob/master/asset-optimization/README.md): Bulk-optimize every project upload through Imgix transformations (format, max width, quality, lossless, etc.) with a preview-only dry run.
 - [Automatic Environment Backups](https://github.com/datocms/plugins/blob/master/automatic-environment-backups/README.md): Schedule automatic forks of your primary environment (daily, weekly, biweekly, or monthly) as off-site backups.
 - [Block to Links](https://github.com/datocms/plugins/blob/master/block-to-links/README.md): Convert legacy embedded modular-content blocks into linked records on a chosen model.
+- [Broken Link Checker](https://github.com/datocms/plugins/blob/master/broken-link-checker/README.md): Check website links in saved content or unsaved record edits, with grouped results and direct navigation to fix them.
 - [Bulk Change Author](https://github.com/datocms/plugins/blob/master/bulk-change-author/README.md): Bulk action that reassigns the creator on every selected record from the collection view.
 - [Character Counter](https://github.com/datocms/plugins/blob/master/character-counter/README.md): Auto-attaches to any field with a length validator and shows live character, word, and readability stats.
 - [Conditional Fields](https://github.com/datocms/plugins/blob/master/conditional-fields/README.md): Show or hide one or more target fields based on the value of a boolean source field, with optional inversion.

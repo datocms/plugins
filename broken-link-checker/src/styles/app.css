@@ -1,0 +1,822 @@
+/* Plugin-specific rules. Tokens only; the dl- recipes live in recipes.css. */
+
+:where([hidden]:not([hidden="until-found"])) {
+  display: none !important;
+} /* recipes contract */
+
+/* Global */
+/* react-ui sets only the scrollbar color; the dashboard's scrolling panes also use the thin width */
+.blc-page :is(.dl-pane__body, .dl-pane-state) {
+  scrollbar-width: thin;
+}
+
+/* Page shell and helpers */
+.blc-page {
+  background-color: var(--color--surface);
+}
+.blc-heading {
+  margin: 0;
+  font: inherit;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.blc-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+.blc-block-anchor {
+  display: block;
+}
+.blc-code {
+  font-family: var(--monospaced-font-family);
+  font-size: 0.9em;
+}
+.blc-note {
+  margin: 0;
+  font-size: var(--font-size-s);
+  line-height: 1.2;
+  color: var(--color--ink-subtle);
+}
+h2.dl-blank-slate__title {
+  margin-top: 0;
+  line-height: 1.1;
+}
+/* A blank slate's inline action reads like its docs link (bold ink-link) */
+.dl-blank-slate__description .dl-button--link {
+  font-weight: var(--font-weight-bold);
+}
+h2.dl-pane-state__title {
+  margin: 0;
+}
+.blc-page .dl-pane-state p {
+  max-width: 500px;
+}
+
+/* Toolbar */
+/* The page's main pane: its header rows adapt to its own width, not the iframe's */
+.blc-main-pane {
+  container: blc-pane / inline-size;
+}
+/* The count keeps its width: PageToolbar drops it whole in a narrow pane rather than clip it */
+.blc-toolbar-count {
+  flex-shrink: 0;
+}
+
+/* Status tones and marks */
+/* The word, not the icon, gives the status its baseline, so it sits on the line of the text around it */
+.dl-log-status {
+  align-items: baseline;
+}
+.dl-log-status svg {
+  align-self: center;
+}
+.blc-log-status--warning svg {
+  fill: var(--color--warning-soft--ink);
+}
+.blc-log-status--subtle svg {
+  fill: var(--color--ink-subtle);
+}
+.blc-mark {
+  position: relative;
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+}
+.blc-mark svg {
+  width: 1em;
+  height: 1em;
+}
+.blc-mark--success svg {
+  fill: var(--color--success-soft--ink);
+}
+.blc-mark--danger svg {
+  fill: var(--color--danger-soft--ink);
+}
+.blc-mark--warning svg {
+  fill: var(--color--warning-soft--ink);
+}
+.blc-mark--subtle svg {
+  fill: var(--color--ink-subtle);
+}
+
+/* Filter row */
+.blc-filter-row {
+  gap: var(--spacing-l);
+}
+.blc-search {
+  flex: 1 1 200px;
+  min-width: 160px;
+  max-width: 480px;
+}
+/* The clear button only shows with a query, so an empty field gives its room to the placeholder */
+.blc-search > input:placeholder-shown {
+  padding-right: 10px;
+}
+/* A picker gives way by ellipsizing its label */
+.blc-filter-model,
+.blc-filter-locale {
+  min-width: 0;
+}
+/* A narrow pane keeps one 60px row of search, Status and Clear, plus any picker holding a filter */
+@container blc-pane (max-width: 599px) {
+  .blc-filter-row {
+    gap: var(--spacing-m);
+  }
+  :is(.blc-filter-model, .blc-filter-locale):not(.blc-filter--set) {
+    display: none;
+  }
+  /* An active Model or Locale filter stays in view, on a second line if it must */
+  .blc-filter-row:has(.blc-filter--set) {
+    flex-wrap: wrap;
+  }
+  .blc-filter-row:has(.blc-filter--set) .blc-search {
+    flex-basis: 160px;
+  }
+  /* "Clear filters" stays at the right when it wraps on its own */
+  .blc-filter-row:has(.blc-filter--set) > .dl-tooltip-anchor {
+    margin-left: auto;
+  }
+}
+.blc-text-trigger {
+  display: inline-flex;
+  gap: 0.5em;
+  align-items: center;
+  min-width: 0;
+  max-width: min(220px, 100%);
+  padding: 0;
+  font: inherit;
+  color: var(--color--ink);
+  white-space: nowrap;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  border-radius: 4px;
+}
+.blc-text-trigger__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.blc-text-trigger:is(:hover, :focus-visible, [aria-expanded="true"])
+  .blc-text-trigger__label {
+  text-decoration: underline;
+}
+.blc-text-trigger svg {
+  flex: none;
+  width: 1em;
+  height: 1em;
+  fill: var(--color--ink-subtle);
+}
+.blc-text-trigger:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 4px var(--color--focus--outline);
+}
+.blc-option-count {
+  margin-left: 8px;
+  color: var(--color--ink-subtle);
+}
+
+/* Report body */
+.blc-report {
+  container: blc-report / inline-size;
+}
+.blc-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-l);
+}
+.blc-stack > * {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+.blc-footnote {
+  margin: 0;
+  font-size: var(--font-size-s);
+  line-height: 1.2;
+  color: var(--color--ink-subtle);
+}
+
+/* Summary */
+.blc-summary__headline {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 0;
+  font-size: var(--font-size-m);
+  font-weight: normal;
+  line-height: 1.3;
+}
+.blc-summary__meta {
+  margin: 5px 0 0;
+  padding-left: 28px;
+  font-size: var(--font-size-s);
+  line-height: 1.2;
+  color: var(--color--ink-subtle);
+}
+.blc-summary__stale {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 12px 0 0;
+  font-size: var(--font-size-s);
+  line-height: 1.2;
+  color: var(--color--ink-subtle);
+}
+/* One text line tall, so the clock centers on the first line */
+.blc-summary__stale .blc-mark {
+  height: 1.2em;
+}
+
+/* Scan progress: a running scan's one loading indicator */
+.blc-scan-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.blc-scan-progress__title {
+  margin: 0;
+  font-size: var(--font-size-m);
+  font-weight: normal;
+  line-height: 1.3;
+}
+.blc-scan-progress__facts {
+  margin: 0;
+  font-size: var(--font-size-s);
+  line-height: 1.2;
+  color: var(--color--ink-subtle);
+}
+/* Before the first URL is found the progress is centered in the pane, its title a size up */
+.blc-scan-start {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100%;
+  padding: var(--spacing-l);
+}
+.blc-scan-start__column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-l);
+  width: 100%;
+  max-width: 400px;
+}
+.blc-scan-progress--centered {
+  gap: 12px;
+  text-align: center;
+}
+.blc-scan-progress--centered .blc-scan-progress__title {
+  font-size: var(--font-size-l);
+  font-weight: var(--font-weight-bold);
+}
+/* Without a record count the bar can't show a share yet: a segment sweeps along the track */
+.blc-scan-progress__sweep {
+  width: 30%;
+  animation: blc-sweep 1.6s var(--material-ease) infinite;
+}
+@keyframes blc-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(334%);
+  }
+}
+
+/* Callouts */
+.blc-callout__body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.blc-callout__list {
+  margin: 12px 0 0;
+  padding-left: 20px;
+  font-size: var(--font-size-s);
+  line-height: 1.2;
+}
+.blc-callout__list li + li {
+  margin-top: 6px;
+}
+.blc-callout__toggle {
+  margin-top: 12px;
+}
+.dl-callout .dl-button--link,
+.dl-callout .dl-button--link:is(:hover, :active) {
+  color: inherit;
+  font-weight: var(--font-weight-bold);
+}
+@container blc-report (max-width: 599px) {
+  .blc-callout.dl-callout--with-action {
+    flex-direction: column;
+    gap: var(--spacing-m);
+    align-items: flex-start;
+  }
+}
+.blc-callout--compact {
+  margin: 0;
+  padding: 15px;
+  border: 0;
+  font-size: var(--font-size-s);
+  line-height: 1.2;
+} /* the dashboard's compact warning row */
+.blc-callout--compact .blc-callout__list {
+  margin-top: 6px;
+  padding-left: 16px;
+}
+
+/* Table */
+.blc-table {
+  table-layout: fixed;
+}
+/* Fixed widths include the cell padding, so the URL column keeps its share down to the 700px fold. */
+.blc-table :is(th, td):is(.blc-col-status, .blc-col-http, .blc-col-used) {
+  box-sizing: border-box;
+}
+.blc-col-status {
+  width: 160px;
+}
+.blc-col-http {
+  width: 120px;
+}
+.blc-col-used {
+  width: 140px;
+}
+.blc-url {
+  display: -webkit-box;
+  overflow: hidden;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+.blc-table .dl-row-tag {
+  margin: 5px 0 0;
+}
+.blc-url__meta {
+  display: none;
+  margin-top: 3px;
+  font-size: var(--font-size-s);
+  line-height: 1.2;
+  color: var(--color--ink-subtle);
+}
+.blc-url__meta-status {
+  display: none;
+}
+.blc-table tbody tr[aria-current="true"] td {
+  color: var(--color--selected--ink);
+  background-color: var(--color--selected--surface);
+}
+.blc-table tbody tr[aria-current="true"]:is(:hover, :focus-visible) td {
+  background-color: var(--color--selected--surface-hover);
+}
+.blc-table tbody tr[aria-current="true"] td:first-child {
+  box-shadow: inset 8px 0 0 var(--color--selected--border);
+}
+.blc-table tbody tr[aria-current="true"] .blc-url__meta {
+  color: var(--color--selected--ink);
+  opacity: 0.75;
+}
+.blc-table tbody tr[aria-current="true"] .dl-row-tag {
+  color: var(--color--primary--ink);
+  background-color: var(--color--primary--surface);
+}
+.blc-table
+  tbody
+  tr[aria-current="true"]
+  .dl-log-status:not(
+    .dl-log-status--success,
+    .dl-log-status--failed,
+    .blc-log-status--warning
+  )
+  svg {
+  fill: currentColor;
+}
+/* The last visible cell draws the card's right edge once columns fold */
+@container blc-report (max-width: 699px) {
+  .blc-table :is(th, td):is(.blc-col-http, .blc-col-used) {
+    display: none;
+  }
+  .blc-url__meta {
+    display: block;
+  }
+  .blc-table tbody td.blc-col-status {
+    border-right: 1px solid var(--color--border);
+  }
+  .blc-table tbody tr:first-child td.blc-col-status {
+    border-top-right-radius: 4px;
+  }
+  .blc-table tbody tr:last-child td.blc-col-status {
+    border-bottom-right-radius: 4px;
+  }
+}
+@container blc-report (max-width: 468px) {
+  .blc-table thead {
+    display: none;
+  }
+  .blc-table :is(th, td).blc-col-status {
+    display: none;
+  }
+  .blc-url__meta-status {
+    display: inline;
+  }
+  .blc-table tbody td:first-child {
+    border-right: 1px solid var(--color--border);
+  }
+  .blc-table tbody tr:first-child td:first-child {
+    border-top-right-radius: 4px;
+  }
+  .blc-table tbody tr:last-child td:first-child {
+    border-bottom-right-radius: 4px;
+  }
+}
+
+/* Info sidebar */
+/* Focus lands on the overlay's aside when it opens: no ring for that */
+.blc-info:focus {
+  outline: 0;
+}
+/* The overlay copies the kit's VerticalSplit overlay (scrim, panel, sash toggle) */
+.blc-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  height: 100%;
+  overflow: hidden;
+  background: var(--color--backdrop--surface);
+  backdrop-filter: blur(4px);
+}
+.blc-overlay__panel {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 350px;
+  min-width: 300px;
+  max-width: 60%;
+  background: var(--color--surface);
+  box-shadow: var(--shadow--ambient);
+}
+.blc-overlay__sash {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+}
+.blc-overlay__toggle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  margin: 0;
+  padding: 15px 0;
+  font: inherit;
+  color: var(--color--ink-subtle);
+  cursor: pointer;
+  background: none;
+  border: 0;
+  transform: translate(-50%, -50%);
+}
+.blc-overlay__toggle-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  font-size: 10px;
+  background: var(--color--surface);
+  border: 1px solid var(--color--border);
+  border-radius: 6px;
+}
+.blc-overlay__toggle-icon svg {
+  display: block;
+  fill: currentColor;
+}
+.blc-overlay__toggle:hover {
+  color: var(--color--ink);
+}
+.blc-overlay__toggle:hover .blc-overlay__toggle-icon {
+  background: var(--color--surface-hover);
+}
+.blc-overlay__toggle:focus-visible {
+  outline: 0;
+}
+.blc-overlay__toggle:focus-visible .blc-overlay__toggle-icon {
+  box-shadow: 0 0 0 4px var(--color--focus--outline);
+}
+.blc-link-url {
+  margin: 0 0 12px;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.blc-external {
+  color: var(--color--ink);
+  text-decoration: underline;
+  border-radius: 3px;
+}
+.blc-external:hover {
+  text-decoration: none;
+}
+.blc-external:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 4px var(--color--focus--outline);
+}
+.blc-external .dl-icon {
+  margin-left: 0.5em;
+}
+.blc-link-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+.blc-sidebar-action {
+  margin-top: 12px;
+}
+.blc-records {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.blc-record-row {
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  width: 100%;
+  min-height: 50px;
+  padding: 10px 20px;
+  color: var(--color--ink);
+  border-bottom: 1px solid var(--color--border);
+  transition: background-color 0.2s var(--material-ease);
+}
+.blc-records > li:last-child .blc-record-row {
+  border-bottom: 0;
+} /* the SidebarPanel draws its own rule */
+.blc-record-row--openable:hover {
+  background-color: var(--color--surface-hover);
+}
+/* The row's button covers the whole row, under its content; the row draws its focus ring */
+.blc-record-row__open {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  cursor: pointer;
+  background: none;
+  border: 0;
+}
+.blc-record-row__open:focus-visible {
+  outline: 0;
+}
+.blc-record-row:has(> .blc-record-row__open:focus-visible) {
+  box-shadow: inset 0 0 0 4px var(--color--focus--outline);
+}
+/* URLs in the row stay clickable above the row's button */
+.blc-record-row .blc-external {
+  position: relative;
+  z-index: 1;
+}
+.blc-record-row .dl-record {
+  flex: 1 1 auto;
+}
+.blc-record-row .dl-record__title {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+.blc-record-row__tag {
+  align-self: flex-start;
+  margin: 2px 0 0;
+}
+.blc-record-row__variant {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--font-size-xs);
+  line-height: 1.3;
+  color: var(--color--ink-subtle);
+  overflow-wrap: anywhere;
+}
+.blc-record-row__more {
+  display: block;
+  margin-top: 8px;
+  font-size: var(--font-size-s);
+  line-height: 1.2;
+  color: var(--color--ink-subtle);
+}
+.blc-record-row__icon {
+  margin-top: 2px;
+}
+.blc-record-row--openable:is(
+    :hover,
+    :has(> .blc-record-row__open:focus-visible)
+  )
+  .blc-record-row__icon {
+  fill: var(--color--ink);
+}
+.blc-records__more {
+  padding: 12px 20px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .blc-record-row {
+    transition: none;
+  }
+}
+
+/* Modal and config */
+.blc-modal-intro {
+  margin: 0;
+}
+.blc-config p {
+  margin: 0 0 12px;
+}
+.blc-config p:last-of-type {
+  margin-bottom: 24px;
+}
+.blc-config .dl-callout {
+  margin-bottom: 24px;
+}
+.blc-config .dl-callout p {
+  margin: 0;
+}
+/* Without the permission the intro ends the screen: no margin below it */
+.blc-config > p:last-child {
+  margin-bottom: 0;
+}
+
+/* Record panel */
+.blc-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-m);
+}
+.blc-panel > * {
+  margin: 0;
+}
+.blc-spinner-box {
+  position: relative;
+  flex: none;
+  width: 20px;
+  height: 20px;
+}
+.blc-panel-status {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: var(--font-size-s);
+  line-height: 1.2;
+  color: var(--color--ink-subtle);
+}
+.blc-panel-summary {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: var(--font-size-m);
+  line-height: 1.3;
+}
+.blc-panel-summary__meta {
+  display: block;
+  margin-top: 3px;
+  font-size: var(--font-size-s);
+  line-height: 1.2;
+  color: var(--color--ink-subtle);
+}
+.blc-panel-results {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-top: 1px solid var(--color--border);
+}
+.blc-panel-result {
+  padding: 12px 0;
+  border-bottom: 1px solid var(--color--border);
+}
+.blc-panel-result__url {
+  font-size: var(--font-size-m);
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.blc-panel-result__status {
+  margin-top: 3px;
+  font-size: var(--font-size-s);
+}
+.blc-panel-result__http {
+  color: var(--color--ink-subtle);
+}
+.blc-panel-result__reason {
+  margin-top: 3px;
+}
+.blc-panel-where {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+/* Each place is one row that goes to the field: the hover tint bleeds 8px into the frame's gutter */
+.blc-place {
+  box-sizing: border-box;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: calc(100% + 16px);
+  margin: 0 -8px;
+  padding: 6px 8px;
+  font: inherit;
+  color: var(--color--ink);
+  text-align: left;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  transition: background-color 0.2s var(--material-ease);
+}
+.blc-place:hover {
+  background-color: var(--color--surface-hover);
+}
+.blc-place:focus-visible {
+  outline: 0;
+  box-shadow: inset 0 0 0 4px var(--color--focus--outline);
+}
+.blc-place__icon {
+  font-size: 12px;
+}
+.blc-place:is(:hover, :focus-visible) .blc-place__icon {
+  fill: var(--color--ink);
+}
+@media (prefers-reduced-motion: reduce) {
+  .blc-place {
+    transition: none;
+  }
+}
+/* Field and locale first, the fields and blocks around it underneath */
+.blc-place-label {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+/* The field keeps the line: a locale that doesn't fit beside it moves under it, still on the right */
+.blc-place-label__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  align-items: baseline;
+}
+.blc-place-label__field {
+  min-width: 0;
+  font-size: var(--font-size-s);
+  line-height: 1.3;
+  overflow-wrap: break-word;
+}
+.blc-place-label__locale,
+.blc-place-label__path {
+  font-size: var(--font-size-xs);
+  line-height: 1.3;
+  color: var(--color--ink-subtle);
+}
+.blc-place-label__locale {
+  margin-left: auto;
+  white-space: nowrap;
+}
+.blc-place-label__path {
+  overflow-wrap: anywhere;
+}
+/* In the page's "Used in" rows the record title leads, so its places read as secondary text.
+   Places are 8px apart; the lines of one place, "Links to …" included, 2px. */
+.blc-record-row__place {
+  display: block;
+  margin-top: 8px;
+}
+.blc-record-row__place .blc-place-label__field {
+  color: var(--color--ink-subtle);
+}
+
+/* Record panel additions */
+.blc-panel-result__note {
+  margin-top: 3px;
+}
+.blc-panel-where__more {
+  margin-top: 6px;
+  font-size: var(--font-size-s);
+  line-height: 1.2;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dl-progress__bar {
+    transition: none;
+  }
+}

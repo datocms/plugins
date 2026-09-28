@@ -1,0 +1,1328 @@
+/*
+ * Source: datocms-recipes.css, the DatoCMS design language's token-only recipe
+ * file. The sections below are copied verbatim; "Sidebar panel" keeps only
+ * .dl-sidebar-panel__empty. Plugin-specific rules live in app.css.
+ */
+
+/* --- Frame (plugin full-size surfaces) ---------------------------------------
+   references/layout-and-navigation.md 2. A positioned, sized box filling a
+   full-size plugin surface (renderPage, inspector, full sidebar, fullWidth modal)
+   so react-ui <VerticalSplit> and .dl-pane have something to fill. Never on a
+   self-resizing frame.
+
+   <div class="dl-frame"><VerticalSplit …>…</VerticalSplit></div> */
+.dl-frame {
+  position: absolute;
+  inset: 0;
+}
+
+/* --- Pane (fixed header/footer + scrolling body) -----------------------------
+   Mirrors styles/blocks/_FullHeightScrollingLayout.css.
+   Fills its positioned parent. Every direct child of __header gets a bottom
+   hairline and every child of __footer a top hairline; __body is the only
+   scrolling region. __dock anchors the floating .dl-selection-bar.
+   Collections and log pages: the filter or search bar (.dl-filter-bar, .dl-search)
+   is a second 60px toolbar row in __header, never in the body; pagination lives in
+   the __footer toolbar and is hidden when there is one page.
+
+   <div class="dl-pane">
+     <div class="dl-pane__header">
+       <div class="dl-toolbar">…</div>
+       <div class="dl-toolbar">…filter bar or search…</div>
+     </div>
+     <div class="dl-pane__body dl-pane__body--relaxed">…</div>
+     <div class="dl-pane__dock"><div class="dl-selection-bar">…</div></div>
+     <div class="dl-pane__footer"><div class="dl-toolbar">…</div></div>
+   </div> */
+.dl-pane {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-right: 1px solid var(--color--border);
+}
+.dl-pane--last {
+  border-right: 0;
+}
+.dl-pane__header,
+.dl-pane__footer {
+  flex: 0 0 auto;
+}
+.dl-pane__header > * {
+  border-bottom: 1px solid var(--color--border);
+}
+.dl-pane__footer > * {
+  border-top: 1px solid var(--color--border);
+}
+.dl-pane__body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+.dl-pane__body--relaxed {
+  padding: 16px 0 96px;
+} /* nav lists: the last item clears the footer */
+.dl-pane__dock {
+  position: relative;
+}
+
+/* --- Toolbar -----------------------------------------------------------------
+   Mirrors styles/blocks/_Toolbar.css (.Toolbar, __back, __title, __subtitle, __space).
+   Grammar: [back] Title [⋮] ── space ── meta [Primary]. Every toolbar has a space.
+   Plugins: react-ui <Toolbar> has no min-height, stack gap or title ellipsis; apply
+   the Toolbar fix in references/plugins.md 12, or use this recipe. Put this toolbar
+   inside .dl-pane__header / __footer for hairlines, or add --border-bottom.
+   --short (40px) is for locale tabs and compact sub-tabs.
+
+   <div class="dl-toolbar">
+     <button class="dl-toolbar__back" aria-label="Back"><svg>chevron-left</svg></button>
+     <h1 class="dl-toolbar__title">Blog posts</h1>
+     <button class="dl-icon-button" aria-label="More actions"><svg>ellipsis-vertical</svg></button>
+     <div class="dl-toolbar__space"></div>
+     <span class="dl-toolbar__subtitle">124 records</span>
+     <button class="dl-button dl-button--primary dl-button--s">Save</button>
+   </div> */
+.dl-toolbar {
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  flex: 0 0 auto;
+  gap: var(--spacing-m);
+  align-items: center;
+  justify-content: center; /* content centers when there's no __space */
+  min-width: 0;
+  min-height: 60px;
+}
+.dl-toolbar > :first-child {
+  margin-left: var(--spacing-m);
+}
+.dl-toolbar > :last-child {
+  margin-right: var(--spacing-m);
+}
+.dl-toolbar--short {
+  min-height: 40px;
+}
+.dl-toolbar--border-bottom {
+  border-bottom: 1px solid var(--color--border);
+}
+@media (min-width: 1024px) {
+  .dl-toolbar--wide {
+    gap: var(--spacing-l);
+  }
+  .dl-toolbar--wide > :first-child {
+    margin-left: var(--spacing-xl);
+  }
+  .dl-toolbar--wide > :last-child {
+    margin-right: var(--spacing-xl);
+  }
+}
+.dl-toolbar__back {
+  display: flex;
+  flex: 0 0 auto;
+  align-self: stretch;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 49px;
+  min-height: 49px;
+  padding: 0;
+  font-size: 16px;
+  color: var(--color--ink);
+  text-decoration: none;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  border-right: 1px solid var(--color--border);
+}
+.dl-toolbar > .dl-toolbar__back:first-child {
+  margin-left: 0;
+}
+.dl-toolbar__back svg {
+  width: 1em;
+  height: 1em;
+  fill: currentColor;
+}
+.dl-toolbar__back:hover,
+.dl-toolbar__back:focus-visible {
+  outline: 0;
+  background-color: var(--color--surface-muted);
+}
+.dl-toolbar__title {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font-size: var(--font-size-l);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.3;
+  letter-spacing: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dl-toolbar__title svg {
+  /* status glyph inside a title */
+  width: 1em;
+  height: 1em;
+  margin-left: 10px;
+  vertical-align: -0.125em;
+  opacity: 0.2;
+  fill: currentColor;
+}
+.dl-toolbar__subtitle {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--font-size-s);
+  color: var(--color--ink-subtle);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dl-toolbar__space {
+  flex: 1 1 0;
+}
+.dl-toolbar__code {
+  font-family: var(--monospaced-font-family);
+  color: var(--color--ink-subtle);
+}
+@media (min-width: 480px) {
+  .dl-toolbar__back {
+    width: 59px;
+    font-size: 20px;
+  }
+  .dl-toolbar__title {
+    font-size: var(--font-size-xl);
+  }
+}
+
+/* --- Page (centered body column) ---------------------------------------------
+   Mirrors styles/blocks/_Page.css (.Page, --large, --wide, --no-wrap).
+   max-width is the text column; padding sits outside it. Content stays flat:
+   no card around the page. Plugins: config screens and regular modals already
+   sit in the host's column, so don't use .dl-page there.
+
+   <div class="dl-page dl-page--large">…fields and .dl-section blocks…</div>
+   Widths: default 650 (settings), --large 800 (editors), --wide 1200 (tables),
+   --full none (data grids). */
+.dl-page {
+  position: relative;
+  box-sizing: content-box;
+  max-width: 650px;
+  margin: 0 auto;
+  padding: var(--spacing-l);
+}
+.dl-page--large {
+  max-width: 800px;
+}
+.dl-page--wide {
+  max-width: 1200px;
+}
+.dl-page--no-wrap {
+  max-width: none;
+}
+.dl-page__content {
+  /* wraps the page's content: a 36px tail under the last block */
+  position: relative;
+  margin-bottom: var(--spacing-xl);
+}
+@media (min-width: 1400px) {
+  .dl-page {
+    padding: calc(4 * var(--spacing-m));
+  }
+}
+
+/* --- Sidebar panel -----------------------------------------------------------
+   Mirrors styles/blocks/_SidebarPanel.css (.SidebarPanel, __header, __content).
+   Stacked edge to edge: gray header bands, hairlines, no gaps. The caret points
+   up while open. Plugins: react-ui <SidebarPanel> (starts closed); in item-form
+   sidebar panels the HOST draws this header, so render only the body content.
+
+   <div class="dl-sidebar-panel">
+     <button class="dl-sidebar-panel__header" aria-expanded="true" aria-controls="p1">
+       <span class="dl-sidebar-panel__title">Publishing</span>
+       <span class="dl-sidebar-panel__caret" aria-hidden="true"></span>
+     </button>
+     <div class="dl-sidebar-panel__body" id="p1">…</div>
+   </div> */
+.dl-sidebar-panel__empty {
+  /* the dashboard's own panel blank (.SidebarPanel__content__blank) */
+  margin-bottom: var(--spacing-m);
+  padding: var(--spacing-l);
+  line-height: 1.1;
+  color: var(--color--ink-subtle);
+  text-align: center;
+  border: 1px solid var(--color--border);
+  border-radius: 3px;
+}
+
+/* --- Panel empty note (plugin sidebar panels) --------------------------------
+   The compact form of .dl-sidebar-panel__empty for a plugin's sidebar-panel body
+   (the host draws the panel and pads it 10px): one centered ink-subtle line
+   ("No redirects point to this record") in a 1px, 3px-radius box. The dashboard's
+   own version pads 24px at body size; this one is sized for the narrower frame.
+
+   <p class="dl-panel-empty">No redirects point to this record</p> */
+.dl-panel-empty {
+  box-sizing: border-box;
+  margin: 0;
+  padding: var(--spacing-m);
+  font-size: var(--font-size-s);
+  line-height: 1.2;
+  color: var(--color--ink-subtle);
+  text-align: center;
+  border: 1px solid var(--color--border);
+  border-radius: 3px;
+}
+
+/* --- Button ------------------------------------------------------------------
+   Mirrors styles/blocks/_button.css (.button and modifiers).
+   Flat 4px slabs, bold sentence-case labels, 1em icons 0.5em from the label.
+   Default = soft brand; --primary = the one commit per surface; --danger =
+   destructive commits only (confirm dialogs); --reversed = on colored bars or media;
+   --on-primary = main action on a brand bar (bulk bar); --subtle = bare ink-subtle
+   text or glyph; --link = inline text action.
+   Sizes (react-ui buttonSize): --xxs, --xs inline field actions, --s toolbars, default m,
+   --l empty-state CTAs, --xl full-width modal submit. --full = block, full width.
+   --icon = square icon-only button (give it an aria-label and a tooltip).
+   Plugins: react-ui <Button buttonType="muted|primary|negative" buttonSize fullWidth>
+   through the Button wrapper + kit-fixes.css in references/plugins.md 12 (icon
+   fill, focus ring, focused-primary fill).
+   The dashboard draws no focus ring; this recipe adds one. surface-active is for
+   :active only: white text on it is ~2.3:1, so a focused primary keeps its base
+   fill and gets the ring instead.
+
+   <button class="dl-button dl-button--s"><svg>plus</svg><span>Create new</span></button>
+   <button class="dl-button dl-button--primary dl-button--s" disabled>
+     <span>Saving…</span><span class="dl-spinner">…12 spans…</span>
+   </button> */
+.dl-button {
+  box-sizing: border-box;
+  display: inline-block;
+  margin: 0;
+  padding: 0.7em 1em;
+  font-family: inherit;
+  font-size: 1.1em;
+  font-weight: var(--font-weight-bold);
+  line-height: inherit;
+  color: var(--color--primary-soft--ink);
+  text-align: center;
+  text-decoration: none;
+  letter-spacing: 0;
+  white-space: nowrap;
+  vertical-align: middle;
+  cursor: pointer;
+  background-color: var(--color--primary-soft--surface);
+  border: 0;
+  border-radius: 4px;
+  appearance: none;
+  transition: all 0.3s var(--material-ease);
+}
+.dl-button > span {
+  position: relative;
+  top: 0.06em;
+}
+.dl-button svg {
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  vertical-align: middle;
+  fill: currentColor;
+}
+.dl-button > svg:first-child {
+  margin-right: 0.5em;
+}
+.dl-button > svg:last-child {
+  margin-left: 0.5em;
+}
+.dl-button > svg:only-child {
+  margin: 0;
+}
+.dl-button[aria-expanded="true"] > svg:last-child:not(:only-child) {
+  transform: rotate(180deg);
+} /* trailing caret flips */
+.dl-button:hover {
+  background-color: var(--color--primary-soft--surface-hover);
+}
+.dl-button:active {
+  background-color: var(--color--primary-soft--surface-active);
+}
+.dl-button:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 4px var(--color--focus--outline);
+}
+.dl-button--primary {
+  color: var(--color--primary--ink);
+  background-color: var(--color--primary--surface);
+}
+.dl-button--primary:hover {
+  background-color: var(--color--primary--surface-hover);
+}
+.dl-button--primary:active {
+  background-color: var(--color--primary--surface-active);
+}
+.dl-button--danger,
+.dl-button--danger:is(:hover, :active, :focus-visible) {
+  color: var(--color--danger--ink);
+  background-color: var(--color--danger--surface);
+}
+.dl-button--reversed {
+  color: var(--color--overlay--ink);
+  background-color: var(--color--overlay--surface);
+}
+.dl-button--reversed:hover {
+  background-color: var(--color--overlay--surface-hover);
+}
+.dl-button--reversed:is(:active, :focus-visible) {
+  background-color: var(--color--overlay--surface-active);
+}
+/* The dashboard pins a light slab with dark ink in both schemes; plugins don't get
+   those stops, so this inverts the primary pair (white slab, brand ink). */
+.dl-button--on-primary {
+  color: var(--color--primary--surface);
+  background-color: var(--color--primary--ink);
+}
+.dl-button--on-primary:is(:hover, :active, :focus-visible) {
+  background-color: color-mix(
+    in oklch,
+    var(--color--primary--ink) 88%,
+    var(--color--primary--surface)
+  );
+}
+.dl-button--subtle,
+.dl-button--subtle:is(:hover, :active, :focus-visible) {
+  padding: 0;
+  color: var(--color--ink-subtle);
+  background-color: transparent;
+}
+.dl-button--subtle:hover {
+  color: var(--color--ink);
+}
+.dl-button--link,
+.dl-button--link:is(:hover, :active, :focus-visible) {
+  padding: 0;
+  font-size: inherit;
+  font-weight: inherit;
+  color: var(--color--ink-link);
+  text-decoration: underline;
+  vertical-align: baseline;
+  background-color: transparent;
+}
+.dl-button--link:hover {
+  text-decoration: none;
+}
+.dl-button--link > span {
+  top: 0;
+}
+.dl-button--xxs {
+  padding: 0.4em 0.8em;
+  font-size: 0.9em;
+}
+.dl-button--xs {
+  padding: 0.6em 0.8em;
+  font-size: 1em;
+}
+.dl-button--s {
+  font-size: 1em;
+}
+.dl-button--l {
+  font-size: 1.2em;
+}
+.dl-button--xl {
+  padding: 1em;
+  font-size: 1.2em;
+}
+.dl-button--full {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dl-button--icon {
+  padding-right: 0.95em;
+  padding-left: 0.95em;
+  line-height: 1.5;
+}
+.dl-button--icon.dl-button--xs {
+  padding-right: 0.85em;
+  padding-left: 0.85em;
+}
+.dl-button--icon.dl-button--xl {
+  padding-right: 1.25em;
+  padding-left: 1.25em;
+}
+.dl-button > .dl-spinner:last-child {
+  margin-left: 0.5em;
+  font-size: 20px;
+}
+/* Disabled comes last so it beats every variant. Explain temporary
+   unavailability in a tooltip; hide actions the user has no permission for. */
+.dl-button:is(:disabled, [aria-disabled="true"], .dl-button--disabled),
+.dl-button:is(:disabled, [aria-disabled="true"], .dl-button--disabled):is(
+    :hover,
+    :active,
+    :focus-visible
+  ) {
+  color: var(--color--disabled--ink);
+  cursor: not-allowed;
+  background-color: var(--color--disabled--surface);
+}
+/* On colored bars the dashboard keeps the disabled slab and adds 80% opacity. */
+.dl-button:is(.dl-button--reversed, .dl-button--on-primary):is(
+    :disabled,
+    [aria-disabled="true"],
+    .dl-button--disabled
+  ) {
+  opacity: 0.8;
+}
+.dl-button:is(.dl-button--subtle, .dl-button--link):is(
+    :disabled,
+    [aria-disabled="true"],
+    .dl-button--disabled
+  ) {
+  color: var(--color--ink-disabled);
+  background-color: transparent;
+}
+
+/* --- Row title tag -----------------------------------------------------------
+   Mirrors styles/blocks/_ItemRow.css (.ItemRow__item__title__tag, --accent).
+   The quieter cousin of the badge, after a row or card title, in natural case
+   ("Not editable", "3 stages"). --accent for "Update available". On an active
+   .dl-list-row every tag flips to solid primary.
+
+   <span class="dl-list-row__title">Editors <span class="dl-row-tag">Not editable</span></span> */
+.dl-row-tag {
+  display: inline-block;
+  margin-left: 10px;
+  padding: 2px 5px 1px;
+  font-size: var(--font-size-xxs);
+  font-weight: var(--font-weight-bold);
+  color: var(--color--ink-subtle);
+  white-space: nowrap;
+  vertical-align: middle;
+  background-color: var(--color--surface-muted);
+  border-radius: 2px;
+}
+.dl-row-tag--accent,
+.dl-list-row--active .dl-row-tag {
+  color: var(--color--primary--ink);
+  background-color: var(--color--primary--surface);
+}
+
+/* --- Icon button (⋮ trigger) -------------------------------------------------
+   Mirrors styles/blocks/_Dropdown.css (.Dropdown__icon-trigger, --reverse).
+   The "more actions" trigger: a square with an ellipsis-vertical glyph in
+   ink-subtle; hover or open adds surface-hover. In rows it stays hidden until the
+   row is hovered (see .dl-list-row__menu). --reverse on colored bars and media.
+   react-ui 2.5.0 has no trigger components: render this button in renderTrigger.
+
+   <button class="dl-icon-button" aria-label="More actions" aria-expanded="false"><svg>ellipsis-vertical</svg></button> */
+.dl-icon-button {
+  box-sizing: border-box;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  margin: 0;
+  padding: 4px;
+  font-size: inherit;
+  line-height: 1;
+  color: var(--color--ink-subtle);
+  vertical-align: middle;
+  cursor: pointer;
+  background-color: transparent;
+  border: 0;
+  border-radius: 4px;
+  transition: background-color 0.2s var(--material-ease);
+}
+.dl-icon-button svg {
+  width: 1em;
+  height: 1em;
+  fill: currentColor;
+}
+.dl-icon-button:is(:hover, :focus-visible, [aria-expanded="true"]) {
+  color: var(--color--ink);
+  background-color: var(--color--surface-hover);
+}
+.dl-icon-button:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 4px var(--color--focus--outline);
+}
+.dl-icon-button:disabled {
+  color: var(--color--disabled--ink);
+  cursor: not-allowed;
+  background-color: transparent;
+}
+.dl-icon-button--reverse {
+  color: var(--color--overlay--ink);
+}
+.dl-icon-button--reverse:is(:hover, :focus-visible, [aria-expanded="true"]) {
+  color: var(--color--overlay--ink);
+  background-color: var(--color--overlay--surface);
+}
+
+/* --- Log status --------------------------------------------------------------
+   Mirrors styles/blocks/_WebhookCall.css (.WebhookCallStatus) and
+   webhook_calls/WebhookCallStatus.tsx.
+   Operational results in a log or activity table (webhook calls, deliveries,
+   builds, jobs): a 1em Regular icon + the capitalized status word, 5px apart. Only
+   the icon is colored. success = circle-check "Success"; failed =
+   circle-exclamation "Failed"; rescheduled = hourglass-clock "Rescheduled" (or
+   "Rescheduled (3/7)"); pending = arrow-right-arrow-left "Pending"; both
+   ink-muted. Not dots: dots are for enabled/disabled health.
+
+   <span class="dl-log-status dl-log-status--failed"><svg viewBox="0 0 512 512" aria-hidden="true">…circle-exclamation…</svg>Failed</span> */
+.dl-log-status {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+}
+.dl-log-status svg {
+  flex: none;
+  width: 1em;
+  height: 1em;
+  fill: var(--color--ink-muted);
+}
+.dl-log-status--success svg {
+  fill: var(--color--success-soft--ink);
+}
+.dl-log-status--failed svg {
+  fill: var(--color--danger-soft--ink);
+}
+.dl-log-status:is(.dl-log-status--rescheduled, .dl-log-status--pending) svg {
+  fill: var(--color--ink-muted);
+}
+
+/* --- Icon and icon + text ----------------------------------------------------
+   references/iconography-and-imagery.md 2 and 6.
+   .dl-icon: an inline Font Awesome 6 Regular SVG (width="1em" height="1em",
+   paths without fill) at the resting ink-subtle fill. --ink = full ink, --accent =
+   ink-link, --current = the ink of the colored surface around it (a badge, chip or
+   tinted tile). Kit Buttons don't need --current: the Button wrapper + kit-fixes.css
+   in references/plugins.md 12 recolors their icons; --current is only a fallback
+   for a lone custom icon in a kit Button you can't wrap.
+   .dl-with-icon: an inline icon + text pair, centered, 0.5em apart.
+
+   <span class="dl-with-icon"><svg class="dl-icon" width="1em" height="1em" viewBox="0 0 512 512" aria-hidden="true">…</svg>Open in new tab</span> */
+.dl-icon {
+  flex-shrink: 0;
+  vertical-align: middle;
+  fill: var(--color--ink-subtle);
+  transition: fill 0.2s var(--material-ease);
+}
+.dl-icon--ink {
+  fill: var(--color--ink);
+}
+.dl-icon--accent {
+  fill: var(--color--ink-link);
+}
+/* Doubled: beats react-ui's .button__leftIcon svg rule, which sets fill and color. */
+.dl-icon.dl-icon--current {
+  color: inherit;
+  fill: currentColor;
+}
+.dl-with-icon {
+  display: inline-flex;
+  gap: 0.5em;
+  align-items: center;
+}
+.dl-with-icon > svg:not([width]) {
+  width: 1em;
+  height: 1em;
+}
+
+/* --- Search input ------------------------------------------------------------
+   Mirrors styles/blocks/_QuickSearch.css (.QuickSearch__search__input) and
+   references/forms.md 17 and 19.
+   A plain .dl-input (or react-ui <TextInput>) with a magnifying-glass floating
+   10px from the left in ink-subtle and 35px of padding on both sides; the right
+   side holds __clear while there is a query, or a 30px spinner while fetching.
+   Live: filter on input (debounce 1000ms when each change hits the API).
+   Placeholder "Type something…". Command palettes, pickers and catalogs use it
+   as is (add .dl-input--compact in a 60px toolbar row); --flush fills a list
+   column's 40px short toolbar row with no frame and an inset focus halo.
+
+   <div class="dl-search">
+     <svg class="dl-search__icon" viewBox="0 0 512 512" aria-hidden="true">…magnifying-glass…</svg>
+     <input class="dl-input" type="search" placeholder="Type something…" aria-label="Search">
+     <button class="dl-search__clear" type="button" aria-label="Clear search"><svg>…xmark…</svg></button>
+   </div>
+   <div class="dl-toolbar dl-toolbar--short"><div class="dl-search dl-search--flush">…same children…</div></div> */
+.dl-search {
+  position: relative;
+  min-width: 0;
+}
+.dl-search > input {
+  /* also beats react-ui's <TextInput> padding */
+  padding-right: 35px;
+  padding-left: 35px;
+}
+.dl-search__icon {
+  position: absolute;
+  top: 50%;
+  left: 10px;
+  z-index: 1;
+  width: 1em;
+  height: 1em;
+  pointer-events: none;
+  fill: var(--color--ink-subtle);
+  transform: translateY(-50%);
+}
+.dl-search__clear {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  z-index: 1;
+  display: flex;
+  margin: 0;
+  padding: 0;
+  font-size: inherit;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  border-radius: 3px;
+  transform: translateY(-50%);
+}
+.dl-search__clear svg {
+  display: block;
+  width: 1em;
+  height: 1em;
+  fill: var(--color--ink-subtle);
+}
+.dl-search__clear:is(:hover, :focus-visible) svg {
+  fill: var(--color--ink-hover);
+}
+.dl-search__clear:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 3px var(--color--focus--outline);
+}
+.dl-search > input::-webkit-search-cancel-button,
+.dl-filter-bar__input::-webkit-search-cancel-button {
+  appearance: none;
+} /* __clear replaces it */
+.dl-search--flush {
+  display: flex;
+  flex: 1;
+  align-self: stretch;
+}
+.dl-search--flush > input,
+.dl-search--flush > input:is(:hover, :focus) {
+  padding-top: 0;
+  padding-bottom: 0;
+  background: transparent;
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+}
+.dl-search--flush:focus-within {
+  box-shadow: inset 0 0 0 4px var(--color--focus--outline);
+}
+
+/* --- Soft-tone callout -------------------------------------------------------
+   Mirrors styles/blocks/_ItemForm.css (.ItemForm__global-errors), _InstallPlugin.css
+   (.InstallPlugin__permissions), _PluginForm.css (.PluginFormNotice).
+   One {tone}-soft context for surface, border and ink together; no shadow, no
+   left bar. Danger for blocking problems ("Validation errors!", risky
+   permissions), warning for "needs attention". No success variant: use a toast.
+
+   <div class="dl-callout dl-callout--danger" role="alert">
+     <div class="dl-callout__title">Validation errors!</div>
+     <p>The following locales are failing some validations: Italian and German</p>
+   </div>
+   With an action: add --action and put a button last. */
+.dl-callout {
+  margin-bottom: var(--spacing-l);
+  padding: var(--spacing-l);
+  border: 1px solid transparent;
+  border-radius: 4px;
+}
+.dl-callout--danger {
+  color: var(--color--danger-soft--ink);
+  background-color: var(--color--danger-soft--surface);
+  border-color: var(--color--danger-soft--border);
+}
+.dl-callout--warning {
+  color: var(--color--warning-soft--ink);
+  background-color: var(--color--warning-soft--surface);
+  border-color: var(--color--warning-soft--border);
+}
+.dl-callout__title {
+  margin-bottom: var(--spacing-s);
+  font-size: var(--font-size-xl);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.2;
+}
+.dl-callout__eyebrow {
+  margin-bottom: var(--spacing-m);
+  font-size: var(--font-size-s);
+  font-weight: var(--font-weight-bold);
+  text-transform: uppercase;
+}
+.dl-callout p {
+  margin: 0 0 10px;
+}
+.dl-callout p:last-child {
+  margin-bottom: 0;
+}
+.dl-callout a {
+  font-weight: var(--font-weight-bold);
+  color: inherit;
+}
+.dl-callout svg {
+  fill: currentColor;
+}
+.dl-callout--with-action {
+  display: flex;
+  gap: 30px;
+  align-items: center;
+}
+.dl-callout--with-action > :first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+  line-height: 1.1;
+}
+
+/* --- Blank slate (empty page body) -------------------------------------------
+   Mirrors styles/blocks/_blank-slate.css.
+   Replaces an empty table or grid in the page column: the raised card, 36px
+   padding, a 35px gray title, one or two neutral lines, one large primary CTA
+   (none for a search miss; hide it when the user can't create). --tiny for
+   small regions. A docs link in the description stays a plain link (ink +
+   underline, as the dashboard's SSO blank slates render it), not bold ink-link.
+
+   <div class="dl-blank-slate">
+     <div class="dl-blank-slate__title">This collection is empty</div>
+     <div class="dl-blank-slate__description">There are no records yet.</div>
+     <button class="dl-button dl-button--primary dl-button--l">Create a new record</button>
+   </div> */
+.dl-blank-slate {
+  position: relative;
+  padding: var(--spacing-xl);
+  text-align: center;
+  background-color: var(--color--surface-raised);
+  border: 1px solid var(--color--border);
+  border-radius: 4px;
+  box-shadow: var(--shadow--raised);
+}
+.dl-blank-slate__title {
+  margin-bottom: var(--spacing-m);
+  font-size: 35px;
+  font-weight: var(--font-weight-bold);
+  color: var(--color--ink-subtle);
+  letter-spacing: -0.03em;
+}
+.dl-blank-slate__description {
+  max-width: 500px;
+  margin: 0 auto var(--spacing-l);
+}
+.dl-blank-slate__description p {
+  margin: 0 0 var(--spacing-s);
+}
+.dl-blank-slate__description p:last-child {
+  margin-bottom: 0;
+}
+.dl-blank-slate__description a:not([class]) {
+  /* The only way forward when there's nothing to create: style it like the
+     Overview and info-card docs links (bold ink-link). The dashboard's blank
+     slate sets no link style; react-ui sets none either (UA blue otherwise). */
+  font-weight: var(--font-weight-bold);
+  color: var(--color--ink-link);
+}
+.dl-blank-slate > :last-child {
+  margin-bottom: 0;
+}
+.dl-blank-slate--tiny .dl-blank-slate__title {
+  font-size: var(--font-size-xl);
+  letter-spacing: 0;
+}
+.dl-blank-slate--tiny .dl-blank-slate__description {
+  font-size: var(--font-size-s);
+}
+
+/* --- Progress bar ------------------------------------------------------------
+   Mirrors styles/blocks/_Environments.css and _Upload.css progress bars.
+   Determinate work (forking an environment, storage usage): an 8px rounded track
+   with the fill width animating over 0.3s. Pair it with text ("Uploading (42%)…").
+
+   <div class="dl-progress" role="progressbar" aria-valuenow="42" aria-valuemin="0" aria-valuemax="100">
+     <div class="dl-progress__bar" style="width: 42%"></div>
+   </div> */
+.dl-progress {
+  height: 8px;
+  overflow: hidden;
+  background-color: var(--color--progress--track);
+  border-radius: 10px;
+}
+.dl-progress__bar {
+  height: 100%;
+  background-color: var(--color--progress--fill);
+  transition: width 0.3s var(--material-ease);
+}
+
+/* --- Pane state (permission denied, load error) -----------------------------
+   Mirrors styles/blocks/_permission-denied.css.
+   Replaces the whole pane, dead center, neutral gray: no card, no CTA, no red.
+   Also the layout for "Couldn't load …" pane errors (circle-exclamation icon,
+   a soft "Try again" button). --inline for self-resizing frames.
+
+   <div class="dl-pane-state">
+     <div class="dl-pane-state__icon"><svg>ban</svg></div>
+     <div class="dl-pane-state__title">Permission denied</div>
+     <p>Your account does not have enough privileges to access this area</p>
+   </div> */
+.dl-pane-state {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-l) var(--spacing-xl);
+  overflow: auto;
+  text-align: center;
+}
+.dl-pane-state--inline {
+  position: relative;
+  inset: auto;
+  padding: var(--spacing-xxl) var(--spacing-xl);
+}
+.dl-pane-state__icon {
+  margin-bottom: var(--spacing-m);
+}
+.dl-pane-state__icon svg {
+  display: block;
+  width: 80px;
+  height: 80px;
+  fill: var(--color--ink-subtle);
+}
+.dl-pane-state__title {
+  font-size: 35px;
+  font-weight: var(--font-weight-bold);
+  line-height: 1.1;
+  letter-spacing: -0.05em;
+}
+.dl-pane-state p {
+  margin: var(--spacing-s) 0 0;
+}
+.dl-pane-state .dl-button {
+  margin-top: var(--spacing-l);
+}
+
+/* --- Table -------------------------------------------------------------------
+   Mirrors styles/blocks/_table.css (.table) and _ItemsTable.css (hover, select strip).
+   The header is a transparent caption line (0.9em regular ink-subtle, hairlines
+   between header cells only); the body is one raised card. Cells 10px 20px at
+   body size, left-aligned, 1px row dividers. No zebra, no sticky or filled headers,
+   no tinted checked rows. --hover for rows that open something (give them
+   tabindex="0" and open on Enter). __check = the selection column on a
+   surface-muted strip. People, settings, audit and activity lists; record
+   collections use .dl-data-table. react-ui 2.5.0 has no table.
+
+   <table class="dl-table dl-table--hover">
+     <thead><tr>
+       <th class="dl-table__check"><input class="dl-checkbox" type="checkbox" aria-label="Select all"></th>
+       <th><button class="dl-table__sort" type="button">Title ▲</button></th>
+       <th>Status</th>
+     </tr></thead>
+     <tbody><tr>
+       <td class="dl-table__check"><input class="dl-checkbox" type="checkbox" aria-label="Select"></td>
+       <td class="dl-table__title">Hello world</td>
+       <td class="dl-table__cell--nowrap"><svg class="dl-status-dot dl-status-dot--published" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="45" /></svg>Published</td>
+     </tr></tbody>
+   </table> */
+.dl-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.dl-table :is(th, td) {
+  padding: 10px 20px;
+  text-align: left;
+  vertical-align: middle;
+}
+.dl-table thead th {
+  font-size: 0.9em;
+  font-weight: normal;
+  color: var(--color--ink-subtle);
+  white-space: nowrap;
+  background: none;
+  border-left: 1px solid var(--color--border);
+}
+.dl-table thead th:first-child,
+.dl-table thead .dl-table__check + th {
+  border-left: 0;
+}
+.dl-table tbody {
+  border-radius: 4px;
+  box-shadow: var(--shadow--raised);
+}
+.dl-table tbody td {
+  background-color: var(--color--surface-raised);
+  border-bottom: 1px solid var(--color--border);
+}
+.dl-table tbody tr:first-child td {
+  border-top: 1px solid var(--color--border);
+}
+.dl-table tbody td:first-child {
+  border-left: 1px solid var(--color--border);
+}
+.dl-table tbody td:last-child {
+  border-right: 1px solid var(--color--border);
+}
+.dl-table tbody tr:first-child td:first-child {
+  border-top-left-radius: 4px;
+}
+.dl-table tbody tr:first-child td:last-child {
+  border-top-right-radius: 4px;
+}
+.dl-table tbody tr:last-child td:first-child {
+  border-bottom-left-radius: 4px;
+}
+.dl-table tbody tr:last-child td:last-child {
+  border-bottom-right-radius: 4px;
+}
+.dl-table--hover tbody tr:is(:hover, :focus-visible) td:not(.dl-table__check) {
+  cursor: pointer;
+  background-color: var(--color--surface-hover);
+}
+/* Rows that open something take tabindex="0" and Enter; outline (not box-shadow)
+   is what table rows render reliably. */
+.dl-table--hover tbody tr[tabindex]:focus-visible {
+  outline: 4px solid var(--color--focus--outline);
+  outline-offset: -4px;
+  box-shadow: none;
+}
+.dl-table .dl-table__check {
+  width: 1px;
+  padding-right: 10px;
+  padding-left: 10px;
+}
+.dl-table tbody .dl-table__check {
+  background-color: var(--color--surface-muted);
+}
+.dl-table .dl-table__check input {
+  margin: 0;
+  vertical-align: middle;
+}
+.dl-table .dl-table__title {
+  font-size: var(--font-size-m);
+}
+.dl-table .dl-table__title .dl-thumb {
+  display: inline-block;
+  margin-right: 20px;
+  vertical-align: middle;
+}
+.dl-table .dl-table__cell--nowrap {
+  white-space: nowrap;
+}
+.dl-table__row--disabled td {
+  opacity: 0.6;
+}
+.dl-table .dl-table__cell--empty {
+  padding: var(--spacing-xl);
+  color: var(--color--ink-subtle);
+  text-align: center;
+}
+.dl-table__sort {
+  margin: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--color--ink-subtle);
+  white-space: nowrap;
+  cursor: pointer;
+  background: none;
+  border: 0;
+}
+.dl-table__sort:is(:hover, :focus-visible) {
+  outline: 0;
+  text-decoration: underline;
+}
+
+/* --- Record presentation -----------------------------------------------------
+   Mirrors src/components/ui/BasicItemPresentation/ and _EmbedsManyRow.css
+   (__content, __content__title, __content__details).
+   How a record reads anywhere (rows, linked-record cards, pickers): the model name
+   as an xs eyebrow, the title, then the meta line (status dot + word), 3px apart.
+   Thumbnail (.dl-thumb) on the left, ⋮ on the right.
+
+   <div class="dl-record">
+     <div class="dl-record__model">Blog post</div>
+     <div class="dl-record__title">Hello world</div>
+     <div class="dl-record__meta"><svg class="dl-status-dot dl-status-dot--published" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="45" /></svg>Published</div>
+   </div> */
+.dl-record {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.dl-record__model {
+  font-size: var(--font-size-xs);
+  line-height: 1.1;
+  color: var(--color--ink-subtle);
+  overflow-wrap: anywhere;
+}
+.dl-record__title {
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+.dl-record__meta {
+  font-size: var(--font-size-xs);
+  line-height: 1.1;
+  color: var(--color--ink-subtle);
+}
+
+/* --- Key/value rows ----------------------------------------------------------
+   Mirrors styles/blocks/_ItemInfo.css (.ItemInfo__group, __row, __row__title, __row__content, __action).
+   The properties of one object (record info sidebar): 0.9em ink-subtle key on
+   the left, value right-aligned, hairlines between rows. In a plugin sidebar
+   panel the host draws the panel title: render only the rows.
+
+   <div class="dl-info-group">
+     <div class="dl-info-group__title">Record</div>
+     <div class="dl-info-row"><span class="dl-info-row__label">ID</span><span class="dl-info-row__value">abc123</span></div>
+     <div class="dl-info-row"><span class="dl-info-row__label">Status</span>
+       <span class="dl-info-row__value">Draft <button class="dl-info-row__action">Change</button></span></div>
+   </div> */
+.dl-info-group {
+  margin: 20px 0;
+}
+.dl-info-group:first-child {
+  margin-top: 0;
+}
+.dl-info-group:last-child {
+  margin-bottom: 0;
+}
+.dl-info-group__title {
+  margin-bottom: 10px;
+  font-weight: var(--font-weight-bold);
+  line-height: 1.1;
+  color: var(--color--ink-subtle);
+  text-align: center;
+}
+.dl-info-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  line-height: 1.1;
+  border-bottom: 1px solid var(--color--border);
+}
+.dl-info-row:last-child {
+  margin-bottom: 0;
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+.dl-info-row__label {
+  flex: 1 1 auto;
+  margin: 0;
+  padding-right: 10px;
+  font-size: 0.9em;
+  font-weight: normal;
+  color: var(--color--ink-subtle);
+}
+.dl-info-row__value {
+  min-width: 0;
+  margin: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.dl-info-row__action {
+  margin: 0 0 0 0.5em;
+  padding: 0;
+  font: inherit;
+  font-size: var(--font-size-xs);
+  color: var(--color--ink-subtle);
+  cursor: pointer;
+  background: none;
+  border: 0;
+}
+.dl-info-row__action:is(:hover, :focus-visible) {
+  outline: 0;
+  text-decoration: underline;
+}
+
+/* --- Pagination --------------------------------------------------------------
+   Mirrors styles/blocks/_Pagination.css.
+   Quiet text controls in the pane's footer toolbar (collections and logs alike,
+   never inside the page body): "Show: 50" · « Previous · pages · Next ». Current
+   page = a gray chip, never brand. Hide the whole control when everything fits on
+   one page. Per page: 25 / 50 / 100 / 200. react-ui 2.5.0 has no pagination.
+
+   <nav class="dl-pagination" aria-label="Pagination">
+     <label class="dl-per-page">Show: 50
+       <select aria-label="Records per page"><option>25</option><option selected>50</option></select></label>
+     <button class="dl-pagination__nav" disabled>« Previous</button>
+     <span class="dl-pagination__pages">
+       <a class="dl-pagination__page dl-pagination__page--current" aria-current="page">1</a><a class="dl-pagination__page" href="?page=2">2</a>
+     </span>
+     <button class="dl-pagination__nav">Next »</button>
+   </nav> */
+.dl-pagination {
+  display: flex;
+  align-items: center;
+}
+.dl-pagination__nav {
+  margin: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--color--ink-subtle);
+  white-space: nowrap;
+  cursor: pointer;
+  background: none;
+  border: 0;
+}
+.dl-pagination__nav:is(:hover, :focus-visible) {
+  outline: 0;
+  color: var(--color--ink);
+}
+.dl-pagination__nav:disabled {
+  color: var(--color--ink-subtle);
+  cursor: default;
+  opacity: 0.4;
+}
+.dl-pagination__pages {
+  display: flex;
+  margin: 0 10px;
+}
+.dl-pagination__page {
+  margin: 0 2px;
+  padding: 8px 10px;
+  font: inherit;
+  color: var(--color--ink-subtle);
+  text-decoration: none;
+  cursor: pointer;
+  background-color: var(--color--surface-raised);
+  border: 0;
+  border-radius: 3px;
+}
+.dl-pagination__page:is(:hover, :focus-visible) {
+  outline: 0;
+  background-color: var(--color--surface-muted);
+}
+.dl-pagination__page:focus-visible {
+  box-shadow: 0 0 0 4px var(--color--focus--outline);
+}
+.dl-pagination__page:is(.dl-pagination__page--current, [aria-current="page"]) {
+  color: var(--color--ink);
+  cursor: default;
+  background-color: var(--color--surface-muted);
+}
+.dl-per-page {
+  position: relative;
+  margin-right: 20px;
+  padding: 5px 8px 3px;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  transition: all 0.1s ease-out;
+}
+.dl-per-page select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+  opacity: 0;
+  appearance: none;
+}
+.dl-per-page::after {
+  position: absolute;
+  top: 50%;
+  right: 7px;
+  pointer-events: none;
+  content: "";
+  border-top: 5.5px solid var(--color--ink-subtle);
+  border-right: 5.5px solid transparent;
+  border-left: 5.5px solid transparent;
+  opacity: 0;
+  transform: translateY(-50%);
+  transition: opacity 0.1s ease-out;
+}
+.dl-per-page:is(:hover, :focus-within) {
+  padding-right: 25px;
+  border-color: var(--color--border);
+}
+.dl-per-page:is(:hover, :focus-within)::after {
+  opacity: 1;
+}
+.dl-per-page:has(select:focus-visible) {
+  box-shadow: 0 0 0 4px var(--color--focus--outline);
+}
+
+/* ==========================================================================
+   8. Touch and reduced motion
+   ========================================================================== */
+
+/* Hover-revealed affordances stay visible where there is no hover. */
+@media (hover: none) {
+  .dl-tree__action,
+  .dl-list-row__menu,
+  .dl-field__actions,
+  .dl-card__actions,
+  .dl-media-card__menu {
+    opacity: 1;
+  }
+  .dl-media-card__actions {
+    display: none;
+  } /* quick actions move into the ⋮ menu */
+}
+
+/* Motion is already short (<= 0.3s). Under reduced motion, drop slides, bounces
+   and pulses; keep the loading feedback (the spinner's opacity fade and the
+   row refetch bar). */
+@media (prefers-reduced-motion: reduce) {
+  .dl-button,
+  .dl-submit,
+  .dl-input,
+  .dl-input-group,
+  .dl-option-card,
+  .dl-option-card__radio::before,
+  .dl-switch__track,
+  .dl-switch__track::after,
+  .dl-toolbar__tab::after,
+  .dl-section__caret,
+  .dl-tree__action,
+  .dl-icon,
+  .dl-icon-button,
+  .dl-field__actions,
+  .dl-field-chip--l,
+  .dl-filter-bar__search-clear svg,
+  .dl-filter-bar__filter-icon svg,
+  .dl-filter-bar__clear svg,
+  .dl-filter-bar__add svg,
+  .dl-filter-tile,
+  .dl-filter-tile__part > select,
+  .dl-filter-tile__part::after,
+  .dl-filter-tile__remove svg,
+  .dl-outline-card,
+  .dl-node-card::before,
+  .dl-card__actions,
+  .dl-data-table__header-cell,
+  .dl-data-table__reorder,
+  .dl-list-row::before,
+  .dl-list-row__menu,
+  .dl-media-card,
+  .dl-media-card__actions,
+  .dl-media-card__menu,
+  .dl-asset-preview img,
+  .dl-diff,
+  .dl-per-page,
+  .dl-per-page::after {
+    transition: none;
+  }
+  .dl-switch__track::after,
+  .dl-field__error::before,
+  .dl-tree__node--drop-target,
+  .dl-beacon::before,
+  .dl-toast,
+  .dl-selection-bar,
+  .dl-busy,
+  .dl-modal__backdrop,
+  .dl-modal__content,
+  .dl-confirm__backdrop,
+  .dl-confirm__panel {
+    animation: none;
+  }
+}
