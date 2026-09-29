@@ -1,5 +1,6 @@
 import {
   type AgentProvider,
+  DEFAULT_MODEL,
   REASONING_EFFORTS,
   type ReasoningEffort,
 } from './config';
@@ -62,13 +63,53 @@ async function readJsonResponse(
   }
 }
 
+function openAiModelVersion(modelId: string) {
+  const match = /^gpt-(\d+)(?:\.(\d+))?(?:-|$)/i.exec(modelId);
+  return match
+    ? { major: Number(match[1]), minor: Number(match[2] ?? 0) }
+    : undefined;
+}
+
 /**
- * Dato Agent uses Responses streaming, reasoning controls, function tools, and
- * hosted MCP. Keep the OpenAI picker to models matching that complete stack.
+ * The model-list API returns IDs, not Responses/tool/reasoning capabilities.
+ * Accept general-purpose GPT-5 and later models, including new generations and
+ * snapshots, without pinning discovery to a release or a list of variants.
+ * Specialized endpoints and chat/coding variants do not share this runtime's
+ * reasoning and verbosity controls.
  */
 export function isCompatibleOpenAiAgentModel(modelId: string): boolean {
-  return /^gpt-5\.6(?:-(?:sol|terra|luna))?(?:-\d{4}-\d{2}-\d{2})?$/.test(
-    modelId.toLowerCase(),
+  const version = openAiModelVersion(modelId);
+  return (
+    Boolean(version && version.major >= 5) &&
+    !/(?:^|-)(?:chat|codex|audio|realtime|transcribe|tts|image|search|instruct|embedding|moderation)(?:-|$)/i.test(
+      modelId,
+    )
+  );
+}
+
+function openAiReasoningEfforts(modelId: string): ReasoningEffort[] {
+  const version = openAiModelVersion(modelId);
+  if (!version) {
+    return [];
+  }
+
+  // Known historical restrictions are independent of which IDs are available
+  // to this API key. New general-purpose generations inherit the current set.
+  if (/(?:^|-)pro(?:-|$)/i.test(modelId)) {
+    return version.major === 5 && version.minor === 0
+      ? ['high']
+      : ['medium', 'high', 'xhigh'];
+  }
+  if (version.major === 5) {
+    if (version.minor === 0) return ['low', 'medium', 'high'];
+    if (version.minor === 1) return ['none', 'low', 'medium', 'high'];
+    if (version.minor < 6) {
+      return ['none', 'low', 'medium', 'high', 'xhigh'];
+    }
+  }
+
+  return REASONING_EFFORTS.filter(
+    (effort) => effort !== 'none' || !/(?:^|-)astra(?:-|$)/i.test(modelId),
   );
 }
 
@@ -80,7 +121,9 @@ export function providerModelSupportsFastMode(
 
   switch (provider) {
     case 'openai':
-      return isCompatibleOpenAiAgentModel(normalizedModelId);
+      return /^gpt-5\.6(?:-(?:sol|terra|luna))?(?:-\d{4}-\d{2}-\d{2})?$/.test(
+        normalizedModelId,
+      );
     case 'anthropic':
       return /^(?:claude-opus-5|claude-opus-4-8)(?:-\d{8}|-\d{4}-\d{2}-\d{2})?$/.test(
         normalizedModelId,
@@ -152,7 +195,7 @@ function extractOpenAiModels(payload: unknown): ProviderModel[] {
     .map((id) => ({
       id,
       label: id,
-      reasoningEfforts: [...REASONING_EFFORTS],
+      reasoningEfforts: openAiReasoningEfforts(id),
     }));
 }
 
@@ -384,5 +427,5 @@ export function preferredProviderModel(
     );
   }
 
-  return models[0];
+  return models.find((model) => model.id === DEFAULT_MODEL) ?? models[0];
 }

@@ -9,6 +9,7 @@ import {
 import type { RenderConfigScreenCtx } from 'datocms-plugin-sdk';
 import type { FormEvent, ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { listOpenAiProviderModels } from '../lib/providerModels';
 import ConfigScreen from './ConfigScreen';
 
 const modelMocks = vi.hoisted(() => ({
@@ -238,16 +239,19 @@ vi.mock('datocms-react-ui', () => ({
     children,
     disabled,
     fullWidth,
+    onClick,
     type = 'button',
   }: {
     children: ReactNode;
     disabled?: boolean;
     fullWidth?: boolean;
+    onClick?: () => void;
     type?: 'button' | 'submit';
   }) => (
     <button
       data-full-width={fullWidth ? 'true' : undefined}
       disabled={disabled}
+      onClick={onClick}
       type={type}
     >
       {children}
@@ -544,6 +548,95 @@ describe('ConfigScreen', () => {
         anthropicModel: CLAUDE_OPUS.id,
       }),
     );
+  });
+
+  it('selects and saves a newer OpenAI model returned by the model API', async () => {
+    const fetchModels = vi.fn<typeof fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          data: [
+            { id: OPENAI_MODEL.id },
+            { id: 'gpt-6-astra' },
+            { id: 'gpt-6.1-sol' },
+            { id: 'gpt-image-2' },
+          ],
+        }),
+      ),
+    );
+    modelMocks.listProviderModels.mockImplementationOnce(
+      (_provider: string, apiKey: string, signal: AbortSignal) =>
+        listOpenAiProviderModels(apiKey, signal, fetchModels),
+    );
+    const { ctx, updatePluginParameters } = createCtx({
+      parameters: { ...PARAMETERS, reasoningEffort: 'none' },
+    });
+    render(<ConfigScreen ctx={ctx} />);
+    await finishModelDiscovery();
+
+    const model = screen.getByLabelText('OpenAI model');
+    expect(
+      within(model).getByRole('option', { name: 'gpt-6.1-sol' }),
+    ).toBeVisible();
+    expect(
+      within(model).queryByRole('option', { name: 'gpt-image-2' }),
+    ).toBeNull();
+    fireEvent.change(model, { target: { value: 'gpt-6-astra' } });
+    const effort = screen.getByLabelText('Reasoning effort');
+    expect(within(effort).queryByRole('option', { name: /None/ })).toBeNull();
+    expect(effort).toHaveValue('high');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await act(async () => {});
+    expect(updatePluginParameters).toHaveBeenCalledWith(
+      expect.objectContaining({
+        model: 'gpt-6-astra',
+        reasoningEffort: 'high',
+      }),
+    );
+  });
+
+  it('refreshes available models without changing credentials or the selected model', async () => {
+    modelMocks.listProviderModels.mockResolvedValueOnce([OPENAI_MODEL]);
+    const { ctx } = createCtx();
+    render(<ConfigScreen ctx={ctx} />);
+    await finishModelDiscovery();
+
+    modelMocks.listProviderModels.mockResolvedValueOnce([
+      OPENAI_MODEL,
+      { ...OPENAI_MODEL, id: 'gpt-6.1-sol', label: 'gpt-6.1-sol' },
+    ]);
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh models' }));
+    await finishModelDiscovery();
+
+    expect(modelMocks.listProviderModels).toHaveBeenCalledTimes(2);
+    expect(modelMocks.listProviderModels).toHaveBeenLastCalledWith(
+      'openai',
+      'sk-project',
+      expect.any(AbortSignal),
+    );
+    const model = screen.getByLabelText('OpenAI model');
+    expect(model).toHaveValue(OPENAI_MODEL.id);
+    expect(
+      within(model).getByRole('option', { name: 'gpt-6.1-sol' }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole('button', { name: 'Save settings' }),
+    ).toBeDisabled();
+  });
+
+  it('lets an empty model list be refreshed when a model becomes available', async () => {
+    modelMocks.listProviderModels
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([OPENAI_MODEL]);
+    const { ctx } = createCtx();
+    render(<ConfigScreen ctx={ctx} />);
+    await finishModelDiscovery();
+
+    expect(screen.getByText(/No compatible agent models/)).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh models' }));
+    await finishModelDiscovery();
+    expect(screen.getByLabelText('OpenAI model')).toHaveValue(OPENAI_MODEL.id);
+    expect(screen.getByText('1 compatible model available.')).toBeVisible();
   });
 
   it('saves the active Anthropic model selected from discovery', async () => {

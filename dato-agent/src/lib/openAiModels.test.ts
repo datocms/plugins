@@ -52,6 +52,28 @@ describe('listOpenAiModels', () => {
     ).resolves.toEqual(['gpt-5.6-luna', 'gpt-5.6', 'gpt-5.6-sol-2026-07-01']);
   });
 
+  it('discovers new general-purpose generations returned by the API', async () => {
+    const fetchModels = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse({
+        data: [
+          { id: 'gpt-6-astra' },
+          { id: 'gpt-6.1-sol' },
+          { id: 'gpt-7-future-variant' },
+          { id: 'gpt-image-2' },
+        ],
+      }),
+    );
+    const models = await listOpenAiModels('sk-project', undefined, fetchModels);
+    expect(models).toEqual(
+      expect.arrayContaining([
+        'gpt-6-astra',
+        'gpt-6.1-sol',
+        'gpt-7-future-variant',
+      ]),
+    );
+    expect(models).toHaveLength(3);
+  });
+
   it('surfaces the OpenAI API error without exposing the key', async () => {
     const fetchModels = vi
       .fn<typeof fetch>()

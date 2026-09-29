@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  isCompatibleOpenAiAgentModel,
   listAnthropicProviderModels,
   listOpenAiProviderModels,
   listProviderModels,
@@ -55,6 +56,7 @@ describe('provider model discovery', () => {
   it('limits fast mode to provider models that currently support it', () => {
     expect(providerModelSupportsFastMode('openai', 'gpt-5.6-terra')).toBe(true);
     expect(providerModelSupportsFastMode('openai', 'gpt-4.1')).toBe(false);
+    expect(providerModelSupportsFastMode('openai', 'gpt-5-mini')).toBe(false);
     expect(providerModelSupportsFastMode('anthropic', 'claude-opus-5')).toBe(
       true,
     );
@@ -123,6 +125,81 @@ describe('provider model discovery', () => {
       { id: 'gpt-5.6-sol-2026-08-01' },
       { id: 'gpt-5.6-sol-2026-05-01' },
     ]);
+  });
+
+  it.each([
+    'gpt-5',
+    'gpt-5-mini',
+    'gpt-5.1',
+    'gpt-5.2-pro',
+    'gpt-5.4-nano',
+    'gpt-5.5',
+    'gpt-5.6-sol-2026-07-01',
+    'gpt-6-astra',
+    'gpt-6-sol',
+    'gpt-6-luna',
+    'gpt-6.1-sol',
+    'gpt-7-future-variant',
+    'gpt-10-2028-01-01',
+  ])('includes available general-purpose model %s', async (id) => {
+    const fetchModels = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        jsonResponse({ data: [{ id }, { id }, { id: '' }, null] }),
+      );
+
+    await expect(
+      listOpenAiProviderModels('sk-project', undefined, fetchModels),
+    ).resolves.toMatchObject([{ id, label: id }]);
+  });
+
+  it.each([
+    'gpt-4.1',
+    'gpt-4o',
+    'gpt-oss-120b',
+    'gpt-image-2',
+    'gpt-realtime-2',
+    'gpt-5-chat-latest',
+    'gpt-5.2-codex',
+    'gpt-6-audio-preview',
+    'gpt-6-search-preview',
+    'gpt-6-transcribe',
+    'o3-deep-research',
+    'text-embedding-3-large',
+    'omni-moderation-latest',
+  ])('omits model %s that does not fit the agent runtime', (id) => {
+    expect(isCompatibleOpenAiAgentModel(id)).toBe(false);
+  });
+
+  it.each([
+    ['gpt-5-mini', ['low', 'medium', 'high']],
+    ['gpt-5-2025-08-07', ['low', 'medium', 'high']],
+    ['gpt-5.1', ['none', 'low', 'medium', 'high']],
+    ['gpt-5.2', ['none', 'low', 'medium', 'high', 'xhigh']],
+    ['gpt-5.4-mini', ['none', 'low', 'medium', 'high', 'xhigh']],
+    ['gpt-5.5', ['none', 'low', 'medium', 'high', 'xhigh']],
+    ['gpt-5-pro-2025-10-06', ['high']],
+    ['gpt-5.2-pro', ['medium', 'high', 'xhigh']],
+    ['gpt-6-astra', ['low', 'medium', 'high', 'xhigh', 'max']],
+    ['gpt-6-astra-2026-09-01', ['low', 'medium', 'high', 'xhigh', 'max']],
+    ['gpt-6-sol', ['none', 'low', 'medium', 'high', 'xhigh', 'max']],
+  ])('uses known reasoning limits for %s', async (id, reasoningEfforts) => {
+    const fetchModels = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse({ data: [{ id }] }));
+
+    await expect(
+      listOpenAiProviderModels('sk-project', undefined, fetchModels),
+    ).resolves.toEqual([{ id, label: id, reasoningEfforts }]);
+  });
+
+  it('prefers the existing OpenAI default only when the API returns it', () => {
+    const model = (id: string) => ({ id, label: id, reasoningEfforts: [] });
+    const models = [model('gpt-6-astra'), model('gpt-5.6-terra')];
+    expect(preferredProviderModel('openai', models)?.id).toBe('gpt-5.6-terra');
+    expect(preferredProviderModel('openai', models.slice(0, 1))?.id).toBe(
+      'gpt-6-astra',
+    );
   });
 
   it('paginates Anthropic models and uses returned capabilities and labels', async () => {

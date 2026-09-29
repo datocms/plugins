@@ -451,6 +451,7 @@ function modelDiscoveryHint(
   apiKey: string,
   discovery: ModelDiscoveryState,
   retry: () => void,
+  refreshDisabled: boolean,
 ): ReactNode {
   const { name } = PROVIDER_DETAILS[provider];
 
@@ -473,12 +474,22 @@ function modelDiscoveryHint(
   if (!discovery.loaded) {
     return 'Waiting to load models…';
   }
-  if (discovery.models.length === 0) {
-    return 'No compatible agent models are available for this API key.';
-  }
-
   const count = discovery.models.length;
-  return `${count} compatible model${count === 1 ? '' : 's'} available.`;
+  return (
+    <>
+      {count === 0
+        ? 'No compatible agent models are available for this API key.'
+        : `${count} compatible model${count === 1 ? '' : 's'} available.`}{' '}
+      <Button
+        buttonSize="xxs"
+        disabled={refreshDisabled}
+        onClick={retry}
+        type="button"
+      >
+        Refresh models
+      </Button>
+    </>
+  );
 }
 
 function configurationValidationError(
@@ -708,6 +719,7 @@ function ProviderConfigurationFields({
             apiKey,
             discovery,
             retryModelDiscovery,
+            saving,
           )}
           onChange={(option) => {
             if (option) {
