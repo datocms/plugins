@@ -129,14 +129,13 @@ export default function ExclusionRulesSection({
               name="apiKeysToBeExcludedFromTranslation"
               id="apiKeysToBeExcludedFromTranslation"
               label="Fields to be excluded from translation"
-              value={apiKeysToBeExcluded.map((apiKey) => ({
-                label: `${
-                  listOfFields.find((field) => field.id === apiKey)?.name
-                } (${
-                  listOfFields.find((field) => field.id === apiKey)?.model
-                })`,
-                value: apiKey,
-              }))}
+              value={apiKeysToBeExcluded.map((fieldKey) => {
+                const field = listOfFields.find((f) => f.id === fieldKey);
+                return {
+                  label: field ? `${field.name} (${field.model})` : fieldKey,
+                  value: fieldKey,
+                };
+              })}
               selectInputProps={{
                 isMulti: true,
                 options: listOfFields.map((field) => ({

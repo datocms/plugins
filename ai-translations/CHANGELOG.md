@@ -1,5 +1,6 @@
 # Changelog
 
+- 3.7.2: Fixed the field exclusion picker loading only with OpenAI credentials. Fields are now available for every translation provider, and saved API-key, path, or missing-field exclusions display their original value instead of `undefined (undefined)`.
 - 3.7.1:
   - Fixed custom translation prompts and record context being ignored by chat providers, including SEO and chunked translations. Translation requests retain the selected languages, ICU syntax rules, and JSON-array output requirements, and insert record context literally.
   - Fixed reading default asset alt text and titles when translating file fields with the updated Content Management API client.

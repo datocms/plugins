@@ -29,7 +29,7 @@ import { listRelevantGeminiModels } from '../../utils/translation/GeminiModels';
 import { listRelevantOpenAIModels } from '../../utils/translation/OpenAIModels';
 import s from '../styles.module.css';
 import { translateFieldTypes } from './configConstants';
-import ExclusionRulesSection from './ExclusionRulesSection';
+import ExclusionRulesSection, { type Field } from './ExclusionRulesSection';
 import { useExclusionRules } from './hooks/useExclusionRules';
 import { useFeatureToggles } from './hooks/useFeatureToggles';
 // PERF-003: Custom hooks for grouped state management
@@ -247,52 +247,14 @@ async function loadClaudeModels(
  * @returns The merged field list with no duplicate IDs.
  */
 function mergeUniqueFields(
-  prevFields: { id: string; name: string; model: string }[],
-  newFields: { id: string; name: string; model: string }[],
-): { id: string; name: string; model: string }[] {
+  prevFields: Field[],
+  newFields: Field[],
+): Field[] {
   const existingIds = new Set(prevFields.map((field) => field.id));
   const uniqueNewFields = newFields.filter(
     (field) => !existingIds.has(field.id),
   );
   return [...prevFields, ...uniqueNewFields];
-}
-
-/**
- * Loads and registers all fields from a single item type into the field list state.
- * Extracted to remove complex callback nesting from the `useEffect` loop.
- *
- * @param itemTypeID - The item type ID to load fields for.
- * @param ctx - The config screen context.
- * @param setListOfFields - React state setter for the field list.
- */
-function loadFieldsForItemType(
-  itemTypeID: string,
-  ctx: RenderConfigScreenCtx,
-  setListOfFields: React.Dispatch<
-    React.SetStateAction<{ id: string; name: string; model: string }[]>
-  >,
-): void {
-  ctx
-    .loadItemTypeFields(itemTypeID)
-    .then((fields) => {
-      setListOfFields((prevFields) => {
-        const itemType = ctx.itemTypes[itemTypeID];
-        const isBlock = itemType?.attributes.modular_block;
-        const modelName = itemType?.attributes.name;
-        const newFields = fields.map((field) => ({
-          id: field.id,
-          name: field.attributes.label,
-          model: isBlock ? `${modelName} block` : (modelName ?? ''),
-        }));
-        return mergeUniqueFields(prevFields, newFields);
-      });
-    })
-    .catch((error) => {
-      console.error(
-        `Failed to load fields for item type ${itemTypeID}:`,
-        error,
-      );
-    });
 }
 
 /**
@@ -738,13 +700,8 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
     'Insert a valid Anthropic API Key',
   ]);
 
-  const [listOfFields, setListOfFields] = useState<
-    {
-      id: string;
-      name: string;
-      model: string;
-    }[]
-  >([]);
+  const [listOfFields, setListOfFields] = useState<Field[]>([]);
+  const { itemTypes, loadItemTypeFields } = ctx;
 
   /**
    * When the user updates or removes the API key, we refetch the model list.
@@ -756,11 +713,40 @@ export default function ConfigScreen({ ctx }: { ctx: RenderConfigScreenCtx }) {
   }, [gptModel]);
 
   useEffect(() => {
-    if (vendor !== 'openai' || !apiKey) return;
-    for (const itemTypeID in ctx.itemTypes) {
-      loadFieldsForItemType(itemTypeID, ctx, setListOfFields);
+    let active = true;
+    setListOfFields([]);
+
+    for (const [itemTypeID, itemType] of Object.entries(itemTypes)) {
+      if (!itemType) continue;
+
+      loadItemTypeFields(itemTypeID)
+        .then((fields) => {
+          if (!active) return;
+          const modelName = itemType.attributes.name;
+          const newFields = fields.map((field) => ({
+            id: field.id,
+            name: field.attributes.label,
+            model: itemType.attributes.modular_block
+              ? `${modelName} block`
+              : modelName,
+          }));
+          setListOfFields((prevFields) =>
+            mergeUniqueFields(prevFields, newFields),
+          );
+        })
+        .catch((error) => {
+          if (!active) return;
+          console.error(
+            `Failed to load fields for item type ${itemTypeID}:`,
+            error,
+          );
+        });
     }
-  }, [ctx, apiKey, vendor]);
+
+    return () => {
+      active = false;
+    };
+  }, [itemTypes, loadItemTypeFields]);
 
   useEffect(() => {
     modelListRequestId.current += 1;
