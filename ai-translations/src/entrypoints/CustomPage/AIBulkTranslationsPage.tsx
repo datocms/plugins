@@ -13,14 +13,12 @@
  *   - `defaultFieldSelection` / `pruneFieldSelection` — manage the per-model
  *     field selection map as the user adds and removes models.
  *
- * After Start, the page opens the existing TranslationProgressModal once
- * per target locale, sequentially. Each modal receives the per-model field
- * allowlist and the cmaBaseUrl so the translation flow only touches the
- * fields the user explicitly opted into.
+ * After discovering records and confirming the selection, one progress modal
+ * translates every target locale in bounded record batches.
  */
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
 import { Button, Canvas, SelectField, Spinner } from 'datocms-react-ui';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CHIP_SELECT_CLASS_PREFIX,
   type ChipOption,
@@ -31,6 +29,7 @@ import type { TranslationConfirmModalParams } from '../../components/Translation
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import { buildDatoCMSClient } from '../../utils/clients';
 import { formatLocaleLabel } from '../../utils/localeUtils';
+import { collectRecordIds } from '../../utils/translation/BulkRecordLoader';
 import {
   ALL_LOCALES_VALUE,
   defaultFieldSelection,
@@ -73,6 +72,14 @@ const ALL_LOCALES_OPTION: LocaleOption = {
   value: ALL_LOCALES_VALUE,
 };
 
+function getStartButtonLabel(
+  isStarting: boolean,
+  isCollecting: boolean,
+): string {
+  if (!isStarting) return 'Start bulk translation';
+  return isCollecting ? 'Finding records…' : 'Please wait…';
+}
+
 export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
   const [models, setModels] = useState<ModelOption[]>([]);
   const [selectedModels, setSelectedModels] = useState<ModelOption[]>([]);
@@ -80,9 +87,9 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
   const [sourceLocale, setSourceLocale] = useState<LocaleOption | null>(null);
   // Default to "All other locales" so the common case (translate into every
   // other locale) takes zero clicks; the user can narrow it if they want.
-  const [targetLocaleOptions, setTargetLocaleOptions] = useState<LocaleOption[]>(
-    [ALL_LOCALES_OPTION],
-  );
+  const [targetLocaleOptions, setTargetLocaleOptions] = useState<
+    LocaleOption[]
+  >([ALL_LOCALES_OPTION]);
   const [fieldsByModel, setFieldsByModel] = useState<
     Record<string, TranslatableField[]>
   >({});
@@ -94,6 +101,14 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
   >(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [isStartingTranslation, setIsStartingTranslation] = useState(false);
+  const [collectionProgress, setCollectionProgress] = useState<{
+    loaded: number;
+    total?: number;
+    modelId: string;
+  } | null>(null);
+  const collectionAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => () => collectionAbortRef.current?.abort(), []);
 
   // Initial load: models + locales
   useEffect(() => {
@@ -225,10 +240,7 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
   }, [selectedModels]);
 
   // Derive concrete target locales from the user's multi-select state.
-  const allLocaleValues = useMemo(
-    () => locales.map((l) => l.value),
-    [locales],
-  );
+  const allLocaleValues = useMemo(() => locales.map((l) => l.value), [locales]);
   const targetLocales = useMemo(
     () =>
       sourceLocale
@@ -283,9 +295,7 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
     }
     if (hadAll && hasAll && next.length > 1) {
       // User added a specific locale while "All" was selected → drop "All".
-      setTargetLocaleOptions(
-        next.filter((o) => o.value !== ALL_LOCALES_VALUE),
-      );
+      setTargetLocaleOptions(next.filter((o) => o.value !== ALL_LOCALES_VALUE));
       return;
     }
     setTargetLocaleOptions(next);
@@ -338,27 +348,24 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
     }
 
     setIsStartingTranslation(true);
+    const collectionController = new AbortController();
+    collectionAbortRef.current = collectionController;
+    setCollectionProgress({ loaded: 0, modelId: selectedModelIds[0] ?? '' });
 
     try {
       const client = buildDatoCMSClient(
         ctx.currentUserAccessToken,
         ctx.environment,
         ctx.cmaBaseUrl,
+        collectionController.signal,
       );
-      const allRecordIds: string[] = [];
-
-      // Drain every selected model's record list in parallel.
-      await Promise.all(
-        selectedModelIds.map(async (modelId) => {
-          const iterator = client.items.listPagedIterator({
-            filter: { type: modelId },
-            version: 'current',
-          });
-          for await (const record of iterator) {
-            allRecordIds.push(record.id);
-          }
-        }),
-      );
+      const allRecordIds = await collectRecordIds(client, selectedModelIds, {
+        onProgress: setCollectionProgress,
+        checkCancellation: () => collectionController.signal.aborted,
+        abortSignal: collectionController.signal,
+      });
+      if (collectionController.signal.aborted) return;
+      setCollectionProgress(null);
 
       if (allRecordIds.length === 0) {
         ctx.alert('No records found in the selected models');
@@ -373,7 +380,9 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
         fromLocale: sourceLocale.value,
         toLocales: targetLocales,
         models: selectedModels.map((model) => {
-          const selectedKeys = new Set(selectedFieldsByModel[model.value] ?? []);
+          const selectedKeys = new Set(
+            selectedFieldsByModel[model.value] ?? [],
+          );
           return {
             label: model.label,
             code: model.code,
@@ -409,9 +418,7 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
         },
       });
 
-      const result = (await modalPromise) as
-        | TranslationModalResult
-        | undefined;
+      const result = (await modalPromise) as TranslationModalResult | undefined;
 
       const localeCount = targetLocales.length;
       if (result?.canceled) {
@@ -426,8 +433,12 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
         );
       }
     } catch (error) {
-      handleUIError(error, pluginParams.vendor, ctx);
+      if (!collectionController.signal.aborted) {
+        handleUIError(error, pluginParams.vendor, ctx);
+      }
     } finally {
+      collectionAbortRef.current = null;
+      setCollectionProgress(null);
       setIsStartingTranslation(false);
     }
   };
@@ -444,15 +455,15 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
   );
 
   return (
-    <Canvas ctx={ctx}>
+    <Canvas ctx={ctx} noAutoResizer>
       <div className={s.page}>
         <div className={s.container}>
           <div className={s.card}>
             <div className={s.cardHeader}>
               <h1 className={s.cardTitle}>AI Bulk Translations</h1>
               <p className={s.cardCaption}>
-                Pick the source and target languages, the models, and the
-                fields you want translated.
+                Pick the source and target languages, the models, and the fields
+                you want translated.
               </p>
             </div>
 
@@ -529,8 +540,8 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
                 <div className={s.subsectionHeader}>
                   <div className={s.subsectionLabel}>Fields to translate</div>
                   <div className={s.subsectionHint}>
-                    Defaults to every translatable field. Remove any you want
-                    to leave alone, per model.
+                    Defaults to every translatable field. Remove any you want to
+                    leave alone, per model.
                   </div>
                 </div>
                 <div className={s.modelFieldList}>
@@ -541,7 +552,9 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
                       fields={fieldsByModel[model.value]}
                       isLoading={loadingFieldsForModel.has(model.value)}
                       selectedApiKeys={selectedFieldsByModel[model.value] ?? []}
-                      onChange={(apiKeys) => setModelFields(model.value, apiKeys)}
+                      onChange={(apiKeys) =>
+                        setModelFields(model.value, apiKeys)
+                      }
                       onRemove={() => removeModel(model.value)}
                       validationMessage={
                         readiness.modelsMissingFields.includes(model.value) &&
@@ -557,15 +570,48 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
 
             {/* Actions */}
             <div className={s.actions}>
+              {collectionProgress && (
+                <div className={s.collectionProgress}>
+                  <div role="status" className={s.collectionStatus}>
+                    <Spinner size={20} />
+                    <span>
+                      Finding records:{' '}
+                      {collectionProgress.loaded.toLocaleString()}
+                      {collectionProgress.total !== undefined &&
+                        ` of ${collectionProgress.total.toLocaleString()}`}
+                    </span>
+                  </div>
+                  <progress
+                    className={s.progressBar}
+                    aria-label="Record loading progress"
+                    max={Math.max(1, collectionProgress.total ?? 1)}
+                    value={
+                      collectionProgress.total === undefined
+                        ? undefined
+                        : Math.min(
+                            collectionProgress.loaded,
+                            collectionProgress.total,
+                          )
+                    }
+                  />
+                  <Button
+                    buttonType="muted"
+                    onClick={() => collectionAbortRef.current?.abort()}
+                  >
+                    Cancel loading
+                  </Button>
+                </div>
+              )}
               <Button
                 buttonType="primary"
                 onClick={startTranslation}
                 disabled={!isReady || isStartingTranslation}
                 fullWidth
               >
-                {isStartingTranslation
-                  ? 'Collecting records…'
-                  : 'Start bulk translation'}
+                {getStartButtonLabel(
+                  isStartingTranslation,
+                  collectionProgress !== null,
+                )}
               </Button>
               {!isReady && !isStartingTranslation && (
                 <div className={s.blockers}>

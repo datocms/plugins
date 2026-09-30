@@ -7,6 +7,7 @@
 
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import { defaultPrompt } from '../../prompts/DefaultPrompt';
+import { checkCancellation, isAbortError } from './Cancellation';
 import { createLogger, type Logger } from '../logging/Logger';
 import { resolveGlossaryId } from './DeepLGlossary';
 import { isFormalitySupported, mapDatoToDeepL } from './DeepLMap';
@@ -28,6 +29,8 @@ import {
 const CHAT_VENDOR_CHUNK_SIZE = 25;
 
 type Options = {
+  abortSignal?: AbortSignal;
+  checkCancellation?: () => boolean;
   isHTML?: boolean;
   formality?: 'default' | 'more' | 'less';
   recordContext?: string;
@@ -313,6 +316,7 @@ function buildDeepLBatchOptions(
     originalSourceLocale: fromLocale,
     originalTargetLocale: toLocale,
     debug: providerDebugHooks,
+    ...(opts.abortSignal ? { abortSignal: opts.abortSignal } : {}),
   };
 }
 
@@ -333,6 +337,7 @@ function buildYandexBatchOptions(
     originalSourceLocale: fromLocale,
     originalTargetLocale: toLocale,
     debug: providerDebugHooks,
+    ...(opts.abortSignal ? { abortSignal: opts.abortSignal } : {}),
   };
 }
 
@@ -411,10 +416,12 @@ async function translateWithNativeBatchProvider(
     options: requestOptions,
   });
 
+  checkCancellation(opts);
   const translated = await provider.translateArray(
     protectedSegments,
     requestOptions,
   );
+  checkCancellation(opts);
   logger.logResponse('Native batch translation response', {
     provider: provider.vendor,
     fromLocale,
@@ -487,6 +494,7 @@ async function translateWithChatProvider(
   providerDebugHooks: ProviderDebugHooks,
   isHtml: boolean,
   recordContext: string,
+  opts: Options,
 ): Promise<string[]> {
   const instruction = buildChatInstruction(
     pluginParams,
@@ -507,9 +515,12 @@ async function translateWithChatProvider(
       prompt,
       protectedSegments,
     });
+    checkCancellation(opts);
     const txt = await provider.completeText(prompt, {
       debug: providerDebugHooks,
+      ...(opts.abortSignal ? { abortSignal: opts.abortSignal } : {}),
     });
+    checkCancellation(opts);
     logger.logResponse('Raw provider response', {
       provider: provider.vendor,
       fromLocale,
@@ -535,6 +546,7 @@ async function translateWithChatProvider(
 
   // Chunk large arrays to improve reliability and enable partial recovery
   const translateChunk = async (chunkStart: number): Promise<string[]> => {
+    checkCancellation(opts);
     const chunkSegments = protectedSegments.slice(
       chunkStart,
       chunkStart + CHAT_VENDOR_CHUNK_SIZE,
@@ -552,7 +564,9 @@ async function translateWithChatProvider(
     });
     const chunkResponse = await provider.completeText(chunkPrompt, {
       debug: providerDebugHooks,
+      ...(opts.abortSignal ? { abortSignal: opts.abortSignal } : {}),
     });
+    checkCancellation(opts);
     logger.logResponse('Raw provider response', {
       provider: provider.vendor,
       fromLocale,
@@ -597,6 +611,7 @@ export async function translateArray(
   opts: Options = {},
 ): Promise<string[]> {
   if (!Array.isArray(segments) || segments.length === 0) return segments;
+  checkCancellation(opts);
 
   const logger = createLogger(pluginParams, 'translateArray');
   const providerDebugHooks = buildProviderDebugHooks(logger);
@@ -649,6 +664,7 @@ export async function translateArray(
         providerDebugHooks,
         opts.isHTML === true,
         opts.recordContext ?? '',
+        opts,
       );
     }
 
@@ -667,6 +683,8 @@ export async function translateArray(
     });
     return finalSegments;
   } catch (error) {
+    checkCancellation(opts);
+    if (isAbortError(error)) throw error;
     const norm = normalizeProviderError(error, provider.vendor);
     const message = formatErrorForUser(norm);
     // Preserve provider metadata as well as the original cause. Record-level

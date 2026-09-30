@@ -18,6 +18,7 @@ import { createLogger } from '../logging/Logger';
 import { handleTranslationError } from './ProviderErrors';
 import { findExactLocaleKey } from './SharedFieldUtils';
 import { translateArray } from './translateArray';
+import { getCancellationOptions, isAbortError } from './Cancellation';
 import type { StreamCallbacks, TranslationProvider } from './types';
 
 // Field-keyed (`{ alt: { en } }`), which is what the `uploads` simple methods
@@ -493,7 +494,11 @@ async function translateSingleFileMetadata(
       values,
       fromLocale,
       toLocale,
-      { isHTML: false, recordContext },
+      {
+        isHTML: false,
+        recordContext,
+        ...getCancellationOptions(_streamCallbacks),
+      },
     );
 
     return applyTranslatedFileEntries(
@@ -503,6 +508,7 @@ async function translateSingleFileMetadata(
       metadata,
     );
   } catch (error) {
+    if (isAbortError(error)) throw error;
     handleTranslationError(
       error,
       provider.vendor,

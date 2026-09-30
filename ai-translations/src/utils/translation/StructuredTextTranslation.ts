@@ -18,6 +18,7 @@ import type { SchemaRepository } from '../schemaRepository';
 import { handleTranslationError } from './ProviderErrors';
 import { translateFieldValue } from './TranslateField';
 import { translateArray } from './translateArray';
+import { getCancellationOptions, rethrowAbortError } from './Cancellation';
 import type { StreamCallbacks, TranslationProvider } from './types';
 import { insertObjectAtIndex, removeIds } from './utils';
 
@@ -378,6 +379,7 @@ interface InlineTextTranslationParams {
   toLocale: string;
   recordContext: string;
   logger: Logger;
+  streamCallbacks?: StreamCallbacks;
 }
 
 async function translateInlineTextLeaves({
@@ -390,6 +392,7 @@ async function translateInlineTextLeaves({
   toLocale,
   recordContext,
   logger,
+  streamCallbacks,
 }: InlineTextTranslationParams): Promise<StructuredTextNode[]> {
   const translatedValues = await translateArray(
     provider,
@@ -397,7 +400,11 @@ async function translateInlineTextLeaves({
     textValues,
     fromLocale,
     toLocale,
-    { isHTML: false, recordContext },
+    {
+      isHTML: false,
+      recordContext,
+      ...getCancellationOptions(streamCallbacks),
+    },
   );
 
   let processedTranslatedValues = translatedValues;
@@ -587,6 +594,7 @@ export async function translateStructuredTextValue(
         toLocale,
         recordContext,
         logger,
+        streamCallbacks,
       });
     }
 
@@ -662,6 +670,7 @@ export async function translateStructuredTextValue(
     });
     return cleanedReconstructedObject;
   } catch (error) {
+    rethrowAbortError(error);
     // DRY-001: Use centralized error handler
     handleTranslationError(
       error,

@@ -61,6 +61,41 @@ describe('StructuredTextTranslation', () => {
   });
 
   describe('translateStructuredTextValue', () => {
+    it('forwards inline cancellation and stops before translating embedded blocks', async () => {
+      const controller = new AbortController();
+      const checkCancellation = vi.fn(() => false);
+      const error = new DOMException('Cancelled', 'AbortError');
+      vi.mocked(translateArray).mockRejectedValue(error);
+
+      await expect(
+        translateStructuredTextValue(
+          [
+            { type: 'paragraph', children: [{ text: 'Hello' }] },
+            { type: 'block', item: 'block-1' },
+          ],
+          mockPluginParams,
+          'de',
+          'en',
+          mockProvider,
+          'api-token',
+          'main',
+          { abortSignal: controller.signal, checkCancellation },
+        ),
+      ).rejects.toBe(error);
+      expect(translateArray).toHaveBeenCalledWith(
+        mockProvider,
+        mockPluginParams,
+        ['Hello'],
+        'en',
+        'de',
+        expect.objectContaining({
+          abortSignal: controller.signal,
+          checkCancellation,
+        }),
+      );
+      expect(translateFieldValue).not.toHaveBeenCalled();
+    });
+
     describe('empty/invalid value handling', () => {
       it('should return null for null value', async () => {
         const result = await translateStructuredTextValue(

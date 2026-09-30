@@ -85,6 +85,8 @@ export function createTimeoutSignal(
  * Used by providers that support native array translation (DeepL and Yandex).
  */
 export interface BatchTranslationOptions {
+  /** Optional abort signal for cancelling native batch requests. */
+  abortSignal?: AbortSignal;
   /** Source language code (optional for auto-detect). */
   sourceLang?: string;
   /** Target language code (required). */

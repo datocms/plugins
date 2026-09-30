@@ -1,5 +1,6 @@
 # Changelog
 
+- 3.7.3: Fixed large bulk translations failing while loading records by using bounded requests and translating each batch as it arrives. Record discovery now shows progress and supports cancellation, and the progress modal renders the latest 100 updates while retaining complete result counts. Cancellation stops further translation requests and saves, concurrent record changes are detected before saving, and translating multiple target locales preserves every translated value.
 - 3.7.2: Fixed the field exclusion picker loading only with OpenAI credentials. Fields are now available for every translation provider, and saved API-key, path, or missing-field exclusions display their original value instead of `undefined (undefined)`.
 - 3.7.1:
   - Fixed custom translation prompts and record context being ignored by chat providers, including SEO and chunked translations. Translation requests retain the selected languages, ICU syntax rules, and JSON-array output requirements, and insert record context literally.

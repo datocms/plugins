@@ -8,6 +8,7 @@ import {
   type SchemaRepository,
 } from '../schemaRepository';
 import { formatLocaleWithCode } from '../localeUtils';
+import { loadRecordBatches } from './BulkRecordLoader';
 import { isFieldIncludedInSelection } from './BulkTranslationHelpers';
 import {
   formatErrorForUser,
@@ -193,33 +194,9 @@ export async function fetchRecordsWithPagination(
   itemIds: string[],
 ): Promise<DatoCMSRecordFromAPI[]> {
   const allRecords: DatoCMSRecordFromAPI[] = [];
-  const pageSize = 30;
-  const idsParam = itemIds.join(',');
-
-  /**
-   * Recursively fetches pages of records and appends them to allRecords.
-   * Recursive approach avoids await-in-loop lint errors while preserving
-   * sequential pagination behaviour.
-   */
-  async function fetchPage(page: number): Promise<void> {
-    const response: DatoCMSRecordFromAPI[] = await client.items.list({
-      filter: { ids: idsParam },
-      nested: true,
-      version: 'current',
-      page: {
-        offset: (page - 1) * pageSize,
-        limit: pageSize,
-      },
-    });
-
-    allRecords.push(...response);
-
-    if (response.length === pageSize) {
-      await fetchPage(page + 1);
-    }
+  for await (const batch of loadRecordBatches(client, itemIds)) {
+    allRecords.push(...batch.records);
   }
-
-  await fetchPage(1);
   return allRecords;
 }
 
@@ -323,6 +300,8 @@ export function summarizeReferenceCopies(
  */
 export type TranslateBatchOptions = {
   onProgress?: (update: ProgressUpdate) => void;
+  /** Preserve selected-record indexes when translating separately loaded batches. */
+  getRecordIndex?: (recordId: string, batchIndex: number) => number;
   /** Returns true if user has requested cancellation. Matches CancellationOptions convention. */
   checkCancellation?: () => boolean;
   abortSignal?: AbortSignal;
@@ -334,6 +313,32 @@ export type TranslateBatchOptions = {
    */
   selectedFieldsByModel?: SelectedFieldsByModel;
 };
+
+function throwIfTranslationCancelled(options: {
+  abortSignal?: AbortSignal;
+  checkCancellation?: () => boolean;
+}): void {
+  if (options.abortSignal?.aborted || options.checkCancellation?.()) {
+    throw new DOMException('Translation cancelled', 'AbortError');
+  }
+}
+
+function isAbortError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'name' in error &&
+    error.name === 'AbortError'
+  );
+}
+
+function rethrowIfTranslationCancelled(
+  error: unknown,
+  options: { abortSignal?: AbortSignal; checkCancellation?: () => boolean },
+): void {
+  if (isAbortError(error)) throw error;
+  throwIfTranslationCancelled(options);
+}
 
 /**
  * Result of building a translated update payload for a record. Each top-level
@@ -467,11 +472,17 @@ function getFriendlyDatoErrorMessage(
       if (codes.includes('ITEM_LOCKED')) {
         return `DatoCMS error: Cannot save translations for record ${recordId}: the record is locked because it is being edited. Please ensure no one (including you in another tab) is editing the record in DatoCMS, then try again.`;
       }
+      if (codes.includes('STALE_ITEM_VERSION')) {
+        return `DatoCMS error: Cannot save translations for record ${recordId}: the record changed during translation. Review its latest content and try again.`;
+      }
     }
 
     const msg = extractErrorMessage(error);
     if (msg?.includes('ITEM_LOCKED')) {
       return `DatoCMS error: Cannot save translations for record ${recordId}: the record is locked because it is being edited. Please ensure no one is editing the record, then try again.`;
+    }
+    if (msg?.includes('STALE_ITEM_VERSION')) {
+      return `DatoCMS error: Cannot save translations for record ${recordId}: the record changed during translation. Review its latest content and try again.`;
     }
   } catch {
     // Ignore parsing errors; fall through to null
@@ -526,16 +537,19 @@ export async function translateAndUpdateRecords(
   };
 
   /**
-   * Merges a per-locale field payload into the running accumulator. Each
-   * locale's payload only writes its own locale key, so the merge is a
-   * shallow object spread per field — no cross-locale conflicts.
+   * Merge only this target locale. Per-locale payloads also carry original
+   * locale values, which must not overwrite translations already accumulated.
    */
   function mergeLocalePayloadInto(
     target: Record<string, Record<string, unknown>>,
     source: Record<string, Record<string, unknown>>,
+    toLocale: string,
   ): void {
     for (const [field, fieldValue] of Object.entries(source)) {
-      target[field] = { ...(target[field] ?? {}), ...fieldValue };
+      target[field] = {
+        ...(target[field] ?? fieldValue),
+        [toLocale]: fieldValue[toLocale],
+      };
     }
   }
 
@@ -572,6 +586,7 @@ export async function translateAndUpdateRecords(
      * Extracted so the per-locale `.reduce` chain stays lint-clean.
      */
     async function translateForLocale(toLocale: string): Promise<void> {
+      throwIfTranslationCancelled(options);
       updateProgress({
         recordIndex,
         recordId: record.id,
@@ -600,7 +615,9 @@ export async function translateAndUpdateRecords(
         ctx.cmaBaseUrl,
       );
 
-      mergeLocalePayloadInto(mergedPayload, localeResult.payload);
+      throwIfTranslationCancelled(options);
+
+      mergeLocalePayloadInto(mergedPayload, localeResult.payload, toLocale);
       aggregatedWarnings.push(...localeResult.warnings);
       aggregatedReferenceCopies.push(...localeResult.referenceCopies);
       aggregatedTranslatedFields.push(...localeResult.translatedFields);
@@ -617,9 +634,12 @@ export async function translateAndUpdateRecords(
 
     // Keep the write's fresh `updated_at` when we touched the record,
     // otherwise retain the record's existing timestamp.
-    const recordMeta = (record as { meta?: { updated_at?: string } }).meta;
+    const recordMeta = (
+      record as { meta?: { updated_at?: string; current_version?: string } }
+    ).meta;
     let updatedAt = recordMeta?.updated_at;
     if (Object.keys(mergedPayload).length > 0) {
+      throwIfTranslationCancelled(options);
       updateProgress({
         recordIndex,
         recordId: record.id,
@@ -629,9 +649,15 @@ export async function translateAndUpdateRecords(
         recordLabel,
         itemTypeId,
       });
+      throwIfTranslationCancelled(options);
       const updated = (await client.items.update(
         record.id,
-        mergedPayload,
+        {
+          ...mergedPayload,
+          ...(recordMeta?.current_version
+            ? { meta: { current_version: recordMeta.current_version } }
+            : {}),
+        },
       )) as { meta?: { updated_at?: string } };
       updatedAt = updated?.meta?.updated_at ?? updatedAt;
     }
@@ -733,32 +759,21 @@ export async function translateAndUpdateRecords(
 
   /**
    * Translates and saves a single record.
-   * Returns `'cancelled'` when cancellation was detected, `'continue'` to skip
-   * to the next record, or `'done'` on success.
+   * Returns `'continue'` to skip to the next record, or `'done'` on success.
+   * Cancellation throws AbortError to stop the complete run before saving.
    * Extracted to avoid await-in-loop lint errors.
    */
   async function processRecord(
     record: DatoCMSRecordFromAPI,
     recordIndex: number,
-  ): Promise<'cancelled' | 'continue' | 'done'> {
+  ): Promise<'continue' | 'done'> {
     const recordLabel = deriveRecordLabel(record, fromLocale);
 
     const itemTypeId = record.item_type.id;
     const recordUpdatedAt = (record as { meta?: { updated_at?: string } }).meta
       ?.updated_at;
 
-    if (options.checkCancellation?.()) {
-      updateProgress({
-        recordIndex,
-        recordId: record.id,
-        status: 'error',
-        message: `Translation cancelled for "${recordLabel}" (#${record.id}).`,
-        statusText: 'Cancelled',
-        recordLabel,
-        itemTypeId,
-      });
-      return 'cancelled';
-    }
+    throwIfTranslationCancelled(options);
 
     updateProgress({
       recordIndex,
@@ -803,6 +818,7 @@ export async function translateAndUpdateRecords(
         itemTypeId,
       );
     } catch (error) {
+      rethrowIfTranslationCancelled(error, options);
       const friendlyMessage = getFriendlyDatoErrorMessage(error, record.id);
       const norm = normalizeProviderError(error, provider.vendor);
       if (isFatalProviderError(provider.vendor, norm)) throw error;
@@ -828,10 +844,9 @@ export async function translateAndUpdateRecords(
 
   // Process records sequentially using reduce to avoid await-in-loop
   await records.reduce(async (previousRecord, record, i) => {
-    const previousOutcome = await previousRecord;
-    if (previousOutcome === 'cancelled') return 'cancelled';
-    return processRecord(record, i);
-  }, Promise.resolve<'cancelled' | 'continue' | 'done'>('done'));
+    await previousRecord;
+    return processRecord(record, options.getRecordIndex?.(record.id, i) ?? i);
+  }, Promise.resolve<'continue' | 'done'>('done'));
 }
 
 /**
@@ -974,6 +989,7 @@ export async function buildTranslatedUpdatePayload(
   schemaRepository?: SchemaRepository,
   cmaBaseUrl?: string,
 ): Promise<BuildTranslatedUpdatePayloadResult> {
+  throwIfTranslationCancelled(opts);
   const updatePayload: Record<string, Record<string, unknown>> = {};
   const warnings: string[] = [];
   const referenceCopies: ReferenceCopy[] = [];
@@ -1005,6 +1021,7 @@ export async function buildTranslatedUpdatePayload(
    * Per-field failures surface as warnings; the rest of the record continues.
    */
   async function translateField(field: string): Promise<void> {
+    throwIfTranslationCancelled(opts);
     const sourceValue = getExactSourceValue(
       record[field] as Record<string, unknown>,
       fromLocale,
@@ -1041,6 +1058,8 @@ export async function buildTranslatedUpdatePayload(
         },
       );
 
+      throwIfTranslationCancelled(opts);
+
       updatePayload[field] = {
         ...((record[field] as Record<string, unknown>) || {}),
         [toLocale]: translatedValue,
@@ -1048,6 +1067,7 @@ export async function buildTranslatedUpdatePayload(
       translatedFieldCount += 1;
       translatedFields.push(field);
     } catch (error) {
+      rethrowIfTranslationCancelled(error, opts);
       const norm = normalizeProviderError(error, provider.vendor);
       if (isFatalProviderError(provider.vendor, norm)) throw error;
       const formattedMessage = formatErrorForUser(norm);
@@ -1066,6 +1086,8 @@ export async function buildTranslatedUpdatePayload(
     (chain, field) => chain.then(() => translateField(field)),
     Promise.resolve(),
   );
+
+  throwIfTranslationCancelled(opts);
 
   // Locale-sync rule: every localized field must carry a value for the
   // target locale. For fields we didn't translate, fill the gap from the

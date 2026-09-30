@@ -84,6 +84,35 @@ describe('DefaultTranslation', () => {
     });
 
     describe('successful translation', () => {
+      it('passes cancellation through to the array translator', async () => {
+        const controller = new AbortController();
+        const checkCancellation = vi.fn(() => false);
+        vi.mocked(translateArray).mockResolvedValue(['Hallo']);
+
+        await translateDefaultFieldValue(
+          'Hello',
+          mockPluginParams,
+          'de',
+          'en',
+          mockProvider,
+          { abortSignal: controller.signal, checkCancellation },
+        );
+
+        expect(translateArray).toHaveBeenCalledWith(
+          mockProvider,
+          mockPluginParams,
+          ['Hello'],
+          'en',
+          'de',
+          {
+            isHTML: false,
+            recordContext: '',
+            abortSignal: controller.signal,
+            checkCancellation,
+          },
+        );
+      });
+
       it('should translate string value', async () => {
         vi.mocked(translateArray).mockResolvedValue(['Hallo Welt']);
 
@@ -177,6 +206,21 @@ describe('DefaultTranslation', () => {
     });
 
     describe('error handling', () => {
+      it('preserves cancellation errors instead of reporting a provider error', async () => {
+        const error = new DOMException('Cancelled', 'AbortError');
+        vi.mocked(translateArray).mockRejectedValue(error);
+
+        await expect(
+          translateDefaultFieldValue(
+            'Hello',
+            mockPluginParams,
+            'de',
+            'en',
+            mockProvider,
+          ),
+        ).rejects.toBe(error);
+      });
+
       it('should throw error when translation fails', async () => {
         vi.mocked(translateArray).mockRejectedValue(new Error('API Error'));
 

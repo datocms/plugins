@@ -748,6 +748,194 @@ describe('ItemsDropdownUtils', () => {
       expect(getFieldTypeDictionary).toHaveBeenCalledTimes(1);
       expect(update).not.toHaveBeenCalled();
     });
+
+    it('preserves original record indexes when translating a later batch with a missing record', async () => {
+      vi.mocked(translateFieldValue).mockResolvedValue('Ciao');
+      const update = vi.fn().mockResolvedValue({});
+      const client = { items: { update } } as unknown as Parameters<
+        typeof translateAndUpdateRecords
+      >[1];
+      const updates: ProgressUpdate[] = [];
+      const indexes = new Map([['r31', 30], ['r33', 32]]);
+      const records = ['r31', 'r33'].map((id) => ({
+        id,
+        item_type: { id: 'm1' },
+        title: { en: 'Hello' },
+      }));
+
+      await translateAndUpdateRecords(
+        records,
+        client,
+        provider,
+        'en',
+        ['it'],
+        async () => fieldTypeDictionary,
+        pluginParams,
+        { alert: vi.fn(), environment: 'main' },
+        'access-token',
+        {
+          onProgress: (progress) => updates.push(progress),
+          getRecordIndex: (id, index) => indexes.get(id) ?? index,
+        },
+      );
+
+      expect(updates.filter((progress) => progress.status === 'completed').map(
+        (progress) => progress.recordIndex,
+      )).toEqual([30, 32]);
+    });
+
+    it('keeps every target translation when target locales already have content', async () => {
+      vi.mocked(translateFieldValue)
+        .mockResolvedValueOnce('Ciao')
+        .mockResolvedValueOnce('Bonjour');
+      const update = vi.fn().mockResolvedValue({});
+      const client = { items: { update } } as unknown as Parameters<
+        typeof translateAndUpdateRecords
+      >[1];
+
+      await translateAndUpdateRecords(
+        [{
+          id: 'r1',
+          item_type: { id: 'm1' },
+          title: { en: 'Hello', it: 'Old Italian', fr: 'Old French', de: 'Hallo' },
+          related: { en: ['linked-record'] },
+        }],
+        client,
+        provider,
+        'en',
+        ['it', 'fr'],
+        async () => ({
+          title: fieldTypeDictionary.title,
+          related: {
+            editor: 'links_select',
+            id: 'field-related',
+            isLocalized: true,
+            validators: { items_item_type: { item_types: ['m1'] } },
+          },
+        }),
+        pluginParams,
+        { alert: vi.fn(), environment: 'main' },
+        'access-token',
+      );
+
+      expect(update).toHaveBeenCalledTimes(1);
+      expect(update.mock.calls[0][1]).toEqual({
+        title: { en: 'Hello', it: 'Ciao', fr: 'Bonjour', de: 'Hallo' },
+        related: {
+          en: ['linked-record'],
+          it: ['linked-record'],
+          fr: ['linked-record'],
+        },
+      });
+    });
+
+    it('does not save locale fallbacks after a provider AbortError', async () => {
+      vi.mocked(translateFieldValue).mockRejectedValue(
+        new DOMException('Translation cancelled', 'AbortError'),
+      );
+      const update = vi.fn();
+      const client = { items: { update } } as unknown as Parameters<
+        typeof translateAndUpdateRecords
+      >[1];
+
+      await expect(translateAndUpdateRecords(
+        [record],
+        client,
+        provider,
+        'en',
+        ['it'],
+        async () => fieldTypeDictionary,
+        pluginParams,
+        { alert: vi.fn(), environment: 'main' },
+        'access-token',
+      )).rejects.toMatchObject({ name: 'AbortError' });
+      expect(translateFieldValue).toHaveBeenCalledTimes(1);
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it('does not save or continue after cancellation during a field response', async () => {
+      const controller = new AbortController();
+      vi.mocked(translateFieldValue).mockImplementation(async () => {
+        controller.abort();
+        return 'Ciao';
+      });
+      const update = vi.fn();
+      const client = { items: { update } } as unknown as Parameters<
+        typeof translateAndUpdateRecords
+      >[1];
+
+      await expect(translateAndUpdateRecords(
+        [record, { ...record, id: 'record-2' }],
+        client,
+        provider,
+        'en',
+        ['it', 'fr'],
+        async () => fieldTypeDictionary,
+        pluginParams,
+        { alert: vi.fn(), environment: 'main' },
+        'access-token',
+        { abortSignal: controller.signal },
+      )).rejects.toMatchObject({ name: 'AbortError' });
+      expect(translateFieldValue).toHaveBeenCalledTimes(1);
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it('checks cancellation immediately before saving a completed record', async () => {
+      vi.mocked(translateFieldValue).mockResolvedValue('Ciao');
+      let cancelled = false;
+      const update = vi.fn();
+      const client = { items: { update } } as unknown as Parameters<
+        typeof translateAndUpdateRecords
+      >[1];
+
+      await expect(translateAndUpdateRecords(
+        [record],
+        client,
+        provider,
+        'en',
+        ['it'],
+        async () => fieldTypeDictionary,
+        pluginParams,
+        { alert: vi.fn(), environment: 'main' },
+        'access-token',
+        {
+          checkCancellation: () => cancelled,
+          onProgress: (progress) => {
+            if (progress.statusText === 'Saving…') cancelled = true;
+          },
+        },
+      )).rejects.toMatchObject({ name: 'AbortError' });
+      expect(update).not.toHaveBeenCalled();
+    });
+
+    it('sends the fetched version when saving and reports concurrent changes per record', async () => {
+      vi.mocked(translateFieldValue).mockResolvedValue('Ciao');
+      const update = vi.fn().mockRejectedValue({
+        errors: [{ attributes: { code: 'STALE_ITEM_VERSION' } }],
+      });
+      const client = { items: { update } } as unknown as Parameters<
+        typeof translateAndUpdateRecords
+      >[1];
+      const updates: ProgressUpdate[] = [];
+
+      await translateAndUpdateRecords(
+        [{ ...record, meta: { current_version: 'version-1' } }],
+        client,
+        provider,
+        'en',
+        ['it'],
+        async () => fieldTypeDictionary,
+        pluginParams,
+        { alert: vi.fn(), environment: 'main' },
+        'access-token',
+        { onProgress: (progress) => updates.push(progress) },
+      );
+
+      expect(update.mock.calls[0][1].meta).toEqual({ current_version: 'version-1' });
+      expect(updates.at(-1)?.status).toBe('error');
+      expect(updates.at(-1)?.message).toContain('record changed during translation');
+      expect(updates.at(-1)?.warnings).toEqual([updates.at(-1)?.message]);
+    });
   });
 
   describe('summarizeReferenceCopies', () => {

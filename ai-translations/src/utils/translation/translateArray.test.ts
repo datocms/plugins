@@ -193,6 +193,103 @@ describe('translateArray.ts', () => {
       vi.restoreAllMocks();
     });
 
+    describe('cancellation', () => {
+      it('does not send a provider request after cancellation', async () => {
+        const controller = new AbortController();
+        controller.abort();
+
+        await expect(
+          translateArray(
+            mockProvider,
+            mockPluginParams,
+            ['Hello'],
+            'en',
+            'de',
+            { abortSignal: controller.signal },
+          ),
+        ).rejects.toMatchObject({ name: 'AbortError' });
+        expect(mockProvider.completeText).not.toHaveBeenCalled();
+      });
+
+      it('forwards the signal to an in-flight request and preserves cancellation', async () => {
+        const controller = new AbortController();
+        let resolveRequestStarted: () => void = () => undefined;
+        const requestStarted = new Promise<void>((resolve) => {
+          resolveRequestStarted = resolve;
+        });
+        vi.mocked(mockProvider.completeText).mockImplementation(
+          async (_prompt, options) =>
+            new Promise<string>((_resolve, reject) => {
+              expect(options?.abortSignal).toBe(controller.signal);
+              options?.abortSignal?.addEventListener('abort', () => {
+                reject(new DOMException('Cancelled', 'AbortError'));
+              });
+              resolveRequestStarted();
+            }),
+        );
+
+        const result = translateArray(
+          mockProvider,
+          mockPluginParams,
+          ['Hello'],
+          'en',
+          'de',
+          { abortSignal: controller.signal },
+        );
+        await requestStarted;
+        controller.abort();
+
+        await expect(result).rejects.toMatchObject({ name: 'AbortError' });
+        expect(mockProvider.completeText).toHaveBeenCalledTimes(1);
+      });
+
+      it('does not start a later chat chunk when cancellation follows a response', async () => {
+        let cancelled = false;
+        vi.mocked(mockProvider.completeText).mockImplementation(async () => {
+          cancelled = true;
+          return JSON.stringify(Array.from({ length: 25 }, () => 'Hallo'));
+        });
+
+        await expect(
+          translateArray(
+            mockProvider,
+            mockPluginParams,
+            Array.from({ length: 26 }, () => 'Hello'),
+            'en',
+            'de',
+            { checkCancellation: () => cancelled },
+          ),
+        ).rejects.toMatchObject({ name: 'AbortError' });
+        expect(mockProvider.completeText).toHaveBeenCalledTimes(1);
+      });
+
+      it.each(['deepl', 'yandex'] as const)(
+        'forwards cancellation to native %s batch requests',
+        async (vendor) => {
+          const controller = new AbortController();
+          const nativeProvider: TranslationProvider = {
+            ...mockProvider,
+            vendor,
+            translateArray: vi.fn().mockResolvedValue(['Hallo']),
+          };
+
+          await translateArray(
+            nativeProvider,
+            mockPluginParams,
+            ['Hello'],
+            'en',
+            'de',
+            { abortSignal: controller.signal },
+          );
+
+          expect(nativeProvider.translateArray).toHaveBeenCalledWith(
+            ['Hello'],
+            expect.objectContaining({ abortSignal: controller.signal }),
+          );
+        },
+      );
+    });
+
     describe('input validation', () => {
       it('should return empty array for empty input', async () => {
         const result = await translateArray(
@@ -289,7 +386,9 @@ Sources: en / en.
 Targets: de / de.
 Contexts: [Product description] / [Product description].
 Content: (see the JSON array below) / (see the JSON array below).`);
-            expect(prompt).toContain('Return ONLY a valid JSON array of strings');
+            expect(prompt).toContain(
+              'Return ONLY a valid JSON array of strings',
+            );
             expect(prompt).toContain('strict one-to-one mapping');
             expect(prompt).toContain('Preserve tokens like ⟦PH_0⟧ exactly');
             expect(prompt.endsWith(`\n${JSON.stringify(chunk)}`)).toBe(true);
@@ -606,7 +705,8 @@ Content: (see the JSON array below) / (see the JSON array below).`);
         const payloads = parseLogPayloads(logSpy.mock.calls);
         const repairPayload = payloads.find(
           (payload) =>
-            payload.message === 'Response repaired by extracting array brackets',
+            payload.message ===
+            'Response repaired by extracting array brackets',
         );
         expect(repairPayload).toBeDefined();
         const repairData = repairPayload?.data as {

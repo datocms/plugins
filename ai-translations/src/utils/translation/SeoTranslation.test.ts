@@ -42,6 +42,36 @@ describe('SeoTranslation', () => {
   });
 
   describe('translateSeoFieldValue', () => {
+    it('forwards cancellation and preserves the abort error', async () => {
+      const controller = new AbortController();
+      const checkCancellation = vi.fn(() => false);
+      const error = new DOMException('Cancelled', 'AbortError');
+      vi.mocked(translateArray).mockRejectedValue(error);
+
+      await expect(
+        translateSeoFieldValue(
+          { title: 'Title', description: 'Description' },
+          mockPluginParams,
+          'de',
+          'en',
+          mockProvider,
+          '',
+          { abortSignal: controller.signal, checkCancellation },
+        ),
+      ).rejects.toBe(error);
+      expect(translateArray).toHaveBeenCalledWith(
+        mockProvider,
+        mockPluginParams,
+        ['Title', 'Description'],
+        'en',
+        'de',
+        expect.objectContaining({
+          abortSignal: controller.signal,
+          checkCancellation,
+        }),
+      );
+    });
+
     describe('empty value handling', () => {
       it('should return empty object for null value', async () => {
         const result = await translateSeoFieldValue(

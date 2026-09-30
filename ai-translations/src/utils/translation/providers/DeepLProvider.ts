@@ -260,6 +260,7 @@ export default class DeepLProvider implements TranslationProvider {
     opts: BatchTranslationOptions,
   ): Promise<string[]> {
     if (!segments.length) return segments;
+    opts.abortSignal?.throwIfAborted();
 
     // Validate glossary before using it - if the glossary doesn't support this
     // language pair, we skip it entirely to avoid silent failures where DeepL
@@ -309,11 +310,12 @@ export default class DeepLProvider implements TranslationProvider {
      * Extracted to avoid await-in-loop lint errors in the batch iteration.
      */
     const translateBatch = async (batchStartIndex: number): Promise<void> => {
+      opts.abortSignal?.throwIfAborted();
       const slice = segments.slice(
         batchStartIndex,
         batchStartIndex + batchSize,
       );
-      const { signal, cleanup } = createTimeoutSignal(timeoutMs);
+      const { signal, cleanup } = createTimeoutSignal(timeoutMs, opts.abortSignal);
       try {
         await this.executeBatchRequest(
           slice,

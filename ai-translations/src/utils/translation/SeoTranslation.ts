@@ -17,6 +17,7 @@ import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import { createLogger } from '../logging/Logger';
 import { handleTranslationError } from './ProviderErrors';
 import { translateArray } from './translateArray';
+import { getCancellationOptions, isAbortError } from './Cancellation';
 import type { StreamCallbacks, TranslationProvider } from './types';
 
 /**
@@ -99,7 +100,11 @@ export async function translateSeoFieldValue(
       [sourceTitle, sourceDescription],
       fromLocale,
       toLocale,
-      { isHTML: false, recordContext },
+      {
+        isHTML: false,
+        recordContext,
+        ...getCancellationOptions(_streamCallbacks),
+      },
     );
 
     // Build a fresh result preserving any non-translated properties (e.g.
@@ -129,6 +134,7 @@ export async function translateSeoFieldValue(
     return result;
   } catch (error) {
     // DRY-001: Use centralized error handler
+    if (isAbortError(error)) throw error;
     handleTranslationError(
       error,
       provider.vendor,

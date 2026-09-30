@@ -260,7 +260,8 @@ export default class YandexProvider implements TranslationProvider {
     segments: string[],
     opts: BatchTranslationOptions,
   ): Promise<string[]> {
-    return this.translateSegments(segments, opts);
+    opts.abortSignal?.throwIfAborted();
+    return this.translateSegments(segments, opts, opts.abortSignal);
   }
 
   /**

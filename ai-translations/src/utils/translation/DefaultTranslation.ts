@@ -14,6 +14,7 @@
 
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
 import { createLogger } from '../logging/Logger';
+import { getCancellationOptions, isAbortError } from './Cancellation';
 import { handleTranslationError } from './ProviderErrors';
 import { translateArray } from './translateArray';
 import type { StreamCallbacks, TranslationProvider } from './types';
@@ -35,7 +36,7 @@ type DefaultTranslationOptions = {
  * @param toLocale - Target locale code
  * @param fromLocale - Source locale code
  * @param provider - Translation provider used to perform the translation
- * @param _streamCallbacks - Optional callbacks for streaming translation updates
+ * @param streamCallbacks - Optional callbacks for streaming translation updates
  * @param recordContext - Additional context about the record being translated
  * @returns The translated text
  */
@@ -45,7 +46,7 @@ export async function translateDefaultFieldValue(
   toLocale: string,
   fromLocale: string,
   provider: TranslationProvider,
-  _streamCallbacks?: StreamCallbacks,
+  streamCallbacks?: StreamCallbacks,
   recordContext = '',
   options: DefaultTranslationOptions = {},
 ): Promise<unknown> {
@@ -69,10 +70,15 @@ export async function translateDefaultFieldValue(
       [String(fieldValue)],
       fromLocale,
       toLocale,
-      { isHTML: options.isHTML === true, recordContext },
+      {
+        isHTML: options.isHTML === true,
+        recordContext,
+        ...getCancellationOptions(streamCallbacks),
+      },
     );
     return translated;
   } catch (error) {
+    if (isAbortError(error)) throw error;
     // DRY-001: Use centralized error handler
     handleTranslationError(error, provider.vendor, logger, 'Translation error');
   }

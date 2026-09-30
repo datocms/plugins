@@ -50,6 +50,37 @@ describe('FileFieldTranslation', () => {
     };
   });
 
+  it('forwards file-metadata cancellation and preserves the abort error', async () => {
+    const controller = new AbortController();
+    const checkCancellation = vi.fn(() => false);
+    const error = new DOMException('Cancelled', 'AbortError');
+    vi.mocked(translateArray).mockRejectedValue(error);
+
+    await expect(
+      translateFileFieldValue(
+        { alt: 'Alt', title: 'Title' },
+        mockPluginParams,
+        'it',
+        'en',
+        mockProvider,
+        undefined,
+        undefined,
+        { abortSignal: controller.signal, checkCancellation },
+      ),
+    ).rejects.toBe(error);
+    expect(translateArray).toHaveBeenCalledWith(
+      mockProvider,
+      mockPluginParams,
+      ['Alt', 'Title'],
+      'en',
+      'it',
+      expect.objectContaining({
+        abortSignal: controller.signal,
+        checkCancellation,
+      }),
+    );
+  });
+
   it('translates top-level alt/title and metadata strings', async () => {
     vi.mocked(translateArray).mockResolvedValue([
       'Alt IT',

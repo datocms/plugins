@@ -49,6 +49,30 @@ describe('DeepLProvider', () => {
   });
 
   describe('translateArray', () => {
+    it('does not issue additional batches after an external abort', async () => {
+      const controller = new AbortController();
+      mockFetch.mockImplementation(async (_url, init) => {
+        expect(init.signal.aborted).toBe(false);
+        controller.abort();
+        expect(init.signal.aborted).toBe(true);
+        return {
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              translations: Array.from({ length: 45 }, () => ({ text: 'Hallo' })),
+            }),
+        };
+      });
+
+      await expect(
+        provider.translateArray(Array.from({ length: 46 }, () => 'Hello'), {
+          targetLang: 'DE',
+          abortSignal: controller.signal,
+        }),
+      ).rejects.toMatchObject({ name: 'AbortError' });
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
     it('should return empty array for empty input', async () => {
       const result = await provider.translateArray([], { targetLang: 'DE' });
       expect(result).toEqual([]);

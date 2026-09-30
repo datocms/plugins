@@ -3,6 +3,10 @@ import { Button, Canvas, Spinner } from 'datocms-react-ui';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ctxParamsType } from '../entrypoints/Config/ConfigScreen';
 import { buildDatoCMSClient } from '../utils/clients';
+import {
+  loadRecordBatches,
+  type RecordBatch,
+} from '../utils/translation/BulkRecordLoader';
 import { buildRecordEditorUrl } from '../utils/recordUrl';
 import {
   createSchemaRepository,
@@ -22,7 +26,6 @@ import {
 import {
   buildFieldTypeDictionaryWithRepo,
   type DatoCMSRecordFromAPI,
-  fetchRecordsWithPagination,
   type ProgressUpdate,
   translateAndUpdateRecords,
 } from '../utils/translation/ItemsDropdownUtils';
@@ -58,6 +61,8 @@ interface TranslationProgressModalProps {
   parameters: TranslationProgressModalParams;
 }
 
+const VISIBLE_UPDATE_LIMIT = 100;
+
 function getTranslationErrorMessage(
   error: unknown,
   vendor: ctxParamsType['vendor'],
@@ -85,6 +90,92 @@ async function loadDraftModeItemTypeIds(
       );
     }
     return [];
+  }
+}
+
+type BatchTranslationJob = {
+  client: ReturnType<typeof buildDatoCMSClient>;
+  provider: ReturnType<typeof getProvider>;
+  schemaRepository: SchemaRepository;
+  parameters: TranslationProgressModalParams;
+  ctx: RenderModalCtx;
+  recordIndexes: Map<string, number>;
+  draftModeIds: Set<string>;
+  onProgress: (update: ProgressUpdate) => void;
+  onDraftModeIds: (ids: string[]) => void;
+  checkCancellation: () => boolean;
+  abortSignal: AbortSignal;
+};
+
+async function translateLoadedBatch(
+  batch: RecordBatch,
+  job: BatchTranslationJob,
+) {
+  const {
+    fromLocale,
+    toLocales,
+    pluginParams,
+    accessToken,
+    selectedFieldsByModel,
+  } = job.parameters;
+  for (const recordId of batch.missingItemIds) {
+    job.onProgress({
+      recordIndex: job.recordIndexes.get(recordId) ?? -1,
+      recordId,
+      status: 'error',
+      message: 'DatoCMS error: Record is no longer available.',
+      statusText: 'Record is no longer available',
+      warnings: ['The record was deleted or is no longer accessible.'],
+    });
+  }
+
+  const modelIds = await loadDraftModeItemTypeIds(
+    batch.records,
+    job.schemaRepository,
+    pluginParams.enableDebugging,
+  );
+  for (const id of modelIds) job.draftModeIds.add(id);
+  job.onDraftModeIds([...job.draftModeIds]);
+
+  await translateAndUpdateRecords(
+    batch.records,
+    job.client,
+    job.provider,
+    fromLocale,
+    toLocales,
+    (id) => buildFieldTypeDictionaryWithRepo(job.schemaRepository, id),
+    pluginParams,
+    job.ctx,
+    accessToken,
+    {
+      onProgress: job.onProgress,
+      getRecordIndex: (id, index) => job.recordIndexes.get(id) ?? index,
+      checkCancellation: job.checkCancellation,
+      abortSignal: job.abortSignal,
+      selectedFieldsByModel,
+    },
+    job.schemaRepository,
+  );
+}
+
+async function translateRecordBatches(
+  job: BatchTranslationJob,
+  loadingClient: ReturnType<typeof buildDatoCMSClient>,
+  onLoaded: (loaded: number) => void,
+) {
+  for await (const batch of loadRecordBatches(
+    loadingClient,
+    job.parameters.itemIds,
+    {
+      checkCancellation: job.checkCancellation,
+      abortSignal: job.abortSignal,
+      onProgress: ({ loaded }) => onLoaded(loaded),
+    },
+  )) {
+    if (job.checkCancellation()) break;
+    // Consume each batch before loading more nested content.
+    await translateLoadedBatch(batch, job);
+    if (job.checkCancellation()) break;
   }
 }
 
@@ -193,15 +284,8 @@ export default function TranslationProgressModal({
   ctx,
   parameters,
 }: TranslationProgressModalProps) {
-  const {
-    totalRecords,
-    fromLocale,
-    toLocales,
-    accessToken,
-    pluginParams,
-    itemIds,
-    selectedFieldsByModel,
-  } = parameters;
+  const { totalRecords, fromLocale, toLocales, accessToken, pluginParams } =
+    parameters;
   const [progress, setProgress] = useState<ProgressUpdate[]>([]);
   const [isCompleted, setIsCompleted] = useState(false);
   // Cancellation is read from inside a long-running async loop, so it must be a
@@ -210,6 +294,7 @@ export default function TranslationProgressModal({
   const isCancelledRef = useRef(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [hasFatalError, setHasFatalError] = useState(false);
+  const [loadedRecords, setLoadedRecords] = useState(0);
   const [draftModeItemTypeIds, setDraftModeItemTypeIds] = useState<string[]>(
     [],
   );
@@ -218,6 +303,7 @@ export default function TranslationProgressModal({
 
   // Use a ref to track if we've started the translation process
   const hasStartedTranslation = useRef(false);
+  const jobInputs = useRef({ ctx, parameters });
 
   // Stable callback to add a progress update — wrapped in useCallback so it
   // can be safely listed as a useEffect dependency without causing re-runs.
@@ -238,8 +324,32 @@ export default function TranslationProgressModal({
   // Handle the translation process - runs once on mount
   useEffect(() => {
     let isMounted = true;
+    // The host may replace ctx during a run; use the job's original inputs.
+    const { ctx, parameters } = jobInputs.current;
+    const { accessToken, pluginParams, itemIds } = parameters;
+    if (!hasStartedTranslation.current) isCancelledRef.current = false;
     const setDraftModeIdsIfMounted = (itemTypeIds: string[]) => {
       if (isMounted) setDraftModeItemTypeIds(itemTypeIds);
+    };
+    const finishTranslation = () => {
+      if (!isMounted || isCancelledRef.current) return;
+      setIsCompleted(true);
+      setIsProcessing(false);
+    };
+    const reportFailure = (error: unknown, controller: AbortController) => {
+      if (!isMounted || isCancelledRef.current || controller.signal.aborted)
+        return;
+      setHasFatalError(true);
+      setIsProcessing(false);
+      const failureMessage = `Translation failed: ${getTranslationErrorMessage(error, pluginParams.vendor)}`;
+      addProgressUpdate({
+        recordIndex: -1,
+        recordId: 'fatal',
+        status: 'error',
+        message: failureMessage,
+        statusText: failureMessage,
+        warnings: [failureMessage],
+      });
     };
 
     const processTranslation = async () => {
@@ -248,6 +358,9 @@ export default function TranslationProgressModal({
 
       hasStartedTranslation.current = true;
       setIsProcessing(true);
+      // Loading and translation share one cancellation signal from the start.
+      const controller = new AbortController();
+      abortRef.current = controller;
 
       try {
         const client = buildDatoCMSClient(
@@ -255,111 +368,57 @@ export default function TranslationProgressModal({
           ctx.environment,
           ctx.cmaBaseUrl,
         );
-        const records = await fetchRecordsWithPagination(client, itemIds);
+        const loadingClient = buildDatoCMSClient(
+          accessToken,
+          ctx.environment,
+          ctx.cmaBaseUrl,
+          controller.signal,
+        );
         const provider = getProvider(pluginParams);
 
         // Create SchemaRepository for cached schema lookups
-        const schemaRepository = createSchemaRepository(client);
+        const schemaRepository = createSchemaRepository(loadingClient);
 
-        // The publish action is only valid for records belonging to models
-        // with DatoCMS draft/published mode enabled. Resolve this from the full
-        // schema instead of the partial item-type data available on the ctx.
-        const resolvedDraftModeItemTypeIds = await loadDraftModeItemTypeIds(
-          records,
-          schemaRepository,
-          pluginParams.enableDebugging,
-        );
-        setDraftModeIdsIfMounted(resolvedDraftModeItemTypeIds);
-
-        // Use SchemaRepository for field dictionary lookups (cached automatically)
-        const getFieldTypeDictionary = async (itemTypeId: string) => {
-          return buildFieldTypeDictionaryWithRepo(schemaRepository, itemTypeId);
-        };
-
-        // Prepare AbortController for in-flight cancellations
-        const controller = new AbortController();
-        abortRef.current = controller;
-
-        await translateAndUpdateRecords(
-          records,
+        const job: BatchTranslationJob = {
           client,
           provider,
-          fromLocale,
-          toLocales,
-          getFieldTypeDictionary,
-          pluginParams,
-          ctx,
-          accessToken,
-          {
-            onProgress: addProgressUpdate,
-            checkCancellation: () => isCancelledRef.current,
-            abortSignal: controller.signal,
-            selectedFieldsByModel,
-          },
           schemaRepository,
-        );
+          parameters,
+          ctx,
+          recordIndexes: new Map(itemIds.map((id, index) => [id, index])),
+          draftModeIds: new Set<string>(),
+          onProgress: addProgressUpdate,
+          onDraftModeIds: setDraftModeIdsIfMounted,
+          checkCancellation: () => isCancelledRef.current,
+          abortSignal: controller.signal,
+        };
 
-        // Clear the processing flag on the happy path too. The completion
-        // effect below only fires when every record reports back; if fewer
-        // records come back than requested (e.g. some were deleted between
-        // selection and fetch) that effect never runs, and without this the
-        // Close button would stay disabled forever.
-        if (isMounted) {
-          setIsProcessing(false);
-        }
+        await translateRecordBatches(job, loadingClient, (loaded) => {
+          if (isMounted) setLoadedRecords(loaded);
+        });
+        finishTranslation();
       } catch (error) {
-        if (isMounted) {
-          setHasFatalError(true);
-          setIsProcessing(false);
-          const failureMessage = `Translation failed: ${getTranslationErrorMessage(
-            error,
-            pluginParams.vendor,
-          )}`;
-          addProgressUpdate({
-            recordIndex: -1,
-            recordId: 'fatal',
-            status: 'error',
-            message: failureMessage,
-            statusText: failureMessage,
-            // Carry the reason as a warning so the row can expose the details.
-            warnings: [failureMessage],
-          });
-        }
+        reportFailure(error, controller);
       }
     };
 
-    processTranslation();
+    // Defer startup so StrictMode's setup/cleanup probe cannot start requests.
+    void Promise.resolve().then(processTranslation);
 
     return () => {
       isMounted = false;
+      isCancelledRef.current = true;
+      abortRef.current?.abort();
     };
-    // Intentionally run only on mount - hasStartedTranslation ref prevents re-execution
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    accessToken,
-    addProgressUpdate,
-    ctx,
-    fromLocale,
-    itemIds,
-    pluginParams,
-    selectedFieldsByModel,
-    toLocales,
-  ]);
+  }, [addProgressUpdate]);
 
   // Translation handled by shared translateAndUpdateRecords utility
 
   // Translation progress updates handled via shared translator callbacks
 
   // Calculate completed counts correctly considering all processed records (completed or error)
-  const processedRecords = Object.values(
-    progress.reduce(
-      (uniqueRecords, update) => {
-        uniqueRecords[update.recordIndex] = update;
-        return uniqueRecords;
-      },
-      {} as Record<number, ProgressUpdate>,
-    ),
-  );
+  // A fatal job error is a notice, not an additional failed record.
+  const processedRecords = progress.filter((update) => update.recordIndex >= 0);
 
   const completedCount = processedRecords.filter(
     (update) => update.status === 'completed' || update.status === 'error',
@@ -374,24 +433,23 @@ export default function TranslationProgressModal({
   // Records that finished but raised warnings (e.g. copied linked records),
   // ordered by their position so the list reads top-to-bottom.
   const recordsWithWarnings = processedRecords
-    .filter((update) => (update.warnings?.length ?? 0) > 0)
+    .filter(
+      (update) =>
+        update.status === 'completed' && (update.warnings?.length ?? 0) > 0,
+    )
     .sort((a, b) => a.recordIndex - b.recordIndex);
   const publishableRecordIds = getPublishableTranslatedRecordIds(
     processedRecords,
     draftModeItemTypeIds,
   );
-  const {
-    handlePublish,
-    hasPublishedAll,
-    isPublishing,
-    publishButtonLabel,
-  } = useBulkPublishing({
-    ctx,
-    accessToken,
-    pluginParams,
-    publishableRecordIds,
-    canPublish: isCompleted && !hasFatalError,
-  });
+  const { handlePublish, hasPublishedAll, isPublishing, publishButtonLabel } =
+    useBulkPublishing({
+      ctx,
+      accessToken,
+      pluginParams,
+      publishableRecordIds,
+      canPublish: isCompleted && !hasFatalError,
+    });
 
   const buildRecordUrl = (update: ProgressUpdate): string | undefined =>
     buildRecordEditorUrl({
@@ -403,15 +461,9 @@ export default function TranslationProgressModal({
     });
 
   const percentComplete =
-    totalRecords > 0 ? Math.round((completedCount / totalRecords) * 100) : 0;
-
-  // Make sure to set completed state when all records are processed
-  useEffect(() => {
-    if (completedCount >= totalRecords && totalRecords > 0) {
-      setIsCompleted(true);
-      setIsProcessing(false);
-    }
-  }, [completedCount, totalRecords]);
+    totalRecords > 0
+      ? Math.min(100, Math.round((completedCount / totalRecords) * 100))
+      : 0;
 
   // Keep the viewport anchored to the top so newest entries (rendered first)
   // are always visible without manual scrolling.
@@ -425,10 +477,14 @@ export default function TranslationProgressModal({
   }, []);
 
   const handleClose = () => {
-    const hasErrors = hasFatalError || processedRecords.some(
-      (update) => update.status === 'error',
-    );
-    ctx.resolve({ completed: isCompleted && !hasErrors, canceled: false, progress });
+    const hasErrors =
+      hasFatalError ||
+      processedRecords.some((update) => update.status === 'error');
+    ctx.resolve({
+      completed: isCompleted && !hasErrors,
+      canceled: false,
+      progress,
+    });
   };
 
   const handleCancel = () => {
@@ -465,9 +521,19 @@ export default function TranslationProgressModal({
                 ` (${recordsWithWarnings.length} with warnings)`}
               , {failedCount} failed
             </p>
+            <p className="TranslationProgressModal__stats" role="status">
+              Records loaded: {loadedRecords} of {totalRecords}
+            </p>
           </div>
           {/* Progress bar */}
-          <div className="TranslationProgressModal__progress-bar">
+          <div
+            className="TranslationProgressModal__progress-bar"
+            role="progressbar"
+            aria-label="Translation progress"
+            aria-valuemin={0}
+            aria-valuemax={totalRecords}
+            aria-valuenow={completedCount}
+          >
             <div
               className="TranslationProgressModal__progress-bar-fill"
               style={{ width: `${percentComplete}%` }}
@@ -484,9 +550,8 @@ export default function TranslationProgressModal({
           {progress.length > 0 ? (
             <ul className="TranslationProgressModal__update-list">
               {progress
-                .slice()
-                // Newest updates first so the most recent work is visible
-                .sort((a, b) => b.recordIndex - a.recordIndex)
+                .slice(-VISIBLE_UPDATE_LIMIT)
+                .reverse()
                 .map((update) => (
                   <ProgressRow
                     key={update.recordId}
@@ -499,11 +564,18 @@ export default function TranslationProgressModal({
             <div className="TranslationProgressModal__initializing">
               <div className="TranslationProgressModal__spinner-container">
                 <Spinner size={20} />
-                <span>Initializing translation...</span>
+                <span>Loading the first batch of records…</span>
               </div>
             </div>
           )}
         </div>
+
+        {progress.length > VISIBLE_UPDATE_LIMIT && (
+          <p className="TranslationProgressModal__stats">
+            Showing the latest {VISIBLE_UPDATE_LIMIT} of {progress.length}{' '}
+            updates.
+          </p>
+        )}
 
         <div className="TranslationProgressModal__footer">
           {!isCompleted && isProcessing && (
@@ -516,19 +588,17 @@ export default function TranslationProgressModal({
               Cancel
             </Button>
           )}
-          {isCompleted &&
-            !hasFatalError &&
-            publishableRecordIds.length > 0 && (
-              <Button
-                type="button"
-                buttonType="muted"
-                onClick={handlePublish}
-                disabled={isPublishing || hasPublishedAll}
-                buttonSize="s"
-              >
-                {publishButtonLabel}
-              </Button>
-            )}
+          {isCompleted && !hasFatalError && publishableRecordIds.length > 0 && (
+            <Button
+              type="button"
+              buttonType="muted"
+              onClick={handlePublish}
+              disabled={isPublishing || hasPublishedAll}
+              buttonSize="s"
+            >
+              {publishButtonLabel}
+            </Button>
+          )}
           <Button
             type="button"
             buttonType="primary"
