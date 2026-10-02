@@ -1,0 +1,232 @@
+/*
+ * dl-recipes.css
+ * Global, opt-in DatoCMS design-language recipes, imported in main.tsx right
+ * after kit-fixes.css. Rules are copied from the design language's recipes
+ * unless marked ADAPTED. Every rule keys on a `dl-*` class, so only markup
+ * that opts in (the bulk translations page and the picker modal) is styled.
+ */
+
+/* --- Pane ------------------------------------------------------------------ */
+.dl-pane {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-right: 1px solid var(--color--border);
+}
+.dl-pane--last {
+  border-right: 0;
+}
+.dl-pane__body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain; /* ADAPTED: layout-and-navigation §3 */
+}
+
+/* --- Toolbar meta ---------------------------------------------------------- */
+.dl-toolbar__subtitle {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--font-size-s);
+  color: var(--color--ink-subtle);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- Page column ----------------------------------------------------------- */
+.dl-page {
+  position: relative;
+  box-sizing: content-box;
+  max-width: 650px;
+  margin: 0 auto;
+  padding: var(--spacing-l);
+}
+.dl-page__content {
+  position: relative;
+  margin-bottom: var(--spacing-xl);
+}
+@media (min-width: 1400px) {
+  .dl-page {
+    padding: calc(4 * var(--spacing-m));
+  }
+}
+
+/* --- Micro-label ----------------------------------------------------------- */
+.dl-micro-label {
+  margin: 0 0 var(--spacing-s);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-bold);
+  line-height: 1.2;
+  color: var(--color--ink-subtle);
+  text-transform: uppercase;
+  letter-spacing: normal;
+}
+
+/* --- Notice ---------------------------------------------------------------- */
+.dl-notice {
+  display: flex;
+  align-items: center;
+  margin: 40px 0;
+  padding: 20px;
+  background-color: var(--color--primary-soft--surface);
+}
+.dl-notice:first-child {
+  margin-top: 0;
+}
+.dl-notice__content {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.dl-notice__title {
+  margin-bottom: 5px;
+  font-size: 18px;
+  font-weight: var(--font-weight-bold);
+  line-height: 1.2;
+}
+.dl-notice__description {
+  font-size: 0.9em;
+  line-height: 1.2;
+}
+.dl-notice__actions {
+  flex: none;
+  margin-left: 30px;
+}
+
+/* --- Progress -------------------------------------------------------------- */
+.dl-progress {
+  height: 8px;
+  overflow: hidden;
+  background-color: var(--color--progress--track);
+  border-radius: 10px;
+}
+.dl-progress__bar {
+  height: 100%;
+  background-color: var(--color--progress--fill);
+  transition: width 0.3s var(--material-ease);
+}
+/* ADAPTED */
+@media (prefers-reduced-motion: reduce) {
+  .dl-progress__bar {
+    transition: none;
+  }
+}
+
+/* --- Soft-tone callout ----------------------------------------------------- */
+.dl-callout {
+  margin-bottom: var(--spacing-l);
+  padding: var(--spacing-l);
+  border: 1px solid transparent;
+  border-radius: 4px;
+}
+.dl-callout--danger {
+  color: var(--color--danger-soft--ink);
+  background-color: var(--color--danger-soft--surface);
+  border-color: var(--color--danger-soft--border);
+}
+.dl-callout--warning {
+  color: var(--color--warning-soft--ink);
+  background-color: var(--color--warning-soft--surface);
+  border-color: var(--color--warning-soft--border);
+}
+.dl-callout p {
+  margin: 0 0 10px;
+}
+.dl-callout p:last-child {
+  margin-bottom: 0;
+}
+.dl-callout a {
+  font-weight: var(--font-weight-bold);
+  color: inherit;
+}
+.dl-callout svg {
+  fill: currentColor;
+}
+.dl-callout--with-action {
+  display: flex;
+  gap: 30px;
+  align-items: center;
+}
+.dl-callout--with-action > :first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+  line-height: 1.1;
+}
+/* ADAPTED: feedback §5 "compact warning row (15px padding, no border)" */
+.dl-callout.dl-callout--compact {
+  padding: 15px;
+  border-width: 0;
+}
+/* ADAPTED: 0 margin inside Form and FieldGroup items, which own the 24px rhythm */
+.dl-callout.dl-callout--flush {
+  margin-bottom: 0;
+}
+
+/* --- Blank slate ----------------------------------------------------------- */
+.dl-blank-slate {
+  position: relative;
+  padding: var(--spacing-xl);
+  text-align: center;
+  background-color: var(--color--surface-raised);
+  border: 1px solid var(--color--border);
+  border-radius: 4px;
+  box-shadow: var(--shadow--raised);
+}
+.dl-blank-slate__title {
+  margin-bottom: var(--spacing-m);
+  font-size: 35px;
+  font-weight: var(--font-weight-bold);
+  color: var(--color--ink-subtle);
+  letter-spacing: -0.03em;
+}
+.dl-blank-slate__description {
+  max-width: 500px;
+  margin: 0 auto var(--spacing-l);
+}
+.dl-blank-slate__description p {
+  margin: 0 0 var(--spacing-s);
+}
+.dl-blank-slate__description p:last-child {
+  margin-bottom: 0;
+}
+.dl-blank-slate > :last-child {
+  margin-bottom: 0;
+}
+
+/* --- Pane state (load error) ----------------------------------------------- */
+.dl-pane-state {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-l) var(--spacing-xl);
+  overflow: auto;
+  text-align: center;
+}
+.dl-pane-state__icon {
+  margin-bottom: var(--spacing-m);
+}
+.dl-pane-state__icon svg {
+  display: block;
+  width: 80px;
+  height: 80px;
+  fill: var(--color--ink-subtle);
+}
+.dl-pane-state__title {
+  font-size: 35px;
+  font-weight: var(--font-weight-bold);
+  line-height: 1.1;
+  letter-spacing: -0.05em;
+}
+.dl-pane-state p {
+  margin: var(--spacing-s) 0 0;
+}
+/* ADAPTED: the recipe targets .dl-button */
+.dl-pane-state .dl-kit-button {
+  margin-top: var(--spacing-l);
+}

@@ -1,0 +1,33 @@
+/*
+ * Label + inline mono code for select options (formatCodeOption /
+ * formatCodeMultiOption / InlineCode in chipOption.tsx). react-select's
+ * multi-value is the only chip: no extra chip layer here.
+ */
+.option {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4em;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.code {
+  flex: none;
+  font-family: var(--monospaced-font-family);
+  font-size: 0.9em;
+  font-weight: normal;
+  white-space: nowrap;
+  color: var(--color--ink-subtle);
+}
+
+/* Inside value chips and selected menu rows the code takes the surrounding ink. */
+.code.inherit {
+  color: inherit;
+}

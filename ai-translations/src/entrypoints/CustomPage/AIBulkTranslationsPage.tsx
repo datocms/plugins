@@ -1,15 +1,26 @@
 /**
  * AIBulkTranslationsPage.tsx
- * Custom settings page that lets admins run bulk translations across models.
+ * Custom settings page ("Bulk translations") that lets admins translate every
+ * record of the selected models from a source locale into other locales.
  *
- * The page composes four pure helpers from `BulkTranslationHelpers`:
+ * Layout: a single pane with one 60px toolbar (title, run summary and the one
+ * primary "Translate records" action) over a scrolling 800px column. The
+ * column holds two sections: "Locales" (source and target selects side by
+ * side) and "Models" (a full-width models select, then one field picker per
+ * selected model in a two-column grid); both grids collapse to one column on
+ * narrow frames. The provider-missing callout and the record discovery
+ * notice sit above the sections. Whole-body states cover loading, load
+ * errors, a single-locale environment and a project without models.
+ *
+ * The page composes pure helpers from `BulkTranslationHelpers`:
  *   - `filterTranslatableFields` — narrows a model's fields to those the
  *     plugin can translate, given the user's allowed editor types and
  *     api_key exclusions in plugin settings.
- *   - `resolveTargetLocales` — expands the "All locales" sentinel into a
- *     concrete deduplicated list, dropping the source locale.
- *   - `isReadyToTranslate` — single boolean for whether the Start button
- *     should enable.
+ *   - `resolveTargetLocales` — expands the "All other locales" sentinel into
+ *     a concrete deduplicated list, dropping the source locale.
+ *   - `getTranslationReadiness` — which required inputs are still missing;
+ *     `getStartBlockedReason` turns it into the one reason shown in the
+ *     disabled primary's tooltip.
  *   - `defaultFieldSelection` / `pruneFieldSelection` — manage the per-model
  *     field selection map as the user adds and removes models.
  *
@@ -17,21 +28,59 @@
  * translates every target locale in bounded record batches.
  */
 import type { RenderPageCtx } from 'datocms-plugin-sdk';
-import { Button, Canvas, SelectField, Spinner } from 'datocms-react-ui';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  CHIP_SELECT_CLASS_PREFIX,
+  Canvas,
+  Section,
+  SelectField,
+  Spinner,
+  Toolbar,
+  ToolbarStack,
+  ToolbarTitle,
+} from 'datocms-react-ui';
+import {
+  type Ref,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { FaCircleExclamation } from 'react-icons/fa6';
+import {
+  confirmTranslationTitle,
+  discoveryStatus,
+  FIELD_REQUIRED,
+  NO_RECORDS_WARNING,
+  PROGRESS_MODAL_TITLE,
+  reportTranslationOutcome,
+  runSummary,
+} from '../../components/BulkTranslations/bulkCopy';
+import {
   type ChipOption,
-  renderChipOption,
+  formatCodeMultiOption,
+  formatCodeOption,
 } from '../../components/BulkTranslations/chipOption';
+import {
+  ALL_LOCALES_OPTION,
+  nextTargetSelection,
+  targetsForNewSource,
+} from '../../components/BulkTranslations/localeSelection';
 import { ModelFieldPicker } from '../../components/BulkTranslations/ModelFieldPicker';
+import { getStartBlockedReason } from '../../components/BulkTranslations/startBlockedReason';
 import type { TranslationConfirmModalParams } from '../../components/TranslationConfirmModal';
 import type { ctxParamsType } from '../../entrypoints/Config/ConfigScreen';
+import { Button } from '../../ui/Button';
+import { DisabledReason } from '../../ui/DisabledReason';
+import { useDelayedFlag } from '../../ui/useDelayedFlag';
 import { buildDatoCMSClient } from '../../utils/clients';
+import {
+  buildLocaleSettingsPath,
+  buildPluginSettingsPath,
+  buildSchemaPath,
+} from '../../utils/dashboardPaths';
 import { formatLocaleLabel } from '../../utils/localeUtils';
 import { collectRecordIds } from '../../utils/translation/BulkRecordLoader';
 import {
-  ALL_LOCALES_VALUE,
   defaultFieldSelection,
   filterTranslatableFields,
   getTranslationReadiness,
@@ -61,28 +110,312 @@ interface TranslationModalResult {
   canceled?: boolean;
 }
 
-/**
- * The "All locales" entry that prefixes the target-locale multi-select. We
- * keep it as a regular option so the chip rendering, keyboard navigation,
- * and screen-reader behavior all match the rest of the locale chips. No
- * `code` because there's no machine code to show for "all".
- */
-const ALL_LOCALES_OPTION: LocaleOption = {
-  label: 'All other locales',
-  value: ALL_LOCALES_VALUE,
+type CollectionProgress = {
+  loaded: number;
+  total?: number;
+  modelId: string;
 };
 
-function getStartButtonLabel(
-  isStarting: boolean,
-  isCollecting: boolean,
-): string {
-  if (!isStarting) return 'Start bulk translation';
-  return isCollecting ? 'Finding records…' : 'Please wait…';
+type LoadState =
+  | { status: 'loading' }
+  | { status: 'ready' }
+  | { status: 'error'; cause: 'request' | 'no-token' };
+
+type View = 'loading' | 'error' | 'single-locale' | 'no-models' | 'form';
+
+/** Views rendered inside a centered page column (650, or 800 for the form). */
+const COLUMN_VIEWS: readonly View[] = ['single-locale', 'no-models', 'form'];
+
+const PROVIDER_MISSING_LINE =
+  'No AI vendor is set up yet. Add its credentials in the plugin settings to start translating.';
+
+/** Selects, "Remove model" and "Try again" lock only after this long busy. */
+const FIELD_LOCK_DELAY_MS = 1000;
+
+function deriveView(
+  loadState: LoadState,
+  localeCount: number,
+  modelCount: number,
+): View {
+  if (loadState.status === 'loading' || loadState.status === 'error') {
+    return loadState.status;
+  }
+  if (localeCount < 2) return 'single-locale';
+  if (modelCount === 0) return 'no-models';
+  return 'form';
+}
+
+/** Adds or removes `ids` from a Set state without mutating it. */
+function withIds(
+  prev: ReadonlySet<string>,
+  ids: readonly string[],
+  include: boolean,
+): Set<string> {
+  const next = new Set(prev);
+  for (const id of ids) {
+    if (include) next.add(id);
+    else next.delete(id);
+  }
+  return next;
+}
+
+function LoadErrorState({
+  cause,
+  onOpenPluginSettings,
+  onRetry,
+}: {
+  cause: 'request' | 'no-token';
+  onOpenPluginSettings: () => void;
+  onRetry: () => void;
+}) {
+  return (
+    <div className="dl-pane-state">
+      <div className="dl-pane-state__icon">
+        <FaCircleExclamation aria-hidden />
+      </div>
+      <div className="dl-pane-state__title">
+        Couldn't load models and locales
+      </div>
+      {cause === 'no-token' ? (
+        <>
+          <p>
+            The plugin needs permission to use your API token. Grant it in the
+            plugin settings.
+          </p>
+          <Button buttonSize="s" onClick={onOpenPluginSettings}>
+            Go to plugin settings
+          </Button>
+        </>
+      ) : (
+        <>
+          <p>Something went wrong while loading this environment.</p>
+          <Button buttonSize="s" onClick={onRetry}>
+            Try again
+          </Button>
+        </>
+      )}
+    </div>
+  );
+}
+
+function SingleLocaleSlate({
+  locale,
+  canEditEnvironment,
+  onOpenLocaleSettings,
+}: {
+  locale: LocaleOption | undefined;
+  canEditEnvironment: boolean;
+  onOpenLocaleSettings: () => void;
+}) {
+  return (
+    <div className="dl-blank-slate">
+      <div className="dl-blank-slate__title">Add another locale</div>
+      <div className="dl-blank-slate__description">
+        <p>
+          Bulk translations copy content from one locale into others, and this
+          environment only has {locale?.label} ({locale?.code}).
+        </p>
+        <p>
+          {canEditEnvironment
+            ? 'Add a locale in the Locales & Timezone settings, then come back here.'
+            : 'Ask a project admin to add another locale.'}
+        </p>
+      </div>
+      {canEditEnvironment && (
+        <Button
+          buttonType="primary"
+          buttonSize="l"
+          onClick={onOpenLocaleSettings}
+        >
+          Go to locale settings
+        </Button>
+      )}
+    </div>
+  );
+}
+
+function NoModelsSlate({ onOpenSchema }: { onOpenSchema: () => void }) {
+  return (
+    <div className="dl-blank-slate">
+      <div className="dl-blank-slate__title">Still no models</div>
+      <div className="dl-blank-slate__description">
+        <p>Create your first model!</p>
+      </div>
+      <Button buttonType="primary" buttonSize="l" onClick={onOpenSchema}>
+        Go to Schema
+      </Button>
+    </div>
+  );
+}
+
+/**
+ * The pane's one primary action. While starting it shows "Please wait" and
+ * no tooltip; while blocked it's disabled and explains why.
+ */
+function PrimaryAction({
+  slotRef,
+  isStarting,
+  blockedReason,
+  onStart,
+}: {
+  slotRef: Ref<HTMLSpanElement>;
+  isStarting: boolean;
+  blockedReason: string | null;
+  onStart: () => void;
+}) {
+  return (
+    <span ref={slotRef} className={s.primarySlot}>
+      {/* End-aligned: the kit's shift() has no padding, so a centered 280px
+          tooltip would sit flush against the iframe's right edge. */}
+      <DisabledReason
+        reason={isStarting ? null : blockedReason}
+        placement="bottom-end"
+      >
+        <Button
+          buttonType="primary"
+          buttonSize="s"
+          onClick={onStart}
+          disabled={isStarting || blockedReason !== null}
+        >
+          {isStarting ? (
+            <>
+              Please wait&nbsp;
+              <Spinner size={20} />
+            </>
+          ) : (
+            'Translate records'
+          )}
+        </Button>
+      </DisabledReason>
+    </span>
+  );
+}
+
+function DiscoveryNotice({
+  progress,
+  actionsRef,
+  onCancel,
+}: {
+  progress: CollectionProgress;
+  actionsRef: Ref<HTMLDivElement>;
+  onCancel: () => void;
+}) {
+  const { loaded, total } = progress;
+  return (
+    <div className="dl-notice">
+      <div className="dl-notice__content">
+        <div className="dl-notice__title">Finding records…</div>
+        <div className="dl-notice__description" role="status">
+          {discoveryStatus(progress)}
+        </div>
+        <div
+          className={`dl-progress ${s.discoveryBar}`}
+          role="progressbar"
+          aria-label="Record loading progress"
+          aria-valuemin={0}
+          aria-valuemax={total}
+          aria-valuenow={
+            total === undefined ? undefined : Math.min(loaded, total)
+          }
+        >
+          <div
+            className="dl-progress__bar"
+            style={{
+              width: `${total ? Math.min(100, (loaded / total) * 100) : 0}%`,
+            }}
+          />
+        </div>
+      </div>
+      <div ref={actionsRef} className="dl-notice__actions">
+        <Button buttonSize="s" onClick={onCancel}>
+          Cancel
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * "Locales": source and target selects side by side. Each SelectField
+ * renders a Fragment, so each gets its own grid cell.
+ */
+function LocalesSection({
+  locales,
+  sourceLocale,
+  targetOptions,
+  targetLocaleOptions,
+  isLocked,
+  onSourceChange,
+  onTargetsChange,
+}: {
+  locales: LocaleOption[];
+  sourceLocale: LocaleOption | null;
+  targetOptions: LocaleOption[];
+  targetLocaleOptions: LocaleOption[];
+  isLocked: boolean;
+  onSourceChange: (
+    value: SingleValue<LocaleOption> | MultiValue<LocaleOption>,
+  ) => void;
+  onTargetsChange: (
+    value: SingleValue<LocaleOption> | MultiValue<LocaleOption>,
+  ) => void;
+}) {
+  return (
+    <Section
+      title="Locales"
+      titleClassName="dl-section-parity"
+      headerStyle={{ marginBottom: 'var(--spacing-m)' }}
+    >
+      <div className={s.grid}>
+        <div>
+          <SelectField
+            id="sourceLocale"
+            name="sourceLocale"
+            label="Source locale"
+            required
+            hint="Content is translated from this locale"
+            value={sourceLocale}
+            onChange={onSourceChange}
+            selectInputProps={{
+              options: locales,
+              formatOptionLabel: formatCodeOption,
+              isClearable: false,
+              isDisabled: isLocked,
+            }}
+          />
+        </div>
+        <div>
+          <SelectField
+            id="targetLocales"
+            name="targetLocales"
+            label="Target locales"
+            required
+            hint='"All other locales" skips the source locale'
+            placeholder="Select locales…"
+            error={
+              targetLocaleOptions.length === 0 ? FIELD_REQUIRED : undefined
+            }
+            value={targetLocaleOptions}
+            onChange={onTargetsChange}
+            selectInputProps={{
+              isMulti: true,
+              options: targetOptions,
+              formatOptionLabel: formatCodeMultiOption,
+              noOptionsMessage: () => 'No locales found',
+              isDisabled: isLocked,
+            }}
+          />
+        </div>
+      </div>
+    </Section>
+  );
 }
 
 export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
   const [models, setModels] = useState<ModelOption[]>([]);
   const [selectedModels, setSelectedModels] = useState<ModelOption[]>([]);
+  // "Field is required" on the models select only once the user emptied it.
+  const [modelsTouched, setModelsTouched] = useState(false);
   const [locales, setLocales] = useState<LocaleOption[]>([]);
   const [sourceLocale, setSourceLocale] = useState<LocaleOption | null>(null);
   // Default to "All other locales" so the common case (translate into every
@@ -99,23 +432,38 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
   const [loadingFieldsForModel, setLoadingFieldsForModel] = useState<
     Set<string>
   >(new Set());
-  const [isLoading, setIsLoading] = useState(true);
+  // Models whose last field load failed. Keeps `ensureFieldsLoaded` from
+  // refetching in a loop until the user asks to try again.
+  const [failedFieldModels, setFailedFieldModels] = useState<Set<string>>(
+    new Set(),
+  );
+  const [loadState, setLoadState] = useState<LoadState>({ status: 'loading' });
+  const [reloadToken, setReloadToken] = useState(0);
   const [isStartingTranslation, setIsStartingTranslation] = useState(false);
-  const [collectionProgress, setCollectionProgress] = useState<{
-    loaded: number;
-    total?: number;
-    modelId: string;
-  } | null>(null);
+  const [collectionProgress, setCollectionProgress] =
+    useState<CollectionProgress | null>(null);
   const collectionAbortRef = useRef<AbortController | null>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const noticeActionsRef = useRef<HTMLDivElement>(null);
+  const primarySlotRef = useRef<HTMLSpanElement>(null);
+  const restoreFocusRef = useRef(false);
+  // The current source, read by the load effect when a host ctx update
+  // re-runs it, so a refresh keeps the user's pick instead of resetting it.
+  const sourceLocaleRef = useRef<LocaleOption | null>(null);
 
   useEffect(() => () => collectionAbortRef.current?.abort(), []);
 
-  // Initial load: models + locales
+  useEffect(() => {
+    sourceLocaleRef.current = sourceLocale;
+  }, [sourceLocale]);
+
+  // Initial load: models + locales. Only `retryLoad` puts the page back into
+  // the loading state, so host ctx updates re-run this without a spinner.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `reloadToken` re-runs the load when the user clicks "Try again".
   useEffect(() => {
     async function loadData() {
       if (!ctx.currentUserAccessToken) {
-        ctx.alert('No access token found');
-        setIsLoading(false);
+        setLoadState({ status: 'error', cause: 'no-token' });
         return;
       }
 
@@ -145,40 +493,63 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
           }),
         );
         setLocales(localeOptions);
-        if (localeOptions.length > 0) {
-          setSourceLocale(localeOptions[0]);
+        // Default to the first locale, but keep the current source while it
+        // still exists. When it falls back, prune the targets like a user
+        // source change does, so no phantom target chip is left behind.
+        const currentSource = sourceLocaleRef.current;
+        const sourceStillExists =
+          currentSource !== null &&
+          localeOptions.some((l) => l.value === currentSource.value);
+        if (!sourceStillExists && localeOptions.length > 0) {
+          const nextSource = localeOptions[0];
+          setSourceLocale(nextSource);
+          setTargetLocaleOptions((prev) =>
+            targetsForNewSource(prev, nextSource.value),
+          );
         }
 
-        setIsLoading(false);
+        setLoadState({ status: 'ready' });
       } catch (error) {
         console.error('Error loading data:', error);
-        ctx.alert(
-          `Error loading data: ${error instanceof Error ? error.message : String(error)}`,
+        // Only the initial load (or a "Try again") shows the error pane. A
+        // failed background refresh keeps the loaded form, including a
+        // running discovery and its Cancel.
+        setLoadState((prev) =>
+          prev.status === 'ready'
+            ? prev
+            : { status: 'error', cause: 'request' },
         );
-        setIsLoading(false);
       }
     }
 
     loadData();
-  }, [ctx]);
+  }, [ctx, reloadToken]);
+
+  const retryLoad = () => {
+    setLoadState({ status: 'loading' });
+    setReloadToken((token) => token + 1);
+  };
 
   const pluginParams = ctx.plugin.attributes.parameters as ctxParamsType;
+  const providerConfigured = isProviderConfigured(pluginParams);
 
   /**
-   * Loads, filters, and stores the translatable fields for a newly added
-   * model, defaulting the selection to "everything translatable selected".
-   * Reuses an in-flight loading marker to avoid duplicate fetches on quick
-   * model toggles.
+   * Loads, filters, and caches a selected model's translatable fields,
+   * defaulting its selection to "everything translatable". Reuses an
+   * in-flight loading marker to avoid duplicate fetches on quick model
+   * toggles, and skips models whose load failed until `retryFields`.
    */
   const ensureFieldsLoaded = useCallback(
     async (modelId: string) => {
-      if (fieldsByModel[modelId] || loadingFieldsForModel.has(modelId)) return;
+      if (
+        fieldsByModel[modelId] ||
+        loadingFieldsForModel.has(modelId) ||
+        failedFieldModels.has(modelId)
+      ) {
+        return;
+      }
 
-      setLoadingFieldsForModel((prev) => {
-        const next = new Set(prev);
-        next.add(modelId);
-        return next;
-      });
+      setLoadingFieldsForModel((prev) => withIds(prev, [modelId], true));
 
       try {
         // `loadItemTypeFields` does not guarantee schema-layout order in the
@@ -200,24 +571,18 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
             : { ...prev, [modelId]: defaultFieldSelection(translatable) },
         );
       } catch (error) {
+        // Shown inline by ModelFieldPicker, with a "Try again" action.
         console.error(`Error loading fields for model ${modelId}:`, error);
-        ctx.alert(
-          `Error loading fields: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-        );
+        setFailedFieldModels((prev) => withIds(prev, [modelId], true));
       } finally {
-        setLoadingFieldsForModel((prev) => {
-          const next = new Set(prev);
-          next.delete(modelId);
-          return next;
-        });
+        setLoadingFieldsForModel((prev) => withIds(prev, [modelId], false));
       }
     },
     [
       ctx,
       fieldsByModel,
       loadingFieldsForModel,
+      failedFieldModels,
       pluginParams.apiKeysToBeExcludedFromThisPlugin,
       pluginParams.translationFields,
     ],
@@ -230,14 +595,22 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
     }
   }, [selectedModels, ensureFieldsLoaded]);
 
-  // Prune cached field metadata + user selections for models that were
-  // deselected. Keeping stale entries would slowly leak memory across the
-  // session and could confuse the helpers.
+  // Drop cached fields, picks and failed marks of deselected models, so a
+  // model added again starts fresh from its default selection.
   useEffect(() => {
     const keptIds = selectedModels.map((m) => m.value);
     setFieldsByModel((prev) => pruneFieldSelection(prev, keptIds));
     setSelectedFieldsByModel((prev) => pruneFieldSelection(prev, keptIds));
+    setFailedFieldModels((prev) => {
+      const next = new Set(keptIds.filter((id) => prev.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
   }, [selectedModels]);
+
+  /** Clears a model's failed mark so the load effect fetches it again. */
+  const retryFields = (modelId: string) => {
+    setFailedFieldModels((prev) => withIds(prev, [modelId], false));
+  };
 
   // Derive concrete target locales from the user's multi-select state.
   const allLocaleValues = useMemo(() => locales.map((l) => l.value), [locales]);
@@ -270,11 +643,48 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
   );
   const isReady = readiness.isReady;
 
+  // Selected models whose fields haven't arrived yet (in flight, or not
+  // fetched and not failed).
+  const pendingModelIds = useMemo(
+    () =>
+      new Set(
+        selectedModelIds.filter(
+          (id) =>
+            loadingFieldsForModel.has(id) ||
+            (fieldsByModel[id] === undefined && !failedFieldModels.has(id)),
+        ),
+      ),
+    [selectedModelIds, loadingFieldsForModel, fieldsByModel, failedFieldModels],
+  );
+
+  const blockedReason = getStartBlockedReason({
+    providerConfigured,
+    readiness,
+    models: selectedModels,
+    pendingModelIds,
+    failedModelIds: failedFieldModels,
+    fieldsByModel,
+    requireModels: true,
+  });
+
+  const fieldsLocked = useDelayedFlag(
+    isStartingTranslation,
+    FIELD_LOCK_DELAY_MS,
+  );
+  const isCollecting = collectionProgress !== null;
+
   /**
-   * Multi-select onChange for the target locales. Enforces a soft mutex:
-   * picking "All other locales" clears any specific picks, and picking a
-   * specific locale clears the "All" sentinel. Resolving this here keeps
-   * the chip set clean instead of relying on de-duplication after the fact.
+   * "Field is required" under a model's field select: only once its fields
+   * loaded and there is something to pick (pending, failed and dead-end
+   * models explain themselves instead).
+   */
+  const needsFieldError = (modelId: string) =>
+    readiness.modelsMissingFields.includes(modelId) &&
+    (fieldsByModel[modelId]?.length ?? 0) > 0;
+
+  /**
+   * Multi-select onChange for the target locales, through the soft mutex in
+   * `nextTargetSelection` ("All other locales" vs specific picks).
    */
   const handleTargetLocalesChange = (
     newValue: SingleValue<LocaleOption> | MultiValue<LocaleOption>,
@@ -282,68 +692,89 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
     const next: LocaleOption[] = Array.isArray(newValue)
       ? [...newValue]
       : newValue
-        ? [newValue]
+        ? [newValue as LocaleOption]
         : [];
-    const hadAll = targetLocaleOptions.some(
-      (o) => o.value === ALL_LOCALES_VALUE,
-    );
-    const hasAll = next.some((o) => o.value === ALL_LOCALES_VALUE);
-
-    if (!hadAll && hasAll) {
-      setTargetLocaleOptions([ALL_LOCALES_OPTION]);
-      return;
-    }
-    if (hadAll && hasAll && next.length > 1) {
-      // User added a specific locale while "All" was selected → drop "All".
-      setTargetLocaleOptions(next.filter((o) => o.value !== ALL_LOCALES_VALUE));
-      return;
-    }
-    setTargetLocaleOptions(next);
+    setTargetLocaleOptions(nextTargetSelection(targetLocaleOptions, next));
   };
 
+  /** Picks the source and drops it from the specific target picks. */
   const handleSourceLocaleChange = (
     newValue: SingleValue<LocaleOption> | MultiValue<LocaleOption>,
   ) => {
     if (newValue && !Array.isArray(newValue)) {
-      setSourceLocale(newValue as LocaleOption);
+      const source = newValue as LocaleOption;
+      setSourceLocale(source);
+      setTargetLocaleOptions((prev) => targetsForNewSource(prev, source.value));
     }
   };
 
   const handleModelChange = (
     newValue: SingleValue<ModelOption> | MultiValue<ModelOption>,
   ) => {
-    if (Array.isArray(newValue)) {
-      setSelectedModels([...newValue]);
-    }
+    const next: ModelOption[] = Array.isArray(newValue)
+      ? [...newValue]
+      : newValue
+        ? [newValue as ModelOption]
+        : [];
+    setSelectedModels(next);
+    setModelsTouched(true);
   };
 
   const setModelFields = (modelId: string, apiKeys: string[]) => {
     setSelectedFieldsByModel((prev) => ({ ...prev, [modelId]: apiKeys }));
   };
 
-  /** Drop a model from the selection (the prune effect cleans up its caches). */
+  /** Drops a model from the selection (the prune effect clears its caches). */
   const removeModel = (modelId: string) => {
     setSelectedModels((prev) => prev.filter((m) => m.value !== modelId));
   };
 
-  /** A selected model whose fields loaded but contains nothing translatable. */
-  const hasNoTranslatableFields = (modelId: string) => {
-    const loaded = fieldsByModel[modelId];
-    return loaded !== undefined && loaded.length === 0;
+  const openPluginSettings = () => {
+    void ctx.navigateTo(buildPluginSettingsPath(ctx));
   };
+  const openLocaleSettings = () => {
+    void ctx.navigateTo(buildLocaleSettingsPath(ctx));
+  };
+  const openSchema = () => {
+    void ctx.navigateTo(buildSchemaPath(ctx));
+  };
+
+  // Discovery starts: bring the notice into view and focus its Cancel.
+  useEffect(() => {
+    if (!isCollecting) return;
+    if (bodyRef.current) bodyRef.current.scrollTop = 0;
+    noticeActionsRef.current
+      ?.querySelector('button')
+      ?.focus({ preventScroll: true });
+  }, [isCollecting]);
+
+  const cancelDiscovery = () => {
+    restoreFocusRef.current = true;
+    collectionAbortRef.current?.abort();
+  };
+
+  // After a user cancel, give focus back to the primary. Not after the host
+  // confirm or progress modals close: the iframe may not own focus then.
+  useEffect(() => {
+    if (isStartingTranslation || !restoreFocusRef.current) return;
+    restoreFocusRef.current = false;
+    primarySlotRef.current
+      ?.querySelector('button')
+      ?.focus({ preventScroll: true });
+  }, [isStartingTranslation]);
 
   // biome-ignore lint/complexity/noExcessiveCognitiveComplexity: Keeps the launch flow readable at the call site.
   const startTranslation = async () => {
     if (!isReady) return;
     if (!ctx.currentUserAccessToken) {
-      ctx.alert('No access token found');
+      ctx.alert(
+        "Couldn't start the translation, as the plugin can't access your API token!",
+      );
       return;
     }
     if (!sourceLocale) return;
     if (!isProviderConfigured(pluginParams)) {
-      ctx.alert(
-        'Please configure valid credentials for the selected AI vendor in the plugin settings',
-      );
+      ctx.alert("Couldn't start the translation, as no AI vendor is set up!");
       return;
     }
 
@@ -368,7 +799,11 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
       setCollectionProgress(null);
 
       if (allRecordIds.length === 0) {
-        ctx.alert('No records found in the selected models');
+        void ctx.customToast({
+          type: 'warning',
+          message: NO_RECORDS_WARNING,
+          dismissOnPageChange: true,
+        });
         return;
       }
 
@@ -394,7 +829,7 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
       };
       const confirmed = await ctx.openModal({
         id: 'translationConfirmModal',
-        title: 'Start bulk translation?',
+        title: confirmTranslationTitle(allRecordIds.length),
         width: 'm',
         parameters: confirmParams as unknown as Record<string, unknown>,
       });
@@ -402,10 +837,11 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
       if (confirmed !== true) return;
 
       // Single modal handles the whole job: each record is translated into
-      // every target locale and saved in one CMA write per record.
+      // every target locale and saved in one CMA write per record. Only the
+      // selected models' field picks are sent.
       const modalPromise = ctx.openModal({
         id: 'translationProgressModal',
-        title: 'Translation Progress',
+        title: PROGRESS_MODAL_TITLE,
         width: 'l',
         parameters: {
           totalRecords: allRecordIds.length,
@@ -414,24 +850,17 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
           accessToken: ctx.currentUserAccessToken,
           pluginParams,
           itemIds: allRecordIds,
-          selectedFieldsByModel,
+          selectedFieldsByModel: pruneFieldSelection(
+            selectedFieldsByModel,
+            selectedModelIds,
+          ),
         },
       });
 
       const result = (await modalPromise) as TranslationModalResult | undefined;
 
-      const localeCount = targetLocales.length;
-      if (result?.canceled) {
-        await ctx.notice('Bulk translation was canceled');
-      } else if (result?.completed) {
-        await ctx.notice(
-          `Successfully translated ${allRecordIds.length} record(s) to ${localeCount} locale(s)`,
-        );
-      } else {
-        await ctx.alert(
-          'Bulk translation finished with errors; review the modal output above.',
-        );
-      }
+      // Not awaited: "Please wait" clears as soon as the progress modal closes.
+      reportTranslationOutcome(ctx, result, allRecordIds.length);
     } catch (error) {
       if (!collectionController.signal.aborted) {
         handleUIError(error, pluginParams.vendor, ctx);
@@ -443,9 +872,6 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
     }
   };
 
-  // SelectField needs its `options` shaped as { label, value } and accepts
-  // the same { label, value } shape for `value`. We build them here so the
-  // render block stays declarative.
   const targetOptions = useMemo<LocaleOption[]>(
     () => [
       ALL_LOCALES_OPTION,
@@ -454,207 +880,180 @@ export default function AIBulkTranslationsPage({ ctx }: PropTypes) {
     [locales, sourceLocale],
   );
 
+  const view = deriveView(loadState, locales.length, models.length);
+  const showRunSummary =
+    view === 'form' && selectedModels.length > 0 && targetLocales.length > 0;
+
   return (
     <Canvas ctx={ctx} noAutoResizer>
-      <div className={s.page}>
-        <div className={s.container}>
-          <div className={s.card}>
-            <div className={s.cardHeader}>
-              <h1 className={s.cardTitle}>AI Bulk Translations</h1>
-              <p className={s.cardCaption}>
-                Pick the source and target languages, the models, and the fields
-                you want translated.
-              </p>
-            </div>
-
-            {isLoading && (
-              <div className={s.loadingOverlay}>
-                <Spinner size={40} />
-                <div className={s.loadingText}>
-                  Loading languages and models...
-                </div>
-              </div>
+      <div className={`dl-pane dl-pane--last ${s.pane}`}>
+        {/* 60px including the hairline in every view, level with the host's
+            toolbars: the stack drops the kit's 10px vertical padding, which
+            would push the row past 60 around the `s` primary. */}
+        <Toolbar style={{ minHeight: 60, boxSizing: 'border-box' }}>
+          <ToolbarStack
+            style={{
+              gap: 'var(--spacing-m)',
+              minWidth: 0,
+              paddingTop: 0,
+              paddingBottom: 0,
+            }}
+          >
+            <ToolbarTitle className="dl-toolbar__title">
+              Bulk translations
+            </ToolbarTitle>
+            <div style={{ flex: 1 }} />
+            {showRunSummary && (
+              <span className={`dl-toolbar__subtitle ${s.toolbarMeta}`}>
+                {runSummary(selectedModels.length, targetLocales.length)}
+              </span>
             )}
-
-            {/* Language selectors row */}
-            <div className={s.section}>
-              <div className={s.localeRow}>
-                <div>
-                  <SelectField
-                    name="sourceLocale"
-                    id="sourceLocale"
-                    label="Source language"
-                    hint="Translate from"
-                    value={sourceLocale}
-                    selectInputProps={{
-                      options: locales,
-                      formatOptionLabel: renderChipOption,
-                      classNamePrefix: CHIP_SELECT_CLASS_PREFIX,
-                    }}
-                    onChange={handleSourceLocaleChange}
-                  />
-                </div>
-                <div className={s.localeArrow} aria-hidden>
-                  →
-                </div>
-                <div>
-                  <SelectField
-                    name="targetLocales"
-                    id="targetLocales"
-                    label="Target languages"
-                    hint="Pick one or more, or “All other locales”"
-                    value={targetLocaleOptions}
-                    selectInputProps={{
-                      isMulti: true,
-                      options: targetOptions,
-                      formatOptionLabel: renderChipOption,
-                      classNamePrefix: CHIP_SELECT_CLASS_PREFIX,
-                    }}
-                    onChange={handleTargetLocalesChange}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Models selector */}
-            <div className={s.section}>
-              <SelectField
-                name="selectedModels"
-                id="selectedModels"
-                label="Models"
-                hint="Records of these models will be translated"
-                value={selectedModels}
-                selectInputProps={{
-                  isMulti: true,
-                  options: models,
-                  formatOptionLabel: renderChipOption,
-                  classNamePrefix: CHIP_SELECT_CLASS_PREFIX,
-                }}
-                onChange={handleModelChange}
+            {view === 'form' && (
+              <PrimaryAction
+                slotRef={primarySlotRef}
+                isStarting={isStartingTranslation}
+                blockedReason={blockedReason}
+                onStart={startTranslation}
               />
-            </div>
-
-            {/* Per-model field selection */}
-            {selectedModels.length > 0 && (
-              <div className={s.section}>
-                <div className={s.subsectionHeader}>
-                  <div className={s.subsectionLabel}>Fields to translate</div>
-                  <div className={s.subsectionHint}>
-                    Defaults to every translatable field. Remove any you want to
-                    leave alone, per model.
-                  </div>
-                </div>
-                <div className={s.modelFieldList}>
-                  {selectedModels.map((model) => (
-                    <ModelFieldPicker
-                      key={model.value}
-                      model={model}
-                      fields={fieldsByModel[model.value]}
-                      isLoading={loadingFieldsForModel.has(model.value)}
-                      selectedApiKeys={selectedFieldsByModel[model.value] ?? []}
-                      onChange={(apiKeys) =>
-                        setModelFields(model.value, apiKeys)
-                      }
-                      onRemove={() => removeModel(model.value)}
-                      validationMessage={
-                        readiness.modelsMissingFields.includes(model.value) &&
-                        !hasNoTranslatableFields(model.value)
-                          ? 'Select at least one field to translate this model.'
-                          : undefined
-                      }
-                    />
-                  ))}
-                </div>
-              </div>
             )}
+          </ToolbarStack>
+        </Toolbar>
 
-            {/* Actions */}
-            <div className={s.actions}>
-              {collectionProgress && (
-                <div className={s.collectionProgress}>
-                  <div role="status" className={s.collectionStatus}>
-                    <Spinner size={20} />
-                    <span>
-                      Finding records:{' '}
-                      {collectionProgress.loaded.toLocaleString()}
-                      {collectionProgress.total !== undefined &&
-                        ` of ${collectionProgress.total.toLocaleString()}`}
-                    </span>
-                  </div>
-                  <progress
-                    className={s.progressBar}
-                    aria-label="Record loading progress"
-                    max={Math.max(1, collectionProgress.total ?? 1)}
-                    value={
-                      collectionProgress.total === undefined
-                        ? undefined
-                        : Math.min(
-                            collectionProgress.loaded,
-                            collectionProgress.total,
-                          )
-                    }
-                  />
-                  <Button
-                    buttonType="muted"
-                    onClick={() => collectionAbortRef.current?.abort()}
-                  >
-                    Cancel loading
-                  </Button>
-                </div>
-              )}
-              <Button
-                buttonType="primary"
-                onClick={startTranslation}
-                disabled={!isReady || isStartingTranslation}
-                fullWidth
-              >
-                {getStartButtonLabel(
-                  isStartingTranslation,
-                  collectionProgress !== null,
-                )}
-              </Button>
-              {!isReady && !isStartingTranslation && (
-                <div className={s.blockers}>
-                  <div className={s.blockersTitle}>
-                    Before you can translate:
-                  </div>
-                  <ul className={s.blockerList}>
-                    {readiness.missingSourceLocale && (
-                      <li>Pick a source language.</li>
-                    )}
-                    {readiness.missingTargetLocales && (
-                      <li>Pick at least one target language.</li>
-                    )}
-                    {readiness.missingModels && (
-                      <li>Pick at least one model to translate.</li>
-                    )}
-                    {readiness.modelsMissingFields.map((id) => {
-                      const label =
-                        selectedModels.find((m) => m.value === id)?.label ??
-                        'A selected model';
-                      return (
-                        <li key={id}>
-                          {hasNoTranslatableFields(id)
-                            ? `${label} has no translatable fields — remove it.`
-                            : `${label}: select at least one field.`}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              )}
-              {isReady && !isStartingTranslation && (
-                <div className={`${s.helperText} ${s.statusReady}`}>
-                  Ready to translate to {targetLocales.length} locale
-                  {targetLocales.length === 1 ? '' : 's'}
-                </div>
-              )}
+        <div ref={bodyRef} className="dl-pane__body">
+          {view === 'loading' && (
+            <div role="status" aria-label="Loading models and locales">
+              <Spinner size={80} placement="centered" />
             </div>
-          </div>
-        </div>
+          )}
 
-        <div className={s.footerNote}>
-          Translations are performed using AI. Review content after translation.
+          {loadState.status === 'error' && (
+            <LoadErrorState
+              cause={loadState.cause}
+              onOpenPluginSettings={openPluginSettings}
+              onRetry={retryLoad}
+            />
+          )}
+
+          {COLUMN_VIEWS.includes(view) && (
+            <div
+              className={view === 'form' ? `dl-page ${s.formPage}` : 'dl-page'}
+            >
+              <div className="dl-page__content">
+                {view === 'single-locale' && (
+                  <SingleLocaleSlate
+                    locale={locales[0]}
+                    canEditEnvironment={
+                      ctx.currentRole.meta.final_permissions
+                        .can_edit_environment
+                    }
+                    onOpenLocaleSettings={openLocaleSettings}
+                  />
+                )}
+
+                {view === 'no-models' && (
+                  <NoModelsSlate onOpenSchema={openSchema} />
+                )}
+
+                {view === 'form' && (
+                  <>
+                    {!providerConfigured && !isCollecting && (
+                      <div className="dl-callout dl-callout--warning dl-callout--with-action">
+                        <div>{PROVIDER_MISSING_LINE}</div>
+                        <Button buttonSize="s" onClick={openPluginSettings}>
+                          Go to plugin settings
+                        </Button>
+                      </div>
+                    )}
+
+                    {collectionProgress && (
+                      <DiscoveryNotice
+                        progress={collectionProgress}
+                        actionsRef={noticeActionsRef}
+                        onCancel={cancelDiscovery}
+                      />
+                    )}
+
+                    <div className="dl-kit-sections">
+                      <LocalesSection
+                        locales={locales}
+                        sourceLocale={sourceLocale}
+                        targetOptions={targetOptions}
+                        targetLocaleOptions={targetLocaleOptions}
+                        isLocked={fieldsLocked}
+                        onSourceChange={handleSourceLocaleChange}
+                        onTargetsChange={handleTargetLocalesChange}
+                      />
+
+                      <Section
+                        title="Models"
+                        titleClassName="dl-section-parity"
+                        headerStyle={{ marginBottom: 'var(--spacing-m)' }}
+                      >
+                        <div>
+                          <SelectField
+                            id="selectedModels"
+                            name="selectedModels"
+                            label="Models"
+                            required
+                            hint="All records of these models are translated"
+                            placeholder="Select models…"
+                            error={
+                              modelsTouched && selectedModels.length === 0
+                                ? FIELD_REQUIRED
+                                : undefined
+                            }
+                            value={selectedModels}
+                            onChange={handleModelChange}
+                            selectInputProps={{
+                              isMulti: true,
+                              options: models,
+                              formatOptionLabel: formatCodeMultiOption,
+                              noOptionsMessage: () => 'No models found',
+                              isDisabled: fieldsLocked,
+                            }}
+                          />
+                        </div>
+
+                        {selectedModels.length > 0 && (
+                          <div className={s.modelGrid}>
+                            {selectedModels.map((model) => (
+                              <div key={model.value}>
+                                <ModelFieldPicker
+                                  model={model}
+                                  fields={fieldsByModel[model.value]}
+                                  isLoading={loadingFieldsForModel.has(
+                                    model.value,
+                                  )}
+                                  loadFailed={failedFieldModels.has(
+                                    model.value,
+                                  )}
+                                  isDisabled={fieldsLocked}
+                                  selectedApiKeys={
+                                    selectedFieldsByModel[model.value] ?? []
+                                  }
+                                  onChange={(apiKeys) =>
+                                    setModelFields(model.value, apiKeys)
+                                  }
+                                  onRemove={() => removeModel(model.value)}
+                                  onRetry={() => retryFields(model.value)}
+                                  onOpenPluginSettings={openPluginSettings}
+                                  validationMessage={
+                                    needsFieldError(model.value)
+                                      ? FIELD_REQUIRED
+                                      : undefined
+                                  }
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </Section>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </Canvas>

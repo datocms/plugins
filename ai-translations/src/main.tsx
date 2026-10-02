@@ -27,10 +27,18 @@ import { connect } from 'datocms-plugin-sdk';
 import { Button, Canvas } from 'datocms-react-ui';
 
 import 'datocms-react-ui/styles.css';
+import './kit-fixes.css';
+import './dl-recipes.css';
 import AITranslationsPickerModal, {
   type AITranslationsPickerModalParams,
   type AITranslationsPickerModalResult,
 } from './components/AITranslationsPickerModal';
+import {
+  confirmTranslationTitle,
+  PICKER_MODAL_TITLE,
+  PROGRESS_MODAL_TITLE,
+  reportTranslationOutcome,
+} from './components/BulkTranslations/bulkCopy';
 import ErrorBoundary from './components/ErrorBoundary';
 import TranslationConfirmModal, {
   type TranslationConfirmModalParams,
@@ -49,6 +57,10 @@ import AIBulkTranslationsPage from './entrypoints/CustomPage/AIBulkTranslationsP
 import LoadingAddon from './entrypoints/LoadingAddon';
 import TranslateSidebar from './entrypoints/Sidebar/TranslateSidebar';
 import { defaultPrompt } from './prompts/DefaultPrompt';
+import {
+  buildLocaleSettingsPath,
+  buildPluginSettingsPath,
+} from './utils/dashboardPaths';
 import { createLogger } from './utils/logging/Logger';
 import { formatLocaleWithCode } from './utils/localeUtils';
 import { render } from './utils/render';
@@ -84,19 +96,6 @@ interface TranslationProgressModalParams {
   pluginParams: ctxParamsType;
   itemIds: string[];
   selectedFieldsByModel?: Record<string, string[]>;
-}
-
-type EnvironmentNavigationCtx = {
-  environment: string;
-  isEnvironmentPrimary: boolean;
-  plugin: { id: string };
-};
-
-function buildPluginSettingsPath(ctx: EnvironmentNavigationCtx): string {
-  const environmentPrefix = ctx.isEnvironmentPrimary
-    ? ''
-    : `/environments/${ctx.environment}`;
-  return `${environmentPrefix}/configuration/plugins/${ctx.plugin.id}/edit`;
 }
 
 /**
@@ -143,6 +142,62 @@ function getPluginParams(ctx: {
   // Fallback for unconfigured state (first boot, before onBoot applies defaults)
   // This is safe because onBoot() will apply defaults immediately after
   return params as ctxParamsType;
+}
+
+/**
+ * Checks, before the records picker opens, the problems the picker can't fix:
+ * no AI vendor set up, or an environment with a single locale. Each shows a
+ * non-blocking warning toast (with a way forward when the user has the
+ * permission for it) and returns false.
+ *
+ * @param ctx - Items dropdown action context.
+ * @param pluginParams - Plugin configuration parameters.
+ * @returns True when the picker can open.
+ */
+function preflightItemsTranslation(
+  ctx: ExecuteItemsDropdownActionCtx,
+  pluginParams: ctxParamsType,
+): boolean {
+  const permissions = ctx.currentRole.meta.final_permissions;
+
+  if (!isProviderConfigured(pluginParams)) {
+    void ctx
+      .customToast({
+        type: 'warning',
+        message: "Couldn't translate the records, as no AI vendor is set up!",
+        dismissOnPageChange: true,
+        ...(permissions.can_edit_schema
+          ? { cta: { label: 'Go to plugin settings', value: 'settings' } }
+          : {}),
+      })
+      .then((choice) => {
+        if (choice === 'settings') {
+          void ctx.navigateTo(buildPluginSettingsPath(ctx));
+        }
+      });
+    return false;
+  }
+
+  if (ctx.site.attributes.locales.length < 2) {
+    void ctx
+      .customToast({
+        type: 'warning',
+        message:
+          "Couldn't translate the records, as this environment has only one locale!",
+        dismissOnPageChange: true,
+        ...(permissions.can_edit_environment
+          ? { cta: { label: 'Go to locale settings', value: 'locales' } }
+          : {}),
+      })
+      .then((choice) => {
+        if (choice === 'locales') {
+          void ctx.navigateTo(buildLocaleSettingsPath(ctx));
+        }
+      });
+    return false;
+  }
+
+  return true;
 }
 
 
@@ -303,7 +358,7 @@ connect({
         label: 'AI Translations',
         items: [
           {
-            label: 'Bulk Translations',
+            label: 'Bulk translations',
             icon: 'language',
             pointsTo: {
               pageId: 'ai-bulk-translations',
@@ -376,7 +431,9 @@ connect({
   ) {
     if (actionId !== 'aiTranslationsPicker') return;
     if (!ctx.currentUserAccessToken) {
-      ctx.alert('No user access token found');
+      ctx.alert(
+        "Couldn't translate the records, as the plugin can't access your API token!",
+      );
       return;
     }
     const accessToken = ctx.currentUserAccessToken;
@@ -405,11 +462,13 @@ connect({
       });
 
     if (models.length === 0) {
-      ctx.alert('Could not resolve the models for the selected records.');
+      ctx.alert("Couldn't find the models of the selected records!");
       return;
     }
 
     const pluginParams = getPluginParams(ctx);
+
+    if (!preflightItemsTranslation(ctx, pluginParams)) return;
 
     try {
       const itemIds = items.map((item) => item.id);
@@ -422,8 +481,9 @@ connect({
 
       const result = (await ctx.openModal({
         id: 'aiTranslationsPickerModal',
-        title: 'AI Translations',
-        width: 'l',
+        title: PICKER_MODAL_TITLE,
+        width: 'm',
+        initialHeight: 480,
         parameters: pickerParams as unknown as Record<string, unknown>,
       })) as AITranslationsPickerModalResult | undefined;
 
@@ -450,7 +510,7 @@ connect({
       };
       const confirmed = await ctx.openModal({
         id: 'translationConfirmModal',
-        title: 'Start translation?',
+        title: confirmTranslationTitle(itemIds.length),
         width: 'm',
         parameters: confirmParams as unknown as Record<string, unknown>,
       });
@@ -469,18 +529,12 @@ connect({
 
       const progressResult = (await ctx.openModal({
         id: 'translationProgressModal',
-        title: 'Translation Progress',
+        title: PROGRESS_MODAL_TITLE,
         width: 'l',
         parameters: progressParams as unknown as Record<string, unknown>,
       })) as { completed?: boolean; canceled?: boolean } | undefined;
 
-      if (progressResult?.canceled) {
-        await ctx.notice('Bulk translation was canceled');
-      } else if (progressResult?.completed) {
-        await ctx.notice(`Successfully translated ${items.length} record(s).`);
-      } else {
-        await ctx.alert('The translation finished with errors.');
-      }
+      reportTranslationOutcome(ctx, progressResult, itemIds.length);
     } catch (error) {
       handleUIError(error, pluginParams.vendor, ctx);
     }

@@ -1,260 +1,54 @@
-.page {
-  width: 100%;
-  min-height: calc(100vh - 96px);
-  padding: 36px 24px 52px;
-  display: flex;
-  justify-content: flex-start;
-  align-items: center;
-  flex-direction: column;
-  background: var(--color--surface);
+/*
+ * Local tweaks for the bulk translations page. Layout and components come
+ * from the kit and the global dl-* recipes (src/dl-recipes.css).
+ */
+
+/* A full-size page may paint the surface. */
+.pane {
+  background-color: var(--color--surface);
 }
 
-.container {
-  width: min(800px, 100%);
-  position: relative;
+/* Ref holder for focusing the primary; draws no box. */
+.primarySlot {
+  display: contents;
 }
 
-.card {
-  position: relative;
-  background: var(--color--surface-muted);
-  border-radius: 18px;
-  padding: 26px 26px 24px;
-  border: 1px solid var(--color--border);
-  box-shadow: var(--shadow--raised);
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-l);
-}
-
-.card::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 26px;
-  right: 26px;
-  height: 1px;
-  background: var(--color--border);
-}
-
-.cardHeader {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.cardTitle {
-  margin: 0;
-  font-size: var(--font-size-xl);
-  font-weight: 600;
-  color: var(--color--ink);
-}
-
-.cardCaption {
-  margin: 0;
-  font-size: var(--font-size-s);
-  line-height: 1.5;
-  color: var(--color--ink-subtle);
-}
-
-.section {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-s);
-}
-
-.sectionLabel {
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  font-weight: 600;
-  text-transform: uppercase;
-  color: var(--color--ink-subtle);
-}
-
-.localeRow {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 40px minmax(0, 1fr);
-  gap: var(--spacing-m);
-  align-items: start;
-}
-
-.localeArrow {
-  align-self: center;
-  width: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--color--ink);
-  font-size: 18px;
-  font-weight: 600;
-  margin-top: 28px; /* aligns with select inputs after the label */
-}
-
-.selectionChips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.chip {
-  padding: 6px 14px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 500;
-  background: var(--color--selected--surface);
-  color: var(--color--selected--ink);
-  border: 1px solid var(--color--selected--border);
-}
-
-.actions {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-s);
-}
-
-.collectionProgress {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-s);
-  font-size: var(--font-size-s);
-  color: var(--color--ink-subtle);
-}
-
-.progressBar {
-  appearance: none;
-  width: 100%;
-  height: 8px;
-  border: 1px solid var(--color--border);
-  border-radius: 4px;
-  overflow: hidden;
-  background: var(--color--progress--track);
-  accent-color: var(--color--progress--fill);
-}
-
-.collectionStatus {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-s);
-}
-
-.progressBar::-webkit-progress-bar {
-  background: var(--color--progress--track);
-}
-
-.progressBar::-webkit-progress-value {
-  background: var(--color--progress--fill);
-}
-
-.progressBar::-moz-progress-bar {
-  background: var(--color--progress--fill);
-}
-
-.helperText {
-  font-size: var(--font-size-s);
-  color: var(--color--ink-subtle);
-  text-align: center;
-}
-
-.statusReady {
-  color: var(--color--success-soft--ink);
-  font-weight: var(--font-weight-bold);
-}
-
-.statusPending {
-  color: var(--color--ink-warning);
-  font-weight: var(--font-weight-bold);
-}
-
-/* "What's left" checklist shown under a disabled Start button. */
-.blockers {
-  padding: var(--spacing-m);
-  border-radius: 5px;
-  background: var(--color--warning-soft--surface);
-  color: var(--color--warning-soft--ink);
-  text-align: left;
-}
-
-.blockersTitle {
-  font-size: var(--font-size-s);
-  font-weight: var(--font-weight-bold);
-  margin-bottom: var(--spacing-s);
-}
-
-.blockerList {
-  margin: 0;
-  padding-left: var(--spacing-l);
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  font-size: var(--font-size-s);
-}
-
-.loadingOverlay {
-  position: absolute;
-  inset: 0;
-  background: var(--color--overlay--surface);
-  border-radius: 18px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: var(--spacing-m);
-  z-index: 1;
-}
-
-.loadingText {
-  font-size: var(--font-size-s);
-  color: var(--color--ink-subtle);
-}
-
-.footerNote {
-  margin-top: var(--spacing-l);
-  font-size: var(--font-size-s);
-  color: var(--color--ink-subtle);
-  text-align: center;
-}
-
-/* --- Fields-to-translate section ---------------------------------------- */
-
-.subsectionHeader {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-bottom: var(--spacing-s);
-}
-
-.subsectionLabel {
-  font-size: var(--font-size-s);
-  font-weight: var(--font-weight-bold);
-  color: var(--color--ink);
-}
-
-.subsectionHint {
-  font-size: var(--font-size-s);
-  color: var(--color--ink-subtle);
-}
-
-.modelFieldList {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-m);
-}
-
-@media (max-width: 720px) {
-  .localeRow {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .localeArrow {
+/* Toolbar meta (combined with .dl-toolbar__subtitle): drops first on narrow frames. */
+@media (max-width: 599px) {
+  .toolbarMeta {
     display: none;
   }
 }
 
-@media (max-width: 640px) {
-  .page {
-    padding: 28px 16px 44px;
-  }
+/* The form uses the 800px editor column (combined with .dl-page); whole-body
+   states keep the default 650. */
+.formPage.formPage {
+  max-width: 800px;
+}
 
-  .card {
-    padding: 24px 20px;
+/* Notice description → progress bar: 12px. */
+.discoveryBar {
+  margin-top: var(--spacing-m);
+}
+
+/* Two equal columns: the locale selects, and the per-model field pickers. */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  align-items: start;
+}
+
+/* One full-width field picker per model, 24px below the Models select and apart. */
+.modelGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 24px;
+  margin-top: 24px;
+}
+
+@media (max-width: 699px) {
+  .grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
