@@ -1,10 +1,10 @@
 /**
  * Tests for DeepLMap.ts
- * Tests locale code mapping for DeepL and formality support checking.
+ * Tests locale code mapping for DeepL.
  */
 
 import { describe, expect, it } from 'vitest';
-import { isFormalitySupported, mapDatoToDeepL } from './DeepLMap';
+import { mapDatoToDeepL } from './DeepLMap';
 
 describe('DeepLMap.ts', () => {
   describe('mapDatoToDeepL', () => {
@@ -144,72 +144,6 @@ describe('DeepLMap.ts', () => {
         expect(mapDatoToDeepL('en', 'target')).toBe('EN');
         expect(mapDatoToDeepL('pt-BR', 'source')).toBe('PT-BR');
         expect(mapDatoToDeepL('pt-BR', 'target')).toBe('PT-BR');
-      });
-    });
-  });
-
-  describe('isFormalitySupported', () => {
-    describe('supported languages', () => {
-      it('should return true for German', () => {
-        expect(isFormalitySupported('DE')).toBe(true);
-        expect(isFormalitySupported('de')).toBe(true);
-      });
-
-      it('should return true for French', () => {
-        expect(isFormalitySupported('FR')).toBe(true);
-        expect(isFormalitySupported('fr')).toBe(true);
-      });
-
-      it('should return true for Italian', () => {
-        expect(isFormalitySupported('IT')).toBe(true);
-        expect(isFormalitySupported('it')).toBe(true);
-      });
-
-      it('should return true for Spanish', () => {
-        expect(isFormalitySupported('ES')).toBe(true);
-        expect(isFormalitySupported('es')).toBe(true);
-      });
-
-      it('should return true for Dutch', () => {
-        expect(isFormalitySupported('NL')).toBe(true);
-        expect(isFormalitySupported('nl')).toBe(true);
-      });
-
-      it('should return true for Polish', () => {
-        expect(isFormalitySupported('PL')).toBe(true);
-        expect(isFormalitySupported('pl')).toBe(true);
-      });
-
-      it('should return true for Portuguese variants', () => {
-        expect(isFormalitySupported('PT-PT')).toBe(true);
-        expect(isFormalitySupported('PT-BR')).toBe(true);
-        expect(isFormalitySupported('pt-pt')).toBe(true);
-        expect(isFormalitySupported('pt-br')).toBe(true);
-      });
-    });
-
-    describe('unsupported languages', () => {
-      it('should return false for English', () => {
-        expect(isFormalitySupported('EN')).toBe(false);
-        expect(isFormalitySupported('EN-US')).toBe(false);
-        expect(isFormalitySupported('EN-GB')).toBe(false);
-      });
-
-      it('should return false for Chinese', () => {
-        expect(isFormalitySupported('ZH')).toBe(false);
-      });
-
-      it('should return false for Japanese', () => {
-        expect(isFormalitySupported('JA')).toBe(false);
-      });
-
-      it('should return false for Russian', () => {
-        expect(isFormalitySupported('RU')).toBe(false);
-      });
-
-      it('should return false for unknown languages', () => {
-        expect(isFormalitySupported('XX')).toBe(false);
-        expect(isFormalitySupported('')).toBe(false);
       });
     });
   });

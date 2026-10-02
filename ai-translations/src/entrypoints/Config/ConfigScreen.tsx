@@ -25,6 +25,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ReactTextareaAutosize from 'react-textarea-autosize';
 import { defaultPrompt } from '../../prompts/DefaultPrompt';
 import { listRelevantAnthropicModels } from '../../utils/translation/AnthropicModels';
+import {
+  DEEPL_DEFAULT_IGNORE_TAGS,
+  DEEPL_DEFAULT_NON_SPLITTING_TAGS,
+  DEEPL_DEFAULT_SPLITTING_TAGS,
+} from '../../utils/translation/DeepLSettings';
 import { listRelevantGeminiModels } from '../../utils/translation/GeminiModels';
 import { listRelevantOpenAIModels } from '../../utils/translation/OpenAIModels';
 import s from '../styles.module.css';
@@ -580,10 +585,12 @@ function checkDeepLConfigDirty(
     current.deeplFormality !== (saved.deeplFormality ?? 'default') ||
     current.deeplPreserveFormatting !==
       (saved.deeplPreserveFormatting ?? true) ||
-    current.deeplIgnoreTags !== (saved.deeplIgnoreTags ?? 'notranslate,ph') ||
+    current.deeplIgnoreTags !==
+      (saved.deeplIgnoreTags ?? DEEPL_DEFAULT_IGNORE_TAGS) ||
     current.deeplNonSplittingTags !==
-      (saved.deeplNonSplittingTags ?? 'a,code,pre,strong,em,ph,notranslate') ||
-    current.deeplSplittingTags !== (saved.deeplSplittingTags ?? '') ||
+      (saved.deeplNonSplittingTags ?? DEEPL_DEFAULT_NON_SPLITTING_TAGS) ||
+    current.deeplSplittingTags !==
+      (saved.deeplSplittingTags ?? DEEPL_DEFAULT_SPLITTING_TAGS) ||
     current.deeplApiKey !== (saved.deeplApiKey ?? '') ||
     current.deeplGlossaryId !== (saved.deeplGlossaryId ?? '') ||
     current.deeplGlossaryPairs !== (saved.deeplGlossaryPairs ?? '')

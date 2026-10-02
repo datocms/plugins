@@ -306,20 +306,33 @@ FR->ES=gls-also-valid`;
       it('should not match source wildcard when source is undefined', () => {
         const params = {
           deeplGlossaryPairs: 'EN->*=gls-source',
-          deeplGlossaryId: 'gls-default',
         };
-        // When pair mappings are configured, default is NOT used as fallback
-        // because the glossary likely doesn't support unmapped pairs
         expect(resolveGlossaryId(params, undefined, 'de')).toBeUndefined();
       });
 
-      it('should return undefined for non-matching pairs when pair mappings exist', () => {
+      it('should fall back to default when source is undefined and no pair matches', () => {
+        const params = {
+          deeplGlossaryPairs: 'EN->*=gls-source',
+          deeplGlossaryId: 'gls-default',
+        };
+        expect(resolveGlossaryId(params, undefined, 'de')).toBe('gls-default');
+      });
+
+      it('should fall back to default for pairs without a mapping', () => {
         const params = {
           deeplGlossaryPairs: 'EN->IT=gls-enit',
           deeplGlossaryId: 'gls-default',
         };
-        // EN->IT is configured, but EN->FR is not - should NOT fall back to default
-        // because the glossary likely doesn't support EN->FR
+        // EN->IT is mapped, EN->FR is not, so the default applies to EN->FR.
+        // DeepLProvider then skips it if its languages don't match the pair.
+        expect(resolveGlossaryId(params, 'en', 'it')).toBe('gls-enit');
+        expect(resolveGlossaryId(params, 'en', 'fr')).toBe('gls-default');
+      });
+
+      it('should return undefined for unmapped pairs when no default is set', () => {
+        const params = {
+          deeplGlossaryPairs: 'EN->IT=gls-enit',
+        };
         expect(resolveGlossaryId(params, 'en', 'fr')).toBeUndefined();
       });
     });

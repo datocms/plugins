@@ -5,6 +5,11 @@
  */
 
 import { useCallback, useState } from 'react';
+import {
+  DEEPL_DEFAULT_IGNORE_TAGS,
+  DEEPL_DEFAULT_NON_SPLITTING_TAGS,
+  DEEPL_DEFAULT_SPLITTING_TAGS,
+} from '../../../utils/translation/DeepLSettings';
 import type { VendorId } from '../../../utils/translation/types';
 import type { ctxParamsType } from '../ConfigScreen';
 
@@ -80,11 +85,11 @@ function resolveDeepLDefaults(pluginParams: ctxParamsType): {
     deeplUseFree: pluginParams.deeplUseFree ?? false,
     deeplFormality: pluginParams.deeplFormality ?? 'default',
     deeplPreserveFormatting: pluginParams.deeplPreserveFormatting ?? true,
-    deeplIgnoreTags: pluginParams.deeplIgnoreTags ?? 'notranslate,ph',
+    deeplIgnoreTags: pluginParams.deeplIgnoreTags ?? DEEPL_DEFAULT_IGNORE_TAGS,
     deeplNonSplittingTags:
-      pluginParams.deeplNonSplittingTags ??
-      'a,code,pre,strong,em,ph,notranslate',
-    deeplSplittingTags: pluginParams.deeplSplittingTags ?? '',
+      pluginParams.deeplNonSplittingTags ?? DEEPL_DEFAULT_NON_SPLITTING_TAGS,
+    deeplSplittingTags:
+      pluginParams.deeplSplittingTags ?? DEEPL_DEFAULT_SPLITTING_TAGS,
     deeplGlossaryId: pluginParams.deeplGlossaryId ?? '',
     deeplGlossaryPairs: pluginParams.deeplGlossaryPairs ?? '',
   };

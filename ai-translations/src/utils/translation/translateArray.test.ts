@@ -825,8 +825,114 @@ Content: (see the JSON array below) / (see the JSON array below).`);
             targetLang: 'DE',
             sourceLang: 'EN',
             isHTML: true,
-            formality: 'more',
+            formality: 'prefer_more',
             preserveFormatting: true,
+          }),
+        );
+      });
+
+      it('applies the saved formality setting', async () => {
+        mockDeepLProvider.translateArray.mockResolvedValue(['Hallo']);
+
+        await translateArray(
+          mockDeepLProvider,
+          { ...mockPluginParams, deeplFormality: 'less' },
+          ['Hello'],
+          'en',
+          'de',
+        );
+
+        expect(mockDeepLProvider.translateArray).toHaveBeenCalledWith(
+          expect.any(Array),
+          expect.objectContaining({ formality: 'prefer_less' }),
+        );
+      });
+
+      it('lets a per-call formality override the saved setting', async () => {
+        mockDeepLProvider.translateArray.mockResolvedValue(['Hallo']);
+
+        await translateArray(
+          mockDeepLProvider,
+          { ...mockPluginParams, deeplFormality: 'less' },
+          ['Hello'],
+          'en',
+          'de',
+          { formality: 'default' },
+        );
+
+        const [, options] = mockDeepLProvider.translateArray.mock.calls[0];
+        expect(options.formality).toBeUndefined();
+      });
+
+      it('applies formality for targets outside the old allow-list', async () => {
+        mockDeepLProvider.translateArray.mockResolvedValue(['こんにちは']);
+
+        await translateArray(
+          mockDeepLProvider,
+          { ...mockPluginParams, deeplFormality: 'more' },
+          ['Hello'],
+          'en',
+          'ja',
+        );
+
+        expect(mockDeepLProvider.translateArray).toHaveBeenCalledWith(
+          expect.any(Array),
+          expect.objectContaining({ targetLang: 'JA', formality: 'prefer_more' }),
+        );
+      });
+
+      it('sends the default tag lists when the tag settings were never saved', async () => {
+        mockDeepLProvider.translateArray.mockResolvedValue(['Hallo']);
+
+        await translateArray(
+          mockDeepLProvider,
+          mockPluginParams,
+          ['Hello'],
+          'en',
+          'de',
+        );
+
+        expect(mockDeepLProvider.translateArray).toHaveBeenCalledWith(
+          expect.any(Array),
+          expect.objectContaining({
+            ignoreTags: ['notranslate', 'ph'],
+            nonSplittingTags: [
+              'a',
+              'code',
+              'pre',
+              'strong',
+              'em',
+              'ph',
+              'notranslate',
+            ],
+            splittingTags: [],
+          }),
+        );
+      });
+
+      it('sends the saved tag lists', async () => {
+        mockDeepLProvider.translateArray.mockResolvedValue(['Hallo']);
+
+        await translateArray(
+          mockDeepLProvider,
+          {
+            ...mockPluginParams,
+            deeplIgnoreTags: 'x-keep, <var>',
+            deeplNonSplittingTags: '',
+            deeplSplittingTags: 'p,li',
+          },
+          ['Hello'],
+          'en',
+          'de',
+          { isHTML: true },
+        );
+
+        expect(mockDeepLProvider.translateArray).toHaveBeenCalledWith(
+          expect.any(Array),
+          expect.objectContaining({
+            ignoreTags: ['x-keep', 'var'],
+            nonSplittingTags: [],
+            splittingTags: ['p', 'li'],
           }),
         );
       });

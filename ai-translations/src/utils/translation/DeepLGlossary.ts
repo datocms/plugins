@@ -62,7 +62,11 @@ export function parseGlossaryMap(input?: string): Record<string, string> {
 
 /**
  * Resolves the glossary id to use for the pair (fromLocale → toLocale),
- * trying per-pair mappings first and falling back to a default id.
+ * trying per-pair mappings first and falling back to the default id when no
+ * mapping matches. The default is not checked against the pair here:
+ * DeepLProvider validates every glossary against the request's languages and
+ * skips one whose languages don't match, so a single-pair default glossary
+ * only takes effect for its own pair.
  * Keys in the mapping may use Dato locales (e.g., en-US-\>pt-BR) or DeepL
  * codes (e.g., EN-\>PT-BR). Both are normalized to DeepL codes internally.
  *
@@ -111,13 +115,6 @@ export function resolveGlossaryId(
     if (map[sourceToAnyRaw]) return map[sourceToAnyRaw];
   }
 
-  // Fallback to default ONLY if no pair mappings are configured.
-  // If the user has configured specific pairs, we should not apply the default
-  // glossary to other pairs - it likely doesn't support them and would cause
-  // translations to fail silently or return original text.
-  const hasPairMappings = Object.keys(map).length > 0;
-  if (hasPairMappings) {
-    return undefined;
-  }
-  return defaultId;
+  // No mapping matched: fall back to the default glossary.
+  return defaultId || undefined;
 }

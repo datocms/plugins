@@ -7,11 +7,19 @@ import {Button, FieldGroup, Section, SelectField, SwitchField, TextField} from '
 import {useMemo, useState} from 'react';
 import type {ApiTypes} from '@datocms/cma-client-browser';
 import {RESPONSE_PREVIEW_MAX_LENGTH} from '../../../utils/constants';
+import type {DeepLFormalitySetting} from '../../../utils/translation/DeepLSettings';
 import s from '../../styles.module.css';
 import GlossaryPairEditor from './GlossaryPairEditor';
 import {useDeepLGlossaries} from './useDeepLGlossaries';
 
 type SelectOption = { label: string; value: string };
+type FormalityOption = { label: string; value: DeepLFormalitySetting };
+
+const FORMALITY_OPTIONS: FormalityOption[] = [
+  { label: 'Default', value: 'default' },
+  { label: 'More formal', value: 'more' },
+  { label: 'Less formal', value: 'less' },
+];
 type ApiKeyTestStatus = 'success' | 'error';
 
 interface ApiKeyTestResult {
@@ -157,8 +165,8 @@ export interface DeepLConfigProps {
   setDeeplApiKey: (value: string) => void;
   deeplUseFree: boolean;
   setDeeplUseFree: (value: boolean) => void;
-  deeplFormality: 'default' | 'more' | 'less';
-  setDeeplFormality: (value: 'default' | 'more' | 'less') => void;
+  deeplFormality: DeepLFormalitySetting;
+  setDeeplFormality: (value: DeepLFormalitySetting) => void;
   deeplPreserveFormatting: boolean;
   setDeeplPreserveFormatting: (value: boolean) => void;
   deeplIgnoreTags: string;
@@ -326,19 +334,17 @@ export default function DeepLConfig({
           name="deeplFormality"
           id="deeplFormality"
           label="Formality"
-          value={{ label: deeplFormality, value: deeplFormality }}
+          hint="Target languages without formality support keep DeepL's default tone"
+          value={
+            FORMALITY_OPTIONS.find((o) => o.value === deeplFormality) ??
+            FORMALITY_OPTIONS[0]
+          }
           selectInputProps={{
-            options: [
-              { label: 'default', value: 'default' },
-              { label: 'more', value: 'more' },
-              { label: 'less', value: 'less' },
-            ],
+            options: FORMALITY_OPTIONS,
           }}
           onChange={(nv) => {
             if (!Array.isArray(nv)) {
-              const selected = nv as {
-                value: 'default' | 'more' | 'less';
-              } | null;
+              const selected = nv as FormalityOption | null;
               if (selected?.value) setDeeplFormality(selected.value);
             }
           }}
@@ -359,6 +365,7 @@ export default function DeepLConfig({
               name="deeplIgnoreTags"
               id="deeplIgnoreTags"
               label="Ignore tags (CSV)"
+              hint="Content inside these tags is left untranslated"
               value={deeplIgnoreTags}
               onChange={setDeeplIgnoreTags}
             />
@@ -366,6 +373,7 @@ export default function DeepLConfig({
               name="deeplNonSplittingTags"
               id="deeplNonSplittingTags"
               label="Non-splitting tags (CSV)"
+              hint="These tags never split a sentence"
               value={deeplNonSplittingTags}
               onChange={setDeeplNonSplittingTags}
             />
@@ -373,6 +381,7 @@ export default function DeepLConfig({
               name="deeplSplittingTags"
               id="deeplSplittingTags"
               label="Splitting tags (CSV)"
+              hint="These tags always start a new sentence"
               value={deeplSplittingTags}
               onChange={setDeeplSplittingTags}
             />
@@ -387,7 +396,7 @@ export default function DeepLConfig({
               name="deeplGlossaryId"
               id="deeplGlossaryId"
               label="Default glossary"
-              hint="Applied to all translations unless overridden by a language pair mapping below"
+              hint="Used for translations in the glossary's languages when no language pair below matches"
               placeholder={
                 fetchStatus === 'loading'
                   ? 'Loading glossaries...'

@@ -1,18 +1,6 @@
 /**
- * Maps DatoCMS locale tags to DeepL language codes and checks whether the
- * target language supports the "formality" option.
+ * Maps DatoCMS locale tags to DeepL language codes.
  */
-
-const FORMALITY_SUPPORTED = new Set([
-  'DE',
-  'FR',
-  'IT',
-  'ES',
-  'NL',
-  'PL',
-  'PT-PT',
-  'PT-BR', // DeepL docs list
-]);
 
 /**
  * Ordered list of [prefix, DeepL code] mappings.
@@ -58,15 +46,4 @@ export function mapDatoToDeepL(
   // Fallback: uppercase first two letters of base language
   const baseLang = lc.split('-')[0].toUpperCase();
   return baseLang.length === 2 ? baseLang : 'EN';
-}
-
-/**
- * Returns whether the given DeepL target language supports the `formality`
- * parameter.
- *
- * @param target - DeepL target language code.
- * @returns True when formality is supported for the language.
- */
-export function isFormalitySupported(target: string): boolean {
-  return FORMALITY_SUPPORTED.has(target.toUpperCase());
 }

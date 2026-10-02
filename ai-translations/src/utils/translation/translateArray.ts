@@ -10,7 +10,14 @@ import { defaultPrompt } from '../../prompts/DefaultPrompt';
 import { checkCancellation, isAbortError } from './Cancellation';
 import { createLogger, type Logger } from '../logging/Logger';
 import { resolveGlossaryId } from './DeepLGlossary';
-import { isFormalitySupported, mapDatoToDeepL } from './DeepLMap';
+import { mapDatoToDeepL } from './DeepLMap';
+import {
+  DEEPL_DEFAULT_IGNORE_TAGS,
+  DEEPL_DEFAULT_NON_SPLITTING_TAGS,
+  DEEPL_DEFAULT_SPLITTING_TAGS,
+  parseDeepLTagList,
+  toDeepLFormality,
+} from './DeepLSettings';
 import { formatErrorForUser, normalizeProviderError } from './ProviderErrors';
 import {
   type BatchTranslationOptions,
@@ -288,8 +295,9 @@ function parseTranslationResponse(
  * @returns Translated segments with placeholders restored.
  */
 /**
- * Builds DeepL request options while preserving its existing locale,
- * formality, formatting, tag, and glossary behavior.
+ * Builds DeepL request options from the plugin's DeepL settings: formality
+ * (a per-call `opts.formality` wins over the saved setting), preserve
+ * formatting, the three tag lists, and the resolved glossary.
  */
 function buildDeepLBatchOptions(
   pluginParams: ctxParamsType,
@@ -300,18 +308,25 @@ function buildDeepLBatchOptions(
 ): BatchTranslationOptions {
   const target = mapDatoToDeepL(toLocale, 'target');
   const source = fromLocale ? mapDatoToDeepL(fromLocale, 'source') : undefined;
-  const formality =
-    opts.formality && isFormalitySupported(target) ? opts.formality : undefined;
 
   return {
     sourceLang: source,
     targetLang: target,
     isHTML: !!opts.isHTML,
-    formality,
+    formality: toDeepLFormality(opts.formality ?? pluginParams.deeplFormality),
     preserveFormatting: pluginParams.deeplPreserveFormatting !== false,
-    ignoreTags: ['notranslate', 'ph'],
-    nonSplittingTags: ['a', 'code', 'pre', 'strong', 'em', 'ph', 'notranslate'],
-    splittingTags: [],
+    ignoreTags: parseDeepLTagList(
+      pluginParams.deeplIgnoreTags,
+      DEEPL_DEFAULT_IGNORE_TAGS,
+    ),
+    nonSplittingTags: parseDeepLTagList(
+      pluginParams.deeplNonSplittingTags,
+      DEEPL_DEFAULT_NON_SPLITTING_TAGS,
+    ),
+    splittingTags: parseDeepLTagList(
+      pluginParams.deeplSplittingTags,
+      DEEPL_DEFAULT_SPLITTING_TAGS,
+    ),
     glossaryId: resolveGlossaryId(pluginParams, fromLocale, toLocale),
     originalSourceLocale: fromLocale,
     originalTargetLocale: toLocale,

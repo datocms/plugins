@@ -383,7 +383,11 @@ export default function TranslateSidebar({ ctx }: PropTypes) {
                   className={s.bubbleButton}
                   type="button"
                 >
-                  <ChatBubble index={index} bubble={bubble}/>
+                  <ChatBubble
+                    index={index}
+                    bubble={bubble}
+                    vendor={pluginParams.vendor}
+                  />
                 </button>
               ))}
               {showTimer && (

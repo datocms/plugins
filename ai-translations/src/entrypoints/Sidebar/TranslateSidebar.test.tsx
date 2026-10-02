@@ -32,9 +32,15 @@ vi.mock('framer-motion', () => ({
 vi.mock('./Components/ChatbubbleTranslate', () => ({
   ChatBubble: ({
     bubble,
+    vendor,
   }: {
     bubble: { fieldLabel: string; locale: string };
-  }) => <div>{`${bubble.fieldLabel} (${bubble.locale})`}</div>,
+    vendor?: string;
+  }) => (
+    <div data-testid="chat-bubble" data-vendor={vendor ?? ''}>
+      {`${bubble.fieldLabel} (${bubble.locale})`}
+    </div>
+  ),
 }));
 
 import { translateRecordFields } from '../../utils/translateRecordFields';
@@ -114,6 +120,36 @@ describe('TranslateSidebar', () => {
     fireEvent.click(bubbleButton);
 
     expect(baseCtx.scrollToField).toHaveBeenCalledWith('title', 'it');
+  });
+
+  it('passes the configured vendor to the progress bubbles', async () => {
+    vi.mocked(translateRecordFields).mockImplementation(
+      async (_ctx, _params, _targets, _source, options) => {
+        options?.onStart?.('Title', 'it', 'title.it', 'title');
+      },
+    );
+    const deeplCtx = {
+      ...baseCtx,
+      plugin: {
+        id: 'plugin-1',
+        attributes: {
+          parameters: {
+            ...pluginParams,
+            vendor: 'deepl',
+            deeplApiKey: 'test-key:fx',
+          },
+        },
+      },
+    };
+
+    render(<TranslateSidebar ctx={asCtx(deeplCtx)} />);
+
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Translate all fields' }),
+    );
+
+    const bubble = await screen.findByTestId('chat-bubble');
+    expect(bubble.getAttribute('data-vendor')).toBe('deepl');
   });
 
   it('shows a manual-save success notice after successful translation', async () => {

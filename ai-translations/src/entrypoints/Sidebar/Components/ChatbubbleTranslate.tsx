@@ -1,10 +1,11 @@
 import { AnimatePresence, type Easing, motion } from 'framer-motion';
 import { useEffect, useState } from 'react';
-import { AiOutlineOpenAI } from 'react-icons/ai';
 import { BsCheckCircleFill, BsXCircleFill } from 'react-icons/bs';
 import styles from '../../../styles.module.css';
 import { PENDING_HINT_THRESHOLD_SECONDS } from '../../../utils/constants';
 import { formatLocaleLabel } from '../../../utils/localeUtils';
+import type { VendorId } from '../../../utils/translation/types';
+import { getVendorIcon } from './vendorIcon';
 
 /**
  * ChatbubbleTranslate.tsx
@@ -13,7 +14,7 @@ import { formatLocaleLabel } from '../../../utils/localeUtils';
  * It receives props describing the field being translated, the target locale, and the current status.
  *
  * The component uses Framer Motion for animations:
- * - When status is 'pending', the bubble displays a spinning OpenAI icon to indicate ongoing translation.
+ * - When status is 'pending', the bubble displays the configured vendor's icon spinning to indicate ongoing translation.
  * - When the status changes to 'done', the bubble transitions smoothly, stops spinning, and displays a checkmark.
  * - When the status is 'error', the bubble shows an error icon and error styling.
  *
@@ -26,6 +27,7 @@ import { formatLocaleLabel } from '../../../utils/localeUtils';
  *     errorMessage?: string; // Optional error message when status is 'error'.
  *   }
  * - index: number;          // Index of this bubble in the list for potential staggered animations.
+ * - vendor?: VendorId;      // Configured translation vendor; picks the bubble icon.
  */
 
 type BubbleType = {
@@ -45,9 +47,11 @@ type Props = {
   // bubble position. Currently unused but preserved for backwards compatibility
   // and to avoid breaking the parent component's prop spreading pattern.
   index: number;
+  vendor?: VendorId;
 };
 
-export function ChatBubble({ bubble }: Props) {
+export function ChatBubble({ bubble, vendor }: Props) {
+  const VendorIcon = getVendorIcon(vendor);
   // Hover behavior removed in full-response mode
   const [elapsedSec, setElapsedSec] = useState(0);
 
@@ -130,9 +134,7 @@ export function ChatBubble({ bubble }: Props) {
           transition: { duration: 0.2 },
         };
 
-  // Icon to indicate status: same OpenAI icon, but spinning if pending, static if done
-  // Could switch icon if desired, but instructions say not to remove/change functionality.
-  // We'll keep the same icon and just stop spinning when done.
+  // The vendor icon spins while pending and stops once the field is done.
   return (
     <AnimatePresence>
       <motion.div
@@ -153,7 +155,7 @@ export function ChatBubble({ bubble }: Props) {
             className={styles.bubbleIcon}
             animate={iconAnimation}
           >
-            <AiOutlineOpenAI size={20} />
+            <VendorIcon size={20} aria-hidden />
           </motion.div>
 
           <div className={styles.bubbleContent}>
