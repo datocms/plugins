@@ -236,6 +236,7 @@ export function createAssetClient(config: {
             id: asset.id,
             filename: asset.attributes.filename,
             url: asset.attributes.url,
+            size: asset.attributes.size,
           })),
         };
       } catch (error) {

@@ -120,10 +120,12 @@ function makeAssets(count: number): UnusedAsset[] {
     id: `asset-${index}`,
     filename: `image-${index}.jpg`,
     url: `https://assets.example.test/image-${index}.jpg`,
+    size: 2_048,
   }));
 }
 
 const largeAssets = makeAssets(10_000);
+const DELETE = /^Delete \d/;
 
 function result(
   total: number,
@@ -137,6 +139,8 @@ function result(
     missing: 0,
     failed: 0,
     uncertain: 0,
+    freedBytes: (overrides.deleted ?? total) * 2_048,
+    freedBytesEstimated: false,
     cancelled: false,
     ...overrides,
   };
@@ -156,8 +160,12 @@ function context(overrides: Record<string, unknown> = {}): RenderModalCtx {
 async function renderReady(assets: UnusedAsset[]) {
   mocks.discover.mockResolvedValue(assets);
   const rendered = render(<CustomModal ctx={context()} />);
-  await screen.findByRole('button', { name: 'Delete' });
+  await screen.findByRole('button', { name: DELETE });
   return rendered;
+}
+
+function countFor(label: string) {
+  return screen.getByText(label).nextElementSibling?.textContent;
 }
 
 beforeEach(() => {
@@ -180,7 +188,7 @@ describe('CustomModal', () => {
       await screen.findByText('There are no unused assets in your library'),
     ).toBeTruthy();
     expect(screen.queryByLabelText('Loading')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
+    expect(screen.queryByRole('button', { name: DELETE })).toBeNull();
     expect(mocks.delete).not.toHaveBeenCalled();
   });
 
@@ -192,7 +200,7 @@ describe('CustomModal', () => {
     );
     expect(mocks.createClient).not.toHaveBeenCalled();
     expect(mocks.discover).not.toHaveBeenCalled();
-    expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
+    expect(screen.queryByRole('button', { name: DELETE })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(mocks.resolve).toHaveBeenCalledWith('');
   });
@@ -250,7 +258,7 @@ describe('CustomModal', () => {
       options?.onProgress?.({ scanned: 500, found: 23, total: 10_000 }),
     );
     expect(screen.getByRole('status').textContent).toContain(
-      'Checking 500 of 10000 assets… 23 unused assets found.',
+      'Checking 500 of 10,000 assets… 23 unused assets found.',
     );
     act(() =>
       options?.onProgress?.({
@@ -263,7 +271,7 @@ describe('CustomModal', () => {
     expect(screen.getByRole('status').textContent).toContain(
       'Asset library changed; checking again (attempt 2 of 3)…',
     );
-    expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
+    expect(screen.queryByRole('button', { name: DELETE })).toBeNull();
     await act(async () => discovery.resolve(makeAssets(23)));
   });
 
@@ -273,20 +281,59 @@ describe('CustomModal', () => {
     await renderReady(makeAssets(100));
     expect(screen.getAllByRole('link')).toHaveLength(100);
     expect(
-      screen.getByText('This will delete all of the following assets:'),
+      screen.getByRole('button', { name: 'Delete 100 assets' }),
     ).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Next' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    fireEvent.click(screen.getByRole('button', { name: DELETE }));
+    expect(screen.getByText('Deleting 100 assets…')).toBeTruthy();
     expect(screen.getByLabelText('Loading')).toBeTruthy();
+    expect(
+      screen
+        .getByRole('progressbar', { name: 'Deletion progress' })
+        .getAttribute('aria-valuenow'),
+    ).toBe('0');
+    expect(
+      screen.getByText('0 of 100 assets processed · 0B freed so far'),
+    ).toBeTruthy();
+    expect(countFor('Deleted')).toBe('0');
     expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull();
-    expect(screen.queryByText(/assets processed/)).toBeNull();
-    expect(screen.queryByText(/Deleted:/)).toBeNull();
     await act(async () => deletion.resolve(result(100)));
-    expect(mocks.notice).toHaveBeenCalledWith(
-      'Unused assets successfully deleted!',
-    );
+    expect(screen.getByText('Assets successfully deleted!')).toBeTruthy();
+    expect(countFor('Assets deleted')).toBe('100');
+    expect(countFor('Storage freed')).toBe('200KB');
+    expect(mocks.notice).not.toHaveBeenCalled();
+    expect(mocks.resolve).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(mocks.resolve).toHaveBeenCalledWith('');
+  });
+
+  it('updates the progress bar and freed storage as batches complete', async () => {
+    const deletion = deferred<DeletionResult>();
+    mocks.delete.mockReturnValue(deletion.promise);
+    await renderReady(makeAssets(400));
+    fireEvent.click(screen.getByRole('button', { name: DELETE }));
+    const options = mocks.delete.mock.calls[0]?.[2];
+    act(() =>
+      options?.onProgress?.({
+        total: 400,
+        processed: 100,
+        deleted: 98,
+        skipped: 2,
+        missing: 0,
+        failed: 0,
+        freedBytes: 98 * 2_048,
+      }),
+    );
+    const bar = screen.getByRole('progressbar', { name: 'Deletion progress' });
+    expect(bar.getAttribute('aria-valuenow')).toBe('100');
+    expect(screen.getByText('25%')).toBeTruthy();
+    expect(
+      screen.getByText('100 of 400 assets processed · 196KB freed so far'),
+    ).toBeTruthy();
+    expect(countFor('Deleted')).toBe('98');
+    expect(countFor('Kept because they are in use')).toBe('2');
+    await act(async () => deletion.resolve(result(400)));
   });
 
   it('renders only 100 of 10000 assets per page while deleting the complete selection', async () => {
@@ -294,7 +341,7 @@ describe('CustomModal', () => {
     mocks.delete.mockReturnValue(deletion.promise);
     await renderReady(largeAssets);
     expect(screen.getAllByRole('link')).toHaveLength(100);
-    expect(screen.getByText(/Showing 1–100 of 10000 assets/)).toBeTruthy();
+    expect(screen.getByText(/Showing 1–100 of 10,000 assets/)).toBeTruthy();
     expect(
       screen.getByRole('button', { name: 'Previous' }).hasAttribute('disabled'),
     ).toBe(true);
@@ -302,9 +349,9 @@ describe('CustomModal', () => {
     expect(screen.getByRole('link', { name: 'image-100.jpg' })).toBeTruthy();
     expect(screen.queryByRole('link', { name: 'image-0.jpg' })).toBeNull();
     expect(screen.getAllByRole('link')).toHaveLength(100);
-    expect(screen.getByText(/Showing 101–200 of 10000 assets/)).toBeTruthy();
+    expect(screen.getByText(/Showing 101–200 of 10,000 assets/)).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    fireEvent.click(screen.getByRole('button', { name: DELETE }));
     expect(mocks.delete.mock.calls[0]?.[1]).toBe(largeAssets);
     expect(mocks.delete.mock.calls[0]?.[1]).toHaveLength(10_000);
     expect(screen.getByRole('button', { name: 'Stop' })).toBeTruthy();
@@ -326,11 +373,108 @@ describe('CustomModal', () => {
     expect(screen.getByText(/Showing 101–200 of 201 assets/)).toBeTruthy();
   });
 
+  it('filters by filename and selects only the matches', async () => {
+    const assets = makeAssets(150);
+    mocks.delete.mockResolvedValue(result(140));
+    await renderReady(assets);
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    const search = screen.getByRole('textbox', { name: 'Search assets' });
+    fireEvent.change(search, { target: { value: ' IMAGE-1 ' } });
+
+    // image-1, image-10..19 and image-100..149 match; the list returns to page 1.
+    expect(screen.getAllByRole('link')).toHaveLength(61);
+    expect(screen.getByRole('link', { name: 'image-1.jpg' })).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'image-2.jpg' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Next' })).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Select all matches' }),
+    );
+    expect(screen.getByText(/^89 of 150 selected/)).toBeTruthy();
+
+    fireEvent.change(search, { target: { value: 'missing' } });
+    expect(screen.getByText('No assets match your search')).toBeTruthy();
+    expect(
+      screen
+        .getByRole('checkbox', { name: 'Select all matches' })
+        .hasAttribute('disabled'),
+    ).toBe(true);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear search' }));
+    expect(search).toHaveProperty('value', '');
+    expect(screen.getAllByRole('link')).toHaveLength(100);
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Select image-0.jpg' }),
+    );
+
+    // Selected assets hidden by a search are still deleted.
+    fireEvent.change(search, { target: { value: 'image-2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Delete 88 assets' }));
+    const deleted = mocks.delete.mock.calls[0]?.[1] ?? [];
+    expect(deleted).toHaveLength(88);
+    expect(deleted.some((asset) => asset.id === 'asset-0')).toBe(false);
+    expect(deleted.some((asset) => asset.id === 'asset-30')).toBe(true);
+    await act(async () => {});
+  });
+
+  it('deletes only the assets left selected', async () => {
+    const assets = makeAssets(3);
+    mocks.delete.mockResolvedValue(result(2));
+    await renderReady(assets);
+    expect(screen.getByText('3 of 3 selected · 6KB')).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Select image-1.jpg' }),
+    );
+    expect(screen.getByText('2 of 3 selected · 4KB')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Delete 2 assets' }));
+    expect(mocks.delete.mock.calls[0]?.[1]).toEqual([assets[0], assets[2]]);
+    await act(async () => {});
+  });
+
+  it('selects and clears every asset across pages', async () => {
+    await renderReady(makeAssets(150));
+    const selectAll = screen.getByRole('checkbox', { name: 'Select all' });
+    fireEvent.click(selectAll);
+    expect(screen.getByText(/^0 of 150 selected/)).toBeTruthy();
+    const deleteButton = screen.getByRole('button', {
+      name: 'Select assets to delete',
+    });
+    expect(deleteButton.hasAttribute('disabled')).toBe(true);
+    fireEvent.click(deleteButton);
+    expect(mocks.delete).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Select image-120.jpg' }),
+    );
+    expect(screen.getByText(/^1 of 150 selected/)).toBeTruthy();
+    expect(selectAll).toHaveProperty('indeterminate', true);
+
+    fireEvent.click(selectAll);
+    expect(screen.getByText(/^150 of 150 selected/)).toBeTruthy();
+    expect(selectAll).toHaveProperty('indeterminate', false);
+    expect(
+      screen.getByRole('button', { name: 'Delete 150 assets' }),
+    ).toBeTruthy();
+  });
+
+  it('jumps to a page number and marks it as the current page', async () => {
+    await renderReady(makeAssets(1_000));
+    expect(screen.getByText('1').getAttribute('aria-current')).toBe('page');
+    expect(screen.getByRole('button', { name: 'Page 5' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Page 6' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Page 5' }));
+    expect(screen.getByRole('link', { name: 'image-400.jpg' })).toBeTruthy();
+    expect(screen.getByText('5').getAttribute('aria-current')).toBe('page');
+    expect(screen.getByRole('button', { name: 'Page 7' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Page 1' })).toBeNull();
+  });
+
   it('blocks duplicate deletion clicks before React commits the loading state', async () => {
     const deletion = deferred<DeletionResult>();
     mocks.delete.mockReturnValue(deletion.promise);
     await renderReady(makeAssets(1));
-    const deleteButton = screen.getByRole('button', { name: 'Delete' });
+    const deleteButton = screen.getByRole('button', { name: DELETE });
     act(() => {
       fireEvent.click(deleteButton);
       fireEvent.click(deleteButton);
@@ -343,7 +487,7 @@ describe('CustomModal', () => {
     const deletion = deferred<DeletionResult>();
     mocks.delete.mockReturnValue(deletion.promise);
     await renderReady(makeAssets(101));
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    fireEvent.click(screen.getByRole('button', { name: DELETE }));
     const signal = mocks.delete.mock.calls[0]?.[2]?.signal;
     fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
     expect(signal?.aborted).toBe(true);
@@ -367,7 +511,7 @@ describe('CustomModal', () => {
       ),
     );
     expect(screen.getByText('Deletion stopped')).toBeTruthy();
-    expect(screen.getByText('Not processed: 1 asset.')).toBeTruthy();
+    expect(countFor('Not processed')).toBe('1');
     expect(mocks.notice).not.toHaveBeenCalled();
     expect(mocks.resolve).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
@@ -378,7 +522,7 @@ describe('CustomModal', () => {
     const deletion = deferred<DeletionResult>();
     mocks.delete.mockReturnValue(deletion.promise);
     const rendered = await renderReady(makeAssets(101));
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    fireEvent.click(screen.getByRole('button', { name: DELETE }));
     const options = mocks.delete.mock.calls[0]?.[2];
     rendered.unmount();
     expect(options?.signal?.aborted).toBe(true);
@@ -395,7 +539,7 @@ describe('CustomModal', () => {
     const nextDiscovery = deferred<UnusedAsset[]>();
     mocks.delete.mockReturnValue(deletion.promise);
     const rendered = await renderReady(makeAssets(101));
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    fireEvent.click(screen.getByRole('button', { name: DELETE }));
     const options = mocks.delete.mock.calls[0]?.[2];
     mocks.discover.mockReturnValueOnce(nextDiscovery.promise);
     rendered.rerender(
@@ -426,7 +570,7 @@ describe('CustomModal', () => {
   ] as const)('never reports success for a %s result', async (_name, overrides) => {
     mocks.delete.mockResolvedValue(result(1, overrides));
     await renderReady(makeAssets(1));
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    fireEvent.click(screen.getByRole('button', { name: DELETE }));
     await screen.findByRole('button', { name: 'Close' });
     expect(mocks.notice).not.toHaveBeenCalled();
     expect(mocks.resolve).not.toHaveBeenCalled();
@@ -445,17 +589,18 @@ describe('CustomModal', () => {
       }),
     );
     await renderReady(makeAssets(101));
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    fireEvent.click(screen.getByRole('button', { name: DELETE }));
     await screen.findByRole('button', { name: 'Close' });
-    expect(
-      screen.getByText(
-        /Deleted: 95. Kept because they are in use: 2. Already removed: 1. Failed: 1./,
-      ),
-    ).toBeTruthy();
+    expect(screen.getByText("Deletion didn't complete")).toBeTruthy();
+    expect(countFor('Assets deleted')).toBe('95');
+    expect(countFor('Storage freed')).toBe('190KB');
+    expect(countFor('Kept because they are in use')).toBe('2');
+    expect(countFor('Already removed')).toBe('1');
+    expect(countFor('Failed')).toBe('1');
     expect(
       screen.getByText(/Could not confirm deletion of 1 asset/),
     ).toBeTruthy();
-    expect(screen.getByText('Not processed: 1 asset.')).toBeTruthy();
+    expect(countFor('Not processed')).toBe('1');
     expect(mocks.notice).not.toHaveBeenCalled();
     expect(mocks.resolve).not.toHaveBeenCalled();
   });
@@ -470,10 +615,9 @@ describe('CustomModal', () => {
       }),
     );
     await renderReady(makeAssets(101));
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    fireEvent.click(screen.getByRole('button', { name: DELETE }));
     await screen.findByRole('button', { name: 'Close' });
-    expect(screen.getByText('Not processed: 1 asset.')).toBeTruthy();
-    expect(screen.queryByText('Not processed: 100 assets.')).toBeNull();
+    expect(countFor('Not processed')).toBe('1');
     expect(
       screen.getByText(/Could not confirm deletion of 99 assets/),
     ).toBeTruthy();
@@ -491,7 +635,7 @@ describe('CustomModal', () => {
     expect((await screen.findByRole('alert')).textContent).toContain(
       'The asset library changed during discovery',
     );
-    expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
+    expect(screen.queryByRole('button', { name: DELETE })).toBeNull();
     expect(screen.getByRole('button', { name: 'Close' })).toBeTruthy();
     expect(mocks.delete).not.toHaveBeenCalled();
   });
@@ -500,7 +644,7 @@ describe('CustomModal', () => {
     const deletion = deferred<DeletionResult>();
     mocks.delete.mockReturnValue(deletion.promise);
     await renderReady(makeAssets(101));
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    fireEvent.click(screen.getByRole('button', { name: DELETE }));
     const options = mocks.delete.mock.calls[0]?.[2];
     await act(async () => {
       options?.onProgress?.(result(101, { processed: 100, deleted: 100 }));
@@ -510,7 +654,7 @@ describe('CustomModal', () => {
       'Counts show the last confirmed progress',
     );
     expect(screen.queryByText(/private SDK request payload/)).toBeNull();
-    expect(screen.getByText(/Deleted: 100/)).toBeTruthy();
+    expect(countFor('Deleted')).toBe('100');
     expect(mocks.notice).not.toHaveBeenCalled();
     expect(mocks.resolve).not.toHaveBeenCalled();
   });
@@ -520,11 +664,23 @@ describe('CustomModal', () => {
       result(3, { deleted: 1, skipped: 1, missing: 1 }),
     );
     await renderReady(makeAssets(3));
-    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
-    await act(async () => {});
-    expect(mocks.notice).toHaveBeenCalledWith(
-      'Unused assets deleted: 1. Assets kept because they are in use: 1. Assets already removed: 1.',
+    fireEvent.click(screen.getByRole('button', { name: DELETE }));
+    await screen.findByText('Assets successfully deleted!');
+    expect(countFor('Asset deleted')).toBe('1');
+    expect(countFor('Storage freed')).toBe('2KB');
+    expect(countFor('Kept because they are in use')).toBe('1');
+    expect(countFor('Already removed')).toBe('1');
+    expect(screen.queryByText('Failed')).toBeNull();
+    expect(mocks.notice).not.toHaveBeenCalled();
+  });
+
+  it('labels storage freed as estimated when the API outcome is ambiguous', async () => {
+    mocks.delete.mockResolvedValue(
+      result(2, { deleted: 1, missing: 1, freedBytesEstimated: true }),
     );
-    expect(mocks.resolve).toHaveBeenCalledWith('');
+    await renderReady(makeAssets(2));
+    fireEvent.click(screen.getByRole('button', { name: DELETE }));
+    await screen.findByText('Assets successfully deleted!');
+    expect(countFor('Storage freed (estimated)')).toBe('2KB');
   });
 });

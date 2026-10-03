@@ -19,6 +19,7 @@ function asset(index: number): UnusedAsset {
     id: `asset-${String(index).padStart(5, '0')}`,
     filename: `image-${index}.jpg`,
     url: `https://www.datocms-assets.com/project/image-${index}.jpg`,
+    size: 1_000,
   };
 }
 
@@ -435,6 +436,8 @@ describe('deleteUnusedAssets', () => {
       missing: 0,
       failed: 0,
       uncertain: 0,
+      freedBytes: 10_000_000,
+      freedBytesEstimated: false,
       cancelled: false,
     });
     expectMonotonicProgress(progress, 10_000);
@@ -480,9 +483,47 @@ describe('deleteUnusedAssets', () => {
       missing: 1,
       failed: 0,
       uncertain: 0,
+      freedBytes: 1_000,
+      freedBytesEstimated: false,
       cancelled: false,
     });
     expect(server.destroy).toHaveBeenCalledExactlyOnceWith([asset(0).id]);
+  });
+
+  it('adds up the sizes of the assets each job actually removed', async () => {
+    const server = fakeServer(3);
+    const selected = [
+      { ...asset(0), size: 1_536 },
+      { ...asset(1), size: 4_096 },
+      { ...asset(2), size: 10 },
+    ];
+    server.used.add(asset(1).id);
+    const result = await deleteUnusedAssets(server.api, selected);
+    expect(result).toMatchObject({
+      deleted: 2,
+      skipped: 1,
+      freedBytes: 1_546,
+      freedBytesEstimated: false,
+    });
+  });
+
+  it('estimates freed storage when another removal hides which assets the job deleted', async () => {
+    const server = fakeServer(2);
+    server.destroy.mockImplementationOnce(async (ids) => {
+      for (const id of ids) server.removed.add(id);
+      return { successful: 1, failed: 0 };
+    });
+    const selected = [
+      { ...asset(0), size: 1_000 },
+      { ...asset(1), size: 3_000 },
+    ];
+    const result = await deleteUnusedAssets(server.api, selected);
+    expect(result).toMatchObject({
+      deleted: 1,
+      missing: 1,
+      freedBytes: 2_000,
+      freedBytesEstimated: true,
+    });
   });
 
   it('skips an asset reused between revalidation and the write after the API rejects that subset', async () => {
@@ -634,6 +675,8 @@ describe('deleteUnusedAssets', () => {
       missing: 0,
       failed: 100,
       uncertain: 0,
+      freedBytes: 0,
+      freedBytesEstimated: false,
       cancelled: false,
       error: safeMessage,
     });

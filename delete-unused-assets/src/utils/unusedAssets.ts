@@ -10,7 +10,12 @@ export class AssetOperationError extends Error {}
 export class AssetOperationRejectedError extends AssetOperationError {}
 class AssetLibraryChangedError extends AssetOperationError {}
 
-export type UnusedAsset = { id: string; filename: string; url: string };
+export type UnusedAsset = {
+  id: string;
+  filename: string;
+  url: string;
+  size: number;
+};
 export type DiscoveryProgress = {
   scanned: number;
   found: number;
@@ -28,10 +33,14 @@ export type DeletionProgress = {
   skipped: number;
   missing: number;
   failed: number;
+  /** Bytes of the assets confirmed gone after this run's delete jobs. */
+  freedBytes: number;
 };
 export type DeletionResult = DeletionProgress & {
   cancelled: boolean;
   uncertain: number;
+  /** True when the API outcome could not be tied to specific assets. */
+  freedBytesEstimated: boolean;
   error?: string;
 };
 export type AssetPage = { assets: UnusedAsset[]; total: number };
@@ -111,7 +120,12 @@ async function classifyPage(
     checkCancellation(options.signal);
     for (const asset of group) {
       if (unused.has(asset.id))
-        assets.push({ id: asset.id, filename: asset.filename, url: asset.url });
+        assets.push({
+          id: asset.id,
+          filename: asset.filename,
+          url: asset.url,
+          size: asset.size,
+        });
     }
     options.onProgress?.({
       scanned: offset + start + group.length,
@@ -269,11 +283,39 @@ async function reconcileUnknownMutation(
   }
 }
 
+function sumSizes(ids: string[], sizes: Map<string, number>) {
+  let total = 0;
+  for (const id of ids) total += sizes.get(id) ?? 0;
+  return total;
+}
+
+function recordFreedBytes(
+  absentIds: string[],
+  successful: number,
+  sizes: Map<string, number>,
+  result: DeletionResult,
+) {
+  const absentBytes = sumSizes(absentIds, sizes);
+  if (absentIds.length === successful) {
+    result.freedBytes += absentBytes;
+    return;
+  }
+  // Some absent assets were removed elsewhere, and the job counters don't
+  // say which ones: estimate from the average size of the absent assets.
+  result.freedBytesEstimated = true;
+  if (absentIds.length > 0) {
+    result.freedBytes += Math.round(
+      (absentBytes * Math.min(successful, absentIds.length)) / absentIds.length,
+    );
+  }
+}
+
 async function reconcileCompletedMutation(
   client: AssetApi,
   pending: string[],
   result: DeletionResult,
   outcome: DeleteOutcome,
+  sizes: Map<string, number>,
 ) {
   let remaining: Set<string>;
   try {
@@ -283,11 +325,14 @@ async function reconcileCompletedMutation(
     result.deleted += outcome.successful;
     result.failed += outcome.failed;
     result.uncertain += pending.length - outcome.successful - outcome.failed;
+    if (outcome.successful > 0) result.freedBytesEstimated = true;
     result.error = errorMessage(error);
     return [];
   }
-  const absent = pending.length - remaining.size;
+  const absentIds = pending.filter((id) => !remaining.has(id));
+  const absent = absentIds.length;
   result.deleted += outcome.successful;
+  recordFreedBytes(absentIds, outcome.successful, sizes, result);
   if (absent < outcome.successful) {
     result.error =
       'The API returned inconsistent deletion counts. No further assets were deleted.';
@@ -302,6 +347,7 @@ async function deleteBatch(
   client: AssetApi,
   ids: string[],
   result: DeletionResult,
+  sizes: Map<string, number>,
   signal?: AbortSignal,
 ) {
   let pending = ids;
@@ -331,6 +377,7 @@ async function deleteBatch(
       pending,
       result,
       outcome,
+      sizes,
     );
     if (result.error) return;
     if (attempt === MAX_BATCH_ATTEMPTS - 1) result.failed += pending.length;
@@ -346,6 +393,7 @@ export async function deleteUnusedAssets(
   } = {},
 ): Promise<DeletionResult> {
   const ids = [...new Set(assets.map((asset) => asset.id))];
+  const sizes = new Map(assets.map((asset) => [asset.id, asset.size]));
   const result: DeletionResult = {
     total: ids.length,
     processed: 0,
@@ -354,6 +402,8 @@ export async function deleteUnusedAssets(
     missing: 0,
     failed: 0,
     uncertain: 0,
+    freedBytes: 0,
+    freedBytesEstimated: false,
     cancelled: false,
   };
   options.onProgress?.({ ...result });
@@ -365,6 +415,7 @@ export async function deleteUnusedAssets(
         client,
         ids.slice(offset, offset + DELETE_BATCH_SIZE),
         result,
+        sizes,
         options.signal,
       );
     } catch (error) {

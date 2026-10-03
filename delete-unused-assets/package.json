@@ -1,9 +1,9 @@
 {
   "name": "datocms-plugin-delete-unused-assets",
   "homepage": "https://github.com/datocms/plugins/tree/master/delete-unused-assets#readme",
-  "version": "0.3.6",
+  "version": "0.4.0",
   "author": "DatoCMS <support@datocms.com>",
-  "description": "A plugin that allows you to delete all unused assets with the click of a button.",
+  "description": "Find the assets no record uses, review them, and delete the ones you don't need.",
   "keywords": [
     "datocms",
     "datocms-plugin",
@@ -13,7 +13,8 @@
   ],
   "datoCmsPlugin": {
     "title": "Delete Unused Assets",
-    "coverImage": "docs/cover.png",
+    "coverImage": "docs/cover-1200x800.png",
+    "previewImage": "docs/preview.mp4",
     "entryPoint": "dist/index.html",
     "permissions": [
       "currentUserAccessToken"

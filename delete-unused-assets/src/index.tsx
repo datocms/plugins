@@ -2,6 +2,7 @@ import { connect, type RenderModalCtx } from 'datocms-plugin-sdk';
 import ConfigScreen from './entrypoints/ConfigScreen';
 import { render } from './utils/render';
 import 'datocms-react-ui/styles.css';
+import './kit-fixes.css';
 import CustomModal from './entrypoints/CustomModal';
 
 connect({

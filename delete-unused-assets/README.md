@@ -1,87 +1,75 @@
-A plugin that allows you to delete all unused assets with the click of a button.
+# Delete Unused Assets
 
-## Large libraries and deletion safety
+Clean up your media library in one go. The plugin finds every asset that no record uses, lets you review the list and keep anything you still need, then deletes the rest and tells you how much storage you freed.
 
-The plugin scans the entire asset library in sequential pages of 500, using a
-stable ID order, then checks usage for groups of 100 IDs. Paginating the full
-library prevents edits to record references from moving the scan's offsets.
-The API's `in_use` filter supplies usage information; the plugin does not fetch
-records, models, localized fields, or nested blocks. It retains only asset IDs,
-filenames and URLs, plus a set of IDs seen during discovery.
+![The Delete unused assets dialog listing 117 assets that no record uses, each with its file size, all selected, above a Delete 117 assets button](docs/unused-assets.png)
 
-The confirmation stays the same for small selections. Above 100 assets, its
-preview shows 100 assets per page. Delete still processes the entire confirmed
-selection. Newly created assets are never added to that selection after
-confirmation.
+- **Finds every unused asset** in the current environment, however large the library
+- **Review before deleting**: every asset is listed with its size, and you can untick or search for the ones to keep
+- **Rechecked right before deletion**: an asset that a record starts using in the meantime is kept
+- **Live progress and a clear summary**: running counts while it works, then how many assets were deleted and how much storage was freed
+- **Nothing to configure**
 
-Deletion runs continuously in sequential batches of 100, below the API's limit
-of 200 operations. Each batch rechecks usage before submitting, waits for the
-asynchronous job, retains its `successful`/`failed` counters, and reconciles the
-remaining IDs. Used assets are kept; assets already removed are counted
-separately. Completed partial jobs can automatically retry their remaining
-unused IDs, up to three attempts per batch. Counts and errors prevent a partial
-result from displaying an unconditional success notice.
+## Installation
 
-API reads and rate-limit rejections receive bounded exponential retries (five
-attempts), respecting `Retry-After`/`X-RateLimit-Reset`. Each fetch, including its
-response body, has a 30-second abort timeout. A write is retried only after an
-explicit HTTP 429 rejection. Lost write responses and failed job polling never
-resubmit the mutation: they stop further batches, reconcile what can be read,
-and report an uncertain outcome. Job polling continues automatically at
-two-second intervals for approximately one hour before reporting an unknown
-outcome; its last request can extend that deadline through bounded retries.
-API errors shown in the UI omit tokens, request bodies and raw error details.
+Install **Delete Unused Assets** from **Configuration → Plugins** and, when asked, let it use the current user's API token. The plugin needs it to find and delete assets. There's nothing else to set up.
 
-For large selections, Stop finishes and accounts for the current submitted
-job, then prevents further mutations. Unmounting also prevents further batches.
-There is no pause, checkpoint or manual continuation workflow. A job already
-accepted by DatoCMS cannot be cancelled by closing the plugin, and may still
-finish on the server.
+## Delete unused assets
 
-Discovery automatically retries up to three complete scans if counts,
-duplicate IDs or a short page indicate structural changes to the asset
-library. Failed or incomplete discovery never enables Delete. Offset pagination
-does not provide a snapshot: simultaneous external asset creation/deletion
-that preserves counts may still escape those checks. Usage is revalidated and
-DatoCMS rejects deletion of used uploads, but this plugin cannot provide an
-atomic snapshot across the whole operation. The current environment and user
-permissions determine which assets are visible and deletable. Assets referenced
-only by external applications or arbitrary URLs are outside the API's usage
-index. Older historical record versions are outside the current/published
-usage contract used by this plugin.
+1. Open **Configuration → Plugins → Delete Unused Assets** and click **Scan for unused assets**.
+2. The plugin checks your whole asset library and lists every asset that no record uses, with its size. All of them start selected.
+3. Untick anything you want to keep. **Select all** ticks or clears the whole list, and the search box filters it by filename.
+4. Click **Delete *N* assets**, where *N* is the number of selected assets. A progress bar and running counts follow the deletion.
+5. When it's done, a summary shows how many assets were deleted and how much storage was freed.
 
-## Verification
+### Keep what you still need
 
-Run commands from this plugin directory:
+Search by filename to find a group of assets quickly, then untick the ones to keep. While a search is active, **Select all matches** only changes the matching assets. Assets selected outside the search stay selected and are still deleted: the count next to it always covers the whole selection.
+
+<img src="https://raw.githubusercontent.com/datocms/plugins/master/delete-unused-assets/docs/search-and-select.png" width="560" alt="The dialog filtered to the four files matching logo, with logo-2024-final.svg unticked, 116 of 117 assets selected and a Delete 116 assets button">
+
+### While it deletes
+
+Assets are deleted in batches of 100. Right before each batch, the plugin checks again which assets are unused: anything a record started using since the scan is kept, and anything someone else removed in the meantime is counted as already removed. Keep the window open until the deletion finishes.
+
+For more than 100 assets, **Stop** ends the deletion after the current batch. Assets deleted until then stay deleted; the rest are left untouched.
+
+<img src="https://raw.githubusercontent.com/datocms/plugins/master/delete-unused-assets/docs/deleting.png" width="560" alt="The deletion in progress at 86%: 100 of 116 assets processed, 112.95MB freed so far, and running counts of deleted, kept, already removed and failed assets">
+
+## Understanding the summary
+
+<img src="https://raw.githubusercontent.com/datocms/plugins/master/delete-unused-assets/docs/summary.png" width="560" alt="The summary after a successful deletion: Assets successfully deleted, with 116 assets deleted and 119.26MB of storage freed">
+
+| Count | What it means |
+| --- | --- |
+| **Assets deleted** | Permanently removed from your project. |
+| **Storage freed** | The total size of the deleted assets. It's marked *estimated* when DatoCMS can't say exactly which assets a batch removed, for example because someone else deleted assets at the same time. |
+| **Kept because they are in use** | A record started using the asset after the scan, so it wasn't deleted. |
+| **Already removed** | The asset was already gone when the plugin got to it, usually because someone deleted it elsewhere. |
+| **Failed** | DatoCMS couldn't delete the asset. |
+| **Not processed** | The deletion was stopped or interrupted before reaching the asset. |
+
+Only the counts that apply are shown. A run that was stopped or didn't complete says so, and never reports success.
+
+## Good to know
+
+- **Deletion is permanent.** There's no undo.
+- **"Unused" means no record uses it.** The plugin relies on DatoCMS's own usage tracking, which covers the current and published version of every record. An asset that's only linked from outside DatoCMS (a hard-coded URL on your website or in an email template) or only from an older version of a record counts as unused. Untick it to keep it.
+- **One environment at a time.** The scan covers the environment you're in, and your role decides which assets you can see and delete.
+- **Closing the dialog stops the deletion** after the current batch. A batch DatoCMS has already accepted still finishes on the server.
+- **Large libraries are fine.** The scan reads the library in pages and shows its progress, and the list shows 100 assets per page.
+- **If the library changes during the scan**, because assets are added or deleted elsewhere, the plugin starts the scan over, up to three attempts in total. If the scan can't finish, you see an error and nothing is deleted.
+
+## Development
+
+From this directory:
 
 ```sh
 npm ci
-npm run typecheck
-npm run check
+npm run dev
+npm test
+npm run lint
+npm run build
 ```
 
-`check` aggregates lint, production build and deterministic tests. Tests cover
-a lazily generated 10,000-asset library, server-side usage fixtures representing
-current/published references, many models/locales and nested blocks in a
-200,000-record project, complete deletion coverage, bounded rendering, partial
-failures, retries, cancellation, lost responses and job polling. All API traffic
-is mocked. These fixtures validate client behavior, not the server's reference
-index or production throughput, latency and browser memory. No production
-credentials or real DatoCMS mutations are needed. The repository's existing
-`run-checks.js` targets other plugins and does not include this package.
-
-## API contracts checked for this implementation
-
-- [Upload pagination and filtering](https://www.datocms.com/docs/content-management-api/resources/upload/instances): one page per `list` call, maximum 500 entries; filter field names use snake case.
-- [Batch limits](https://www.datocms.com/docs/content-management-api/errors#TOO_MANY_OPERATIONS): maximum 200 operations per batch.
-- [Used-upload protection](https://www.datocms.com/docs/content-management-api/errors#UPLOAD_IS_CURRENTLY_IN_USE): the server rejects deletion of an upload that is in use.
-- [Bulk job response](https://www.datocms.com/docs/content-management-api/resources/upload/bulk_destroy?language=http): final raw response includes successful and failed counters.
-- [Asynchronous jobs](https://www.datocms.com/docs/content-management-api/async-jobs) and [rate limits](https://www.datocms.com/docs/content-management-api/technical-limits): polling semantics and rate-limit handling.
-
-The local API source was also inspected read-only: `Upload::MAX_BATCH_UPLOADS`,
-`Api::Cma::Upload::Destroy`, `Upload::BulkOperation`, and `Gql::UploadField::InUse`.
-That snapshot includes current and published references and environment-owned
-assets in usage checks, and a transactional lock before deletion. This was not
-verified against a running production server. The original camel-case `inUse`
-is normalized by the current backend; the new `in_use` spelling follows the
-documented contract rather than fixing a proven filter failure.
+`npm run check` runs lint, build and tests together. [docs/technical-notes.md](docs/technical-notes.md) explains how the scan and deletion work, how they're tested and which API contracts they rely on.

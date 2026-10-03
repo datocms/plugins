@@ -294,6 +294,7 @@ describe('asset client wire responses and jobs', () => {
             attributes: {
               filename: 'asset.png',
               url: 'https://assets.example.test/asset.png',
+              size: 2_048,
             },
           },
         ],
@@ -313,6 +314,7 @@ describe('asset client wire responses and jobs', () => {
           id: 'upload-1',
           filename: 'asset.png',
           url: 'https://assets.example.test/asset.png',
+          size: 2_048,
         },
       ],
     });

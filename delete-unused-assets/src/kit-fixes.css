@@ -1,0 +1,38 @@
+/* Global (not a CSS module), imported right after 'datocms-react-ui/styles.css' */
+
+/* Buttons take their own ink for icons, as in the dashboard. */
+.dl-kit-button.dl-kit-button svg {
+  fill: currentColor;
+  color: currentColor;
+}
+
+/* A keyboard focus ring. */
+.dl-kit-button:focus-visible {
+  outline: 0;
+  box-shadow: 0 0 0 4px var(--color--focus--outline);
+}
+
+/* Keep the pale surface-active fill on a clicked primary for :active only. */
+.dl-kit-button--primary.dl-kit-button--primary:not(:disabled):focus:not(
+    :active
+  ) {
+  background-color: var(--color--primary--surface);
+}
+.dl-kit-button--primary.dl-kit-button--primary:not(:disabled):focus:hover:not(
+    :active
+  ) {
+  background-color: var(--color--primary--surface-hover);
+}
+
+/* Swap fills on hover instead of fading. */
+.dl-kit-button.dl-kit-button:hover,
+.dl-kit-button.dl-kit-button:focus,
+.dl-kit-button.dl-kit-button:active {
+  opacity: 1;
+}
+.dl-kit-button--muted:not(:disabled):hover {
+  background-color: var(--color--primary-soft--surface-hover);
+}
+.dl-kit-button--muted:not(:disabled):active {
+  background-color: var(--color--primary-soft--surface-active);
+}
